@@ -114,6 +114,16 @@ export function RollingNumber({ value, digits = 2, className = "" }) {
 // own near-identical copy of this in sky/violet, so the same badge looked
 // different before and after a result was saved; the explanatory titles came
 // from that copy and are kept here.
+// The mark from the token shop, next to the name on a public profile.
+export function FlairBadge({ flair }) {
+  if (!flair?.label) return null;
+  return (
+    <span className="pill bg-ok/15 text-ok" title="Profile flair from the token shop">
+      {flair.label}
+    </span>
+  );
+}
+
 export function TierBadge({ tier }) {
   if (tier === 1)
     return <span className="pill bg-brand/20 text-dark" title="Scores in the Tier 1 constructors' table">T1</span>;

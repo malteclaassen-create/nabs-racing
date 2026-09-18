@@ -31,6 +31,7 @@ import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import contentCheckRoutes from "./routes/contentCheck.js";
+import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
@@ -313,6 +314,11 @@ app.use("/api/reports", reportsRoutes);
 // is treated as one.
 if (!IS_DEPLOYED) app.use("/api/dev", devLoginRoutes);
 app.use("/api/search", searchRoutes);
+// Server tokens — the reward currency. A trial feature: while its switch is off
+// the member routes answer "not available" and the site shows no door to them
+// (see lib/tokens.js). The admin half carries the switch, so it always mounts.
+app.use("/api/tokens", tokensRoutes);
+app.use("/api/admin/tokens", adminTokensRoutes);
 
 // Admin
 app.use("/api/admin", authRoutes); // /api/admin/login

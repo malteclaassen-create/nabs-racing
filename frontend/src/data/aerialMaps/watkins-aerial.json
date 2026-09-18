@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 2912,
+  "affine": [
+    1.0677695432564869,
+    -0.01933632943521681,
+    0.019336329435217858,
+    1.0677695432564291,
+    1008.0544842304517,
+    1563.1281647297224
+  ],
+  "image": "/maps/watkins-aerial.jpg",
+  "source": "Aerial: USDA NAIP / USGS",
+  "license": "Public domain",
+  "sourceUrl": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer",
+  "licenseUrl": "https://www.usgs.gov/centers/eros/science/usgs-eros-archive-aerial-photography-national-agriculture-imagery-program-naip",
+  "trackId": "lilski_watkins_glen",
+  "trackNames": [
+    "Watkins Glen Boot"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        -356.8603820800781,
+        -619.55810546875
+      ],
+      "l": [
+        -450.234130859375,
+        -626.8702392578125
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        260.720458984375,
+        -262.4687805175781
+      ],
+      "r": [
+        218.66232299804688,
+        -262.528564453125
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -361.3077087402344,
+        655.0078735351562
+      ],
+      "l": [
+        -387.899169921875,
+        656.0280151367188
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.85100604393347,
+  "fitP90Metres": 5.368175760346545,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

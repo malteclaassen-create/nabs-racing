@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 2233,
+  "affine": [
+    0.05327032282992495,
+    1.2734144457269592,
+    -1.2916383872272572,
+    0.1507158575113426,
+    1008.3292839083475,
+    1184.94114530204
+  ],
+  "image": "/maps/magny-aerial.jpg",
+  "source": "Aerial \u00a9 IGN BD ORTHO",
+  "license": "Licence Ouverte 2.0",
+  "sourceUrl": "https://geoservices.ign.fr/bdortho",
+  "licenseUrl": "https://www.etalab.gouv.fr/licence-ouverte-open-licence/",
+  "trackId": "magny_cours",
+  "trackNames": [
+    "NABS Magny-Cours 2023"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "l": [
+        -139.4676513671875,
+        191.88648986816406
+      ],
+      "r": [
+        -96.28921508789062,
+        161.96365356445312
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        356.90167236328125,
+        -181.38780212402344
+      ],
+      "r": [
+        345.53619384765625,
+        -146.32745361328125
+      ]
+    },
+    {
+      "index": 2,
+      "l": [
+        160.62374877929688,
+        -103.61944580078125
+      ],
+      "r": [
+        159.07472229003906,
+        -60.9007682800293
+      ]
+    }
+  ],
+  "fitMedianMetres": 4.761499290924452,
+  "fitP90Metres": 11.41729331018582,
+  "note": "Approximate AC-to-OSM affine fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

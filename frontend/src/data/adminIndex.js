@@ -49,6 +49,8 @@ export const TAB_GROUPS = [
       { id: "notify", label: "Notifications" },
       { id: "downloads", label: "Downloads" },
       { id: "social", label: "Social & Live" },
+      // Trial feature, and the tab carries its own on/off switch.
+      { id: "tokens", label: "Tokens" },
     ],
   },
   {
@@ -434,6 +436,24 @@ export const ADMIN_INDEX = [
     title: "Bug reports and ideas",
     hint: "What members sent through the feedback button, and replying to them.",
     keywords: "feedback bug report idea suggestion reply thread message inbox",
+  },
+  {
+    tab: "tokens",
+    title: "Switch server tokens on or off",
+    hint: "The whole reward currency is a trial. This is the switch that shows or hides it for every member.",
+    keywords: "tokens points reward currency trial enable disable switch on off shop referral invite",
+  },
+  {
+    tab: "tokens",
+    title: "Fill a shop order",
+    hint: "Somebody redeemed a helmet or a role. Mark it filled, or decline it and give the tokens back.",
+    keywords: "tokens shop order redeem helmet role prize reward refund decline fill",
+  },
+  {
+    tab: "tokens",
+    title: "Give somebody tokens by hand",
+    hint: "An award for something no rule measures, or a correction.",
+    keywords: "tokens give award grant adjust correct balance points manual",
   },
   {
     tab: "notify",

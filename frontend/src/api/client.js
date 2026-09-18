@@ -174,6 +174,35 @@ export function takeDiscordReturnTo() {
   }
 }
 
+// The invite code a visitor arrived with (?ref=XXXXXX on any page of the site).
+// Remembered until they sign in, because that is the earliest moment the league
+// knows who they are — which can be days later, and is usually not in the tab
+// they first landed in. Hence localStorage rather than sessionStorage, and no
+// expiry: somebody who takes a week to make up their mind is exactly the person
+// the invite worked on.
+//
+// Kept, not consumed, when the login reads it: the backend records the first
+// inviter an account ever had and ignores every later one, so a second login on
+// the same machine changes nothing, and a failed sign-in does not throw the
+// invite away.
+const REF_KEY = "nabs_invite_ref";
+export function rememberInvite(code) {
+  const c = String(code || "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(c)) return;
+  try {
+    localStorage.setItem(REF_KEY, c);
+  } catch {
+    /* private mode with no storage — the invite is simply not credited */
+  }
+}
+export function storedInvite() {
+  try {
+    return localStorage.getItem(REF_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 // The series the site is currently viewing (a URL slug), or null for the
 // active (primary) series. Set by the SeriesProvider; appended to every
 // season-scoped read so all data is transitively series-scoped. Mirrors
@@ -713,11 +742,39 @@ export const api = {
     ),
   // The viewed series rides along so the login's season handover lands the
   // member on THAT series' roster (fallback: the primary series).
+  // The invite code rides along too (see rememberInvite): this is the first
+  // moment the account behind a ?ref= link has a name.
   discordCallback: (code) =>
     request("/auth/discord/callback", {
       method: "POST",
-      body: { code, redirectUri: discordRedirectUri(), ...seriesBody() },
+      body: { code, redirectUri: discordRedirectUri(), ref: storedInvite(), ...seriesBody() },
     }),
+
+  // --- server tokens (trial feature; { enabled: false } while it is switched
+  // off, which is what hides every door to it in the UI).
+  tokens: () => request("/tokens", { userAuth: true }),
+  tokenBalance: () => request("/tokens/balance", { userAuth: true }),
+  // "I have shown them that number" — sent once the nav bar has played the rise.
+  markTokensSeen: () => request("/tokens/seen", { method: "POST", userAuth: true }),
+  claimInvite: () => request("/tokens/invite", { method: "POST", body: { code: storedInvite() }, userAuth: true }),
+  redeemToken: (itemKey, choice = null) =>
+    request("/tokens/redeem", { method: "POST", body: { itemKey, choice }, userAuth: true }),
+  tokenWall: () => request("/tokens/wall"),
+  // Card designs unlock themselves, so this one answers with the design rather
+  // than with an order for the league office.
+  buyCardDesign: (key) => request("/tokens/card-design", { method: "POST", body: { key }, userAuth: true }),
+  adminTokens: () => request("/admin/tokens", { auth: true }),
+  saveTokenTuning: (body) => request("/admin/tokens/tuning", { method: "PUT", body, auth: true }),
+  resetTokenTuning: () => request("/admin/tokens/tuning", { method: "DELETE", auth: true }),
+  // The key the league's Discord bot signs with. Minted the first time it is
+  // asked for, so this is also what creates it.
+  tokenBotKey: () => request("/admin/tokens/activity-key", { auth: true }),
+  setTokensEnabled: (enabled) =>
+    request("/admin/tokens/enabled", { method: "POST", body: { enabled }, auth: true }),
+  adjustTokens: (discordId, delta, note) =>
+    request("/admin/tokens/adjust", { method: "POST", body: { discordId, delta, note }, auth: true }),
+  updateTokenOrder: (id, body) =>
+    request(`/admin/tokens/orders/${id}`, { method: "PATCH", body, auth: true }),
 
   // admin
   login: (pin) => request("/admin/login", { method: "POST", body: { pin } }),

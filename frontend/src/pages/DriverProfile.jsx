@@ -9,7 +9,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, FlairBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -1323,6 +1323,7 @@ function ClassicHero({ driver, championship, color }) {
             <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
             <TierBadge tier={driver.tier} />
             {driver.role === "safety" && <SafetyCarBadge />}
+            {driver.flair && <FlairBadge flair={driver.flair} />}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-white/70">
             <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
@@ -1487,6 +1488,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
                 <TierBadge tier={driver.tier} />
                 {driver.role === "safety" && <SafetyCarBadge />}
+            {driver.flair && <FlairBadge flair={driver.flair} />}
               </div>
               <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
                 <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">

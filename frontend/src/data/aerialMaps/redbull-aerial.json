@@ -1,0 +1,59 @@
+{
+  "width": 1536,
+  "height": 1280,
+  "affine": [
+    0.6116142216678514,
+    0.015377573492896266,
+    -0.015377573492905553,
+    0.6116142216674785,
+    851.0535466257385,
+    541.366396225637
+  ],
+  "image": "/maps/redbull-aerial.svg",
+  "source": "Datenquelle: basemap.at",
+  "license": "CC BY 4.0",
+  "sourceUrl": "https://basemap.at/",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "trackId": "ks_red_bull_ring",
+  "trackNames": [
+    "Red Bull Ring - F1 2025 - EuroRacers"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        221.68724060058594,
+        293.558349609375
+      ],
+      "l": [
+        233.10011291503906,
+        332.89532470703125
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        -511.83642578125,
+        -241.26962280273438
+      ],
+      "r": [
+        -482.9032897949219,
+        -270.29608154296875
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -271.70526123046875,
+        -12.92300796508789
+      ],
+      "l": [
+        -184.83074951171875,
+        -58.123268127441406
+      ]
+    }
+  ],
+  "fitMedianMetres": 1.935742366323393,
+  "fitP90Metres": 5.6674400548525705,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

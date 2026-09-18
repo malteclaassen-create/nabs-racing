@@ -1,0 +1,106 @@
+/* Image concepts adapted to live driver data. Only material is baked into art. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] {
+  --team: #4d536a; --team2: #d8ddef; --accent: #ced6e5;
+  --card-base: #090c13; --card-edge: linear-gradient(130deg, #fff8e5, #899aa7 25%, #29343f 48%, #d5e1ee 70%, #b6afbc 90%, #fff4ea);
+  --concept-art: url('/cards/liquid-chrome-surface.webp');
+  --foil-opacity: .1; --foil-motion: collector-foil;
+  padding: 3px; border-radius: 18px;
+}
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-back { border-radius: 15px; }
+.rcard-concept-art { position: absolute; inset: 0; background: var(--concept-art) center / cover; pointer-events: none; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-mono { background: none; height: 302px; color: #e4e7ee73; font-size: 150px; font-style: normal; text-shadow: 0 8px 30px #0008; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo { inset: 52px 16px auto; height: 275px; border-radius: 7px; mask-image: linear-gradient(#000 65%, transparent); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo-blur { display: none; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-grade { background: linear-gradient(#04070d50, transparent 26%, #04070d22 43%, #04070dec 70%, #04070da6); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-rtg { top: 23px; left: 23px; text-shadow: 0 2px 12px #0009; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-rtg-n { font-size: 75px; font-weight: 900; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-collection { display: none; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-id { bottom: 120px; left: 24px; right: 24px; display: flex; flex-direction: column; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-name { order: -1; white-space: nowrap; margin-bottom: 10px; font-weight: 900; line-height: .94; letter-spacing: -.045em; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-meta { margin-bottom: 0; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-team { margin-top: 8px; color: #e1e2e6; font-size: 10px; letter-spacing: .16em; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stats { bottom: 36px; left: 24px; right: 24px; height: 67px; background: #06090f66; border-top: 1px solid #d6dce270; border-bottom: 1px solid #d6dce240; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stat span { color: #d5d8df; font-size: 9px; font-weight: 500; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stat b { font-size: 30px; font-weight: 900; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-brand { bottom: 16px; font-size: 6px; letter-spacing: .12em; }
+.rcard-frame[data-series="concepts"] .rcard-back-pattern { inset: 0; background: var(--concept-art) center / cover; opacity: 1; }
+.rcard-frame[data-series="concepts"] .rcard-back-title { top: 55%; }
+.rcard-frame[data-series="concepts"] .rcard-back-title strong { font-size: 25px; letter-spacing: .01em; text-shadow: 0 2px 10px #000a; }
+.rcard-frame[data-series="concepts"] .rcard-back-title small { color: #dadce5; font-size: 7px; letter-spacing: .25em; }
+.rcard-frame[data-series="concepts"] .rcard-back-logo { top: 30%; }
+.rcard-frame[data-series="concepts"] .rcard-back-bottom { bottom: 18px; font-size: 7px; }
+.rcard-frame[data-series="concepts"][data-collectible] .rcard-back::after { display: none; }
+
+/* Liquid Chrome keeps the generated relief, with a soft animated reflection. */
+.rcard-frame[data-series="concepts"][data-edition="concept-liquid"] .rcard-innerline { inset: 3px; border-radius: 12px; border: 1px solid #f0f3ff70; }
+.rcard-frame[data-series="concepts"][data-edition="concept-liquid"] .rcard-foil-light { background: linear-gradient(120deg, #4dfcf119, transparent 30%, #f9a4fa50 60%, #feffc225); background-size: 220% 180%; opacity: .24; }
+
+/* Race Cut: printed red/white geometry and a titanium die-cut border. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] {
+  --team: #991c23; --team2: #e4a5a3; --accent: #e6e5e1; --foil-opacity: .025;
+  --concept-art: repeating-linear-gradient(133deg, #ffffff06 0 1px, transparent 1px 6px), linear-gradient(128deg, #151619, #08090c);
+  padding: 3px; border-radius: 0; clip-path: polygon(24px 0, calc(100% - 24px) 0, 100% 24px, 100% 92%, 50% 100%, 0 92%, 0 24px);
+}
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-back { border-radius: 0; clip-path: polygon(22px 0, calc(100% - 22px) 0, 100% 22px, 100% 92%, 50% 100%, 0 92%, 0 22px); }
+.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-concept-art::after { content: ""; position: absolute; inset: 0 0 40%; background: repeating-linear-gradient(133deg, #00000012 0 1px, transparent 1px 7px), #e4e2dc; clip-path: polygon(40% 0, 87% 0, 100% 19%, 100% 100%, 0 100%); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-mono { color: #191d24a8; font-style: italic; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-grade { background: linear-gradient(transparent 43%, #04050666 65%, #040506a8); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-rtg-n { font-style: italic; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-id { bottom: 132px; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-name { font-style: italic; padding: 10px 0; margin-bottom: 15px; }
+.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-id::before { content: ""; position: absolute; z-index: -1; inset: 0 -26px auto; height: 56px; transform: skewY(-7deg); background: repeating-linear-gradient(130deg, #ffffff0a 0 1px, transparent 1px 4px), #a91922; border-block: 1px solid #ecaaa1; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-stats { bottom: 53px; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-stat b { font-style: italic; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-brand { bottom: 32px; }
+.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-back-pattern { background: linear-gradient(107deg, transparent 8%, #b9222a 8% 13%, transparent 13% 85%, #b9222a 85% 91%, transparent 91%), var(--concept-art); }
+.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-back-bottom { bottom: 34px; }
+
+/* Studio Blue: graphic print, square corners and live driver number. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] {
+  --team: #0049ed; --team2: #9bb9ff; --accent: #1b273e; --card-base: #f0eee8; --card-edge: #d5d9e2;
+  --concept-art: radial-gradient(#ffffff32 .65px, transparent .9px) 0 0 / 3px 3px, #0050f0;
+  --foil-opacity: 0; padding: 1px; border-radius: 1px;
+}
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-back { border-radius: 0; }
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-concept-art { bottom: 42%; overflow: hidden; }
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-concept-art span { position: absolute; right: -15px; top: -40px; font-size: 330px; font-weight: 900; line-height: 1; color: #d8e8ff77; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-photo { inset: 35px 0 auto; height: 237px; border-radius: 0; mask-image: none; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-mono { height: 273px; color: #0a163a99; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-grade { background: linear-gradient(transparent 58%, #f2f0e9 58%); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-rtg { top: 26px; left: 25px; padding: 0; background: transparent; color: white; text-shadow: 0 2px 8px #00174666; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-rtg-n { font-size: 64px; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-id { bottom: 103px; left: 21px; right: 21px; color: #0c0e12; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-name { line-height: .97; margin-bottom: 8px; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-num,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-team { color: #202530; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-stats { bottom: 31px; height: 58px; color: #101216; background: none; border-color: #202b4166; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-stat { border-color: #202b4130; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-stat span { color: #202530; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-brand,
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-brand span { color: #202530; }
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-back { background: #0050f0; }
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-back-pattern { inset: 15px; border: 1px solid #deedff; }
+.rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-back-bottom > span:last-child { color: #b3caff; }
+
+/* Black Pearl: the original dark engraved material, with a live copper frame. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] {
+  --concept-art: url('/cards/black-pearl-surface.webp'); --team: #8d645b; --team2: #e3c0aa; --accent: #ecd6c1;
+  --card-edge: linear-gradient(135deg, #fff5df, #ca907a 22%, #4e3034 45%, #f3c0a2 65%, #c48e84 86%, #fff3d4);
+  --foil-opacity: .065; --foil-colour: #fbc5eb;
+  border-radius: 0; clip-path: polygon(25px 0, calc(100% - 25px) 0, 100% 25px, 100% calc(100% - 25px), calc(100% - 25px) 100%, 25px 100%, 0 calc(100% - 25px), 0 25px);
+}
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-back { border-radius: 0; clip-path: polygon(23px 0, calc(100% - 23px) 0, 100% 23px, 100% calc(100% - 23px), calc(100% - 23px) 100%, 23px 100%, 0 calc(100% - 23px), 0 23px); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-grade { background: linear-gradient(transparent 35%, #05040688 67%, #05040630); }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-innerline { inset: 5px; border: 1px solid #d3a18a77; border-radius: 0; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-name { font-weight: 500; letter-spacing: .04em; text-align: center; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-meta,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-team { justify-content: center; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-stats { border-color: #d2a68e60; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-rtg,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-stat span,
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-pearl"] .rcard-name { color: #f5e8d8; }
+[data-series="concepts"] > .card-collection-swatch { background: url('/cards/liquid-chrome-surface.webp') center / cover; }

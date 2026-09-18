@@ -26,6 +26,7 @@ import AdminAllTime from "../components/AdminAllTime.jsx";
 // (Their "how many are waiting" counters live with the navigation now, since
 // the folding rail has to be able to show a hidden one on its group header.)
 import AdminFeedback from "../components/AdminFeedback.jsx";
+import AdminTokens from "../components/AdminTokens.jsx";
 import AdminReports from "../components/AdminReports.jsx";
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
@@ -274,6 +275,7 @@ export default function Admin() {
           {tab === "members" && <AdminMembers />}
           {tab === "reports" && <AdminReports />}
           {tab === "feedback" && <AdminFeedback />}
+          {tab === "tokens" && <AdminTokens />}
           {tab === "notify" && <AdminNotifications />}
           {tab === "social" && (
             <div className="space-y-4">

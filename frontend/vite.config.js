@@ -62,8 +62,14 @@ export default defineConfig({
     allowedHosts: true, // allow tunnel hostnames (e.g. *.trycloudflare.com)
     proxy: {
       // Proxy API calls to the backend during development.
+      //
+      // The port is settable (VITE_API_TARGET) because this machine regularly
+      // has a SECOND copy of the league running — another checkout, an older
+      // branch — and whichever started first owns 4000. Pointing this at the
+      // backend you actually mean beats stopping the other one:
+      //     VITE_API_TARGET=http://localhost:4010 npm run dev
       "/api": {
-        target: "http://localhost:4000",
+        target: process.env.VITE_API_TARGET || "http://localhost:4000",
         changeOrigin: true,
         ws: true, // proxy the live-timing WebSocket (/api/live/ws) too
       },

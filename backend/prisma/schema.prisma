@@ -753,3 +753,80 @@ model DriverTeamChange {
   @@unique([driverId, fromRound])
   @@index([seasonId])
 }
+
+// --- Server tokens ----------------------------------------------------------
+// The league's reward currency: earned by racing and by bringing people in
+// through an invite link, spent in a small shop. A TRIAL feature — everything
+// is behind the `tokens_enabled` Setting (off on a deployment until an admin
+// says otherwise). Championship points are a different thing entirely, which is
+// why these are called tokens.
+//
+// No relations, like PersonLink above: created and read in raw SQL
+// (ensureAppSchema + migration server_tokens) so the tables stay writable while
+// the dev server holds the generated client. Declared here so `prisma migrate`
+// sees the same schema the database actually has. See backend/src/lib/tokens.js.
+
+// One row per member: their own invite code, and who invited THEM.
+model TokenAccount {
+  discordId  String    @id
+  code       String    @unique
+  referredBy String?
+  referredAt DateTime?
+  // The balance this member has already been shown, and the ledger row it was
+  // shown at (migration token_seen). The difference to today is what the nav
+  // bar celebrates once, and then records as seen. null = nothing shown yet.
+  seenBalance Int?
+  seenRowId   Int?
+  createdAt  DateTime  @default(now())
+
+  @@index([referredBy])
+}
+
+// Append-only. A balance is SUM(delta) over these rows and never a stored
+// number; (discordId, refKey) is unique, which is what lets the reconciliation
+// run on every page load without paying anybody twice.
+model TokenLedger {
+  id        String   @id
+  discordId String
+  delta     Int
+  rule      String // race | race_milestone | invite_* | redeem | refund | admin
+  title     String
+  detail    String?
+  refKey    String
+  createdAt DateTime @default(now())
+
+  @@unique([discordId, refKey])
+  @@index([discordId])
+}
+
+// One day of one member's Discord activity (migration token_activity): how many
+// messages they wrote and how many minutes they sat in a voice channel. The
+// multiplier sums the last thirty days of these, so what is stored has to be
+// able to fall away again, which is why it is a row per day and not a total.
+// Written by the league's Discord bot, which does not exist yet.
+model TokenActivity {
+  discordId String
+  day       String // the league's own calendar day, "YYYY-MM-DD"
+  messages  Int      @default(0)
+  minutes   Int      @default(0)
+  updatedAt DateTime @default(now())
+
+  @@id([discordId, day])
+  @@index([day])
+}
+
+// A shop order: the member spends, an admin fills it by hand — or declines it,
+// which refunds the tokens.
+model TokenRedemption {
+  id        String    @id
+  discordId String
+  itemKey   String
+  itemName  String
+  cost      Int
+  status    String    @default("NEW") // NEW | DONE | DECLINED
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime?
+
+  @@index([discordId])
+}

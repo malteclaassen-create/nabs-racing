@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 1096,
+  "affine": [
+    0.7190263675337808,
+    -0.10891728056930762,
+    0.10891728056930912,
+    0.7190263675337709,
+    1200.8097398952384,
+    492.88135463144664
+  ],
+  "image": "/maps/most-aerial.jpg",
+  "source": "Aerial \u00a9 \u010c\u00daZK",
+  "license": "CC BY 4.0",
+  "sourceUrl": "https://geoportal.cuzk.cz/Default.aspx?mode=TextMeta&side=ortofoto&text=ortofoto_info",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "trackId": "rt_autodrom_most",
+  "trackNames": [
+    "NABS Autodrom Most (no chicane)"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        -12.901519775390625,
+        -24.471389770507812
+      ],
+      "l": [
+        -27.66398048400879,
+        19.130069732666016
+      ]
+    },
+    {
+      "index": 1,
+      "r": [
+        -918.3598022460938,
+        -205.71580505371094
+      ],
+      "l": [
+        -965.3538818359375,
+        -241.76939392089844
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -81.1253662109375,
+        -94.50048828125
+      ],
+      "l": [
+        -60.709068298339844,
+        -131.78399658203125
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.643248495706704,
+  "fitP90Metres": 5.407272359621596,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

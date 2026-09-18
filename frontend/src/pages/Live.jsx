@@ -3596,7 +3596,7 @@ export default function Live() {
           <span className="mt-0.5 shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">New</span>
           <p className="min-w-0 flex-1 text-sm text-dark">
             <strong>Satellite track map</strong>
-            <span className="text-light"> — Available for Spa: select Satellite on the map, then click a car to follow it. More circuits can be added.</span>
+            <span className="text-light"> — Available for selected circuits: select Satellite on the map, then click a car to follow it.</span>
           </p>
           <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-brand/20 hover:text-dark">×</button>
         </aside>

@@ -20,6 +20,7 @@ import {
   unlockStateFor, isKnownEdition, readCardEdition, readCardAnim, DEFAULT_CARD_EDITION,
 } from "../lib/cardEditions.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
+import { ownedDesigns } from "../lib/cardShop.js";
 import { notifyCardUnlocks, notifyAdminsRaceRequest } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
@@ -375,7 +376,16 @@ router.get("/card-editions", async (req, res, next) => {
     if (!driverId) return;
     const inputs = await cardUnlockInputs(prisma, driverId);
     if (!inputs) return res.status(404).json({ error: "Driver not found" });
-    const editions = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+    // The designs this member BOUGHT ride along with the ones they earned, so
+    // the picker draws one catalogue (see lib/cardShop.js).
+    const owned = await ownedDesigns(prisma, req.user?.discordId);
+    const editions = unlockStateFor(
+      inputs.stats,
+      inputs.badges,
+      inputs.teamBadges,
+      inputs.seasonNumber,
+      owned
+    );
     // Reconcile the bell while we have the fresh unlock state (seeds silently the
     // first time; best-effort, never blocks the response meaningfully).
     notifyCardUnlocks(prisma, driverId, editions);
@@ -443,7 +453,14 @@ router.put("/card-style", async (req, res, next) => {
 
     const inputs = await cardUnlockInputs(prisma, driverId);
     if (!inputs) return res.status(404).json({ error: "Driver not found" });
-    const state = unlockStateFor(inputs.stats, inputs.badges, inputs.teamBadges, inputs.seasonNumber);
+    const owned = await ownedDesigns(prisma, req.user?.discordId);
+    const state = unlockStateFor(
+      inputs.stats,
+      inputs.badges,
+      inputs.teamBadges,
+      inputs.seasonNumber,
+      owned
+    );
     const entry = state.find((e) => e.key === style);
     if (!entry?.unlocked) {
       return res.status(403).json({ error: "This edition isn't unlocked yet" });

@@ -1,0 +1,21 @@
+# Collector series artwork
+
+Unused first concept; these images are no longer displayed by the cards. The current designs frame personal profile pictures or uploads. Generated with the built-in Imagegen tool. Archived concept assets: liquid-holo.png, carbon-ember.png, prisma-nova.png. Typography, ratings, driver identity and animated lighting are rendered live by RatingCard.
+
+## Generation prompts
+
+Use case: stylized-concept. Create a premium collectible motorsport card background artwork, portrait 2:3. Full bleed artwork, NOT a mockup, no text, no letters, no numbers, no logos, no border. An incredibly detailed sculptural racing helmet made of dark liquid titanium and iridescent chrome, centered in the upper 55 percent of the composition, three-quarter view facing right. Sweeping machined metallic ribbons orbit behind the helmet like aerodynamic sculpture. Sharp cyan, electric lavender and rose-gold spectral highlights on black titanium, subtle fine grain, photoreal luxury product rendering, dramatic chiaroscuro studio lighting. Strong dimensional depth, dark midnight background, sparse floating luminous particles. Bottom 38 percent fades to near-black with only fine spectral edge glints, reserved for live driver name and stats overlay. Upper left corner dark and quiet for rating typography. Beautiful intricate physical materials, high contrast, refined futuristic racing aesthetic, no neon city, no text.
+
+Use case: stylized-concept. Full bleed portrait 2:3 artwork for a luxury motorsport collectible card. No text, no letters, no numbers, no logos, no frame. Hero sculptural racing helmet in upper 55 percent, facing right in three-quarter profile, made from richly detailed forged carbon fiber and black ceramic. Helmet has a fierce polished copper-orange visor with glowing amber slits. Huge elegant curved carbon aerodynamic blades behind it, molten copper seams, small ember sparks against deep black. Premium photoreal 3D studio render, intricate carbon weave, dramatic orange rim light, red and gold highlights, deep shadows. Keep upper left corner quiet dark for rating overlay. Lower 38 percent fades into smooth obsidian black for live driver name and statistics. Powerful precision engineering aesthetic, no human, no car, no typography.
+
+Use case: stylized-concept. Full bleed portrait 2:3 artwork for premium motorsport collectible card, no text no letters no numbers no logos no frame. Sculptural racing helmet in upper 55 percent of image, facing right in three-quarter profile, carved from translucent amethyst crystal and mirrored midnight titanium, prismatic glass visor. Large sharp faceted crystal shards and a sweeping orbital ring behind it, cosmic deep indigo negative space, electric violet and cyan refractions, hints of pink and orange dispersive light, sparse tiny stars. Luxurious detailed physically rendered 3D art, dark dramatic atmospheric lighting, luminous crystalline edges. Upper left dark and quiet for rating overlay. Bottom 38 percent fades smoothly to nearly black for live name and stats overlay. Strong silhouette, dimensional and tactile, no lettering, no people, no city.
+
+
+## Active concept surfaces
+
+- `liquid-chrome-surface.webp`: full-bleed iridescent embossed contour material.
+- `black-pearl-surface.webp`: full-bleed aubergine pearl with copper engraved arcs.
+
+Generated with built-in Imagegen from the approved Liquid Chrome / Black Pearl concept images. Only these two material surfaces are used by the Concepts collection; names, photos, ratings, logos and all text remain live elements.
+
+Prompt template: Edit the reference into one flat portrait rectangle, aspect ratio 332:470, full bleed material texture only. Match the reference material closely. Remove all text, letters, numbers, logos, emblems, people, silhouettes, ratings, stat boxes, dividing rules, border frames, table, shadows and surrounding studio. Reconstruct continuous material. No two-card layout or perspective. Extend material to all four edges. Concentrate detail near edges and keep the center quieter for live photos and text. Liquid Chrome: iridescent embossed flowing topographic lines in mint, lavender, gold and dark ink blue. Black Pearl: near-black aubergine pearlescent fine surface with rose-gold engraved edge arcs and subtle angular bevels.

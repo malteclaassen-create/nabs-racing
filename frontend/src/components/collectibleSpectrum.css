@@ -1,0 +1,258 @@
+.rcard-frame[data-series="spectrum"][data-material="holo"]   { --team: #2b3160; --team2: #bcc9ff; }
+.rcard-frame[data-series="spectrum"][data-material="prisma"] { --team: #191327; --team2: #e7d6ff; }
+/* carbon keeps the TEAM colour (see teamColored in RatingCard.jsx): the weave
+   is the material, the team is still the identity. */
+
+/* Holo — spectrum frame, near-black card, and a foil that travels with the
+   pointer: a rainbow on a diamond mask (color-dodge, so it only lifts the
+   bright parts) plus a soft glare exactly under your hand. */
+.rcard-frame[data-series="spectrum"][data-material="holo"] {
+  background: linear-gradient(135deg, #fdf4ff 0%, #a8e6ff 17%, #7ea2ff 33%, #0d121a 50%, #ff9ad5 67%, #ffe9a8 83%, #fdf4ff 100%);
+}
+.rcard-frame[data-series="spectrum"][data-material="holo"] .rcard { background: #04060b; }
+.rcard-frame[data-series="spectrum"][data-material="holo"] .rcard-innerline::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  mix-blend-mode: color-dodge; opacity: 0.62;
+  background: repeating-linear-gradient(112deg,
+    rgba(255, 0, 128, 0.30) 0 16px, rgba(255, 214, 0, 0.30) 16px 32px, rgba(0, 255, 178, 0.30) 32px 48px,
+    rgba(0, 153, 255, 0.30) 48px 64px, rgba(168, 0, 255, 0.30) 64px 80px);
+  background-size: 240% 100%;
+  background-position: calc(var(--mx, 0.5) * 100%) 0;
+  -webkit-mask-image: repeating-linear-gradient(45deg, #000 0 9px, transparent 9px 18px), repeating-linear-gradient(-45deg, #000 0 9px, transparent 9px 18px);
+  -webkit-mask-composite: source-in;
+  mask-image: repeating-linear-gradient(45deg, #000 0 9px, transparent 9px 18px), repeating-linear-gradient(-45deg, #000 0 9px, transparent 9px 18px);
+  mask-composite: intersect;
+}
+.rcard-frame[data-series="spectrum"][data-material="holo"] .rcard-innerline::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen;
+  background: radial-gradient(38% 28% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.32) * 100%), rgba(255, 255, 255, 0.42), transparent 70%);
+}
+.rcard-frame[data-series="spectrum"][data-material="holo"] .rcard-sheen { background: linear-gradient(105deg, transparent, rgba(198, 226, 255, 0.22), transparent); }
+
+/* Carbon — matte woven surface (two crossed hatches under a checker, which is
+   what reads as real 2x2 weave at this size), a harder vignette, and the team
+   colour as a thin lit edge instead of a wash. */
+.rcard-frame[data-series="spectrum"][data-material="carbon"] {
+  background: linear-gradient(135deg, #7c8797 0%, #2b313a 17%, #12161c 38%, #080b0f 50%, #12161c 62%, #2b313a 83%, #7c8797 100%);
+}
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard { background: #05070a; }
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-mono {
+  background: radial-gradient(120% 90% at 50% 22%, #141920, #05070a 78%); }
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-duotone { opacity: 0.3; }
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-photo { background-color: #0a0e13; }
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-streaks {
+  opacity: 0.85; mask: none; -webkit-mask: none; z-index: 2;
+  background:
+    repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0 25%, transparent 0 50%) 0 0 / 16px 16px,
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.075) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.55) 0 2px, transparent 2px 6px);
+}
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-grade::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(120% 78% at 50% 30%, transparent 34%, rgba(0, 0, 0, 0.55) 100%);
+}
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-innerline {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--team2) 45%, transparent),
+    inset 0 0 22px -6px color-mix(in srgb, var(--team2) 55%, transparent),
+    inset 0 0 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Prisma — the frame itself is a spectrum that drifts around the card, while
+   the card stays almost black and only takes coloured light on its edges. */
+@keyframes rcard-prisma { to { background-position: 300% 0; } }
+.rcard-frame[data-series="spectrum"][data-material="prisma"] {
+  background: linear-gradient(115deg, #ff4d6d, #ffd166, #06d6a0, #4cc9f0, #b388ff, #ff4d6d);
+  background-size: 300% 100%;
+  animation: rcard-prisma 9s linear infinite;
+}
+.rcard-frame[data-series="spectrum"][data-material="prisma"] .rcard { background: #05040a; }
+.rcard-frame[data-series="spectrum"][data-material="prisma"] .rcard-grade::after {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(40% 68% at 0% 42%, rgba(76, 201, 240, 0.34), transparent 62%),
+    radial-gradient(40% 68% at 100% 56%, rgba(255, 77, 109, 0.30), transparent 62%),
+    radial-gradient(62% 28% at 50% 100%, rgba(179, 136, 255, 0.26), transparent 70%);
+}
+.rcard-frame[data-series="spectrum"][data-material="prisma"] .rcard-sheen { background: linear-gradient(105deg, transparent, rgba(231, 214, 255, 0.24), transparent); }
+
+
+/* Personal photos remain the hero; translucent finishes sit below live type. */
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] {
+  --accent: #b8e9ff;
+  padding: 3px;
+  border-radius: 18px;
+  clip-path: none;
+  box-shadow: 0 24px 50px #0005, 0 0 26px -12px var(--accent);
+  filter: none;
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition][data-material="carbon"] { --accent: var(--team2); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition][data-material="prisma"] { --accent: #d2a6ff; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard { border-radius: 16px; clip-path: none; isolation: isolate; }
+/* Keep the existing full-width photo, focal point, zoom, saturation and tint. */
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-photo { inset: 0 0 auto; height: 340px; border-radius: 0; background: transparent; mask-image: linear-gradient(#000 62%, transparent 100%); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-photo-blur { opacity: .6; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-mono { height: 312px; font-size: 110px; color: #ffffffc9; background: radial-gradient(ellipse at 25% 25%, #5ac8de33, transparent 60%), radial-gradient(ellipse at 85% 60%, #b56bdf40, transparent 60%), #0d1422; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="carbon"] .rcard-mono { background: radial-gradient(ellipse at 70% 35%, color-mix(in srgb, var(--team) 22%, transparent), transparent 65%), #101318; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="prisma"] .rcard-mono { background: radial-gradient(ellipse at 15% 20%, #40caff40, transparent 60%), radial-gradient(ellipse at 90% 50%, #b856fa60, transparent 65%), #171026; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-duotone,
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-ray { display: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-streaks { opacity: .4; mask: linear-gradient(90deg, #000, transparent 12% 88%, #000); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 18px -8px var(--accent); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="carbon"] { background: linear-gradient(135deg, #86909d, #1a1d24 22%, var(--team) 48%, #141922 55%, var(--team2) 90%, #fff); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-grade { background: linear-gradient(180deg, #03050c66, transparent 28%, #03050c11 45%, #03050ce6 76%, #03050c 100%); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-grade::after { display: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline { inset: 7px; border: 1px solid #ffffff24; border-radius: 11px; clip-path: none; box-shadow: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::before { opacity: .32; mask-image: linear-gradient(90deg, #000, transparent 9% 91%, #000); mask-composite: add; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::after { display: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg { top: 24px; left: 23px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg-l { font-size: 9px; letter-spacing: .23em; color: var(--accent); margin-bottom: 9px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg-n { font-size: 68px; }
+.rcard-frame[data-series="spectrum"] .rcard-collection { position: absolute; top: 23px; right: 21px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; color: #fff; text-shadow: 0 2px 12px #000; }
+.rcard-frame[data-series="spectrum"] .rcard-collection > span { font-size: 18px; font-weight: 900; letter-spacing: -.08em; }
+.rcard-frame[data-series="spectrum"] .rcard-collection b { margin-top: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .17em; }
+.rcard-frame[data-series="spectrum"] .rcard-collection small { font-size: 7px; letter-spacing: .14em; margin-top: 4px; color: var(--accent); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-id { bottom: 112px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-meta { margin-bottom: 10px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-team { font-size: 11px; letter-spacing: .12em; color: #c9cbd6; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stats { left: 21px; right: 21px; bottom: 33px; border-radius: 0; border-top: 1px solid #ffffff35; border-bottom: 1px solid #ffffff19; background: linear-gradient(110deg, #ffffff09, #ffffff02); box-shadow: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat { border-right: 1px solid #ffffff13; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat span { color: var(--accent); font-size: 8px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat b { font-size: 26px; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-brand { bottom: 14px; font-size: 7px; letter-spacing: .14em; }
+.rcard-frame[data-series="spectrum"] .rcard-foil-light { position: absolute; inset: 0; z-index: 3; pointer-events: none; mix-blend-mode: screen; opacity: .55; mask-image: linear-gradient(90deg, #000, transparent 14% 86%, #000); background: radial-gradient(ellipse at calc(var(--mx, .65) * 100%) calc(var(--my, .25) * 100%), #c6b5ff44, transparent 55%); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition][data-material="carbon"] .rcard-foil-light { background: radial-gradient(ellipse at calc(var(--mx, .7) * 100%) calc(var(--my, .4) * 100%), color-mix(in srgb, var(--team) 30%, transparent), transparent 60%); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-sheen { animation-duration: 9s; }
+
+/* Palette and material are independent of the driver's picture. */
+.rcard-frame[data-series="spectrum"][data-collectible][data-edition] {
+  --foil-a: #51e8ed; --foil-b: #bc74ff; --foil-c: #ff97bf;
+  --finish-opacity: .36;
+  --finish-speed: 12s;
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="carbon"] {
+  --foil-a: var(--team); --foil-b: #444f5b; --foil-c: var(--team2); --finish-opacity: .2;
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="prisma"] {
+  --foil-a: #49adff; --foil-b: #bb54ff; --foil-c: #ff739f; --finish-opacity: .32;
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="aurora"] {
+  --team: #125948; --team2: #7affe0; --accent: #7affe0;
+  --foil-a: #27ffba; --foil-b: #5997ff; --foil-c: #9850ff; --finish-opacity: .4;
+  background: linear-gradient(145deg, #b7ffe5, #2a937b 30%, #182d40 52%, #bf8dff 85%, #bdffe8);
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="solar"] {
+  --team: #913a12; --team2: #ffd18b; --accent: #ffd18b;
+  --foil-a: #ff4a15; --foil-b: #ffba45; --foil-c: #d01c59; --finish-opacity: .4;
+  background: linear-gradient(150deg, #fff2bd, #e99430 26%, #492315 55%, #ffa968 80%, #fff2bd);
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="glacier"] {
+  --team: #376a8d; --team2: #d5f7ff; --accent: #d5f7ff;
+  --foil-a: #a9efff; --foil-b: #66a6d0; --foil-c: #fff; --finish-opacity: .24;
+  background: linear-gradient(145deg, #fff, #92c9dd 22%, #344f66 52%, #d1f4ff 78%, #fff);
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="void"] {
+  --team: #382354; --team2: #c29aff; --accent: #bc93ff;
+  --foil-a: #752cf2; --foil-b: #3445a0; --foil-c: #b360ff; --finish-opacity: .38;
+  background: linear-gradient(150deg, #bca1da, #39304f 25%, #13101e 55%, #8e62cc 84%, #cab4ef);
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="rose"] {
+  --team: #8c545e; --team2: #ffd2c3; --accent: #ffd2c3;
+  --foil-a: #efbaab; --foil-b: #b5698a; --foil-c: #fff0d1; --finish-opacity: .32; --finish-speed: 16s;
+  background: linear-gradient(145deg, #fff3df, #b67c78 30%, #412a32 50%, #f3b6ae 78%, #ffefdb);
+}
+.rcard-frame[data-series="spectrum"][data-collectible][data-material="circuit"] {
+  --team: #435f17; --team2: #daff80; --accent: #ccff62;
+  --foil-a: #b2ff38; --foil-b: #32896c; --foil-c: #56ffd3; --finish-opacity: .23; --finish-speed: 8s;
+  background: linear-gradient(145deg, #d7ff91, #59763e 25%, #17201a 52%, #baff5c 85%, #e6ffc7);
+}
+
+/* Remove the old travelling strip and edge-only holographic lattice. */
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-sheen,
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::before,
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::after { display: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-streaks { display: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-mono {
+  background: radial-gradient(ellipse at 25% 20%, color-mix(in srgb, var(--foil-a) 18%, transparent), transparent 65%),
+    radial-gradient(ellipse at 90% 65%, color-mix(in srgb, var(--foil-b) 24%, transparent), transparent 65%), #0c101a;
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-foil-light {
+  /* Overscan both moving layers, including the blurred edge at full rotation. */
+  inset: calc(-35% - 32px); mask-image: none; -webkit-mask-image: none;
+  transform-origin: 50% 50%;
+  opacity: var(--finish-opacity); mix-blend-mode: screen;
+  background: radial-gradient(ellipse at 20% 25%, var(--foil-a), transparent 48%),
+    radial-gradient(ellipse at 80% 35%, var(--foil-b), transparent 48%),
+    radial-gradient(ellipse at 55% 85%, var(--foil-c), transparent 44%);
+  background-size: 170% 170%;
+  animation: collector-liquid var(--finish-speed) ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-foil-light::after {
+  /* Insetting the glare exposed its rectangular corners during rotation. */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at calc(var(--mx, .5) * 100%) calc(var(--my, .3) * 100%), #ffffff70, transparent 45%);
+}
+@keyframes collector-liquid {
+  0% { background-position: 0% 15%; transform: translate(-3%, -2%) rotate(-7deg); }
+  50% { background-position: 70% 85%; }
+  100% { background-position: 100% 20%; transform: translate(3%, 2%) rotate(7deg); }
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="aurora"] .rcard-foil-light {
+  background: repeating-linear-gradient(112deg, transparent 0 12%, #35ecbe 21%, #359bd177 29%, transparent 38%, #8f55bb 52%, transparent 64%);
+  background-size: 220% 180%; filter: blur(22px);
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="solar"] .rcard-foil-light {
+  background: radial-gradient(ellipse at 20% 70%, #ffc446, transparent 42%), radial-gradient(ellipse at 85% 40%, #ff331e, transparent 55%), radial-gradient(ellipse at 55% 10%, #df4182, transparent 48%);
+  background-size: 170% 170%;
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="rose"] .rcard-foil-light {
+  background: radial-gradient(ellipse at 20% 40%, #ffd8ad, transparent 50%), radial-gradient(ellipse at 80% 60%, #cf7a9f, transparent 50%);
+  background-size: 180% 150%;
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="carbon"] .rcard-streaks {
+  display: block; opacity: .22; mask-image: linear-gradient(transparent 35%, #000 85%);
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="rose"] .rcard-streaks {
+  display: block; opacity: .16; mask-image: linear-gradient(transparent 35%, #000 85%);
+  background: repeating-linear-gradient(0deg, #fff3 0 1px, transparent 1px 4px);
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="prisma"] .rcard-streaks,
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="glacier"] .rcard-streaks {
+  display: block; opacity: .14; mask-image: linear-gradient(90deg, #000, transparent 28% 70%, #000);
+  background: repeating-conic-gradient(from 35deg at 20% 40%, #b8dfff55 0 30deg, transparent 30deg 65deg, #ddbbff55 65deg 100deg, transparent 100deg 120deg);
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="void"] .rcard-streaks {
+  display: block; opacity: .5; mask: none;
+  background: radial-gradient(circle at 60% 33%, transparent 0 30%, #ad82e655 30.5%, transparent 32%),
+    radial-gradient(circle at 10% 25%, #bfa1f7 0 1px, transparent 1.5px), radial-gradient(circle at 90% 60%, #bfa1f7 0 1px, transparent 1.5px);
+}
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="circuit"] .rcard-streaks {
+  display: block; opacity: .26; mask-image: linear-gradient(90deg, #000, transparent 25% 75%, #000);
+  background: linear-gradient(90deg, transparent 95%, #caff77 95%) 0 0 / 28px 42px,
+    linear-gradient(0deg, transparent 96%, #caff77 96%) 0 0 / 56px 42px;
+}
+
+.rcard-frame[data-series="spectrum"] .rcard-back { position: relative; width: 100%; height: 100%; border-radius: 16px; overflow: hidden; isolation: isolate; color: #f5f5ff;
+  background: radial-gradient(ellipse at 50% 25%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 65%), #090d16;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent); }
+.rcard-frame[data-series="spectrum"] .rcard-back-pattern { position: absolute; inset: 10px; border: 1px solid #ffffff20; border-radius: 9px;
+  background: repeating-linear-gradient(45deg, transparent 0 22px, #ffffff06 22px 23px), repeating-linear-gradient(-45deg, transparent 0 22px, #ffffff06 22px 23px); }
+.rcard-frame[data-series="spectrum"][data-material="carbon"] .rcard-back-pattern {
+  background: repeating-conic-gradient(#ffffff08 0 25%, transparent 0 50%) 0 0 / 10px 10px;
+}
+.rcard-frame[data-series="spectrum"][data-material="rose"] .rcard-back-pattern {
+  background: repeating-linear-gradient(0deg, #ffffff06 0 1px, transparent 1px 4px);
+}
+.rcard-frame[data-series="spectrum"][data-material="circuit"] .rcard-back-pattern {
+  background: linear-gradient(90deg, transparent 97%, #baff6217 97%) 0 0 / 35px 35px, linear-gradient(0deg, transparent 97%, #baff6217 97%) 0 0 / 35px 35px;
+}
+
+.rcard-frame[data-series="spectrum"][data-collectible][data-edition] .rcard-mono { font-style: normal; }
+.rcard-frame[data-series="spectrum"][data-collectible][data-edition] .rcard-name { font-weight: 900; letter-spacing: -.02em; }
+.rcard-frame[data-series="spectrum"][data-collectible] .rcard-back::after { display: none; }
+
+/* Blend the placeholder into the card just as a personal photo does. */
+.rcard-frame[data-series="spectrum"][data-collectible][data-edition] .rcard-mono {
+  mask-image: linear-gradient(#000 65%, transparent 100%);
+}

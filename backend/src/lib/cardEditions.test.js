@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { CARD_DESIGNS, priceOf } from "./cardShop.js";
 import { unlockStateFor, isKnownEdition, CARD_EDITIONS } from "./cardEditions.js";
 
 // Pull one edition's computed state out of the list by key.
@@ -69,9 +71,51 @@ describe("unlockStateFor — free editions", () => {
     }
   });
 
-  it("returns an entry for every catalogue edition", () => {
+  it("returns an entry for every edition, earned and bought", () => {
     const list = unlockStateFor({}, [], [], 5);
-    expect(list.length).toBe(CARD_EDITIONS.length);
+    expect(list.length).toBe(CARD_EDITIONS.length + CARD_DESIGNS.length);
+  });
+});
+
+// The two halves of the catalogue must not leak into each other: a design you
+// bought can never satisfy a milestone, and no amount of racing hands out a
+// design that is for sale.
+describe("bought designs vs earned editions", () => {
+  it("leaves a design locked until it is owned, and unlocks exactly that one", () => {
+    const owned = new Set(["signature-gold"]);
+    const list = unlockStateFor({ starts: 99, wins: 99 }, [], [], 5, owned);
+    expect(pick(list, "signature-gold").unlocked).toBe(true);
+    expect(pick(list, "signature-platinum").unlocked).toBe(false);
+  });
+
+  it("marks bought designs as bought and earned ones as not", () => {
+    const list = unlockStateFor({}, [], [], 5, new Set());
+    expect(pick(list, "spectrum-holo").bought).toBe(true);
+    expect(pick(list, "spectrum-holo").requirement).toBe(null);
+    expect(pick(list, "rookie").bought).toBeUndefined();
+  });
+
+  it("does not let owning every design unlock a single earned edition", () => {
+    const all = new Set(CARD_DESIGNS.map((d) => d.key));
+    const list = unlockStateFor({}, [], [], 5, all);
+    for (const e of CARD_EDITIONS) {
+      if (e.req) expect(pick(list, e.key).unlocked).toBe(false);
+    }
+  });
+
+  it("prices every design", () => {
+    for (const d of CARD_DESIGNS) expect(priceOf(d.key)).toBeGreaterThan(0);
+  });
+
+  it("keeps the league's key list and the frontend's drawing list in step", () => {
+    // The designs are painted by frontend/src/components/collectibleEditions.js.
+    // A key in one list and not the other is a design nobody can either buy or
+    // see, so the file is read here rather than trusted.
+    const drawn = readFileSync(
+      new URL("../../../frontend/src/components/collectibleEditions.js", import.meta.url),
+      "utf8"
+    );
+    for (const d of CARD_DESIGNS) expect(drawn).toContain(`"${d.key}"`);
   });
 });
 

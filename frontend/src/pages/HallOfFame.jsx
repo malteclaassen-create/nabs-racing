@@ -322,6 +322,7 @@ function TopListPanel({ lists }) {
 
 export default function HallOfFame() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.seriesRecords(), []));
+  const wall = useApi(useCallback(() => api.tokenWall(), []));
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
 
@@ -421,6 +422,24 @@ export default function HallOfFame() {
             onChange={setListKey}
           />
           <TopListPanel key={activeListKey} lists={[activeList]} />
+        </section>
+      )}
+
+      {/* the wall: names bought with server tokens, oldest first */}
+      {wall.data?.wall?.length > 0 && (
+        <section className="reveal">
+          <SectionHead eyebrow="Server tokens" title="The wall" />
+          <p className="mb-4 text-sm text-light">The people who put their name up here. Earned on the server, not on the track.</p>
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+            {wall.data.wall.map((w, i) => (
+              <li key={`${w.name}-${i}`} className="flex items-baseline justify-between gap-4 px-4 py-3">
+                <span className="font-display text-base font-extrabold uppercase tracking-tight text-dark">{w.name}</span>
+                <span className="font-mono text-xs text-light">
+                  {new Date(w.since).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </div>

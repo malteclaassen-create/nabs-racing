@@ -1,0 +1,60 @@
+{
+  "width": 1280,
+  "height": 528,
+  "affine": [
+    0.3049784859341699,
+    -0.007321860231275717,
+    0.0061769874724269085,
+    0.305058508740617,
+    683.2281250456751,
+    322.0627958503711
+  ],
+  "image": "/maps/baku-earth.jpg",
+  "source": "Google \u00b7 Airbus",
+  "sourceUrl": "https://earth.google.com/web/",
+  "license": "Image use guidelines",
+  "licenseUrl": "https://about.google/brand-resource-center/products-and-services/geo-guidelines/",
+  "trackId": "baku_2022",
+  "trackNames": [
+    "NABS Baku 2024"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        693.975830078125,
+        -476.7048034667969
+      ],
+      "l": [
+        677.5194091796875,
+        -515.5258178710938
+      ]
+    },
+    {
+      "index": 1,
+      "r": [
+        -513.4151000976562,
+        54.60081100463867
+      ],
+      "l": [
+        -504.31390380859375,
+        67.34877014160156
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -925.1510009765625,
+        573.9851684570312
+      ],
+      "l": [
+        -915.9430541992188,
+        557.9539794921875
+      ]
+    }
+  ],
+  "fitMedianMetres": 3.6757941970460797,
+  "fitP90Metres": 6.641620271633128,
+  "referenceErrorPixels": 1.1384309752432116,
+  "note": "Google Earth screenshot captured 2026-09-05. Cropped; image provider attribution displayed immediately below the map. Approximate AC-to-geographic similarity fit, calibrated using four visible KML control points; real driving validation pending."
+}

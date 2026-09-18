@@ -18,13 +18,137 @@ import { openFeedback } from "./FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
 import { DriverAvatar } from "./ui.jsx";
+import { useTokenBalance, takeTokenGain } from "../hooks/useTokenBalance.js";
+import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
 
-// Auth-aware control that replaces the old "Sign Up" nav item: a "Log in" button
-// when logged out, or the driver's avatar + name when in. The chip links to the
-// PUBLIC driver page of the current season (the editor is one click further,
-// via "Edit my profile" there); a login without a linked driver row still
-// lands on /profile, which explains the linking.
+// The token count, sitting against the profile chip. Only there while the trial
+// is switched on (the hook returns null otherwise) and only for a signed-in
+// member, so a visitor's bar looks exactly as it always did. Links to the panel
+// the number comes from, because a number you cannot click is a number you have
+// to go looking for.
+//
+// It also carries the news. Somebody who raced on Friday should not have to go
+// hunting for the reward: the first time they open the site after the result is
+// in, the count steps aside, a "+100" rises through its place, and the number
+// then climbs from what they had to what they have. Once. The server decides
+// what counts as news (unseenGain in backend/src/lib/tokens.js) and is told
+// when it has been shown, so it is never played twice for the same race.
+const GAIN_ANNOUNCE_MS = 1500; // the "+100" floating through
+const GAIN_COUNT_MS = 1100; // the climb to the new total
+
+// Straight to the answer when the site is asked not to move: the same two
+// switches every other animation here respects.
+function motionOff() {
+  return (
+    (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+    document.documentElement.classList.contains("fx-lite")
+  );
+}
+
+function TokenPill({ mobile = false }) {
+  const balance = useTokenBalance();
+  // The news being played right now (with the total it is climbing to), and the
+  // number on the pill while it climbs.
+  const [play, setPlay] = useState(null);
+  const [counting, setCounting] = useState(null);
+  // Guards the animation, not the news: whichever of the two pills the bar
+  // renders (the strip and the open menu on a phone) asks first gets it, and
+  // the hook hands it out exactly once.
+  const playing = useRef(false);
+
+  // Picking the news up. Runs whenever the balance changes, which is also how a
+  // member who leaves the site open gets their reward the moment it lands.
+  useEffect(() => {
+    if (balance === null || playing.current) return;
+    // DEVELOPMENT ONLY: ?tokendemo=250 plays the whole thing with a made-up
+    // gain, as often as you like, without a race being scored first. It touches
+    // nothing — no ledger row, no "seen" mark — and the branch is compiled out
+    // of a built site, because import.meta.env.DEV is a literal false there.
+    const demo = import.meta.env.DEV
+      ? Number(new URLSearchParams(window.location.search).get("tokendemo"))
+      : 0;
+    const news = demo > 0
+      ? { gained: demo, from: balance - demo, reasons: [{ title: "Raced a round", detail: "Demo" }] }
+      : takeTokenGain();
+    if (!news) return;
+    // Nothing to play: hand the member the new number and tell the server it
+    // has been shown, so it is not saved up for the next visit either.
+    if (motionOff()) {
+      if (!demo) api.markTokensSeen().catch(() => {});
+      return;
+    }
+    playing.current = true;
+    setPlay({ ...news, to: balance, demo: demo > 0 });
+    setCounting(news.from);
+  }, [balance]);
+
+  // Playing it. Deliberately its OWN effect, keyed on the news rather than on
+  // the balance: the first version hung both on the balance, so the refetch
+  // that delivered the new total also tore down the animation it had just
+  // started, and the pill sat there showing "+250" for good.
+  useEffect(() => {
+    if (!play) return;
+    let raf = 0;
+    const timer = setTimeout(() => {
+      const startedAt = performance.now();
+      const tick = (t) => {
+        const p = Math.min(1, (t - startedAt) / GAIN_COUNT_MS);
+        const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic, like every count on this site
+        setCounting(Math.round(play.from + (play.to - play.from) * eased));
+        if (p < 1) {
+          raf = requestAnimationFrame(tick);
+          return;
+        }
+        playing.current = false;
+        setPlay(null);
+        setCounting(null);
+        if (!play.demo) api.markTokensSeen().catch(() => {});
+      };
+      raf = requestAnimationFrame(tick);
+    }, GAIN_ANNOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+    };
+  }, [play]);
+
+  if (balance === null) return null;
+  const announcing = play && counting === play.from;
+  const shown = counting ?? balance;
+  // What the tokens were for, for the tooltip: "Raced a round, Spa" reads
+  // better than a bare number when somebody wonders where it came from.
+  const why = play?.reasons?.length
+    ? play.reasons.map((r) => [r.title, r.detail].filter(Boolean).join(", ")).join(" · ")
+    : null;
+
+  return (
+    <NavLink
+      to="/profile?tab=tokens"
+      title={why ? `+${play.gained} tokens: ${why}` : "Your server tokens"}
+      className={`inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 font-mono text-[13px] font-bold tabular-nums text-medium transition hover:bg-surface2 ${
+        play ? "token-pill-celebrating " : ""
+      }${mobile ? "" : "ml-1"}`}
+    >
+      <TokenIcon className="h-3.5 w-3.5 text-brand" />
+      {/* The count and the "+100" share one slot: the number steps aside while
+          the news rises through its place, then comes back and climbs. */}
+      <span className="relative inline-flex min-w-[2ch] items-center justify-end leading-none">
+        <span className={announcing ? "invisible" : undefined}>{shown}</span>
+        {announcing && (
+          // Green, not the league's pink: this is the one place on the bar
+          // where a colour means "you gained something", and the site keeps
+          // green for exactly that (the same --c-ok every "done" uses).
+          <span className="token-gain absolute inset-0 flex items-center justify-end whitespace-nowrap leading-none text-ok">
+            +{play.gained}
+          </span>
+        )}
+      </span>
+      <span className="sr-only"> tokens{play ? `, ${play.gained} earned since your last visit` : ""}</span>
+    </NavLink>
+  );
+}
+
 function AuthControl({ mobile = false }) {
   const { user, isLoggedIn } = useAuth();
   // Nothing for anyone but an admin, and nothing at all when the office is
@@ -32,7 +156,7 @@ function AuthControl({ mobile = false }) {
   const { total } = useAdminAttention();
   if (isLoggedIn) {
     const name = user.driverName || user.discordName || "Profile";
-    return (
+    const chip = (
       <NavLink
         to={user.driverId ? `/drivers/${user.driverId}` : "/profile"}
         title="Your driver profile"
@@ -50,6 +174,19 @@ function AuthControl({ mobile = false }) {
         <span className="max-w-[8rem] truncate">{name}</span>
         <AttentionDot total={total} className="absolute right-1 top-1" />
       </NavLink>
+    );
+    return mobile ? (
+      // On the phone the chip is a full-width row, so the pill goes beside it
+      // rather than after it and the two share the line.
+      <div className="flex w-full items-center gap-2">
+        {chip}
+        <TokenPill mobile />
+      </div>
+    ) : (
+      <>
+        {chip}
+        <TokenPill />
+      </>
     );
   }
   return (

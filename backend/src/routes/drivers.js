@@ -5,6 +5,8 @@ import { getCardRating } from "../services/cardRatingService.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { resolveDriverRow } from "../lib/driverHandles.js";
+import { isTokensEnabled, flairsFor } from "../lib/tokens.js";
+import { discordIdsForDrivers } from "../lib/persons.js";
 
 const router = Router();
 
@@ -38,6 +40,16 @@ router.get("/:id/profile", async (req, res, next) => {
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
     const profile = await getDriverProfile(prisma, rowId);
     if (!profile) return res.status(404).json({ error: "Driver not found" });
+    // The flair from the token shop, if this person bought one.
+    try {
+      if (await isTokensEnabled(prisma)) {
+        const discordId = (await discordIdsForDrivers(prisma, [rowId])).get(rowId);
+        const flair = discordId ? (await flairsFor(prisma, [discordId])).get(discordId) : null;
+        if (flair) (profile.driver || profile).flair = flair;
+      }
+    } catch {
+      /* no flair then */
+    }
     res.json(profile);
   } catch (e) {
     next(e);

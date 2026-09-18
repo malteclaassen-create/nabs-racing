@@ -2,6 +2,19 @@ import { useLayoutEffect, useRef, useState } from "react";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { useSeason } from "../context/SeasonContext.jsx";
+import { useSeries } from "../context/SeriesContext.jsx";
+// The collector series (Concepts, Spectrum, Velocity, Signature): a catalogue of
+// keys and the stylesheets that paint them. They hang off the same data-edition
+// the earned editions use, plus data-series/data-material, so a bought design is
+// just another edition as far as everything outside this file is concerned.
+import { COLLECTIBLE_EDITIONS } from "./collectibleEditions.js";
+import useCardFoil from "./useCardFoil.js";
+import "./collectibleCards.css";
+import "./collectibleFinishes.css";
+import "./collectibleSpectrum.css";
+import "./collectibleThemes.css";
+import "./collectibleConcepts.css";
+import "./cardPhotoEdges.css";
 import { wreathLeaves } from "./ChampionBadge.jsx";
 
 const TIER = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
@@ -111,7 +124,23 @@ export const RATING_INFO = {
 // value is computed (the card clips its own overflow, so it can't pop inside).
 export default function RatingCard({ driver, rating, anim, explain = false }) {
   // Hooks run unconditionally (rules of hooks); harmless when we render null.
-  const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "");
+  // A collector design, if this driver is wearing one. The safety car keeps its
+  // own marshalling edition whatever else is set.
+  const collectible = driver?.role !== "safety" ? COLLECTIBLE_EDITIONS[driver?.cardStyle] : null;
+  // Two of the series put the name in a narrower box than the league cards do.
+  const nameMaxSize = collectible?.series === "concepts" ? 34 : collectible?.series === "signature" ? 36 : 40;
+  const { ref: nameRef, size: nameSize } = useFitName(driver?.name || "", nameMaxSize);
+  // The foil answers to the pointer: the hook hands the card where your hand is
+  // (--mx/--my plus a slight lean), which is what makes a holo sheen travel
+  // instead of sitting still. It bows out by itself under reduced motion and in
+  // performance-lite mode.
+  //
+  // Called HERE, with the other hooks and above the early return below: a hook
+  // after that return is a hook that does not always run, and this one spent its
+  // first evening never attaching at all because of it.
+  const foilRef = useCardFoil(
+    Boolean(collectible) && driver?.cardAnim !== "off" && anim !== "none"
+  );
   const { current: season, seasons } = useSeason();
   const [info, setInfo] = useState(null); // "exp" | "rac" | "aha" | "pac" | null
   // Card footer brand line, e.g. "NABS RACING · SEASON 4" — the DRIVER's own
@@ -143,7 +172,15 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
   // editions (classic + safety); an inline value would otherwise beat the CSS
   // palette (inline styles outrank any selector) and the edition wouldn't tint.
   const edition = isSafety ? "safety" : driver?.cardStyle || "classic";
-  const teamColored = edition === "classic" || edition === "safety";
+  // "carbon" and "neon" (premium preview editions) are team-coloured too: the
+  // weave and the lit tube are the material, the team colour stays the identity,
+  // riding the same inline vars.
+  const teamColored =
+    edition === "classic" ||
+    edition === "safety" ||
+    edition === "carbon" ||
+    edition === "neon" ||
+    collectible?.material === "carbon";
   // The tier badge now lives in the footer signature line (see .rcard-brand),
   // not a top-right plate — the top-right corner is the wreath's home now.
   const tierLabel = isSafety ? "SAFETY CAR" : TIER[driver.tier] ? TIER[driver.tier].toUpperCase() : null;
@@ -159,11 +196,24 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
   const card = (
     <div
       className="rcard-frame"
+      ref={foilRef}
       data-edition={edition}
+      data-collectible={collectible ? "true" : undefined}
+      data-series={collectible?.series}
+      data-material={collectible?.material}
+      data-photo={cardPhoto ? "true" : undefined}
       data-anim={animAttr}
       style={teamColored ? { "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` } : undefined}
     >
       <div className="rcard">
+        {/* The Concepts series paints a full-bleed material behind everything
+            (and Studio Blue prints the driver's number into it). The other
+            series need no element of their own. */}
+        {collectible?.series === "concepts" && (
+          <div className="rcard-concept-art" aria-hidden="true">
+            {edition === "concept-blue" && <span>{driver.number}</span>}
+          </div>
+        )}
         {cardPhoto ? (
           (() => {
             const { x, y, z, s, t } = cardPhotoFraming(driver.photoPos);
@@ -218,6 +268,20 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
             (preview look-book). Real cards never set it. */}
         <div className="rcard-fx" />
         <div className="rcard-innerline" />
+        {/* A collector card's two extras: the light that follows the pointer
+            across the foil, and the corner that says which series it is from
+            and which number in that series. Both are inert on every other
+            edition, so nothing about the league's own cards changes. */}
+        {collectible && (
+          <>
+            <div className="rcard-foil-light" aria-hidden="true" />
+            <div className="rcard-collection">
+              <img src="/logo-dark.png" alt="" draggable={false} />
+              <b>{collectible.name}</b>
+              <small>EDITION {collectible.serial}</small>
+            </div>
+          </>
+        )}
 
         <div className="rcard-rtg">
           <span className="rcard-rtg-l">RTG</span>
@@ -295,6 +359,125 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// The BACK of a rating card (the flip's other side): the same chamfered frame in
+// the same MATERIAL as the front — the edition's layers are the card's own, so a
+// carbon card is carbon on both sides and a holo one keeps its foil — with the
+// league mark front and centre and the driver's name plus season as a quiet
+// signature line. The dark logo variant always applies (the card face is dark in
+// both themes) and a series' own uploaded mark is honoured like everywhere else.
+export function CardBack({ driver, seasonLabel = "", edition = "classic", onClick }) {
+  const { current: series } = useSeries();
+  const color = driver?.team?.color || "#3b4254";
+  // A collector design is a MATERIAL, and a material does not stop at the edge
+  // of the front: the back carries the same series and finish, so turning a
+  // chrome card over shows chrome rather than a plain black panel.
+  const collectible = COLLECTIBLE_EDITIONS[edition] || null;
+  const teamColored =
+    edition === "classic" ||
+    edition === "safety" ||
+    edition === "carbon" ||
+    edition === "neon" ||
+    collectible?.material === "carbon";
+  const logo = series?.logoDarkUrl || "/logo-dark.png";
+
+  // A COLLECTOR card's back is designed, not improvised: each series paints its
+  // own reverse (the printed pattern, where the mark sits, the rule under the
+  // top edge) in components/collectible*.css, keyed on these class names. The
+  // league's own editions keep the hand-built back below, which is the one they
+  // were drawn for.
+  if (collectible) {
+    return (
+      <div
+        // h-full: the front of a card gets its height from its contents, but a
+        // collector back is a painted panel with nothing in it that has a height
+        // of its own. Without this it collapsed to a six pixel sliver, which is
+        // exactly what it looked like.
+        className="rcard-frame h-full"
+        data-edition={edition}
+        data-collectible="true"
+        data-series={collectible.series}
+        data-material={collectible.material}
+        style={teamColored ? { "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` } : undefined}
+      >
+        <div
+          className="rcard-back"
+          onClick={onClick}
+          style={onClick ? { cursor: "pointer" } : undefined}
+          title={onClick ? "Flip the card back over" : undefined}
+        >
+          <div className="rcard-back-pattern" aria-hidden="true" />
+          <div className="rcard-foil-light" aria-hidden="true" />
+          <img className="rcard-back-logo" src={logo} alt="" draggable={false} />
+          <div className="rcard-back-title">
+            <strong>NABS RACING</strong>
+            <small>OFFICIAL DRIVER CARD</small>
+          </div>
+          <div className="rcard-back-bottom">
+            <span>{driver?.name}</span>
+            {seasonLabel && (
+              <>
+                <i aria-hidden="true" />
+                <span>{seasonLabel}</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rcard-frame"
+      data-edition={edition}
+      style={teamColored ? { "--team": color, "--team2": `color-mix(in srgb, ${color} 52%, #ffffff)` } : undefined}
+    >
+      <div
+        className="rcard flex flex-col items-center justify-center"
+        onClick={onClick}
+        style={onClick ? { cursor: "pointer" } : undefined}
+        title={onClick ? "Flip the card back over" : undefined}
+      >
+        {/* quiet glow in the card's own colour, then the front's own dressing */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(85% 60% at 50% 40%, color-mix(in srgb, var(--team) 26%, transparent), transparent 72%)" }}
+        />
+        <div className="rcard-streaks" />
+        <div className="rcard-grade" />
+        <div className="rcard-innerline" />
+        {/* The material's own layers sit above the card's middle (the foil and
+            the spectrum are the whole point), so the mark needs its own pool of
+            dark to stay legible, and it sits above them. */}
+        <div
+          className="absolute inset-0 z-[4]"
+          style={{ background: "radial-gradient(68% 48% at 50% 42%, rgba(4, 6, 10, 0.78), rgba(4, 6, 10, 0.18) 72%)" }}
+        />
+
+        <img src={logo} alt="" width={116} height={116} className="relative z-10" draggable={false} />
+        <div className="relative z-10 mt-4 text-center">
+          <div className="font-display text-2xl font-black uppercase tracking-tight text-white">
+            NABS <span style={{ color: "color-mix(in srgb, var(--team2) 70%, #fff)" }}>Racing</span>
+          </div>
+          <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-white/45">
+            Official driver card
+          </div>
+        </div>
+        <div className="rcard-brand">
+          <span>{driver?.name}</span>
+          {seasonLabel && (
+            <>
+              <i />
+              {seasonLabel}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

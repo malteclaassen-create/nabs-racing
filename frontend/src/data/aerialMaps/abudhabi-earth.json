@@ -1,0 +1,60 @@
+{
+  "width": 1280,
+  "height": 525,
+  "affine": [
+    0.09272902072368572,
+    -0.2487428435418765,
+    0.24982082095142344,
+    0.09131499466187566,
+    642.3460319020628,
+    267.6294852002345
+  ],
+  "image": "/maps/abudhabi-earth.jpg",
+  "source": "Google \u00b7 Airbus",
+  "sourceUrl": "https://earth.google.com/web/",
+  "license": "Image use guidelines",
+  "licenseUrl": "https://about.google/brand-resource-center/products-and-services/geo-guidelines/",
+  "trackId": "abu_dhabi_2021_chq",
+  "trackNames": [
+    "Euroracers Abu Dhabi 2025"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        -239.24627685546875,
+        -65.47428894042969
+      ],
+      "l": [
+        -145.49301147460938,
+        -113.49085235595703
+      ]
+    },
+    {
+      "index": 1,
+      "r": [
+        629.235107421875,
+        -188.0848388671875
+      ],
+      "l": [
+        596.4888916015625,
+        -252.81097412109375
+      ]
+    },
+    {
+      "index": 2,
+      "l": [
+        -681.4097290039062,
+        545.354248046875
+      ],
+      "r": [
+        -741.8502807617188,
+        541.010009765625
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.894905169952873,
+  "fitP90Metres": 5.573611824913149,
+  "referenceErrorPixels": 0.2724426652311811,
+  "note": "Google Earth screenshot captured 2026-09-05. Cropped; image provider attribution displayed immediately below the map. Approximate AC-to-geographic similarity fit, calibrated using four visible KML control points; real driving validation pending."
+}

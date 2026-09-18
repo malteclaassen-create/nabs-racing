@@ -23,7 +23,15 @@ const SKIP_TYPES = new Set([
 // anything heavier has something to give back.
 export const REENCODE_OVER_BYTES = 500 * 1024;
 
-export async function shrinkImage(file, { maxSide = 1920, quality = 0.82, maxBytes = REENCODE_OVER_BYTES } = {}) {
+// `keepAlpha` is for pictures whose transparency is the point: a driver cut out
+// of their background, a logo, a badge. JPEG has no alpha, so the normal path
+// below lays the picture on black first, which turns a cut-out into a portrait
+// in a black box. With this on, a PNG or WebP stays one, and the background
+// stays see-through.
+export async function shrinkImage(
+  file,
+  { maxSide = 1920, quality = 0.82, maxBytes = REENCODE_OVER_BYTES, keepAlpha = false } = {}
+) {
   if (!file || !file.type?.startsWith("image/") || SKIP_TYPES.has(file.type)) return file;
   if (typeof createImageBitmap !== "function" || typeof document === "undefined") return file;
 
@@ -38,6 +46,10 @@ export async function shrinkImage(file, { maxSide = 1920, quality = 0.82, maxByt
     // Nothing to gain: already within the size limit, already a compressed
     // format, and not heavy enough to be worth re-encoding.
     if (scale === 1 && file.type === "image/jpeg" && file.size <= maxBytes) return file;
+    // Keeping the alpha means keeping the format, and re-encoding a PNG that is
+    // already small enough only ever makes it bigger.
+    const alpha = keepAlpha && (file.type === "image/png" || file.type === "image/webp");
+    if (alpha && scale === 1) return file;
 
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
@@ -45,18 +57,25 @@ export async function shrinkImage(file, { maxSide = 1920, quality = 0.82, maxByt
     const ctx = canvas.getContext("2d");
     if (!ctx) return file;
     // A PNG screenshot may carry transparency; JPEG can't, and without this the
-    // transparent pixels come out black instead of white.
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // transparent pixels come out black instead of white. Not done when the
+    // transparency is being kept on purpose — that black IS the bug there.
+    if (!alpha) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    const type = alpha ? "image/png" : "image/jpeg";
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, type, alpha ? undefined : quality));
+    if (!blob) return file;
     // If the "optimised" version came out bigger (small images do that), keep
-    // the original — the point is a smaller upload, not a converted one.
-    if (!blob || blob.size >= file.size) return file;
+    // the original — the point is a smaller upload, not a converted one. A
+    // resized PNG is the exception: it is the smaller PICTURE that was wanted,
+    // and PNG happily spends more bytes on fewer pixels.
+    if (blob.size >= file.size && !alpha) return file;
 
-    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-    return new File([blob], name, { type: "image/jpeg", lastModified: Date.now() });
+    const name = file.name.replace(/\.[^.]+$/, "") + (alpha ? ".png" : ".jpg");
+    return new File([blob], name, { type, lastModified: Date.now() });
   } catch {
     return file;
   } finally {

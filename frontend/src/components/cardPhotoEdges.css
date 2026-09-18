@@ -1,0 +1,15 @@
+/* Feather the photo layer, including its tint, into every card's own surface.
+   Keep the centre opaque; the lower edge has more room for the name and stats.
+   Shared across editions so inset photos never look like pasted rectangles. */
+.rcard-frame[data-edition][data-photo] .rcard .rcard-photo {
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
+    linear-gradient(180deg, transparent, #000 12%, #000 65%, transparent);
+  mask-image:
+    linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent),
+    linear-gradient(180deg, transparent, #000 12%, #000 65%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}

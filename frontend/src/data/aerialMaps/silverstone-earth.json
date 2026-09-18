@@ -1,0 +1,60 @@
+{
+  "width": 1280,
+  "height": 525,
+  "affine": [
+    0.2643409046482752,
+    0.0071241105609906,
+    -0.0077189674083742695,
+    0.26440929246903777,
+    640.7452638626097,
+    276.47000371620175
+  ],
+  "image": "/maps/silverstone-earth.jpg",
+  "source": "Google \u00b7 Airbus",
+  "sourceUrl": "https://earth.google.com/web/",
+  "license": "Image use guidelines",
+  "licenseUrl": "https://about.google/brand-resource-center/products-and-services/geo-guidelines/",
+  "trackId": "ks_silverstone",
+  "trackNames": [
+    "Silverstone F1 2025"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "l": [
+        -404.9117126464844,
+        215.3204803466797
+      ],
+      "r": [
+        -351.85302734375,
+        252.11679077148438
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        53.748958587646484,
+        -451.836181640625
+      ],
+      "r": [
+        73.66447448730469,
+        -471.78143310546875
+      ]
+    },
+    {
+      "index": 2,
+      "l": [
+        337.7150573730469,
+        263.408935546875
+      ],
+      "r": [
+        294.17913818359375,
+        241.15480041503906
+      ]
+    }
+  ],
+  "fitMedianMetres": 3.7458013355911017,
+  "fitP90Metres": 7.459021336373116,
+  "referenceErrorPixels": 0.042492879593110114,
+  "note": "Google Earth screenshot captured 2026-09-05. Cropped; image provider attribution displayed immediately below the map. Approximate AC-to-geographic similarity fit, calibrated using four visible KML control points; real driving validation pending."
+}

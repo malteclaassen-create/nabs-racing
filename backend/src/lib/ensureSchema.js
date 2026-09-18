@@ -624,6 +624,82 @@ export async function ensureAppSchema(prisma) {
     .$executeRawUnsafe(`DELETE FROM "PersonLink" WHERE "driverId" NOT IN (SELECT "id" FROM "Driver")`)
     .catch(() => {});
 
+  // --- Server tokens (migration server_tokens): the league's reward currency,
+  // a trial feature behind the `tokens_enabled` Setting. Three tables and no
+  // foreign keys, so the whole thing can be dropped again in one go if the
+  // league decides against it. See lib/tokens.js for what each one holds.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenAccount" (
+    "discordId" TEXT NOT NULL PRIMARY KEY,
+    "code" TEXT NOT NULL,
+    "referredBy" TEXT,
+    "referredAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TokenAccount_code_key" ON "TokenAccount"("code")`
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "TokenAccount_referredBy_idx" ON "TokenAccount"("referredBy")`
+  );
+  // What this member has already been SHOWN (migration token_seen): the balance
+  // the nav bar last told them about, and how far down the ledger that was.
+  // Everything past those two is news, which is what the "+100" over the token
+  // count is built out of. null = never shown anything, so the first visit
+  // celebrates nothing.
+  await addColumn(prisma, "TokenAccount", "seenBalance", "INTEGER");
+  await addColumn(prisma, "TokenAccount", "seenRowId", "INTEGER");
+  // How active a member is on Discord, ONE ROW PER DAY (migration
+  // token_activity). The multiplier looks at the last thirty of them, so what
+  // is stored has to be able to shrink again — which a running total cannot.
+  // NOTHING writes these yet: they are what the league's Discord bot will
+  // report once it exists, and until then every multiplier is a plain 1.0x.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenActivity" (
+    "discordId" TEXT NOT NULL,
+    "day" TEXT NOT NULL,
+    "messages" INTEGER NOT NULL DEFAULT 0,
+    "minutes" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("discordId", "day")
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "TokenActivity_day_idx" ON "TokenActivity"("day")`
+  );
+  // The ledger. A balance is SUM(delta) over these rows, never a stored number:
+  // the reconciliation in lib/tokens.js rewrites nothing, it only adds what is
+  // missing, and the unique (discordId, refKey) is what stops it paying twice.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenLedger" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "discordId" TEXT NOT NULL,
+    "delta" INTEGER NOT NULL,
+    "rule" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "detail" TEXT,
+    "refKey" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "TokenLedger_member_ref_key" ON "TokenLedger"("discordId","refKey")`
+  );
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "TokenLedger_discordId_idx" ON "TokenLedger"("discordId")`
+  );
+  // A shop order: the member spends, an admin fills it by hand (or declines it,
+  // which refunds).
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenRedemption" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "discordId" TEXT NOT NULL,
+    "itemKey" TEXT NOT NULL,
+    "itemName" TEXT NOT NULL,
+    "cost" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'NEW',
+    "note" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "TokenRedemption_discordId_idx" ON "TokenRedemption"("discordId")`
+  );
+
   await migrateLiveLinksToSeries(prisma);
   await migrateTelemetryToSeries(prisma);
 }

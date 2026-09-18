@@ -14,6 +14,8 @@
 // N is always the seasonNumber of the row being edited — nothing hardcoded.
 // ---------------------------------------------------------------------------
 
+import { CARD_DESIGNS, isBuyableDesign, priceOf } from "./cardShop.js";
+
 export const CARD_EDITIONS = [
   // free: always selectable
   { key: "classic", name: "Classic", tagline: "Team colour", req: null },
@@ -45,8 +47,11 @@ export const DEFAULT_CARD_EDITION = "classic";
 //   badges:     [{ type: "champion"|"vice"|"third", seasonNumber, ... }]
 //   teamBadges: [{ position: 1|2|3, seasonNumber, ... }]
 //   n:          the seasonNumber of the row being edited
-// Returns [{ key, name, tagline, unlocked, requirement, have?, need? }].
-export function unlockStateFor(stats, badges, teamBadges, n) {
+//   owned:      Set of BOUGHT design keys (lib/cardShop.js), empty by default
+// Returns [{ key, name, tagline, unlocked, requirement, have?, need? }], with
+// the bought designs on the end carrying `bought: true` so the picker can put
+// them in their own group and the setter can tell the two kinds apart.
+export function unlockStateFor(stats, badges, teamBadges, n, owned = new Set()) {
   const s = stats || {};
   const bl = Array.isArray(badges) ? badges : [];
   const tbl = Array.isArray(teamBadges) ? teamBadges : [];
@@ -72,13 +77,30 @@ export function unlockStateFor(stats, badges, teamBadges, n) {
       return { ...base, unlocked };
     }
     return { ...base, unlocked: false };
-  });
+  })
+    // ...and the bought designs on the end. They have no requirement to meet:
+    // either the member paid for one or they did not, and the picker shows the
+    // rest as the shop's window dressing so they know what is for sale.
+    .concat(
+      CARD_DESIGNS.map((d) => ({
+        key: d.key,
+        name: d.name,
+        tagline: `${d.collection} ${d.serial}`,
+        requirement: null,
+        bought: true,
+        collection: d.collection,
+        cost: priceOf(d.key),
+        unlocked: owned.has(d.key),
+      }))
+    );
 }
 
 // Is `key` a real edition key? (null/classic are both "the default", handled by
 // callers.) Used to sanitise stored/incoming values.
+// A design bought in the token shop counts as a real edition here: the picker,
+// the stored Driver.cardStyle and every read of it go through this one check.
 export function isKnownEdition(key) {
-  return typeof key === "string" && CARD_EDITION_KEYS.includes(key);
+  return typeof key === "string" && (CARD_EDITION_KEYS.includes(key) || isBuyableDesign(key));
 }
 
 // The stored edition for one driver row (null = classic). Raw read, column-safe

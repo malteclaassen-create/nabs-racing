@@ -1,0 +1,116 @@
+/* Ink, foil and stock: distinct print treatments instead of luminous card frames. */
+.rcard-frame[data-collectible][data-edition] {
+  --team: #566776; --team2: #c5d0d2; --accent: #b6c6c9;
+  --card-edge: #7d8b91; --card-base: #15191d; --top-ink: #f4f3ee;
+  --card-print: #23282e; --placeholder-ink: #ffffff20;
+  --foil-opacity: 0; --foil-colour: #ffffff; --foil-motion: none;
+}
+.rcard-frame[data-collectible][data-edition="holo"] {
+  --card-edge: linear-gradient(125deg, #c8d4ce, #aab9cc 40%, #b5a9ba 75%, #c9c5b3);
+  --card-print: repeating-linear-gradient(115deg, #ffffff04 0 1px, transparent 1px 5px), #22272c;
+  --foil-opacity: .17; --foil-motion: collector-foil;
+}
+.rcard-frame[data-collectible][data-edition="carbon"] {
+  --accent: var(--team2); --card-edge: #4c4e50;
+  --card-print: repeating-conic-gradient(#ffffff06 0 25%, #00000024 0 50%) 0 0 / 8px 8px, repeating-linear-gradient(45deg, #ffffff04 0 1px, transparent 1px 3px), #222528;
+}
+.rcard-frame[data-collectible][data-edition="prisma"] {
+  --accent: #8aadd1; --card-edge: #87929a;
+  --card-print: linear-gradient(126deg, transparent 51%, #b5c5d44a 51% 62%, #ccaba641 62% 67%, #d3c5a44a 67% 73%, transparent 73%), #20252a;
+  --foil-opacity: .07; --foil-motion: collector-foil;
+}
+.rcard-frame[data-collectible][data-edition="aurora"] {
+  --team: #204e43; --team2: #c5ceae; --accent: #d4d5b9; --card-edge: #537165;
+  --card-print: linear-gradient(90deg, transparent 73%, #d7d4bb 73% 76%, #224a3f 76% 79%, #d7d4bb 79% 82%, transparent 82%), #23483c;
+}
+.rcard-frame[data-collectible][data-edition="solar"] {
+  --team: #8c402b; --team2: #dfbda7; --accent: #de6d44; --card-edge: #a69c88; --top-ink: #212932; --placeholder-ink: #25304044;
+  --card-print: linear-gradient(135deg, transparent 55%, #c05b37 55% 63%, #ddd4bc 63% 65%, #2c3b46 65% 76%, transparent 76%), #dcd7c6;
+}
+.rcard-frame[data-collectible][data-edition="glacier"] {
+  --team: #4f5b66; --team2: #d5d9db; --accent: #c1c9cd; --card-edge: #c6cbce; --top-ink: #24292e; --placeholder-ink: #343f4544;
+  --card-print: repeating-linear-gradient(0deg, #ffffff20 0 1px, #747e8810 1px 3px), #a8afb1;
+  --foil-opacity: .07; --foil-motion: collector-foil;
+}
+.rcard-frame[data-collectible][data-edition="void"] {
+  --team: #262729; --team2: #8c8f94; --accent: #676f74; --card-edge: #3e4346;
+  --card-print: linear-gradient(135deg, transparent 50%, #ffffff03 50%), #151719; --card-base: #111315; --placeholder-ink: #ffffff0b;
+}
+.rcard-frame[data-collectible][data-edition="rose"] {
+  --team: #6e4840; --team2: #c99b85; --accent: #bc917d; --card-edge: #b9917b;
+  --card-print: repeating-linear-gradient(0deg, #ffffff04 0 1px, transparent 1px 3px), #463c37;
+  --foil-opacity: .06; --foil-colour: #efcfb4; --foil-motion: collector-foil;
+}
+.rcard-frame[data-collectible][data-edition="circuit"] {
+  --team: #3f4e28; --team2: #c6d2a1; --accent: #bbc985; --card-edge: #606a50;
+  --card-print: linear-gradient(#a1b07712 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(90deg, #a1b07712 1px, transparent 1px) 0 0 / 22px 22px, #1d2424;
+}
+.rcard-frame[data-collectible="true"][data-edition] .rcard-streaks { display: none; }
+.rcard-frame[data-collectible][data-edition][data-photo] { --top-ink: #f4f3ee; }
+.rcard-frame[data-collectible="true"][data-edition] .rcard-foil-light {
+  position: absolute; inset: 0; z-index: 3; opacity: var(--foil-opacity); mix-blend-mode: screen;
+  background: radial-gradient(ellipse at 30% 30%, var(--foil-colour), transparent 65%);
+  background-size: 180% 180%; animation: var(--foil-motion) 14s ease-in-out infinite alternate;
+}
+.rcard-frame[data-collectible="true"][data-edition="holo"] .rcard-foil-light {
+  background: linear-gradient(115deg, #83bab1, #8d9dbb 25%, #bf9bac 50%, #c5bb8e 75%, #88b9ab);
+  background-size: 250% 180%;
+}
+.rcard-frame[data-collectible="true"][data-edition] .rcard-foil-light::after {
+  content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at calc(var(--mx, .5) * 100%) calc(var(--my, .3) * 100%), #ffffff50, transparent 60%);
+}
+@keyframes collector-foil { from { background-position: 0% 30%; } to { background-position: 100% 70%; } }
+/* Optional preview lighting has no hard travelling edge. */
+.rcard-frame[data-collectible="true"][data-anim="sweep"] .rcard-fx,
+.rcard-frame[data-collectible="true"][data-anim="flash"] .rcard-fx {
+  inset: -20%; width: auto; height: auto; transform: none;
+  background: radial-gradient(ellipse at 35% 35%, #edf3ff20, transparent 55%);
+  animation: collector-soft-light 8s ease-in-out infinite alternate;
+}
+@keyframes collector-soft-light { from { opacity: .1; transform: translate(-10%, -5%); } to { opacity: .4; transform: translate(10%, 5%); } }
+
+/* Optional flip: enabled in the gallery, leaving profile/editor interactions intact. */
+.rcard-scene { width: 332px; max-width: 100%; cursor: pointer; perspective: 1200px; border-radius: 9px;
+  transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform 180ms ease-out; }
+.rcard-scene:focus-visible { outline: 3px solid #fff; outline-offset: 6px; }
+.card-atelier .rcard-scene, .rcard-fit .rcard-scene { width: 100%; }
+.rcard-turner { position: relative; transform-style: preserve-3d; transition: transform .72s cubic-bezier(.2, .7, .2, 1); }
+.rcard-scene[data-flipped] .rcard-turner { transform: rotateY(180deg); }
+/* All paint, clipping and shadow belong to these two faces, never the scene. */
+.rcard-scene .rcard-turner > .rcard-frame { width: 100%; transform: none; transition: none; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.rcard-scene .rcard-turner > .rcard-back-frame { position: absolute; inset: 0; transform: rotateY(180deg); }
+.rcard-frame.rcard-back-frame[data-collectible][data-anim="none"] { transform: rotateY(180deg); }
+.rcard-back { position: relative; width: 100%; height: 100%; border-radius: 7px; overflow: hidden; isolation: isolate; color: #f5f5ff;
+  background: var(--card-base, #111417);
+  border: 0; }
+.rcard-back-pattern { position: absolute; inset: 0; background: var(--card-print, #151a20); opacity: .65; }
+.rcard-frame[data-edition="solar"] .rcard-back-pattern,
+.rcard-frame[data-edition="glacier"] .rcard-back-pattern { opacity: .18; }
+.rcard-frame[data-collectible] .rcard-back::after { content: ""; position: absolute; top: 22px; left: 22px; right: 22px; height: 2px; background: var(--accent); opacity: .7; }
+/* Shared back typography and placement, matching the league's original cards. */
+.rcard-back-logo { position: absolute; top: 35%; left: 50%; z-index: 5; width: 100px; height: 100px; object-fit: contain; transform: translateX(-50%); }
+.rcard-back-title { position: absolute; top: 60%; left: 20px; right: 20px; z-index: 5; text-align: center; }
+.rcard-back-title strong { display: block; font-family: "Archivo", "Inter", sans-serif; font-size: 23px; line-height: 1.15; font-weight: 900; letter-spacing: -.025em; color: #f5f5ff; }
+.rcard-back-title small { display: block; margin-top: 10px; font-family: "JetBrains Mono", monospace; font-size: 8px; font-weight: 700; letter-spacing: .3em; color: #a6a6b2; }
+.rcard-back-bottom { position: absolute; bottom: 11px; left: 18px; right: 18px; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 8px; font-weight: 800; letter-spacing: .14em; line-height: 1.5; color: #c5c6d2; }
+.rcard-back-bottom > span:first-child { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.rcard-back-bottom > span:last-child { flex-shrink: 0; color: #868b9c; }
+.rcard-back-bottom > i { width: 3px; height: 3px; flex-shrink: 0; border-radius: 50%; background: #868b9c; }
+.card-flip-hint { margin-top: 10px; font-size: 10px; letter-spacing: .06em; color: #8c94ac; }
+.rcard-frame[data-motion-visible="false"], .rcard-scene[data-motion-visible="false"],
+.rcard-frame[data-motion-visible="false"] *, .rcard-scene[data-motion-visible="false"] *,
+.rcard-scene[data-flipped] .rcard-front-frame,
+.rcard-scene[data-flipped] .rcard-front-frame *,
+.rcard-scene:not([data-flipped]) .rcard-back-frame,
+.rcard-scene:not([data-flipped]) .rcard-back-frame * { animation-play-state: paused !important; }
+.rcard-frame[data-collectible][data-anim="none"] *, .rcard-frame[data-collectible][data-anim="none"] { animation: none !important; }
+/* The finish picker controls ambient effects; click-triggered flips stay animated. */
+.fx-lite .rcard-frame[data-collectible] *, .fx-lite .rcard-turner { animation: none !important; transition: none !important; }
+.rcard-scene[data-anim="none"], .fx-lite .rcard-scene { transform: none; }
+.fx-lite .rcard-scene .rcard-turner > .rcard-back-frame { transform: rotateY(180deg) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .rcard-frame[data-collectible] * { animation: none !important; }
+  .rcard-scene { transform: none; transition: none; }
+  .rcard-scene .rcard-turner > .rcard-back-frame { transform: rotateY(180deg) !important; }
+  .rcard-turner { transition: none; }
+}

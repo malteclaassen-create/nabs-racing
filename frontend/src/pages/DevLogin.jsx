@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { PageHeader, Notice, ErrorBox } from "../components/ui.jsx";
+import { forgetDevSignOut, rememberDevSignOut } from "../devAutoLogin.js";
 
 // ---------------------------------------------------------------------------
 // "Be somebody else for a minute" — development only.
@@ -64,6 +65,9 @@ export default function DevLogin() {
       // this were a real login.
       localStorage.setItem(USER_TOKEN_KEY, token);
       localStorage.setItem("nabs_user", JSON.stringify(user));
+      // Picking somebody here is the opposite of staying signed out, so the
+      // auto-login (devAutoLogin.js) is allowed to work again.
+      forgetDevSignOut();
       window.dispatchEvent(new Event("nabs-auth"));
       navigate("/");
     } catch (e) {
@@ -76,6 +80,9 @@ export default function DevLogin() {
   function signOut() {
     localStorage.removeItem(USER_TOKEN_KEY);
     localStorage.removeItem("nabs_user");
+    // ...and stay out, rather than being signed back in by the auto-login on
+    // the reload one line down.
+    rememberDevSignOut();
     window.dispatchEvent(new Event("nabs-auth"));
     navigate(0);
   }

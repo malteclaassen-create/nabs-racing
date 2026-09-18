@@ -176,12 +176,20 @@ function requirementText(e) {
   return "Earned in a title season";
 }
 
-// Sort: free first, then unlocked, then locked by progress (share of the way
-// there) descending — the closest-to-earned locked ones surface first.
+// Sort: free first, then unlocked, then bought, then locked by progress (share
+// of the way there) descending — the closest-to-earned locked ones surface
+// first.
+//
+// A BOUGHT design that has not been bought is dropped entirely rather than
+// shown as locked: there are nineteen of them, they are not goals to work
+// towards, and a picker where three quarters of the tiles are adverts is a
+// worse picker. The shop is where they are sold; this is where they are worn.
 function sortEditions(list) {
   const progress = (e) => (e.need ? Math.min(1, (e.have || 0) / e.need) : e.unlocked ? 1 : 0);
-  const rank = (e) => (!e.requirement ? 0 : e.unlocked ? 1 : 2);
-  return [...list].sort((a, b) => rank(a) - rank(b) || progress(b) - progress(a));
+  const rank = (e) => (e.bought ? 2 : !e.requirement ? 0 : e.unlocked ? 1 : 3);
+  return [...list]
+    .filter((e) => !e.bought || e.unlocked)
+    .sort((a, b) => rank(a) - rank(b) || progress(b) - progress(a));
 }
 
 const seenKey = (driverId) => `nabs.cardSeen.${driverId}`;
@@ -238,7 +246,8 @@ export function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editi
       <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card edition</span>
         <span className="text-xs text-light">
-          Pick your rating-card design. Most editions are earned through starts, wins, poles and titles.
+          Pick your rating-card design. Most editions are earned through starts, wins, poles and titles; the
+          collector series are bought with tokens and sit at the end of the list.
         </span>
       </div>
 
@@ -288,10 +297,19 @@ export function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editi
                     : "border-border hover:border-brand/50"
                 }`}
               >
-                <span
-                  className="h-9 w-9 shrink-0 rounded-lg ring-1 ring-black/10"
-                  style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, filter: locked ? "grayscale(0.7)" : undefined }}
-                />
+                {e.bought ? (
+                  // The collector series have their own material chips (see
+                  // components/collectibleThemes.css); the series rides on the
+                  // wrapper because that is what those rules select on.
+                  <span data-series={e.collection} className="shrink-0">
+                    <span className="card-collection-swatch" />
+                  </span>
+                ) : (
+                  <span
+                    className="h-9 w-9 shrink-0 rounded-lg ring-1 ring-black/10"
+                    style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, filter: locked ? "grayscale(0.7)" : undefined }}
+                  />
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1 font-display text-sm font-bold uppercase tracking-tight text-dark">
                     {e.name}

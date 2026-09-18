@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 1456,
+  "affine": [
+    1.162534956234982,
+    -0.03738836352343943,
+    0.03738697807023377,
+    1.1625780364159695,
+    570.7815025976871,
+    743.8426145106014
+  ],
+  "image": "/maps/poznan-aerial.jpg",
+  "source": "Aerial: GUGiK",
+  "license": "Open data",
+  "sourceUrl": "https://www.geoportal.gov.pl/en/data/orthophotomap-orto/",
+  "licenseUrl": "https://www.geoportal.gov.pl/en/data/orthophotomap-orto/",
+  "trackId": "rs_tor_poznanl",
+  "trackNames": [
+    "Tor Pozna\u0144"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "l": [
+        281.75347900390625,
+        -333.9659118652344
+      ],
+      "r": [
+        280.2384033203125,
+        -288.0622253417969
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        283.2020568847656,
+        -14.217576026916504
+      ],
+      "r": [
+        322.6381530761719,
+        46.96703338623047
+      ]
+    },
+    {
+      "index": 2,
+      "l": [
+        41.394229888916016,
+        215.08499145507812
+      ],
+      "r": [
+        25.99688720703125,
+        147.25888061523438
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.5677251722980676,
+  "fitP90Metres": 5.840700068248123,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

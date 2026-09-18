@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
+import { rememberDevSignOut } from "../devAutoLogin.js";
 
 const TOKEN_KEY = "nabs_user_token";
 const USER_KEY = "nabs_user";
@@ -17,6 +18,10 @@ export function saveUser(token, user) {
 export function clearUser() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  // On a dev machine the auto-login would put the session straight back on the
+  // next page load, which is not what pressing "sign out" means. No-op in a
+  // build. See devAutoLogin.js.
+  rememberDevSignOut();
   window.dispatchEvent(new Event("nabs-auth"));
 }
 

@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 1353,
+  "affine": [
+    0.8450333750863179,
+    -0.000819296255970444,
+    0.0008193049373332374,
+    0.8450244211047163,
+    329.4225598353806,
+    741.5258584763247
+  ],
+  "image": "/maps/hockenheim-aerial.jpg",
+  "source": "Datenquelle: LGL, www.lgl-bw.de",
+  "license": "dl-de/by-2-0",
+  "sourceUrl": "https://www.lgl-bw.de/Produkte/Open-Data/",
+  "licenseUrl": "https://www.govdata.de/dl-de/by-2-0",
+  "trackId": "vhe_hockenheim",
+  "trackNames": [
+    "NABS Hockenheim 2026"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "l": [
+        28.078250885009766,
+        127.60970306396484
+      ],
+      "r": [
+        84.2867202758789,
+        100.5239028930664
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        564.88427734375,
+        -342.25048828125
+      ],
+      "r": [
+        529.9370727539062,
+        -290.6087951660156
+      ]
+    },
+    {
+      "index": 2,
+      "l": [
+        779.7689208984375,
+        70.11930084228516
+      ],
+      "r": [
+        740.2161254882812,
+        21.871360778808594
+      ]
+    }
+  ],
+  "fitMedianMetres": 2.9874656753058355,
+  "fitP90Metres": 5.986873718184307,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

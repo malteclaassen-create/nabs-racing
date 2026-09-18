@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { maybeDevAutoLogin } from "./devAutoLogin.js";
 import "./index.css";
 
 // Chrome decides a site is installable at some point after load and fires
@@ -34,6 +35,12 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   });
 }
+
+// Development only: sign in as the driver named in frontend/.env.local before
+// the first render, so a bookmarked member page opens as a member instead of as
+// the sign-in screen. Dead code in a build (see devAutoLogin.js), and awaited so
+// nothing renders signed-out first and flips a moment later.
+if (import.meta.env.DEV) await maybeDevAutoLogin();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

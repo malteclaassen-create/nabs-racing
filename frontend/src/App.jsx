@@ -1,7 +1,7 @@
 import { useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationType } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
-import { api } from "./api/client.js";
+import { api, rememberInvite } from "./api/client.js";
 import { setTrackCountryOverrides } from "./data/circuits.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
@@ -469,6 +469,13 @@ function SeriesScopedApp() {
 export default function App() {
   useScrollReveal();
   useEffect(() => applyPreviewFromUrl(), []);
+  // An invite link (?ref=XXXXXX, on any page) is pocketed here and handed to
+  // the backend on the visitor's next Discord login — which may be much later,
+  // so it is kept rather than acted on now. See rememberInvite in api/client.js.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) rememberInvite(ref);
+  }, []);
   // Admin-stored track flag countries, layered over the static circuit table
   // so edited (or circuit-less) tracks show the right flag site-wide.
   useEffect(() => {

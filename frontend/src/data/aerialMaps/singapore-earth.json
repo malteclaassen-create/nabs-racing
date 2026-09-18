@@ -1,0 +1,61 @@
+{
+  "width": 1080,
+  "height": 525,
+  "affine": [
+    0.48800187378324966,
+    -0.0056005169022225534,
+    0.006003403491752294,
+    0.48801589434936643,
+    434.12329982661925,
+    263.9387710000996
+  ],
+  "image": "/maps/singapore-earth.jpg",
+  "source": "Google \u00b7 Airbus",
+  "sourceUrl": "https://earth.google.com/web/",
+  "license": "Image use guidelines",
+  "licenseUrl": "https://about.google/brand-resource-center/products-and-services/geo-guidelines/",
+  "trackId": "singapore_2020",
+  "trackNames": [
+    "Euroracers Singapore GP 2025"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        731.0582885742188,
+        61.4211311340332
+      ],
+      "l": [
+        691.55419921875,
+        66.93640899658203
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        -133.52349853515625,
+        -176.29339599609375
+      ],
+      "r": [
+        -124.33380126953125,
+        -191.70950317382812
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -351.7244873046875,
+        70.44692993164062
+      ],
+      "l": [
+        -375.6770935058594,
+        61.616580963134766
+      ]
+    }
+  ],
+  "fitMedianMetres": 3.085830402433808,
+  "fitP90Metres": 8.55962655114703,
+  "referenceErrorPixels": 0.2301280085571338,
+  "note": "Google Earth screenshot captured 2026-09-05. Cropped; image provider attribution displayed immediately below the map. Approximate AC-to-geographic similarity fit, calibrated using four visible KML control points; real driving validation pending.",
+  "imageryDate": "2025-05-28"
+}

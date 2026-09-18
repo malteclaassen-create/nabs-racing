@@ -1,0 +1,59 @@
+{
+  "width": 1800,
+  "height": 2241,
+  "affine": [
+    1.1367259100571998,
+    -0.012821234313205926,
+    0.012819592333564387,
+    1.136871506013277,
+    1072.508800473527,
+    1155.8266337342623
+  ],
+  "image": "/maps/interlagos-aerial.jpg",
+  "source": "Aerial \u00a9 PMSP / GeoSampa 2020",
+  "license": "CC BY-SA 4.0",
+  "sourceUrl": "https://prefeitura.sp.gov.br/web/licenciamento/w/licen%C3%A7a-para-uso-de-dados-do-geosampa",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "trackId": "vhe_interlagos",
+  "trackNames": [
+    "NABS Interlagos 2025 v2"
+  ],
+  "gates": [
+    {
+      "index": 0,
+      "r": [
+        -429,
+        228
+      ],
+      "l": [
+        -383.84429931640625,
+        216.90460205078125
+      ]
+    },
+    {
+      "index": 1,
+      "l": [
+        62.426361083984375,
+        127.71910095214844
+      ],
+      "r": [
+        103.80439758300781,
+        139.50160217285156
+      ]
+    },
+    {
+      "index": 2,
+      "r": [
+        -73.2582778930664,
+        -363.5421142578125
+      ],
+      "l": [
+        -112.3416976928711,
+        -390.0877990722656
+      ]
+    }
+  ],
+  "fitMedianMetres": 3.5534090118600554,
+  "fitP90Metres": 7.594884096665179,
+  "note": "Approximate AC-to-OSM similarity fit; geographic crop/resampling. Geometry \u00a9 OpenStreetMap contributors. Live driving validation pending."
+}

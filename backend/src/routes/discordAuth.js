@@ -16,6 +16,7 @@ import { dbRecordLogin, dbGetMember } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
+import { isTokensEnabled, ensureTokenAccount, attachReferral } from "../lib/tokens.js";
 
 const router = Router();
 
@@ -124,6 +125,19 @@ router.post("/callback", async (req, res, next) => {
       displayName: me.global_name || null,
       avatarUrl,
     }).catch(() => {});
+
+    // The invite that brought them here, if the frontend carried one along from
+    // a ?ref= link. Only ever recorded ONCE per account (the first inviter
+    // wins), and never for somebody's own code — see lib/tokens.js. Wrapped in
+    // its own catch: a reward currency must not be able to break a login.
+    try {
+      if (await isTokensEnabled(prisma)) {
+        await ensureTokenAccount(prisma, me.id);
+        if (req.body?.ref) await attachReferral(prisma, me.id, req.body.ref);
+      }
+    } catch (e) {
+      console.warn(`[tokens] invite not recorded: ${e.message}`);
+    }
 
     // 3. Find the driver this account belongs to — by Discord user id ONLY.
     // There used to be a name matcher here that let a first login claim any

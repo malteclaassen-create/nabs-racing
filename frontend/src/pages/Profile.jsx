@@ -20,6 +20,8 @@ import { SocialIcon, SOCIAL_META, useSocial } from "../components/SocialLinks.js
 import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 import MyRating from "./MyRating.jsx";
+import Tokens from "./Tokens.jsx";
+import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { NO_VALUE } from "../utils/format.js";
 
 // The public profile shows at most this many stat tiles.
@@ -781,11 +783,15 @@ function CopyProfileLink({ driverId }) {
 // `attention` is how much is waiting in the admin area, or 0. It rides on the
 // Admin tab so the chain from the nav bar is unbroken: a dot on your profile
 // chip, then a dot on the one tab that leads to the work.
-function memberTabs(isAdmin, attention = 0) {
+function memberTabs(isAdmin, attention = 0, tokens = null) {
   return [
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
     { key: "rating", label: "My Rating", dataTour: "tab-rating" },
+    // Only while the token trial is switched on. The hook answers null when it
+    // is off, which is the same answer it gives the nav bar, so the tab and the
+    // count up there appear and disappear together.
+    ...(tokens === null ? [] : [{ key: "tokens", label: "Tokens" }]),
     // The key stays "tools": ?tab=tools is in bell links and bookmarks.
     { key: "tools", label: "Telemetry" },
     // Feedback used to be a floating button in the bottom right corner. That
@@ -817,6 +823,7 @@ function memberTabs(isAdmin, attention = 0) {
 function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention } = useAdminAttention();
+  const tokenBalance = useTokenBalance();
   const navigate = useNavigate();
   const me = useApi(useCallback(() => api.me(), []));
   // The person's row per league, for editing one league on its own. A failed
@@ -825,7 +832,7 @@ function MyProfile() {
   const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const tab = ["profile", "rating", "tools", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
+  const tab = ["profile", "rating", "tools", "tokens", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
     ? params.get("tab")
     : "profile";
   const setTab = (key) => {
@@ -886,7 +893,7 @@ function MyProfile() {
             </Link>
             <div className="max-w-full overflow-x-auto pb-0.5">
               <SlidingTabs
-                items={memberTabs(!!user?.isAdmin, adminAttention)}
+                items={memberTabs(!!user?.isAdmin, adminAttention, tokenBalance)}
                 // While the settings drawer is open the pill sits on Settings,
                 // and glides back to the section underneath when it closes.
                 value={settingsOpen ? "settings" : tab}
@@ -907,6 +914,8 @@ function MyProfile() {
       <div key={tab} className="content-in">
       {tab === "tools" ? (
         <Tools embedded />
+      ) : tab === "tokens" ? (
+        <Tokens />
       ) : tab === "rating" ? (
         <div data-tour="my-rating-panel">
           <MyRating me={d} />
