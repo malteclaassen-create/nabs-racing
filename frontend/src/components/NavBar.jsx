@@ -3,6 +3,7 @@ import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
+import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useReserveSeats } from "../hooks/useReserveSeats.js";
@@ -204,6 +205,8 @@ function StandIcon({ d }) {
 // on hover (and on click, for touch/keyboard). Highlighted while on either page.
 function StandingsNav({ seriesPath }) {
   const [open, setOpen] = useState(false);
+  // The transfer market is held back from the public for now (hooks/useTransfersVisible.js).
+  const transfers = useTransfersVisible();
   const location = useLocation();
   const ref = useRef(null);
   const closeTimer = useRef(null);
@@ -299,7 +302,7 @@ function StandingsNav({ seriesPath }) {
         >
           {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings", "nav-drivers")}
           {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
-          {row(seriesPath("/transfers"), <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>, "Transfers", "Team changes, round by round")}
+          {transfers && row(seriesPath("/transfers"), <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>, "Transfers", "Team changes, round by round")}
           {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
         </div>
       </div>
@@ -539,6 +542,7 @@ export default function NavBar() {
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
+  const transfersVisible = useTransfersVisible();
   // …and neither has a member who has never written one. "Your messages" only
   // earns its row once there is a message in it, otherwise it is a row that
   // leads to an empty page.
@@ -924,7 +928,7 @@ export default function NavBar() {
               <MobileMenuLabel>Standings</MobileMenuLabel>
               <MobileRow to={seriesPath("/drivers")} icon={NAV_ICONS.drivers} label="Drivers" />
               <MobileRow to={seriesPath("/constructors")} icon={NAV_ICONS.constructors} label="Constructors" />
-              <MobileRow to={seriesPath("/transfers")} icon={NAV_ICONS.transfers} label="Transfers" sub="Team changes, round by round" />
+              {transfersVisible && <MobileRow to={seriesPath("/transfers")} icon={NAV_ICONS.transfers} label="Transfers" sub="Team changes, round by round" />}
               <MobileRow to={seriesPath("/records")} icon={NAV_ICONS.records} label="Hall of Fame" sub="All-time records" />
 
               <MobileMenuLabel>More</MobileMenuLabel>

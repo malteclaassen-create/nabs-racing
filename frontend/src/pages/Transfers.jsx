@@ -8,6 +8,8 @@ import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { DriverAvatar, EmptyState, ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import TeamHistoryGrid, { orderTeams, standingsMap } from "../components/TeamHistoryGrid.jsx";
+import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
+import NotFound from "./NotFound.jsx";
 
 // ---------------------------------------------------------------------------
 // The public transfer market: who moved where this season, and every driver's
@@ -51,6 +53,11 @@ function MoveCard({ move, driver, teamById }) {
 }
 
 export default function Transfers() {
+  const visible = useTransfersVisible();
+  return visible ? <TransfersPage /> : <NotFound />;
+}
+
+function TransfersPage() {
   useSeasonParam();
   const { current: season } = useSeason();
   const { data, loading, error, reload } = useApi(useCallback(() => api.transferMarket(), []));
