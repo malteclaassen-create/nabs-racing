@@ -15,7 +15,7 @@ export function SeasonProvider({ children }) {
   const [season, setSeason] = useState(null); // selected round number (null until loaded)
 
   useEffect(() => {
-    const load = () =>
+    const load = (retry = true) =>
       api
         .seasons()
         .then((list) => {
@@ -29,13 +29,20 @@ export function SeasonProvider({ children }) {
             return active ? active.number : null;
           });
         })
-        .catch(() => setSeasons([]));
+        .catch(() => {
+          // A cold server (right after a deploy) can refuse the first read
+          // while its boot-time schema upkeep holds the database; one more
+          // try a moment later is what a refresh would have done by hand.
+          if (retry) setTimeout(() => load(false), 1500);
+          else setSeasons([]);
+        });
     load();
     // Refetch when auth changes (admin login/logout, Discord login): the list
     // includes private seasons only for admins, so the admin switcher must
     // update without a manual reload.
-    window.addEventListener("nabs-auth", load);
-    return () => window.removeEventListener("nabs-auth", load);
+    const reload = () => load();
+    window.addEventListener("nabs-auth", reload);
+    return () => window.removeEventListener("nabs-auth", reload);
   }, []);
 
   // Keep the api client in sync synchronously, so reads in children that fire
