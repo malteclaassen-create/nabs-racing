@@ -45,11 +45,17 @@ function LoopIcon() {
   );
 }
 
-function Club({ team, align = "left" }) {
-  const mark = team ? <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={18} /> : null;
-  const label = <span className="truncate text-xs font-semibold text-dark">{team?.name || "—"}</span>;
-  const inner = align === "left" ? <>{mark}{label}</> : <>{label}{mark}</>;
-  const cls = `flex min-w-0 flex-1 items-center gap-1.5 ${align === "right" ? "justify-end" : ""}`;
+// One half of the From -> To pill: the club mark and its name, the mark on
+// the outside so the two halves mirror each other around the icon.
+function Club({ team, side }) {
+  const mark = team ? (
+    <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={20} />
+  ) : (
+    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-card font-mono text-[10px] font-bold text-light ring-1 ring-border">?</span>
+  );
+  const name = <span className="truncate text-xs font-semibold text-dark">{team?.name || "Free agent"}</span>;
+  const inner = side === "from" ? <>{mark}{name}</> : <>{name}{mark}</>;
+  const cls = `flex min-w-0 flex-1 items-center gap-2 px-2.5 ${side === "to" ? "justify-end" : ""}`;
   return team ? (
     <Link to={`/teams/${team.id}`} className={`${cls} transition hover:text-brand`}>{inner}</Link>
   ) : (
@@ -71,11 +77,33 @@ function centreRows(data) {
       rows.push({ key: `s-${d.id}-${n}`, kind: "sub", driverId: d.id, fromTeamId: c.fromTeamId || null, toTeamId: c.teamId, round: Number(n), pending: false });
     }
   }
+  // Newest round first; within a round the transfers before the fill-ins.
   return rows.sort((a, b) => b.round - a.round || a.kind.localeCompare(b.kind));
+}
+
+// Where a football page prints the fee: what kind of move this is.
+function kindLabel(r) {
+  if (r.kind === "sub") return "Substitute";
+  if (r.pending) return "Announced";
+  return "Transfer";
+}
+
+function KindMark({ kind, pending }) {
+  return (
+    <span
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-1 ${
+        kind === "sub" ? "bg-card text-medium ring-border" : pending ? "bg-card text-brand ring-brand" : "bg-brand text-onbrand ring-brand"
+      }`}
+      aria-hidden="true"
+    >
+      {kind === "sub" ? <LoopIcon /> : <ArrowIcon />}
+    </span>
+  );
 }
 
 function TransferCentre({ data, teamById, driverById }) {
   const [kind, setKind] = useState("all"); // all | transfer | sub
+  const [help, setHelp] = useState(false);
   const all = useMemo(() => centreRows(data), [data]);
   const rows = kind === "all" ? all : all.filter((r) => r.kind === kind);
   const trackOf = (n) => data.rounds.find((r) => r.number === n)?.track || "";
@@ -83,24 +111,62 @@ function TransferCentre({ data, teamById, driverById }) {
 
   return (
     <div className="space-y-3">
-      <SlidingTabs
-        items={[
-          { key: "all", label: `All (${all.length})` },
-          { key: "transfer", label: `Transfers (${counts.transfer})`, title: "A driver's own seat changed" },
-          { key: "sub", label: `Substitutes (${counts.sub})`, title: "A reserve raced for a team that night" },
-        ]}
-        value={kind}
-        onChange={setKind}
-        btnClassName="px-3 py-1.5 text-xs"
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <SlidingTabs
+          items={[
+            { key: "all", label: `All (${all.length})` },
+            { key: "transfer", label: `Transfers (${counts.transfer})`, title: "A driver's own seat changed" },
+            { key: "sub", label: `Substitutes (${counts.sub})`, title: "A reserve raced for a team that night" },
+          ]}
+          value={kind}
+          onChange={setKind}
+          btnClassName="px-3 py-1.5 text-xs"
+        />
+        <button
+          type="button"
+          onClick={() => setHelp((h) => !h)}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
+          aria-expanded={help}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5" /><path d="M12 17h.01" />
+          </svg>
+          How to read this
+        </button>
+      </div>
+
+      {help && (
+        <div className="card grid gap-4 p-4 text-sm sm:grid-cols-3">
+          <div className="flex gap-3">
+            <KindMark kind="transfer" />
+            <p className="text-medium">
+              <span className="font-semibold text-dark">Transfer</span>: the driver's own seat changed. From that round on they race for the new team, and the rounds since count for it in the constructors' table.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <KindMark kind="sub" />
+            <p className="text-medium">
+              <span className="font-semibold text-dark">Substitute</span>: a reserve raced for a team that was short a driver. Their points go to that team for the night; their own seat does not change.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <KindMark kind="transfer" pending />
+            <p className="text-medium">
+              <span className="font-semibold text-dark">Announced</span>: booked for a round still ahead. It applies by itself when that round comes.
+            </p>
+          </div>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint={kind === "sub" ? "No reserve has filled in for a team this season." : "Nobody has changed team this season."} />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <div className="hidden grid-cols-[minmax(0,2fr)_minmax(0,2fr)_4rem_7rem] gap-3 bg-surface2/60 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
-            <span>From → To</span>
-            <span>Driver</span>
-            <span className="text-center">Tier</span>
+        <div className="card overflow-hidden">
+          {/* Column heads, as a transfer page prints them */}
+          <div className="hidden grid-cols-[minmax(0,21rem)_minmax(0,1fr)_8rem_9rem] gap-4 border-b border-border px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
+            <div className="grid grid-cols-[1fr_1.75rem_1fr] gap-2"><span className="pl-2.5">From</span><span /><span className="pl-2.5">To</span></div>
+            <span>Player</span>
+            <span>Type</span>
             <span className="text-right">Round</span>
           </div>
           <ul className="divide-y divide-border">
@@ -112,30 +178,44 @@ function TransferCentre({ data, teamById, driverById }) {
               return (
                 <li
                   key={r.key}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_auto] [grid-template-areas:'driver_tier_round'_'clubs_clubs_clubs'] gap-x-3 gap-y-2 px-3 py-2.5 sm:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_4rem_7rem] sm:[grid-template-areas:'clubs_driver_tier_round'] sm:items-center"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2.5 px-4 py-3 transition hover:bg-surface2/40 sm:grid-cols-[minmax(0,21rem)_minmax(0,1fr)_8rem_9rem] sm:items-center sm:gap-4"
                 >
-                  {/* From -> To, the two clubs around the kind's icon */}
-                  <div className="flex items-center gap-2 rounded-lg bg-surface2/60 px-2.5 py-1.5 [grid-area:clubs]">
-                    <Club team={from} align="right" />
-                    <span
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${r.kind === "sub" ? "bg-card text-medium ring-1 ring-border" : "bg-brand text-onbrand"}`}
-                      title={r.kind === "sub" ? "Substitute drive: raced for this team that night" : r.pending ? "Transfer, booked for a round still ahead" : "Transfer"}
-                    >
-                      {r.kind === "sub" ? <LoopIcon /> : <ArrowIcon />}
+                  {/* Player: the avatar wears the tier of the seat, where a
+                      football page puts the position */}
+                  <Link to={`/drivers/${r.driverId}`} className="order-1 flex min-w-0 items-center gap-3 sm:order-2">
+                    <span className="relative shrink-0">
+                      <DriverAvatar name={d?.name} photoUrl={d?.photoUrl} color={to?.color} size={40} />
+                      <span
+                        className={`absolute -bottom-1 -right-1 rounded-full px-1.5 font-mono text-[9px] font-bold leading-4 ring-2 ring-card ${
+                          to?.tier === 1 ? "bg-brand text-onbrand" : to?.tier === 2 ? "bg-sky-500 text-white" : "bg-surface2 text-medium"
+                        }`}
+                        title={to?.tier === 0 ? "Reserve pool" : `Tier ${to?.tier} seat`}
+                      >
+                        {tier}
+                      </span>
                     </span>
-                    <Club team={to} />
-                  </div>
-                  {/* The driver */}
-                  <Link to={`/drivers/${r.driverId}`} className="flex min-w-0 items-center gap-2.5 [grid-area:driver]">
-                    <DriverAvatar name={d?.name} photoUrl={d?.photoUrl} color={to?.color} size={32} />
-                    <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{d?.name || r.driverId}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-display text-base font-extrabold uppercase tracking-tight text-dark transition hover:text-brand">
+                        {d?.name || r.driverId}
+                      </span>
+                      {/* On a phone the type sits under the name; on a desk it has a column */}
+                      <span className={`block text-[11px] font-semibold sm:hidden ${r.pending ? "text-brand" : "text-medium"}`}>{kindLabel(r)}</span>
+                    </span>
                   </Link>
-                  <span className="flex items-center justify-center [grid-area:tier]">
-                    <span className={`pill ${to?.tier === 1 ? "bg-brand/15 text-brand" : to?.tier === 2 ? "bg-sky-500/15 text-sky-500" : "bg-surface2 text-light"}`}>{tier}</span>
+                  {/* Round, where a football page prints the date */}
+                  <span className="order-1 text-right sm:order-4">
+                    <span className="block font-mono text-sm font-bold text-dark">R{r.round}</span>
+                    <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-light">{r.pending ? "upcoming" : trackOf(r.round)}</span>
                   </span>
-                  <span className="text-right [grid-area:round]">
-                    <span className="block font-mono text-xs font-bold text-dark">R{r.round}</span>
-                    <span className="hidden truncate font-mono text-[10px] text-light sm:block">{r.pending ? "upcoming" : trackOf(r.round)}</span>
+                  {/* From -> To pill */}
+                  <div className="order-2 col-span-2 flex h-11 items-center rounded-xl bg-surface2 sm:order-1 sm:col-span-1">
+                    <Club team={from} side="from" />
+                    <KindMark kind={r.kind} pending={r.pending} />
+                    <Club team={to} side="to" />
+                  </div>
+                  {/* Type, where a football page prints the fee */}
+                  <span className={`order-3 hidden text-sm font-semibold sm:block ${r.pending ? "text-brand" : "text-medium"}`}>
+                    {kindLabel(r)}
                   </span>
                 </li>
               );

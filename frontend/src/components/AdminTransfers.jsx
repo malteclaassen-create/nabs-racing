@@ -7,6 +7,7 @@ import { CardHead, ErrorBox, Notice, TableSkeleton } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import TeamHistoryGrid, { orderTeams, worthShowing, standingsMap } from "./TeamHistoryGrid.jsx";
 import TransferDialog from "./TransferDialog.jsx";
+import MergeDriversDialog from "./MergeDriversDialog.jsx";
 
 // ---------------------------------------------------------------------------
 // Admin "Transfers" tab: the season's transfer market in one place.
@@ -98,6 +99,8 @@ export default function AdminTransfers() {
   // The dialog: which driver, and which team it opens on.
   const [transfer, setTransfer] = useState(null);
   const [pick, setPick] = useState("");
+  // The two-rows-one-driver dialog: the duplicate group being merged.
+  const [merge, setMerge] = useState(null);
 
   const teams = useMemo(() => orderTeams(data?.teams), [data?.teams]);
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
@@ -246,13 +249,21 @@ export default function AdminTransfers() {
             <div className="space-y-3">
               <p className="text-sm text-medium">
                 <span className="font-semibold text-dark">One name, two entries.</span> The same driver exists twice in
-                this season. Delete the entry without race results on the Drivers tab (an entry with results cannot be
-                deleted); if both have results, link them as one person on the Members tab instead.
+                this season. <span className="font-semibold text-dark">Merge</span> folds one row into the other: you pick
+                the row that stays (the one with the photo, bio and login is preselected), its results, answers, Steam id
+                and empty profile fields come over, and the other row is deleted. Nothing is lost and the driver stays
+                logged in.
               </p>
               <ul className="divide-y divide-border">
                 {issues.duplicates.map((list) => (
                   <li key={list[0].id} className="py-3">
-                    <div className="mb-2 font-display text-sm font-bold uppercase tracking-tight text-dark">{list[0].name}</div>
+                    <div className="mb-2 flex items-center gap-3">
+                      <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{list[0].name}</span>
+                      <span className="pill bg-amber-500/15 text-warn">{list.length} rows</span>
+                      <button className="btn-primary ml-auto px-3 py-1 text-xs" disabled={busy} onClick={() => { setMsg(null); setErr(null); setMerge(list); }}>
+                        Merge…
+                      </button>
+                    </div>
                     <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {list.map((d) => (
                         <li key={d.id} className="rounded-lg border border-border bg-surface2/60 px-3 py-1.5 text-sm">
@@ -359,6 +370,20 @@ export default function AdminTransfers() {
         )}
       </div>
 
+      {merge && (
+        <MergeDriversDialog
+          rows={merge}
+          teamById={teamById}
+          onClose={() => setMerge(null)}
+          onDone={(text) => {
+            setMerge(null);
+            setMsg(text);
+            setErr(null);
+            reload();
+            standings.reload();
+          }}
+        />
+      )}
       {transfer && (
         <TransferDialog
           driver={transfer.driver}
