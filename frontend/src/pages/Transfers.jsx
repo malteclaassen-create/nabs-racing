@@ -45,11 +45,15 @@ function LoopIcon() {
   );
 }
 
-function Club({ team, align = "left" }) {
-  const mark = team ? <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={18} /> : null;
-  const label = <span className="truncate text-xs font-semibold text-dark">{team?.name || "—"}</span>;
-  const inner = align === "left" ? <>{mark}{label}</> : <>{label}{mark}</>;
-  const cls = `flex min-w-0 flex-1 items-center gap-1.5 ${align === "right" ? "justify-end" : ""}`;
+function Club({ team, size = 18, className = "" }) {
+  const mark = team ? <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={size} /> : null;
+  const inner = (
+    <>
+      {mark}
+      <span className="truncate font-display text-xs font-bold uppercase tracking-tight text-dark">{team?.name || "—"}</span>
+    </>
+  );
+  const cls = `flex min-w-0 items-center gap-1.5 ${className}`;
   return team ? (
     <Link to={`/teams/${team.id}`} className={`${cls} transition hover:text-brand`}>{inner}</Link>
   ) : (
@@ -71,76 +75,193 @@ function centreRows(data) {
       rows.push({ key: `s-${d.id}-${n}`, kind: "sub", driverId: d.id, fromTeamId: c.fromTeamId || null, toTeamId: c.teamId, round: Number(n), pending: false });
     }
   }
+  // Newest round first; within a round the transfers before the fill-ins.
   return rows.sort((a, b) => b.round - a.round || a.kind.localeCompare(b.kind));
+}
+
+// What the row means, in one sentence. The list is the league's news feed,
+// and a news item says what happened rather than making the reader decode
+// an icon.
+function sentence(r, from, to, track) {
+  const f = from?.name || "the reserves";
+  const t = to?.name || "their new team";
+  if (r.kind === "sub") return `Filled in for ${t} at ${track || `round ${r.round}`}, still a ${from?.tier === 0 ? "reserve" : `${f} driver`}.`;
+  if (r.pending) return `Announced: leaves ${f} for ${t} from round ${r.round}.`;
+  if (!from) return `Joined ${t} from round ${r.round}.`;
+  if (to?.tier === 0) return `Left ${f} for the reserve pool from round ${r.round}.`;
+  return `Left ${f} for ${t} from round ${r.round}.`;
+}
+
+function KindPill({ kind, pending }) {
+  if (kind === "sub") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-surface2 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium ring-1 ring-border">
+        <LoopIcon /> Substitute
+      </span>
+    );
+  }
+  if (pending) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-brand">
+        <ArrowIcon /> Upcoming
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-onbrand">
+      <ArrowIcon /> Transfer
+    </span>
+  );
+}
+
+function StatTile({ value, label, hint }) {
+  return (
+    <div className="card px-4 py-3" title={hint}>
+      <div className="font-display text-2xl font-extrabold tabular-nums tracking-tight text-dark">{value}</div>
+      <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{label}</div>
+    </div>
+  );
 }
 
 function TransferCentre({ data, teamById, driverById }) {
   const [kind, setKind] = useState("all"); // all | transfer | sub
+  const [help, setHelp] = useState(false);
   const all = useMemo(() => centreRows(data), [data]);
   const rows = kind === "all" ? all : all.filter((r) => r.kind === kind);
-  const trackOf = (n) => data.rounds.find((r) => r.number === n)?.track || "";
-  const counts = { transfer: all.filter((r) => r.kind === "transfer").length, sub: all.filter((r) => r.kind === "sub").length };
+  const roundOf = (n) => data.rounds.find((r) => r.number === n);
+  const counts = {
+    transfer: all.filter((r) => r.kind === "transfer" && !r.pending).length,
+    upcoming: all.filter((r) => r.kind === "transfer" && r.pending).length,
+    sub: all.filter((r) => r.kind === "sub").length,
+    subDrivers: new Set(all.filter((r) => r.kind === "sub").map((r) => r.driverId)).size,
+  };
+
+  // Grouped by round, newest first, so the list reads as a timeline.
+  const groups = [];
+  for (const r of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.round === r.round) last.rows.push(r);
+    else groups.push({ round: r.round, rows: [r] });
+  }
 
   return (
-    <div className="space-y-3">
-      <SlidingTabs
-        items={[
-          { key: "all", label: `All (${all.length})` },
-          { key: "transfer", label: `Transfers (${counts.transfer})`, title: "A driver's own seat changed" },
-          { key: "sub", label: `Substitutes (${counts.sub})`, title: "A reserve raced for a team that night" },
-        ]}
-        value={kind}
-        onChange={setKind}
-        btnClassName="px-3 py-1.5 text-xs"
-      />
+    <div className="space-y-5">
+      {/* The season in four numbers */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile value={counts.transfer} label="Transfers" hint="Drivers whose own seat changed in a round already driven" />
+        <StatTile value={counts.upcoming} label="Announced" hint="Moves booked for a round still ahead" />
+        <StatTile value={counts.sub} label="Substitute drives" hint="Nights a reserve raced for a team" />
+        <StatTile value={counts.subDrivers} label="Reserves used" hint="How many different reserves filled in" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <SlidingTabs
+          items={[
+            { key: "all", label: `All (${all.length})` },
+            { key: "transfer", label: `Transfers (${counts.transfer + counts.upcoming})`, title: "A driver's own seat changed" },
+            { key: "sub", label: `Substitutes (${counts.sub})`, title: "A reserve raced for a team that night" },
+          ]}
+          value={kind}
+          onChange={setKind}
+          btnClassName="px-3 py-1.5 text-xs"
+        />
+        <button
+          type="button"
+          onClick={() => setHelp((h) => !h)}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
+          aria-expanded={help}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5" /><path d="M12 17h.01" />
+          </svg>
+          How to read this
+        </button>
+      </div>
+
+      {help && (
+        <div className="card grid gap-4 p-4 text-sm sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <KindPill kind="transfer" />
+            <p className="text-medium">
+              A driver's <span className="font-semibold text-dark">own seat changed</span>: from that round on they race for the new team, and the rounds since count for it in the constructors' table.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <KindPill kind="sub" />
+            <p className="text-medium">
+              A <span className="font-semibold text-dark">one-night stand-in</span>: a reserve raced for a team that was short a driver. Their points go to that team for the night; their own seat does not change.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <KindPill kind="transfer" pending />
+            <p className="text-medium">
+              <span className="font-semibold text-dark">Announced</span>, not driven yet: the move is booked and applies by itself when that round comes.
+            </p>
+          </div>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint={kind === "sub" ? "No reserve has filled in for a team this season." : "Nobody has changed team this season."} />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <div className="hidden grid-cols-[minmax(0,2fr)_minmax(0,2fr)_4rem_7rem] gap-3 bg-surface2/60 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
-            <span>From → To</span>
-            <span>Driver</span>
-            <span className="text-center">Tier</span>
-            <span className="text-right">Round</span>
-          </div>
-          <ul className="divide-y divide-border">
-            {rows.map((r) => {
-              const d = driverById.get(r.driverId);
-              const from = teamById.get(r.fromTeamId);
-              const to = teamById.get(r.toTeamId);
-              const tier = TIER_LABEL[to?.tier] || "—";
-              return (
-                <li
-                  key={r.key}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_auto] [grid-template-areas:'driver_tier_round'_'clubs_clubs_clubs'] gap-x-3 gap-y-2 px-3 py-2.5 sm:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_4rem_7rem] sm:[grid-template-areas:'clubs_driver_tier_round'] sm:items-center"
-                >
-                  {/* From -> To, the two clubs around the kind's icon */}
-                  <div className="flex items-center gap-2 rounded-lg bg-surface2/60 px-2.5 py-1.5 [grid-area:clubs]">
-                    <Club team={from} align="right" />
-                    <span
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${r.kind === "sub" ? "bg-card text-medium ring-1 ring-border" : "bg-brand text-onbrand"}`}
-                      title={r.kind === "sub" ? "Substitute drive: raced for this team that night" : r.pending ? "Transfer, booked for a round still ahead" : "Transfer"}
-                    >
-                      {r.kind === "sub" ? <LoopIcon /> : <ArrowIcon />}
-                    </span>
-                    <Club team={to} />
-                  </div>
-                  {/* The driver */}
-                  <Link to={`/drivers/${r.driverId}`} className="flex min-w-0 items-center gap-2.5 [grid-area:driver]">
-                    <DriverAvatar name={d?.name} photoUrl={d?.photoUrl} color={to?.color} size={32} />
-                    <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{d?.name || r.driverId}</span>
-                  </Link>
-                  <span className="flex items-center justify-center [grid-area:tier]">
-                    <span className={`pill ${to?.tier === 1 ? "bg-brand/15 text-brand" : to?.tier === 2 ? "bg-sky-500/15 text-sky-500" : "bg-surface2 text-light"}`}>{tier}</span>
+        <div className="space-y-5">
+          {groups.map((g) => {
+            const round = roundOf(g.round);
+            const upcoming = round && !round.isCompleted;
+            return (
+              <section key={g.round} className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className={`font-display text-sm font-extrabold uppercase tracking-tight ${upcoming ? "text-brand" : "text-dark"}`}>
+                    Round {g.round}
                   </span>
-                  <span className="text-right [grid-area:round]">
-                    <span className="block font-mono text-xs font-bold text-dark">R{r.round}</span>
-                    <span className="hidden truncate font-mono text-[10px] text-light sm:block">{r.pending ? "upcoming" : trackOf(r.round)}</span>
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+                    {round?.track || ""}{upcoming ? " · upcoming" : ""}
                   </span>
-                </li>
-              );
-            })}
-          </ul>
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="font-mono text-[10px] text-light">{g.rows.length}</span>
+                </div>
+                <ul className="cascade space-y-2">
+                  {g.rows.map((r, i) => {
+                    const d = driverById.get(r.driverId);
+                    const from = teamById.get(r.fromTeamId);
+                    const to = teamById.get(r.toTeamId);
+                    const tier = TIER_LABEL[to?.tier] || "—";
+                    return (
+                      <li key={r.key} style={{ "--i": i }} className="card lift relative overflow-hidden">
+                        {/* The destination team's colour down the edge */}
+                        <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: to?.color || "var(--c-border)" }} aria-hidden="true" />
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 py-3 pl-4 pr-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,21rem)] sm:items-center sm:gap-x-4">
+                          <Link to={`/drivers/${r.driverId}`} className="row-span-2 sm:row-span-1">
+                            <DriverAvatar name={d?.name} photoUrl={d?.photoUrl} color={to?.color} size={40} />
+                          </Link>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <Link to={`/drivers/${r.driverId}`} className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark transition hover:text-brand">
+                                {d?.name || r.driverId}
+                              </Link>
+                              <KindPill kind={r.kind} pending={r.pending} />
+                            </div>
+                            <p className="mt-0.5 text-xs text-medium">{sentence(r, from, to, round?.track)}</p>
+                          </div>
+                          {/* From -> To */}
+                          <div className="col-start-2 flex items-center gap-2 rounded-lg bg-surface2/60 px-2.5 py-1.5 sm:col-start-3">
+                            <Club team={from} className="flex-1 justify-end text-right" />
+                            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${r.kind === "sub" ? "bg-card text-medium ring-1 ring-border" : r.pending ? "border border-dashed border-brand text-brand" : "bg-brand text-onbrand"}`} aria-hidden="true">
+                              {r.kind === "sub" ? <LoopIcon /> : <ArrowIcon />}
+                            </span>
+                            <Club team={to} className="flex-1" />
+                            <span className={`pill shrink-0 ${to?.tier === 1 ? "bg-brand/15 text-brand" : to?.tier === 2 ? "bg-sky-500/15 text-sky-500" : "bg-surface2 text-light"}`} title={to?.tier === 0 ? "Reserve pool" : `Tier ${to?.tier} seat`}>
+                              {tier}
+                            </span>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
