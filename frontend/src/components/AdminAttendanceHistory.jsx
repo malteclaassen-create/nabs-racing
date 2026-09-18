@@ -110,8 +110,8 @@ export default function AdminAttendanceHistory() {
     <div className="card space-y-4 p-5">
       <CardHead eyebrow="Attendance page" title="Past sign-ups" />
       <p className="text-sm text-light">
-        What people answered for the races of this season that have already run, kept exactly as it stood when the
-        result was saved. Use the season switcher above to look further back.
+        What people answered for races that have already run, as it stood when the result was saved. The season
+        switcher above looks further back.
       </p>
 
       {error && <ErrorBox message={error} onRetry={reload} />}
@@ -119,8 +119,7 @@ export default function AdminAttendanceHistory() {
 
       {!loading && !error && races.length === 0 && (
         <p className="text-sm text-light">
-          No sign-ups recorded for a finished race in this season yet. A race shows up here once it has both answers and
-          a saved result.
+          Nothing yet. A race shows up here once it has both answers and a saved result.
         </p>
       )}
 

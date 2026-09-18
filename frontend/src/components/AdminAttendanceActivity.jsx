@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { CardHead, ErrorBox, Notice, TableSkeleton, TeamDot } from "./ui.jsx";
+import { CardHead, ErrorBox, HelpNote, Notice, TableSkeleton, TeamDot } from "./ui.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
 // ---------------------------------------------------------------------------
@@ -431,11 +431,8 @@ export default function AdminAttendanceActivity() {
       <p className="text-sm text-light">
         Who is still turning up. Every driver against every round of this season.
       </p>
-      <details className="group">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-link hover:underline">
-          What the columns mean
-        </summary>
-        <ul className="mt-2 space-y-1 text-sm text-light">
+      <HelpNote label="What the columns mean">
+        <ul className="space-y-1">
           <li>
             <strong className="font-semibold text-medium">Raced</strong>: they were in the classification. A DNF counts,
             a DNS does not.
@@ -455,7 +452,7 @@ export default function AdminAttendanceActivity() {
           </li>
           <li>Deactivated drivers are left out.</li>
         </ul>
-      </details>
+      </HelpNote>
 
       {error && <ErrorBox message={error} onRetry={reload} />}
       {saveError && <Notice kind="error">{saveError}</Notice>}

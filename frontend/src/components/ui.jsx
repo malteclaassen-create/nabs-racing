@@ -726,6 +726,25 @@ export function Notice({ kind = "success", children }) {
   );
 }
 
+// A short explanation, folded away.
+//
+// The admin pages had grown two or three paragraphs of rules above every
+// table. They are read once, by the person setting the thing up, and scrolled
+// past on every visit afterwards. So the page keeps the one line that says
+// what it is, and the rules move in here.
+//
+// <details> rather than a state hook: it is open/closed markup the browser
+// already knows how to do, it survives without JavaScript, and Ctrl-F finds
+// the text inside a closed one.
+export function HelpNote({ label = "What this does", children }) {
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-link hover:underline">{label}</summary>
+      <div className="mt-2 space-y-1 text-sm text-light">{children}</div>
+    </details>
+  );
+}
+
 // Consistent card section header: brand-pink mono eyebrow + display title.
 // The strip across the top of a card: a hairline underneath, and the same
 // horizontal padding as the card body so the two line up.

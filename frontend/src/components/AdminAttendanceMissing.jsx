@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
-import { CardHead, ErrorBox, Notice, TeamDot } from "./ui.jsx";
+import { CardHead, ErrorBox, HelpNote, Notice, TeamDot } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtDateShort } from "../utils/format.js";
@@ -192,11 +192,13 @@ export default function AdminAttendanceMissing({ races = [], racesError = null, 
   return (
     <div className="card space-y-4 p-5">
       <CardHead eyebrow="Attendance page" title="Still to answer" />
-      <p className="text-sm text-light">
-        Who is on this season&rsquo;s roster and has not touched the sign-up for the round below, so you know who to
-        chase. Someone who answered and then cleared their answer counts as silent again, and drivers you have
-        deactivated are left out.
-      </p>
+      <p className="text-sm text-light">Who has not touched the sign-up for the round below, so you know who to chase.</p>
+      <HelpNote label="What counts as silent">
+        <ul className="space-y-1">
+          <li>Somebody who answered and then cleared their answer is silent again.</li>
+          <li>Deactivated drivers are left out.</li>
+        </ul>
+      </HelpNote>
 
       {racesError && <ErrorBox message={racesError} onRetry={onReloadRaces} />}
 
@@ -236,8 +238,7 @@ export default function AdminAttendanceMissing({ races = [], racesError = null, 
       {fallbackText && (
         <div className="space-y-1.5">
           <p className="text-sm text-light">
-            This browser wouldn&rsquo;t let the page use the clipboard. Here is the text instead, ready to select and
-            copy.
+            This browser blocked the clipboard. Here is the text to copy by hand.
           </p>
           <textarea
             aria-label="Text to copy"
@@ -255,8 +256,7 @@ export default function AdminAttendanceMissing({ races = [], racesError = null, 
 
       {notOpenYet && (
         <Notice kind="info">
-          Sign-up for this round hasn&rsquo;t opened yet, so nobody has had the chance to answer. The lists below are
-          simply the whole roster until it opens.
+          Sign-up for this round hasn&rsquo;t opened yet, so the lists below are simply the whole roster.
         </Notice>
       )}
 
@@ -283,13 +283,13 @@ export default function AdminAttendanceMissing({ races = [], racesError = null, 
 
           <Group
             title="Full-time drivers"
-            hint="The seats the grid is planned around. Tier 1 first, then Tier 2, teammates together."
+            hint="Tier 1 first, then Tier 2, teammates together."
             people={data.missing.fullTime}
             onCopy={copy}
           />
           <Group
             title="Reserves"
-            hint="The reserve pool. Most of them will never answer a round they aren't needed for, so treat this as a list of who you could still ask."
+            hint="Most never answer a round they aren't needed for. This is who you could still ask."
             people={data.missing.reserve}
             collapsible
             onCopy={copy}

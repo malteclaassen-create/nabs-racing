@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, Notice, CardHead } from "./ui.jsx";
+import { ErrorBox, Notice, CardHead, HelpNote } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
@@ -134,20 +134,26 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       {view === "signups" && (
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="Attendance page" title="Who can sign up" />
-        <p className="text-sm text-light">
-          <strong className="font-semibold text-medium">Auto</strong> follows the general rule in Notifications:{" "}
-          {rule?.attendanceOpenDays
-            ? `sign-up opens ${rule.attendanceOpenDays} day${rule.attendanceOpenDays === 1 ? "" : "s"} before the race at ${String(rule.attendanceOpenHour).padStart(2, "0")}:00 German time.`
-            : "no rule set, so every race is open as soon as it exists."}{" "}
-          <strong className="font-semibold text-medium">Open</strong> and{" "}
-          <strong className="font-semibold text-medium">Closed</strong> decide one race yourself. A race stays on the
-          page until you save its result, so a round that has already run keeps taking late answers.
-        </p>
-        <p className="text-sm text-light">
-          The eye takes a race off the attendance page altogether, sign-up reminders included, for a session
-          that is in the calendar early, or one that isn&rsquo;t happening after all. It keeps its date, its
-          calendar card and its results, and a crossed-out eye here is the way back.
-        </p>
+        <p className="text-sm text-light">Which races are taking answers, and which are on the page at all.</p>
+        <HelpNote label="How the switches work">
+          <ul className="space-y-1">
+            <li>
+              <strong className="font-semibold text-medium">Auto</strong> follows the rule in Notifications:{" "}
+              {rule?.attendanceOpenDays
+                ? `sign-up opens ${rule.attendanceOpenDays} day${rule.attendanceOpenDays === 1 ? "" : "s"} before the race at ${String(rule.attendanceOpenHour).padStart(2, "0")}:00 German time.`
+                : "no rule set, so every race is open as soon as it exists."}
+            </li>
+            <li>
+              <strong className="font-semibold text-medium">Open</strong> and{" "}
+              <strong className="font-semibold text-medium">Closed</strong> decide one race yourself.
+            </li>
+            <li>A race keeps taking late answers until you save its result.</li>
+            <li>
+              The eye takes a race off the attendance page, reminders included. It keeps its date, its calendar card
+              and its results. A crossed-out eye puts it back.
+            </li>
+          </ul>
+        </HelpNote>
 
         {upcoming.length === 0 ? (
           <p className="text-sm text-light">No upcoming races in this series.</p>
