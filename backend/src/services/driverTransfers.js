@@ -93,7 +93,7 @@ export function teamForRound(changes, roundNumber, fallback = null) {
 
 // The round the season is about to drive: the lowest scored round without
 // results. A change from that round on is a change that applies today.
-async function nextRoundNumber(prisma, seasonId) {
+export async function nextRoundNumber(prisma, seasonId) {
   const rows = await prisma.$queryRawUnsafe(
     `SELECT MIN("number") AS n FROM "Race"
       WHERE "seasonId" = ? AND "number" IS NOT NULL AND "isCompleted" = 0`,
@@ -316,6 +316,62 @@ export async function removeTransfer(prisma, { driverId, changeId, dryRun = fals
     }
   });
   return { ...summary, applied: true };
+}
+
+// Make the roster say what the transfers say for the round being driven next.
+//
+// "From round 5 they drive for Ferrari" has to be true everywhere on the site
+// from the moment round 5 is the round ahead — the team pages, the standings'
+// team column, the entry list — not only once round 5's result is saved. So
+// whenever "the next round" moves (a round is saved, its results are wiped, a
+// race is deleted, the calendar is renumbered, the server boots), every driver
+// with a change on record is put where their changes say they are now. A
+// driver without a change on record is never touched.
+//
+// Returns the drivers moved, for the caller's log line.
+export async function syncRosterToTransfers(prisma, seasonId) {
+  if (!seasonId) return [];
+  const changes = byDriver(await readTransfers(prisma, { seasonId }));
+  if (!changes.size) return [];
+  const next = await nextRoundNumber(prisma, seasonId);
+  const [drivers, teams] = await Promise.all([
+    prisma.driver.findMany({ where: { id: { in: [...changes.keys()] } } }),
+    prisma.team.findMany({ where: { seasonId } }),
+  ]);
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const moved = [];
+  for (const driver of drivers) {
+    // Nothing recorded for the next round yet (their only change is further
+    // ahead) means the team of the last round they drove: that is where a
+    // driver who was already moved for a round since wiped has to go back to.
+    const want =
+      teamForRound(changes.get(driver.id), next, null) ??
+      (await lastDrivenTeamBefore(prisma, driver, next));
+    if (!want || want === driver.teamId) continue;
+    const team = teamById.get(want);
+    if (!team) continue;
+    await prisma.driver.update({
+      where: { id: driver.id },
+      data: { teamId: team.id, tier: team.tier, isActive: team.tier === 0 ? driver.isActive : true },
+    });
+    moved.push({ driverId: driver.id, teamId: team.id });
+  }
+  return moved;
+}
+
+// The same, for every season that has a change on record. Runs at boot so a
+// database that was updated while the server was down catches up.
+export async function syncAllRostersToTransfers(prisma) {
+  let rows = [];
+  try {
+    rows = await prisma.$queryRawUnsafe(`SELECT DISTINCT "seasonId" FROM "DriverTeamChange" WHERE "seasonId" IS NOT NULL`);
+  } catch {
+    return 0; // table not there yet
+  }
+  let n = 0;
+  for (const r of rows) n += (await syncRosterToTransfers(prisma, r.seasonId)).length;
+  if (n) console.log(`[transfers] roster caught up with recorded transfers: ${n} driver(s) moved`);
+  return n;
 }
 
 function lastDrivenTeam(plan) {

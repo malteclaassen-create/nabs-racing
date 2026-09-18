@@ -84,7 +84,7 @@ import {
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
-import { applyTransfer, removeTransfer, readTransfers } from "../services/driverTransfers.js";
+import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers } from "../services/driverTransfers.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
   dbMergeDuplicateAnswers,
@@ -3724,6 +3724,9 @@ router.put("/events/:id", async (req, res, next) => {
     // The Discord post mirrors these details — keep an already-announced
     // message in sync without the admin having to hit Announce again.
     if (race.discordMessageId) syncRaceToDiscord(prisma, race.id).catch(() => {});
+    // Renumbering or retyping a round can change which round is next, and
+    // with it which recorded transfers have come (driverTransfers.js).
+    if (data.number !== undefined || type !== undefined) await syncRosterToTransfers(prisma, race.seasonId);
     res.json({ ok: true, race: { id: updated.id, number: updated.number, track: updated.track, date: updated.date } });
   } catch (e) {
     next(e);
@@ -3777,6 +3780,9 @@ router.delete("/races/:id/results", async (req, res, next) => {
         race.id
       )
       .catch(() => {});
+    // "The next round" has moved back, and a transfer recorded for the round
+    // just wiped has not happened yet: the roster follows (driverTransfers.js).
+    await syncRosterToTransfers(prisma, race.seasonId);
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -3811,6 +3817,9 @@ router.delete("/events/:id", async (req, res, next) => {
     }
     if (childId) await prisma.race.delete({ where: { id: childId } });
     await prisma.race.delete({ where: { id: race.id } });
+    // The calendar changed, so "the next round" may have: the roster follows
+    // the recorded transfers (driverTransfers.js).
+    await syncRosterToTransfers(prisma, race.seasonId);
     res.json({ ok: true });
   } catch (e) {
     next(e);

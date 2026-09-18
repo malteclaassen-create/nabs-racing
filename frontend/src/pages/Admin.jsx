@@ -4932,10 +4932,19 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy, al
           className={`inline-flex h-9 min-w-[8rem] flex-1 basis-32 items-center gap-2 rounded-lg border border-border bg-surface2/60 pl-2.5 pr-1 text-sm font-semibold ${
             d.isActive ? "text-dark" : "text-light line-through"
           }`}
-          title={d.isActive ? d.name : `${d.name} (inactive)`}
+          title={
+            d.leaving
+              ? `${d.name}: drives for ${d.leaving.toTeamName} from round ${d.leaving.fromRound} (recorded transfer)`
+              : d.isActive ? d.name : `${d.name} (inactive)`
+          }
         >
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: team.color || "#888" }} />
           <span className="truncate">{d.name}</span>
+          {d.leaving && (
+            <span className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-brand">
+              → R{d.leaving.fromRound}
+            </span>
+          )}
           <button
             type="button"
             disabled={busy}
@@ -4947,6 +4956,18 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy, al
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
+        </span>
+      ))}
+      {/* Booked to join from a round still ahead (the Transfers tab): shown
+          here already so the seat is not filled twice by mistake. */}
+      {(team.incoming || []).map((m) => (
+        <span
+          key={`in-${m.driverId}`}
+          className="inline-flex h-9 min-w-[8rem] flex-1 basis-32 items-center gap-2 rounded-lg border border-dashed border-brand/60 pl-2.5 pr-2 text-sm font-semibold text-medium"
+          title={`${m.name} joins from ${m.fromTeamName} from round ${m.fromRound} (recorded transfer)`}
+        >
+          <span className="truncate">{m.name}</span>
+          <span className="ml-auto shrink-0 font-mono text-[9px] font-bold uppercase tracking-wider text-brand">from R{m.fromRound}</span>
         </span>
       ))}
       {team.tier === 0 && expanded && drivers.length > 0 && (

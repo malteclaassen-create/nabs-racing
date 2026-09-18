@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 import { DEFAULT_POINTS_TABLE } from "./pointsCalculator.js";
 import { writeConstructorScores } from "./constructorScores.js";
-import { readTransfers, byDriver, teamForRound } from "./driverTransfers.js";
+import { readTransfers, byDriver, teamForRound, syncRosterToTransfers } from "./driverTransfers.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
@@ -229,25 +229,13 @@ export async function saveRaceResults(prisma, raceId, results) {
       data: { isCompleted: true },
     });
 
-    // A transfer entered in advance has now actually happened, so the roster
-    // catches up on its own: from this round on, the standings and the entry
-    // list say the new team without anybody going back to the Drivers tab.
-    // Only when the round really is the transfer's round or later.
-    if (roundNo != null) {
-      const teamById = new Map(teams.map((t) => [t.id, t]));
-      for (const [driverId, rows] of transfers) {
-        const want = teamForRound(rows, roundNo, null);
-        const driver = driverById.get(driverId);
-        if (!want || !driver || driver.teamId === want) continue;
-        const team = teamById.get(want);
-        if (!team) continue;
-        await tx.driver.update({
-          where: { id: driverId },
-          data: { teamId: team.id, tier: team.tier, isActive: team.tier === 0 ? driver.isActive : true },
-        });
-      }
-    }
   });
+
+  // Saving this round moves "the next round" on, and a transfer recorded for
+  // it has now come: the roster catches up on its own, so from here on the
+  // team pages, the standings and the entry list say the new team without
+  // anybody going back to the Drivers tab (driverTransfers.js).
+  if (race?.seasonId) await syncRosterToTransfers(prisma, race.seasonId);
 
   // Persist the Steam GUID from a confirmed AC import onto Driver.steamId. The
   // GUID (SteamID64) is a stable per-person identity — far more reliable than

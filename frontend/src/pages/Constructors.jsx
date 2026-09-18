@@ -92,11 +92,32 @@ function TeamCard({ team, index = 0, champion = false }) {
                 className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface2"
               >
                 <span className="font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
-                <span className="truncate text-light">{d.discordName}</span>
+                {d.leaving ? (
+                  <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-brand" title={`Drives for ${d.leaving.toTeamName} from round ${d.leaving.fromRound}`}>
+                    → {d.leaving.toTeamName} from R{d.leaving.fromRound}
+                  </span>
+                ) : (
+                  <span className="truncate text-light">{d.discordName}</span>
+                )}
               </Link>
             </li>
           ))}
-          {team.drivers.length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
+          {team.drivers.length === 0 && (team.incoming || []).length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
+          {/* Booked to join from a round still ahead: listed with the team
+              already, marked as such, so the line-up says what the league has
+              announced (the transfer market, /transfers). */}
+          {(team.incoming || []).map((m) => (
+            <li key={`in-${m.driverId}`}>
+              <Link
+                to={`/drivers/${m.driverId}`}
+                className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-brand/50 px-2 py-1.5 text-sm transition hover:bg-surface2"
+                title={`Joins from ${m.fromTeamName} from round ${m.fromRound}`}
+              >
+                <span className="font-display font-bold uppercase tracking-tight text-dark">{m.name}</span>
+                <span className="truncate font-mono text-[10px] font-bold uppercase tracking-wider text-brand">joins from R{m.fromRound}</span>
+              </Link>
+            </li>
+          ))}
         </ul>
       </div>
     </div>
