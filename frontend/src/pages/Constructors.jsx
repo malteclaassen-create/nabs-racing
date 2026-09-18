@@ -9,6 +9,7 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton
 import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 
 // Rounds that actually have scores recorded (for the progression chart).
 function completedRounds(data) {
@@ -20,6 +21,7 @@ function completedRounds(data) {
 // is decided) puts the golden champion treatment on that team.
 function TierBlock({ id, tier, standings, teams, title, championTeamId, decided = false, showMovement = false }) {
   const rows = standings.standings;
+  const transfers = useTransfersVisible();
   const done = completedRounds(standings);
   const lastRound = done[done.length - 1];
 
@@ -54,6 +56,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
             past and booked, live on the transfer market page, one tap away. */}
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
+          {transfers && (
           <Link
             to="/transfers"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
@@ -64,6 +67,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
             </svg>
             Team changes
           </Link>
+          )}
         </div>
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {orderedTeams.map((team, i) => (

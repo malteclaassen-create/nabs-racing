@@ -16,7 +16,7 @@
 //
 //   driven    they drove that round for this team (their own seat)
 //   sub       a reserve drive FOR this team (subForTeamId) — their own team is
-//             untouched by it
+//             untouched by it, and rides along as fromTeamId
 //   absent    the round is over and they were not in it; the team is the one
 //             they were with at the time, shown for the tooltip only
 //   planned   a round still ahead that a recorded transfer already covers
@@ -93,7 +93,9 @@ export function buildTeamHistory({ drivers, teams, rounds, results, changes, rou
         const teamId = resultTeamId(res, driverById);
         if (res.subForTeamId) {
           own = res.teamId ?? recordedTeam ?? own;
-          cells[n] = { teamId, status: "sub" };
+          // Their own seat rides along, so the transfer centre can list the
+          // drive as "Reserve -> Ferrari" like a loan.
+          cells[n] = { teamId, status: "sub", fromTeamId: own };
         } else {
           own = teamId ?? recordedTeam ?? own;
           cells[n] = { teamId: own, status: "driven" };
