@@ -111,7 +111,18 @@ function Stat({ label, children }) {
 const TV_SEEN_KEY = "nabs_live_tv_seen";
 
 
-function SessionHeader({ session, receivedAt, links, patreonUrl }) {
+// "x min ago" / "2 h ago" for the ended-session strip; null when unknown.
+function agoLabel(ts, now = Date.now()) {
+  if (!ts) return null;
+  const min = Math.max(0, Math.round((now - ts) / 60000));
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} h ${m} min ago` : `${h} h ago`;
+}
+
+function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = null }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
   const isRace = session.type === "Race";
@@ -160,7 +171,24 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
           sits above the numbers rather than among them, and stays put on phones
           instead of hiding behind the details toggle — a caution is not a
           detail. Yellow, because that is what it is. */}
-      {session.safetyCar && (
+      {/* The session is over and this is its result, not a live board: said
+          in so many words, with how old the last data is, so a result held on
+          the page for a while is never mistaken for a race still running. */}
+      {session.finished && (
+        <div
+          role="status"
+          className="flex items-center gap-2.5 border-b border-border bg-surface2/70 px-4 py-2 sm:px-6"
+        >
+          <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-light" />
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-medium sm:text-xs">
+            Session ended · final classification
+          </span>
+          {agoLabel(lastDataAt) && (
+            <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-light">last data {agoLabel(lastDataAt)}</span>
+          )}
+        </div>
+      )}
+      {session.safetyCar && !session.finished && (
         <div
           role="status"
           className="flex items-center gap-2.5 border-b border-amber-500/40 bg-amber-500/15 px-4 py-2 sm:px-6"
@@ -239,10 +267,12 @@ function SessionHeader({ session, receivedAt, links, patreonUrl }) {
           {!open && (
             <div className={`order-3 items-baseline gap-2 font-mono text-xs ${showMore ? "hidden sm:flex" : "flex"}`}>
               <span className="whitespace-nowrap text-[10px] uppercase tracking-wider text-light">
-                {isRace && session.lapsLeft != null ? "Laps left" : "Time left"}
+                {session.finished ? "Status" : isRace && session.lapsLeft != null ? "Laps left" : "Time left"}
               </span>
               <span className="whitespace-nowrap font-bold tabular-nums text-dark">
-                {isRace && session.lapsLeft != null ? (
+                {session.finished ? (
+                  "Finished"
+                ) : isRace && session.lapsLeft != null ? (
                   <>{session.lapsLeft}<span className="font-normal text-light"> / {session.raceLaps}</span></>
                 ) : (
                   <Countdown baseMs={session.remainingMs} receivedAt={receivedAt} resetKey={`${session.type}|${session.sessionIndex}|${session.trackName}`} />
@@ -3594,6 +3624,7 @@ export default function Live() {
             receivedAt={receivedAt}
             links={extLinks}
             patreonUrl={social.data?.patreon}
+            lastDataAt={board?.lastDataAt ?? null}
           />
 
           {quiet ? (

@@ -125,6 +125,14 @@ const COOLDOWN_HOLD_MS = 3 * 60 * 1000;
 // no per-car telemetry in between, so the stale threshold must sit comfortably
 // above that gap or the badge flaps to "Reconnecting" between snapshots.
 const STALE_MS = 75000; // no upstream message for this long => mark stale
+// A race or qualifying that has sent NOTHING for this long is over, whatever
+// the last snapshot said. Born after Baku, 2026-09-18: the server went quiet
+// after the flag without ever sending the session-change snapshot the result
+// hold waits for, so a board from mid-race — safety car out, eight laps to
+// go, 36 "on track" — stood on the live page for two hours. Far above any
+// pause a running session produces (a red flag still streams snapshots), and
+// far below the two hours it took to notice.
+const SILENCE_ENDS_SESSION_MS = 5 * 60 * 1000;
 // The longest a session could plausibly have been running. A reading past this
 // is not a long race, it is an anchor left over from something else.
 const MAX_SESSION_S = 6 * 60 * 60;
@@ -373,6 +381,10 @@ function createRelay(server) {
   // bottom. Cleared with the stint history on a session change.
   const lastRacePosByGuid = new Map();
   let lastMessageAt = 0;
+  // The session key a silent race/qualifying was declared over for (see
+  // getBoard), so the verdict is reached once per session and a resumed feed
+  // for a NEW session is never mistaken for the old one coming back.
+  let endedBySilenceKey = null;
   // When the last FULL snapshot landed. `lastMessageAt` counts telemetry too,
   // and an in-game report has to know whether the session state it is about to
   // stamp itself with is a live reading or the last thing a dead socket left
@@ -796,6 +808,9 @@ function createRelay(server) {
   // before accumulateStints clears the per-session maps, or the result would
   // be built from the wiped state it is supposed to preserve.
   function ingestSnapshot(next) {
+    // Data arriving is proof of life and of freshness, whichever way it came
+    // in (the wire, or a test feeding snapshots straight in).
+    lastMessageAt = Date.now();
     // Session change away from a RACE: freeze the final classification so the
     // result stays on the board for RESULT_HOLD_MS (see getBoard).
     const oldSi = status?.SessionInfo;
@@ -808,7 +823,7 @@ function createRelay(server) {
       if (board.ok && board.session) {
         // Frozen means over: the clock must not keep counting down.
         board.session = { ...board.session, remainingMs: 0, finished: true };
-        finishedRace = { board, until: Date.now() + RESULT_HOLD_MS };
+        finishedRace = { board, until: Date.now() + RESULT_HOLD_MS, key: sessionKeyOf(oldSi || {}, status?.TrackInfo || {}) };
       }
     }
     status = next;
@@ -1024,6 +1039,7 @@ function createRelay(server) {
   // used to mark a pit entry, and the stop that followed then reported a
   // pit-lane time counted from whenever that flicker happened.
   function ingestTelemetry(live) {
+    lastMessageAt = Date.now();
     if (!live || typeof live.CarID !== "number") return;
     liveByCar.set(live.CarID, live);
     const guid = carIdToGuid.get(live.CarID);
@@ -1286,15 +1302,46 @@ function createRelay(server) {
   // somebody out on track releases it COOLDOWN_HOLD_MS after that was first
   // seen (see the constant for why).
   function getBoard() {
+    const type = status?.SessionInfo?.Type;
+    const key = status ? sessionKeyOf(status.SessionInfo || {}, status.TrackInfo || {}) : null;
+    const silentFor = Date.now() - lastMessageAt;
+    const silent = !!status && silentFor > SILENCE_ENDS_SESSION_MS;
+
+    // A race or qualifying that has gone silent is over: freeze its final
+    // classification once, exactly as a session change would have, and hold it
+    // for the usual time. Reached once per session key.
+    if (silent && (type === 3 || type === 2) && endedBySilenceKey !== key) {
+      endedBySilenceKey = key;
+      if (!finishedRace && type === 3) {
+        const board = buildBoard();
+        if (board.ok && board.session) {
+          board.session = { ...board.session, remainingMs: 0, finished: true, endedBySilence: true };
+          finishedRace = { board, until: Date.now() + RESULT_HOLD_MS, key };
+        }
+      }
+    }
+
     if (finishedRace) {
-      const type = status?.SessionInfo?.Type;
-      if (Date.now() > finishedRace.until || type === 3 || type === 2) {
+      // Released by its own clock, or by a NEW race or qualifying — not by the
+      // very session the result is of, which is still the snapshot on file when
+      // the server went quiet rather than moving on.
+      const newSession = (type === 3 || type === 2) && key !== finishedRace.key;
+      if (Date.now() > finishedRace.until || newSession) {
         finishedRace = null;
-      } else if (someoneDriving()) {
+      } else if (!silent && someoneDriving()) {
+        // Nobody is driving on a silent server, whatever the last snapshot's
+        // pit flags say; the cool-down release is for a live practice only.
         finishedRace.drivingSince ??= Date.now();
         if (Date.now() - finishedRace.drivingSince > COOLDOWN_HOLD_MS) finishedRace = null;
       }
-      if (finishedRace) return { ...finishedRace.board, connected: upstreamOpen(), updatedAt: Date.now() };
+      if (finishedRace) return { ...finishedRace.board, connected: upstreamOpen(), stale: silentFor > STALE_MS, lastDataAt: lastMessageAt, updatedAt: Date.now() };
+    }
+
+    // A silent race or qualifying whose result has been shown (or was never
+    // buildable) is off air, not a live board from hours ago. A practice is
+    // left as it is: its entry list and best laps are worth keeping up.
+    if (silent && (type === 3 || type === 2) && endedBySilenceKey === key) {
+      return { ok: false, connected: upstreamOpen(), server: server.key, session: null, entries: [], stale: true, lastDataAt: lastMessageAt, updatedAt: Date.now() };
     }
     return buildBoard();
   }
@@ -1351,6 +1398,18 @@ function createRelay(server) {
     if (si.Type === 1) applyImportedBests(byGuid, si);
 
     const entries = [...byGuid.values()];
+
+    // No telemetry for STALE_MS means nobody is out there, whatever the last
+    // snapshot's flags say: a car on track streams telemetry continuously. So
+    // a stale board carries no "driving now", no safety car and no on-track
+    // count — the numbers that made a two-hour-old race look live.
+    const stale = Date.now() - lastMessageAt > STALE_MS;
+    if (stale) {
+      for (const e of entries) {
+        e.onTrack = false;
+        e.inPits = true;
+      }
+    }
 
     // Ranking. A RACE orders by the actual running order (telemetry
     // RacePosition, held for leavers) — sorting a race by best lap made the
@@ -1538,7 +1597,8 @@ function createRelay(server) {
       ok: true,
       connected: upstreamOpen(),
       server: server.key,
-      stale: Date.now() - lastMessageAt > STALE_MS,
+      stale,
+      lastDataAt: lastMessageAt,
       session: {
         type: sessionTypeName(si.Type),
         name: si.Name || "",
@@ -1657,6 +1717,8 @@ function createRelay(server) {
       sessionStartedAt = null;
       startedAtKey = null;
       lastSnapshotAt = 0;
+      lastMessageAt = 0;
+      endedBySilenceKey = null;
       trackMapKey = null;
       trackMap = null;
     },
