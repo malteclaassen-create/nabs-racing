@@ -100,6 +100,7 @@ const SECTIONS = {
   results: (label) => `${label} results and race calendar`,
   calendar: (label) => `${label} results and race calendar`,
   records: () => "League records and Hall of Fame",
+  transfers: (label) => `${label} transfers and team history`,
   live: () => "Live timing",
   attendance: (label) => `${label} sign-ups and attendance`,
 };

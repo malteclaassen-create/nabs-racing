@@ -69,7 +69,7 @@ function AuthControl({ mobile = false }) {
 // going back Home. The docked pill fades in/out as you move on/off these
 // pages — see .nav-season-dock. (Paths are checked with the /s/<slug> series
 // prefix stripped.)
-const SEASON_PAGES = ["/drivers", "/constructors", "/races"];
+const SEASON_PAGES = ["/drivers", "/constructors", "/races", "/transfers"];
 
 // Nav links, built per render: series-scoped pages carry the /s/<slug> prefix
 // of the series being viewed; Race Info (downloads) is global and has none.
@@ -178,6 +178,7 @@ const NAV_ICONS = {
   drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
   constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
   records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
+  transfers: <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>,
   // Four rows at the bottom of the phone menu used to share this one speech
   // bubble, which made them read as one thing said four times. They are four
   // different errands, so they get four marks: say something, read a reply,
@@ -190,7 +191,7 @@ const NAV_ICONS = {
 
 // The two pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
-const STANDINGS_PAGES = ["/drivers", "/constructors", "/records"];
+const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
 
 function StandIcon({ d }) {
   // overflow-visible so a stroke sitting right at the viewBox edge (the group
@@ -298,6 +299,7 @@ function StandingsNav({ seriesPath }) {
         >
           {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings", "nav-drivers")}
           {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
+          {row(seriesPath("/transfers"), <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>, "Transfers", "Team changes, round by round")}
           {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
         </div>
       </div>
@@ -922,6 +924,7 @@ export default function NavBar() {
               <MobileMenuLabel>Standings</MobileMenuLabel>
               <MobileRow to={seriesPath("/drivers")} icon={NAV_ICONS.drivers} label="Drivers" />
               <MobileRow to={seriesPath("/constructors")} icon={NAV_ICONS.constructors} label="Constructors" />
+              <MobileRow to={seriesPath("/transfers")} icon={NAV_ICONS.transfers} label="Transfers" sub="Team changes, round by round" />
               <MobileRow to={seriesPath("/records")} icon={NAV_ICONS.records} label="Hall of Fame" sub="All-time records" />
 
               <MobileMenuLabel>More</MobileMenuLabel>

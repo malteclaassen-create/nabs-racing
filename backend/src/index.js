@@ -55,6 +55,7 @@ import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
 import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/notifications.js";
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
+import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
@@ -69,6 +70,9 @@ ensureAppSchema(prisma)
   // to databases whose races were imported under the old rule — this is the
   // only way it reaches the hosted instance, which has no shell for scripts.
   .then(() => recomputeStintsOnce(prisma))
+  // Transfers recorded against a round: the roster catches up with any whose
+  // round has come while the server was down (services/driverTransfers.js).
+  .then(() => syncAllRostersToTransfers(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   .catch((e) => console.error("schema upkeep:", e));

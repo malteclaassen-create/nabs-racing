@@ -7,6 +7,8 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
+import { readTeamHistory } from "../services/teamHistoryService.js";
+import { readTransfers, byDriver, nextRoundNumber } from "../services/driverTransfers.js";
 
 const router = Router();
 
@@ -88,7 +90,59 @@ router.get("/", async (req, res, next) => {
         }
       }
     }
+    // The moves booked for rounds still ahead, so a team page can say who is
+    // joining from when and who is on the way out. The roster itself only
+    // follows once the round has come (driverTransfers.js); until then the
+    // driver stays listed with their current team, with a note.
+    await annotateUpcomingMoves(prisma, seasonId, teams);
     res.json(teams);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Adds `incoming` to every team ([{driverId, name, fromRound, fromTeamId,
+// fromTeamName}]) and `leaving` to every driver ({fromRound, toTeamId,
+// toTeamName} or null): the FIRST recorded change per driver whose round has
+// not come yet, if it points somewhere other than where they are.
+async function annotateUpcomingMoves(prisma, seasonId, teams) {
+  for (const t of teams) {
+    t.incoming = [];
+    for (const d of t.drivers) d.leaving = null;
+  }
+  const changes = byDriver(await readTransfers(prisma, { seasonId }));
+  if (!changes.size) return;
+  const next = await nextRoundNumber(prisma, seasonId);
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const seat = new Map();
+  for (const t of teams) for (const d of t.drivers) seat.set(d.id, { driver: d, team: t });
+  for (const [driverId, rows] of changes) {
+    const here = seat.get(driverId);
+    if (!here) continue;
+    const ahead = rows.filter((c) => c.fromRound >= next).sort((a, b) => a.fromRound - b.fromRound)[0];
+    if (!ahead || ahead.teamId === here.team.id) continue;
+    const to = teamById.get(ahead.teamId);
+    if (!to) continue;
+    here.driver.leaving = { fromRound: ahead.fromRound, toTeamId: to.id, toTeamName: to.name };
+    to.incoming.push({ driverId, name: here.driver.name, fromRound: ahead.fromRound, fromTeamId: here.team.id, fromTeamName: here.team.name });
+  }
+  for (const t of teams) t.incoming.sort((a, b) => a.fromRound - b.fromRound || a.name.localeCompare(b.name));
+}
+
+// GET /api/teams/history -> the season's transfer market: one row per driver,
+// one column per scored round, each cell the team they drove for (or are booked
+// to drive for), plus the season's moves (services/teamHistoryService.js).
+// Feeds the public Transfers page and the admin Transfers tab alike; nothing
+// private is in it (names, flags, pictures and team ids only). Declared before
+// /:id/history so the word is not read as a team id.
+router.get("/history", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
+    if (!seasonId) return res.json({ nextRound: 1, rounds: [], teams: [], drivers: [], moves: [] });
+    res.json(await readTeamHistory(prisma, seasonId));
   } catch (e) {
     next(e);
   }

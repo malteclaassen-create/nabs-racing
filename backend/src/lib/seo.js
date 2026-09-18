@@ -63,6 +63,7 @@ const SERIES_SEGMENTS = new Set([
   "constructors",
   "teams",
   "records",
+  "transfers",
   "races",
   "results",
   "calendar",
@@ -247,7 +248,7 @@ const SECTION_ALIASES = { results: "races", calendar: "races", teams: "construct
 // NOT /records: the Hall of Fame is all-time across every season (see
 // recordsService), so a season parameter there selects nothing and would only
 // clone the page.
-const SEASON_PAGES = new Set(["drivers", "constructors", "races", "attendance"]);
+const SEASON_PAGES = new Set(["drivers", "constructors", "races", "attendance", "transfers"]);
 const RACE_PAGES = new Set(["races"]);
 
 // The canonical query string ("" or "?season=3&race=abc"), built in a fixed
