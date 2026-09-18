@@ -13,6 +13,7 @@
 // fail or slow down the admin action / member action that caused it.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
+import { TRACK_EDITOR_ENABLED } from "./features.js";
 import { raceKickoff } from "./raceKickoff.js";
 import { readRaceTypes } from "./raceTypes.js";
 import { readHiddenRaceIds } from "./attendanceHidden.js";
@@ -846,7 +847,13 @@ async function trackEditorAnnouncements(prisma) {
 export async function announceFeatures(prisma) {
   let personal = [];
   try {
-    personal = await trackEditorAnnouncements(prisma);
+    if (TRACK_EDITOR_ENABLED) {
+      personal = await trackEditorAnnouncements(prisma);
+    } else {
+      // The editor is off the site (lib/features.js): a bell entry pointing
+      // at it would lead to a not-found page, so the ones already sent go.
+      await prisma.$executeRaw`DELETE FROM "Notification" WHERE "dedupeKey" LIKE 'feature:track-editor:%'`;
+    }
   } catch {
     /* best-effort */
   }
