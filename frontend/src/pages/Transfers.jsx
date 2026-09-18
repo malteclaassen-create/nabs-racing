@@ -7,7 +7,7 @@ import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { DriverAvatar, EmptyState, ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton } from "../components/ui.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
-import TeamHistoryGrid, { orderTeams } from "../components/TeamHistoryGrid.jsx";
+import TeamHistoryGrid, { orderTeams, standingsMap } from "../components/TeamHistoryGrid.jsx";
 
 // ---------------------------------------------------------------------------
 // The public transfer market: who moved where this season, and every driver's
@@ -54,6 +54,9 @@ export default function Transfers() {
   useSeasonParam();
   const { current: season } = useSeason();
   const { data, loading, error, reload } = useApi(useCallback(() => api.transferMarket(), []));
+  // The championship order, so the grid can sort by points.
+  const standings = useApi(useCallback(() => api.driverStandings(), []));
+  const points = useMemo(() => standingsMap(standings.data), [standings.data]);
   const seasonName = seasonLabelOf(season);
   const heading = seasonName ? `${seasonName} Transfers` : "Transfers";
 
@@ -96,7 +99,13 @@ export default function Transfers() {
 
       <section className="reveal space-y-4">
         <SectionHeading eyebrow="Round by round" title="Driver team history" />
-        <TeamHistoryGrid data={data} driverHref={(d) => `/drivers/${d.id}`} teamHref={(t) => `/teams/${t.id}`} />
+        <TeamHistoryGrid
+          key={points ? "pts" : "plain"}
+          data={data}
+          standings={points}
+          driverHref={(d) => `/drivers/${d.id}`}
+          teamHref={(t) => `/teams/${t.id}`}
+        />
       </section>
     </div>
   );
