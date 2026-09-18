@@ -45,18 +45,29 @@ export function worthShowing(d) {
 function Cell({ cell, team, round, driverName }) {
   const name = team?.name || cell?.teamId || "?";
   const base = "flex h-8 w-8 items-center justify-center rounded-md sm:h-9 sm:w-9";
-  if (!cell || cell.status === "absent") {
+  if (!cell) {
     return (
-      <span
-        className={`${base} bg-surface2 text-light`}
-        title={`R${round.number} ${round.track}: ${driverName} did not race`}
-        aria-label="did not race"
-      >
+      <span className={`${base} bg-surface2 text-light`} title={`R${round.number} ${round.track}: no entry`} aria-label="no entry">
         <span className="font-mono text-xs">–</span>
       </span>
     );
   }
   const mark = <TeamLogo id={cell.teamId} name={name} color={team?.color} logoUrl={team?.logoUrl} size={20} />;
+  if (cell.status === "absent") {
+    // A driver is always in a team, whether or not they started that night:
+    // the mark of the team they were with, dimmed, with a dash in the corner.
+    return (
+      <span
+        className={`${base} relative bg-surface2`}
+        title={`R${round.number} ${round.track}: ${driverName} did not race (with ${name})`}
+      >
+        <span className="opacity-40 grayscale">{mark}</span>
+        <span className="absolute -right-1 -top-1 rounded-full bg-card px-1 font-mono text-[9px] font-bold leading-4 text-light ring-1 ring-border">
+          –
+        </span>
+      </span>
+    );
+  }
   if (cell.status === "driven") {
     return (
       <span className={`${base}`} style={{ backgroundColor: wash(team?.color) }} title={`R${round.number} ${round.track}: ${name}`}>
@@ -127,7 +138,7 @@ function Legend() {
   const box = "inline-flex h-5 w-5 items-center justify-center rounded";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[11px] text-light">
-      <span className="flex items-center gap-1.5"><span className={`${box} bg-surface2`}>–</span> did not race</span>
+      <span className="flex items-center gap-1.5"><span className={`${box} bg-surface2 text-[9px] font-bold text-light`}>–</span> did not race (their team at the time)</span>
       <span className="flex items-center gap-1.5"><span className={`${box} bg-surface2 text-[9px] font-bold text-medium`}>S</span> reserve drive for that team</span>
       <span className="flex items-center gap-1.5"><span className={`${box} border-2 border-dashed border-brand`} /> planned move</span>
       <span className="flex items-center gap-1.5"><span className={`${box} bg-surface2 opacity-40`} /> not driven yet</span>
@@ -185,13 +196,16 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
       <>
         <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={teamById.get(d.teamId)?.color} size={28} />
         <span className="min-w-0">
-          <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{d.name}</span>
+          <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+            {d.number != null && <span className="mr-1.5 font-mono text-[10px] font-bold text-light">{d.number}</span>}
+            {d.name}
+          </span>
           {d.formerName && <span className="block truncate font-mono text-[10px] text-light">raced as {d.formerName}</span>}
         </span>
         <Flag code={d.country} className="ml-auto" />
       </>
     );
-    const cls = "flex min-w-[10rem] items-center gap-2";
+    const cls = "flex w-[9.5rem] items-center gap-2 sm:w-[12rem]";
     return driverHref ? (
       <Link to={driverHref(d)} className={`${cls} rounded-lg transition hover:text-brand`}>
         {inner}
@@ -236,8 +250,7 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-surface2/60 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                <th className="px-2 py-2 text-left">#</th>
-                <th className="px-2 py-2 text-left">Driver</th>
+                <th className="sticky left-0 z-10 bg-surface2 px-2 py-2 text-left shadow-[1px_0_0_var(--c-border)]">Driver</th>
                 {rounds.map((r) => (
                   <th
                     key={r.id}
@@ -254,8 +267,9 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
             <tbody className="divide-y divide-border">
               {rows.map((d) => (
                 <tr key={d.id} className={`transition hover:bg-surface2/40 ${d.isActive ? "" : "opacity-60"}`}>
-                  <td className="px-2 py-1.5 font-mono text-xs text-light">{d.number ?? ""}</td>
-                  <td className="px-2 py-1.5">{nameCell(d)}</td>
+                  {/* Stays put while the rounds scroll sideways on a phone, so a
+                      row never loses its name. */}
+                  <td className="sticky left-0 z-10 bg-card px-2 py-1.5 shadow-[1px_0_0_var(--c-border)]">{nameCell(d)}</td>
                   {rounds.map((r) => {
                     const cell = d.cells?.[r.number];
                     const team = cell ? teamById.get(cell.teamId) : null;
