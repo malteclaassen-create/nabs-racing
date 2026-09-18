@@ -197,12 +197,42 @@ export async function seasonIdsOfSeries(prisma, seriesId) {
 }
 
 // Map seasonId -> seriesId for every season (missing/unmigrated -> null).
+// A SQLite read that hits the file while the boot-time schema upkeep is still
+// writing to it fails with "database is locked". That is the cold start
+// right after a deploy, and exactly when the first page load arrives.
+function isBusyError(e) {
+  return /locked|busy|SQLITE_BUSY|connection pool/i.test(String(e?.message || e));
+}
+function isMissingSchema(e) {
+  return /no such (column|table)/i.test(String(e?.message || e));
+}
+async function readWithRetry(fn, attempts = 4) {
+  let delay = 120;
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= attempts - 1 || !isBusyError(e)) throw e;
+      await new Promise((r) => setTimeout(r, delay));
+      delay *= 2;
+    }
+  }
+}
+
+// seasonId -> seriesId (null while unassigned). An EMPTY map means the column
+// is not there yet (a database from before the series model, before the boot
+// upkeep added it), and every caller then treats the seasons as belonging
+// everywhere. It used to mean that for any error at all: a read that hit the
+// file while the boot upkeep held it locked came back empty, and the seasons
+// route answered with every season of every series until the next refresh.
+// Now a busy file is retried, and any other failure is the caller's error.
 export async function seasonSeriesMap(prisma) {
   try {
-    const rows = await prisma.$queryRawUnsafe(`SELECT "id", "seriesId" FROM "Season"`);
+    const rows = await readWithRetry(() => prisma.$queryRawUnsafe(`SELECT "id", "seriesId" FROM "Season"`));
     return new Map(rows.map((r) => [r.id, r.seriesId || null]));
-  } catch {
-    return new Map();
+  } catch (e) {
+    if (isMissingSchema(e)) return new Map();
+    throw e;
   }
 }
 
