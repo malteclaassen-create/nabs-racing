@@ -1221,3 +1221,96 @@ describe("liveTiming carried training bests", () => {
     expect(board.entries[0].imported).toBeUndefined();
   });
 });
+
+// A race whose server simply stops talking — no session-change snapshot, no
+// close, nothing — is over, and must not stand on the page as a live board.
+// Baku, 2026-09-18: two hours of "safety car out, eight laps to go".
+describe("liveTiming: a silent race is over", () => {
+  beforeEach(() => {
+    reset();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-18T19:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const race = () =>
+    fullSnap({ laps: 36, drivers: {
+      sc: { name: "Pace", laps: 28, pos: 1, carId: 9, skin: "sc", model: "drf_audi_rs5_dtm_2019" },
+      g1: { name: "Alice", laps: 28, pos: 2, carId: 1, crossedAt: T0 },
+      g2: { name: "Bob", laps: 28, pos: 3, carId: 2, crossedAt: T0 + 344 },
+    } });
+
+  it("still reads as live while the server is talking", () => {
+    ingest(race());
+    const board = getBoard();
+    expect(board.ok).toBe(true);
+    expect(board.stale).toBe(false);
+    expect(board.session.safetyCar).toBe(true);
+    expect(board.session.onTrackCount).toBeGreaterThan(0);
+    expect(board.session.finished).toBeUndefined();
+  });
+
+  it("drops the on-track claims once the feed is stale, before anything is declared over", () => {
+    ingest(race());
+    vi.advanceTimersByTime(2 * 60 * 1000);
+    const board = getBoard();
+    expect(board.ok).toBe(true);
+    expect(board.stale).toBe(true);
+    expect(board.session.finished).toBeUndefined();
+    expect(board.session.safetyCar).toBe(false);
+    expect(board.session.onTrackCount).toBe(0);
+    expect(board.entries.every((e) => !e.onTrack)).toBe(true);
+  });
+
+  it("freezes the result after five silent minutes, then goes off air", () => {
+    ingest(race());
+    vi.advanceTimersByTime(6 * 60 * 1000);
+    const frozen = getBoard();
+    expect(frozen.ok).toBe(true);
+    expect(frozen.session.finished).toBe(true);
+    expect(frozen.session.endedBySilence).toBe(true);
+    expect(frozen.session.remainingMs).toBe(0);
+    expect(frozen.session.safetyCar).toBe(false);
+    expect(frozen.lastDataAt).toBe(new Date("2026-09-18T19:00:00Z").getTime());
+    // The result of THIS session does not release itself: the snapshot on file
+    // is still the race the result is of.
+    expect(getBoard().session.finished).toBe(true);
+    // The hold runs out, and a silent race is off air rather than live again.
+    vi.advanceTimersByTime(16 * 60 * 1000);
+    const after = getBoard();
+    expect(after.ok).toBe(false);
+    expect(after.session).toBe(null);
+    expect(after.stale).toBe(true);
+  });
+
+  it("comes back to life when the server talks again, and a new race releases the result", () => {
+    ingest(race());
+    vi.advanceTimersByTime(6 * 60 * 1000);
+    expect(getBoard().session.finished).toBe(true);
+    // The same session resumes sending: live again, no result in front of it
+    // (the hold is released by its own clock or a new session; a resumed feed
+    // is a live board underneath — the frozen copy stays until then).
+    ingest(race());
+    const held = getBoard();
+    expect(held.stale).toBe(false);
+    // A NEW race on the wire releases the old result at once.
+    ingest(fullSnap({ name: "Race 2", laps: 20, drivers: {
+      g1: { name: "Alice", laps: 1, pos: 1, carId: 1, crossedAt: T0 },
+    } }));
+    const next = getBoard();
+    expect(next.session.finished).toBeUndefined();
+    expect(next.session.raceLaps).toBe(20);
+  });
+
+  it("leaves a quiet practice up, with nobody on track", () => {
+    ingest(fullSnap({ type: 1, name: "Practice", drivers: {
+      g1: { name: "Alice", laps: 3, pos: 1, carId: 1 },
+    } }));
+    vi.advanceTimersByTime(30 * 60 * 1000);
+    const board = getBoard();
+    expect(board.ok).toBe(true);
+    expect(board.session).not.toBe(null);
+    expect(board.session.finished).toBeUndefined();
+    expect(board.session.onTrackCount).toBe(0);
+  });
+});
