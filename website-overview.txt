@@ -94,7 +94,10 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     when that round's result is saved; pick one already driven and the rounds
     since are re-attributed and their constructor points move, which the
     dialog spells out before you confirm. Booked moves are listed with a Take
-    back button, and the grid exports as CSV.
+    back button, and the grid exports as CSV. A "Needs attention" card lists
+    teams with more than two seats and drivers who exist twice in the season;
+    Merge folds a duplicate row into the one that stays (results, answers,
+    login, Steam id and empty profile fields move over, the other row goes).
   - Attendance tab, Activity: who is still turning up. Every driver against
     every round that has been saved, split into Tier 1, Tier 2 and the reserve
     pool. Two numbers per driver: the rounds they RACED (a DNF counts, a DNS

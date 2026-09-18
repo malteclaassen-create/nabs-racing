@@ -785,6 +785,9 @@ export const api = {
   transferDriver: (id, teamId, fromRound, preview = false) =>
     request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId, fromRound, preview }, auth: true }),
   driverTransfers: (id) => request(`/admin/drivers/${id}/transfers`, { auth: true }),
+  // Fold a duplicate row of the same driver into `keepId` (preview = dry run).
+  mergeDrivers: (keepId, dropId, preview = false) =>
+    request(`/admin/drivers/${keepId}/merge`, { method: "POST", body: { dropId, preview }, auth: true }),
   removeDriverTransfer: (id, changeId, preview = false) =>
     request(`/admin/drivers/${id}/transfers/${changeId}${preview ? "?preview=1" : ""}`, { method: "DELETE", auth: true }),
   // Remove one driver row from its season. Without force the backend answers

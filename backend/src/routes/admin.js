@@ -85,6 +85,7 @@ import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers } from "../services/driverTransfers.js";
+import { planMerge, mergeDrivers } from "../services/driverMerge.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
   dbMergeDuplicateAnswers,
@@ -2585,6 +2586,21 @@ router.delete("/drivers/:id/transfers/:changeId", async (req, res, next) => {
       dryRun: req.query.preview === "1",
     });
     res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/drivers/:id/merge  { dropId, preview? }
+//   Fold another row of the SAME driver (same season) into this one: results,
+//   answers, market entries, transfers, login, Steam id and empty profile
+//   fields move over, the other row is deleted. preview: true only reports
+//   what would move (services/driverMerge.js). 409 when both rows have a
+//   result in the same race.
+router.post("/drivers/:id/merge", async (req, res, next) => {
+  try {
+    const args = { keepId: req.params.id, dropId: req.body?.dropId };
+    res.json(req.body?.preview === true ? await planMerge(prisma, args) : await mergeDrivers(prisma, args));
   } catch (e) {
     next(e);
   }
