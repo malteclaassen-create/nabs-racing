@@ -261,6 +261,11 @@ const SECTIONS = {
     description: (s) =>
       `Every round of ${s}: full race classifications, qualifying, fastest laps, and the calendar of circuits and dates.`,
   },
+  transfers: {
+    title: (s) => `${s} transfers and team history`,
+    description: (s) =>
+      `The ${s} transfer market of the NABS Racing League: every team change, and which team each driver drove for in every round.`,
+  },
   records: {
     title: () => "League records and Hall of Fame",
     description: () =>

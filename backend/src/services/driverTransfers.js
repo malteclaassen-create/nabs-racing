@@ -289,9 +289,16 @@ export async function removeTransfer(prisma, { driverId, changeId, dryRun = fals
   const touched = plan.filter((p) => p.changed);
   const next = await nextRoundNumber(prisma, driver.seasonId);
   // With the change gone, "their team now" is whatever is still recorded for
-  // the next round, else the team of the last round they actually drove.
+  // the next round, else the team of the last round they actually drove — the
+  // last one the plan re-attributed, or, when the change had only rounds still
+  // ahead under it (booked for the next round and taken back before it was
+  // driven), the last round before it. Without that second look the roster
+  // stayed with the team the booking had already moved them to.
   const effectiveTeamId =
-    teamForRound(changes, next, null) ?? lastDrivenTeam(plan) ?? driver.teamId;
+    teamForRound(changes, next, null) ??
+    lastDrivenTeam(plan) ??
+    (await lastDrivenTeamBefore(prisma, driver, gone.fromRound)) ??
+    driver.teamId;
 
   const summary = {
     driver: { id: driver.id, name: driver.name },
@@ -313,6 +320,19 @@ export async function removeTransfer(prisma, { driverId, changeId, dryRun = fals
 
 function lastDrivenTeam(plan) {
   return plan.length ? plan[plan.length - 1].teamId : null;
+}
+
+// The team stamped on the last round the driver drove before this one, or
+// null when they had not driven yet.
+async function lastDrivenTeamBefore(prisma, driver, round) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT rr."teamId" AS "teamId" FROM "RaceResult" rr
+       JOIN "Race" r ON r."id" = rr."raceId"
+      WHERE rr."driverId" = ? AND r."seasonId" = ? AND r."number" IS NOT NULL AND r."number" < ?
+      ORDER BY r."number" DESC LIMIT 1`,
+    driver.id, driver.seasonId, round
+  );
+  return rows[0]?.teamId || null;
 }
 
 // Re-stamp one driver's results and rescore the rounds that moved. The results

@@ -428,6 +428,10 @@ export const api = {
       { userAuth: true }
     ),
   teams: () => request(`/teams${seasonQ()}`, { auth: true }),
+  // The season's transfer market: every driver's team round by round, and
+  // the moves (backend services/teamHistoryService.js). Not `teamHistory`:
+  // that is one team's seasons, for the team page.
+  transferMarket: () => request(`/teams/history${seasonQ()}`, { auth: true }),
   seasons: () => request(`/seasons${seriesQ()}`, { auth: true }),
   // All visible racing series, switcher order (admins also get private ones).
   series: () => request("/series", { auth: true }),

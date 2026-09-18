@@ -41,6 +41,14 @@ Constructors
   rounds that get dropped (see the rules file) are shown crossed out. Each tier
   also has its points graph and the team line-ups.
 
+Transfers
+  The transfer market. Every driver's team round by round as a grid (a reserve
+  drive for a team is marked, a round not driven is a dash), the team changes
+  of the season as a list, and the moves already booked for rounds still ahead
+  marked as upcoming. Everything here comes from the results themselves and
+  from the transfers the admin has entered, so it is the same answer the
+  standings give.
+
 Races
   The full calendar. Finished rounds can be clicked and show the complete result
   - finishing order, the grid spot and how many places each driver won or lost,
@@ -80,6 +88,13 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     A round that has no result file (say the server never wrote one and all we
     have is the message in Discord) is typed in here too: add the drivers in
     finishing order, mark the DNFs, save.
+  - Transfers tab: the same round-by-round grid the public page shows, with a
+    Transfer button on every driver. A team change is entered against a ROUND:
+    pick one still ahead and nothing changes today, the move applies itself
+    when that round's result is saved; pick one already driven and the rounds
+    since are re-attributed and their constructor points move, which the
+    dialog spells out before you confirm. Booked moves are listed with a Take
+    back button, and the grid exports as CSV.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.

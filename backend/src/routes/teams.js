@@ -7,6 +7,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
+import { readTeamHistory } from "../services/teamHistoryService.js";
 
 const router = Router();
 
@@ -89,6 +90,25 @@ router.get("/", async (req, res, next) => {
       }
     }
     res.json(teams);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/teams/history -> the season's transfer market: one row per driver,
+// one column per scored round, each cell the team they drove for (or are booked
+// to drive for), plus the season's moves (services/teamHistoryService.js).
+// Feeds the public Transfers page and the admin Transfers tab alike; nothing
+// private is in it (names, flags, pictures and team ids only). Declared before
+// /:id/history so the word is not read as a team id.
+router.get("/history", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, {
+      includePrivate: isAdminRequest(req),
+      series: req.query.series,
+    });
+    if (!seasonId) return res.json({ nextRound: 1, rounds: [], teams: [], drivers: [], moves: [] });
+    res.json(await readTeamHistory(prisma, seasonId));
   } catch (e) {
     next(e);
   }

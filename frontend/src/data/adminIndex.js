@@ -31,6 +31,7 @@ export const TAB_GROUPS = [
       { id: "seasons", label: "Seasons" },
       { id: "teams", label: "Teams" },
       { id: "drivers", label: "Drivers" },
+      { id: "transfers", label: "Transfers" },
       { id: "market", label: "Driver Market" },
       { id: "ratings", label: "Ratings" },
       // Held back from the members' side on purpose while the league decides
@@ -92,6 +93,31 @@ export function tabInfo(id) {
 // Add generously — an unused keyword costs nothing, a missing one costs the
 // colleague ten minutes of clicking through tabs.
 export const ADMIN_INDEX = [
+  // --- League: transfers ------------------------------------------------------
+  {
+    tab: "transfers",
+    title: "Who drove for which team, round by round",
+    hint: "The season's line-ups as a grid: every driver, every round, the team they drove for.",
+    keywords: "transfers transfer market team history line-up lineup grid round by round who drove for which team season overview",
+  },
+  {
+    tab: "transfers",
+    title: "Book a team change for a coming round",
+    hint: "Pick the driver, the team and the round it starts from; the move applies itself when that round is saved.",
+    keywords: "transfer move team change switch swap future upcoming next round plan book schedule driver leaves joins",
+  },
+  {
+    tab: "transfers",
+    title: "Take a planned move back",
+    hint: "The moves booked for rounds still ahead, each with a Take back button.",
+    keywords: "undo cancel take back planned pending transfer move remove",
+  },
+  {
+    tab: "transfers",
+    title: "Export the team history",
+    hint: "The grid as a CSV file, one row per driver.",
+    keywords: "export csv download spreadsheet excel team history",
+  },
   // --- Race weekend ---------------------------------------------------------
   {
     tab: "discord",

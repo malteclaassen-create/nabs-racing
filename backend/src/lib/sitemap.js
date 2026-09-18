@@ -156,7 +156,7 @@ export async function buildSitemapXml(prisma, origin) {
     // offer one page under two addresses (and the canonical tag says the short
     // one wins, which a sitemap should agree with).
     if (!s.isPrimary) urls.push(s.base);
-    urls.push(`${s.base}/drivers`, `${s.base}/constructors`, `${s.base}/races`, `${s.base}/records`);
+    urls.push(`${s.base}/drivers`, `${s.base}/constructors`, `${s.base}/races`, `${s.base}/records`, `${s.base}/transfers`);
 
     for (const season of s.seasons) {
       if (season.isActive) {
