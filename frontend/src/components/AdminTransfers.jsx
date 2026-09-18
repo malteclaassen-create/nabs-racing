@@ -150,7 +150,10 @@ export default function AdminTransfers() {
   return (
     <div className="space-y-6">
       <div className="card space-y-4 p-5">
-        <CardHead eyebrow="Transfers" title={`Transfer market · ${season?.name || "this season"}`}>
+        <CardHead eyebrow="Transfers" title={`Transfer market · ${season?.name || "this season"}`} />
+        {/* A row of its own rather than beside the title: on a phone the
+            three controls squeezed the heading into one word per line. */}
+        <div className="-mt-2 flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <select aria-label="Driver to transfer" className="input w-auto py-1.5" value={pick} onChange={(e) => setPick(e.target.value)} disabled={!data}>
               <option value="">Record a transfer for…</option>
@@ -178,7 +181,7 @@ export default function AdminTransfers() {
               Export CSV
             </button>
           </div>
-        </CardHead>
+        </div>
         <p className="text-xs leading-relaxed text-light">
           Every driver's team, round by round, as the results have it — and the moves already booked for rounds
           still ahead. A transfer is entered against a <span className="font-semibold text-medium">round</span>: pick
@@ -204,26 +207,30 @@ export default function AdminTransfers() {
               </p>
               <ul className="divide-y divide-border">
                 {issues.crowded.map(({ team, drivers }) => (
-                  <li key={team.id} className="flex flex-wrap items-start gap-3 py-2.5">
-                    <span className="flex w-40 shrink-0 items-center gap-2">
+                  <li key={team.id} className="py-3">
+                    <div className="mb-2 flex items-center gap-2">
                       {mark(team.id)}
                       <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{team.name}</span>
-                      <span className="pill bg-amber-500/15 text-warn">{drivers.length}</span>
-                    </span>
-                    <ul className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      <span className="pill bg-amber-500/15 text-warn">{drivers.length} seats</span>
+                    </div>
+                    {/* One full-width row per driver: name, one line of facts,
+                        the button at the end. On a wide screen they sit two
+                        or three to a row; on a phone they stack. */}
+                    <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {drivers.map((d) => {
                         const last = d.stints.length ? d.stints[d.stints.length - 1] : null;
                         const forTeam = d.stints.filter((st) => st.teamId === team.id).reduce((n, st) => n + st.races, 0);
+                        const facts = [
+                          `${forTeam} ${forTeam === 1 ? "race" : "races"} here`,
+                          last ? `last R${last.to}${last.teamId !== team.id ? ` for ${teamName(last.teamId)}` : ""}` : "none yet",
+                        ].join(" · ");
                         return (
-                          <li key={d.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface2/60 py-1 pl-2.5 pr-1 text-sm">
-                            <span className="font-semibold text-dark">{d.name}</span>
-                            <span className="font-mono text-[10px] text-light" title="Races for this team · last round driven">
-                              {forTeam} {forTeam === 1 ? "race" : "races"}
-                              {last
-                                ? ` · last R${last.to}${last.teamId !== team.id ? ` for ${teamName(last.teamId)}` : ""}`
-                                : " · none yet"}
+                          <li key={d.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface2/60 py-1.5 pl-3 pr-1.5 text-sm">
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-semibold text-dark">{d.name}</span>
+                              <span className="block truncate font-mono text-[10px] text-light" title={facts}>{facts}</span>
                             </span>
-                            <button className="btn-secondary px-2 py-0.5 text-xs" disabled={busy} onClick={() => open(d)}>
+                            <button className="btn-secondary shrink-0 px-2.5 py-1 text-xs" disabled={busy} onClick={() => open(d)}>
                               Transfer
                             </button>
                           </li>
@@ -244,14 +251,21 @@ export default function AdminTransfers() {
               </p>
               <ul className="divide-y divide-border">
                 {issues.duplicates.map((list) => (
-                  <li key={list[0].id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                    <span className="w-40 shrink-0 font-display font-bold uppercase tracking-tight text-dark">{list[0].name}</span>
-                    {list.map((d) => (
-                      <span key={d.id} className="rounded-lg border border-border bg-surface2/60 px-2.5 py-1 text-xs text-medium">
-                        <span className="font-mono text-light">{d.id}</span> · {teamName(d.teamId)} · {d.raced} {d.raced === 1 ? "race" : "races"}
-                        {!d.isActive && " · inactive"}
-                      </span>
-                    ))}
+                  <li key={list[0].id} className="py-3">
+                    <div className="mb-2 font-display text-sm font-bold uppercase tracking-tight text-dark">{list[0].name}</div>
+                    <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {list.map((d) => (
+                        <li key={d.id} className="rounded-lg border border-border bg-surface2/60 px-3 py-1.5 text-sm">
+                          <span className="block truncate font-semibold text-dark">
+                            {teamName(d.teamId)}
+                            {!d.isActive && <span className="ml-1.5 font-normal text-light">· inactive</span>}
+                          </span>
+                          <span className="block truncate font-mono text-[10px] text-light">
+                            {d.raced} {d.raced === 1 ? "race" : "races"} · id {d.id}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>
