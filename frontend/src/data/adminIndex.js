@@ -78,6 +78,7 @@ export const TAB_VIEWS = {
     signups: "Who can sign up",
     missing: "Still to answer",
     history: "Past sign-ups",
+    activity: "Activity",
   },
 };
 
@@ -156,6 +157,13 @@ export const ADMIN_INDEX = [
     title: "Who hasn't answered yet",
     hint: "The roster minus the answers, with Discord handles and ready-made mentions to chase them.",
     keywords: "missing silent chase dm message mention ping late no answer not answered who is coming",
+  },
+  {
+    tab: "attendance",
+    view: "activity",
+    title: "Who is still active, and who has stopped racing",
+    hint: "Every driver against every round, split into Tier 1, Tier 2 and reserves, with a status per driver.",
+    keywords: "activity active inactive tracker participation who is racing dropped out quit gone missing rounds attendance overview per driver season tier 1 tier 2 reserve drivers still racing",
   },
   {
     tab: "attendance",

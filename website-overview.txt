@@ -95,6 +95,17 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     since are re-attributed and their constructor points move, which the
     dialog spells out before you confirm. Booked moves are listed with a Take
     back button, and the grid exports as CSV.
+  - Attendance tab, Activity: the season read the other way round - every
+    driver against every round that has been saved, split into Tier 1, Tier 2
+    and the reserve pool, so it is visible at a glance who is still turning up
+    and who has quietly stopped. Two numbers per driver, kept apart because
+    they mean different things: the rounds they RACED (a DNF still turned up,
+    a DNS did not) and the rounds they ANSWERED the sign-up for, whatever they
+    said. The status runs on both together - answering "out" is somebody who
+    read the post and replied, so a reserve who is needed for no round but
+    answers every one still counts as present. A round of silence is Quiet,
+    three or more is Inactive. It also flags who said yes and never started,
+    and the table exports as CSV.
   - Add and edit drivers and teams, including team colours and uploading team
     logos.
   - Manage seasons.

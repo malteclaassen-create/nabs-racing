@@ -26,7 +26,7 @@ import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
-import { ensureSprintChild, readSprintChildren } from "../lib/sprintRaces.js";
+import { ensureSprintChild, readSprintChildren, readParentIds } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -112,6 +112,9 @@ import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../li
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
+import {
+  activityFor, byNeedsAttention, tallyStates, QUIET_AFTER, INACTIVE_AFTER,
+} from "../lib/attendanceActivity.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -5445,6 +5448,156 @@ router.get("/attendance-missing", async (req, res, next) => {
         // they stay alphabetical, which is how you look a name up in a list.
         reserve: silent.filter(isReserve).map(shape),
       },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/attendance-activity -> the season's roster against the season's
+// rounds: who is still turning up, and who has quietly stopped.
+//
+// The other attendance views each look at ONE race. This one looks down the
+// season instead, because the question it answers is about the person, not the
+// round: a seat held by somebody who last raced in round 2 is a seat nobody is
+// using, and until now the only way to see that was to open every past round
+// and compare the lists by eye.
+//
+// Split into Tier 1, Tier 2 and the reserve pool because a silence means a
+// different thing in each: a missing full-timer is a hole in a car, a missing
+// reserve is a name you can stop counting on. The verdict itself is
+// lib/attendanceActivity.js — kept out of here so its rules can be tested.
+router.get("/attendance-activity", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, { includePrivate: true, series: req.query.series });
+    const empty = { rounds: [], groups: { tier1: [], tier2: [], reserve: [] }, totals: {} };
+    if (!seasonId) return res.json(empty);
+
+    const raceRows = await prisma.race.findMany({
+      where: { seasonId, isCompleted: true },
+      orderBy: [{ date: "asc" }, { number: "asc" }],
+      select: { id: true, number: true, track: true, date: true, isSpecialEvent: true },
+    });
+    const raceIds = raceRows.map((r) => r.id);
+    const [parentOf, types] = await Promise.all([readParentIds(prisma, raceIds), readRaceTypes(prisma, raceIds)]);
+
+    // A round with no date goes last rather than first: a comparison against
+    // NULL is what SQLite would have sorted to the FRONT, opening the season
+    // with it and putting every "rounds since" out by one.
+    const when = (r) => (r.date ? new Date(r.date).getTime() : Number.MAX_SAFE_INTEGER);
+    // The rounds of the season as an evening each. A sprint weekend's sprint is
+    // a child row (lib/sprintRaces.js), not a round of its own, so it is folded
+    // back into its parent below rather than listed; training sessions are
+    // practice and say nothing about whether somebody still races.
+    const rounds = raceRows
+      .filter((r) => !parentOf.get(r.id))
+      .map((r) => ({
+        id: r.id,
+        number: r.number,
+        type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
+        track: r.track,
+        date: r.date,
+      }))
+      .filter((r) => r.type !== "TRAINING")
+      // Calendar order, decided here rather than left to the database: SQLite
+      // sorts a NULL date to the FRONT, so one round saved without a date used
+      // to open the season and put every "rounds since" out by one.
+      .sort((a, b) => when(a) - when(b) || (a.number ?? 9999) - (b.number ?? 9999));
+
+    // raceId -> the round it belongs to, so a driver who did the sprint and not
+    // the feature still counts as having been there that evening.
+    const roundOf = new Map(rounds.map((r) => [r.id, r.id]));
+    for (const [childId, parentId] of parentOf) if (roundOf.has(parentId)) roundOf.set(childId, parentId);
+
+    const [driverRows, resultRows, rsvpRows, nameOverrides, people] = await Promise.all([
+      prisma.driver.findMany({
+        where: { seasonId },
+        include: { team: { select: { name: true, tier: true, color: true } } },
+        orderBy: { name: "asc" },
+      }),
+      prisma.raceResult.findMany({
+        where: { raceId: { in: [...roundOf.keys()] } },
+        select: { raceId: true, driverId: true, status: true },
+      }),
+      prisma.raceRsvp.findMany({
+        where: { raceId: { in: rounds.map((r) => r.id) } },
+        select: { raceId: true, driverId: true, status: true, updatedAt: true },
+      }),
+      getNameOverrides(prisma),
+      getPersonGroups(prisma),
+    ]);
+
+    // People, not rows (lib/onePerPerson.js). Somebody with two roster rows in
+    // one season raced on one and answered on the other, which would show them
+    // twice — once racing, once looking like they had disappeared. The row that
+    // survives is the one in a real team, the same rule the chase list follows.
+    const who = (driverId) => personKey(driverId, people.byDriver);
+    const isReserve = (d) => (d.team?.tier ?? d.tier) === 0;
+    const roster = collapseByPerson(
+      driverRows.filter((d) => d.isActive).map((d) => ({ ...d, driverId: d.id })),
+      people.byDriver,
+      (d) => (isReserve(d) ? 0 : 1)
+    ).kept;
+
+    // personKey -> roundId -> what happened. Both halves are merged across all
+    // of the person's rows, deactivated ones included: the result is theirs
+    // whichever row it was saved against.
+    const startedStatus = (s) => !!s && s !== "DNS";
+    const resultsBy = new Map();
+    for (const r of resultRows) {
+      const roundId = roundOf.get(r.raceId);
+      if (!roundId) continue;
+      const key = who(r.driverId);
+      if (!resultsBy.has(key)) resultsBy.set(key, new Map());
+      const seen = resultsBy.get(key).get(roundId);
+      // Turning up beats not turning up: a DNS on one row and a finish on the
+      // other is a person who raced.
+      if (!seen || (!startedStatus(seen) && startedStatus(r.status))) resultsBy.get(key).set(roundId, r.status);
+    }
+    const rsvpsBy = new Map();
+    const answeredAt = new Map();
+    for (const r of rsvpRows) {
+      const key = who(r.driverId);
+      const cellKey = `${key}|${r.raceId}`;
+      // Two rows, two answers, one person: the later one is what they meant.
+      if (answeredAt.has(cellKey) && answeredAt.get(cellKey) >= r.updatedAt) continue;
+      answeredAt.set(cellKey, r.updatedAt);
+      if (!rsvpsBy.has(key)) rsvpsBy.set(key, new Map());
+      rsvpsBy.get(key).set(r.raceId, r.status);
+    }
+
+    const shape = (d) => {
+      const key = who(d.id);
+      return {
+        driverId: d.id,
+        name: nameOverrides.get(d.id)?.displayName || d.name,
+        discordName: d.discordName,
+        team: d.team?.name || null,
+        teamColor: d.team?.color || null,
+        // The row's TEAM tier decides, not the driver's own: a Tier-2 driver
+        // parked in the Reserve pool is a reserve this season.
+        tier: d.team?.tier ?? d.tier,
+        ...activityFor(rounds, resultsBy.get(key), rsvpsBy.get(key)),
+      };
+    };
+    const group = (pick) => roster.filter(pick).map(shape).sort(byNeedsAttention);
+    const groups = {
+      tier1: group((d) => (d.team?.tier ?? d.tier) === 1),
+      tier2: group((d) => (d.team?.tier ?? d.tier) === 2),
+      reserve: group(isReserve),
+    };
+
+    res.json({
+      rounds,
+      groups,
+      totals: {
+        tier1: tallyStates(groups.tier1),
+        tier2: tallyStates(groups.tier2),
+        reserve: tallyStates(groups.reserve),
+      },
+      // The thresholds travel with the data so the page explains itself with
+      // the same numbers it was judged by.
+      thresholds: { quietAfter: QUIET_AFTER, inactiveAfter: INACTIVE_AFTER },
     });
   } catch (e) {
     next(e);

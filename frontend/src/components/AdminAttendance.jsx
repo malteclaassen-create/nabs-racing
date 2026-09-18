@@ -5,12 +5,18 @@ import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
+import AdminAttendanceActivity from "./AdminAttendanceActivity.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
-// Admin "Attendance" tab, in three views: who may answer which race, who has
-// not answered the next one yet, and what people answered for the races already
-// run. Panels stacked in one column had grown into a page you scrolled past
-// rather than read.
+// Admin "Attendance" tab, in four views: who may answer which race, who has
+// not answered the next one yet, what people answered for the races already
+// run, and who is still turning up across the season at all. Panels stacked in
+// one column had grown into a page you scrolled past rather than read.
+//
+// The first three all answer a question about ONE race. Activity is the same
+// data read down the season instead — one row per driver, one column per round
+// — because "is this person still racing" is the question a grid is planned
+// from, and it cannot be seen in any single round's lists.
 //
 // The hotlap videos used to be a fourth view here, because the attendance page
 // is where they are shown. They now live in Photos & Videos with the rest of
@@ -107,12 +113,15 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
           { key: "signups", label: "Who can sign up" },
           { key: "missing", label: "Still to answer" },
           { key: "history", label: "Past sign-ups" },
+          { key: "activity", label: "Activity" },
         ]}
         value={view}
         onChange={setView}
       />
 
       {view === "history" && <AdminAttendanceHistory />}
+
+      {view === "activity" && <AdminAttendanceActivity />}
 
       {view === "missing" && (
         <AdminAttendanceMissing races={upcoming} racesError={events.error} onReloadRaces={events.reload} />
