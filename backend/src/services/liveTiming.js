@@ -27,7 +27,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
-import { parkLaps } from "../lib/liveResetKeep.js";
+import { parkLaps, markNotified } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
@@ -249,6 +249,13 @@ function practiceKeyOf(si) {
 // because the elapsed reading wanders by a second or two between snapshots.
 const PRACTICE_RESTART_GAP_MS = 60_000;
 
+// How long the bell stays quiet for one board after it has rung. Swapping a
+// track version is not one restart, it is a handful of them over a few
+// minutes, and the admin who is doing it does not need to be told three times
+// that they did it. The question itself is always there, and the badge on the
+// admin tab with it — this is only about how often it taps you on the shoulder.
+const RESET_ALERT_QUIET_MS = 2 * 60 * 60 * 1000;
+
 // How many lap stamps one driver's practice session remembers. It is what the
 // carried row's lap count is made of, and a week-long session on a busy server
 // is the honest upper end of it; past that the count stops rising and the
@@ -406,6 +413,10 @@ function createRelay(server) {
   // a Set because the same lap repeats in every snapshot until the next one.
   let practiceKey = null;
   let practiceElapsed = 0;
+  // When the bell last rang for this board. In memory on purpose: a deploy
+  // clearing it costs at most one extra notification, and the question itself
+  // carries the same fact across a restart (liveResetKeep's notifiedAt).
+  let lastResetAlertAt = 0;
   const practiceStampsByGuid = new Map(); // guid -> Set(seconds since epoch)
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
   // CarID -> guid, rebuilt from every snapshot: ET53 only carries the CarID,
@@ -790,11 +801,21 @@ function createRelay(server) {
       // this is the one alert that fires from the server rather than from
       // something a person just did.
       //
-      // Not on a race weekend: the server cycling practice -> qualifying is
-      // this same signal, and a bell going off mid-qualifying about times
-      // nothing is wrong with is noise on the one evening everybody is busy.
-      // The badge in the admin still carries it, and the question keeps.
-      if (parked && (nextSi?.Type ?? 1) <= 1) {
+      // ONCE, though. An admin putting a new version of a track up restarts
+      // the server several times in a row, and the first night this ran live
+      // it rang three times in a quarter of an hour for what was one piece of
+      // work. So: not while a question for this board is still waiting
+      // unanswered (parkLaps hands the flag on to the replacement), and not
+      // again within the quiet window either way.
+      //
+      // Not on a race weekend either: the server cycling practice ->
+      // qualifying is this same signal, and a bell going off mid-qualifying
+      // about times nothing is wrong with is noise on the one evening
+      // everybody is busy. The badge in the admin still carries it.
+      const quiet = parked?.notifiedAt || Date.now() - lastResetAlertAt < RESET_ALERT_QUIET_MS;
+      if (parked && !quiet && (nextSi?.Type ?? 1) <= 1) {
+        lastResetAlertAt = Date.now();
+        markNotified(parked.id);
         notifyAdminsServerReset(prisma, {
           id: parked.id,
           drivers: parked.laps.length,
@@ -1947,6 +1968,7 @@ function createRelay(server) {
       trackMap = null;
       practiceKey = null;
       practiceElapsed = 0;
+      lastResetAlertAt = 0;
       practiceStampsByGuid.clear();
     },
   };

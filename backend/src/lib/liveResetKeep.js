@@ -72,6 +72,10 @@ function readOne(id) {
       after: shapeSide(raw.after),
       trackChanged: !!raw.trackChanged,
       endedAt: String(raw.endedAt || ""),
+      // When the admins were told about this question, if they were. A restart
+      // that replaces an unanswered question inherits it, which is what stops
+      // an evening of restarts being an evening of bells.
+      notifiedAt: raw.notifiedAt ? String(raw.notifiedAt) : null,
       laps,
     };
   } catch {
@@ -117,8 +121,15 @@ export function parkLaps({ serverKey, scopes, before, after, laps, endedAt = new
   // replaces the first. The times of the newer session are the ones that are
   // still worth having, and two prompts for the same board would be a queue
   // nobody asked for.
+  //
+  // The replacement inherits whether the admins have already been told. An
+  // admin swapping a track version restarts the server a few times in a row,
+  // and being rung for each of them is being rung for one thing three times.
+  let notifiedAt = null;
   for (const old of listPending()) {
-    if (old.serverKey === serverKey) discard(old.id);
+    if (old.serverKey !== serverKey) continue;
+    notifiedAt = notifiedAt || old.notifiedAt;
+    discard(old.id);
   }
 
   const id = `${serverKey}-${Date.parse(endedAt) || Date.now()}`.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
@@ -134,6 +145,7 @@ export function parkLaps({ serverKey, scopes, before, after, laps, endedAt = new
     // "unchanged" would be a guess.
     trackChanged: !!to.trackKey && to.trackKey !== from.trackKey,
     endedAt: String(endedAt),
+    notifiedAt,
     laps: clean,
   };
   mkdirSync(LIVE_RESET_KEEP_DIR, { recursive: true });
@@ -186,6 +198,23 @@ export function take(id) {
   if (!rec) return null;
   discard(rec.id);
   return rec;
+}
+
+// Note that the admins have been told about this one. Kept ON the question so
+// it survives a deploy: the bell must not ring again for a question that is
+// still sitting there waiting.
+export function markNotified(id) {
+  const rec = readOne(String(id || ""));
+  if (!rec) return false;
+  try {
+    const path = fileFor(rec.id);
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    raw.notifiedAt = new Date().toISOString();
+    writeFileSync(path, JSON.stringify(raw));
+    return true;
+  } catch {
+    return false; // worst case the bell rings a second time
+  }
 }
 
 // Drop one question unanswered, or answered with "no".
