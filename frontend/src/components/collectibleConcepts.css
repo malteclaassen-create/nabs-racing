@@ -13,7 +13,12 @@
 /* Liquid Chrome is the one bright surface in the series, so the pale initial
    the others use came out as a grey blur on it. */
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-liquid"] .rcard-mono { color: #171a2373; }
-.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo { inset: 52px 16px auto; height: 275px; border-radius: 7px; mask-image: linear-gradient(#000 65%, transparent); }
+/* The framed photo starts under the rating, but 52px down was too far: the
+   whole picture sat low on the card and a head that fills its frame lost its
+   crown off the top. Up to 34, level with Studio Blue next door, which reads
+   right; the extra 18px go on the height so the bottom edge and its fade stay
+   exactly where the rest of the design expects them. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo { inset: 34px 16px auto; height: 293px; border-radius: 7px; mask-image: linear-gradient(#000 65%, transparent); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo-blur { display: none; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-grade { background: linear-gradient(#04070d50, transparent 26%, #04070d22 43%, #04070dec 70%, #04070da6); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-rtg { top: 23px; left: 23px; text-shadow: 0 2px 12px #0009; }
