@@ -59,6 +59,17 @@ Running log looks like this:
 
 Has to run on something that's on most of the time (server, the pc that runs other league stuff, or next to the website as a second service, needs no port). If it's down for a while nothing already counted is lost, you just miss those hours. Ctrl+C stops it, it sends what it has first.
 
+### On Railway, next to the website
+
+New service in the same project, same GitHub repo, then in Settings:
+
+- **Root Directory** `discord-bot` (otherwise it builds the website)
+- no domain, no port. It only makes outgoing calls, `railway.json` in this folder already turns the healthcheck off
+
+Variables: `DISCORD_TOKEN`, `GUILD_ID`, `SITE_URL` (the website's public address, no trailing slash), `TOKEN_KEY`.
+
+Railway wipes the disk on every deploy, so the bot loses `state.json` and starts the day again from zero. The website takes the higher of the two figures for a day, so nothing is lost either way, but if you want it to survive properly: add a Volume mounted at `/data` and set `STATE_PATH=/data/state.json`.
+
 The bot can run before the points are switched on for members. Good idea actually: start it a month early and the multipliers are already filled when the feature goes live. It can't count backwards.
 
 ## If something's off

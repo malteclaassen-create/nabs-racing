@@ -43,7 +43,11 @@ export const config = {
   countMuted: String(process.env.COUNT_MUTED ?? "false") === "true",
   countAlone: String(process.env.COUNT_ALONE ?? "false") === "true",
   pushEveryMs: Math.max(1, Number(process.env.PUSH_EVERY_MINUTES) || 5) * 60 * 1000,
-  statePath: join(ROOT, "state.json"),
+  // Where the bot keeps its notes between restarts. On a host with no disk of
+  // its own (Railway and friends wipe the filesystem on every deploy) point
+  // this at a mounted volume, e.g. STATE_PATH=/data/state.json. Without one the
+  // bot still works, it just re-counts the current day after a restart.
+  statePath: process.env.STATE_PATH || join(ROOT, "state.json"),
 };
 
 export function missingSettings({ needDiscord = true } = {}) {

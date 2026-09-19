@@ -702,12 +702,18 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
   const d = String(day || leagueDay());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "Bad day" };
   await ensureTokenAccount(prisma, discordId);
+  // A day's totals only ever go UP, so the higher number wins. Straight
+  // overwriting looked right until you think about where the bot runs: on a
+  // host with no disk of its own it loses its notes on every restart, starts
+  // the day again at zero, and five minutes later reports a smaller number than
+  // the one already stored. A redeploy in the middle of a race night would have
+  // wiped that night.
   await prisma.$executeRawUnsafe(
     `INSERT INTO "TokenActivity" ("discordId","day","messages","minutes")
      VALUES (?,?,?,?)
      ON CONFLICT("discordId","day") DO UPDATE SET
-       "messages" = excluded."messages",
-       "minutes" = excluded."minutes",
+       "messages" = MAX("TokenActivity"."messages", excluded."messages"),
+       "minutes" = MAX("TokenActivity"."minutes", excluded."minutes"),
        "updatedAt" = CURRENT_TIMESTAMP`,
     discordId,
     d,

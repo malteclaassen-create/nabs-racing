@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { payRace } from "./tokens.js";
+import { payRace, recordActivity } from "./tokens.js";
 
 // A prisma stand-in for one saved round. It answers the three queries payRace
 // asks and records every ledger insert, so a test can see what was paid, what
@@ -147,5 +147,52 @@ describe("paying a round when it is imported", () => {
     await payRace(d, "round5");
     expect(d.ledger.has("race:round5:ayrton_s8")).toBe(true);
     expect(d.ledger.has("clean:round5:ayrton_s8")).toBe(false);
+  });
+});
+
+// A day's activity row, as the bot reports it. The bot sends absolute totals for
+// the day, over and over, so the same day arrives many times.
+function activityDb() {
+  const rows = new Map(); // "id|day" -> { messages, minutes }
+  return {
+    rows,
+    async $queryRawUnsafe() {
+      return [];
+    },
+    async $executeRawUnsafe(sql, ...args) {
+      if (!/INSERT INTO "TokenActivity"/.test(sql)) return 0;
+      const [discordId, day, messages, minutes] = args;
+      const key = `${discordId}|${day}`;
+      const had = rows.get(key);
+      // what the real ON CONFLICT does: the higher number wins
+      const max = /MAX\("TokenActivity"/.test(sql);
+      rows.set(key, {
+        messages: had && max ? Math.max(had.messages, messages) : messages,
+        minutes: had && max ? Math.max(had.minutes, minutes) : minutes,
+      });
+      return 1;
+    },
+  };
+}
+
+describe("a day of Discord activity", () => {
+  it("keeps the higher figure when the bot restarts and starts the day again", async () => {
+    const d = activityDb();
+    await recordActivity(d, "111", { day: "2026-09-19", messages: 120, minutes: 90 });
+    // the bot's host wiped its disk, so it counts today from zero again
+    await recordActivity(d, "111", { day: "2026-09-19", messages: 4, minutes: 2 });
+    expect(d.rows.get("111|2026-09-19")).toEqual({ messages: 120, minutes: 90 });
+  });
+
+  it("still moves up once the day really passes the stored figure", async () => {
+    const d = activityDb();
+    await recordActivity(d, "111", { day: "2026-09-19", messages: 120, minutes: 90 });
+    await recordActivity(d, "111", { day: "2026-09-19", messages: 200, minutes: 140 });
+    expect(d.rows.get("111|2026-09-19")).toEqual({ messages: 200, minutes: 140 });
+  });
+
+  it("refuses a day that is not a day", async () => {
+    const d = activityDb();
+    expect((await recordActivity(d, "111", { day: "friday" })).error).toBeTruthy();
   });
 });
