@@ -16,6 +16,11 @@ import { useAuth } from "./useAuth.js";
 // backend/src/lib/tokens.js). The bar plays that once and then says it has been
 // seen, which is what stops the same race being celebrated every page load.
 //
+// It is measured against what the member was last SHOWN, not against a clock,
+// so it does not matter when the points were written. A round is paid the night
+// the league office imports it; whoever was not looking gets the "+50" the next
+// time they open the site, or when they come back to a tab they left open.
+//
 // While the trial is switched off the endpoint answers { enabled: false } and
 // this returns null, which is what makes the pill disappear from the bar
 // entirely rather than sitting there showing a zero.
@@ -79,9 +84,29 @@ export function useTokenBalance() {
     if (cached === undefined) ask();
     else setBalance(cached);
     window.addEventListener(TOKENS_CHANGED_EVENT, ask);
+
+    // Coming back to a tab that was left open. A round is paid the moment the
+    // league office imports it, and plenty of people have the site sitting in a
+    // background tab on a Friday night: without this they would keep looking at
+    // the old number until they reloaded, and the "+50" would be saved up for
+    // some page load days later. Throttled, because switching tabs is something
+    // people do all day.
+    const MIN_GAP = 60_000;
+    let lastAsk = Date.now();
+    const askAgain = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastAsk < MIN_GAP) return;
+      lastAsk = Date.now();
+      ask();
+    };
+    document.addEventListener("visibilitychange", askAgain);
+    window.addEventListener("focus", askAgain);
+
     return () => {
       gone = true;
       window.removeEventListener(TOKENS_CHANGED_EVENT, ask);
+      document.removeEventListener("visibilitychange", askAgain);
+      window.removeEventListener("focus", askAgain);
     };
   }, [isLoggedIn]);
 
