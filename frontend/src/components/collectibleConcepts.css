@@ -10,6 +10,9 @@
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-back { border-radius: 15px; }
 .rcard-concept-art { position: absolute; inset: 0; background: var(--concept-art) center / cover; pointer-events: none; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-mono { background: none; height: 302px; color: #e4e7ee73; font-size: 150px; font-style: normal; text-shadow: 0 8px 30px #0008; }
+/* Liquid Chrome is the one bright surface in the series, so the pale initial
+   the others use came out as a grey blur on it. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-liquid"] .rcard-mono { color: #171a2373; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo { inset: 52px 16px auto; height: 275px; border-radius: 7px; mask-image: linear-gradient(#000 65%, transparent); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-photo-blur { display: none; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-grade { background: linear-gradient(#04070d50, transparent 26%, #04070d22 43%, #04070dec 70%, #04070da6); }
@@ -20,7 +23,7 @@
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-name { order: -1; white-space: nowrap; margin-bottom: 10px; font-weight: 900; line-height: .94; letter-spacing: -.045em; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-meta { margin-bottom: 0; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-team { margin-top: 8px; color: #e1e2e6; font-size: 10px; letter-spacing: .16em; }
-.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stats { bottom: 36px; left: 24px; right: 24px; height: 67px; background: #06090f66; border-top: 1px solid #d6dce270; border-bottom: 1px solid #d6dce240; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stats { bottom: 36px; left: 24px; right: 24px; height: 67px; background: #06090f66; border: 1px solid #d6dce240; border-top-color: #d6dce270; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stat span { color: #d5d8df; font-size: 9px; font-weight: 500; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-stat b { font-size: 30px; font-weight: 900; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition] .rcard-brand { bottom: 16px; font-size: 6px; letter-spacing: .12em; }
@@ -72,7 +75,9 @@
 .rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-concept-art { bottom: 42%; overflow: hidden; }
 .rcard-frame[data-series="concepts"][data-edition="concept-blue"] .rcard-concept-art span { position: absolute; right: -15px; top: -40px; font-size: 330px; font-weight: 900; line-height: 1; color: #d8e8ff77; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-photo { inset: 35px 0 auto; height: 237px; border-radius: 0; mask-image: none; }
-.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-mono { height: 273px; color: #0a163a99; }
+/* This design already IS the driver number, in 330px. The initial underneath
+   it landed in the same place and the two read as one smudged glyph. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-mono { display: none; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-grade { background: linear-gradient(transparent 58%, #f2f0e9 58%); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-rtg { top: 26px; left: 25px; padding: 0; background: transparent; color: white; text-shadow: 0 2px 8px #00174666; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-blue"] .rcard-rtg-n { font-size: 64px; }
