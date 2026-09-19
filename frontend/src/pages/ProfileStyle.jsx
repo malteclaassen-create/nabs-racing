@@ -10,6 +10,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader } from "../components/ui.jsx";
+import { useAsk } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
 import ProfileAppearance, { ProfileBanner, PROFILE_COSMETICS, EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT, useProfilePageTheme } from "../components/ProfileAppearance.jsx";
 import { PROFILE_SLOTS, profileItemPrice, applyProfileItem } from "../../../shared/profileCustomization.mjs";
@@ -51,6 +52,7 @@ function DesignSwatch({ item, driver, appearance, stats }) {
 }
 
 export default function ProfileStyle() {
+  const ask = useAsk();
   const { user } = useAuth();
   const { season } = useSeason();
   const { slug } = useSeries();
@@ -157,6 +159,16 @@ export default function ProfileStyle() {
   }
   async function act(kind) {
     if (busyRef.current || !account) return;
+    // Buying spends points and cannot be undone; applying a look can be
+    // changed back any time, so only the purchase asks.
+    if (kind === "buy") {
+      const ok = await ask({
+        title: `Buy ${selected.name}?`,
+        body: `${price.toLocaleString()} points come off your balance. You have ${account.balance.toLocaleString()}.\n\nIt stays in your collection and you can put it on and take it off whenever you like.`,
+        confirmLabel: `Buy for ${price.toLocaleString()}`,
+      });
+      if (!ok) return;
+    }
     busyRef.current = true; setBusy(true); setError(""); setNotice("");
     try {
       if (kind === "buy") {

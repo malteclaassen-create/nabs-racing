@@ -5,7 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { Spinner, ErrorBox, EmptyState, Notice, DriverAvatar } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
-import { Modal } from "../components/overlay.jsx";
+import { Modal, useAsk } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
 import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
@@ -523,6 +523,7 @@ function ShopTile({ item, balance, onOpen }) {
 // The window behind a tile: the big picture, the long version of what the entry
 // is, and the button that spends the tokens.
 function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
+  const ask = useAsk();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [ordered, setOrdered] = useState(false);
@@ -543,6 +544,17 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
 
   async function act() {
     if (running.current) return;
+    // Points are spent here and there is no undo, so the last step is a
+    // deliberate second click rather than the first one landing in the wrong
+    // place.
+    const ok = await ask({
+      title: `${live.instant ? "Buy" : "Order"} ${live.name}?`,
+      body: `${fmt(live.cost)} points come off your balance. You have ${fmt(balance)}.${
+        live.instant ? "" : "\n\nThe league office fills this by hand and can decline it, which puts the points back."
+      }`,
+      confirmLabel: `${live.instant ? "Buy" : "Order"} for ${fmt(live.cost)}`,
+    });
+    if (!ok) return;
     running.current = true;
     setBusy(true);
     setError(null);
@@ -663,6 +675,7 @@ function DesignSwatch({ collection }) {
 }
 
 function CardDesignWindow({ data, onClose, onChanged }) {
+  const ask = useAsk();
   const collections = data.cardDesigns || [];
   // Your own card, not a sample one: the point of the window is what the
   // design looks like on YOUR name, number and picture. Falls back to the
@@ -730,6 +743,12 @@ function CardDesignWindow({ data, onClose, onChanged }) {
 
   async function buy() {
     if (running.current || !design || design.owned) return;
+    const ok = await ask({
+      title: `Buy ${design.name}?`,
+      body: `${fmt(design.cost)} points come off your balance. You have ${fmt(balance)}.\n\nThe design is yours right away and you can switch back to any design you own at any time.`,
+      confirmLabel: `Buy for ${fmt(design.cost)}`,
+    });
+    if (!ok) return;
     running.current = true;
     setBusy(true);
     setError(null);
