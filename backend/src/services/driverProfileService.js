@@ -19,7 +19,7 @@ import { telemetryForDriver } from "../lib/telemetryRead.js";
 import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readDriverStudio } from "../lib/profileStudio.js";
-import { isTokensEnabled } from "../lib/tokens.js";
+import { tokensPublic } from "../lib/tokens.js";
 import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
@@ -933,7 +933,7 @@ export async function getDriverProfile(prisma, driverId) {
       number: driver.number ?? null,
       photoUrl: effPhotoUrl,
       // What they wear from the profile studio, while the points are on.
-      ...((await isTokensEnabled(prisma)) ? await readDriverStudio(prisma, driverId) : {}),
+      ...((await tokensPublic(prisma)) ? await readDriverStudio(prisma, driverId) : {}),
       // How the picture sits on the rating card (null = default framing).
       photoPos: effPhotoPos,
       // The unlockable card edition chosen for THIS row (null = classic). Per

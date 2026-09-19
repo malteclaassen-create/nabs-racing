@@ -45,27 +45,32 @@ function fmtWhen(iso) {
 }
 
 // The switch, and what it means in one sentence each way.
-function TrialSwitch({ enabled, onChange, busy }) {
+const MODE_TEXT = {
+  off: "Off. Nobody but this page knows the feature exists. Balances are kept and come back untouched when you switch it on.",
+  admins: "Admins only. League admins see the balance, the shop and the studio and can try everything; members see nothing, and nothing shows on public pages.",
+  all: "Everyone. Members see their balance in the nav bar, their invite link and the shop; profile designs and the wall are public.",
+};
+
+function TrialSwitch({ mode, onChange, busy }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
         <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
           NABS Points
         </div>
-        <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
-          {enabled
-            ? "On. Members see their balance in the nav bar, their invite link and the shop."
-            : "Off. Nobody but this page knows the feature exists. Balances are kept and come back untouched when you switch it on."}
-        </p>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">{MODE_TEXT[mode] || MODE_TEXT.off}</p>
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => onChange(!enabled)}
-        className={enabled ? "btn-secondary" : "btn-primary"}
-      >
-        {enabled ? "Switch off" : "Switch on"}
-      </button>
+      <SlidingTabs
+        items={[
+          { key: "off", label: "Off" },
+          { key: "admins", label: "Admins only" },
+          { key: "all", label: "Everyone" },
+        ]}
+        value={mode || "off"}
+        onChange={(m) => !busy && m !== mode && onChange(m)}
+        wrapClassName="inline-flex rounded-xl border border-border bg-surface2/60 p-1"
+        btnClassName="px-3 py-1.5 text-[13px]"
+      />
     </div>
   );
 }
@@ -542,10 +547,13 @@ export default function AdminTokens() {
       {done && <Notice kind="success">{done}</Notice>}
 
       <TrialSwitch
-        enabled={d.enabled}
+        mode={d.mode || (d.enabled ? "all" : "off")}
         busy={busy}
-        onChange={(on) =>
-          run(() => api.setTokensEnabled(on), on ? "NABS Points are on for members." : "NABS Points are off again.")
+        onChange={(m) =>
+          run(
+            () => api.setTokensMode(m),
+            m === "all" ? "NABS Points are on for everyone." : m === "admins" ? "NABS Points are on for admins only." : "NABS Points are off."
+          )
         }
       />
 

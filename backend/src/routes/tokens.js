@@ -28,6 +28,11 @@ import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
   SHOP_ITEMS,
   isTokensEnabled,
+  tokensMode,
+  tokensPublic,
+  tokensVisibleTo,
+  setTokensMode,
+  TOKEN_MODES,
   setTokensEnabled,
   ensureTokenAccount,
   attachReferral,
@@ -70,7 +75,7 @@ router.use((req, res, next) => ensureTuning(prisma).then(() => next(), next));
 // so far and what the shop sells.
 router.get("/", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
     const discordId = req.user.discordId;
     await syncEarned(prisma, discordId);
     const account = await ensureTokenAccount(prisma, discordId);
@@ -101,7 +106,7 @@ router.get("/", requireUser, async (req, res, next) => {
 // on every page and has no use for the history.
 router.get("/balance", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
     const discordId = req.user.discordId;
     await syncEarned(prisma, discordId);
     const balance = await dbBalance(prisma, discordId);
@@ -120,7 +125,7 @@ router.get("/balance", requireUser, async (req, res, next) => {
 // nav bar once the count has finished climbing.
 router.post("/seen", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ ok: false });
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ ok: false });
     const discordId = req.user.discordId;
     res.json(await markSeen(prisma, discordId, await dbBalance(prisma, discordId)));
   } catch (e) {
@@ -139,7 +144,7 @@ router.post("/seen", requireUser, async (req, res, next) => {
 // already raced.
 router.post("/invite", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const inviter = await attachReferral(prisma, req.user.discordId, req.body?.code);
     res.json({ attached: !!inviter });
   } catch (e) {
@@ -152,7 +157,7 @@ router.post("/invite", requireUser, async (req, res, next) => {
 // picker the moment the answer comes back.
 router.post("/card-design", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const out = await buyCardDesign(prisma, req.user.discordId, req.body?.key);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
@@ -164,7 +169,7 @@ router.post("/card-design", requireUser, async (req, res, next) => {
 // POST /api/tokens/redeem { itemKey } — spend on a shop item.
 router.post("/redeem", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const out = await redeemItem(prisma, req.user.discordId, req.body?.itemKey, req.body?.choice);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
@@ -178,7 +183,7 @@ router.post("/redeem", requireUser, async (req, res, next) => {
 // owns and wears, and their settings.
 router.get("/studio", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
     const mine = await readStudio(prisma, req.user.discordId);
     res.json({
       enabled: true,
@@ -192,7 +197,7 @@ router.get("/studio", requireUser, async (req, res, next) => {
 });
 router.post("/studio/buy", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const out = await buyStudioItem(prisma, req.user.discordId, req.body?.itemId);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json({ ...out, ...(await readStudio(prisma, req.user.discordId)) });
@@ -202,7 +207,7 @@ router.post("/studio/buy", requireUser, async (req, res, next) => {
 });
 router.put("/studio/appearance", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const out = await equipStudio(prisma, req.user.discordId, req.body?.appearance || {}, req.body?.content);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
@@ -223,7 +228,7 @@ router.post(
     }),
   async (req, res, next) => {
     try {
-      if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+      if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
       if (!["banner", "showcase"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid picture type" });
       const b = req.file?.buffer;
       const isPng = b?.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -245,7 +250,7 @@ router.post(
 // GET /api/tokens/leaderboard: top earners and the most present on Discord.
 router.get("/leaderboard", requireUser, async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
     res.json({ enabled: true, me: req.user.discordId, ...(await leaderboard(prisma)) });
   } catch (e) {
     next(e);
@@ -255,7 +260,7 @@ router.get("/leaderboard", requireUser, async (req, res, next) => {
 // GET /api/tokens/wall: the names on the Hall of Fame wall. Public, no login.
 router.get("/wall", async (req, res, next) => {
   try {
-    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false, wall: [] });
+    if (!(await tokensPublic(prisma))) return res.json({ enabled: false, wall: [] });
     res.json({ enabled: true, wall: await hallOfFameWall(prisma) });
   } catch (e) {
     next(e);
@@ -305,6 +310,7 @@ adminRouter.get("/", async (req, res, next) => {
   try {
     res.json({
       enabled: await isTokensEnabled(prisma),
+      mode: await tokensMode(prisma),
       rules: await rulesForDisplay(prisma),
       shop: tunedShop(),
       members: await adminOverview(prisma),
@@ -403,7 +409,9 @@ adminRouter.get("/activity-key", async (req, res, next) => {
 // POST /api/admin/tokens/enabled { enabled } — turn the trial on or off.
 adminRouter.post("/enabled", async (req, res, next) => {
   try {
-    res.json({ enabled: await setTokensEnabled(prisma, !!req.body?.enabled) });
+    const mode = TOKEN_MODES.includes(req.body?.mode) ? req.body.mode : req.body?.enabled ? "all" : "off";
+    const saved = await setTokensMode(prisma, mode);
+    res.json({ enabled: saved !== "off", mode: saved });
   } catch (e) {
     next(e);
   }

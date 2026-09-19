@@ -66,32 +66,61 @@ export { ACTIVITY_WINDOW_DAYS, EARN_RULES, RULE_BY_KEY, REFERRAL_RACE_LIMIT, act
 // a laptop and OFF for the live site.
 export const TOKENS_SETTING = "tokens_enabled";
 
-export async function isTokensEnabled(prisma) {
+// Three settings: "off", "admins" (only league admins see the feature, to try
+// it on the live site without anybody else noticing) and "all".
+export const TOKEN_MODES = ["off", "admins", "all"];
+
+export async function tokensMode(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: TOKENS_SETTING } });
-    if (row?.value === "1") return true;
-    if (row?.value === "0") return false;
+    if (row?.value === "1" || row?.value === "all") return "all";
+    if (row?.value === "admins") return "admins";
+    if (row?.value === "0" || row?.value === "off") return "off";
   } catch {
     /* fresh database, no Setting table yet */
   }
-  return !IS_DEPLOYED;
+  return IS_DEPLOYED ? "off" : "all";
 }
 
-export async function setTokensEnabled(prisma, on) {
-  const value = on ? "1" : "0";
+// On at all (admins or everyone): accounts, payouts, the bot, the ledger.
+export async function isTokensEnabled(prisma) {
+  return (await tokensMode(prisma)) !== "off";
+}
+
+// Shown on public pages (flair, profile studio, the wall): everyone-mode only.
+export async function tokensPublic(prisma) {
+  return (await tokensMode(prisma)) === "all";
+}
+
+// Does THIS request get to see the feature? Admins in admins-mode, everybody
+// in all-mode. `req.isAdminRequest` is set by the auth middleware for a member
+// login that is a league admin (and for the PIN login).
+export async function tokensVisibleTo(prisma, req) {
+  const mode = await tokensMode(prisma);
+  if (mode === "all") return true;
+  if (mode === "admins") return req?.isAdminRequest === true;
+  return false;
+}
+
+export async function setTokensMode(prisma, mode) {
+  const value = TOKEN_MODES.includes(mode) ? mode : "off"; // anything else is a mistake, and a mistake stays off
   await prisma.setting.upsert({
     where: { key: TOKENS_SETTING },
     update: { value },
     create: { key: TOKENS_SETTING, value },
   });
-  // The league starts from zero: the first time the tokens go on, today
-  // becomes the day races start counting. Nothing before it pays. The admin
-  // can move the date afterwards under Rules and prices.
-  if (on) {
+  // The league starts from zero: the first time the points go on (for anybody),
+  // today becomes the day races start counting. Nothing before it pays. The
+  // admin can move the date afterwards under Rules and prices.
+  if (value !== "off") {
     const t = await ensureTuning(prisma);
     if (!t.startDay) await saveTuning(prisma, { ...t, startDay: leagueDay() });
   }
-  return !!on;
+  return value;
+}
+// Kept for the older callers and tests: on = everyone, off = off.
+export async function setTokensEnabled(prisma, on) {
+  return (await setTokensMode(prisma, on ? "all" : "off")) !== "off";
 }
 
 // The day races started counting, "YYYY-MM-DD" in league time, or null for
