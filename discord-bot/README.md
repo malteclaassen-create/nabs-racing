@@ -74,6 +74,7 @@ The bot can run before the points are switched on for members. Good idea actuall
 
 ## If something's off
 
+- `Not on server ... yet. Waiting for the invite` -> nobody has accepted the invite link yet. It just waits, and starts counting by itself the moment somebody does. If it IS already on the server, GUILD_ID points somewhere else
 - `could not read the invites` -> no Manage Server permission, rest still works
 - `website not reachable` -> site down, it retries
 - `Bad key` -> copy the key again from the admin

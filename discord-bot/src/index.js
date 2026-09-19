@@ -205,22 +205,14 @@ function shutdown(code = 0) {
   process.exitCode = code;
 }
 
-client.once(Events.ClientReady, async (c) => {
-  log(`Signed in as ${c.user.tag}`);
-  const guild = client.guilds.cache.get(config.guildId);
-  if (!guild) {
-    console.error(`Bot is not on the server ${config.guildId}. Invite it first.`);
-    shutdown(1);
-    return;
-  }
+// Everything that only makes sense once we are actually on the server. Guarded,
+// because it can be reached twice: on startup when the bot is already a member,
+// and from GuildCreate when somebody adds it while it is running.
+let counting = false;
+async function startCounting(guild) {
+  if (counting) return;
+  counting = true;
   log(`Watching ${guild.name}, day ${leagueDay()}`);
-
-  try {
-    await ping();
-    log(`Website ok: ${config.siteUrl}`);
-  } catch (e) {
-    log(`! website: ${e.message} (counting anyway)`);
-  }
 
   await rememberInvites();
   if (forgetOldDays(state)) dirty = true;
@@ -237,6 +229,39 @@ client.once(Events.ClientReady, async (c) => {
     }, 6 * 3600 * 1000)
   );
   await flush();
+}
+
+client.once(Events.ClientReady, async (c) => {
+  log(`Signed in as ${c.user.tag}`);
+
+  // The website FIRST, before anything can send us home early. Getting the key
+  // wrong and being on the wrong server are two separate mistakes, and one
+  // start should tell you about both instead of hiding the second behind the
+  // first.
+  try {
+    await ping();
+    log(`Website ok: ${config.siteUrl}`);
+  } catch (e) {
+    log(`! website: ${e.message} (counting anyway)`);
+  }
+
+  const guild = client.guilds.cache.get(config.guildId);
+  if (guild) {
+    await startCounting(guild);
+    return;
+  }
+  // Not invited yet. Wait for it rather than exiting: the bot is usually set up
+  // before the person who can accept the invite gets round to it, and quitting
+  // here means somebody has to come back and restart it afterwards.
+  log(`Not on server ${config.guildId} yet. Waiting for the invite, nothing else to do.`);
+  log(`  If it is already invited, GUILD_ID is pointing at the wrong server.`);
+});
+
+// Somebody accepted the invite while we were waiting.
+client.on(Events.GuildCreate, async (guild) => {
+  if (guild.id !== config.guildId) return;
+  log(`Added to ${guild.name}.`);
+  await startCounting(guild);
 });
 
 // whatever goes wrong, write down what has been counted before going away
