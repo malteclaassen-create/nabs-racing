@@ -760,6 +760,15 @@ export const api = {
   redeemToken: (itemKey, choice = null) =>
     request("/tokens/redeem", { method: "POST", body: { itemKey, choice }, userAuth: true }),
   tokenWall: () => request("/tokens/wall"),
+  tokenLeaderboard: () => request("/tokens/leaderboard", { userAuth: true }),
+  tokensStudio: () => request("/tokens/studio", { userAuth: true }),
+  buyStudioItem: (itemId) => request("/tokens/studio/buy", { method: "POST", body: { itemId }, userAuth: true }),
+  equipStudio: (body) => request("/tokens/studio/appearance", { method: "PUT", body, userAuth: true }),
+  uploadStudioImage: (kind, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request(`/tokens/studio/image/${kind}`, { method: "POST", body, form: true, userAuth: true });
+  },
   // Card designs unlock themselves, so this one answers with the design rather
   // than with an order for the league office.
   buyCardDesign: (key) => request("/tokens/card-design", { method: "POST", body: { key }, userAuth: true }),

@@ -17,6 +17,12 @@ import { Router } from "express";
 import { ensureTuning, overrides, cleanTuning, saveTuning, resetTuning } from "../lib/tokenTuning.js";
 import { EARN_RULES as RULE_DEFAULTS, MULTIPLIER, REFERRAL_RACE_LIMIT } from "../lib/tokenRules.js";
 import { CARD_COLLECTIONS } from "../lib/cardShop.js";
+import multer from "multer";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { UPLOADS_DIR } from "../lib/dataDirs.js";
+import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwner } from "../lib/profileStudio.js";
 import prisma from "../lib/prisma.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
@@ -29,11 +35,14 @@ import {
   rulesForDisplay,
   botConnected,
   tunedShop,
+  tunedStudio,
+  buyStudioItem,
   tunedStartDay,
   tunedReferralLimit,
   tunedMultiplier,
   FLAIRS,
   hallOfFameWall,
+  leaderboard,
   syncEarned,
   dbBalance,
   dbLedger,
@@ -164,6 +173,85 @@ router.post("/redeem", requireUser, async (req, res, next) => {
   }
 });
 
+// --- the profile studio ------------------------------------------------------
+// GET /api/tokens/studio: the catalogue with today's prices, what this member
+// owns and wears, and their settings.
+router.get("/studio", requireUser, async (req, res, next) => {
+  try {
+    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    const mine = await readStudio(prisma, req.user.discordId);
+    res.json({
+      enabled: true,
+      items: studioCatalogue(tunedStudio()),
+      balance: await dbBalance(prisma, req.user.discordId),
+      ...mine,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+router.post("/studio/buy", requireUser, async (req, res, next) => {
+  try {
+    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    const out = await buyStudioItem(prisma, req.user.discordId, req.body?.itemId);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json({ ...out, ...(await readStudio(prisma, req.user.discordId)) });
+  } catch (e) {
+    next(e);
+  }
+});
+router.put("/studio/appearance", requireUser, async (req, res, next) => {
+  try {
+    if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+    const out = await equipStudio(prisma, req.user.discordId, req.body?.appearance || {}, req.body?.content);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+// A banner or showcase picture. Kept under the member's hashed id so the save
+// above can tell their own uploads from anything else.
+const studioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+router.post(
+  "/studio/image/:kind",
+  requireUser,
+  (req, res, next) =>
+    studioUpload.single("file")(req, res, (error) => {
+      if (error?.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: "Pictures must be 8 MB or smaller" });
+      next(error);
+    }),
+  async (req, res, next) => {
+    try {
+      if (!(await isTokensEnabled(prisma))) return res.status(403).json({ error: "Not available" });
+      if (!["banner", "showcase"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid picture type" });
+      const b = req.file?.buffer;
+      const isPng = b?.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+      const isJpg = b?.[0] === 255 && b?.[1] === 216 && b?.[2] === 255;
+      const isWebp = b?.subarray(0, 4).toString() === "RIFF" && b?.subarray(8, 12).toString() === "WEBP";
+      const ext = isPng ? "png" : isJpg ? "jpg" : isWebp ? "webp" : null;
+      if (!ext) return res.status(400).json({ error: "Use a PNG, JPG or WebP image (up to 8 MB)" });
+      const dir = join(UPLOADS_DIR, "profile-studio");
+      mkdirSync(dir, { recursive: true });
+      const filename = `${profileMediaOwner(req.user.discordId)}-${req.params.kind}-${randomUUID()}.${ext}`;
+      writeFileSync(join(dir, filename), b);
+      res.json({ url: `/api/uploads/profile-studio/${filename}` });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+// GET /api/tokens/leaderboard: top earners and the most present on Discord.
+router.get("/leaderboard", requireUser, async (req, res, next) => {
+  try {
+    if (!(await isTokensEnabled(prisma))) return res.json({ enabled: false });
+    res.json({ enabled: true, me: req.user.discordId, ...(await leaderboard(prisma)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/tokens/wall: the names on the Hall of Fame wall. Public, no login.
 router.get("/wall", async (req, res, next) => {
   try {
@@ -230,6 +318,13 @@ adminRouter.get("/", async (req, res, next) => {
         multiplier: MULTIPLIER,
       },
       cards: CARD_COLLECTIONS.map((c) => ({ ...c, cost: overrides().cards?.[c.key]?.cost ?? c.cost })),
+      // The studio's per-type prices: the catalogue's own number per slot
+      // (uniform within a slot), and what the league set instead.
+      studio: STUDIO_SLOTS.filter((slot) => studioCatalogue().some((i) => i.slot === slot)).map((slot) => ({
+        key: slot,
+        cost: tunedStudio()[slot]?.cost ?? studioCatalogue().find((i) => i.slot === slot).price,
+        defaultCost: studioCatalogue().find((i) => i.slot === slot).price,
+      })),
       referralRaceLimit: tunedReferralLimit(),
       multiplier: tunedMultiplier(),
       startDay: tunedStartDay(),
@@ -279,6 +374,7 @@ adminRouter.put("/tuning", async (req, res, next) => {
       rules: RULE_DEFAULTS.map((r) => r.key),
       shop: SHOP_ITEMS.map((i) => i.key),
       cards: CARD_COLLECTIONS.map((c) => c.key),
+      studio: [...new Set(STUDIO_SLOTS)],
     });
     if (out.error) return res.status(400).json({ error: out.error });
     res.json({ ok: true, tuning: await saveTuning(prisma, out.tuning) });

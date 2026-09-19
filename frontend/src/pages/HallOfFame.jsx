@@ -428,7 +428,7 @@ export default function HallOfFame() {
       {/* the wall: names bought with server tokens, oldest first */}
       {wall.data?.wall?.length > 0 && (
         <section className="reveal">
-          <SectionHead eyebrow="Server tokens" title="The wall" />
+          <SectionHead eyebrow="NABS Points" title="The wall" />
           <p className="mb-4 text-sm text-light">The people who put their name up here. Earned on the server, not on the track.</p>
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
             {wall.data.wall.map((w, i) => (

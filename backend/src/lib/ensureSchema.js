@@ -699,6 +699,14 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "TokenRedemption_discordId_idx" ON "TokenRedemption"("discordId")`
   );
+  // Profile studio: what each member has put on their profile page.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ProfileStyle" (
+    "discordId" TEXT NOT NULL PRIMARY KEY,
+    "theme" TEXT, "banner" TEXT, "frame" TEXT, "nameplate" TEXT,
+    "stats" TEXT, "trophies" TEXT, "showcase" TEXT, "effect" TEXT,
+    "content" TEXT,
+    "updatedAt" DATETIME
+  )`);
 
   await migrateLiveLinksToSeries(prisma);
   await migrateTelemetryToSeries(prisma);

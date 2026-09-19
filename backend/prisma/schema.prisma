@@ -815,6 +815,22 @@ model TokenActivity {
   @@index([day])
 }
 
+// What a member wears on their public profile page (profile studio): the
+// design id per slot, ownership lives in TokenRedemption.
+model ProfileStyle {
+  discordId String    @id
+  theme     String?
+  banner    String?
+  frame     String?
+  nameplate String?
+  stats     String?
+  trophies  String?
+  showcase  String?
+  effect    String?
+  content   String?
+  updatedAt DateTime?
+}
+
 // A shop order: the member spends, an admin fills it by hand — or declines it,
 // which refunds the tokens.
 model TokenRedemption {

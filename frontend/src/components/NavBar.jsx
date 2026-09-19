@@ -46,7 +46,7 @@ function motionOff() {
   );
 }
 
-function TokenPill({ mobile = false }) {
+function TokenPill({ mobile = false, segment = false }) {
   const balance = useTokenBalance();
   // The news being played right now (with the total it is climbing to), and the
   // number on the pill while it climbs.
@@ -125,12 +125,15 @@ function TokenPill({ mobile = false }) {
   return (
     <NavLink
       to="/profile?tab=tokens"
-      title={why ? `+${play.gained} tokens: ${why}` : "Your server tokens"}
-      className={`inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 font-mono text-[13px] font-bold tabular-nums text-medium transition hover:bg-surface2 ${
-        play ? "token-pill-celebrating " : ""
-      }${mobile ? "" : "ml-1"}`}
+      title={why ? `+${play.gained} points: ${why}` : "Your NABS Points"}
+      className={`inline-flex items-center gap-1.5 font-mono text-[15px] font-bold tabular-nums transition ${
+        segment
+          ? // the right half of the identity capsule: shares its border with the chip
+            "border-l border-border bg-brand/10 py-1.5 pl-2.5 pr-3 text-dark hover:bg-brand/20"
+          : `rounded-lg border border-border px-2.5 py-1.5 text-dark hover:bg-surface2 ${mobile ? "" : "ml-1"}`
+      } ${play ? "token-pill-celebrating" : ""}`}
     >
-      <TokenIcon className="h-3.5 w-3.5 text-brand" />
+      <TokenIcon className="h-5 w-5" />
       {/* The count and the "+100" share one slot: the number steps aside while
           the news rises through its place, then comes back and climbs. */}
       <span className="relative inline-flex min-w-[2ch] items-center justify-end leading-none">
@@ -144,7 +147,7 @@ function TokenPill({ mobile = false }) {
           </span>
         )}
       </span>
-      <span className="sr-only"> tokens{play ? `, ${play.gained} earned since your last visit` : ""}</span>
+      <span className="sr-only"> points{play ? `, ${play.gained} earned since your last visit` : ""}</span>
     </NavLink>
   );
 }
@@ -165,13 +168,13 @@ function AuthControl({ mobile = false }) {
           // `relative` is new: the dot below is positioned against this chip,
           // and without it the nearest positioned ancestor is the whole nav
           // strip, which would park it somewhere else entirely.
-          `relative flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold transition ${
-            mobile ? "w-full" : ""
-          } ${isActive ? "bg-brand/20 text-dark ring-1 ring-brand/50" : "text-medium hover:bg-surface2"}`
+          `relative flex items-center gap-2 text-sm font-semibold transition ${
+            mobile ? "w-full rounded-lg px-2 py-1.5" : "py-1 pl-1.5 pr-2.5"
+          } ${isActive ? "bg-brand/20 text-dark" : "text-medium hover:bg-surface2"}`
         }
       >
         <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} />
-        <span className="max-w-[8rem] truncate">{name}</span>
+        <span className={`max-w-[8rem] truncate ${mobile ? "" : "hidden xl:inline"}`}>{name}</span>
         <AttentionDot total={total} className="absolute right-1 top-1" />
       </NavLink>
     );
@@ -183,10 +186,11 @@ function AuthControl({ mobile = false }) {
         <TokenPill mobile />
       </div>
     ) : (
-      <>
+      // One capsule: who you are on the left, what you have on the right.
+      <div className="nav-identity ml-1 inline-flex items-stretch overflow-hidden rounded-full border border-border bg-card shadow-sm">
         {chip}
-        <TokenPill />
-      </>
+        <TokenPill segment />
+      </div>
     );
   }
   return (
@@ -234,7 +238,7 @@ function navLinks(p) {
 // the items (see the sliding span in the desktop nav), so the item itself only
 // switches its text colour and carries the `is-active` marker the pill follows.
 const desktopLinkClass = ({ isActive }) =>
-  `relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+  `relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition xl:px-3 xl:text-sm ${
     isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
   }`;
 
@@ -415,7 +419,7 @@ function StandingsNav({ seriesPath }) {
         aria-haspopup="menu"
         aria-expanded={open}
         data-tour="nav-standings"
-        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
+        className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition xl:px-3 xl:text-sm ${
           active ? "is-active text-dark" : "text-medium hover:bg-surface2"
         }`}
       >
@@ -866,7 +870,7 @@ export default function NavBar() {
       <div className="relative">
         {/* team-colour accent line = scroll progress indicator */}
         <ScrollProgressLine />
-        <nav className="container-page flex h-20 items-center justify-between">
+        <nav className="container-page flex h-20 items-center justify-between gap-3">
         {/* Logo + season pill share the left edge so the pill hugs the wordmark
             rather than floating out toward the centre. The line under the
             wordmark belongs to the SERIES switcher (nothing with one series —
@@ -877,7 +881,13 @@ export default function NavBar() {
               <Logo size={46} />
             </NavLink>
             <span className="leading-tight">
-              <NavLink to={seriesPath("")} className="block text-base font-extrabold tracking-tight text-dark">
+              {/* The wordmark is the one thing here that can go: between lg
+                  and xl the bar has no room for it next to the links, and the
+                  logo says the same thing. */}
+              <NavLink
+                to={seriesPath("")}
+                className="block text-base font-extrabold tracking-tight text-dark lg:hidden xl:block"
+              >
                 NABS Racing League
               </NavLink>
               <SeriesSwitcher />
@@ -902,7 +912,7 @@ export default function NavBar() {
         {/* Desktop nav — the active page's pill highlight GLIDES between the
             items instead of jumping (one absolutely-positioned pill follows
             whichever item carries `.is-active`). */}
-        <div ref={desktopNavRef} className="relative hidden items-center gap-1 lg:flex">
+        <div ref={desktopNavRef} className="relative hidden shrink-0 items-center gap-0.5 lg:flex xl:gap-1">
           {navPill && (
             <span
               aria-hidden
@@ -940,7 +950,7 @@ export default function NavBar() {
                   <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{liveNow}</span>
                 )}
                 {l.label === "Live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
-                {l.label === "Live" && liveFeatureNew && <span className="ml-1.5 rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink">New</span>}
+                {l.label === "Live" && liveFeatureNew && <span className="ml-1.5 hidden rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink xl:inline">New</span>}
                 {/* Same shape as Live's count, for the same reason: the number
                     is the interesting fact, not a dot. It is brand-coloured and
                     breathes because unlike cars on track this is something the

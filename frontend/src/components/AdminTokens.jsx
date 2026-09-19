@@ -50,7 +50,7 @@ function TrialSwitch({ enabled, onChange, busy }) {
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
         <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
-          Server tokens
+          NABS Points
         </div>
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
           {enabled
@@ -264,7 +264,7 @@ function BotPanel() {
             Discord knows this already: every invite link on the server counts its uses and names the member who
             made it. A bot that keeps those counts and compares them when somebody joins can see which link was
             used, and so who brought them in. Report it here and the new member is credited to them, exactly as if
-            they had used the invite link on the Tokens page.
+            they had used the invite link on the NABS Points page.
           </p>
         </div>
         <CopyField label="Where it goes" value={`POST ${origin}/api/tokens/referral`} />
@@ -349,7 +349,7 @@ function TuningPanel({ d, busy, onSave, onReset }) {
         <div className="min-w-0">
           <Head>Counting from</Head>
           <p className="mt-1 text-xs leading-relaxed text-light">
-            Races before this day pay nothing. Set to the day the tokens went live by itself; empty means every race
+            Races before this day pay nothing. Set to the day the points went live by itself; empty means every race
             ever, back to season 1.
           </p>
         </div>
@@ -363,7 +363,7 @@ function TuningPanel({ d, busy, onSave, onReset }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card p-5">
-          <Head>What earns tokens</Head>
+          <Head>What earns points</Head>
           <ul className="mt-1 divide-y divide-border">
             {(defaults.rules || []).map((r) => {
               const isMult = r.key === "activity";
@@ -406,7 +406,7 @@ function TuningPanel({ d, busy, onSave, onReset }) {
         <div className="card p-5">
           <Head>What they buy</Head>
           <ul className="mt-1 divide-y divide-border">
-            {(defaults.shop || []).map((i) => {
+            {(defaults.shop || []).filter((i) => !i.link).map((i) => {
               const on = get("shop", i.key, "active") ?? true;
               return (
                 <li key={i.key} className="flex items-center justify-between gap-4 py-2.5">
@@ -434,6 +434,18 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                   <div className="text-xs text-light">{c.blurb}</div>
                 </div>
                 <NumberField value={get("cards", c.key, "cost")} placeholder={c.cost} onChange={(v) => set("cards", c.key, "cost", v)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="card p-5">
+          <Head>Profile studio, per type</Head>
+          <ul className="mt-1 divide-y divide-border">
+            {(d.studio || []).map((s) => (
+              <li key={s.key} className="flex items-center justify-between gap-4 py-2.5">
+                <div className="text-sm font-semibold capitalize text-dark">{s.key === "nameplate" ? "Name lettering" : s.key}</div>
+                <NumberField value={get("studio", s.key, "cost")} placeholder={s.defaultCost} onChange={(v) => set("studio", s.key, "cost", v)} />
               </li>
             ))}
           </ul>
@@ -533,7 +545,7 @@ export default function AdminTokens() {
         enabled={d.enabled}
         busy={busy}
         onChange={(on) =>
-          run(() => api.setTokensEnabled(on), on ? "Tokens are on for members." : "Tokens are off again.")
+          run(() => api.setTokensEnabled(on), on ? "NABS Points are on for members." : "NABS Points are off again.")
         }
       />
 
@@ -610,7 +622,7 @@ export default function AdminTokens() {
         ) : (
           <EmptyState
             title="Nobody has an account yet"
-            hint="One is created the first time a member signs in while tokens are switched on."
+            hint="One is created the first time a member signs in while the points are switched on."
           />
         ))}
 

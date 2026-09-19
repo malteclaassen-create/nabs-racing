@@ -808,7 +808,9 @@ export function CardHead({ eyebrow, title, children }) {
 // `rightInline`: keeps `right` beside the title on phones too — only for
 // controls small enough to share the line (e.g. the two tier pills on
 // Constructors); wide filter bars keep the default stacked row.
-export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline = false }) {
+// `keepTitle`: a title that must never break inside a word (a fixed page
+// name next to a wide control bar); the controls wrap instead.
+export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline = false, keepTitle = false }) {
   return (
     <div className="mb-4 border-b border-border pb-4 sm:mb-8 sm:pb-5">
       {/* On phones `right` (filters, pills) gets its own row under the title —
@@ -817,7 +819,10 @@ export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline
         className={
           rightInline
             ? "flex flex-row items-end justify-between gap-3 sm:gap-4"
-            : "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4"
+            : keepTitle
+              ? // the controls may drop under the title, the title never breaks
+                "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4"
+              : "flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4"
         }
       >
         <div className="flex min-w-0 items-end gap-4">
@@ -835,7 +840,7 @@ export function PageHeader({ index, eyebrow, title, subtitle, right, rightInline
             {/* break-words because a title can be someone's own display name
                 (the welcome screen greets a new member by theirs), and a long
                 one without spaces would otherwise push the row sideways. */}
-            <h1 className={`break-words font-display font-extrabold uppercase tracking-tight text-dark sm:text-4xl ${rightInline ? "text-2xl" : "text-3xl"}`}>
+            <h1 className={`${keepTitle ? "whitespace-nowrap" : "break-words"} font-display font-extrabold uppercase tracking-tight text-dark sm:text-4xl ${rightInline ? "text-2xl" : "text-3xl"}`}>
               {title}
             </h1>
           </div>

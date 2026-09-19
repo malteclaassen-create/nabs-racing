@@ -1947,6 +1947,13 @@ body::before {
   100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
 }
 .token-gain { animation: token-gain-rise 1500ms var(--e-soft) forwards; }
+/* The identity capsule in the nav bar: the coin gives a little nod when you
+   hover the whole thing. Off in Performance Lite and under reduced motion. */
+.nav-identity img { transition: transform 300ms var(--e-soft); }
+.nav-identity:hover img { transform: rotate(-14deg) scale(1.08); }
+@media (prefers-reduced-motion: reduce) { .nav-identity img { transition: none; } .nav-identity:hover img { transform: none; } }
+.fx-lite .nav-identity img { transition: none; }
+.fx-lite .nav-identity:hover img { transform: none; }
 
 /* The pill itself lights up for as long as there is news in it. */
 @keyframes token-pill-glow {

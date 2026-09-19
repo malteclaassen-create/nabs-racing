@@ -791,7 +791,7 @@ function memberTabs(isAdmin, attention = 0, tokens = null) {
     // Only while the token trial is switched on. The hook answers null when it
     // is off, which is the same answer it gives the nav bar, so the tab and the
     // count up there appear and disappear together.
-    ...(tokens === null ? [] : [{ key: "tokens", label: "Tokens" }]),
+    ...(tokens === null ? [] : [{ key: "tokens", label: "NABS Points" }]),
     // The key stays "tools": ?tab=tools is in bell links and bookmarks.
     { key: "tools", label: "Telemetry" },
     // Feedback used to be a floating button in the bottom right corner. That
@@ -885,6 +885,7 @@ function MyProfile() {
       <PageHeader
         eyebrow="Your profile"
         title="My Profile"
+        keepTitle
         right={
           <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
             {/* the public page opens separately, everything else lives in the bar */}

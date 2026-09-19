@@ -1,0 +1,386 @@
+[
+  {
+    "id": "theme-midnight",
+    "slot": "theme",
+    "name": "Midnight",
+    "price": 800,
+    "finish": "midnight",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-forest",
+    "slot": "theme",
+    "name": "Forest",
+    "price": 800,
+    "finish": "forest",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-porcelain",
+    "slot": "theme",
+    "name": "Porcelain",
+    "price": 800,
+    "finish": "porcelain",
+    "tone": "light"
+  },
+  {
+    "id": "theme-graphite",
+    "slot": "theme",
+    "name": "Graphite",
+    "price": 800,
+    "finish": "graphite",
+    "tone": "dark"
+  },
+  {
+    "id": "banner-chevron",
+    "slot": "banner",
+    "name": "Chevron",
+    "price": 300,
+    "finish": "chevron"
+  },
+  {
+    "id": "banner-mesh",
+    "slot": "banner",
+    "name": "Perforated metal",
+    "price": 300,
+    "finish": "mesh"
+  },
+  {
+    "id": "banner-contour",
+    "slot": "banner",
+    "name": "Contour lines",
+    "price": 300,
+    "finish": "contour"
+  },
+  {
+    "id": "banner-pinstripe",
+    "slot": "banner",
+    "name": "Pinstripe",
+    "price": 300,
+    "finish": "pinstripe"
+  },
+  {
+    "id": "name-team",
+    "slot": "nameplate",
+    "name": "Team lettering",
+    "price": 250,
+    "finish": "team"
+  },
+  {
+    "id": "name-outline",
+    "slot": "nameplate",
+    "name": "Outline",
+    "price": 250,
+    "finish": "outline"
+  },
+  {
+    "id": "name-mono",
+    "slot": "nameplate",
+    "name": "Timing type",
+    "price": 250,
+    "finish": "mono"
+  },
+  {
+    "id": "name-serif",
+    "slot": "nameplate",
+    "name": "Classic serif",
+    "price": 250,
+    "finish": "serif"
+  },
+  {
+    "id": "stats-minimal",
+    "slot": "stats",
+    "name": "Minimal",
+    "price": 350,
+    "finish": "minimal"
+  },
+  {
+    "id": "stats-team",
+    "slot": "stats",
+    "name": "Team accent",
+    "price": 350,
+    "finish": "team"
+  },
+  {
+    "id": "stats-boxed",
+    "slot": "stats",
+    "name": "Score tiles",
+    "price": 350,
+    "finish": "boxed"
+  },
+  {
+    "id": "theme-spectrum",
+    "slot": "theme",
+    "name": "Spectrum",
+    "price": 800,
+    "finish": "spectrum",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-carbon",
+    "slot": "theme",
+    "name": "Carbon",
+    "price": 800,
+    "finish": "carbon",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-heritage",
+    "slot": "theme",
+    "name": "Heritage",
+    "price": 800,
+    "finish": "heritage",
+    "tone": "light"
+  },
+  {
+    "id": "theme-studio",
+    "slot": "theme",
+    "name": "Studio",
+    "price": 800,
+    "finish": "studio",
+    "tone": "light"
+  },
+  {
+    "id": "banner-grid",
+    "slot": "banner",
+    "name": "Starting Grid",
+    "price": 300,
+    "finish": "grid"
+  },
+  {
+    "id": "banner-stripes",
+    "slot": "banner",
+    "name": "Racing Stripes",
+    "price": 300,
+    "finish": "stripes"
+  },
+  {
+    "id": "banner-aurora",
+    "slot": "banner",
+    "name": "Aurora",
+    "price": 300,
+    "finish": "aurora"
+  },
+  {
+    "id": "banner-checker",
+    "slot": "banner",
+    "name": "Chequered",
+    "price": 300,
+    "finish": "checker"
+  },
+  {
+    "id": "name-chrome",
+    "slot": "nameplate",
+    "name": "Chrome lettering",
+    "price": 250,
+    "finish": "chrome"
+  },
+  {
+    "id": "name-spectrum",
+    "slot": "nameplate",
+    "name": "Prismatic lettering",
+    "price": 250,
+    "finish": "spectrum"
+  },
+  {
+    "id": "name-race",
+    "slot": "nameplate",
+    "name": "Race number plate",
+    "price": 250,
+    "finish": "race"
+  },
+  {
+    "id": "name-editorial",
+    "slot": "nameplate",
+    "name": "Editorial",
+    "price": 250,
+    "finish": "editorial"
+  },
+  {
+    "id": "stats-timing",
+    "slot": "stats",
+    "name": "Timing board",
+    "price": 350,
+    "finish": "timing"
+  },
+  {
+    "id": "stats-print",
+    "slot": "stats",
+    "name": "Race report",
+    "price": 350,
+    "finish": "print"
+  },
+  {
+    "id": "stats-metal",
+    "slot": "stats",
+    "name": "Brushed metal",
+    "price": 350,
+    "finish": "metal"
+  },
+  {
+    "id": "effect-grain",
+    "slot": "effect",
+    "name": "Film grain",
+    "price": 150,
+    "finish": "grain"
+  },
+  {
+    "id": "effect-edge",
+    "slot": "effect",
+    "name": "Edge glow",
+    "price": 150,
+    "finish": "edge"
+  },
+  {
+    "id": "theme-oxblood",
+    "slot": "theme",
+    "name": "Oxblood",
+    "price": 800,
+    "finish": "oxblood",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-aubergine",
+    "slot": "theme",
+    "name": "Aubergine",
+    "price": 800,
+    "finish": "aubergine",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-petrol",
+    "slot": "theme",
+    "name": "Petrol",
+    "price": 800,
+    "finish": "petrol",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-espresso",
+    "slot": "theme",
+    "name": "Espresso",
+    "price": 800,
+    "finish": "espresso",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-cobalt",
+    "slot": "theme",
+    "name": "Cobalt",
+    "price": 800,
+    "finish": "cobalt",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-obsidian",
+    "slot": "theme",
+    "name": "Obsidian",
+    "price": 800,
+    "finish": "obsidian",
+    "tone": "dark"
+  },
+  {
+    "id": "theme-chalk",
+    "slot": "theme",
+    "name": "Chalk",
+    "price": 800,
+    "finish": "chalk",
+    "tone": "light"
+  },
+  {
+    "id": "theme-sage",
+    "slot": "theme",
+    "name": "Sage",
+    "price": 800,
+    "finish": "sage",
+    "tone": "light"
+  },
+  {
+    "id": "theme-sand",
+    "slot": "theme",
+    "name": "Sand",
+    "price": 800,
+    "finish": "sand",
+    "tone": "light"
+  },
+  {
+    "id": "theme-ice",
+    "slot": "theme",
+    "name": "Ice",
+    "price": 800,
+    "finish": "ice",
+    "tone": "light"
+  },
+  {
+    "id": "theme-lavender",
+    "slot": "theme",
+    "name": "Lavender",
+    "price": 800,
+    "finish": "lavender",
+    "tone": "light"
+  },
+  {
+    "id": "theme-clay",
+    "slot": "theme",
+    "name": "Clay",
+    "price": 800,
+    "finish": "clay",
+    "tone": "light"
+  },
+  {
+    "id": "banner-livery",
+    "slot": "banner",
+    "name": "Team Livery",
+    "price": 300,
+    "finish": "livery"
+  },
+  {
+    "id": "banner-split",
+    "slot": "banner",
+    "name": "Diagonal Split",
+    "price": 300,
+    "finish": "split"
+  },
+  {
+    "id": "banner-circuit",
+    "slot": "banner",
+    "name": "Circuit Lines",
+    "price": 300,
+    "finish": "circuit"
+  },
+  {
+    "id": "banner-vignette",
+    "slot": "banner",
+    "name": "Vignette",
+    "price": 300,
+    "finish": "vignette"
+  },
+  {
+    "id": "name-underline",
+    "slot": "nameplate",
+    "name": "Underline",
+    "price": 250,
+    "finish": "underline"
+  },
+  {
+    "id": "name-condensed",
+    "slot": "nameplate",
+    "name": "Condensed",
+    "price": 250,
+    "finish": "condensed"
+  },
+  {
+    "id": "stats-ledger",
+    "slot": "stats",
+    "name": "Ledger",
+    "price": 350,
+    "finish": "ledger"
+  },
+  {
+    "id": "stats-rail",
+    "slot": "stats",
+    "name": "Accent Rail",
+    "price": 350,
+    "finish": "rail"
+  }
+]

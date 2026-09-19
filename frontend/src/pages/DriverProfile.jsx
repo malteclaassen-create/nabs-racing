@@ -14,6 +14,7 @@ import {
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import SocialLinks from "../components/SocialLinks.jsx";
+import ProfileAppearance, { ProfileBanner, useProfilePageTheme } from "../components/ProfileAppearance.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -248,7 +249,7 @@ function StatTiles({ stats, visible, className = "grid-cols-2 sm:grid-cols-3 lg:
   return (
     // One quiet framed block with hairline rules between the stats, instead of
     // a loose grid of separate bordered cards.
-    <div className={`reveal grid overflow-hidden rounded-xl border border-border bg-card ${className}`}>
+    <div className={`profile-stats reveal grid overflow-hidden rounded-xl border border-border bg-card ${className}`}>
       {defs.map((t, i) => (
         <Stat
           key={t.key}
@@ -535,7 +536,7 @@ function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = f
           the position ticks line up exactly with the dots */}
       <div className="flex min-h-0 flex-1 items-stretch gap-2">
         {/* y-axis: finishing positions, stays put while the plot scrolls */}
-        <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card">
+        <div className="profile-form-axis sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card">
           <div className="relative h-full">
           {ticks.map((p) => (
             <span
@@ -670,7 +671,7 @@ function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = f
       {/* per-round result chips — a spacer matching the pinned y-axis keeps
           each chip directly under its dot */}
       <div className="mt-3 flex shrink-0 gap-2">
-        <div className="sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" />
+        <div className="profile-form-axis sticky-fade sticky left-0 z-10 w-7 shrink-0 bg-card" />
         {/* same wipe, same duration as the plot above — chips surface exactly
             when the line reaches their round */}
         <div className="wipe-ltr flex flex-1" style={{ "--wipe-dur": "2s" }}>
@@ -1456,7 +1457,10 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
     </>
   );
   return (
-    <div className="reveal card relative overflow-hidden p-5 sm:p-6">
+    <div className="reveal card profile-driver-header relative overflow-hidden p-5 sm:p-6">
+      {(driver.appearance?.banner || driver.profileContent?.bannerImage) && (
+        <ProfileBanner driver={driver} appearance={driver.appearance} backgroundOnly />
+      )}
       {/* team-colour top strip + faint wash tie the panel to the card frame */}
       <span className="absolute inset-x-0 top-0 h-1.5" style={{ backgroundColor: color }} />
       <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
@@ -1484,12 +1488,13 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           <div className="flex items-start justify-between gap-6">
             <div className="min-w-0 flex-1 text-center lg:text-left">
               <div className="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
-                <h1 className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
+                <h1 className="profile-driver-name font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{driver.name}</h1>
                 <Flag code={countryFor(driver.id, driver.country)} w={30} h={22} />
                 <TierBadge tier={driver.tier} />
                 {driver.role === "safety" && <SafetyCarBadge />}
             {driver.flair && <FlairBadge flair={driver.flair} />}
               </div>
+              {driver.profileContent?.title && <p className="profile-personal-title">{driver.profileContent.title}</p>}
               <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2 text-light lg:justify-start">
                 <Link to={`/teams/${driver.team.id}`} className="group flex items-center gap-2">
                   <TeamLogo id={driver.team.id} name={driver.team.name} color={color} logoUrl={driver.team.logoUrl} size={22} />
@@ -1662,6 +1667,9 @@ export default function DriverProfile({ previewId, preview }) {
   // Season-form view: race result or qualifying. Up here with the other hooks,
   // above the loading/error returns below.
   const [formMode, setFormMode] = useState("race"); // "race" | "quali"
+  // The page takes the driver's studio theme (colours on the whole page). Not
+  // in the studio's own live preview, which sets it itself.
+  useProfilePageTheme(data?.[0]?.driver?.appearance?.theme, !previewId, data?.[0]?.driver?.profileContent);
 
   // The driver IS this page, so the tab and the search result should say so
   // rather than naming the season alone. Same wording as the title the server
@@ -1888,6 +1896,7 @@ export default function DriverProfile({ previewId, preview }) {
   }
 
   return (
+    <ProfileAppearance driver={driver}>
     <div className="content-in space-y-6">
       {ownControls}
       {LAYOUT === "classic" ? (
@@ -1936,7 +1945,7 @@ export default function DriverProfile({ previewId, preview }) {
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
-        <div className="reveal card flex flex-col overflow-hidden lg:col-span-2">
+        <div className="reveal card profile-form-panel flex flex-col overflow-hidden lg:col-span-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
@@ -2129,5 +2138,6 @@ export default function DriverProfile({ previewId, preview }) {
         <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">← All drivers</Link>
       </div>
     </div>
+    </ProfileAppearance>
   );
 }

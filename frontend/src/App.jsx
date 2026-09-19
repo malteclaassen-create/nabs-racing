@@ -47,6 +47,7 @@ const CardGallery = lazy(() => import("./pages/CardGallery.jsx"));
 // path in one go. Cockpit and Tools are listed here for their own routes, but
 // they land in Profile's chunk because Profile imports from both.
 const Profile = lazy(() => import("./pages/Profile.jsx"));
+const ProfileStyle = lazy(() => import("./pages/ProfileStyle.jsx"));
 const Cockpit = lazy(() => import("./pages/Cockpit.jsx"));
 const Tools = lazy(() => import("./pages/Tools.jsx"));
 // The "Checksum failed" self-service. Opened from a Discord link when someone
@@ -257,6 +258,7 @@ function AppRoutes() {
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/style" element={<ProfileStyle />} />
         {/* Your own feedback threads. Reached from the notification the admins'
             answer sends (/feedback?id=…) and from the feedback panel itself. */}
         <Route path="/feedback" element={<MyFeedback />} />

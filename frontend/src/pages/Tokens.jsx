@@ -1,8 +1,10 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, storedInvite } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
-import { Spinner, ErrorBox, EmptyState, Notice } from "../components/ui.jsx";
+import { Spinner, ErrorBox, EmptyState, Notice, DriverAvatar } from "../components/ui.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import { Modal } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
 import RatingCard, { CardBack } from "../components/RatingCard.jsx";
@@ -43,7 +45,161 @@ function Heading({ children }) {
 // The numbers sit UNDER the balance in a row of three, not out to the right of
 // it: the page is up to 1600px wide, and pushing them to the far edge left the
 // two halves of one card shouting at each other across an empty middle.
-function Balance({ data }) {
+
+// ---------------------------------------------------------------------------
+// The balance as a number that MOVES: after a purchase it counts down from
+// what you had to what you have, after a race it counts up. Same off-switches
+// as CountUp (reduced motion, Performance Lite).
+// ---------------------------------------------------------------------------
+function reduceMotion() {
+  if (typeof window === "undefined") return true;
+  const html = document.documentElement.classList;
+  return (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || html.contains("fx-lite");
+}
+
+function MovingNumber({ value, className = "" }) {
+  const target = Number(value) || 0;
+  const [shown, setShown] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    const start = from.current;
+    if (start === target) return;
+    if (reduceMotion()) {
+      from.current = target;
+      setShown(target);
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 900;
+    let raf = 0;
+    const tick = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(Math.round(start + (target - start) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else from.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return <span className={className}>{fmt(shown)}</span>;
+}
+
+// "Saving for": the one thing in the shop you are working towards. Kept in
+// this browser only; it is a note to yourself, not a fact about the account.
+const GOAL_KEY = "nabs_token_goal";
+function readGoal() {
+  try {
+    return localStorage.getItem(GOAL_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+function writeGoal(key) {
+  try {
+    if (key) localStorage.setItem(GOAL_KEY, key);
+    else localStorage.removeItem(GOAL_KEY);
+  } catch {
+    /* private window, whatever: the page works without it */
+  }
+}
+
+function Goal({ item, balance, onClear }) {
+  if (!item) return null;
+  const share = Math.max(0, Math.min(1, balance / item.cost));
+  const left = item.cost - balance;
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex items-baseline justify-between gap-3 text-xs">
+        <span className="text-light">
+          Saving for <span className="font-semibold text-dark">{item.name}</span>
+        </span>
+        <span className="font-mono tabular-nums text-medium">
+          {left > 0 ? (
+            <>
+              {fmt(left)} <span className="text-light">to go</span>
+            </>
+          ) : (
+            <span className="font-bold text-ok">You can get it now</span>
+          )}
+        </span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface2">
+        <div className={`h-full rounded-full ${left > 0 ? "bg-brand" : "bg-ok"}`} style={{ width: `${share * 100}%` }} />
+      </div>
+      <button type="button" onClick={onClear} className="mt-1.5 text-[11px] text-light underline-offset-2 hover:underline">
+        stop saving for this
+      </button>
+    </div>
+  );
+}
+
+// Who is ahead. Two lists: earned (spending does not count against you) and
+// time on Discord. Your own row is marked so you do not have to hunt for it.
+function Leaderboard() {
+  const board = useApi(useCallback(() => api.tokenLeaderboard(), []));
+  const [tab, setTab] = useState("earned");
+  const d = board.data;
+  if (!d || d.enabled === false) return null;
+  const rows = tab === "earned" ? d.earned : d.active;
+  const me = d.me;
+  const hours = (m) => Math.round((m || 0) / 6) / 10;
+  return (
+    <div className="card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Heading>Who is ahead</Heading>
+        <SlidingTabs
+          items={[
+            { key: "earned", label: "Points earned" },
+            { key: "active", label: `On Discord, ${d.windowDays || 30} days` },
+          ]}
+          value={tab}
+          onChange={setTab}
+          wrapClassName="inline-flex rounded-xl border border-border bg-surface2/60 p-1"
+          btnClassName="px-3 py-1 text-[12px]"
+        />
+      </div>
+      {rows?.length ? (
+        <ol className="mt-3 divide-y divide-border">
+          {rows.map((r, i) => {
+            const mine = r.discordId === me;
+            return (
+              <li
+                key={r.discordId}
+                className={`flex items-center gap-3 py-2 ${mine ? "-mx-2 rounded-lg bg-brand/10 px-2" : ""}`}
+              >
+                <span className={`w-6 shrink-0 text-center font-mono text-sm font-bold tabular-nums ${i < 3 ? "text-dark" : "text-light"}`}>
+                  {i + 1}
+                </span>
+                <DriverAvatar name={r.name} photoUrl={r.avatarUrl} size={28} />
+                <span className={`min-w-0 flex-1 truncate text-sm ${mine ? "font-bold text-dark" : "font-semibold text-dark"}`}>
+                  {r.name}
+                  {mine && <span className="ml-1.5 text-[11px] font-normal text-light">you</span>}
+                </span>
+                {tab === "earned" ? (
+                  <span className="inline-flex items-center gap-1 font-mono text-sm font-bold tabular-nums text-medium">
+                    <TokenIcon className="h-3.5 w-3.5 text-brand" />
+                    {fmt(r.earned)}
+                  </span>
+                ) : (
+                  <span className="font-mono text-xs tabular-nums text-medium">
+                    {fmt(r.messages)} <span className="text-light">msgs</span> · {hours(r.minutes)} <span className="text-light">h</span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="mt-3 text-sm text-light">
+          {tab === "earned" ? "Nobody has earned anything yet. The first race night decides." : "Nothing counted yet."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Balance({ data, goal, onClearGoal }) {
   const s = data.stats || {};
   const tile = (value, label) => (
     <div>
@@ -57,14 +213,12 @@ function Balance({ data }) {
     // gap under itself next to a taller neighbour.
     <div className="card flex h-full flex-col justify-between p-5 sm:p-6">
       <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
-          <TokenIcon className="h-6 w-6" />
-        </span>
+        <TokenIcon className="h-12 w-12" />
         <div>
           <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Your balance</div>
           <div className="font-display text-3xl font-extrabold tabular-nums leading-none text-dark">
-            {fmt(data.balance)}{" "}
-            <span className="font-display text-base font-bold uppercase tracking-tight text-light">tokens</span>
+            <MovingNumber value={data.balance} />{" "}
+            <span className="font-display text-base font-bold uppercase tracking-tight text-light">points</span>
           </div>
         </div>
       </div>
@@ -80,6 +234,7 @@ function Balance({ data }) {
         </div>
       </div>
       {s.activity && <MultiplierBar a={s.activity} />}
+      <Goal item={goal} balance={data.balance} onClear={onClearGoal} />
     </div>
   );
 }
@@ -189,7 +344,7 @@ function EarnList({ rules, multiplier = 1, startDay = null }) {
   const boosted = rules.some((r) => r.boosted);
   return (
     <div className="card px-5 py-4">
-      <Heading>Earning tokens</Heading>
+      <Heading>Earning points</Heading>
       {boosted && (
         <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
           The marked lines are multiplied by how active you are on Discord, chat and voice together, up to 3x.
@@ -357,7 +512,7 @@ function ShopTile({ item, balance, onOpen }) {
             }`}
           >
             <TokenIcon className="h-3.5 w-3.5" />
-            {fmt(item.cost)}
+            {item.link ? `from ${fmt(item.cost)}` : fmt(item.cost)}
           </span>
         </div>
       </button>
@@ -367,7 +522,7 @@ function ShopTile({ item, balance, onOpen }) {
 
 // The window behind a tile: the big picture, the long version of what the entry
 // is, and the button that spends the tokens.
-function ItemWindow({ item, data, onClose, onChanged }) {
+function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [ordered, setOrdered] = useState(false);
@@ -448,6 +603,15 @@ function ItemWindow({ item, data, onClose, onChanged }) {
             <span className="ml-2 font-sans text-xs font-normal text-light">you have {fmt(balance)}</span>
           </span>
           <div className="flex items-center gap-2">
+            {short > 0 && onGoal && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => onGoal(goal === live.key ? null : live.key)}
+              >
+                {goal === live.key ? "Saving for this" : "Save for this"}
+              </button>
+            )}
             <button type="button" className="btn-secondary" onClick={onClose}>
               {ordered ? "Done" : "Not now"}
             </button>
@@ -654,7 +818,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[13px] font-semibold text-dark">{d.name}</span>
                               <span className="block font-mono text-[10px] uppercase tracking-wider text-light">
-                                {d.owned ? "Yours" : `${fmt(d.cost)} tokens`}
+                                {d.owned ? "Yours" : `${fmt(d.cost)} points`}
                               </span>
                             </span>
                           </button>
@@ -700,8 +864,9 @@ function CardDesignWindow({ data, onClose, onChanged }) {
   );
 }
 
-function Shop({ data, onChanged }) {
+function Shop({ data, onChanged, goal, onGoal }) {
   const [open, setOpen] = useState(null);
+  const navigate = useNavigate();
 
   // One flat grid across the full width, rather than a little grid per
   // category: with seven entries and four columns, grouping meant four rows of
@@ -712,7 +877,7 @@ function Shop({ data, onChanged }) {
       <Heading>The shop</Heading>
       <ul className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         {data.shop.map((item) => (
-          <ShopTile key={item.key} item={item} balance={data.balance} onOpen={setOpen} />
+          <ShopTile key={item.key} item={item} balance={data.balance} onOpen={(i) => (i.link ? navigate(i.link) : setOpen(i))} />
         ))}
       </ul>
       {/* The card entry opens the catalogue; everything else opens the plain
@@ -720,7 +885,7 @@ function Shop({ data, onChanged }) {
       {open?.key === "card_background" ? (
         <CardDesignWindow data={data} onClose={() => setOpen(null)} onChanged={onChanged} />
       ) : open ? (
-        <ItemWindow item={open} data={data} onClose={() => setOpen(null)} onChanged={onChanged} />
+        <ItemWindow item={open} data={data} onClose={() => setOpen(null)} onChanged={onChanged} goal={goal} onGoal={onGoal} />
       ) : null}
     </div>
   );
@@ -831,19 +996,27 @@ export default function Tokens() {
     window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
   }, [reload]);
 
-  if (tokens.loading && !tokens.data) return <Spinner label="Loading your tokens…" />;
+  // The one shop entry you are saving for, if any. This browser only.
+  const [goal, setGoalState] = useState(readGoal);
+  const setGoal = (key) => {
+    writeGoal(key);
+    setGoalState(key);
+  };
+
+  if (tokens.loading && !tokens.data) return <Spinner label="Loading your points…" />;
   if (tokens.error) return <ErrorBox message={tokens.error} onRetry={reload} />;
   const data = tokens.data;
   if (!data?.enabled) {
     return (
       <EmptyState
         title="Not switched on"
-        hint="Server tokens are being tried out. The league will say when they go live."
+        hint="NABS Points are being tried out. The league will say when they go live."
       />
     );
   }
 
   const orders = data.orders || [];
+  const goalItem = goal ? data.shop.find((i) => i.key === goal) || null : null;
 
   // Rows, not columns.
   //
@@ -868,11 +1041,13 @@ export default function Tokens() {
           the two cards hold different amounts of text, and two cards of
           different heights side by side is the thing that looks unfinished. */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Balance data={data} />
+        <Balance data={data} goal={goalItem} onClearGoal={() => setGoal(null)} />
         <InviteCard code={data.code} botConnected={!!data.botConnected} />
       </div>
 
-      <Shop data={data} onChanged={changed} />
+      <Shop data={data} onChanged={changed} goal={goal} onGoal={setGoal} />
+
+      <Leaderboard />
 
       {orders.length > 0 && <Collection orders={orders} />}
 

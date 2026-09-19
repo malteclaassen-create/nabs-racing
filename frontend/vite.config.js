@@ -58,6 +58,8 @@ export default defineConfig({
   plugins: [react(), previewCacheHeaders(), precompressBuildOutput()],
   server: {
     port: 5173,
+    // shared/ (the profile studio catalogue) lives beside frontend/, not in it.
+    fs: { allow: [resolve("..")] },
     host: true, // listen on all interfaces (needed for LAN / tunnels)
     allowedHosts: true, // allow tunnel hostnames (e.g. *.trycloudflare.com)
     proxy: {

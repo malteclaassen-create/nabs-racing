@@ -35,11 +35,12 @@
 // The uploaded image FILES are removed after it commits: a failed unlink must
 // not roll back a deletion the member has already been told about, and a
 // leftover file nothing points at is harmless.
-import { rmSync } from "node:fs";
+import { rmSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
+import { profileMediaOwner } from "../lib/profileStudio.js";
 
 // What replaces a name that has been removed from a thread other people can
 // still read. Deliberately not "Deleted user", which reads like an error.
@@ -183,6 +184,31 @@ export async function deleteMemberAccount(prisma, discordId) {
 
     return { seasons, feedback, reportsFiled, reportMessages, notifications, banKept: keepBan };
   });
+
+  // What they wore from the profile studio, and the pictures they uploaded
+  // there (named after their hashed id, see lib/profileStudio.js).
+  try {
+    await prisma.$executeRawUnsafe(`DELETE FROM "ProfileStyle" WHERE "discordId" = ?`, discordId);
+  } catch {
+    /* no studio table on this database */
+  }
+  const studioDir = join(UPLOADS_DIR, "profile-studio");
+  const mine = `${profileMediaOwner(discordId)}-`;
+  try {
+    for (const f of existsSync(studioDir) ? readdirSync(studioDir, { withFileTypes: true }) : []) {
+      if (!f.isFile() || !f.name.startsWith(mine)) continue;
+      const file = safeUploadPath(studioDir, f.name);
+      if (file) {
+        try {
+          rmSync(file, { force: true });
+        } catch {
+          /* keep going */
+        }
+      }
+    }
+  } catch {
+    /* a locked folder must not fail a deletion that already went through */
+  }
 
   // Uploaded pictures. Named after the driver id, in two folders (profile and
   // card), and the extension is whatever they uploaded, so try each.

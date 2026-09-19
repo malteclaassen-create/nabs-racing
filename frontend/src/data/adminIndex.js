@@ -50,7 +50,7 @@ export const TAB_GROUPS = [
       { id: "downloads", label: "Downloads" },
       { id: "social", label: "Social & Live" },
       // Trial feature, and the tab carries its own on/off switch.
-      { id: "tokens", label: "Tokens" },
+      { id: "tokens", label: "NABS Points" },
     ],
   },
   {
@@ -439,19 +439,19 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "tokens",
-    title: "Switch server tokens on or off",
+    title: "Switch NABS Points on or off",
     hint: "The whole reward currency is a trial. This is the switch that shows or hides it for every member.",
-    keywords: "tokens points reward currency trial enable disable switch on off shop referral invite",
+    keywords: "nabs points tokens reward currency trial enable disable switch on off shop referral invite",
   },
   {
     tab: "tokens",
     title: "Fill a shop order",
-    hint: "Somebody redeemed a helmet or a role. Mark it filled, or decline it and give the tokens back.",
+    hint: "Somebody redeemed a helmet or a role. Mark it filled, or decline it and give the points back.",
     keywords: "tokens shop order redeem helmet role prize reward refund decline fill",
   },
   {
     tab: "tokens",
-    title: "Give somebody tokens by hand",
+    title: "Give somebody points by hand",
     hint: "An award for something no rule measures, or a correction.",
     keywords: "tokens give award grant adjust correct balance points manual",
   },

@@ -72,6 +72,8 @@ export function cleanTuning(body, allowed) {
   if (r?.error) return r;
   r = section("cards", ["cost"]);
   if (r?.error) return r;
+  r = section("studio", ["cost"]);
+  if (r?.error) return r;
 
   // The day the tokens started counting: races before it pay nothing.
   if (body?.startDay !== undefined) {

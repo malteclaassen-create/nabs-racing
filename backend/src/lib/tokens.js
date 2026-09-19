@@ -41,6 +41,7 @@ import { randomUUID, randomInt } from "crypto";
 import { IS_DEPLOYED } from "./deployment.js";
 import { catalogueFor, isBuyableDesign, ownedDesigns, priceOf, CARD_DESIGN_BY_KEY } from "./cardShop.js";
 import { overrides, ensureTuning, saveTuning } from "./tokenTuning.js";
+import { STUDIO_BY_ID, studioPriceOf, ownedStudioItems } from "./profileStudio.js";
 // The league's own rules and their arithmetic live next door, with no database
 // in them, so the numbers can be checked by the tests (lib/tokenRules.js).
 import {
@@ -151,6 +152,16 @@ export const SHOP_ITEMS = [
     blurb: "Your own colour in the member list, and the name of the role is yours to pick.",
   },
   {
+    key: "profile_studio",
+    name: "Profile studio",
+    cost: 150,
+    category: "On the site",
+    description: "Themes, banners and lettering for your profile page. Designs from 150.",
+    blurb: "Fifty-odd designs for your public profile: page themes, banners, name lettering, stats styles and effects. Try them on your own page before you buy.",
+    link: "/profile/style",
+    catalogue: true,
+  },
+  {
     key: "hall_of_fame",
     name: "Hall of fame entry",
     cost: 2500,
@@ -196,6 +207,7 @@ export function tunedShop() {
 }
 const tunedItem = (key) => tunedShop().find((i) => i.key === key);
 export const tunedReferralLimit = () => overrides().referralRaceLimit ?? REFERRAL_RACE_LIMIT;
+export const tunedStudio = () => overrides().studio || {};
 export function tunedMultiplier() {
   const o = overrides().multiplier || {};
   return {
@@ -707,7 +719,7 @@ export async function redeemItem(prisma, discordId, itemKey, choice = null) {
   }
   await syncEarned(prisma, discordId);
   const balance = await dbBalance(prisma, discordId);
-  if (balance < item.cost) return { error: "Not enough tokens for that yet" };
+  if (balance < item.cost) return { error: "Not enough points for that yet" };
   // Instant items are filled by the site itself, the rest wait for a person.
   const id = await writeRedemption(prisma, {
     discordId,
@@ -748,6 +760,65 @@ export async function flairsFor(prisma, discordIds) {
     if (f) out.set(r.discordId, f);
   }
   return out;
+}
+
+// Names for a set of members, the way the site knows them: driver name if
+// they have a row, else the Discord name. Map discordId -> { name, avatarUrl }.
+async function namesFor(prisma, discordIds) {
+  const ids = [...new Set((discordIds || []).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length) return out;
+  const ph = ids.map(() => "?").join(",");
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT m."discordId", m."displayName", m."username", m."avatarUrl",
+              (SELECT d."name" FROM "Driver" d WHERE d."discordUserId" = m."discordId" ORDER BY d."id" DESC LIMIT 1) AS "driverName",
+              (SELECT d."photoUrl" FROM "Driver" d WHERE d."discordUserId" = m."discordId" AND d."photoUrl" IS NOT NULL LIMIT 1) AS "photoUrl"
+         FROM "MemberAccount" m WHERE m."discordId" IN (${ph})`,
+      ...ids
+    )
+    .catch(() => []);
+  for (const r of rows) {
+    out.set(r.discordId, {
+      name: r.driverName || r.displayName || r.username || "A member",
+      avatarUrl: r.photoUrl || r.avatarUrl || null,
+    });
+  }
+  for (const id of ids) if (!out.has(id)) out.set(id, { name: "A member", avatarUrl: null });
+  return out;
+}
+
+// Who has earned the most, and who is most around on Discord. Spending is
+// left out on purpose: buying things should not push you down a list.
+export async function leaderboard(prisma, limit = 10) {
+  const earned = await prisma
+    .$queryRawUnsafe(
+      `SELECT "discordId", SUM("delta") AS "earned"
+         FROM "TokenLedger" WHERE "delta" > 0 AND "rule" <> 'refund'
+        GROUP BY "discordId" ORDER BY "earned" DESC, MIN("createdAt") ASC LIMIT ?`,
+      limit
+    )
+    .catch(() => []);
+  const active = await prisma
+    .$queryRawUnsafe(
+      `SELECT "discordId", SUM("messages") AS "messages", SUM("minutes") AS "minutes"
+         FROM "TokenActivity" WHERE "day" >= ?
+        GROUP BY "discordId" ORDER BY (SUM("messages") + SUM("minutes")) DESC LIMIT ?`,
+      activityWindowStart(),
+      limit
+    )
+    .catch(() => []);
+  const names = await namesFor(prisma, [...earned, ...active].map((r) => r.discordId));
+  return {
+    earned: earned.map((r) => ({ discordId: r.discordId, ...names.get(r.discordId), earned: Number(r.earned) })),
+    active: active.map((r) => ({
+      discordId: r.discordId,
+      ...names.get(r.discordId),
+      messages: Number(r.messages),
+      minutes: Number(r.minutes),
+    })),
+    windowDays: ACTIVITY_WINDOW_DAYS,
+  };
 }
 
 // Everybody with a filled hall-of-fame entry, oldest first, under the name the
@@ -883,7 +954,7 @@ export async function buyCardDesign(prisma, discordId, key) {
   if (owned.has(key)) return { error: "You already have that one" };
   await syncEarned(prisma, discordId);
   const balance = await dbBalance(prisma, discordId);
-  if (balance < cost) return { error: "Not enough tokens for that yet" };
+  if (balance < cost) return { error: "Not enough points for that yet" };
   const id = await writeRedemption(prisma, {
     discordId,
     key,
@@ -900,6 +971,30 @@ export async function buyCardDesign(prisma, discordId, key) {
     refKey: `card:${id}`,
   });
   return { ok: true, id, design: { ...design, cost }, balance: balance - cost };
+}
+
+// A profile studio design: paid once, owned for good, worn from the studio
+// page. Same shape as a card design, and the same rule: nothing here is ever
+// handed out by results.
+export async function buyStudioItem(prisma, discordId, itemId) {
+  const item = STUDIO_BY_ID.get(String(itemId || ""));
+  if (!item) return { error: "Unknown design" };
+  const cost = studioPriceOf(item, tunedStudio());
+  const owned = await ownedStudioItems(prisma, discordId);
+  if (owned.has(item.id)) return { error: "You already have that one" };
+  await syncEarned(prisma, discordId);
+  const balance = await dbBalance(prisma, discordId);
+  if (balance < cost) return { error: "Not enough points for that yet" };
+  const id = await writeRedemption(prisma, { discordId, key: item.id, name: item.name, cost, status: "DONE" });
+  await dbAward(prisma, {
+    discordId,
+    delta: -cost,
+    rule: "studio",
+    title: `Bought: ${item.name}`,
+    detail: "Profile design, yours right away",
+    refKey: `studio:${id}`,
+  });
+  return { ok: true, id, balance: balance - cost };
 }
 
 // An admin working through an order. Declining refunds it — the tokens were
@@ -934,7 +1029,7 @@ export async function setRedemptionStatus(prisma, id, status, note = null) {
 // because "give Steve 200 for the stream" is not a thing to be deduplicated.
 export async function adminAdjust(prisma, discordId, delta, note) {
   const n = Math.round(Number(delta) || 0);
-  if (!n) return { error: "Give a number of tokens" };
+  if (!n) return { error: "Give a number of points" };
   await ensureTokenAccount(prisma, discordId);
   await dbAward(prisma, {
     discordId,
