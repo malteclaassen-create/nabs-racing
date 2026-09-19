@@ -47,7 +47,11 @@
 .rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-concept-art::after { content: ""; position: absolute; inset: 0 0 40%; background: repeating-linear-gradient(133deg, #00000012 0 1px, transparent 1px 7px), #e4e2dc; clip-path: polygon(40% 0, 87% 0, 100% 19%, 100% 100%, 0 100%); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-mono { color: #191d24a8; font-style: italic; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-grade { background: linear-gradient(transparent 43%, #04050666 65%, #040506a8); }
-.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-rtg-n { font-style: italic; }
+/* The rating sits across the light diagonal, so white alone disappeared on its
+   right half. A dark outline on the number and a dark halo on the label keep
+   both readable over the light band AND over the dark corner. */
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-rtg-n { font-style: italic; -webkit-text-stroke: 1.3px #14171c; }
+.rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-rtg-l { text-shadow: 0 0 3px rgba(10, 12, 16, 0.8); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-id { bottom: 132px; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-name { font-style: italic; padding: 10px 0; margin-bottom: 15px; }
 .rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-id::before { content: ""; position: absolute; z-index: -1; inset: 0 -26px auto; height: 56px; transform: skewY(-7deg); background: repeating-linear-gradient(130deg, #ffffff0a 0 1px, transparent 1px 4px), #a91922; border-block: 1px solid #ecaaa1; }
