@@ -231,8 +231,9 @@
 }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="void"] .rcard-streaks {
   display: block; opacity: .5; mask: none;
-  background: radial-gradient(circle at 60% 33%, transparent 0 30%, #ad82e655 30.5%, transparent 32%),
-    radial-gradient(circle at 10% 25%, #bfa1f7 0 1px, transparent 1.5px), radial-gradient(circle at 90% 60%, #bfa1f7 0 1px, transparent 1.5px);
+  /* Two specks of light, nothing else. The ring that used to sit here read as
+     a stray circle drawn over the driver rather than as part of the surface. */
+  background: radial-gradient(circle at 10% 25%, #bfa1f7 0 1px, transparent 1.5px), radial-gradient(circle at 90% 60%, #bfa1f7 0 1px, transparent 1.5px);
 }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-material="circuit"] .rcard-streaks {
   display: block; opacity: .26; mask-image: linear-gradient(90deg, #000, transparent 25% 75%, #000);
