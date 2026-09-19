@@ -5175,6 +5175,14 @@ function Teams() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // This tab is as long as the grid is, and every notice it writes appears at
+  // the very top of it. An admin working on the twelfth team is several screens
+  // below that, so a refused colour change, logo upload or deletion looked like
+  // the control had simply done nothing. Bring the notice to them instead.
+  const noticeRef = useRef(null);
+  useEffect(() => {
+    if (error) noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
 
   async function create(e) {
     e.preventDefault();
@@ -5210,13 +5218,22 @@ function Teams() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // A refusal has to be readable from where the trash icon was clicked. The
+  // error Notice at the top of this tab is several screens up once the team
+  // list is long, so on a phone the button looked like it did nothing at all.
+  // The notice still records it; the dialog is what the admin actually reads.
+  async function refuse(message) {
+    setError(message);
+    await ask({ title: "This team can't be deleted yet", body: message, alert: true });
+  }
+
   // Same two-step as removing a driver: the server answers with what would go
   // along with the team (its driver-market offers) and we ask before doing it.
   async function remove(t) {
     if (
       !(await ask({
         title: `Delete team "${t.name}"?`,
-        body: "This only works if it has no drivers or results.",
+        body: "This only works if it has no drivers and has never scored. Rounds it sat out on 0 go with it.",
         danger: true,
         confirmLabel: "Delete team",
       }))
@@ -5241,10 +5258,10 @@ function Teams() {
           );
           reload();
         } catch (err2) {
-          setError(err2.message);
+          await refuse(err2.message);
         }
       } else if (!err.data?.needsConfirm) {
-        setError(err.message);
+        await refuse(err.message);
       }
     } finally {
       setBusy(false);
@@ -5285,7 +5302,7 @@ function Teams() {
 
   return (
     <div>
-      {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
+      {error && <div ref={noticeRef} className="mb-4"><Notice kind="error">{error}</Notice></div>}
       {msg && <div className="mb-4"><Notice kind="success">{msg}</Notice></div>}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         {/* Left column: the two ways to put a team on the grid — copy an

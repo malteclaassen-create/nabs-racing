@@ -52,6 +52,7 @@ import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.j
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
+import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
@@ -5685,7 +5686,8 @@ router.delete("/tracks/:key/map", async (req, res, next) => {
   }
 });
 
-// DELETE /api/admin/teams/:id -> remove a team (only if it has no drivers/results).
+// DELETE /api/admin/teams/:id -> remove a team (only if it has no drivers, no
+// results and never scored; the blank standings rows go with it).
 router.delete("/teams/:id", async (req, res, next) => {
   try {
     const team = await prisma.team.findUnique({
@@ -5697,7 +5699,7 @@ router.delete("/teams/:id", async (req, res, next) => {
         // listing stays on file after it is filled or cancelled. The guard
         // passed, the delete hit the foreign key, and the admin got a raw
         // "Foreign key constraint violated" with nothing to act on.
-        _count: { select: { drivers: true, results: true, constructorScores: true, seatOffers: true } },
+        _count: { select: { drivers: true, results: true, seatOffers: true } },
       },
     });
     if (!team) return res.status(404).json({ error: "Team not found" });
@@ -5705,12 +5707,30 @@ router.delete("/teams/:id", async (req, res, next) => {
     const c = team._count;
     const where = `${team.name}${team.season?.name ? ` (${team.season.name})` : ""}`;
 
+    // Only a constructor row that MOVED points is history: every tier team also
+    // gets a blank row per round so the standings columns line up, and counting
+    // those was what made a team with no drivers, no results and 0 points
+    // undeletable (see lib/teamDeletion.js). The blanks go with the team.
+    //
+    // Results are counted from both sides: the `results` relation is only the
+    // reserve-sub link (RaceResult.subForTeamId), while the team a round was
+    // actually scored under is the plain `RaceResult.teamId` stamp raceWriter
+    // leaves. That one has no foreign key, so nothing in the database would
+    // stop the delete from orphaning a real classification.
+    const [scoredRounds, blankRounds, stampedResults] = await Promise.all([
+      prisma.constructorRaceScore.count({ where: { teamId: team.id, points: { not: 0 } } }),
+      prisma.constructorRaceScore.count({ where: { teamId: team.id, points: 0 } }),
+      prisma.raceResult.count({ where: { teamId: team.id } }),
+    ]);
+
     // Real history. None of this may be thrown away by deleting a team, and
     // the message names what it actually found instead of a vague "or".
-    const hard = [];
-    if (c.drivers > 0) hard.push(`${c.drivers} driver(s) in its seats`);
-    if (c.results > 0) hard.push(`${c.results} race result(s) subbed for it`);
-    if (c.constructorScores > 0) hard.push(`${c.constructorScores} constructor score(s)`);
+    const hard = teamDeletionBlockers({
+      drivers: c.drivers,
+      subResults: c.results,
+      stampedResults,
+      scoredRounds,
+    });
     if (hard.length) {
       return res.status(409).json({
         error: `${where} still has ${hard.join(" and ")}. Move those first, then delete the team.`,
@@ -5731,10 +5751,12 @@ router.delete("/teams/:id", async (req, res, next) => {
     }
 
     await prisma.$transaction(async (tx) => {
+      // Blank rows only: anything that scored has already been refused above.
+      await tx.constructorRaceScore.deleteMany({ where: { teamId: team.id } });
       await tx.seatOffer.deleteMany({ where: { teamId: team.id } });
       await tx.team.delete({ where: { id: team.id } });
     });
-    res.json({ ok: true, seatOffersRemoved: c.seatOffers });
+    res.json({ ok: true, seatOffersRemoved: c.seatOffers, blankRoundsRemoved: blankRounds });
   } catch (e) {
     // Belt and braces for a relation nobody has added to the count above yet:
     // an admin should never be handed a raw Prisma foreign-key message.
