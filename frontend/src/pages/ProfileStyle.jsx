@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
@@ -160,6 +161,7 @@ export default function ProfileStyle() {
       if (kind === "buy") {
         const result = await api.buyStudioItem(selected.id);
         setAccount(a => ({ ...a, ...result })); setNotice(`${selected.name} added to your collection.`);
+        window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
       } else {
         const next = { ...content };
         for (const [kind, file] of Object.entries(files)) {
