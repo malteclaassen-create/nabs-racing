@@ -57,7 +57,11 @@
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-rtg-l { text-shadow: 0 0 3px rgba(10, 12, 16, 0.8); }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-id { bottom: 132px; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-name { font-style: italic; padding: 10px 0; margin-bottom: 15px; }
-.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-id::before { content: ""; position: absolute; z-index: -1; inset: 0 -26px auto; height: 56px; transform: skewY(-7deg); background: repeating-linear-gradient(130deg, #ffffff0a 0 1px, transparent 1px 4px), #a91922; border-block: 1px solid #ecaaa1; }
+/* The stripe is skewed 7deg, which drops its left end by ~15px while the name
+   stays level, so the name ended up hugging the stripe's top edge with all the
+   red below it. Lifting the stripe by that much puts the name in the middle of
+   it where the name actually sits. */
+.rcard-frame[data-series="concepts"][data-edition="concept-race"] .rcard-id::before { content: ""; position: absolute; z-index: -1; inset: -16px -26px auto; height: 56px; transform: skewY(-7deg); background: repeating-linear-gradient(130deg, #ffffff0a 0 1px, transparent 1px 4px), #a91922; border-block: 1px solid #ecaaa1; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-stats { bottom: 53px; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-stat b { font-style: italic; }
 .rcard-frame[data-series="concepts"][data-collectible][data-edition="concept-race"] .rcard-brand { bottom: 32px; }

@@ -27,8 +27,12 @@ function accentStyle(value, tone) {
   return { "--c-accent": rgb, "--c-link": rgb, "--c-eyebrow": `rgb(${rgb})` };
 }
 
-export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFILE_CONTENT) {
-  const accent = content?.accentColor;
+export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFILE_CONTENT, teamColour = null) {
+  const finish = cosmeticFinish(theme);
+  // The team theme mixes every surface from --profile-team, which the wrapper
+  // sets inline but the document root does not, and it takes the team colour as
+  // its accent unless the member picked one.
+  const accent = content?.accentColor || (finish === "team" ? teamColour : null);
   const { theme: viewerTheme } = useTheme();
   const tone = cosmeticTone(theme) || viewerTheme;
   useLayoutEffect(() => {
@@ -36,8 +40,10 @@ export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFI
     const root = document.documentElement;
     const previous = root.getAttribute("data-profile-theme");
     const previousTone = root.getAttribute("data-profile-tone");
-    const finish = cosmeticFinish(theme);
-    const overrides = accentStyle(accent, tone);
+    const overrides = {
+      ...(finish === "team" && teamColour ? { "--profile-team": teamColour } : {}),
+      ...accentStyle(accent, tone),
+    };
     const previousStyles = Object.keys(overrides).map(key => [key, root.style.getPropertyValue(key), root.style.getPropertyPriority(key)]);
     root.setAttribute("data-profile-theme", finish);
     root.setAttribute("data-profile-tone", tone);
@@ -49,7 +55,7 @@ export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFI
       else root.setAttribute("data-profile-tone", previousTone);
       previousStyles.forEach(([key, value, priority]) => value ? root.style.setProperty(key, value, priority) : root.style.removeProperty(key));
     };
-  }, [theme, enabled, accent, tone]);
+  }, [theme, enabled, accent, tone, finish, teamColour]);
 }
 
 export function ProfileBanner({ driver, appearance = EMPTY_APPEARANCE, compact = false, backgroundOnly = false }) {
@@ -77,7 +83,7 @@ export default function ProfileAppearance({ driver, appearance = driver.appearan
     "--profile-banner-opacity": bounded(content.bannerStrength, 60, 0, 100) / (tone === "light" ? 300 : 100),
     "--profile-effect-scale": effectScale,
     "--profile-name-scale": bounded(content.nameScale, 100, 80, 120) / 100,
-    ...accentStyle(content.accentColor, tone),
+    ...accentStyle(content.accentColor || (cosmeticFinish(appearance.theme) === "team" ? driver.team?.color : null), tone),
   };
   return <div className={`profile-appearance ${decorated ? "profile-appearance--custom" : ""} ${className}`} style={style} data-theme={cosmeticFinish(appearance.theme)} data-theme-tone={tone} data-nameplate={cosmeticFinish(appearance.nameplate)} data-stats={cosmeticFinish(appearance.stats)} data-effect={effect} data-panel-shape={content.panelShape || "theme"} data-density={content.density || "comfortable"} data-motion={motion} data-name-case={content.nameCase || "theme"}>
     {driver.id && effect !== "default" && effectScale > 0 && createPortal(<div key={appearance.effect} className="profile-page-effect profile-surface-effect" style={{ "--profile-effect-scale": effectScale }} data-finish={effect} data-theme={cosmeticFinish(appearance.theme)} data-theme-tone={tone} data-motion={motion} aria-hidden="true" />, document.body)}

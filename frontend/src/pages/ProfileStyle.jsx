@@ -124,7 +124,7 @@ export default function ProfileStyle() {
   const baselineContent = account?.content || loadedDriver?.profileContent || EMPTY_PROFILE_CONTENT;
   const previewAppearance = comparing ? baseline : draft;
   const previewContent = comparing ? { ...EMPTY_PROFILE_CONTENT, ...baselineContent } : content;
-  useProfilePageTheme(previewAppearance.theme, true, previewContent);
+  useProfilePageTheme(previewAppearance.theme, true, previewContent, driver?.team?.color);
   const changed = !same(draft, baseline) || JSON.stringify(content) !== JSON.stringify(baselineContent);
   const items = PROFILE_COSMETICS.filter(i => i.slot === slot && (!ownedOnly || owned.includes(i.id)) && (!favoritesOnly || favorites.includes(i.id)) && (slot !== "theme" || tone === "all" || i.tone === tone) && i.name.toLowerCase().includes(search.trim().toLowerCase()));
   const missing = catalogue.filter(item => draft[item.slot] === item.id && !owned.includes(item.id));

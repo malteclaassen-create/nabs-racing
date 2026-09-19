@@ -7,7 +7,11 @@ export const EMPTY_PROFILE_CONTENT = {
   effectStrength: 50, motion: true, nameCase: "theme", nameScale: 100,
 };
 export function profileItemPrice(catalog, item, owned = []) {
-  return owned.includes(item.id) ? 0 : catalog.find(i => i.id === item.id).price;
+  if (owned.includes(item.id)) return 0;
+  // A catalogue that does not know this design yet (a server still running on
+  // the list from before a new one was added) falls back to the design's own
+  // price rather than taking the page down.
+  return catalog.find(i => i.id === item.id)?.price ?? item.price ?? 0;
 }
 export function applyProfileItem(catalog, appearance, item) {
   const design = catalog.find(i => i.id === item.id);

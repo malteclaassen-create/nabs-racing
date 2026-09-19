@@ -119,6 +119,21 @@
 .profile-appearance[data-theme="forest"], :root[data-profile-theme="forest"] { --c-bg: #101813; --c-card: #1a2820; --c-surface2: #132018; --c-border: #42594a; --c-text: #f0eee3; --c-text2: #d1d7c8; --c-text3: #a9b9a5; --c-faint: #a0b09c; --c-link: 189 218 164; --c-eyebrow: #c5d6ab; --c-accent: 172 199 140; --profile-surface: #101813; }
 .profile-appearance[data-theme="graphite"], :root[data-profile-theme="graphite"] { --c-bg: #111213; --c-card: #202224; --c-surface2: #17191b; --c-border: #484c50; --c-text: #f1f2f3; --c-text2: #ccd0d3; --c-text3: #afb5ba; --c-faint: #989fa5; --c-link: 216 222 228; --c-eyebrow: #bac1c8; --c-accent: 185 194 204; --profile-surface: repeating-linear-gradient(90deg,#111213 0 79px,#1a1d20 79px 80px); }
 .profile-appearance[data-theme="porcelain"], :root[data-profile-theme="porcelain"] { --c-bg: #e9e7e2; --c-card: #fcfbf7; --c-surface2: #f0eee7; --c-border: #c9c4b8; --c-text: #262621; --c-text2: #4c4c43; --c-text3: #69695c; --c-faint: #727365; --c-link: 104 71 40; --c-eyebrow: #78563a; --c-accent: 125 94 57; --c-ok: 27 116 73; --c-bad: 183 41 41; --c-warn: 138 96 20; --profile-surface: #e9e7e2; }
+/* Team colours: the one theme with no colours of its own. Everything is mixed
+   from --profile-team, so the page takes the colour of whatever the member
+   drives this season and follows them when they change teams. The accent is
+   set in JS (ProfileAppearance), because these variables want RGB channels and
+   colour-mix cannot make those. */
+.profile-appearance[data-theme="team"], :root[data-profile-theme="team"] {
+  --c-bg: color-mix(in srgb, var(--profile-team) 10%, #0b0e14);
+  --c-card: color-mix(in srgb, var(--profile-team) 15%, #131823);
+  --c-surface2: color-mix(in srgb, var(--profile-team) 12%, #0e131c);
+  --c-border: color-mix(in srgb, var(--profile-team) 32%, #2c3545);
+  --c-text: #f3f6fa; --c-text2: #ccd5e2; --c-text3: #a5b2c2; --c-faint: #93a0b1;
+  --c-ok: 104 211 167; --c-bad: 252 142 148; --c-warn: 240 205 125;
+  --profile-surface: color-mix(in srgb, var(--profile-team) 10%, #0b0e14);
+}
+.profile-appearance[data-theme="team"] .card { border-radius: 12px; border-top: 2px solid var(--profile-team); }
 .profile-appearance[data-theme="graphite"] .card { border-radius: 4px; }
 .profile-appearance[data-theme="forest"] .card { border-radius: 10px; border-top: 2px solid #82936a; }
 .profile-appearance[data-theme="midnight"] .card { border-radius: 12px; }

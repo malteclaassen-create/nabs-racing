@@ -1668,7 +1668,12 @@ export default function DriverProfile({ previewId, preview }) {
   const [formMode, setFormMode] = useState("race"); // "race" | "quali"
   // The page takes the driver's studio theme (colours on the whole page). Not
   // in the studio's own live preview, which sets it itself.
-  useProfilePageTheme(data?.[0]?.driver?.appearance?.theme, !previewId, data?.[0]?.driver?.profileContent);
+  useProfilePageTheme(
+    data?.[0]?.driver?.appearance?.theme,
+    !previewId,
+    data?.[0]?.driver?.profileContent,
+    data?.[0]?.driver?.team?.color
+  );
 
   // The driver IS this page, so the tab and the search result should say so
   // rather than naming the season alone. Same wording as the title the server

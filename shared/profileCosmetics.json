@@ -1,5 +1,13 @@
 [
   {
+    "id": "theme-team",
+    "slot": "theme",
+    "name": "Team colours",
+    "price": 800,
+    "finish": "team",
+    "tone": "dark"
+  },
+  {
     "id": "theme-midnight",
     "slot": "theme",
     "name": "Midnight",
