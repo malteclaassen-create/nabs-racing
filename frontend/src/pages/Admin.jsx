@@ -750,6 +750,16 @@ function SocialAdmin() {
         Paste each profile or invite URL. Empty fields are simply hidden. The Discord link also
         powers the “Join Discord” button in the top bar.
       </p>
+      <p className="text-sm text-light">
+        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
+        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
+        not until the next upload: the session file it came in will not put it back, and while the race server is
+        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
+        than showing it again. They are back on the board the moment they{" "}
+        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
+        and can be put back.
+      </p>
+
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -1124,6 +1134,7 @@ function ResetPrompt({ pending, onAnswered }) {
 
 function TrainingBestLapsAdmin() {
   const { current: series } = useSeries();
+  const ask = useAsk();
   // "" means "whatever the race server is on right now"; a named track is one
   // the server has left, looked at again.
   const [track, setTrack] = useState("");
@@ -1172,6 +1183,44 @@ function TrainingBestLapsAdmin() {
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  // One lap off the board. What makes this more than deleting a row: the lap
+  // is blocked as well, so the session file it came in will not put it back
+  // and neither will the race server, which is very likely still sitting in
+  // the session it was set in and still calling it that driver's best.
+  async function removeRow(row) {
+    const ok = await ask({
+      title: "Remove this lap?",
+      body: `${row.name} · ${formatLapTime(row.lapTimeMs)} comes off the Live page. It stays off until they set a different time: uploading the session file again will not bring it back, and neither will the race server while it is still holding this lap. You can put it back here.`,
+      danger: true,
+      confirmLabel: "Remove lap",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    setUploaded(null);
+    try {
+      await api.removeTrainingLap(row.trackKey || data.trackKey, row.driverKey, row.lapTimeMs);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function putBack(block) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.restoreTrainingLap(block.trackKey || data.trackKey, block.id);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1252,6 +1301,7 @@ function TrainingBestLapsAdmin() {
                   {" — "}
                   {r.type} on <b>{r.trackKey}</b>: {r.drivers} driver{r.drivers === 1 ? "" : "s"}, {r.withSectors}{" "}
                   with sectors, {r.improved} new or improved, {r.onBoard} on the board now
+                  {r.blocked ? `, ${r.blocked} skipped (removed earlier)` : ""}
                 </>
               ) : (
                 <> — {r.error}</>
@@ -1338,35 +1388,70 @@ function TrainingBestLapsAdmin() {
             <thead>
               <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-widest text-light">
                 <th className="py-2 pr-3">Driver</th>
-                <th className="py-2 pr-3">Training best</th>
+                <th className="py-2 pr-3">Best time</th>
+                <th className="py-2 pr-3">Where from</th>
                 <th className="py-2 pr-3">Layout</th>
                 <th className="py-2 pr-3">Sectors</th>
-                <th className="py-2 pr-3">Live now</th>
-                <th className="py-2">On the board</th>
+                <th className="py-2 pr-3">On the board</th>
+                <th className="py-2"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={`${r.name}-${i}`} className="border-b border-border/60">
+                <tr key={`${r.driverKey}-${r.lapTimeMs}-${i}`} className="border-b border-border/60">
                   <td className="py-2 pr-3 font-semibold text-dark">
                     {r.name}
                     {r.team && <span className="ml-2 text-xs font-normal text-light">{r.team}</span>}
                   </td>
                   <td className="py-2 pr-3 font-mono tabular-nums text-dark">{formatLapTime(r.lapTimeMs)}</td>
+                  <td className="py-2 pr-3 text-xs text-light">
+                    {r.source === "live" ? "Session on the server" : "Carried"}
+                  </td>
                   <td className="py-2 pr-3 font-mono text-xs text-light">
                     {r.trackKey?.includes("--") ? r.trackKey.slice(r.trackKey.indexOf("--") + 2) : "—"}
                   </td>
                   <td className="py-2 pr-3 text-xs text-light">{r.sectors ? "Yes" : "—"}</td>
-                  <td className="py-2 pr-3 font-mono tabular-nums text-medium">
-                    {r.liveMs == null ? "—" : formatLapTime(r.liveMs)}
+                  <td className={`py-2 pr-3 text-xs font-semibold ${r.shown ? "text-success" : "text-medium"}`}>
+                    {r.shown
+                      ? "Shown"
+                      : r.source === "live"
+                        ? "A carried lap is faster"
+                        : `Live lap is faster (${formatLapTime(r.liveMs)})`}
                   </td>
-                  <td className={`py-2 text-xs font-semibold ${r.shown ? "text-success" : "text-medium"}`}>
-                    {r.shown ? "This lap" : "Live lap is faster"}
+                  <td className="py-2 text-right">
+                    <button className="btn-secondary text-xs" onClick={() => removeRow(r)} disabled={busy}>
+                      Remove
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!!(data.removed || []).length && (
+        <div className="space-y-2 border-t border-border pt-4">
+          <div className="text-xs font-semibold uppercase tracking-widest text-light">
+            Taken off this circuit
+          </div>
+          <p className="text-sm text-light">
+            These laps are off the board and cannot come back on their own. A new time by the same driver is saved
+            as usual.
+          </p>
+          {data.removed.map((b) => (
+            <div key={b.id} className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="font-semibold text-dark">{b.name || "Unknown driver"}</span>
+              <span className="font-mono tabular-nums text-medium">{formatLapTime(b.lapTimeMs)}</span>
+              <span className="text-light">
+                {b.removedAt ? new Date(b.removedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""}
+                {b.restorable ? "" : " · was the race server's own lap, so putting it back only allows it again"}
+              </span>
+              <button className="btn-secondary text-xs" onClick={() => putBack(b)} disabled={busy}>
+                Put back
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

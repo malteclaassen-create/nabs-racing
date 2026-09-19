@@ -51,3 +51,10 @@ export const LIVE_BEST_LAPS_DIR = join(DATA_ROOT, "live-best-laps");
 // fixed. An admin says keep or drop. On disk rather than in memory: a deploy
 // is exactly the moment somebody has not answered yet.
 export const LIVE_RESET_KEEP_DIR = join(DATA_ROOT, "live-reset-keep");
+
+// Training laps an admin has taken off the board (lib/liveLapBlocks.js). A
+// lap driven under conditions nobody else had is removed by hand, and the
+// block is what keeps it from coming straight back — out of a session file
+// that is uploaded again, or off the race server, which is still holding it
+// as that driver's session best.
+export const LIVE_LAP_BLOCKS_DIR = join(DATA_ROOT, "live-lap-blocks");

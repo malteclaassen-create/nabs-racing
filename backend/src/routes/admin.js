@@ -128,11 +128,14 @@ import {
   serverKeyForSeries,
 } from "../lib/liveServers.js";
 import { isTrackKey } from "../lib/telemetryLaps.js";
-import { clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf } from "../lib/liveBestLaps.js";
+import {
+  clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf, removeLap, restoreLap,
+} from "../lib/liveBestLaps.js";
+import { listBlocks, blockLap, unblockLap } from "../lib/liveLapBlocks.js";
 import { pendingFor, take as takePendingReset } from "../lib/liveResetKeep.js";
 import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
-import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
+import { getBoard as getLiveBoard, realGuidForPublicId, publicDriverId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 
 const router = Router();
@@ -1698,34 +1701,56 @@ async function trainingScope(series) {
 }
 
 // What one track carries, row by row, named the way the league names its
-// drivers and set against what the board shows of its own accord — so the
-// card can say which carried times are on the board right now and which a
-// live lap has since beaten. No Steam ids: lib/privacy.js is explicit that
-// those never leave the building, and nothing on the card needs one.
+// drivers and set against what the board shows of its own accord. Plus the
+// laps of the session the race server is in RIGHT NOW, because between two
+// race weekends that session is days old and a time in it is as much "on the
+// board" as a carried one — and is the one an admin most often wants off it.
+// No Steam ids: lib/privacy.js is explicit that those never leave the
+// building, so a row is handed back by the same pseudonym the board speaks in
+// and the removal route walks it back.
 async function trainingRows(scope, trackKey, board) {
   // Every layout of the circuit, exactly as the board merges them.
-  const laps = trackKey ? circuitBests(scope.seriesRow.slug, scope.seasonNumber, trackKey).laps : [];
-  if (!laps.length) return [];
+  const carried = trackKey ? circuitBests(scope.seriesRow.slug, scope.seasonNumber, trackKey).laps : [];
 
   // What the board shows of its own accord. An entry that is already carrying
   // a lap from here is NOT that.
   const liveBest = new Map();
   for (const e of board?.entries || []) {
-    if (e.imported || !e.bestLapMs) continue;
+    if (e.imported || !e.bestLapMs || e.isSafetyCar) continue;
     const real = realGuidForPublicId(e.guid);
-    if (real) liveBest.set(real, e.bestLapMs);
+    if (real) liveBest.set(real, e);
   }
+  // A live lap is only a row here when the board is in a practice session on
+  // this very circuit: that is the only board a removal reaches, and listing
+  // a qualifying lap with a Remove button beside it would promise something
+  // this does not do.
+  const liveListed =
+    board?.session?.type === "Practice" &&
+    !!trackKey &&
+    baseTrackOf(String(board.session.trackKey || "")) === baseTrackOf(trackKey)
+      ? [...liveBest]
+      : [];
 
+  if (!carried.length && !liveListed.length) return [];
+
+  const steamIds = [...new Set([...carried.map((l) => l.steamId), ...liveListed.map(([id]) => id)])];
   const known = scope.seasonRow?.id
-    ? await telemetryIdentities(prisma, laps.map((l) => l.steamId), scope.seasonRow.id, await getNameOverrides(prisma))
+    ? await telemetryIdentities(prisma, steamIds, scope.seasonRow.id, await getNameOverrides(prisma))
     : new Map();
+  const named = (steamId, fallback) => ({
+    name: known.get(steamId)?.name || fallback,
+    driverId: known.get(steamId)?.driverId ?? null,
+    team: known.get(steamId)?.team?.name ?? null,
+    // The handle the Remove button sends back. The same pseudonym the live
+    // board uses, so a row and an entry are one driver on both sides.
+    driverKey: publicDriverId(steamId),
+  });
 
-  return laps.map((lap) => {
-    const live = liveBest.get(lap.steamId) ?? null;
+  const rows = carried.map((lap) => {
+    const live = liveBest.get(lap.steamId)?.bestLapMs ?? null;
     return {
-      name: known.get(lap.steamId)?.name || lap.name,
-      driverId: known.get(lap.steamId)?.driverId ?? null,
-      team: known.get(lap.steamId)?.team?.name ?? null,
+      ...named(lap.steamId, lap.name),
+      source: "carried",
       car: lap.car,
       lapTimeMs: lap.lapTimeMs,
       sectors: !!lap.sectorsMs,
@@ -1738,6 +1763,39 @@ async function trainingRows(scope, trackKey, board) {
       shown: live == null || lap.lapTimeMs <= live,
     };
   });
+
+  for (const [steamId, e] of liveListed) {
+    const stored = carried.find((l) => l.steamId === steamId)?.lapTimeMs ?? null;
+    rows.push({
+      ...named(steamId, e.name),
+      source: "live",
+      car: e.carModel || e.carName || "",
+      lapTimeMs: e.bestLapMs,
+      sectors: !!e.sectors?.[0],
+      trackKey: String(board.session.trackKey || ""),
+      recordedAt: null,
+      liveMs: e.bestLapMs,
+      shown: stored == null || stored > e.bestLapMs,
+    });
+  }
+
+  return rows.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
+}
+
+// The laps taken off this circuit by hand, for the card's "removed" list.
+function removedRows(scope, trackKey) {
+  if (!trackKey) return [];
+  return listBlocks(scope.seriesRow.slug, scope.seasonNumber, baseTrackOf(trackKey)).map((b) => ({
+    id: b.id,
+    name: b.name,
+    lapTimeMs: b.lapTimeMs,
+    trackKey: b.trackKey,
+    removedAt: b.removedAt,
+    // Whether pressing "Put back" hands the lap itself back, or only lifts
+    // the block: a lap removed while the race server was still holding it was
+    // never in a record, so there is nothing to put back into one.
+    restorable: !!(b.lap && b.trackKey),
+  }));
 }
 
 // GET /api/admin/live-best-laps?series=&track=
@@ -1768,6 +1826,8 @@ router.get("/live-best-laps", async (req, res, next) => {
         : null,
       connected: !!board?.connected,
       rows: await trainingRows(scope, trackKey, board),
+      // Laps an admin has taken off this circuit by hand, and can put back.
+      removed: removedRows(scope, trackKey),
       // The files behind every key of the circuit, each saying which key.
       files: circuit.keys.flatMap((k) =>
         uploadedFiles(scope.seriesRow.slug, scope.seasonNumber, k).map((f) => ({ ...f, trackKey: k }))
@@ -1862,6 +1922,88 @@ router.post("/live-best-laps/pending/:id", async (req, res, next) => {
   }
 });
 
+// DELETE /api/admin/live-best-laps/lap?series=&track=&driver=&ms=
+//
+// One lap off the board. The row the admin pressed the button on: their
+// handle from the card (the board's pseudonym) and the time to the
+// millisecond, so what goes is what they were looking at and nothing else.
+//
+// Two things happen, and the second is the one that makes it stick. The lap
+// comes out of the record it was filed under, AND it is blocked for this
+// circuit (lib/liveLapBlocks.js): the race server is usually still sitting in
+// the session the lap was set in and would put it straight back, and the next
+// upload of that session's file would too. The block lifts itself the moment
+// that driver sets a different time, which is the deal — a removed lap means
+// "drive it again".
+router.delete("/live-best-laps/lap", async (req, res, next) => {
+  try {
+    const scope = await trainingScope(req.query.series);
+    if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
+    const { seriesRow, seasonNumber } = scope;
+
+    const board = getLiveBoard(scope.serverKey);
+    const asked = String(req.query.track || "");
+    const trackKey = isTrackKey(asked) ? asked : String(board?.session?.trackKey || "");
+    if (!isTrackKey(trackKey)) return res.status(400).json({ error: "Valid track key required" });
+
+    const steamId = realGuidForPublicId(String(req.query.driver || ""));
+    if (!steamId) return res.status(404).json({ error: "That driver is not on this board any more. Reload the card." });
+    const lapTimeMs = Math.round(Number(req.query.ms));
+    if (!Number.isFinite(lapTimeMs) || lapTimeMs <= 0) return res.status(400).json({ error: "A lap time is required" });
+
+    const circuit = baseTrackOf(trackKey);
+    // The carried lap, if this is one: it says which layout it was filed
+    // under, and it is what a "put back" would hand over.
+    const lap = circuitBests(seriesRow.slug, seasonNumber, trackKey).laps.find(
+      (l) => l.steamId === steamId && l.lapTimeMs === lapTimeMs
+    );
+    const name =
+      lap?.name ||
+      (board?.entries || []).find((e) => realGuidForPublicId(e.guid) === steamId)?.name ||
+      "";
+
+    const removed = lap ? removeLap(seriesRow.slug, seasonNumber, lap.trackKey, steamId, lapTimeMs) : null;
+    blockLap(seriesRow.slug, seasonNumber, circuit, {
+      steamId,
+      name,
+      lapTimeMs,
+      trackKey: removed ? lap.trackKey : null,
+      lap: removed,
+      reason: String(req.body?.reason || ""),
+    });
+    res.json({
+      ok: true,
+      // Whether a stored lap went with it, or the block is all there was to
+      // do because the lap is the race server's and not ours.
+      wasCarried: !!removed,
+      tracks: listTracks(seriesRow.slug, seasonNumber),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/live-best-laps/lap/restore  { id, track }
+// Undo one removal. A lap that came out of a record goes back into it; one
+// that was only ever the race server's is simply allowed again, and shows up
+// the next time the server reports it.
+router.post("/live-best-laps/lap/restore", async (req, res, next) => {
+  try {
+    const scope = await trainingScope(req.query.series || req.body?.series);
+    if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
+    const { seriesRow, seasonNumber } = scope;
+    const trackKey = String(req.body?.track || "");
+    if (!isTrackKey(trackKey)) return res.status(400).json({ error: "Valid track key required" });
+
+    const block = unblockLap(seriesRow.slug, seasonNumber, baseTrackOf(trackKey), String(req.body?.id || ""));
+    if (!block) return res.status(404).json({ error: "Nothing removed under that id" });
+    const back = block.lap && block.trackKey ? restoreLap(seriesRow.slug, seasonNumber, block.trackKey, block.lap) : false;
+    res.json({ ok: true, restored: back, tracks: listTracks(seriesRow.slug, seasonNumber) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // DELETE /api/admin/live-best-laps?series=&track=
 // Take one track's carried times off the board for this season. The board
 // goes back to showing the session the server is in and nothing else.
@@ -1924,6 +2066,9 @@ router.post("/live-best-laps/files", upload.array("files", 20), async (req, res,
           withSectors: parsed.laps.filter((l) => l.sectorsMs).length,
           improved: kept.improved,
           onBoard: kept.kept,
+          // Laps in the file an admin has removed by hand: they are not put
+          // back, and the line says so rather than a driver quietly missing.
+          blocked: kept.blocked,
         });
       } catch (e) {
         results.push({ name, ok: false, error: e instanceof SyntaxError ? "Not valid JSON" : e.message });

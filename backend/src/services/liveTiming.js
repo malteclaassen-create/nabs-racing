@@ -33,7 +33,8 @@ import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
-import { currentBests, setBoardScopes, boardScopes } from "../lib/liveBestLaps.js";
+import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
+import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
 import { resolveSeason } from "./seasonService.js";
 import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
@@ -69,7 +70,10 @@ const publicIdCache = new Map(); // real guid -> public id (hashing runs per dri
 // insertion order).
 const PUBLIC_ID_CACHE_MAX = 5000;
 
-function publicDriverId(guid) {
+// Exported for the admin card: a row it can hand back to say "this lap", with
+// no Steam id anywhere in the response (lib/privacy.js). realGuidForPublicId
+// below walks it back, and it always can — the id was hashed a moment ago.
+export function publicDriverId(guid) {
   if (!guid) return guid;
   let id = publicIdCache.get(guid);
   if (!id) {
@@ -1355,6 +1359,42 @@ function createRelay(server) {
     };
   }
 
+  // --- Laps an admin has taken off the board --------------------------------
+  //
+  // A training time can be one that should not be on the board: driven on the
+  // old version of the track, in conditions the rest of the field did not
+  // have. An admin removes it (lib/liveLapBlocks.js), which takes it out of
+  // the carried record — and would do nothing at all while the race server is
+  // still sitting in the very session it was set in, because the server keeps
+  // reporting it as that driver's session best for as long as that session
+  // lasts, which between two race weekends is days.
+  //
+  // So the row is blanked here too. Not the driver: the LAP. The moment they
+  // set a different time the server reports that instead, it matches nothing
+  // that was removed, and they are back on the board — which is exactly what
+  // removing a lap is meant to mean.
+  //
+  // Practice only, like the carried laps themselves. A qualifying board or a
+  // race classification is what happened in that session, and nothing an
+  // admin does to the training board may quietly rewrite one.
+  function applyRemovedLaps(byGuid, si) {
+    const circuit = baseTrackOf(trackKeyOf(si.Track || "", si.TrackConfig || ""));
+    const blocked = blockedKeysForScopes(boardScopes(server.key), circuit);
+    if (!blocked.size) return;
+    for (const [guid, e] of byGuid) {
+      if (e.bestLapMs == null || !blocked.has(blockKey(guid, e.bestLapMs))) continue;
+      // Everything on the row that belongs to that lap goes with it, the best
+      // sectors included: a lap set under conditions nobody else had has
+      // sectors to match, and leaving them would put the removed lap back on
+      // the board one third at a time.
+      e.bestLapMs = null;
+      e.sectors = [null, null, null];
+      e.bestSectors = [null, null, null];
+      e.potentialMs = null;
+      e.topSpeed = null;
+    }
+  }
+
   // --- Imported training bests ---------------------------------------------
   //
   // Practice only, and deliberately so. Between two race weekends the league's
@@ -1573,8 +1613,13 @@ function createRelay(server) {
       }
     }
     // The week's imported training bests, before anything is ranked or gapped:
-    // an imported lap is a lap like any other once it is on a row.
-    if (si.Type === 1) applyImportedBests(byGuid, si);
+    // an imported lap is a lap like any other once it is on a row. Laps an
+    // admin has removed come off first, so a carried lap can take the place of
+    // a live one that was taken off the board.
+    if (si.Type === 1) {
+      applyRemovedLaps(byGuid, si);
+      applyImportedBests(byGuid, si);
+    }
 
     const entries = [...byGuid.values()];
 

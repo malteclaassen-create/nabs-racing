@@ -49,6 +49,7 @@ import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
 import { isTrackKey, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
+import { blockedKeys, blockKey } from "./liveLapBlocks.js";
 
 // Same bar as everywhere else on the site: a number outside this is not a lap
 // time and has no business reaching the board.
@@ -309,8 +310,15 @@ export function normaliseLaps(laps) {
 // The laps one track KEY carries in one series' season, fastest first, one
 // row per driver. Empty when it carries nothing. This is the record as filed;
 // what a board shows is circuitBests below.
+//
+// Minus whatever an admin has taken off the board by hand (lib/liveLapBlocks
+// .js): a removed lap stays in no record anybody reads, whether it survived
+// in the file or arrived in a later upload of the session it came from.
 export function bestsFor(series, season, trackKey) {
-  return readTrack(series, season, trackKey)?.laps ?? [];
+  const laps = readTrack(series, season, trackKey)?.laps ?? [];
+  if (!laps.length) return laps;
+  const blocked = blockedKeys(series, season, baseTrackOf(trackKey));
+  return blocked.size ? laps.filter((l) => !blocked.has(blockKey(l.steamId, l.lapTimeMs))) : laps;
 }
 
 // The files one track key has been given, for the admin card.
@@ -349,14 +357,21 @@ export function currentBests(serverKey, trackKey) {
 export function addUploadedLaps(series, season, trackKey, { track, layout, laps, file }) {
   if (!validScope(series, season, trackKey)) throw new Error("A series, a season and a track are required");
   const rec = readTrack(series, season, trackKey) || { trackKey, track: "", layout: "", laps: [], files: [] };
-  const incoming = (Array.isArray(laps) ? laps : []).map(cleanLap).filter(Boolean);
-  const before = new Map(rec.laps.map((l) => [l.steamId, l.lapTimeMs]));
-  const merged = onePerDriver([...rec.laps, ...incoming]);
+  // A lap an admin has removed does not come back because the file it was in
+  // is handed over again (lib/liveLapBlocks.js). It is counted so the upload
+  // summary can say so rather than quietly dropping a driver.
+  const blocked = blockedKeys(series, season, baseTrackOf(trackKey));
+  const allowed = (l) => !blocked.has(blockKey(l.steamId, l.lapTimeMs));
+  const read = (Array.isArray(laps) ? laps : []).map(cleanLap).filter(Boolean);
+  const incoming = read.filter(allowed);
+  const kept = rec.laps.filter(allowed);
+  const before = new Map(kept.map((l) => [l.steamId, l.lapTimeMs]));
+  const merged = onePerDriver([...kept, ...incoming]);
   const improved = merged.filter((l) => before.get(l.steamId) == null || l.lapTimeMs < before.get(l.steamId)).length;
   // Nothing usable is nothing given: no record is written for it, and no file
   // line either — a list of files that contributed no lap would be a list of
   // mistakes.
-  if (!merged.length) return { kept: 0, read: 0, improved: 0 };
+  if (!merged.length) return { kept: 0, read: read.length, improved: 0, blocked: read.length - incoming.length };
   const written = writeTrack(series, season, trackKey, {
     track: track || rec.track,
     layout: layout ?? rec.layout,
@@ -374,7 +389,7 @@ export function addUploadedLaps(series, season, trackKey, { track, layout, laps,
         ]
       : rec.files,
   });
-  return { kept: written.laps.length, read: incoming.length, improved };
+  return { kept: written.laps.length, read: read.length, improved, blocked: read.length - incoming.length };
 }
 
 // Take one track off the board for one season — every lap kept from a file.
@@ -394,6 +409,44 @@ export function clearTrack(series, season, trackKey) {
   }
   forget(series, season, trackKey);
   return removed;
+}
+
+// Take ONE driver's lap out of the record it is filed under. The caller
+// blocks it as well (lib/liveLapBlocks.js), which is what keeps it off the
+// board while the race server is still holding it and stops the next upload
+// of the same session file putting it back. Hands back the lap it removed,
+// so it can be put back later.
+//
+// One lap, not the driver: a lap of theirs filed under another layout of the
+// circuit is a different lap, and the board shows it next. The admin card
+// lists it as its own row, with its own button.
+export function removeLap(series, season, trackKey, steamId, lapTimeMs = null) {
+  if (!validScope(series, season, trackKey)) return null;
+  const rec = readTrack(series, season, trackKey);
+  if (!rec) return null;
+  const want = Math.round(Number(lapTimeMs));
+  const lap = rec.laps.find(
+    (l) => l.steamId === String(steamId) && (!Number.isFinite(want) || l.lapTimeMs === want)
+  );
+  if (!lap) return null;
+  const rest = rec.laps.filter((l) => l !== lap);
+  // A record with nothing left in it is no record: readTrack answers null for
+  // one anyway, and the file would sit in the track list saying "0 drivers".
+  if (rest.length) writeTrack(series, season, trackKey, { ...rec, laps: rest });
+  else clearTrack(series, season, trackKey);
+  return lap;
+}
+
+// The other direction: a lap that was removed by hand goes back into the
+// record it came out of. Only ever called with a lap this store handed out,
+// and held to the same bar on the way in regardless.
+export function restoreLap(series, season, trackKey, lap) {
+  if (!validScope(series, season, trackKey)) return false;
+  const clean = cleanLap(lap);
+  if (!clean) return false;
+  const rec = readTrack(series, season, trackKey) || { trackKey, track: "", layout: "", laps: [], files: [] };
+  writeTrack(series, season, trackKey, { ...rec, laps: onePerDriver([...rec.laps, clean]) });
+  return true;
 }
 
 // Every track one series' season carries training times for, newest change

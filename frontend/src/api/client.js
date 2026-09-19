@@ -723,6 +723,23 @@ export const api = {
     request(`/admin/live-best-laps${andQ(seriesQ(), track ? `track=${encodeURIComponent(track)}` : "")}`, { auth: true }),
   clearTrainingBestLaps: (track) =>
     request(`/admin/live-best-laps${andQ(seriesQ(), `track=${encodeURIComponent(track)}`)}`, { method: "DELETE", auth: true }),
+  // One lap off the board: the row's driver handle and its time to the
+  // millisecond, so what goes is the row that was pressed. It also blocks the
+  // lap, which is what keeps the race server from putting it straight back
+  // while it is still in the session that lap was set in.
+  removeTrainingLap: (track, driver, ms) =>
+    request(
+      `/admin/live-best-laps/lap${andQ(
+        seriesQ(),
+        `track=${encodeURIComponent(track)}`,
+        `driver=${encodeURIComponent(driver)}`,
+        `ms=${encodeURIComponent(ms)}`
+      )}`,
+      { method: "DELETE", auth: true }
+    ),
+  // Undo one of those.
+  restoreTrainingLap: (track, id) =>
+    request(`/admin/live-best-laps/lap/restore${seriesQ()}`, { method: "POST", body: { track, id }, auth: true }),
   // The answer to "the server reset, keep the times?" — keep: true files them
   // like an uploaded session file would, keep: false drops them. clearCarried
   // also takes what is already carried for that circuit off the board, which

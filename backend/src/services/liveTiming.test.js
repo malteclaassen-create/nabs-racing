@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 import { clearTrack, addUploadedLaps, setBoardScopes, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { blockLap, unblockLap, blockKey, __clearCache as __clearBlockCache } from "../lib/liveLapBlocks.js";
+import { seriesKeyOf } from "../lib/telemetryLaps.js";
 import { rmSync } from "node:fs";
-import { LIVE_RESET_KEEP_DIR } from "../lib/dataDirs.js";
+import { join } from "node:path";
+import { LIVE_RESET_KEEP_DIR, LIVE_LAP_BLOCKS_DIR } from "../lib/dataDirs.js";
 import { listPending } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 
@@ -1231,6 +1234,60 @@ describe("liveTiming carried training bests", () => {
     const board = getBoard();
     expect(board.entries).toHaveLength(1);
     expect(board.entries[0].imported).toBeUndefined();
+  });
+
+  // --- Laps an admin has taken off the board -------------------------------
+  //
+  // The half of a removal the record alone cannot do: the race server sits in
+  // the same practice session for days and keeps reporting the lap.
+  describe("a removed lap", () => {
+    const block = (steamId, lapTimeMs) => blockLap(SERIES, SEASON, TRACK, { steamId, name: "x", lapTimeMs });
+    afterEach(() => {
+      // This series' folder only: the other live tests run beside this one.
+      rmSync(join(LIVE_LAP_BLOCKS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+      __clearBlockCache();
+    });
+
+    it("comes off the live row while the server is still holding it", () => {
+      block(ALICE, 96_000);
+      ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+      const alice = row(getBoard(), "Alice");
+      expect(alice.bestLapMs).toBe(null);
+      expect(alice.sectors).toEqual([null, null, null]);
+      expect(alice.potentialMs).toBe(null);
+      // The row is still theirs: laps, presence, everything but that lap.
+      expect(alice.lapCount).toBe(5);
+    });
+
+    it("is back the moment they set a different time", () => {
+      block(ALICE, 96_000);
+      ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 95_400 } } }));
+      expect(row(getBoard(), "Alice").bestLapMs).toBe(95_400);
+    });
+
+    it("lets a carried lap take the row the live one just lost", () => {
+      give([[ALICE, "Alice", 97_000, [30_000, 33_000, 34_000]]]);
+      block(ALICE, 96_000);
+      ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+
+      const alice = row(getBoard(), "Alice");
+      expect(alice.bestLapMs).toBe(97_000);
+      expect(alice.imported).toBe(true);
+    });
+
+    it("leaves a qualifying board alone", () => {
+      block(ALICE, 96_000);
+      ingest(bestSnap({ type: 2, drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+      expect(row(getBoard(), "Alice").bestLapMs).toBe(96_000);
+    });
+
+    it("put back, the lap is on the board again", () => {
+      block(ALICE, 96_000);
+      unblockLap(SERIES, SEASON, TRACK, blockKey(ALICE, 96_000));
+      ingest(bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
+      expect(row(getBoard(), "Alice").bestLapMs).toBe(96_000);
+    });
   });
 });
 

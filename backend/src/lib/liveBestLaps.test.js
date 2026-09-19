@@ -47,7 +47,7 @@ afterEach(wipe);
 describe("liveBestLaps files", () => {
   it("keeps a file's laps for the board, fastest first, sectors and all", () => {
     const r = give([fileLap(A, 95_000, "Alice"), fileLap(B, 93_500, "Bob", [29_000, 32_000, 32_500])]);
-    expect(r).toEqual({ kept: 2, read: 2, improved: 2 });
+    expect(r).toEqual({ kept: 2, read: 2, improved: 2, blocked: 0 });
 
     const laps = currentBests(SERVER, TRACK);
     expect(laps.map((l) => l.name)).toEqual(["Bob", "Alice"]);
