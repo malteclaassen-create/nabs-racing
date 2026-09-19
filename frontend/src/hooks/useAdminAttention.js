@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "./useAuth.js";
 import { useVisiblePoll } from "./useVisiblePoll.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 
 // How much is waiting on an admin, for the parts of the site that are not the
 // admin area.
@@ -52,6 +53,10 @@ export function useAdminAttention() {
   const { user } = useAuth();
   const isAdmin = !!user?.isAdmin;
   const [counts, setCounts] = useState(null);
+  // What it counts belongs to ONE series, and the bar it sits in no longer
+  // gets rebuilt when the viewer switches — so the switch is what restarts the
+  // poll, rather than leaving the other series' number up for two minutes.
+  const { slug } = useSeries();
 
   useVisiblePoll(
     (alive) => {
@@ -61,7 +66,8 @@ export function useAdminAttention() {
         .catch(() => {});
     },
     POLL_MS,
-    isAdmin
+    isAdmin,
+    slug
   );
 
   // Two minutes is fine for work ARRIVING. Work being FINISHED is a different

@@ -54,6 +54,19 @@ export default function ScrollBar() {
       track.style.opacity = usable ? "1" : "0";
       track.style.pointerEvents = usable ? "auto" : "none";
       if (usable) thumb.style.height = `${geom.current.thumb}px`;
+      // The thumb's length is how much of the page you are looking at, and that
+      // number moves on its own: a page fills in after its data arrives, lists
+      // fan in one after another, an image finally has its height. Every one of
+      // those resized the thumb in a single frame, which read as the bar
+      // twitching at the right edge on every page you opened. It glides there
+      // instead — see the `data-sized` transition on the thumb, switched on one
+      // frame AFTER the first measurement so the bar doesn't animate in from
+      // nothing on arrival.
+      if (usable && thumb.dataset.sized !== "true") {
+        requestAnimationFrame(() => {
+          thumb.dataset.sized = "true";
+        });
+      }
     };
 
     const paint = () => {
@@ -149,8 +162,10 @@ export default function ScrollBar() {
       <div
         ref={thumbRef}
         // will-change keeps the thumb on its own layer, so moving it never asks
-        // the page behind it to repaint.
-        className="w-full rounded-full bg-border transition-colors will-change-transform group-hover:bg-light data-[dragging=true]:bg-medium"
+        // the page behind it to repaint. The height glides (scroll-bar-thumb in
+        // index.css); the transform must NOT — it is written every frame while
+        // you scroll, and a transition on it would make the thumb lag the page.
+        className="scroll-bar-thumb w-full rounded-full bg-border will-change-transform group-hover:bg-light data-[dragging=true]:bg-medium"
         data-dragging="false"
       />
     </div>

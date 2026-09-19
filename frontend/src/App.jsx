@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationType } from "react-router-dom";
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { api, rememberInvite } from "./api/client.js";
@@ -143,10 +143,33 @@ function ToSeries({ sub = "" }) {
   return <Navigate to={`/s/${target}${path}${location.search}`} replace />;
 }
 
+// The remount key for the page area. Pages read the series and the season off
+// the api client rather than through props, so the way they refetch is being
+// thrown away and built again — which is right when the viewer CHANGES what
+// they are looking at, and wrong for anything else.
+//
+// What it must not react to is the season merely becoming KNOWN. The list
+// arrives a round trip after the page does, and keying straight on it made
+// every cold page two mounts: two of every request, and on the live page two
+// sockets connecting one after the other ("Connecting to the server…" playing
+// twice, which is exactly what it looked like). A page whose read carried no
+// season is answered with the ACTIVE season — the very one that then resolves
+// — so there is nothing to fetch again.
+function usePageKey() {
+  const { slug } = useSeries();
+  const { season } = useSeason();
+  const seen = useRef({ slug, season, n: 0 });
+  const prev = seen.current;
+  const changedSeason = season != null && prev.season != null && prev.season !== season;
+  if (prev.slug !== slug || changedSeason) seen.current = { slug, season, n: prev.n + 1 };
+  else if (season != null) seen.current = { ...prev, season }; // first resolution: note it, don't remount
+  return seen.current.n;
+}
+
 // Season-scoped pages remount when the selected season changes, so their data
 // refetches for the new season. Admin/live/auth are not season-scoped.
 function AppRoutes() {
-  const { season } = useSeason();
+  const pageKey = usePageKey();
   const { active, loaded, unknownSlug } = useSeries();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -178,7 +201,7 @@ function AppRoutes() {
     // still a short loading skeleton, the column would otherwise end exactly
     // at the viewport's bottom edge and the footer flashed into view for a
     // beat on every navigation. This keeps it below the fold from the start.
-    <main id="main" key={season ?? "loading"} className="container-page min-h-screen w-full flex-1 py-6 sm:py-10">
+    <main id="main" key={pageKey} className="container-page min-h-screen w-full flex-1 py-6 sm:py-10">
       {/* Per-route crash guard: a page that throws shows a fallback here while
           the NavBar/Footer (outside this component) and every other route keep
           working. resetKey clears the error the moment the path changes. */}
@@ -433,7 +456,7 @@ function SeriesScopedApp() {
     // tour would simply vanish one step in, on the very step that navigates.
     // Nothing in here reads the season, so it loses nothing by sitting outside.
     <TourProvider>
-      <SeasonProvider key={slug || "default"}>
+      <SeasonProvider>
         <TitleSync />
         {/* Confirmations render as the site's own dialog rather than the
             browser's. High in the tree so any page can ask. */}

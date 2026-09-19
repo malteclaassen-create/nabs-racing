@@ -35,6 +35,36 @@ let inflight = null;
 // pill plays it, the other must not play it again.
 let pendingGain = null;
 
+// The number this member saw last time, kept across page loads.
+//
+// The pill is only in the bar once the answer is in, so on every cold load the
+// identity capsule was built without it and grew a moment later — the bar
+// visibly resizing on a page nobody had touched. The count is the member's own
+// and a round trip away from being confirmed, so last time's number is the
+// honest thing to put there while it is asked for. A member who has never had
+// a pill still gets none, and a trial that has been switched off takes it away
+// the moment the answer lands.
+const LAST_KEY = "nabs_token_last";
+
+function readLast() {
+  try {
+    const raw = localStorage.getItem(LAST_KEY);
+    const n = raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null; // private mode: the pill simply arrives with the answer
+  }
+}
+
+function writeLast(value) {
+  try {
+    if (value == null) localStorage.removeItem(LAST_KEY);
+    else localStorage.setItem(LAST_KEY, String(value));
+  } catch {
+    /* nothing to remember it with; the number on screen is right either way */
+  }
+}
+
 function load() {
   if (!inflight) {
     inflight = api
@@ -42,6 +72,10 @@ function load() {
       .then((r) => {
         cached = r?.enabled ? Number(r.balance) || 0 : null;
         if (r?.enabled && r.gain?.gained > 0) pendingGain = r.gain;
+        // The total, news or no news. A tab closed mid-celebration comes back
+        // to the right number, and the "+100" is still waiting to be played
+        // (the server is only told once it has been).
+        writeLast(cached);
         return cached;
       })
       .catch(() => {
@@ -65,12 +99,15 @@ export function takeTokenGain() {
 
 export function useTokenBalance() {
   const { isLoggedIn } = useAuth();
-  const [balance, setBalance] = useState(cached === undefined ? null : cached);
+  const [balance, setBalance] = useState(() =>
+    cached !== undefined ? cached : isLoggedIn ? readLast() : null
+  );
 
   useEffect(() => {
     if (!isLoggedIn) {
       cached = undefined;
       pendingGain = null;
+      writeLast(null); // somebody else may use this browser next
       setBalance(null);
       return;
     }

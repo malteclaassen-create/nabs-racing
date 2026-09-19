@@ -684,7 +684,7 @@ function ScrollProgressLine() {
 
 export default function NavBar() {
   const { isNew: liveFeatureNew } = useLiveFeatureNotice();
-  const { seriesPath } = useSeriesPath();
+  const { seriesPath, slug: viewedSeries } = useSeriesPath();
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
@@ -710,14 +710,21 @@ export default function NavBar() {
   // page of the site). 45s is plenty: the point is "there is something on", not
   // a live feed. Paused while the tab is in the background (see useVisiblePoll)
   // — the dot is only worth a request when somebody can see it.
+  // The series is the reset key: the bar stays mounted across a series switch
+  // now, and the other series' race server is a different answer.
   const [liveNow, setLiveNow] = useState(0);
-  useVisiblePoll((alive) => {
-    api
-      .liveStatus()
-      .then((d) => alive() && setLiveNow(d?.onTrack || 0))
-      // A decoration must never make noise: unreachable simply means no dot.
-      .catch(() => alive() && setLiveNow(0));
-  }, 45_000);
+  useVisiblePoll(
+    (alive) => {
+      api
+        .liveStatus()
+        .then((d) => alive() && setLiveNow(d?.onTrack || 0))
+        // A decoration must never make noise: unreachable simply means no dot.
+        .catch(() => alive() && setLiveNow(0));
+    },
+    45_000,
+    true,
+    viewedSeries
+  );
 
   // Asked the moment the menu opens, and only for a member — a menu row is not
   // a reason to hit the API on every page load for every visitor. Re-asked on

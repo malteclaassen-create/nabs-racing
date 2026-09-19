@@ -46,10 +46,18 @@ export function SeriesProvider({ children }) {
   const [loaded, setLoaded] = useState(false);
   // Sticky selection: the URL wins while a /s/<slug> page is open; on global
   // pages the last pick survives so "Downloads and back" stays in the series.
-  const [slug, setSlug] = useState(urlSlug);
+  //
+  // The URL is read DURING this render rather than copied into state by an
+  // effect. The effect version was a render behind: the first render after a
+  // series switch still carried the old slug, and only the effect's setState
+  // brought the new one — two renders for one navigation, with the old series'
+  // colour and logo painted in between. Everything keyed on the slug (the
+  // season subtree, the page) was built once for each.
+  const [sticky, setSticky] = useState(urlSlug);
+  const slug = urlSlug || sticky;
 
   useEffect(() => {
-    if (urlSlug && urlSlug !== slug) setSlug(urlSlug);
+    if (urlSlug && urlSlug !== sticky) setSticky(urlSlug);
   }, [urlSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -127,7 +135,7 @@ export function SeriesProvider({ children }) {
         unknownSlug,
         // Explicit picker for pages OUTSIDE the /s/<slug> prefix (the admin):
         // on prefixed pages the URL wins on the next navigation anyway.
-        setSlug,
+        setSlug: setSticky,
       }}
     >
       {children}

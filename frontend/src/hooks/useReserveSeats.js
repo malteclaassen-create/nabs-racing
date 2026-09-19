@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "./useAuth.js";
 import { MARKET_CHANGED_EVENT } from "./useAdminAttention.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 
 // "A seat is going begging, and you are a reserve" — for the site chrome and
 // for the attendance page.
@@ -55,6 +56,9 @@ function writeSeen(driverId, ids) {
 
 export function useReserveSeats() {
   const { user, isLoggedIn } = useAuth();
+  // Seats are offered inside a series, so a switch has to ask again — the nav
+  // bar this hangs in stays mounted across one now.
+  const { slug } = useSeries();
   const [data, setData] = useState(null);
   const [seen, setSeen] = useState([]);
 
@@ -67,7 +71,7 @@ export function useReserveSeats() {
       .marketAlert()
       .then((d) => setData(d || null))
       .catch(() => {});
-  }, [isLoggedIn]);
+  }, [isLoggedIn, slug]);
 
   // Once per visit, and again whenever a seat is offered, taken or withdrawn.
   // No polling: a seat is not a live timing feed, and this would otherwise ride

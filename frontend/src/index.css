@@ -964,6 +964,22 @@ body::before {
 }
 .nav-season-dock.is-hidden { opacity: 0; transform: translateY(-6px) scale(0.96); }
 
+/* --- The scrollbar's thumb ------------------------------------------------
+   Its LENGTH says how much of the page you are looking at, and that number
+   moves on its own while a page fills in: data lands, lists fan in, an image
+   finally has its height. Snapping to each new length read as a twitch at the
+   right edge of every page, so it glides. `data-sized` is switched on one frame
+   after the first measurement (components/ScrollBar.jsx), which keeps the bar
+   from animating in from nothing when it first appears. The transform is set
+   every frame while you scroll and is deliberately NOT in here — the thumb has
+   to sit exactly where the page is. */
+.scroll-bar-thumb {
+  transition: background-color var(--t-quick) ease;
+}
+.scroll-bar-thumb[data-sized="true"] {
+  transition: background-color var(--t-quick) ease, height var(--t-base) var(--e-out);
+}
+
 /* Notification bell menu: a quick fade + drop from its top-right anchor.
    Plays once on mount; lite mode and reduced motion skip it (see below). */
 @keyframes notif-pop-in {
@@ -1152,6 +1168,7 @@ body::before {
   /* The closing pair must still vanish instantly rather than sit there opaque. */
   .nav-drop.is-closing, .nav-scrim.is-closing { opacity: 0; }
   .nav-season-dock { animation: none !important; transition: none !important; }
+  .scroll-bar-thumb[data-sized="true"] { transition: background-color var(--t-quick) ease; }
   .notif-pop { animation: none !important; }
   .search-pop { animation: none !important; }
   .collapse-row { transition: none !important; }
@@ -1205,6 +1222,7 @@ body::before {
 .fx-lite .collapse-row { transition: none !important; }
 .fx-lite .fab-morph { transition: none !important; }
 .fx-lite .nav-season-dock { animation: none !important; transition: none !important; }
+.fx-lite .scroll-bar-thumb[data-sized="true"] { transition: background-color var(--t-quick) ease; }
 .fx-lite .notif-pop { animation: none !important; }
 .fx-lite .search-pop { animation: none !important; }
 .fx-lite .roll-col { transition: none !important; }
