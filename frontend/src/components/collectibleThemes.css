@@ -80,10 +80,31 @@
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-team { justify-content: center; }
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-name { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 400; text-transform: none; line-height: 1; letter-spacing: -.04em; color: #f6f3eb; }
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-team { color: var(--accent); font-size: 9px; letter-spacing: .18em; margin-top: 11px; }
-.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stats { left: 25px; right: 25px; bottom: 37px; height: 55px; border-top: 1px solid color-mix(in srgb, var(--metal) 55%, transparent); border-bottom: 0; }
+/* A closed box around the values, in the card's own metal: a single line
+   along the top read as an unfinished frame. The dividers take the same
+   metal so the band is one object rather than two borrowed styles. */
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stats { left: 25px; right: 25px; bottom: 37px; height: 55px; border: 1px solid color-mix(in srgb, var(--metal) 55%, transparent); border-radius: 6px; }
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat { border-right-color: color-mix(in srgb, var(--metal) 32%, transparent); }
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat span { color: var(--accent); }
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat b { font-size: 24px; font-weight: 500; }
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-brand { bottom: 19px; font-size: 6px; letter-spacing: .12em; }
+
+/* The serif the name is set in, used for the whole card: the display face
+   and the mono labels underneath belong to the league's own cards, and next
+   to "Takoda" in Georgia they read as a different card altogether.
+   Spelled out per element because each of those sets its own family. */
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-back,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-rtg-l,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-rtg-n,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-num,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-team,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat span,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat b,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-brand,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-collection b,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-collection small,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-back-bottom { font-family: Georgia, "Times New Roman", serif; }
 .rcard-frame[data-series="signature"] .rcard-back-pattern { inset: 8px; border: 1px solid color-mix(in srgb, var(--metal) 60%, transparent); border-radius: 7px; opacity: 1; }
 .rcard-frame[data-series="signature"][data-collectible] .rcard-back::after { display: none; }
 .rcard-frame[data-series="signature"] .rcard-back-bottom { bottom: 20px; }
