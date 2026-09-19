@@ -1949,8 +1949,10 @@ body::before {
 .token-gain { animation: token-gain-rise 1500ms var(--e-soft) forwards; }
 /* The identity capsule in the nav bar: the coin gives a little nod when you
    hover the whole thing. Off in Performance Lite and under reduced motion. */
-.nav-identity img { transition: transform 300ms var(--e-soft); }
-.nav-identity:hover img { transform: rotate(-14deg) scale(1.08); }
+/* The coin grows a touch on hover. No rotation: it carries the league's mark,
+   and a tilted logo reads as a mistake rather than as motion. */
+.nav-identity img { transition: transform 200ms var(--e-soft); }
+.nav-identity:hover img { transform: scale(1.12); }
 @media (prefers-reduced-motion: reduce) { .nav-identity img { transition: none; } .nav-identity:hover img { transform: none; } }
 .fx-lite .nav-identity img { transition: none; }
 .fx-lite .nav-identity:hover img { transform: none; }
