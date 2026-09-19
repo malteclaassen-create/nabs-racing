@@ -892,7 +892,7 @@ function MyProfile() {
             <Link to={`/drivers/${d.driverId}`} className="btn-secondary whitespace-nowrap">
               Public profile →
             </Link>
-            <div className="max-w-full overflow-x-auto pb-0.5">
+            <div className="scrollbar-slim max-w-full overflow-x-auto pb-0.5">
               <SlidingTabs
                 items={memberTabs(!!user?.isAdmin, adminAttention, tokenBalance)}
                 // While the settings drawer is open the pill sits on Settings,
