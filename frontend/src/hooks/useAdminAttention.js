@@ -100,7 +100,6 @@ export function useAdminAttention() {
     isAdmin,
     total: counts?.total || 0,
     feedback: counts?.feedback || 0,
-    reports: counts?.reports || 0,
     members: counts?.members || 0,
     market: counts?.market || 0,
     // A server reset whose practice times are waiting to be kept or dropped

@@ -351,6 +351,11 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
     );
   }
   const r = data.report;
+  // Who is in this thread by definition and can be shut out of it, and who
+  // already has been. Somebody shut out is not offered twice, so the two lists
+  // never show the same person.
+  const blocked = data.blocked || [];
+  const inThread = (data.participants || []).filter((p) => !blocked.some((b) => b.discordId === p.discordId));
   const dirty =
     draft.status !== r.status ||
     String(draft.penaltySeconds) !== String(r.penaltySeconds ?? "") ||
@@ -581,6 +586,73 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             Let in
           </button>
         </div>
+
+        {/* Shutting somebody OUT. A thread is a conversation between two people
+            who have just crashed into each other, and now and then one of them
+            writes something that has no place in it. This is stronger than
+            taking a viewer back off the list above: it beats being the reporter
+            or the driver named, and the report stops existing for them. What
+            they already wrote stays where it is, because the thread is the
+            record of how the decision was reached. */}
+        {(inThread.length > 0 || blocked.length > 0) && (
+          <div className="mt-4 border-t border-border pt-3">
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+              In the argument
+            </div>
+            <ul className="flex flex-wrap gap-2">
+              {inThread.map((p) => (
+                <li
+                  key={p.discordId}
+                  className="flex items-center gap-2 rounded-full bg-surface2 px-2.5 py-1 text-xs"
+                >
+                  <span className="font-semibold text-medium">{p.name}</span>
+                  <span className="text-faint">{p.role === "REPORTER" ? "reported it" : "named"}</span>
+                  <button
+                    className="font-semibold transition text-light hover:text-bad"
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => api.blockFromReport(id, { discordId: p.discordId, name: p.name }),
+                        `${p.name} can no longer see this report.`
+                      )
+                    }
+                  >
+                    Shut out
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {blocked.length > 0 && (
+              <>
+                <div className="mb-2 mt-3 font-mono text-[11px] font-bold uppercase tracking-widest text-warn">
+                  Shut out of this report
+                </div>
+                <ul className="flex flex-wrap gap-2">
+                  {blocked.map((b) => (
+                    <li
+                      key={b.discordId}
+                      className="flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs"
+                    >
+                      <span className="font-semibold text-warn">{b.name || b.discordId}</span>
+                      <button
+                        className="font-semibold transition text-light hover:text-dark"
+                        disabled={busy}
+                        onClick={() =>
+                          run(
+                            () => api.unblockFromReport(id, b.discordId),
+                            `${b.name || "They"} can read this report again.`
+                          )
+                        }
+                      >
+                        Let back in
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* removing it entirely */}

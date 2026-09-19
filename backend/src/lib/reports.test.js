@@ -24,6 +24,7 @@ vi.mock("./persons.js", () => ({
 
 const {
   dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused, dbRepointAccused,
+  dbBlockPerson, dbUnblockPerson, dbBlocks, dbAddViewer,
   dbLinkedReports, dbEnsureIncidentGroup,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
@@ -37,7 +38,7 @@ const {
 let rows;
 
 function makePrisma() {
-  rows = { Report: [], ReportMessage: [], ReportViewer: [], ReportAttachment: [] };
+  rows = { Report: [], ReportMessage: [], ReportViewer: [], ReportAttachment: [], ReportBlock: [] };
   return {
     $executeRawUnsafe: async (sql, ...a) => {
       if (sql.includes('INSERT INTO "Report"')) {
@@ -58,6 +59,14 @@ function makePrisma() {
         rows.ReportAttachment = rows.ReportAttachment.filter((x) => x.reportId !== a[0]);
       } else if (sql.includes('INSERT INTO "ReportViewer"')) {
         rows.ReportViewer.push({ reportId: a[0], discordId: a[1], name: a[2] });
+      } else if (sql.includes('INSERT INTO "ReportBlock"')) {
+        rows.ReportBlock.push({ reportId: a[0], discordId: a[1], name: a[2], createdAt: "now" });
+      } else if (sql.startsWith('DELETE FROM "ReportBlock" WHERE "reportId" = ? AND "discordId"')) {
+        rows.ReportBlock = rows.ReportBlock.filter((b) => !(b.reportId === a[0] && b.discordId === a[1]));
+      } else if (sql.startsWith('DELETE FROM "ReportBlock"')) {
+        rows.ReportBlock = rows.ReportBlock.filter((b) => b.reportId !== a[0]);
+      } else if (sql.startsWith('DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"')) {
+        rows.ReportViewer = rows.ReportViewer.filter((v) => !(v.reportId === a[0] && v.discordId === a[1]));
       } else if (sql.startsWith('UPDATE "Report" SET "status"')) {
         const r = rows.Report.find((x) => x.id === a[4]);
         Object.assign(r, { status: a[0], verdict: a[1], penaltySeconds: a[2], updatedAt: a[3] });
@@ -82,6 +91,8 @@ function makePrisma() {
           (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED"].includes(r.status)
         );
       if (sql.includes('FROM "Report" ORDER BY')) return [...rows.Report];
+      if (sql.includes('FROM "ReportBlock" WHERE "reportId"')) return rows.ReportBlock.filter((b) => b.reportId === a[0]);
+      if (sql.includes('FROM "ReportBlock" WHERE "discordId"')) return rows.ReportBlock.filter((b) => b.discordId === a[0]);
       if (sql.includes('FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"'))
         return rows.ReportViewer.filter((v) => v.reportId === a[0] && v.discordId === a[1]);
       if (sql.includes('FROM "ReportViewer"')) return rows.ReportViewer.filter((v) => v.reportId === a[0]);
@@ -117,6 +128,112 @@ describe("who can read a report", () => {
     const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
     expect(await canRead(p, r, "admin1", true)).toBe(true);
     expect((await readersOf(p, r)).has("admin1")).toBe(false);
+  });
+});
+
+describe("shutting somebody out of one report", () => {
+  // A thread is a conversation between two people who have just crashed into
+  // each other. Now and then one of them writes something that has no place in
+  // it, and the office needs to be able to take them out of THAT thread. It has
+  // to beat every other claim: being the reporter, being the driver named, and
+  // being an appointed steward are all otherwise permanent.
+  it("takes the report away from the person who filed it", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    expect(await canRead(p, r, "111", false)).toBe(true);
+    expect(await roleOn(p, r, "111")).toBe("REPORTER");
+
+    await dbBlockPerson(p, r.id, "111", "13bot");
+
+    expect(await canRead(p, r, "111", false)).toBe(false);
+    // No role at all, so the thread drops out of their own list rather than
+    // sitting there as a door that refuses to open.
+    expect(await roleOn(p, r, "111")).toBe(null);
+    expect((await dbReportsFor(p, "111")).some((x) => x.id === r.id)).toBe(false);
+    expect((await readersOf(p, r)).has("111")).toBe(false);
+  });
+
+  it("takes it away from the driver it names, too", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    await dbBlockPerson(p, r.id, "222", "Bob");
+    expect(await canRead(p, r, "222", false)).toBe(false);
+    expect(await roleOn(p, r, "222")).toBe(null);
+  });
+
+  it("beats being a steward, for that one report", async () => {
+    // A steward reads every thread in the league. Removing one from a single
+    // report has to mean that report, not "unless they happen to be a steward".
+    const p = makePrisma();
+    stewards.add("333");
+    const a = await dbCreateReport(p, { ...base, accusedDriverId: "d2" });
+    const b = await dbCreateReport(p, { ...base, body: "Another one entirely" });
+    await dbBlockPerson(p, a.id, "333", "A steward");
+
+    expect(await canRead(p, a, "333", false)).toBe(false);
+    expect(await canRead(p, b, "333", false)).toBe(true);
+    const theirs = await dbReportsFor(p, "333");
+    expect(theirs.some((x) => x.id === a.id)).toBe(false);
+    expect(theirs.some((x) => x.id === b.id)).toBe(true);
+  });
+
+  it("does not shut them out of anything else", async () => {
+    const p = makePrisma();
+    const a = await dbCreateReport(p, { ...base });
+    const b = await dbCreateReport(p, { ...base, body: "A second incident, same driver" });
+    await dbBlockPerson(p, a.id, "111", "13bot");
+    expect(await canRead(p, a, "111", false)).toBe(false);
+    expect(await canRead(p, b, "111", false)).toBe(true);
+  });
+
+  it("an admin can let them back in", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base });
+    await dbBlockPerson(p, r.id, "111", "13bot");
+    expect(await dbBlocks(p, r.id)).toHaveLength(1);
+
+    await dbUnblockPerson(p, r.id, "111");
+    expect(await dbBlocks(p, r.id)).toHaveLength(0);
+    expect(await canRead(p, r, "111", false)).toBe(true);
+    expect(await roleOn(p, r, "111")).toBe("REPORTER");
+  });
+
+  it("the two lists cannot disagree", async () => {
+    // Being shut out takes away a viewer seat, and being let in as a viewer
+    // lifts a block. Otherwise one of the two says yes while the other says no,
+    // and the no always wins, so the yes looks like a control that does nothing.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base });
+    await dbAddViewer(p, r.id, "444", "A witness");
+    expect(await canRead(p, r, "444", false)).toBe(true);
+
+    await dbBlockPerson(p, r.id, "444", "A witness");
+    expect(await canRead(p, r, "444", false)).toBe(false);
+
+    await dbAddViewer(p, r.id, "444", "A witness");
+    expect(await dbBlocks(p, r.id)).toHaveLength(0);
+    expect(await canRead(p, r, "444", false)).toBe(true);
+  });
+
+  it("says nothing to the person shut out, and nothing to the admins", async () => {
+    // Being removed from a thread is not a conversation, and a note saying so
+    // is an invitation to carry it on somewhere else.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base });
+    notes.length = 0;
+    await dbBlockPerson(p, r.id, "111", "13bot");
+    expect(notes).toHaveLength(0);
+  });
+
+  it("keeps what they wrote", async () => {
+    // The thread is the record of how a decision was reached, and the reason
+    // somebody was removed is usually IN it.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, { ...base });
+    await dbAddMessage(p, r, { author: "REPORTER", discordId: "111", name: "13bot", body: "Something out of order" });
+    const before = rows.ReportMessage.filter((m) => m.reportId === r.id).length;
+    await dbBlockPerson(p, r.id, "111", "13bot");
+    expect(rows.ReportMessage.filter((m) => m.reportId === r.id)).toHaveLength(before);
   });
 });
 

@@ -58,6 +58,7 @@ import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming,
 import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
   dbListReports, dbGetReport, dbMessages, dbViewers, dbDecideReport, dbAddMessage,
+  dbBlocks, dbBlockPerson, dbUnblockPerson, accusedDiscordId,
   dbDecidedForRace, dbAddViewer, dbRemoveViewer, dbDeleteReport, REPORT_DECIDED, dbAttachments,
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
   dbSetAccused, dbRepointAccused, dbCreateReport, dbLinkedReports, dbEnsureIncidentGroup,
@@ -3130,8 +3131,16 @@ async function adminSeriesScope(seriesSlug) {
   return { series, seasonIds, raceIds: new Set(races.map((r) => r.id)) };
 }
 
-// GET /api/admin/attention -> { feedback, reports, members, market, total }
-// Everything waiting on an admin, as four numbers and their sum.
+// GET /api/admin/attention -> { feedback, members, market, resets, total }
+// Everything waiting on an admin, as numbers and their sum.
+//
+// REPORTS ARE NOT IN HERE, and that is the league's own decision. They arrive
+// in a clump on a race night and are worked through together on the Monday, so
+// the count sat at "several" for four days at a time and the dot beside the
+// profile picture never went out. A signal that is always on is not a signal,
+// and it was drowning the ones that mean somebody is waiting on an answer
+// today. The Reports tab is where reports are, and it is a tab an admin opens
+// on purpose.
 //
 // The admin's own navigation fetches its badges tab by tab, which is right
 // there: it needs the lists anyway. This is for the rest of the site, where a
@@ -3147,9 +3156,8 @@ router.get("/attention", async (req, res, next) => {
     // Feedback and unlinked logins deliberately don't: a bug in the website and
     // a Discord account without a driver belong to no league in particular.
     const scope = await adminSeriesScope(req.query.series).catch(() => null);
-    const [feedbackItems, reports, memberRows, market] = await Promise.all([
+    const [feedbackItems, memberRows, market] = await Promise.all([
       dbListFeedback(prisma).catch(() => []),
-      dbListReports(prisma).catch(() => []),
       prisma.$queryRaw`
         SELECT COUNT(*) AS n
         FROM "MemberAccount" m
@@ -3175,9 +3183,6 @@ router.get("/attention", async (req, res, next) => {
       const last = i.replies?.[i.replies.length - 1];
       return !!last && last.author === "SENDER";
     }).length;
-    const open = reports.filter(
-      (r) => !REPORT_DECIDED.includes(r.status) && (!scope || !r.raceId || scope.raceIds.has(r.raceId))
-    ).length;
     const members = Number(memberRows[0]?.n || 0);
     // A server reset whose times nobody has kept or dropped yet. It is work in
     // the same sense the rest of this is: until it is answered the training
@@ -3186,11 +3191,10 @@ router.get("/attention", async (req, res, next) => {
     const resets = training ? pendingFor(training.seriesRow.slug, training.seasonNumber).length : 0;
     res.json({
       feedback,
-      reports: open,
       members,
       market,
       resets,
-      total: feedback + open + members + market + resets,
+      total: feedback + members + market + resets,
     });
   } catch (e) {
     next(e);
@@ -6358,6 +6362,19 @@ router.get("/reports/:id", async (req, res, next) => {
         await dbMessages(prisma, report.id, req.user?.discordId || null, voices)
       ).map((m) => ({ ...m, mine: m.mine || m.author === "ADMIN" })),
       viewers: await dbViewers(prisma, report.id),
+      // The two people a report has by definition, so the desk can shut one of
+      // them out of it without going to look up a Discord id. Whoever has no
+      // account (a driver who has never signed in) has nothing to shut out and
+      // is handed over as null.
+      participants: [
+        report.reporterDiscordId
+          ? { discordId: String(report.reporterDiscordId), name: report.reporterName || "The reporter", role: "REPORTER" }
+          : null,
+        await accusedDiscordId(prisma, report)
+          .then((id) => (id ? { discordId: String(id), name: report.accusedName || "The driver named", role: "ACCUSED" } : null))
+          .catch(() => null),
+      ].filter(Boolean),
+      blocked: await dbBlocks(prisma, report.id),
       attachments: await dbAttachments(prisma, report.id),
       // The same incident's OTHER reports — the ones split off so each driver
       // involved has their own thread. The desk draws a decision box for each,
@@ -6616,6 +6633,41 @@ router.post("/reports/:id/viewers", async (req, res, next) => {
     res.json({ ok: true, viewers });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// Shutting somebody OUT of one thread. Stronger than removing a viewer: this
+// beats being the reporter or the driver the report names, which are the two
+// claims on a thread that nothing else can take away. It exists because a
+// report is a conversation between two people who have just crashed into each
+// other, and now and then one of them writes something that has no business
+// being in it.
+//
+// What it does NOT do is delete what they wrote. The thread is the record of
+// how a decision was reached, and an admin removing the evidence of the reason
+// they removed somebody is the one thing this must not quietly do.
+router.post("/reports/:id/blocks", async (req, res, next) => {
+  try {
+    const { discordId, name } = req.body || {};
+    if (!/^\d{5,25}$/.test(String(discordId || ""))) {
+      return res.status(400).json({ error: "That is not a Discord user ID" });
+    }
+    const report = await dbGetReport(prisma, req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    const blocked = await dbBlockPerson(prisma, req.params.id, discordId, name);
+    // Not told. Being shut out of a thread is not a conversation, and a
+    // notification saying so is an invitation to carry it on somewhere else.
+    res.json({ ok: true, blocked, viewers: await dbViewers(prisma, req.params.id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/reports/:id/blocks/:discordId", async (req, res, next) => {
+  try {
+    res.json({ ok: true, blocked: await dbUnblockPerson(prisma, req.params.id, req.params.discordId) });
+  } catch (e) {
     next(e);
   }
 });

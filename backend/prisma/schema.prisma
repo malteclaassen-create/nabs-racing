@@ -718,6 +718,19 @@ model ReportViewer {
   @@id([reportId, discordId])
 }
 
+// Somebody an admin has shut OUT of one report's thread. Beats every other
+// claim on it, including being the reporter or the driver it names: a thread a
+// person has been removed from stops existing for them. Managed via raw SQL
+// like the rest of the report tables (lib/reports.js).
+model ReportBlock {
+  reportId  String
+  discordId String
+  name      String?
+  createdAt DateTime @default(now())
+
+  @@id([reportId, discordId])
+}
+
 // Cross-season identity. Driver rows are per-season (a person racing in three
 // seasons has three Driver rows); this table groups those rows under one shared
 // personId so career stats aggregate and archive tables can show the person's

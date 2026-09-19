@@ -602,6 +602,21 @@ export async function ensureAppSchema(prisma) {
     PRIMARY KEY ("reportId", "discordId")
   )`);
 
+  // --- People an admin has shut OUT of one report's thread. The opposite of
+  // the table above and stronger than it: this beats being the reporter or the
+  // driver a report names, both of which are otherwise permanent. It exists
+  // because a thread is a conversation between people who have just crashed
+  // into each other, and now and then somebody uses it to say something that
+  // has no place in it. Shut out is shut out: the thread stops existing for
+  // them, they cannot read it and they cannot write in it.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ReportBlock" (
+    "reportId" TEXT NOT NULL,
+    "discordId" TEXT NOT NULL,
+    "name" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("reportId", "discordId")
+  )`);
+
   // --- Phase 3: cross-season person links. One row per driver row that belongs
   // to a person; all driver rows of the same person share one personId.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonLink" (

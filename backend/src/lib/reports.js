@@ -33,7 +33,6 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
-import { getAdminDiscordIds } from "./adminUsers.js";
 import { discordIdsForDrivers, getPersonGroups } from "./persons.js";
 import { isSteward } from "./stewards.js";
 
@@ -114,12 +113,28 @@ export async function readersOf(prisma, report) {
     .$queryRawUnsafe(`SELECT "discordId" FROM "ReportViewer" WHERE "reportId" = ?`, report.id)
     .catch(() => []);
   for (const v of extra) out.add(String(v.discordId));
+  // Anybody shut out of this thread, last and over the top of everything: it
+  // has to beat being the reporter or the driver named, which are the two
+  // claims nothing else can take away. See dbBlocks.
+  for (const id of await blockedOn(prisma, report.id)) out.delete(id);
   return out;
+}
+
+// The Discord ids shut out of one thread.
+export async function blockedOn(prisma, reportId) {
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT "discordId" FROM "ReportBlock" WHERE "reportId" = ?`, reportId)
+    .catch(() => []);
+  return new Set(rows.map((r) => String(r.discordId)));
 }
 
 export async function canRead(prisma, report, discordId, isAdmin) {
   if (isAdmin) return true;
   if (!discordId) return false;
+  // Being shut out is checked BEFORE the steward test: a steward reads every
+  // thread in the league, and an admin removing one from a single report means
+  // that one, not "unless they happen to be a steward".
+  if ((await blockedOn(prisma, report.id)).has(String(discordId))) return false;
   if (await isSteward(prisma, discordId)) return true;
   return (await readersOf(prisma, report)).has(String(discordId));
 }
@@ -131,6 +146,9 @@ export async function canRead(prisma, report, discordId, isAdmin) {
 export async function roleOn(prisma, report, discordId) {
   if (!discordId) return null;
   const me = String(discordId);
+  // No role at all, which is what takes the thread out of their list rather
+  // than leaving it there as a door that refuses to open.
+  if ((await blockedOn(prisma, report.id)).has(me)) return null;
   if (String(report.reporterDiscordId || "") === me) return "REPORTER";
   const accused = await accusedDiscordId(prisma, report);
   if (accused && String(accused) === me) return "ACCUSED";
@@ -181,8 +199,16 @@ export async function dbRolesFor(prisma, reports, discordId) {
     .catch(() => []);
   const viewer = new Set(viewerRows.map((v) => String(v.reportId)));
   const steward = await isSteward(prisma, me);
+  // Every thread this account has been shut out of, in one read, same shape as
+  // the viewer rows above. Checked first for each report, so a removal takes
+  // the thread out of their list whatever else they are to it.
+  const blockedRows = await prisma
+    .$queryRawUnsafe(`SELECT "reportId" FROM "ReportBlock" WHERE "discordId" = ?`, me)
+    .catch(() => []);
+  const blocked = new Set(blockedRows.map((b) => String(b.reportId)));
 
   for (const r of reports) {
+    if (blocked.has(String(r.id))) continue;
     if (String(r.reporterDiscordId || "") === me) out.set(r.id, "REPORTER");
     else if (r.accusedDriverId && String(accused.get(r.accusedDriverId) || "") === me) out.set(r.id, "ACCUSED");
     else if (viewer.has(String(r.id))) out.set(r.id, "VIEWER");
@@ -367,6 +393,14 @@ export async function dbViewers(prisma, reportId) {
     .catch(() => []);
 }
 
+// Who has been shut out of one thread, with the name they were shut out under
+// so the card can say who it is without another lookup.
+export async function dbBlocks(prisma, reportId) {
+  return prisma
+    .$queryRawUnsafe(`SELECT "discordId", "name", "createdAt" FROM "ReportBlock" WHERE "reportId" = ?`, reportId)
+    .catch(() => []);
+}
+
 // --- writing ----------------------------------------------------------------
 
 export async function dbCreateReport(prisma, input) {
@@ -413,7 +447,6 @@ export async function dbCreateReport(prisma, input) {
       .catch(() => {});
   }
   const report = await dbGetReport(prisma, id);
-  await notifyAdmins(prisma, report, "A new incident report is waiting");
 
   // And the driver it names. They can read the thread from the moment it
   // exists, so being told about it is the difference between a conversation and
@@ -470,7 +503,6 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
       dedupeKey: `report_msg:${report.id}:${rid}:${Date.now()}`,
     }).catch(() => {});
   }
-  if (author !== "ADMIN") await notifyAdmins(prisma, report, "New message on an incident report");
   return { messageId, messages: await dbMessages(prisma, report.id) };
 }
 
@@ -835,7 +867,41 @@ export async function dbMarkAttachmentRemoved(prisma, id) {
     .catch(() => {});
 }
 
+// Shut somebody out of one thread, and let them back in. Being shut out also
+// takes away any viewer row they had: an admin who removes a witness and then
+// changes their mind has to let them back in on purpose, which is one clear
+// state rather than two overlapping ones.
+export async function dbBlockPerson(prisma, reportId, discordId, name) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ReportBlock" ("reportId","discordId","name") VALUES (?,?,?)
+     ON CONFLICT("reportId","discordId") DO UPDATE SET "name" = ?`,
+    reportId,
+    String(discordId),
+    clamp(name, 120) || null,
+    clamp(name, 120) || null
+  );
+  await prisma
+    .$executeRawUnsafe(`DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId" = ?`, reportId, String(discordId))
+    .catch(() => {});
+  return dbBlocks(prisma, reportId);
+}
+
+export async function dbUnblockPerson(prisma, reportId, discordId) {
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM "ReportBlock" WHERE "reportId" = ? AND "discordId" = ?`,
+    reportId,
+    String(discordId)
+  );
+  return dbBlocks(prisma, reportId);
+}
+
 export async function dbAddViewer(prisma, reportId, discordId, name) {
+  // Letting somebody in lifts a block on the same breath: the two tables would
+  // otherwise disagree, and the block wins everywhere, so adding a viewer who
+  // is shut out would look like it worked and do nothing.
+  await prisma
+    .$executeRawUnsafe(`DELETE FROM "ReportBlock" WHERE "reportId" = ? AND "discordId" = ?`, reportId, String(discordId))
+    .catch(() => {});
   await prisma.$executeRawUnsafe(
     `INSERT INTO "ReportViewer" ("reportId","discordId","name") VALUES (?,?,?)
      ON CONFLICT("reportId","discordId") DO UPDATE SET "name" = ?`,
@@ -866,20 +932,22 @@ export async function dbDeleteReport(prisma, id) {
   await prisma.$executeRawUnsafe(`DELETE FROM "ReportAttachment" WHERE "reportId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "ReportMessage" WHERE "reportId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "ReportViewer" WHERE "reportId" = ?`, id);
+  await prisma.$executeRawUnsafe(`DELETE FROM "ReportBlock" WHERE "reportId" = ?`, id).catch(() => {});
   await prisma.$executeRawUnsafe(`DELETE FROM "Report" WHERE "id" = ?`, id);
   return files.map((f) => f.storedName);
 }
 
-async function notifyAdmins(prisma, report, title) {
-  const ids = await getAdminDiscordIds(prisma).catch(() => []);
-  for (const id of ids) {
-    await dbCreateNotification(prisma, {
-      type: "REPORT",
-      title,
-      body: report.accusedName ? `About ${report.accusedName}.` : "Someone filed a report.",
-      link: "/admin?tab=reports",
-      recipientId: id,
-      dedupeKey: `report_admin:${report.id}:${id}:${Date.now()}`,
-    }).catch(() => {});
-  }
-}
+// NOTHING GOES TO THE ADMINS ANY MORE, and that is the league's decision.
+//
+// Reports arrive in a clump on a race night, a dozen of them in an hour, and
+// the office works through the lot together on the Monday. Every one used to
+// ring every admin's bell, and every unanswered one kept a dot lit beside
+// their profile picture for four days (routes/admin.js, the attention count,
+// says the same thing from its end). A signal that is always on is not a
+// signal. The Reports tab is where reports live and it says how many are open
+// the moment it is opened, which is when somebody has decided to deal with
+// them.
+//
+// The people IN a report are told as they always were: the driver a report
+// names hears about it, everybody on a thread hears a new message, and both
+// sides hear the verdict. Those are the ones where somebody is waiting.

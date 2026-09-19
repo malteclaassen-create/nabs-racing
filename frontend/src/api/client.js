@@ -1290,6 +1290,12 @@ export const api = {
   addReportViewer: (id, body) => request(`/admin/reports/${id}/viewers`, { method: "POST", body, auth: true }),
   removeReportViewer: (id, discordId) =>
     request(`/admin/reports/${id}/viewers/${discordId}`, { method: "DELETE", auth: true }),
+  // Shutting somebody out of ONE thread: stronger than removing a viewer,
+  // because it beats being the reporter or the driver the report names. The
+  // thread stops existing for them.
+  blockFromReport: (id, body) => request(`/admin/reports/${id}/blocks`, { method: "POST", body, auth: true }),
+  unblockFromReport: (id, discordId) =>
+    request(`/admin/reports/${id}/blocks/${discordId}`, { method: "DELETE", auth: true }),
   deleteReport: (id) => request(`/admin/reports/${id}`, { method: "DELETE", auth: true }),
   // What the stewards decided for one round, and how much of it has already
   // been written into the classification. The results editor fills the rest in.

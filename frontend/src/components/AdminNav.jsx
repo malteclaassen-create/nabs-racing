@@ -6,7 +6,6 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import { TAB_GROUPS, tabInfo } from "../data/adminIndex.js";
 import { NAV_RAIL, NAV_TABS } from "../hooks/useAdminNavMode.js";
 import { FEEDBACK_CHANGED_EVENT } from "./AdminFeedback.jsx";
-import { REPORTS_CHANGED_EVENT } from "./AdminReports.jsx";
 import { MEMBERS_CHANGED_EVENT } from "./AdminMembers.jsx";
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
@@ -31,19 +30,22 @@ import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 // Which of the two is in use is remembered by hooks/useAdminNavMode.js.
 // ---------------------------------------------------------------------------
 
-// How many things are waiting in each tab. Three numbers, all of which mean
-// "somebody is waiting on you": a new bug report, an incident report with no
-// decision yet, a login sitting there without a driver.
+// How many things are waiting in each tab. Every one of them means "somebody is
+// waiting on you today": a new bug report, a login sitting there without a
+// driver, a seat, a server reset nobody has answered.
+//
+// Incident reports are deliberately NOT counted. They come in a clump on a race
+// night and the office works through them together on the Monday, so the number
+// stood at "several" for days on end and stopped meaning anything. They have a
+// tab of their own, which is where they are dealt with anyway.
 function useAdminBadges() {
   const feedback = useApi(useCallback(() => api.adminFeedback(), []));
-  const reports = useApi(useCallback(() => api.adminReports(), []));
   const members = useApi(useCallback(() => api.adminMembersPending(), []));
   // The market's number comes off the shared attention count rather than the
   // market list: a seat waiting on a decision is one integer, and the list is
   // every offer of the season with its interested reserves attached.
   const attention = useApi(useCallback(() => api.adminAttention(), []));
   const reloadFeedback = feedback.reload;
-  const reloadReports = reports.reload;
   const reloadMembers = members.reload;
   const reloadAttention = attention.reload;
   // Working through an entry in the panel must take the number down with it.
@@ -51,10 +53,6 @@ function useAdminBadges() {
     window.addEventListener(FEEDBACK_CHANGED_EVENT, reloadFeedback);
     return () => window.removeEventListener(FEEDBACK_CHANGED_EVENT, reloadFeedback);
   }, [reloadFeedback]);
-  useEffect(() => {
-    window.addEventListener(REPORTS_CHANGED_EVENT, reloadReports);
-    return () => window.removeEventListener(REPORTS_CHANGED_EVENT, reloadReports);
-  }, [reloadReports]);
   useEffect(() => {
     window.addEventListener(MEMBERS_CHANGED_EVENT, reloadMembers);
     return () => window.removeEventListener(MEMBERS_CHANGED_EVENT, reloadMembers);
@@ -65,7 +63,6 @@ function useAdminBadges() {
   }, [reloadAttention]);
   return {
     feedback: feedback.data?.newCount || 0,
-    reports: reports.data?.open || 0,
     members: members.data?.unlinked || 0,
     market: attention.data?.market || 0,
     // A server reset waiting to be answered lives on the "Social & Live" tab,
@@ -169,7 +166,6 @@ function TabStrip({ tab, onPick, badges }) {
               >
                 {t.label}
                 {t.id === "feedback" && <Badge n={badges.feedback} />}
-                {t.id === "reports" && <Badge n={badges.reports} />}
                 {t.id === "members" && <Badge n={badges.members} />}
                 {t.id === "market" && <Badge n={badges.market} />}
               </button>
@@ -247,7 +243,7 @@ function SideRail({ tab, onPick, badges }) {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-light">
-          <Badge n={badges.feedback + badges.reports + badges.members + badges.market + badges.social} />
+          <Badge n={badges.feedback + badges.members + badges.market + badges.social} />
           <Chevron open={drawer} className="h-5 w-5" shut="rotate-90" turned="-rotate-90" />
         </span>
       </button>
