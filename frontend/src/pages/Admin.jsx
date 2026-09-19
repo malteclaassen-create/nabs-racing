@@ -995,6 +995,120 @@ function LiveServersAdmin() {
 // it wipes the week's times off the Live page. The server manager still has
 // them — a result file per session, sectors and all — and this is where an
 // admin hands those files to the site so the board carries their laps.
+// The question a server reset asks (lib/liveResetKeep.js on the server side).
+//
+// The race server is restarted when a new version of a track goes up, and a
+// time set before a track-limits fix can be a time nobody can reach after it.
+// So the relay parks the ended session's times instead of putting them back on
+// the board, and this is where somebody says keep or drop. The button that is
+// already the loud one follows what actually happened: the track changing is
+// the reason to drop, and a plain restart is the reason to keep.
+function ResetPrompt({ pending, onAnswered }) {
+  const changed = pending.trackChanged;
+  const [alsoClear, setAlsoClear] = useState(changed && pending.carried > 0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function answer(keep) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.answerTrainingReset(pending.id, { keep, clearCarried: alsoClear && !keep });
+      onAnswered();
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
+    }
+  }
+
+  const when = pending.endedAt ? new Date(pending.endedAt) : null;
+  const where = (side) => (side.layout ? `${side.track} · ${side.layout}` : side.track || "—");
+  // Race night rather than a reset: the server cycles practice -> qualifying ->
+  // race on the same track, which takes the week's times off the board just the
+  // same. Nothing about them is in doubt, so the question only says where they
+  // went.
+  const SESSION = { 1: "practice", 2: "qualifying", 3: "the race" };
+  const movedOn = !changed && pending.after.sessionType > 1 ? SESSION[pending.after.sessionType] : null;
+
+  return (
+    <div className={`rounded-xl border p-4 ${changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-surface2/60"}`}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+          {movedOn ? "Practice session ended" : "Server reset detected"}
+        </h3>
+        {when && (
+          <span className="font-mono text-xs text-light">
+            {when.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+          </span>
+        )}
+      </div>
+      <p className="mt-2 text-sm text-light">
+        The session held <b className="text-dark">{pending.drivers}</b> driver
+        {pending.drivers === 1 ? "" : "s"} with a time on{" "}
+        <b className="text-dark">{where(pending.before)}</b>
+        {!movedOn && pending.after.track && (
+          <>
+            , and the server came back on <b className="text-dark">{where(pending.after)}</b>
+          </>
+        )}
+        . They are not on the board until you say so.
+      </p>
+      {changed ? (
+        <p className="mt-2 text-sm text-warn">
+          The track is a different version than the one those times were set on. If this was a track-limits fix,
+          they may be times nobody can reach now.
+        </p>
+      ) : movedOn ? (
+        <p className="mt-2 text-sm text-light">
+          The server moved on to {movedOn} on the same track, so this is a race weekend rather than a reset.
+          Keeping them puts the week back on the board when it is in practice again.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-light">
+          Same track, same layout, so this looks like a plain restart.
+        </p>
+      )}
+      {changed && pending.carried > 0 && (
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-medium">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-primary"
+            checked={alsoClear}
+            onChange={(e) => setAlsoClear(e.target.checked)}
+            disabled={busy}
+          />
+          <span>
+            Also take the <b className="text-dark">{pending.carried}</b> time
+            {pending.carried === 1 ? "" : "s"} already carried for this circuit off the board. They were set on the
+            old version too, and the board shows every layout of a circuit as one.
+          </span>
+        </label>
+      )}
+      {err && (
+        <div className="mt-3">
+          <Notice kind="error">{err}</Notice>
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          className={changed ? "btn-primary" : "btn-secondary"}
+          onClick={() => answer(false)}
+          disabled={busy}
+        >
+          {busy ? "Working…" : "Drop the times"}
+        </button>
+        <button
+          className={changed ? "btn-secondary" : "btn-primary"}
+          onClick={() => answer(true)}
+          disabled={busy}
+        >
+          {busy ? "Working…" : changed ? "Keep them anyway" : "Keep the times"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TrainingBestLapsAdmin() {
   const { current: series } = useSeries();
   // "" means "whatever the race server is on right now"; a named track is one
@@ -1061,6 +1175,14 @@ function TrainingBestLapsAdmin() {
         &ldquo;nabs_baku_2025&rdquo; on Monday and &ldquo;nabs_baku&rdquo; on Wednesday is one Baku.
       </p>
       <p className="text-sm text-light">
+        Most of the time you will not have to. The site watches that session all week, so when the server resets
+        it still has the times and <b className="text-dark">asks you here</b> whether to keep them. It asks rather
+        than simply putting them back because the server is usually restarted to put a{" "}
+        <b className="text-dark">new version of the track</b> up, and a time set before a track-limits fix can be
+        one nobody can reach after it. The files below are for what it missed: a reset while the site itself was
+        down, or a session from before all this.
+      </p>
+      <p className="text-sm text-light">
         On the board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the
         server keeps their live lap, an identical time changes nothing, and a carried lap is drawn exactly like one
         set in the session on screen. Carried laps appear in <b className="text-dark">practice sessions only</b> —
@@ -1071,6 +1193,13 @@ function TrainingBestLapsAdmin() {
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
+
+      {/* A reset the relay caught, waiting on an answer. Above the upload,
+          because it is the one thing on this card that is asking rather than
+          offering. */}
+      {(data.pending || []).map((p) => (
+        <ResetPrompt key={p.id} pending={p} onAnswered={reload} />
+      ))}
 
       <div className="flex flex-wrap items-center gap-3">
         <input

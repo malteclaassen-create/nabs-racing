@@ -191,7 +191,7 @@ export default function AdminNotifications() {
           />
           <ToggleRow
             label="Admin alerts"
-            help="Admins only: a note when somebody signs in that no driver is connected to, and when somebody presses 'I want to race'. Both point at the Members tab. Nobody else sees these."
+            help="Admins only: a note when somebody signs in that no driver is connected to, when somebody presses 'I want to race', and when the race server has been reset and the week's training times are waiting to be kept or dropped. Nobody else sees these."
             value={form.adminAlerts}
             onChange={(v) => set("adminAlerts", v)}
           />

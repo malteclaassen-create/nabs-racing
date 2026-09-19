@@ -68,6 +68,9 @@ function useAdminBadges() {
     reports: reports.data?.open || 0,
     members: members.data?.unlinked || 0,
     market: attention.data?.market || 0,
+    // A server reset waiting to be answered lives on the "Social & Live" tab,
+    // in the training best times card.
+    social: attention.data?.resets || 0,
   };
 }
 
@@ -244,7 +247,7 @@ function SideRail({ tab, onPick, badges }) {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-light">
-          <Badge n={badges.feedback + badges.reports + badges.members + badges.market} />
+          <Badge n={badges.feedback + badges.reports + badges.members + badges.market + badges.social} />
           <Chevron open={drawer} className="h-5 w-5" shut="rotate-90" turned="-rotate-90" />
         </span>
       </button>

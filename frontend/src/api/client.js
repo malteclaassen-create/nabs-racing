@@ -723,6 +723,16 @@ export const api = {
     request(`/admin/live-best-laps${andQ(seriesQ(), track ? `track=${encodeURIComponent(track)}` : "")}`, { auth: true }),
   clearTrainingBestLaps: (track) =>
     request(`/admin/live-best-laps${andQ(seriesQ(), `track=${encodeURIComponent(track)}`)}`, { method: "DELETE", auth: true }),
+  // The answer to "the server reset, keep the times?" — keep: true files them
+  // like an uploaded session file would, keep: false drops them. clearCarried
+  // also takes what is already carried for that circuit off the board, which
+  // is only ever offered when the track itself changed.
+  answerTrainingReset: (id, { keep, clearCarried = false } = {}) =>
+    request(`/admin/live-best-laps/pending/${encodeURIComponent(id)}${seriesQ()}`, {
+      method: "POST",
+      body: { keep: !!keep, clearCarried: !!clearCarried },
+      auth: true,
+    }),
   // Session result files from the server manager, one or several at once.
   // Each lands on the track the FILE names, so the series is all that rides
   // along: it decides which race server's board they go to.

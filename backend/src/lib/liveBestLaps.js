@@ -296,6 +296,14 @@ function writeTrack(series, season, trackKey, rec) {
   return payload;
 }
 
+// One clean row per driver, held to exactly the bar a record on disk is held
+// to. Exported for the reset waiting room (lib/liveResetKeep.js), which parks
+// laps taken off the LIVE feed rather than out of a file: they go through the
+// same sieve, so what the admin is told is waiting is what would land.
+export function normaliseLaps(laps) {
+  return onePerDriver((Array.isArray(laps) ? laps : []).map(cleanLap).filter(Boolean));
+}
+
 // ---- Reads ------------------------------------------------------------------
 
 // The laps one track KEY carries in one series' season, fastest first, one

@@ -43,3 +43,11 @@ export const LIVE_PITS_DIR = join(DATA_ROOT, "live-pits");
 // an admin has imported from the telemetry store so the week's times stay on
 // the board anyway.
 export const LIVE_BEST_LAPS_DIR = join(DATA_ROOT, "live-best-laps");
+
+// Times waiting for an answer (lib/liveResetKeep.js). When the race server
+// resets, the practice session's best laps are put here instead of onto the
+// board, because a reset usually means a new version of the track went up and
+// yesterday's times may have been set with track limits that have since been
+// fixed. An admin says keep or drop. On disk rather than in memory: a deploy
+// is exactly the moment somebody has not answered yet.
+export const LIVE_RESET_KEEP_DIR = join(DATA_ROOT, "live-reset-keep");

@@ -129,6 +129,7 @@ import {
 } from "../lib/liveServers.js";
 import { isTrackKey } from "../lib/telemetryLaps.js";
 import { clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf } from "../lib/liveBestLaps.js";
+import { pendingFor, take as takePendingReset } from "../lib/liveResetKeep.js";
 import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId } from "../services/liveTiming.js";
@@ -1772,6 +1773,80 @@ router.get("/live-best-laps", async (req, res, next) => {
         uploadedFiles(scope.seriesRow.slug, scope.seasonNumber, k).map((f) => ({ ...f, trackKey: k }))
       ),
       tracks: listTracks(scope.seriesRow.slug, scope.seasonNumber),
+      // Times a server reset took off the board, waiting for an answer
+      // (lib/liveResetKeep.js). Never the laps themselves: the card asks a
+      // question, and the question is about a session, not a table.
+      pending: pendingFor(scope.seriesRow.slug, scope.seasonNumber).map((p) => ({
+        id: p.id,
+        endedAt: p.endedAt,
+        drivers: p.laps.length,
+        before: p.before,
+        after: p.after,
+        trackChanged: p.trackChanged,
+        // Whether anything is already carried for the circuit these times were
+        // set on: the second half of the question when the track has changed,
+        // because what is carried was set on the old version too.
+        carried: circuitBests(scope.seriesRow.slug, scope.seasonNumber, p.before.trackKey).laps.length,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/live-best-laps/pending/:id  { keep, clearCarried? }
+//
+// The answer to "the server reset, keep the times?" (lib/liveResetKeep.js).
+// Keeping files them exactly as an uploaded session file would be, on the
+// track they were SET on rather than the one the server came back on. Dropping
+// them is the other half, and with the track changed it can take what was
+// already carried for that circuit with it: those laps were set on the old
+// version too, and the board would otherwise put them on the new one.
+router.post("/live-best-laps/pending/:id", async (req, res, next) => {
+  try {
+    const scope = await trainingScope(req.query.series || req.body?.series);
+    if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
+    const { seriesRow, seasonNumber } = scope;
+    const keep = !!req.body?.keep;
+    const clearCarried = !!req.body?.clearCarried;
+
+    // Read before taking: an id that belongs to another series is not this
+    // admin's to answer, and taking it would drop it for the one it is for.
+    const waiting = pendingFor(seriesRow.slug, seasonNumber).find((p) => p.id === req.params.id);
+    if (!waiting) return res.status(404).json({ error: "Nothing waiting under that id" });
+
+    let cleared = 0;
+    if (clearCarried) {
+      // Every layout of the circuit, because that is how the board reads them.
+      for (const key of circuitBests(seriesRow.slug, seasonNumber, waiting.before.trackKey).keys) {
+        if (clearTrack(seriesRow.slug, seasonNumber, key)) cleared += 1;
+      }
+    }
+
+    let kept = null;
+    if (keep) {
+      kept = addUploadedLaps(seriesRow.slug, seasonNumber, waiting.before.trackKey, {
+        track: waiting.before.track,
+        layout: waiting.before.layout,
+        laps: waiting.laps,
+        // The line the card shows in place of a file name. It says where these
+        // came from, which a file name would not.
+        file: {
+          name: `Server reset ${new Date(waiting.endedAt).toISOString().slice(0, 16).replace("T", " ")}`,
+          type: "LIVE",
+          date: waiting.endedAt,
+        },
+      });
+    }
+    takePendingReset(waiting.id);
+    await refreshBoardScopes();
+    res.json({
+      ok: true,
+      kept: kept?.kept ?? 0,
+      improved: kept?.improved ?? 0,
+      drivers: waiting.laps.length,
+      cleared,
+      tracks: listTracks(seriesRow.slug, seasonNumber),
     });
   } catch (e) {
     next(e);
@@ -2950,12 +3025,18 @@ router.get("/attention", async (req, res, next) => {
       (r) => !REPORT_DECIDED.includes(r.status) && (!scope || !r.raceId || scope.raceIds.has(r.raceId))
     ).length;
     const members = Number(memberRows[0]?.n || 0);
+    // A server reset whose times nobody has kept or dropped yet. It is work in
+    // the same sense the rest of this is: until it is answered the training
+    // board is missing the week, and the times age out after a fortnight.
+    const training = await trainingScope(req.query.series).catch(() => null);
+    const resets = training ? pendingFor(training.seriesRow.slug, training.seasonNumber).length : 0;
     res.json({
       feedback,
       reports: open,
       members,
       market,
-      total: feedback + open + members + market,
+      resets,
+      total: feedback + open + members + market + resets,
     });
   } catch (e) {
     next(e);

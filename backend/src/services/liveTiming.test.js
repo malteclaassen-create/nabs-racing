@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { __testing } from "./liveTiming.js";
 import { clearTrack, addUploadedLaps, setBoardScopes, __clearCache as __clearImportCache } from "../lib/liveBestLaps.js";
+import { rmSync } from "node:fs";
+import { LIVE_RESET_KEEP_DIR } from "../lib/dataDirs.js";
+import { listPending } from "../lib/liveResetKeep.js";
+import { notifyAdminsServerReset } from "../lib/notifications.js";
+
+// The bell alert the relay fires when it parks times. Only this one export is
+// replaced; everything else in that module stays real, because other things in
+// the graph import from it too.
+vi.mock("../lib/notifications.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  notifyAdminsServerReset: vi.fn(async () => {}),
+}));
 
 const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
 
@@ -1312,5 +1324,167 @@ describe("liveTiming: a silent race is over", () => {
     expect(board.session).not.toBe(null);
     expect(board.session.finished).toBeUndefined();
     expect(board.session.onTrackCount).toBe(0);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// THE RESET WATCH
+//
+// The race server sits in one open practice session for days and forgets the
+// whole week the moment it is restarted. The relay is watching the entire
+// time, so it can hand those times to an admin instead — but never straight
+// back to the board: the league restarts that server to put a fixed version of
+// a track up, and a time set before a track-limits fix can be unreachable
+// after it. See lib/liveResetKeep.js.
+// ---------------------------------------------------------------------------
+const STEAM_A = "76561198000000001";
+
+// A practice snapshot with one driver who has a best lap, its splits and a
+// crossing — everything a carried row is made of.
+function practiceSnap({
+  layout = "nabs_baku_2025",
+  name = "Practice",
+  elapsed = 2 * 60 * 60 * 1000,
+  bestNs = 95_000 * 1e6,
+  laps = 4,
+  crossedAt = Date.UTC(2026, 7, 9, 18, 0, 0),
+  type = 1,
+} = {}) {
+  return {
+    SessionInfo: {
+      Type: type,
+      Track: "nabs_baku",
+      TrackConfig: layout,
+      CurrentSessionIndex: 0,
+      Name: name,
+      ElapsedMilliseconds: elapsed,
+    },
+    TrackInfo: { name: "NABS Baku" },
+    ConnectedDrivers: {
+      Drivers: {
+        [STEAM_A]: {
+          CarInfo: { DriverName: "Alice", CarModel: "rss_f1", Tyres: "S", CarID: 1, IsSpectator: false },
+          Cars: {
+            rss_f1: {
+              NumLaps: laps,
+              BestLap: bestNs,
+              LastLap: bestNs,
+              TyreBestLap: "S",
+              LastLapCompletedTime: new Date(crossedAt).toISOString(),
+              BestLapSplits: {
+                0: { SplitIndex: 0, SplitTime: 30_000 * 1e6 },
+                1: { SplitIndex: 1, SplitTime: 32_000 * 1e6 },
+                2: { SplitIndex: 2, SplitTime: (bestNs / 1e6 - 62_000) * 1e6 },
+              },
+              BestSplits: {
+                0: { SplitIndex: 0, SplitTime: 29_500 * 1e6 },
+                1: { SplitIndex: 1, SplitTime: 32_000 * 1e6 },
+                2: { SplitIndex: 2, SplitTime: 32_500 * 1e6 },
+              },
+            },
+          },
+          TotalNumLaps: laps,
+          NumPits: 0,
+          IsInPits: false,
+        },
+      },
+    },
+    DisconnectedDrivers: { Drivers: {} },
+  };
+}
+
+describe("liveTiming reset watch", () => {
+  beforeEach(() => {
+    reset();
+    notifyAdminsServerReset.mockClear();
+    rmSync(LIVE_RESET_KEEP_DIR, { recursive: true, force: true });
+    setBoardScopes("test", [{ series: "friday-f1", season: 8 }]);
+  });
+  afterEach(() => rmSync(LIVE_RESET_KEEP_DIR, { recursive: true, force: true }));
+
+  it("parks the week's times when the track comes back as a new version", () => {
+    ingest(practiceSnap());
+    ingest(practiceSnap({ elapsed: 3 * 60 * 60 * 1000 })); // same session, later
+    // The server is restarted on a fixed version of the track.
+    ingest(practiceSnap({ layout: "nabs_baku", elapsed: 0 }));
+
+    const waiting = listPending();
+    expect(waiting.length).toBe(1);
+    expect(waiting[0].trackChanged).toBe(true);
+    expect(waiting[0].laps.length).toBe(1);
+    expect(waiting[0].laps[0].name).toBe("Alice");
+    expect(waiting[0].laps[0].lapTimeMs).toBe(95_000);
+    // The server's own splits ride along, which is the whole reason a carried
+    // row reads like a live one.
+    expect(waiting[0].laps[0].sectorsMs).toEqual([30_000, 32_000, 33_000]);
+    expect(waiting[0].laps[0].bestSectorsMs).toEqual([29_500, 32_000, 32_500]);
+    // The laps it saw, as stamps: the count on the carried row is made of them.
+    expect(waiting[0].laps[0].lapCount).toBe(1);
+  });
+
+  it("catches a restart in place, where every name stays the same", () => {
+    ingest(practiceSnap({ elapsed: 2 * 60 * 60 * 1000 }));
+    // Same track, same session name, clock back at zero: a new running of it.
+    ingest(practiceSnap({ elapsed: 0 }));
+    const waiting = listPending();
+    expect(waiting.length).toBe(1);
+    expect(waiting[0].trackChanged).toBe(false);
+  });
+
+  it("a session simply running on is not a reset", () => {
+    ingest(practiceSnap({ elapsed: 60_000 }));
+    ingest(practiceSnap({ elapsed: 120_000 }));
+    ingest(practiceSnap({ elapsed: 180_000 }));
+    expect(listPending()).toEqual([]);
+  });
+
+  it("tells the admins, once, that there is something to answer", () => {
+    ingest(practiceSnap());
+    ingest(practiceSnap({ layout: "nabs_baku", elapsed: 0 }));
+    expect(notifyAdminsServerReset).toHaveBeenCalledTimes(1);
+    const [, alert] = notifyAdminsServerReset.mock.calls[0];
+    expect(alert.trackChanged).toBe(true);
+    expect(alert.drivers).toBe(1);
+    expect(alert.id).toBe(listPending()[0].id);
+    // The session simply carrying on says nothing more.
+    ingest(practiceSnap({ layout: "nabs_baku", elapsed: 60_000 }));
+    expect(notifyAdminsServerReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet on a race weekend", () => {
+    // Practice -> qualifying is the same signal, but nothing is wrong with
+    // those times and a bell mid-qualifying is noise. The question is parked
+    // and the admin badge carries it.
+    ingest(practiceSnap());
+    ingest(practiceSnap({ type: 2, name: "Qualifying", elapsed: 0 }));
+    expect(listPending().length).toBe(1);
+    expect(notifyAdminsServerReset).not.toHaveBeenCalled();
+  });
+
+  it("a race weekend is a question too, and says so", () => {
+    // Practice all week, then the server cycles into qualifying: the week's
+    // times leave the board exactly as a reset would take them, but nothing
+    // about the track is in doubt.
+    ingest(practiceSnap());
+    ingest(practiceSnap({ type: 2, name: "Qualifying", elapsed: 0 }));
+    const waiting = listPending();
+    expect(waiting.length).toBe(1);
+    expect(waiting[0].trackChanged).toBe(false);
+    expect(waiting[0].after.sessionType).toBe(2);
+  });
+
+  it("asks nothing about a race or a qualifying session", () => {
+    // Carried times are a practice thing by design (applyImportedBests), so a
+    // race classification has nothing to offer back.
+    ingest(practiceSnap({ type: 3, name: "Race" }));
+    ingest(practiceSnap({ type: 3, name: "Race 2" }));
+    expect(listPending()).toEqual([]);
+  });
+
+  it("nothing to keep is nothing to ask", () => {
+    ingest(practiceSnap({ bestNs: 0 })); // nobody set a time
+    ingest(practiceSnap({ layout: "nabs_baku", bestNs: 0 }));
+    expect(listPending()).toEqual([]);
   });
 });

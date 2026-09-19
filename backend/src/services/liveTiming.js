@@ -27,11 +27,13 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
 import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
+import { parkLaps } from "../lib/liveResetKeep.js";
+import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
-import { currentBests, setBoardScopes } from "../lib/liveBestLaps.js";
+import { currentBests, setBoardScopes, boardScopes } from "../lib/liveBestLaps.js";
 import { dbListSeries } from "../lib/series.js";
 import { resolveSeason } from "./seasonService.js";
 import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
@@ -229,6 +231,26 @@ function sessionKeyOf(si, ti) {
   return `${si?.Track || ti?.name || ""}|${si?.CurrentSessionIndex ?? 0}|${si?.Name || ""}`;
 }
 
+// The same question for the RESET WATCH, which needs a stricter answer: the
+// layout is in it. sessionKeyOf above asks "is this the same session", and the
+// layout is no part of that; a new version of a track is exactly a new layout
+// name under the same track folder (nabs_baku_2025 on Monday, nabs_baku on
+// Wednesday), and that is the case the watch exists for.
+function practiceKeyOf(si) {
+  return `${si?.Track || ""}|${si?.TrackConfig || ""}|${si?.Name || ""}|${si?.CurrentSessionIndex ?? 0}`;
+}
+
+// A session clock that jumped BACK by more than this is a restart in place:
+// same track, same name, same index, so nothing else would notice. Generous,
+// because the elapsed reading wanders by a second or two between snapshots.
+const PRACTICE_RESTART_GAP_MS = 60_000;
+
+// How many lap stamps one driver's practice session remembers. It is what the
+// carried row's lap count is made of, and a week-long session on a busy server
+// is the honest upper end of it; past that the count stops rising and the
+// times, which are the point, are unaffected.
+const PRACTICE_STAMPS_MAX = 2000;
+
 // Canonical compound key, mirroring the frontend's compoundKey: the upstream
 // flips between short codes and long names for the SAME rubber ("M" one
 // snapshot, "Medium" the next, depending on which field is populated), which
@@ -372,6 +394,15 @@ function createRelay(server) {
   let lastAliveAt = 0;
 
   let status = null; // latest EventType 200 Message (full snapshot)
+  // ---- The reset watch ------------------------------------------------------
+  // The practice session on air, and when each driver crossed the line in it.
+  // The server keeps one session and forgets it on a reset; this is what lets
+  // the ended one be offered back to an admin (lib/liveResetKeep.js). Stamps
+  // rather than a count, because that is what a carried lap is filed with, and
+  // a Set because the same lap repeats in every snapshot until the next one.
+  let practiceKey = null;
+  let practiceElapsed = 0;
+  const practiceStampsByGuid = new Map(); // guid -> Set(seconds since epoch)
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
   // CarID -> guid, rebuilt from every snapshot: ET53 only carries the CarID,
   // but the follow fast-lane (relayFollowedTelemetry) speaks public driver ids.
@@ -661,6 +692,119 @@ function createRelay(server) {
     return true;
   }
 
+  // ---- The reset watch ------------------------------------------------------
+  //
+  // The race server sits in one open practice session for days between race
+  // weekends, and a reset of it takes the whole week's times off the board.
+  // The relay has been watching that session the entire time, so the moment it
+  // ends the times are still right here. They are NOT put back on the board:
+  // the league restarts that server to put a fixed version of the track up,
+  // and a time set before a track-limits fix can be a time nobody can reach
+  // after it. So they are parked and an admin is asked (lib/liveResetKeep.js).
+
+  // Note when this driver last crossed the line. Called for every driver on
+  // every snapshot of a practice session; the Set is what makes the repeat
+  // sightings of one lap one lap.
+  function notePracticeLap(guid, car) {
+    const at = car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null;
+    if (!at) return;
+    let stamps = practiceStampsByGuid.get(guid);
+    if (!stamps) practiceStampsByGuid.set(guid, (stamps = new Set()));
+    if (stamps.size >= PRACTICE_STAMPS_MAX) return;
+    stamps.add(Math.round(at / 1000));
+  }
+
+  // The best lap of every driver in the session on file, in the shape a lap is
+  // stored in (lib/liveBestLaps.js). Built from the snapshot's own driver
+  // records, so the ids are the real Steam ones rather than the public stand-
+  // ins the board speaks in — what is filed has to match what a result file
+  // would have filed.
+  //
+  // The server's BestLap is already a CLEAN lap: it does not count a lap with
+  // cuts towards it, which is the same bar lib/practiceJson.js holds a file to.
+  function practiceBestLaps() {
+    const drivers = {
+      ...(status?.DisconnectedDrivers?.Drivers || {}),
+      ...(status?.ConnectedDrivers?.Drivers || {}),
+    };
+    const out = [];
+    for (const [guid, d] of Object.entries(drivers)) {
+      const ci = d?.CarInfo || {};
+      if (ci.IsSpectator) continue;
+      if (looksLikeSafetyCar(ci.CarSkin, ci.CarModel)) continue;
+      const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
+      const lapTimeMs = car ? nsToMs(car.BestLap) : null;
+      if (!lapTimeMs) continue;
+      const splits = sectorsOf(car.BestLapSplits).map((sp) => sp?.ms ?? null);
+      const lastAt = car.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || 0 : 0;
+      out.push({
+        steamId: guid,
+        name: ci.DriverName || "",
+        car: ci.CarModel || "",
+        lapTimeMs,
+        // Three splits that add up to the lap, or none at all. The store
+        // checks the sum again; a partial set is a lap the upstream never
+        // finished telling us about.
+        sectorsMs: splits.every((ms) => ms > 0) ? splits : null,
+        tyre: car.TyreBestLap || ci.Tyres || "",
+        bestSectorsMs: sectorsOf(car.BestSplits).map((sp) => sp?.ms ?? null),
+        lapStamps: [...(practiceStampsByGuid.get(guid) || [])],
+        lastLapMs: nsToMs(car.LastLap),
+        lastAt: lastAt ? Math.round(lastAt / 1000) : 0,
+        // When the lap itself was set is something neither the snapshot nor a
+        // result file says, and a stand-in date would be a made-up fact.
+        recordedAt: null,
+      });
+    }
+    return out;
+  }
+
+  // The session on file has ended. Park what it held, with the track it was on
+  // and the one the server came back on, so the question can say whether the
+  // track changed.
+  function parkPracticeLaps(nextSi) {
+    const si = status?.SessionInfo || {};
+    const laps = practiceBestLaps();
+    practiceStampsByGuid.clear();
+    if (!laps.length) return;
+    const side = (info) => ({
+      track: info?.Track || "",
+      layout: info?.TrackConfig || "",
+      trackKey: trackKeyOf(info?.Track || "", info?.TrackConfig || ""),
+      sessionName: info?.Name || "",
+      sessionType: info?.Type ?? 0,
+    });
+    try {
+      const parked = parkLaps({
+        serverKey: server.key,
+        scopes: boardScopes(server.key),
+        before: side(si),
+        after: side(nextSi),
+        laps,
+      });
+      // Carry it to whoever can answer. Nobody keeps the admin area open, and
+      // this is the one alert that fires from the server rather than from
+      // something a person just did.
+      //
+      // Not on a race weekend: the server cycling practice -> qualifying is
+      // this same signal, and a bell going off mid-qualifying about times
+      // nothing is wrong with is noise on the one evening everybody is busy.
+      // The badge in the admin still carries it, and the question keeps.
+      if (parked && (nextSi?.Type ?? 1) <= 1) {
+        notifyAdminsServerReset(prisma, {
+          id: parked.id,
+          drivers: parked.laps.length,
+          before: parked.before,
+          after: parked.after,
+          trackChanged: parked.trackChanged,
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // A board that cannot park its times is still a working board.
+      console.warn("[live] reset times not parked:", e?.message || e);
+    }
+  }
+
   function accumulateStints(msg) {
     if (!msg) return;
     const si = msg.SessionInfo || {};
@@ -687,6 +831,7 @@ function createRelay(server) {
       if (ci.IsSpectator) continue;
       const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
       recordCrossing(guid, car);
+      if (si.Type === 1) notePracticeLap(guid, car);
       const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
       const tyre = ci.Tyres || car?.TyreBestLap || "";
       const pits = d.NumPits ?? car?.NumPits ?? 0;
@@ -826,6 +971,24 @@ function createRelay(server) {
         finishedRace = { board, until: Date.now() + RESULT_HOLD_MS, key: sessionKeyOf(oldSi || {}, status?.TrackInfo || {}) };
       }
     }
+    // Session change away from a PRACTICE session: the week's times are about
+    // to leave the board with it, so they are parked for an admin to keep or
+    // drop (lib/liveResetKeep.js). Like the freeze above, this HAS to run
+    // before `status` is replaced — the times are in the old snapshot.
+    if (oldSi?.Type === 1) {
+      const nextSi = next?.SessionInfo || {};
+      const was = practiceKeyOf(oldSi);
+      const now = practiceKeyOf(nextSi);
+      // A restart in place keeps the track, the name and the index, so the
+      // clock is the other half of the signal: a session that was hours in and
+      // is suddenly at zero is a new running of it.
+      const elapsed = Number(nextSi.ElapsedMilliseconds) || 0;
+      const restarted =
+        now === was &&
+        practiceElapsed > PRACTICE_RESTART_GAP_MS &&
+        elapsed < practiceElapsed - PRACTICE_RESTART_GAP_MS;
+      if (now !== was || restarted) parkPracticeLaps(nextSi);
+    }
     status = next;
     lastSnapshotAt = Date.now();
     // Keep the per-car telemetry across snapshots — clearing it here blanked
@@ -858,6 +1021,19 @@ function createRelay(server) {
       // reports zero elapsed — anchoring only on the session change would have
       // meant never anchoring at all.
       if (sessionStartedAt == null && elapsed > 0) sessionStartedAt = Date.now() - elapsed;
+    }
+    {
+      // The reset watch's own bookkeeping: which practice session is on air and
+      // how far into it we last saw it. A different one means the stamps
+      // belong to a session that is over (parked or not, they are not this
+      // one's), and anything that is not a practice session watches nothing.
+      const si = status?.SessionInfo || {};
+      const key = si.Type === 1 ? practiceKeyOf(si) : null;
+      if (key !== practiceKey) {
+        practiceStampsByGuid.clear();
+        practiceKey = key;
+      }
+      practiceElapsed = key ? Number(si.ElapsedMilliseconds) || 0 : 0;
     }
     accumulateStints(status); // grow the per-driver tyre-stint history
     // Write pit-lane facts to disk while they exist — the stored result JSON
@@ -1721,6 +1897,9 @@ function createRelay(server) {
       endedBySilenceKey = null;
       trackMapKey = null;
       trackMap = null;
+      practiceKey = null;
+      practiceElapsed = 0;
+      practiceStampsByGuid.clear();
     },
   };
 }

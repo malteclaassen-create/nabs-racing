@@ -103,5 +103,8 @@ export function useAdminAttention() {
     reports: counts?.reports || 0,
     members: counts?.members || 0,
     market: counts?.market || 0,
+    // A server reset whose practice times are waiting to be kept or dropped
+    // (the Live Timing tab, "Training best times").
+    resets: counts?.resets || 0,
   };
 }

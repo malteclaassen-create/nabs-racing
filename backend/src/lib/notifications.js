@@ -518,6 +518,33 @@ export async function notifyAdminsRaceRequest(prisma, member, text) {
   }
 }
 
+// The race server was reset and the week's practice times are waiting to be
+// kept or dropped (lib/liveResetKeep.js). This is the one admin alert nobody
+// can see coming: it fires from the live relay rather than from something a
+// person did, and until it is answered the training board is missing the week.
+//
+// Deduped on the waiting question's own id, so the same reset is one alert
+// however many admins there are and however often the card is read.
+export async function notifyAdminsServerReset(prisma, { id, drivers, before, after, trackChanged }) {
+  try {
+    if (!id) return;
+    const where = before?.layout ? `${before.track} · ${before.layout}` : before?.track || "the track";
+    const count = `${drivers} driver${drivers === 1 ? "" : "s"}`;
+    await notifyAdmins(prisma, {
+      title: trackChanged ? `New track version: keep the times from ${where}?` : `Server reset: keep the times from ${where}?`,
+      body: trackChanged
+        ? `The practice session held ${count} with a time, and the server came back on ${
+            after?.layout || after?.track || "another version"
+          }. If the track limits were fixed, those times may be out of reach now. Answer it under Social & Live.`
+        : `The practice session held ${count} with a time. They are off the board until you keep them, under Social & Live.`,
+      link: "/admin?tab=social",
+      dedupeSuffix: `admin-server-reset:${id}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // A reserve who had already been given a seat has stood down again. This is the
 // one market event an admin has to hear about rather than discover: the grid
 // they built is now a car short, and the round may be days away. Deduped per
