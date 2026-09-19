@@ -117,6 +117,7 @@
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-team { font-size: 11px; letter-spacing: .12em; color: #c9cbd6; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stats { left: 21px; right: 21px; bottom: 33px; border-radius: 0; border-top: 1px solid #ffffff35; border-bottom: 1px solid #ffffff19; background: linear-gradient(110deg, #ffffff09, #ffffff02); box-shadow: none; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat { border-right: 1px solid #ffffff13; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat:last-child { border-right: 0; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat span { color: var(--accent); font-size: 8px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat b { font-size: 26px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-brand { bottom: 14px; font-size: 7px; letter-spacing: .14em; }

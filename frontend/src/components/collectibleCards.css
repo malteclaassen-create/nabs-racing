@@ -33,6 +33,10 @@
 .rcard-frame[data-collectible="true"][data-edition] .rcard-team { font-size: 10px; letter-spacing: .12em; color: #bfc2c1; }
 .rcard-frame[data-collectible="true"][data-edition] .rcard-stats { left: 21px; right: 21px; bottom: 34px; border-radius: 0; height: 59px; border-top: 2px solid var(--accent); border-bottom: 1px solid #ffffff23; background: transparent; box-shadow: none; }
 .rcard-frame[data-collectible="true"][data-edition] .rcard-stat { border-right: 1px solid #ffffff13; }
+/* Dividers BETWEEN the four values, none after the last one: with it the band
+   was closed on the right and open on the left, which reads as a missing line
+   rather than as a frame. Needs the same weight as the rule above to win. */
+.rcard-frame[data-collectible="true"][data-edition] .rcard-stat:last-child { border-right: 0; }
 .rcard-frame[data-collectible="true"][data-edition] .rcard-stat span { color: #929a9c; font-size: 8px; font-family: "JetBrains Mono", monospace; }
 .rcard-frame[data-collectible="true"][data-edition] .rcard-stat b { font-size: 25px; font-weight: 700; }
 .rcard-frame[data-collectible="true"][data-edition] .rcard-brand { bottom: 14px; font-size: 7px; letter-spacing: .1em; }
