@@ -664,6 +664,14 @@ function DesignSwatch({ collection }) {
 
 function CardDesignWindow({ data, onClose, onChanged }) {
   const collections = data.cardDesigns || [];
+  // Your own card, not a sample one: the point of the window is what the
+  // design looks like on YOUR name, number and picture. Falls back to the
+  // sample for a login with no driver row (a new member, the dev login).
+  const me = useApi(useCallback(() => api.me().catch(() => null), []));
+  const mine = me.data?.isLinked ? me.data : null;
+  const rating = useApi(
+    useCallback(() => (mine?.driverId ? api.driverRating(mine.driverId).catch(() => null) : Promise.resolve(null)), [mine?.driverId])
+  );
   const all = collections.flatMap((c) => c.designs);
   const firstUnowned = all.find((d) => !d.owned) || all[0];
   const [picked, setPicked] = useState(firstUnowned?.key || null);
@@ -701,6 +709,23 @@ function CardDesignWindow({ data, onClose, onChanged }) {
 
   const design = all.find((d) => d.key === picked) || null;
   const balance = data.balance;
+  // The driver the preview wears. Everything but the design itself is the
+  // member's own: name, number, flag, team, picture, season.
+  const previewDriver = mine
+    ? {
+        id: mine.driverId,
+        name: mine.name,
+        number: mine.number ?? null,
+        country: mine.country || "",
+        tier: mine.tier,
+        role: mine.role ?? null,
+        team: mine.team,
+        photoPos: mine.photoPos,
+        seasonNumber: mine.seasonNumber ?? null,
+      }
+    : CARD_SAMPLE_DRIVER;
+  const previewRating = (mine && rating.data?.ratings ? rating.data : null) || CARD_SAMPLE_RATING;
+  const ownPhoto = mine ? mine.cardPhotoUrl || mine.photoUrl : null;
   const short = design ? design.cost - balance : 0;
 
   async function buy() {
@@ -743,20 +768,25 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                       onClick={() => setFlipped(true)}
                       title="Turn the card over"
                     >
-                      <RatingCard
-                        driver={{
-                          ...CARD_SAMPLE_DRIVER,
-                          cardStyle: design.key,
-                          cardPhotoUrl: tryPhoto,
-                          photoUrl: tryPhoto,
-                        }}
-                        rating={CARD_SAMPLE_RATING}
-                      />
+                      {/* keyed on the design so React swaps the card rather
+                          than re-dressing it: that is what makes the fade
+                          below run on every pick (see .card-swap). */}
+                      <div key={design.key} className="card-swap">
+                        <RatingCard
+                          driver={{
+                            ...previewDriver,
+                            cardStyle: design.key,
+                            cardPhotoUrl: tryPhoto || ownPhoto,
+                            photoUrl: tryPhoto || ownPhoto,
+                          }}
+                          rating={previewRating}
+                        />
+                      </div>
                     </div>
                     <div className="cardflip-back">
                       <CardBack
-                        driver={{ ...CARD_SAMPLE_DRIVER, name: tryPhoto ? "Your card" : CARD_SAMPLE_DRIVER.name }}
-                        seasonLabel={`SEASON ${CARD_SAMPLE_DRIVER.seasonNumber}`}
+                        driver={previewDriver}
+                        seasonLabel={previewDriver.seasonNumber ? `SEASON ${previewDriver.seasonNumber}` : ""}
                         edition={design.key}
                         onClick={() => setFlipped(false)}
                       />
@@ -767,7 +797,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
 
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 <label className="btn-secondary cursor-pointer">
-                  {tryPhoto ? "Another picture" : "Try your own picture"}
+                  {tryPhoto ? "Another picture" : ownPhoto ? "Try another picture" : "Try your own picture"}
                   <input type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
                 </label>
                 {tryPhoto && (

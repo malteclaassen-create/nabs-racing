@@ -211,6 +211,22 @@ export const FLAIRS = [
   { key: "pit_crew", label: "Pit crew" },
   { key: "sunday_driver", label: "Sunday driver" },
   { key: "send_it", label: "Send it" },
+  { key: "late_braker", label: "Late braker" },
+  { key: "apex_hunter", label: "Apex hunter" },
+  { key: "one_stopper", label: "One stopper" },
+  { key: "tyre_whisperer", label: "Tyre whisperer" },
+  { key: "rain_lover", label: "Rain lover" },
+  { key: "backmarker", label: "Backmarker" },
+  { key: "qualy_merchant", label: "Qualy merchant" },
+  { key: "team_player", label: "Team player" },
+  { key: "sim_rig", label: "Sim rig nerd" },
+  { key: "friday_regular", label: "Friday regular" },
+  { key: "last_lap", label: "Last lap hero" },
+  { key: "coffee", label: "Runs on coffee" },
+  { key: "reserve", label: "Always ready" },
+  { key: "clean_racer", label: "Clean racer" },
+  { key: "gravel_trap", label: "Gravel trap regular" },
+  { key: "no_assists", label: "No assists" },
 ];
 export const FLAIR_BY_KEY = new Map(FLAIRS.map((f) => [f.key, f]));
 

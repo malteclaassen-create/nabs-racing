@@ -1951,6 +1951,17 @@ body::before {
    hover the whole thing. Off in Performance Lite and under reduced motion. */
 /* The coin grows a touch on hover. No rotation: it carries the league's mark,
    and a tilted logo reads as a mistake rather than as motion. */
+/* Swapping one card design for another in the shop window: the new card fades
+   up rather than snapping in, so picking your way down the list reads as one
+   card changing clothes instead of a slideshow. */
+.card-swap { animation: card-swap-in 260ms var(--e-soft) both; }
+@keyframes card-swap-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .card-swap { animation: none; } }
+.fx-lite .card-swap { animation: none; }
+
 .nav-identity img { transition: transform 200ms var(--e-soft); }
 .nav-identity:hover img { transform: scale(1.12); }
 @media (prefers-reduced-motion: reduce) { .nav-identity img { transition: none; } .nav-identity:hover img { transform: none; } }

@@ -10,6 +10,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader } from "../components/ui.jsx";
+import TokenIcon from "../components/TokenIcon.jsx";
 import ProfileAppearance, { ProfileBanner, PROFILE_COSMETICS, EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT, useProfilePageTheme } from "../components/ProfileAppearance.jsx";
 import { PROFILE_SLOTS, profileItemPrice, applyProfileItem } from "../../../shared/profileCustomization.mjs";
 import DriverProfile from "./DriverProfile.jsx";
@@ -189,7 +190,7 @@ export default function ProfileStyle() {
           <span className="shop-tab-design" aria-hidden="true">{status.label}</span>
           <span className="sr-only" id={`shop-category-${s.id}`}>{description}</span>
         </button>;
-      })}</div><div className="shop-balance"><span>NABS POINTS</span><strong>{account ? account.balance.toLocaleString() : "—"}</strong></div></div>
+      })}</div><div className="shop-balance"><TokenIcon className="h-6 w-6" /><span>NABS Points</span><strong>{account ? account.balance.toLocaleString() : "–"}</strong></div></div>
       {error && <div role="alert" className="shop-message shop-message--error">{error} {!account && user && <button className="btn-secondary" onClick={() => setReload(n => n + 1)}>Retry</button>}</div>}
       {loading && <p role="status">Loading your collection…</p>}
       <section className="shop-catalog" aria-label="Profile designs">
