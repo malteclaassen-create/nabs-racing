@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import TokenIcon from "./TokenIcon.jsx";
@@ -136,8 +137,14 @@ function MemberRow({ m, onAdjust, busy }) {
   const [delta, setDelta] = useState("");
   const [note, setNote] = useState("");
 
-  async function give() {
-    await onAdjust(m.discordId, Number(delta), note);
+  // One amount, two buttons. It used to be a single signed field, where taking
+  // points off meant typing a minus in front of the number: nothing said so,
+  // and a number field is the last place anybody looks for that.
+  const amount = Math.abs(Math.round(Number(delta) || 0));
+  const goesNegative = amount > m.balance;
+
+  async function book(sign) {
+    await onAdjust(m.discordId, sign * amount, note);
     setDelta("");
     setNote("");
     setOpen(false);
@@ -168,6 +175,7 @@ function MemberRow({ m, onAdjust, busy }) {
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="number"
+            min="1"
             className="input w-28"
             placeholder="e.g. 250"
             value={delta}
@@ -179,9 +187,19 @@ function MemberRow({ m, onAdjust, busy }) {
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
-          <button type="button" disabled={busy || !Number(delta)} className="btn-primary" onClick={give}>
-            Book it
+          <button type="button" disabled={busy || !amount} className="btn-primary" onClick={() => book(1)}>
+            Give {amount ? fmt(amount) : ""}
           </button>
+          <button type="button" disabled={busy || !amount} className="btn-secondary" onClick={() => book(-1)}>
+            Take {amount ? fmt(amount) : ""}
+          </button>
+          {!!amount && (
+            <span className="w-full text-xs text-light">
+              {goesNegative
+                ? `Taking ${fmt(amount)} leaves ${fmt(m.balance - amount)}, which is below zero. Allowed, in case you are correcting something.`
+                : `Giving leaves ${fmt(m.balance + amount)}, taking leaves ${fmt(m.balance - amount)}.`}
+            </span>
+          )}
         </div>
       )}
     </li>
@@ -621,7 +639,12 @@ export default function AdminTokens() {
                   m={m}
                   busy={busy}
                   onAdjust={(discordId, delta, note) =>
-                    run(() => api.adjustTokens(discordId, delta, note), "Booked.")
+                    run(async () => {
+                      await api.adjustTokens(discordId, delta, note);
+                      // An admin booking their OWN balance would otherwise keep
+                      // the old number in the nav bar until the next page load.
+                      window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
+                    }, "Booked.")
                   }
                 />
               ))}
