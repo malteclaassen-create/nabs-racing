@@ -43,7 +43,10 @@ Set under "Rules and prices". Defaults come from the league's sheet:
 - that person finishes a race: 30, for their first 12 races
 
 Racing points are multiplied by Discord activity (chat messages and voice time
-over the last 30 days), up to 3x. That needs the Discord bot, see 5. Without it
+over the last 7 days), up to 3x. A week, not a month, so the multiplier says
+what somebody has been doing lately and falls back on its own when they go
+quiet. The "who is ahead" board on the members' page is a different question and
+still looks back 30 days. That needs the Discord bot, see 5. Without it
 everybody is on 1.0x, which is fine.
 
 Every number on that page is editable. Empty field = the default. Numbers raised

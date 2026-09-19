@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ACTIVITY_WINDOW_DAYS,
+  BOARD_WINDOW_DAYS,
   EARN_RULES,
   MULTIPLIER,
   REFERRAL_RACE_LIMIT,
@@ -10,6 +11,7 @@ import {
   stewardingClosed,
   stewardsDoneAt,
   activityWindowStart,
+  boardWindowStart,
   leagueDay,
   withMultiplier,
 } from "./tokenRules.js";
@@ -176,17 +178,24 @@ describe("the rules as written", () => {
 // The multiplier measures the last thirty days, counted afresh every day rather
 // than per calendar month, so a busy month fades again in a quiet one. These
 // pin down which days are still inside that window.
-describe("the thirty-day window", () => {
-  it("counts thirty days including today", () => {
-    expect(ACTIVITY_WINDOW_DAYS).toBe(30);
+describe("the two windows", () => {
+  it("the multiplier looks back a week, including today", () => {
+    expect(ACTIVITY_WINDOW_DAYS).toBe(7);
     const noon = Date.parse("2026-09-18T12:00:00Z");
     expect(leagueDay(noon)).toBe("2026-09-18");
-    expect(activityWindowStart(noon)).toBe("2026-08-20"); // 29 days back
+    expect(activityWindowStart(noon)).toBe("2026-09-12"); // 6 days back
+  });
+
+  it("the board looks back a month, and they are separate numbers", () => {
+    expect(BOARD_WINDOW_DAYS).toBe(30);
+    const noon = Date.parse("2026-09-18T12:00:00Z");
+    expect(boardWindowStart(noon)).toBe("2026-08-20"); // 29 days back
   });
 
   it("walks over the end of a month and over a year", () => {
-    expect(activityWindowStart(Date.parse("2026-03-05T12:00:00Z"))).toBe("2026-02-04");
-    expect(activityWindowStart(Date.parse("2026-01-10T12:00:00Z"))).toBe("2025-12-12");
+    expect(activityWindowStart(Date.parse("2026-03-05T12:00:00Z"))).toBe("2026-02-27");
+    expect(activityWindowStart(Date.parse("2026-01-03T12:00:00Z"))).toBe("2025-12-28");
+    expect(boardWindowStart(Date.parse("2026-01-10T12:00:00Z"))).toBe("2025-12-12");
   });
 
   it("uses the league's own day, not the server's", () => {

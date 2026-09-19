@@ -29,8 +29,8 @@
 //
 // --- over what period -------------------------------------------------------
 //
-// The last THIRTY DAYS, counted afresh every day — not calendar months. So the
-// multiplier is what somebody has been doing lately, and a quiet month lets it
+// The last SEVEN DAYS, counted afresh every day — not calendar months. So the
+// multiplier is what somebody has been doing lately, and a quiet week lets it
 // fall back on its own. That is also why the site keeps one row per member per
 // DAY rather than a running total: a total can only ever grow, and the thing
 // being measured has to be able to shrink.
@@ -45,7 +45,13 @@
 
 // How far back the multiplier looks, in days, counted in the league's own
 // timezone so a day is a day for the people in it.
-export const ACTIVITY_WINDOW_DAYS = 30;
+export const ACTIVITY_WINDOW_DAYS = 7;
+
+// The board on the points page looks back further than the multiplier does.
+// Two different questions: the multiplier asks "are you around at the moment",
+// which a week answers better than a month, while "who is ahead" is a standings
+// board and wants the longer view a month gives it.
+export const BOARD_WINDOW_DAYS = 30;
 
 export const MULTIPLIER = {
   // "MIN multiplier for chat messages: 50 messages" and so on, straight off the
@@ -208,15 +214,21 @@ export function leagueDayStart(day) {
   return leagueInstant(+m[1], +m[2], +m[3], 0);
 }
 
-// The first day that still counts towards the multiplier: today and the
-// twenty-nine before it. Everything older has fallen out of the window.
-export function activityWindowStart(now = Date.now()) {
+// The first day of a window that ends today, as "YYYY-MM-DD". `days` counts
+// today itself, so 7 means today and the six before it.
+export function windowStart(days, now = Date.now()) {
   const p = leagueParts(now);
-  const start = Date.UTC(+p.year, +p.month - 1, +p.day - (ACTIVITY_WINDOW_DAYS - 1));
+  const start = Date.UTC(+p.year, +p.month - 1, +p.day - (Math.max(1, days) - 1));
   const d = new Date(start);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
+
+// The first day that still counts towards the multiplier.
+export const activityWindowStart = (now = Date.now()) => windowStart(ACTIVITY_WINDOW_DAYS, now);
+
+// The first day the "who is ahead" board still shows.
+export const boardWindowStart = (now = Date.now()) => windowStart(BOARD_WINDOW_DAYS, now);
 
 // When the stewards are done with a round: the first Tuesday AFTER the day it
 // was raced, at nine in the morning. A round raced on a Tuesday waits for the

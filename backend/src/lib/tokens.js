@@ -40,12 +40,14 @@ import { STUDIO_BY_ID, studioPriceOf, ownedStudioItems } from "./profileStudio.j
 // in them, so the numbers can be checked by the tests (lib/tokenRules.js).
 import {
   ACTIVITY_WINDOW_DAYS,
+  BOARD_WINDOW_DAYS,
   EARN_RULES,
   MULTIPLIER,
   RULE_BY_KEY,
   REFERRAL_RACE_LIMIT,
   activityMultiplier,
   activityWindowStart,
+  boardWindowStart,
   leagueDay,
   leagueDayStart,
   pointsFor,
@@ -54,7 +56,7 @@ import {
   withMultiplier,
 } from "./tokenRules.js";
 
-export { ACTIVITY_WINDOW_DAYS, EARN_RULES, RULE_BY_KEY, REFERRAL_RACE_LIMIT, activityMultiplier };
+export { ACTIVITY_WINDOW_DAYS, BOARD_WINDOW_DAYS, EARN_RULES, RULE_BY_KEY, REFERRAL_RACE_LIMIT, activityMultiplier };
 
 // The one switch. Stored as a Setting so it can be flipped in the admin without
 // a deploy; absent means "whatever this machine's default is", which is ON for
@@ -1056,26 +1058,37 @@ export async function leaderboard(prisma, limit = 10, meId = null) {
       limit
     )
     .catch(() => []);
-  const active = await prisma
-    .$queryRawUnsafe(
-      `SELECT "discordId", SUM("messages") AS "messages", SUM("minutes") AS "minutes"
-         FROM "TokenActivity" WHERE "day" >= ?
-        GROUP BY "discordId" ORDER BY (SUM("messages") + SUM("minutes")) DESC LIMIT ?`,
-      activityWindowStart(),
-      limit
-    )
-    .catch(() => []);
-  const names = await namesFor(prisma, [...earned, ...active].map((r) => r.discordId));
+  // Two boards, not one ranked on messages plus minutes added together. Those
+  // are different units: an hour of voice is sixty and a good evening of typing
+  // is twenty, so the sum was really a voice board with a rounding error, and
+  // somebody who only ever types could not appear on it at all.
+  const since = boardWindowStart();
+  const board = (column) =>
+    prisma
+      .$queryRawUnsafe(
+        `SELECT "discordId", SUM("messages") AS "messages", SUM("minutes") AS "minutes"
+           FROM "TokenActivity" WHERE "day" >= ?
+          GROUP BY "discordId" HAVING SUM("${column}") > 0
+          ORDER BY SUM("${column}") DESC LIMIT ?`,
+        since,
+        limit
+      )
+      .catch(() => []);
+  const voice = await board("minutes");
+  const chatty = await board("messages");
+  const names = await namesFor(prisma, [...earned, ...voice, ...chatty].map((r) => r.discordId));
+  const line = (prefix) => (r, i) => ({
+    id: `${prefix}${i}`,
+    mine: r.discordId === meId,
+    ...names.get(r.discordId),
+    messages: Number(r.messages),
+    minutes: Number(r.minutes),
+  });
   return {
     earned: earned.map((r, i) => ({ id: `e${i}`, mine: r.discordId === meId, ...names.get(r.discordId), earned: Number(r.earned) })),
-    active: active.map((r, i) => ({
-      id: `a${i}`,
-      mine: r.discordId === meId,
-      ...names.get(r.discordId),
-      messages: Number(r.messages),
-      minutes: Number(r.minutes),
-    })),
-    windowDays: ACTIVITY_WINDOW_DAYS,
+    voice: voice.map(line("v")),
+    chat: chatty.map(line("c")),
+    windowDays: BOARD_WINDOW_DAYS,
   };
 }
 

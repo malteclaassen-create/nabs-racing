@@ -121,23 +121,32 @@ function Goal({ item, balance, onClear }) {
   );
 }
 
-// Who is ahead. Two lists: earned (spending does not count against you) and
-// time on Discord. Your own row is marked so you do not have to hunt for it.
+// Who is ahead. Three lists: points earned (spending does not count against
+// you), time in voice and messages written. Voice and chat are their own boards
+// rather than one added together, because an hour is sixty and a good evening
+// of typing is twenty, so the sum was a voice board wearing a disguise.
+// Your own row is marked so you do not have to hunt for it.
 function Leaderboard() {
   const board = useApi(useCallback(() => api.tokenLeaderboard(), []));
   const [tab, setTab] = useState("earned");
   const d = board.data;
   if (!d || d.enabled === false) return null;
-  const rows = tab === "earned" ? d.earned : d.active;
+  const rows = tab === "earned" ? d.earned : tab === "voice" ? d.voice : d.chat;
   const hours = (m) => Math.round((m || 0) / 6) / 10;
   return (
     <div className="card p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Heading>Who is ahead</Heading>
+        <div>
+          <Heading>Who is ahead</Heading>
+          {tab !== "earned" && (
+            <div className="mt-0.5 text-[11px] text-light">Last {d.windowDays || 30} days</div>
+          )}
+        </div>
         <SlidingTabs
           items={[
             { key: "earned", label: "Points earned" },
-            { key: "active", label: `On Discord, ${d.windowDays || 30} days` },
+            { key: "voice", label: "Time in voice" },
+            { key: "chat", label: "Messages" },
           ]}
           value={tab}
           onChange={setTab}
@@ -168,8 +177,21 @@ function Leaderboard() {
                     {fmt(r.earned)}
                   </span>
                 ) : (
+                  // The number the list is ranked on leads, the other one
+                  // follows in grey. Otherwise a voice board and a message
+                  // board look identical and you cannot tell which you are on.
                   <span className="font-mono text-xs tabular-nums text-medium">
-                    {fmt(r.messages)} <span className="text-light">msgs</span> · {hours(r.minutes)} <span className="text-light">h</span>
+                    {tab === "voice" ? (
+                      <>
+                        <span className="font-bold text-dark">{hours(r.minutes)} h</span>
+                        <span className="text-light"> · {fmt(r.messages)} msgs</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-bold text-dark">{fmt(r.messages)} msgs</span>
+                        <span className="text-light"> · {hours(r.minutes)} h</span>
+                      </>
+                    )}
                   </span>
                 )}
               </li>
@@ -178,7 +200,9 @@ function Leaderboard() {
         </ol>
       ) : (
         <p className="mt-3 text-sm text-light">
-          {tab === "earned" ? "Nobody has earned anything yet. The first race night decides." : "Nothing counted yet."}
+          {tab === "earned"
+            ? "Nobody has earned anything yet. The first race night decides."
+            : "Nothing counted yet. This fills up once the league's Discord bot is running."}
         </p>
       )}
     </div>
@@ -253,7 +277,7 @@ function MultiplierBar({ a }) {
   ];
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="mb-2 text-xs text-light">Discord activity, last {a.windowDays || 30} days</div>
+      <div className="mb-2 text-xs text-light">Discord activity, last {a.windowDays || 7} days</div>
       {/* ONE grid for all three rows, fixed row height, same bar thickness:
           the bars line up left and right and sit the same distance apart. */}
       <div className="grid grid-cols-[3rem_1fr_auto] auto-rows-[1.25rem] items-center gap-x-3 gap-y-2 text-xs">
