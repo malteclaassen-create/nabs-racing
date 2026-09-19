@@ -105,6 +105,12 @@
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline { inset: 7px; border: 1px solid #ffffff24; border-radius: 11px; clip-path: none; box-shadow: none; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::before { opacity: .32; mask-image: linear-gradient(90deg, #000, transparent 9% 91%, #000); mask-composite: add; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-innerline::after { display: none; }
+/* A member's own picture fills the top of the card, and a bright one left the
+   rating and the edition mark as white on white. A dark halo carries both
+   without dimming the picture the way a bigger scrim would. */
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg,
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-collection { text-shadow: 0 1px 2px rgba(3, 5, 12, .85), 0 0 10px rgba(3, 5, 12, .7); }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-collection img { filter: drop-shadow(0 1px 3px rgba(3, 5, 12, .9)); }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg { top: 24px; left: 23px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg-l { font-size: 9px; letter-spacing: .23em; color: var(--accent); margin-bottom: 9px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-rtg-n { font-size: 68px; }
@@ -115,7 +121,7 @@
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-id { bottom: 112px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-meta { margin-bottom: 10px; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-team { font-size: 11px; letter-spacing: .12em; color: #c9cbd6; }
-.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stats { left: 21px; right: 21px; bottom: 33px; border-radius: 0; border-top: 1px solid #ffffff35; border-bottom: 1px solid #ffffff19; background: linear-gradient(110deg, #ffffff09, #ffffff02); box-shadow: none; }
+.rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stats { left: 21px; right: 21px; bottom: 33px; border-radius: 0; border: 1px solid #ffffff2a; border-top-color: #ffffff35; background: linear-gradient(110deg, #ffffff09, #ffffff02); box-shadow: none; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat { border-right: 1px solid #ffffff13; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat:last-child { border-right: 0; }
 .rcard-frame[data-series="spectrum"][data-collectible="true"][data-edition] .rcard-stat span { color: var(--accent); font-size: 8px; }
