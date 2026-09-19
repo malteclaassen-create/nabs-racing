@@ -168,12 +168,13 @@ function AuthControl({ mobile = false }) {
           // `relative` is new: the dot below is positioned against this chip,
           // and without it the nearest positioned ancestor is the whole nav
           // strip, which would park it somewhere else entirely.
-          // pl-1 rather than pl-1.5 on the capsule: with the 1px border that
-          // leaves 5px above, below and to the left of the picture, which puts
-          // the round avatar exactly in the middle of the capsule's round left
-          // end. A wider left gap makes it sit off-centre in its own corner.
+          // The picture sits in an even 4px of space on all four sides: pl-1 and
+          // py-1 for three of them, pr-1 for the gap to the dividing line. That
+          // also puts the round avatar exactly in the middle of the capsule's
+          // round left end. The name only appears from xl up, and once it is
+          // there the line needs proper room after the text instead.
           `relative flex items-center gap-2 text-sm font-semibold transition ${
-            mobile ? "w-full rounded-lg px-2 py-1.5" : "py-1 pl-1 pr-2.5"
+            mobile ? "w-full rounded-lg px-2 py-1.5" : "py-1 pl-1 pr-1 xl:pr-2.5"
           } ${isActive ? "bg-brand/20 text-dark" : "text-medium hover:bg-surface2"}`
         }
       >

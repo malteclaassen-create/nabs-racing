@@ -1973,23 +1973,55 @@ body::before {
 .fx-lite .nav-identity:hover img { transform: none; }
 
 /* The pill itself lights up for as long as there is news in it. */
-@keyframes token-pill-glow {
-  0% { box-shadow: 0 0 0 0 rgb(var(--c-ok) / 0.45); }
-  60% { box-shadow: 0 0 0 6px rgb(var(--c-ok) / 0.12); }
-  100% { box-shadow: 0 0 0 10px rgb(var(--c-ok) / 0); }
-}
-/* The class is named twice on purpose: Tailwind's own `border-border` utility
-   is a single class too, and it is emitted after this file, so a single-class
-   selector here loses the border colour and only the glow survives. */
+/* The green stays INSIDE the points half. There used to be a green border and a
+   glow ring spreading out of it, and both went the wrong way: the border is the
+   line that divides this half from the profile picture, so colouring it painted
+   a green stripe down the middle, and the ring is an outward box-shadow that the
+   capsule's own overflow clips back across the picture half. The flash below
+   covers exactly this half and nothing else.
+   The class is named twice so it beats Tailwind's single-class utilities, which
+   are emitted after this file. */
 .token-pill-celebrating.token-pill-celebrating {
-  border-color: rgb(var(--c-ok) / 0.55);
-  animation: token-pill-glow 1500ms var(--e-soft) forwards;
+  /* `isolate` so the flash below can sit at z-index -1: that keeps it above the
+     pill's own tint and below the number, without a wrapper element. */
+  position: relative;
+  isolation: isolate;
+}
+
+/* The field blinks green twice while the "+50" is up there, so somebody opening
+   the site catches it out of the corner of their eye rather than having to
+   already be looking at the corner of the bar.
+   A layer on top rather than an animated background-color: the pill is pink
+   inside the identity capsule and bare on its own, and an animation that ends
+   on a colour would have to know which. This one just fades away to nothing and
+   leaves whatever is underneath alone, which also means the 1.1 seconds of
+   counting that follow look completely normal. */
+.token-pill-celebrating.token-pill-celebrating::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgb(var(--c-ok));
+  animation: token-pill-flash 1500ms var(--e-soft) forwards;
+  pointer-events: none;
+}
+@keyframes token-pill-flash {
+  /* Two beats, the first one the loudest, then out of the way well before the
+     number starts climbing. */
+  0% { opacity: 0.34; }
+  14% { opacity: 0.07; }
+  26% { opacity: 0.28; }
+  44% { opacity: 0.06; }
+  100% { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .token-gain, .token-pill-celebrating { animation: none !important; }
+  .token-gain { animation: none !important; }
+  .token-pill-celebrating::after { display: none; }
 }
-.fx-lite .token-gain, .fx-lite .token-pill-celebrating { animation: none !important; }
+.fx-lite .token-gain { animation: none !important; }
+.fx-lite .token-pill-celebrating::after { display: none; }
 
 /* --- Settings drawer ----------------------------------------------------- */
 /* The drawer slides/fades both IN and OUT via a transform/opacity transition on
