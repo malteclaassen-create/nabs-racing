@@ -1145,7 +1145,6 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
       {/* Team-colour seam along the card's top edge, like the hero banner. */}
       <span className="absolute inset-x-0 top-0 z-10 h-1" style={{ backgroundColor: c }} />
       <div className="relative overflow-hidden p-5">
-        <div className="absolute inset-0 opacity-[0.1]" style={{ background: `radial-gradient(circle at 85% 0%, ${c}, transparent 60%)` }} />
         <div className="relative flex items-center gap-3">
           <TeamLogo id={driver.team.id} name={driver.team.name} color={c} logoUrl={driver.team.logoUrl} size={48} />
           <div>
