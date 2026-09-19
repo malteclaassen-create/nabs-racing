@@ -34,7 +34,11 @@
 .rcard-frame[data-series="velocity"] .rcard-collection small { display: none; }
 .rcard-frame[data-series="velocity"][data-collectible][data-edition] .rcard-id { bottom: 120px; left: 24px; right: 24px; }
 .rcard-frame[data-series="velocity"][data-collectible][data-edition] .rcard-id::before {
-  content: ""; position: absolute; z-index: -1; inset: 20px -25px -9px;
+  /* The band is skewed, the text is not, so its edges cut into the name on the
+     left (where the slant drops ~12px) while leaving room to spare on the
+     right. The top inset carries that much slack, so the name sits inside the
+     band across the whole width. */
+  content: ""; position: absolute; z-index: -1; inset: 14px -25px -9px;
   background: linear-gradient(105deg, color-mix(in srgb, var(--team) 80%, #060910), color-mix(in srgb, var(--team) 50%, #060910));
   border-top: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); transform: skewY(-5deg);
 }
