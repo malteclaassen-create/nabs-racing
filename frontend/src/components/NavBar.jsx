@@ -126,7 +126,7 @@ function TokenPill({ mobile = false, segment = false }) {
     <NavLink
       to="/profile?tab=tokens"
       title={why ? `+${play.gained} points: ${why}` : "Your NABS Points"}
-      className={`inline-flex items-center gap-1.5 font-mono text-[15px] font-bold tabular-nums transition ${
+      className={`nav-identity-points inline-flex items-center gap-1.5 font-mono text-[15px] font-bold tabular-nums transition ${
         segment
           ? // the right half of the identity capsule: shares its border with the chip
             "border-l border-border bg-brand/10 py-1.5 pl-2.5 pr-3 text-dark hover:bg-brand/20"
@@ -173,12 +173,12 @@ function AuthControl({ mobile = false }) {
           // also puts the round avatar exactly in the middle of the capsule's
           // round left end. The name only appears from xl up, and once it is
           // there the line needs proper room after the text instead.
-          `relative flex items-center gap-2 text-sm font-semibold transition ${
+          `nav-identity-me relative flex items-center gap-2 text-sm font-semibold transition ${
             mobile ? "w-full rounded-lg px-2 py-1.5" : "py-1 pl-1 pr-1 xl:pr-2.5"
           } ${isActive ? "bg-brand/20 text-dark" : "text-medium hover:bg-surface2"}`
         }
       >
-        <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} />
+        <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} className="nav-avatar" />
         <span className={`max-w-[8rem] truncate ${mobile ? "" : "hidden xl:inline"}`}>{name}</span>
         <AttentionDot total={total} className="absolute right-1 top-1" />
       </NavLink>
