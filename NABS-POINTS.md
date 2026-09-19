@@ -17,12 +17,21 @@ Admin -> Community -> NABS Points. The card at the top has three settings:
 | **Admins only** | League admins see the balance in the nav bar, the shop and the profile studio and can try everything. Members see nothing, and nothing shows on public pages. Use this to test on the live site. |
 | **Everyone** | The real thing. Members see their balance, the shop, the invite link. Profile designs and the wall are public. |
 
-The first time you move it off "Off", that day becomes the **start day**: races
-before it pay nothing (the league decided to start from zero). You can move the
-date under "Rules and prices", empty means every race ever.
+Under it is a second switch, **Earning points**, and it is a separate decision.
+Who sees the feature and whether anything is being counted are two different
+things, so you can put the whole thing in front of the grid, let people look at
+the shop, and start the counting on a day you pick.
 
-Recommended order: Admins only for a week or two, play with it, set the prices,
-then Everyone.
+While it says Paused: no race pays, no balance moves, and the members' page
+says so at the top. Buying still works, and so does anything you book by hand.
+
+The first time you press **Start counting**, that day becomes the **start day**:
+races before it pay nothing (the league decided to start from zero). You can
+move the date under "Rules and prices", empty means every race ever.
+
+Recommended order: Admins only for a week or two, set the prices, switch to
+Everyone with the counting still paused, then start the counting when the
+league is ready.
 
 ## 2. What earns points
 
@@ -80,10 +89,16 @@ copy the key from Admin -> NABS Points -> Discord bot into the bot's `.env`,
 run it. The bot can run before the points are switched on, then the 30-day
 window is already full on day one.
 
+Voice minutes only count for someone actually there: not muted, not deafened,
+not alone in the channel, not parked in the AFK one. Otherwise leaving Discord
+open overnight buys the whole multiplier. Three switches in the bot's `.env` if
+the league wants it looser.
+
 ## 6. If something looks wrong
 
 - A member sees no points tab: the setting is Off, or Admins only and they are
   not an admin, or they are not signed in with Discord.
+- Nobody earns anything: Earning points is Paused. Press Start counting.
 - Somebody's races don't pay: they are before the start day, or the rule is
   switched off, or the race isn't marked completed yet.
 - A design vanished from someone's profile: the purchase was declined
