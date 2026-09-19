@@ -382,6 +382,11 @@ export function ConfirmProvider({ children }) {
 
   const confirmText = req?.confirmWith;
   const matched = !confirmText || typed.trim() === String(confirmText).trim();
+  // `alert: true` is a statement, not a question: one button, no Cancel. It
+  // exists so a refusal can be said where the click happened — an error notice
+  // at the top of a long admin tab is off-screen on a phone, which reads as the
+  // button having done nothing at all.
+  const alert = !!req?.alert;
 
   return (
     <AskContext.Provider value={ask}>
@@ -404,9 +409,11 @@ export function ConfirmProvider({ children }) {
         closeLabel="Cancel"
         footer={
           <>
-            <button ref={cancelRef} type="button" className="btn-secondary" onClick={() => settle(false)}>
-              {req?.cancelLabel || "Cancel"}
-            </button>
+            {!alert && (
+              <button ref={cancelRef} type="button" className="btn-secondary" onClick={() => settle(false)}>
+                {req?.cancelLabel || "Cancel"}
+              </button>
+            )}
             {req?.thirdLabel && (
               <button type="button" className="btn-secondary" onClick={() => settle("third")}>
                 {req.thirdLabel}
@@ -417,12 +424,12 @@ export function ConfirmProvider({ children }) {
               disabled={!matched}
               onClick={() => settle(true)}
               className={
-                req?.danger
+                req?.danger && !alert
                   ? "transition inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500/40 disabled:opacity-40"
                   : "btn-primary disabled:opacity-40"
               }
             >
-              {req?.confirmLabel || (req?.danger ? "Delete" : "Confirm")}
+              {req?.confirmLabel || (alert ? "OK" : req?.danger ? "Delete" : "Confirm")}
             </button>
           </>
         }

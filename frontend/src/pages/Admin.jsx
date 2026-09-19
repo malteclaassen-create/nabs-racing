@@ -5210,13 +5210,22 @@ function Teams() {
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // A refusal has to be readable from where the trash icon was clicked. The
+  // error Notice at the top of this tab is several screens up once the team
+  // list is long, so on a phone the button looked like it did nothing at all.
+  // The notice still records it; the dialog is what the admin actually reads.
+  async function refuse(message) {
+    setError(message);
+    await ask({ title: "This team can't be deleted yet", body: message, alert: true });
+  }
+
   // Same two-step as removing a driver: the server answers with what would go
   // along with the team (its driver-market offers) and we ask before doing it.
   async function remove(t) {
     if (
       !(await ask({
         title: `Delete team "${t.name}"?`,
-        body: "This only works if it has no drivers or results.",
+        body: "This only works if it has no drivers and has never scored. Rounds it sat out on 0 go with it.",
         danger: true,
         confirmLabel: "Delete team",
       }))
@@ -5241,10 +5250,10 @@ function Teams() {
           );
           reload();
         } catch (err2) {
-          setError(err2.message);
+          await refuse(err2.message);
         }
       } else if (!err.data?.needsConfirm) {
-        setError(err.message);
+        await refuse(err.message);
       }
     } finally {
       setBusy(false);
