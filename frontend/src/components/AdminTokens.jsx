@@ -217,7 +217,7 @@ function MemberRow({ m, onAdjust, busy }) {
 // multiplier is 1.0x and invites are counted the one way the site can see for
 // itself: the link on a member's Tokens page.
 // ---------------------------------------------------------------------------
-function CopyField({ label, value, hint }) {
+function CopyField({ label, value }) {
   return (
     <div className="space-y-1.5">
       <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light">{label}</label>
@@ -228,86 +228,28 @@ function CopyField({ label, value, hint }) {
         value={value}
         onFocus={(e) => e.target.select()}
       />
-      {hint && <p className="text-xs leading-relaxed text-light">{hint}</p>}
     </div>
   );
 }
 
 function BotPanel() {
   const bot = useApi(useCallback(() => api.tokenBotKey(), []));
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
   if (bot.error) return <ErrorBox message={bot.error} onRetry={bot.reload} />;
   if (!bot.data) return null;
   return (
-    <div className="space-y-4">
-      <div className="card space-y-4 p-5">
-        <div>
-          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-            The bot&rsquo;s key
-          </div>
-          <p className="mt-1 text-sm leading-relaxed text-light">
-            Whoever writes the bot needs this, and nobody else does. It is not a login: it can add activity and
-            report who invited whom, and nothing else. Treat it like a password anyway.
-          </p>
-        </div>
-        <CopyField label="Key" value={bot.data.key || ""} />
-      </div>
-
-      <div className="card space-y-4 p-5">
-        <div>
-          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-            1. Chat and voice, once a day
-          </div>
-          <p className="mt-1 text-sm leading-relaxed text-light">
-            The totals for one day, per member. Send the same day as often as you like: a day that arrives twice
-            overwrites itself instead of counting twice. The multiplier looks at the last 30 days, recounted every
-            day, so old days drop out on their own and nothing needs deleting.
-          </p>
-        </div>
-        <CopyField label="Where it goes" value={`POST ${origin}/api/tokens/activity`} />
-        <pre className="overflow-x-auto rounded-lg bg-surface2 p-3 font-mono text-[11px] leading-relaxed text-medium">
-{`{ "key": "…",
-  "entries": [
-    { "discordId": "1234…", "day": "2026-09-18", "messages": 42, "minutes": 130 }
-  ] }`}
-        </pre>
-        <p className="text-xs leading-relaxed text-light">
-          Up to 500 members per call. Minutes in voice count whether or not anybody was talking, which is on
-          purpose: the multiplier only ever multiplies racing, so sitting in a channel all week still earns
-          nothing on its own.
+    <div className="card space-y-4 p-5">
+      <div>
+        <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">The bot&rsquo;s key</div>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-light">
+          The league&rsquo;s Discord bot counts messages and voice minutes for the multiplier and reports who
+          invited whom. This is the only thing it needs from here. It is not a login: it can do those two things
+          and nothing else. Treat it like a password anyway.
         </p>
       </div>
-
-      <div className="card space-y-4 p-5">
-        <div>
-          <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">
-            2. Who invited whom
-          </div>
-          <p className="mt-1 text-sm leading-relaxed text-light">
-            Discord knows this already: every invite link on the server counts its uses and names the member who
-            made it. A bot that keeps those counts and compares them when somebody joins can see which link was
-            used, and so who brought them in. Report it here and the new member is credited to them, exactly as if
-            they had used the invite link on the NABS Points page.
-          </p>
-        </div>
-        <CopyField label="Where it goes" value={`POST ${origin}/api/tokens/referral`} />
-        <pre className="overflow-x-auto rounded-lg bg-surface2 p-3 font-mono text-[11px] leading-relaxed text-medium">
-{`{ "key": "…",
-  "entries": [
-    { "discordId": "1234…", "inviterDiscordId": "5678…" }
-  ] }`}
-        </pre>
-        <p className="text-xs leading-relaxed text-light">
-          Safe to send twice, and safe to send the whole server on the day the bot is switched on: the first
-          inviter somebody ever had is the one that sticks, and a member who has already raced can never be
-          claimed as a new arrival, whichever way the claim arrives.
-        </p>
-      </div>
-
+      <CopyField label="Key" value={bot.data.key || ""} />
       <p className="text-xs leading-relaxed text-light">
-        What the bot needs on Discord&rsquo;s side: permission to manage invites on the server, so it can read the
-        invite counts, and the server members intent, so it hears about people joining. Both are set where the bot
-        is registered, not here.
+        Setting the bot up is a handful of steps in Discord, written out in <span className="font-mono">discord-bot/README.md</span>.
+        It can run before the points are switched on for members, which fills the 30 day window in advance.
       </p>
     </div>
   );
