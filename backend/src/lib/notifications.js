@@ -19,6 +19,7 @@ import { readRaceTypes } from "./raceTypes.js";
 import { readHiddenRaceIds } from "./attendanceHidden.js";
 import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
+import { dbListSeries } from "./series.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
@@ -525,19 +526,44 @@ export async function notifyAdminsRaceRequest(prisma, member, text) {
 //
 // Deduped on the waiting question's own id, so the same reset is one alert
 // however many admins there are and however often the card is read.
-export async function notifyAdminsServerReset(prisma, { id, drivers, before, after, trackChanged }) {
+export async function notifyAdminsServerReset(prisma, { id, drivers, before, after, trackChanged, scopes = [] }) {
   try {
     if (!id) return;
     const where = before?.layout ? `${before.track} · ${before.layout}` : before?.track || "the track";
     const count = `${drivers} driver${drivers === 1 ? "" : "s"}`;
+    // WHICH board. The league runs a series per race server, so "the server
+    // was reset" on its own leaves an admin looking at the wrong card: the
+    // training card shows the series the admin area is pointed at, and the
+    // other series' question is not on it. The name goes in the title and the
+    // slug into the link, which puts the admin on the right series before the
+    // card is even drawn.
+    const slug = scopes[0]?.series || "";
+    let name = "";
+    if (slug) {
+      try {
+        name = (await dbListSeries(prisma, { includePrivate: true })).find((s) => s.slug === slug)?.name || "";
+      } catch {
+        /* the slug in the link still lands right */
+      }
+    }
+    const board = name ? `${name}: ` : "";
+    // focus=training scrolls the card into view on arrival. The Live tab is a
+    // long page (links, wall, buttons, servers, and this at the bottom), so
+    // landing on the right tab of the right series still left the question
+    // twenty screens down from where the admin was put.
+    const link = slug
+      ? `/admin?tab=social&series=${encodeURIComponent(slug)}&focus=training`
+      : "/admin?tab=social&focus=training";
     await notifyAdmins(prisma, {
-      title: trackChanged ? `New track version: keep the times from ${where}?` : `Server reset: keep the times from ${where}?`,
+      title: trackChanged
+        ? `${board}new track version, keep the times from ${where}?`
+        : `${board}server reset, keep the times from ${where}?`,
       body: trackChanged
         ? `The practice session held ${count} with a time, and the server came back on ${
             after?.layout || after?.track || "another version"
           }. If the track limits were fixed, those times may be out of reach now. Answer it under Social & Live.`
         : `The practice session held ${count} with a time. They are off the board until you keep them, under Social & Live.`,
-      link: "/admin?tab=social",
+      link,
       dedupeSuffix: `admin-server-reset:${id}`,
     });
   } catch {

@@ -150,6 +150,19 @@ export default function Admin() {
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
+  // ?series=<slug> points the admin area at one series, the way ?tab= points it
+  // at one section. The league runs a series per race server, so a link from a
+  // notification has to say WHICH board it is about: the training card shows
+  // the series being edited, and without this an alert about the Sunday board
+  // would open a card that is still on Friday and looks empty.
+  const { seriesList, current: editingSeries, setSlug: setEditingSeries } = useSeries();
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("series");
+    if (!wanted || !seriesList.length) return;
+    if (!seriesList.some((s) => s.slug === wanted)) return;
+    if (editingSeries?.slug === wanted) return;
+    setEditingSeries(wanted);
+  }, [seriesList, editingSeries?.slug, setEditingSeries]);
   // Where a search hit sent us. Some tabs are split into views of their own, so
   // a hit can name one; `n` counts the jumps, because searching the SAME hit
   // twice has to land twice — a plain view string would be unchanged the second
@@ -1121,6 +1134,22 @@ function TrainingBestLapsAdmin() {
 
   const { data, loading, error, reload } = useApi(useCallback(() => api.trainingBestLaps(track || null), [track]));
 
+  // Arriving from the notification (?focus=training). This card is at the
+  // bottom of a very long tab, so being sent to the right tab of the right
+  // series still meant scrolling past everything else to find the question the
+  // alert was about. Once, on the first render that has the answer in.
+  const cardRef = useRef(null);
+  const focused = useRef(false);
+  useEffect(() => {
+    if (focused.current || !data) return;
+    if (new URLSearchParams(window.location.search).get("focus") !== "training") return;
+    focused.current = true;
+    // Straight there, not a glide: the card sits twenty screens down, and a
+    // smooth scroll over that distance is a blur that takes seconds. A link
+    // that says "answer it here" should land on it.
+    cardRef.current?.scrollIntoView({ block: "center" });
+  }, [data]);
+
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (loading || !data) return <div className="card p-5 text-sm text-light">Loading…</div>;
 
@@ -1162,7 +1191,7 @@ function TrainingBestLapsAdmin() {
   }
 
   return (
-    <div className="card space-y-5 p-5">
+    <div ref={cardRef} className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Training best times" />
       <p className="text-sm text-light">
         The race server forgets a practice session every time it restarts, so the week&rsquo;s training times drop

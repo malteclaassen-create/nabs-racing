@@ -113,6 +113,62 @@ describe("liveResetKeep", () => {
     expect(pendingFor("gt-sunday", SEASON)).toEqual([]);
   });
 
+  it("keeps two race servers apart", () => {
+    // The league runs a series per server (F1 on Friday, GT on Sunday), each
+    // with its own live page. A reset on one board must not touch the other's
+    // question, and answering one must leave the other waiting.
+    park();
+    parkLaps({
+      serverKey: "test2",
+      scopes: [{ series: "gt-sunday", season: 3 }],
+      before: side("nabs_spa", "nabs_spa_2026"),
+      after: side("nabs_spa", "nabs_spa_2026"),
+      laps: [lap(A, 104_000, "Alice")],
+    });
+
+    expect(listPending().length).toBe(2);
+    // Each card only ever sees its own.
+    expect(pendingFor(SERIES, SEASON).length).toBe(1);
+    expect(pendingFor("gt-sunday", 3).length).toBe(1);
+    expect(pendingFor(SERIES, SEASON)[0].before.track).toBe("nabs_baku");
+    expect(pendingFor("gt-sunday", 3)[0].before.track).toBe("nabs_spa");
+
+    // Answering Friday's leaves Sunday's alone.
+    take(pendingFor(SERIES, SEASON)[0].id);
+    expect(pendingFor(SERIES, SEASON)).toEqual([]);
+    expect(pendingFor("gt-sunday", 3).length).toBe(1);
+  });
+
+  it("a second reset on ONE board replaces only that board's question", () => {
+    parkLaps({
+      serverKey: "test2",
+      scopes: [{ series: "gt-sunday", season: 3 }],
+      before: side("nabs_spa", "nabs_spa_2026"),
+      after: side("nabs_spa", "nabs_spa_2026"),
+      laps: [lap(A, 104_000, "Alice")],
+    });
+    park({ endedAt: new Date(Date.now() - 60_000).toISOString() });
+    park(); // Friday resets again before anybody answered
+    expect(pendingFor(SERIES, SEASON).length).toBe(1);
+    expect(pendingFor("gt-sunday", 3).length).toBe(1);
+  });
+
+  it("a board two series follow files for both of them", () => {
+    // Nothing stops the Live tab pointing two series at one race server, and
+    // the board reads the training laps of both. So the question carries both.
+    parkLaps({
+      serverKey: "shared",
+      scopes: [{ series: SERIES, season: SEASON }, { series: "gt-sunday", season: 3 }],
+      before: side("nabs_baku", "nabs_baku_2025"),
+      after: side("nabs_baku", "nabs_baku_2025"),
+      laps: [lap(A, 95_000, "Alice")],
+    });
+    expect(pendingFor(SERIES, SEASON).length).toBe(1);
+    expect(pendingFor("gt-sunday", 3).length).toBe(1);
+    // And it is ONE question, not two: the same id on both cards.
+    expect(pendingFor(SERIES, SEASON)[0].id).toBe(pendingFor("gt-sunday", 3)[0].id);
+  });
+
   it("forgets a question nobody answered for a fortnight", () => {
     park({ endedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString() });
     expect(listPending()).toEqual([]);

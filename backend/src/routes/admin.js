@@ -1825,18 +1825,27 @@ router.post("/live-best-laps/pending/:id", async (req, res, next) => {
 
     let kept = null;
     if (keep) {
-      kept = addUploadedLaps(seriesRow.slug, seasonNumber, waiting.before.trackKey, {
-        track: waiting.before.track,
-        layout: waiting.before.layout,
-        laps: waiting.laps,
+      const file = {
         // The line the card shows in place of a file name. It says where these
         // came from, which a file name would not.
-        file: {
-          name: `Server reset ${new Date(waiting.endedAt).toISOString().slice(0, 16).replace("T", " ")}`,
-          type: "LIVE",
-          date: waiting.endedAt,
-        },
-      });
+        name: `Server reset ${new Date(waiting.endedAt).toISOString().slice(0, 16).replace("T", " ")}`,
+        type: "LIVE",
+        date: waiting.endedAt,
+      };
+      // Into EVERY series that follows this race server, not only the one the
+      // admin happens to be looking at. Two series can be pointed at one
+      // server (the Live tab's map allows it), the board reads the training
+      // laps of all of them, and the question is taken off the pile here — so
+      // filing into one would quietly lose the week for the other.
+      for (const scope of waiting.scopes) {
+        const one = addUploadedLaps(scope.series, scope.season, waiting.before.trackKey, {
+          track: waiting.before.track,
+          layout: waiting.before.layout,
+          laps: waiting.laps,
+          file,
+        });
+        if (scope.series === seriesRow.slug) kept = one;
+      }
     }
     takePendingReset(waiting.id);
     await refreshBoardScopes();

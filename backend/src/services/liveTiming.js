@@ -797,6 +797,9 @@ function createRelay(server) {
           before: parked.before,
           after: parked.after,
           trackChanged: parked.trackChanged,
+          // Which board this was, so the alert can say so and land the admin
+          // on the right series' card.
+          scopes: parked.scopes,
         }).catch(() => {});
       }
     } catch (e) {
