@@ -105,6 +105,18 @@
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-collection b,
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-collection small,
 .rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-back-bottom { font-family: Georgia, "Times New Roman", serif; }
+
+/* Georgia sets old-style figures: 7 and 9 hang below the line, 8 and 1 do
+   not, so a row of values looked like it was falling over. Georgia has no
+   lining figures to switch to, so everything that is a NUMBER uses the
+   other serif, which does. Letters stay Georgia. */
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-rtg-n,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-num,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat b,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-brand,
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-back-bottom { font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-variant-numeric: lining-nums tabular-nums; }
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-rtg-n { font-weight: 600; }
+.rcard-frame[data-series="signature"][data-collectible][data-edition] .rcard-stat b { font-weight: 600; }
 .rcard-frame[data-series="signature"] .rcard-back-pattern { inset: 8px; border: 1px solid color-mix(in srgb, var(--metal) 60%, transparent); border-radius: 7px; opacity: 1; }
 .rcard-frame[data-series="signature"][data-collectible] .rcard-back::after { display: none; }
 .rcard-frame[data-series="signature"] .rcard-back-bottom { bottom: 20px; }
