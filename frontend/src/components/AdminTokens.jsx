@@ -52,6 +52,24 @@ const MODE_TEXT = {
   all: "Everyone. Members see their balance in the nav bar, their invite link and the shop; profile designs and the wall are public.",
 };
 
+function EarningSwitch({ earning, startDay, busy, onChange }) {
+  return (
+    <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
+      <div className="min-w-0">
+        <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Earning points</div>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
+          {earning
+            ? `Running${startDay ? `, races from ${startDay} count` : ""}. Everyone earns as they go.`
+            : "Paused. Members can look around, but no race pays and no balance moves. Switching it on sets the day counting starts."}
+        </p>
+      </div>
+      <button type="button" disabled={busy} onClick={() => onChange(!earning)} className={earning ? "btn-secondary" : "btn-primary"}>
+        {earning ? "Pause counting" : "Start counting"}
+      </button>
+    </div>
+  );
+}
+
 function TrialSwitch({ mode, onChange, busy }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
@@ -513,6 +531,18 @@ export default function AdminTokens() {
           run(
             () => api.setTokensMode(m),
             m === "all" ? "NABS Points are on for everyone." : m === "admins" ? "NABS Points are on for admins only." : "NABS Points are off."
+          )
+        }
+      />
+
+      <EarningSwitch
+        earning={!!d.earning}
+        startDay={d.startDay}
+        busy={busy}
+        onChange={(on) =>
+          run(
+            () => api.setTokensEarning(on),
+            on ? "Counting started. Races from today pay out." : "Counting paused. Balances stand still."
           )
         }
       />

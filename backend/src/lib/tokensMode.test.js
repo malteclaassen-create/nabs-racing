@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tokensMode, isTokensEnabled, tokensPublic, tokensVisibleTo, setTokensMode } from "./tokens.js";
+import { tokensMode, isTokensEnabled, tokensPublic, tokensVisibleTo, setTokensMode, isEarningOn, setEarning } from "./tokens.js";
 
 // A prisma stand-in holding the one setting row.
 function db(value) {
@@ -55,5 +55,27 @@ describe("the three settings", () => {
     expect(await setTokensMode(d, "admins")).toBe("admins");
     expect(d.state.value).toBe("admins");
     expect(await setTokensMode(d, "banana")).toBe("off");
+  });
+});
+
+// Being seen and being earned are separate switches: the league can show the
+// whole thing to everybody while nothing is being counted yet.
+describe("the earning switch", () => {
+  it("is off until somebody turns it on", async () => {
+    const d = db("all");
+    expect(await isEarningOn(d)).toBe(false);
+    await setEarning(d, true);
+    expect(await isEarningOn(d)).toBe(true);
+    await setEarning(d, false);
+    expect(await isEarningOn(d)).toBe(false);
+  });
+
+  it("is independent of who can see the feature", async () => {
+    const d = db("admins");
+    await setEarning(d, true);
+    expect(await tokensMode(d)).toBe("admins");
+    expect(await isEarningOn(d)).toBe(true);
+    await setTokensMode(d, "all");
+    expect(await isEarningOn(d)).toBe(true); // changing the mode leaves it alone
   });
 });

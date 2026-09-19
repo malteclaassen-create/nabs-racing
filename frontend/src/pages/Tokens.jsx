@@ -340,7 +340,7 @@ function InviteCard({ code, botConnected }) {
 
 // What earns tokens. A quiet list rather than a grid of cards: it is a price
 // list, and a price list is read down the left and across to the right.
-function EarnList({ rules, multiplier = 1, startDay = null }) {
+function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
   const boosted = rules.some((r) => r.boosted);
   return (
     <div className="card px-5 py-4">
@@ -351,7 +351,12 @@ function EarnList({ rules, multiplier = 1, startDay = null }) {
           Yours is {(multiplier || 1).toFixed(1)}x right now.
         </p>
       )}
-      {startDay && (
+      {!earning && (
+        <p className="mb-1 mt-1 text-xs leading-relaxed text-warn">
+          Not being counted yet. Have a look at what things cost. The league says when the counting starts.
+        </p>
+      )}
+      {earning && startDay && (
         <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
           Counting since{" "}
           {new Date(`${startDay}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}.
@@ -1101,7 +1106,7 @@ export default function Tokens() {
       {orders.length > 0 && <Collection orders={orders} />}
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <EarnList rules={data.rules} multiplier={data.stats?.multiplier} startDay={data.startDay} />
+        <EarnList rules={data.rules} multiplier={data.stats?.multiplier} startDay={data.startDay} earning={data.earning !== false} />
         <History ledger={data.ledger || []} />
       </div>
     </div>

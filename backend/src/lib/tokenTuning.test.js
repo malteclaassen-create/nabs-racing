@@ -6,7 +6,7 @@ import {
   tunedReferralLimit,
   tunedMultiplier,
   tunedStartDay,
-  setTokensEnabled,
+  setEarning,
   EARN_RULES,
   SHOP_ITEMS,
 } from "./tokens.js";
@@ -137,14 +137,13 @@ describe("the start day", () => {
     expect(cleanTuning({ startDay: "19.09.2026" }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
   });
 
-  it("is set to today the first time the tokens go on, and then left alone", async () => {
+  it("is set the first time the COUNTING is started, and then left alone", async () => {
     expect(tunedStartDay()).toBe(null);
-    await setTokensEnabled(fakePrisma, true);
-    const first = tunedStartDay();
-    expect(first).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    await setEarning(fakePrisma, true);
+    expect(tunedStartDay()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await saveTuning(fakePrisma, { startDay: "2026-01-01" });
-    await setTokensEnabled(fakePrisma, false);
-    await setTokensEnabled(fakePrisma, true);
-    expect(tunedStartDay()).toBe("2026-01-01"); // switching off and on does not move it
+    await setEarning(fakePrisma, false);
+    await setEarning(fakePrisma, true);
+    expect(tunedStartDay()).toBe("2026-01-01"); // pausing and restarting does not move it
   });
 });

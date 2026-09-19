@@ -70,6 +70,36 @@ export const TOKENS_SETTING = "tokens_enabled";
 // it on the live site without anybody else noticing) and "all".
 export const TOKEN_MODES = ["off", "admins", "all"];
 
+// Being SEEN and being EARNED are two different decisions. The league can put
+// the whole thing in front of everybody while nothing is being counted yet,
+// look around, set the prices, and start the counting on a day it picks.
+export const EARNING_SETTING = "tokens_earning";
+
+export async function isEarningOn(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: EARNING_SETTING } });
+    return row?.value === "1";
+  } catch {
+    return false;
+  }
+}
+
+// Switching it on for the first time is also the day the counting starts, so
+// nobody wakes up with a season of back pay they were never promised.
+export async function setEarning(prisma, on) {
+  const value = on ? "1" : "0";
+  await prisma.setting.upsert({
+    where: { key: EARNING_SETTING },
+    update: { value },
+    create: { key: EARNING_SETTING, value },
+  });
+  if (on) {
+    const t = await ensureTuning(prisma);
+    if (!t.startDay) await saveTuning(prisma, { ...t, startDay: leagueDay() });
+  }
+  return !!on;
+}
+
 export async function tokensMode(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: TOKENS_SETTING } });
@@ -109,13 +139,6 @@ export async function setTokensMode(prisma, mode) {
     update: { value },
     create: { key: TOKENS_SETTING, value },
   });
-  // The league starts from zero: the first time the points go on (for anybody),
-  // today becomes the day races start counting. Nothing before it pays. The
-  // admin can move the date afterwards under Rules and prices.
-  if (value !== "off") {
-    const t = await ensureTuning(prisma);
-    if (!t.startDay) await saveTuning(prisma, { ...t, startDay: leagueDay() });
-  }
   return value;
 }
 // Kept for the older callers and tests: on = everyone, off = off.
@@ -579,6 +602,10 @@ export async function multiplierFor(prisma, discordId) {
 // Bring one member's ledger up to date. Safe to call as often as you like.
 export async function syncEarned(prisma, discordId) {
   if (!discordId) return;
+  // Paused: balances stand still. Shop purchases and the league office's own
+  // bookings still work, and the moment it is switched on everything from the
+  // start day is credited in one go.
+  if (!(await isEarningOn(prisma))) return;
   await ensureTokenAccount(prisma, discordId);
   // The multiplier is applied when a race is PAID, and the row is written once
   // and never rewritten. So it is the multiplier you had when the round landed,

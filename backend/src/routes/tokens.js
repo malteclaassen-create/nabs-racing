@@ -32,6 +32,8 @@ import {
   tokensPublic,
   tokensVisibleTo,
   setTokensMode,
+  isEarningOn,
+  setEarning,
   TOKEN_MODES,
   setTokensEnabled,
   ensureTokenAccount,
@@ -88,6 +90,7 @@ router.get("/", requireUser, async (req, res, next) => {
       shop: tunedShop().filter((i) => i.active),
       flairs: FLAIRS,
       botConnected: await botConnected(prisma),
+      earning: await isEarningOn(prisma),
       startDay: tunedStartDay(),
       // The card designs are their own catalogue behind the "Card design" entry
       // of the shop: four series, with what this member already owns marked.
@@ -311,6 +314,7 @@ adminRouter.get("/", async (req, res, next) => {
     res.json({
       enabled: await isTokensEnabled(prisma),
       mode: await tokensMode(prisma),
+      earning: await isEarningOn(prisma),
       rules: await rulesForDisplay(prisma),
       shop: tunedShop(),
       members: await adminOverview(prisma),
@@ -412,6 +416,16 @@ adminRouter.post("/enabled", async (req, res, next) => {
     const mode = TOKEN_MODES.includes(req.body?.mode) ? req.body.mode : req.body?.enabled ? "all" : "off";
     const saved = await setTokensMode(prisma, mode);
     res.json({ enabled: saved !== "off", mode: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/tokens/earning { on } — start or pause the counting.
+adminRouter.post("/earning", async (req, res, next) => {
+  try {
+    const on = await setEarning(prisma, !!req.body?.on);
+    res.json({ earning: on, startDay: tunedStartDay() });
   } catch (e) {
     next(e);
   }
