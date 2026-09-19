@@ -142,7 +142,6 @@ function Leaderboard() {
   const d = board.data;
   if (!d || d.enabled === false) return null;
   const rows = tab === "earned" ? d.earned : d.active;
-  const me = d.me;
   const hours = (m) => Math.round((m || 0) / 6) / 10;
   return (
     <div className="card p-5">
@@ -162,10 +161,10 @@ function Leaderboard() {
       {rows?.length ? (
         <ol className="mt-3 divide-y divide-border">
           {rows.map((r, i) => {
-            const mine = r.discordId === me;
+            const mine = !!r.mine;
             return (
               <li
-                key={r.discordId}
+                key={r.id || i}
                 className={`flex items-center gap-3 py-2 ${mine ? "-mx-2 rounded-lg bg-brand/10 px-2" : ""}`}
               >
                 <span className={`w-6 shrink-0 text-center font-mono text-sm font-bold tabular-nums ${i < 3 ? "text-dark" : "text-light"}`}>

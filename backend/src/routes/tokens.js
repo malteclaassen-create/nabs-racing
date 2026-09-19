@@ -254,7 +254,11 @@ router.post(
 router.get("/leaderboard", requireUser, async (req, res, next) => {
   try {
     if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
-    res.json({ enabled: true, me: req.user.discordId, ...(await leaderboard(prisma)) });
+    // Marked here rather than handing every member the whole table's Discord
+    // ids and letting the browser compare: the page only needs to know which
+    // line is yours.
+    const board = await leaderboard(prisma, 10, req.user.discordId);
+    res.json({ enabled: true, ...board });
   } catch (e) {
     next(e);
   }

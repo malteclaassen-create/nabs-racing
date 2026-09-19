@@ -200,6 +200,16 @@ export function leagueDay(t = Date.now()) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
+// Midnight league time on a "YYYY-MM-DD", as an instant. The start day is a
+// date the admin typed in Berlin, but the things it is compared against are
+// stored in two different shapes, so both callers convert from here rather
+// than each pasting a date into a string and hoping.
+export function leagueDayStart(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+  if (!m) return null;
+  return leagueInstant(+m[1], +m[2], +m[3], 0);
+}
+
 // The first day that still counts towards the multiplier: today and the
 // twenty-nine before it. Everything older has fallen out of the window.
 export function activityWindowStart(now = Date.now()) {

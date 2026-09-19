@@ -37,7 +37,7 @@
 // the generated Prisma client on Windows). Keep in sync with the models in
 // prisma/schema.prisma and the CREATE TABLEs in lib/ensureSchema.js.
 // ---------------------------------------------------------------------------
-import { randomUUID, randomInt } from "crypto";
+import { randomUUID, randomInt, timingSafeEqual, createHash } from "crypto";
 import { IS_DEPLOYED } from "./deployment.js";
 import { catalogueFor, isBuyableDesign, ownedDesigns, priceOf, CARD_DESIGN_BY_KEY } from "./cardShop.js";
 import { overrides, ensureTuning, saveTuning } from "./tokenTuning.js";
@@ -53,6 +53,7 @@ import {
   activityMultiplier,
   activityWindowStart,
   leagueDay,
+  leagueDayStart,
   pointsFor,
   raceWasClean,
   stewardingClosed,
@@ -192,8 +193,9 @@ export const SHOP_ITEMS = [
     cost: 500,
     category: "On the site",
     description: "A mark next to your name on your public profile.",
-    blurb: "Pick one of the marks below. It sits next to your name on your public profile page from the moment you buy it, no waiting for anybody.",
+    blurb: "Pick one of the marks below. It goes up the moment you buy it.",
     instant: true,
+    once: true,
   },
   {
     key: "discord_role",
@@ -209,7 +211,7 @@ export const SHOP_ITEMS = [
     cost: 150,
     category: "On the site",
     description: "Themes, banners and lettering for your profile page. Designs from 150.",
-    blurb: "Fifty-odd designs for your public profile: page themes, banners, name lettering, stats styles and effects. Try them on your own page before you buy.",
+    blurb: "Fifty-odd designs, bought one at a time. Try them on your own page before you buy.",
     link: "/profile/style",
     catalogue: true,
   },
@@ -219,9 +221,9 @@ export const SHOP_ITEMS = [
     cost: 2500,
     category: "On the site",
     description: "Your name on the league's board for the people who built it.",
-    blurb:
-      "The most expensive thing in here on purpose: a name on the wall should take about a season to earn. Your name goes on the Hall of Fame page right away, with the month you got there.",
+    blurb: "Your name goes on the Hall of Fame page right away, with the month you got there.",
     instant: true,
+    once: true,
   },
 ];
 
@@ -483,14 +485,30 @@ async function invitedBy(prisma, discordId) {
   try {
     // Somebody brought in before the start day is not a new arrival for the
     // tokens either: the whole point of the start day is a clean zero.
+    // referredAt is SQLite's CURRENT_TIMESTAMP, so it is UTC text, while the
+    // start day is a Berlin date. Convert, or a member referred just after
+    // midnight Berlin falls on the wrong side of the line.
+    const from = startOfStartDay();
+    if (from == null) {
+      return await prisma.$queryRawUnsafe(
+        `SELECT "discordId" FROM "TokenAccount" WHERE "referredBy" = ?`,
+        discordId
+      );
+    }
     return await prisma.$queryRawUnsafe(
       `SELECT "discordId" FROM "TokenAccount" WHERE "referredBy" = ? AND COALESCE("referredAt", '') >= ?`,
       discordId,
-      tunedStartDay() ? `${tunedStartDay()} 00:00:00` : ""
+      new Date(from).toISOString().slice(0, 19).replace("T", " ")
     );
   } catch {
     return [];
   }
+}
+
+// Midnight league time on the start day, as an instant, or null when the league
+// has not set one and everything counts.
+function startOfStartDay() {
+  return leagueDayStart(tunedStartDay());
 }
 
 // Every race this member has FINISHED, with what the round needs for the
@@ -500,6 +518,10 @@ async function racesFinished(prisma, discordId) {
   const ids = await driverIdsFor(prisma, discordId);
   if (!ids.length) return [];
   const ph = ids.map(() => "?").join(",");
+  // Race.date is a DATETIME, which SQLite keeps as epoch milliseconds, so the
+  // cutoff has to be a NUMBER. Handing it an ISO string compares text against
+  // an integer, which is never true, and every race quietly pays nothing.
+  const from = startOfStartDay();
   const rows = await prisma.$queryRawUnsafe(
     `SELECT r."id" AS "resultId", r."penaltySeconds" AS "penaltySeconds",
             r."gamePenalties" AS "gamePenalties",
@@ -507,11 +529,10 @@ async function racesFinished(prisma, discordId) {
        FROM "RaceResult" r
        JOIN "Race" ra ON ra."id" = r."raceId"
       WHERE r."driverId" IN (${ph}) AND ra."isCompleted" = 1 AND r."status" = 'FINISHED'
-        AND ra."date" >= ?
+        ${from == null ? "" : `AND ra."date" >= ?`}
       ORDER BY ra."date" ASC`,
     ...ids,
-    // ISO dates compare as text; with no start day, everything is after "".
-    tunedStartDay() ? `${tunedStartDay()}T00:00:00` : ""
+    ...(from == null ? [] : [from])
   );
   return rows;
 }
@@ -543,9 +564,14 @@ export async function ensureActivityKey(prisma) {
   return key;
 }
 
+// Compared byte by byte in constant time, and hashed to a fixed length first so
+// that a wrong guess does not even give away how long the real key is. No key
+// set means no door: the bot cannot report anything until an admin makes one.
 export async function activityKeyValid(prisma, given) {
   const key = await readActivityKey(prisma);
-  return !!key && typeof given === "string" && given.length === key.length && given === key;
+  if (!key || typeof given !== "string" || !given) return false;
+  const digest = (v) => createHash("sha256").update(v).digest();
+  return timingSafeEqual(digest(given), digest(key));
 }
 
 
@@ -616,16 +642,18 @@ export async function syncEarned(prisma, discordId) {
 
   // --- what they finished themselves
   for (const r of await racesFinished(prisma, discordId)) {
-    if (!ruleOn("race_finish")) break;
-    await dbAward(prisma, {
-      discordId,
-      delta: withMultiplier(tunedPoints("race_finish"), multiplier),
-      rule: "race_finish",
-      title: "Finished a race",
-      detail: r.track || null,
-      refKey: `race:${r.resultId}`,
-      at: r.date,
-    });
+    // The two are switched separately: the league can keep the clean-race bonus
+    // while paying nothing for a plain finish.
+    if (ruleOn("race_finish"))
+      await dbAward(prisma, {
+        discordId,
+        delta: withMultiplier(tunedPoints("race_finish"), multiplier),
+        rule: "race_finish",
+        title: "Finished a race",
+        detail: r.track || null,
+        refKey: `race:${r.resultId}`,
+        at: r.date,
+      });
     // The bonus for a round nobody was penalised in, once the stewards are done
     // with it. Before that it is not decided, and a token paid out early cannot
     // be taken back on the Monday without it looking like a mistake.
@@ -759,8 +787,7 @@ export async function dbRedemptions(prisma, discordId = null) {
 }
 
 // One row in somebody's collection: something they bought.
-async function writeRedemption(prisma, { discordId, key, name, cost, status = "NEW", note = null }) {
-  const id = randomUUID();
+async function writeRedemption(prisma, { id, discordId, key, name, cost, status = "NEW", note = null }) {
   await prisma.$executeRawUnsafe(
     `INSERT INTO "TokenRedemption" ("id","discordId","itemKey","itemName","cost","status","note")
      VALUES (?,?,?,?,?,?,?)`,
@@ -773,6 +800,28 @@ async function writeRedemption(prisma, { discordId, key, name, cost, status = "N
     note
   );
   return id;
+}
+
+// Every purchase goes through here, and all of it happens or none of it does.
+// The balance is read INSIDE the transaction and the money moves before the
+// item is written, so two clicks landing together cannot both pass the check,
+// and a failed ledger write cannot leave somebody holding a design for free.
+// `owns` is asked inside as well, for the things you can only have once.
+async function spend(prisma, { discordId, cost, key, name, status, note = null, rule, title, detail, owns = null }) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (owns && (await owns(tx))) return { error: "You already have that one" };
+      const balance = await dbBalance(tx, discordId);
+      if (balance < cost) return { error: "Not enough points for that yet" };
+      const id = randomUUID();
+      const paid = await dbAward(tx, { discordId, delta: -cost, rule, title, detail, refKey: `${rule}:${id}` });
+      if (!paid) throw new Error("the ledger would not take it");
+      await writeRedemption(tx, { id, discordId, key, name, cost, status, note });
+      return { ok: true, id, balance: balance - cost };
+    });
+  } catch {
+    return { error: "That did not go through. Try again." };
+  }
 }
 
 // Spend tokens on a shop item. Returns { error } rather than throwing for the
@@ -790,26 +839,36 @@ export async function redeemItem(prisma, discordId, itemKey, choice = null) {
     note = flair.key;
   }
   await syncEarned(prisma, discordId);
-  const balance = await dbBalance(prisma, discordId);
-  if (balance < item.cost) return { error: "Not enough points for that yet" };
   // Instant items are filled by the site itself, the rest wait for a person.
-  const id = await writeRedemption(prisma, {
+  const out = await spend(prisma, {
     discordId,
+    cost: item.cost,
     key: item.key,
     name: item.name,
-    cost: item.cost,
     status: item.instant ? "DONE" : "NEW",
     note,
-  });
-  await dbAward(prisma, {
-    discordId,
-    delta: -item.cost,
     rule: "redeem",
     title: `${item.instant ? "Bought" : "Ordered"}: ${item.name}`,
     detail: item.instant ? "Yours right away" : "Waiting for the league office",
-    refKey: `redeem:${id}`,
+    // A name on the wall and a mark are one each: without this a double click
+    // pays twice for one line, and there is nothing to give back.
+    owns: item.once ? (tx) => hasBought(tx, discordId, item.key, note) : null,
   });
-  return { ok: true, id, balance: balance - item.cost, instant: !!item.instant };
+  return out.error ? out : { ...out, instant: !!item.instant };
+}
+
+// Has this member already bought this item? For a flair, the mark matters: a
+// second, different one is a real purchase, the same one twice is not.
+async function hasBought(prisma, discordId, key, note = null) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT 1 FROM "TokenRedemption"
+        WHERE "discordId" = ? AND "itemKey" = ? AND "status" <> 'DECLINED'
+          ${note == null ? "" : `AND "note" = ?`} LIMIT 1`,
+      ...(note == null ? [discordId, key] : [discordId, key, note])
+    )
+    .catch(() => []);
+  return rows.length > 0;
 }
 
 // The flair each of these members wears: the newest one they bought that is
@@ -862,7 +921,7 @@ async function namesFor(prisma, discordIds) {
 
 // Who has earned the most, and who is most around on Discord. Spending is
 // left out on purpose: buying things should not push you down a list.
-export async function leaderboard(prisma, limit = 10) {
+export async function leaderboard(prisma, limit = 10, meId = null) {
   const earned = await prisma
     .$queryRawUnsafe(
       `SELECT "discordId", SUM("delta") AS "earned"
@@ -882,9 +941,10 @@ export async function leaderboard(prisma, limit = 10) {
     .catch(() => []);
   const names = await namesFor(prisma, [...earned, ...active].map((r) => r.discordId));
   return {
-    earned: earned.map((r) => ({ discordId: r.discordId, ...names.get(r.discordId), earned: Number(r.earned) })),
-    active: active.map((r) => ({
-      discordId: r.discordId,
+    earned: earned.map((r, i) => ({ id: `e${i}`, mine: r.discordId === meId, ...names.get(r.discordId), earned: Number(r.earned) })),
+    active: active.map((r, i) => ({
+      id: `a${i}`,
+      mine: r.discordId === meId,
       ...names.get(r.discordId),
       messages: Number(r.messages),
       minutes: Number(r.minutes),
@@ -1022,27 +1082,20 @@ export async function buyCardDesign(prisma, discordId, key) {
   if (!isBuyableDesign(key)) return { error: "Unknown card design" };
   const design = CARD_DESIGN_BY_KEY.get(key);
   const cost = priceOf(key, overrides().cards);
-  const owned = await ownedDesigns(prisma, discordId);
-  if (owned.has(key)) return { error: "You already have that one" };
+  if ((await ownedDesigns(prisma, discordId)).has(key)) return { error: "You already have that one" };
   await syncEarned(prisma, discordId);
-  const balance = await dbBalance(prisma, discordId);
-  if (balance < cost) return { error: "Not enough points for that yet" };
-  const id = await writeRedemption(prisma, {
+  const out = await spend(prisma, {
     discordId,
+    cost,
     key,
     name: design.name,
-    cost,
     status: "DONE",
-  });
-  await dbAward(prisma, {
-    discordId,
-    delta: -cost,
     rule: "card_design",
     title: `Bought: ${design.name}`,
     detail: "Card design, yours right away",
-    refKey: `card:${id}`,
+    owns: async (tx) => (await ownedDesigns(tx, discordId)).has(key),
   });
-  return { ok: true, id, design: { ...design, cost }, balance: balance - cost };
+  return out.error ? out : { ...out, design: { ...design, cost } };
 }
 
 // A profile studio design: paid once, owned for good, worn from the studio
@@ -1052,21 +1105,19 @@ export async function buyStudioItem(prisma, discordId, itemId) {
   const item = STUDIO_BY_ID.get(String(itemId || ""));
   if (!item) return { error: "Unknown design" };
   const cost = studioPriceOf(item, tunedStudio());
-  const owned = await ownedStudioItems(prisma, discordId);
-  if (owned.has(item.id)) return { error: "You already have that one" };
+  if ((await ownedStudioItems(prisma, discordId)).has(item.id)) return { error: "You already have that one" };
   await syncEarned(prisma, discordId);
-  const balance = await dbBalance(prisma, discordId);
-  if (balance < cost) return { error: "Not enough points for that yet" };
-  const id = await writeRedemption(prisma, { discordId, key: item.id, name: item.name, cost, status: "DONE" });
-  await dbAward(prisma, {
+  return spend(prisma, {
     discordId,
-    delta: -cost,
+    cost,
+    key: item.id,
+    name: item.name,
+    status: "DONE",
     rule: "studio",
     title: `Bought: ${item.name}`,
     detail: "Profile design, yours right away",
-    refKey: `studio:${id}`,
+    owns: async (tx) => (await ownedStudioItems(tx, discordId)).has(item.id),
   });
-  return { ok: true, id, balance: balance - cost };
 }
 
 // An admin working through an order. Declining refunds it — the tokens were
@@ -1078,13 +1129,17 @@ export async function setRedemptionStatus(prisma, id, status, note = null) {
   const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "TokenRedemption" WHERE "id" = ?`, id);
   const row = rows[0];
   if (!row) return { error: "Not found" };
+  // A flair keeps WHICH mark was picked in the note, so an admin typing a note
+  // on the order would otherwise wipe the thing the member paid for.
+  const keepNote = row.itemKey === "profile_flair";
   await prisma.$executeRawUnsafe(
     `UPDATE "TokenRedemption" SET "status" = ?, "note" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = ?`,
     s,
-    note ?? row.note ?? null,
+    keepNote ? (row.note ?? null) : (note ?? row.note ?? null),
     id
   );
-  if (s === "DECLINED") {
+  const wasDeclined = String(row.status || "").toUpperCase() === "DECLINED";
+  if (s === "DECLINED" && !wasDeclined) {
     await dbAward(prisma, {
       discordId: row.discordId,
       delta: Number(row.cost),
@@ -1092,6 +1147,19 @@ export async function setRedemptionStatus(prisma, id, status, note = null) {
       title: `Refunded: ${row.itemName}`,
       detail: note || "The league office could not fill this order",
       refKey: `refund:${id}`,
+    });
+  }
+  // Undeclining gives the item back, so it has to take the refund back too.
+  // Without this, decline-by-mistake then put-it-right leaves the member with
+  // the thing AND the points.
+  if (wasDeclined && s !== "DECLINED") {
+    await dbAward(prisma, {
+      discordId: row.discordId,
+      delta: -Number(row.cost),
+      rule: "redeem",
+      title: `Back on: ${row.itemName}`,
+      detail: "The league office picked this order up again",
+      refKey: `unrefund:${id}`,
     });
   }
   return { ok: true };
