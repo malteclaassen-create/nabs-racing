@@ -5175,6 +5175,14 @@ function Teams() {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // This tab is as long as the grid is, and every notice it writes appears at
+  // the very top of it. An admin working on the twelfth team is several screens
+  // below that, so a refused colour change, logo upload or deletion looked like
+  // the control had simply done nothing. Bring the notice to them instead.
+  const noticeRef = useRef(null);
+  useEffect(() => {
+    if (error) noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
 
   async function create(e) {
     e.preventDefault();
@@ -5294,7 +5302,7 @@ function Teams() {
 
   return (
     <div>
-      {error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}
+      {error && <div ref={noticeRef} className="mb-4"><Notice kind="error">{error}</Notice></div>}
       {msg && <div className="mb-4"><Notice kind="success">{msg}</Notice></div>}
       <div className="grid items-start gap-6 lg:grid-cols-3">
         {/* Left column: the two ways to put a team on the grid — copy an
