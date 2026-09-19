@@ -37,23 +37,51 @@ client.on(Events.MessageCreate, (message) => {
   dirty = true;
 });
 
-// once a minute: everyone sitting in a voice channel gets a minute
+// once a minute: everyone actually sitting in voice with somebody gets a minute.
+// muted, deafened, alone or parked in the AFK channel is not being there, it is
+// a client left running, and that would buy the whole multiplier overnight.
 function countVoiceMinute() {
   const guild = client.guilds.cache.get(config.guildId);
   if (!guild) return;
-  let counted = 0;
+  const heads = new Map(); // channel -> how many humans are in it
+  const people = [];
   for (const vs of guild.voiceStates.cache.values()) {
     if (!vs.channelId) continue;
-    if (!config.countAfkChannel && vs.channelId === guild.afkChannelId) continue;
     const user = vs.member?.user || client.users.cache.get(vs.id);
-    if (user?.bot) continue;
+    if (user?.bot !== false) continue; // unknown counts as a bot: no credit on a guess
+    heads.set(vs.channelId, (heads.get(vs.channelId) || 0) + 1);
+    people.push(vs);
+  }
+  let counted = 0;
+  for (const vs of people) {
+    if (!config.countAfkChannel && vs.channelId === guild.afkChannelId) continue;
+    if (!config.countMuted && (vs.selfMute || vs.selfDeaf || vs.mute || vs.deaf || vs.suppress)) continue;
+    if (!config.countAlone && (heads.get(vs.channelId) || 0) < 2) continue;
     bumpMinutes(state, vs.id, 1);
     counted++;
   }
   if (counted) dirty = true;
 }
 
+// true once this process has read the invites itself. the snapshot restored
+// from state.json is from the last run and everything moved since then would
+// look like one join, so nothing is credited until we have our own.
+let invitesAreOurs = false;
+// codes discord removed in the last few seconds, with who made them. a
+// single-use invite is deleted AND used at the same moment, and the two events
+// arrive in either order.
+let recentlyDeleted = [];
+let fetching = null;
+
 async function refreshInvites() {
+  if (fetching) return fetching; // a burst of joins is one fetch, not twenty
+  fetching = readInvites().finally(() => {
+    fetching = null;
+  });
+  return fetching;
+}
+
+async function readInvites() {
   const guild = client.guilds.cache.get(config.guildId);
   if (!guild) return {};
   try {
@@ -65,8 +93,10 @@ async function refreshInvites() {
     } catch {
       /* no vanity url */
     }
+    invitesAreOurs = true;
     return snapshot;
   } catch (e) {
+    invitesAreOurs = false;
     log(`! could not read the invites: ${e.message}`);
     log("  Needs the Manage Server permission. Messages and voice still work.");
     return null;
@@ -76,12 +106,19 @@ async function refreshInvites() {
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.guild.id !== config.guildId) return;
   if (member.user?.bot) return;
+  const trustBefore = invitesAreOurs;
   const before = state.invites;
   const after = await refreshInvites();
   if (!after) return;
   state.invites = after;
   dirty = true;
-  const inviterId = inviteUsed(before, after);
+  // a stale snapshot would pin every invite used while the bot was down on
+  // whoever happens to be the single riser. say nothing instead.
+  if (!trustBefore) {
+    log(`+ ${member.user.tag} joined, inviter unknown (first look at the invites)`);
+    return;
+  }
+  const inviterId = inviteUsed(before, after) || usedUpInvite();
   if (!inviterId) {
     log(`+ ${member.user.tag} joined, inviter unknown`);
     return;
@@ -92,6 +129,14 @@ client.on(Events.GuildMemberAdd, async (member) => {
   await flush();
 });
 
+// an invite that just vanished, if it looks like it vanished by being used up
+function usedUpInvite() {
+  const cutoff = Date.now() - 15_000;
+  const fresh = recentlyDeleted.filter((d) => d.at >= cutoff);
+  recentlyDeleted = fresh;
+  return fresh.length === 1 ? fresh[0].inviterId || null : null;
+}
+
 const rememberInvites = async () => {
   const snapshot = await refreshInvites();
   if (snapshot) {
@@ -100,8 +145,15 @@ const rememberInvites = async () => {
   }
 };
 client.on(Events.InviteCreate, rememberInvites);
-client.on(Events.InviteDelete, rememberInvites);
+client.on(Events.InviteDelete, async (invite) => {
+  // a max_uses=1 invite is deleted and used in the same breath, and this event
+  // can beat the join. keep who made it so the join can still be credited.
+  const inviterId = invite?.inviterId || invite?.inviter?.id || state.invites?.[invite?.code]?.inviterId || null;
+  if (invite?.code) recentlyDeleted.push({ code: invite.code, inviterId, at: Date.now() });
+  await rememberInvites();
+});
 
+const MAX_REFERRALS = 2000;
 let sending = false;
 async function flush() {
   if (sending) return;
@@ -119,6 +171,14 @@ async function flush() {
       state.referrals = state.referrals.slice(res.length);
       dirty = true;
       log(`-> ${res.length} joins reported`);
+    }
+    if (state.referrals.length > MAX_REFERRALS) {
+      // the site has been refusing these for a long time (wrong key, usually).
+      // keep the newest and say so, rather than growing the file forever.
+      const lost = state.referrals.length - MAX_REFERRALS;
+      state.referrals = state.referrals.slice(-MAX_REFERRALS);
+      dirty = true;
+      log(`! ${lost} older joins dropped, the site has not taken them. Check the key.`);
     }
   } catch (e) {
     log(`! website not reachable (${e.message}), will retry`);
@@ -178,6 +238,15 @@ client.once(Events.ClientReady, async (c) => {
   );
   await flush();
 });
+
+// whatever goes wrong, write down what has been counted before going away
+for (const event of ["uncaughtException", "unhandledRejection"]) {
+  process.on(event, (err) => {
+    log(`! ${event}: ${err?.message || err}`);
+    persist();
+    shutdown(1);
+  });
+}
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {

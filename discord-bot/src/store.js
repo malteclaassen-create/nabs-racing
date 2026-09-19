@@ -58,13 +58,16 @@ export function markSent(state, entries) {
   }
 }
 
+// old days go, unless the site never took them. a week of the site being
+// unreachable should not quietly throw away what people did in it.
 export function forgetOldDays(state, now = Date.now()) {
   let dropped = 0;
-  for (const day of Object.keys(state.days)) {
-    if (isStale(day, now)) {
-      delete state.days[day];
-      dropped++;
-    }
+  for (const [day, users] of Object.entries(state.days)) {
+    if (!isStale(day, now)) continue;
+    const unsent = Object.values(users).some((r) => r.sentMessages !== r.messages || r.sentMinutes !== r.minutes);
+    if (unsent) continue;
+    delete state.days[day];
+    dropped++;
   }
   return dropped;
 }

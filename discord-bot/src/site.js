@@ -2,11 +2,16 @@ import { config } from "./config.js";
 
 const CHUNK = 500; // site limit per call
 
+const TIMEOUT_MS = 20_000;
+
 async function post(path, body) {
+  // with no timeout a black-holed connection never settles, and the flush that
+  // is waiting on it never lets go of its lock or writes state.json again
   const res = await fetch(`${config.siteUrl}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ key: config.tokenKey, ...body }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   let json = null;
   try {

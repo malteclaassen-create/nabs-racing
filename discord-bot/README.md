@@ -7,7 +7,7 @@ Small bot that sits on the league Discord and sends two things to the website:
 
 That's all it does. It doesn't read messages (doesn't even have the permission for it), doesn't post anything, doesn't touch roles. It just counts.
 
-AFK time in voice counts too, we decided that on purpose. The multiplier only boosts racing, so sitting in a channel alone gets you nothing.
+Voice minutes only count when you're actually there: not muted, not deafened, not alone in the channel, not parked in the AFK one. Otherwise leaving the client running overnight buys the whole multiplier. All three are switches in `.env` if the league wants it looser.
 
 ## Setup
 
@@ -66,4 +66,4 @@ The bot can run before the points are switched on for members. Good idea actuall
 - `could not read the invites` -> no Manage Server permission, rest still works
 - `website not reachable` -> site down, it retries
 - `Bad key` -> copy the key again from the admin
-- `inviter unknown` -> two people joined at the same time or via the public link. Not credited to anyone, on purpose
+- `inviter unknown` -> two people joined at the same time, or via the public link, or it's the bot's first look at the invites after a restart. Not credited to anyone, on purpose

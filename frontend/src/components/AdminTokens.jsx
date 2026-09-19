@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
@@ -162,7 +162,8 @@ function MemberRow({ m, onAdjust, busy }) {
   const goesNegative = amount > m.balance;
 
   async function book(sign) {
-    await onAdjust(m.discordId, sign * amount, note);
+    const ok = await onAdjust(m.discordId, sign * amount, note);
+    if (!ok) return; // the error is on screen; keep what was typed
     setDelta("");
     setNote("");
     setOpen(false);
@@ -231,9 +232,8 @@ function MemberRow({ m, onAdjust, busy }) {
 // signing with the key below rather than with an admin login, because it runs
 // somewhere else under somebody else's hand.
 //
-// Nothing here needs doing until that bot exists. Until it does, every
-// multiplier is 1.0x and invites are counted the one way the site can see for
-// itself: the link on a member's Tokens page.
+// With no bot connected every multiplier is 1.0x and invites are counted the one
+// way the site can see for itself: the link on a member's points page.
 // ---------------------------------------------------------------------------
 function CopyField({ label, value }) {
   return (
@@ -259,9 +259,8 @@ function BotPanel() {
       <div>
         <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">The bot&rsquo;s key</div>
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-light">
-          The league&rsquo;s Discord bot counts messages and voice minutes for the multiplier and reports who
-          invited whom. This is the only thing it needs from here. It is not a login: it can do those two things
-          and nothing else. Treat it like a password anyway.
+          The bot counts messages and voice minutes for the multiplier and reports who invited whom. This key is
+          all it needs from here. Keep it like a password.
         </p>
       </div>
       <CopyField label="Key" value={bot.data.key || ""} />
@@ -304,6 +303,16 @@ function OnOff({ checked, onChange, label = "on" }) {
 
 function TuningPanel({ d, busy, onSave, onReset }) {
   const [t, setT] = useState(() => JSON.parse(JSON.stringify(d.tuning || {})));
+  // Follow the server when it changes underneath us: starting the counting
+  // stamps a start day, and without this the form would still be holding the
+  // old blank one and would wipe it on the next save.
+  const seen = useRef(JSON.stringify(d.tuning || {}));
+  useEffect(() => {
+    const now = JSON.stringify(d.tuning || {});
+    if (now === seen.current) return;
+    seen.current = now;
+    setT(JSON.parse(now));
+  }, [d.tuning]);
   const get = (section, key, field) => t?.[section]?.[key]?.[field];
   const set = (section, key, field, value) =>
     setT((prev) => {
@@ -332,8 +341,8 @@ function TuningPanel({ d, busy, onSave, onReset }) {
         <div className="min-w-0">
           <Head>Counting from</Head>
           <p className="mt-1 text-xs leading-relaxed text-light">
-            Races before this day pay nothing. Set to the day the points went live by itself; empty means every race
-            ever, back to season 1.
+            Races before this day pay nothing. The site fills it in the first time you start the counting. Empty
+            means every race ever, back to season 1.
           </p>
         </div>
         <input
@@ -497,6 +506,9 @@ export default function AdminTokens() {
   const [done, setDone] = useState(null);
   const reload = data.reload;
 
+  // Returns whether it worked, because a caller that clears its own fields
+  // afterwards has to know: a failed booking used to wipe the amount and the
+  // note and leave the admin guessing whether it had gone through.
   async function run(fn, message) {
     setBusy(true);
     setError(null);
@@ -505,8 +517,12 @@ export default function AdminTokens() {
       await fn();
       setDone(message);
       reload();
+      // Balances and the switches both change what the nav bar shows.
+      window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -611,12 +627,7 @@ export default function AdminTokens() {
                   m={m}
                   busy={busy}
                   onAdjust={(discordId, delta, note) =>
-                    run(async () => {
-                      await api.adjustTokens(discordId, delta, note);
-                      // An admin booking their OWN balance would otherwise keep
-                      // the old number in the nav bar until the next page load.
-                      window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
-                    }, "Booked.")
+                    run(() => api.adjustTokens(discordId, delta, note), "Booked.")
                   }
                 />
               ))}

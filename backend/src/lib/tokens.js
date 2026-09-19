@@ -1,33 +1,16 @@
 // ---------------------------------------------------------------------------
-// Server tokens: the league's reward currency.
+// NABS Points: the league's reward currency. Called tokens throughout the code
+// so it is never confused with championship points; the site says NABS Points.
 //
-// A member earns tokens for the things that grow the server — racing, and
-// bringing other people in through their own invite link — and spends them in a
-// small shop (a helmet of their own, a card background, a role on Discord).
-// Championship points decide the title; these decide nothing, which is exactly
-// why they are called TOKENS and not points. Two currencies with the same name
-// on one site would have been read wrong by somebody within the week.
+// Two switches, and they are separate on purpose. tokens_enabled decides who
+// SEES any of it (off / admins / everyone), tokens_earning decides whether
+// anything is being COUNTED. So the league can put the whole thing in front of
+// the grid, set the prices, and start the counting on a day it picks.
 //
-// TRIAL FEATURE. Everything here is behind one switch (see isTokensEnabled):
-// OFF on a real deployment unless an admin turns it on, ON locally. Disabled
-// means the API says "not available" and the frontend shows no door to it at
-// all, so the half-built shop cannot be found by a driver before the league has
-// decided what the prizes actually are.
-//
-// --- how the earning works --------------------------------------------------
-//
-// Nothing is awarded at the moment it happens. The ledger is RECONCILED: when a
-// member's balance is read, we count what they have actually done (races
-// driven, people invited and what those people have done) and write the rows
-// that are missing, each under a `refKey` that is unique per member. Running it
-// twice changes nothing, and a rule added next month pays out retroactively for
-// everything that already happened — which for a system that will certainly be
-// re-tuned a few times is worth far more than the milliseconds it costs.
-//
-// So there is no hook in the race import, no hook in the login, and no way for
-// a crash between two writes to leave somebody paid twice or not at all.
-//
-// --- the tables -------------------------------------------------------------
+// Nothing is awarded when it happens. The ledger is RECONCILED: reading a
+// balance counts what the member has actually done and writes the missing rows,
+// each under a refKey that is unique per member. Running it twice changes
+// nothing, and a rule added next month pays out retroactively.
 //
 //   TokenAccount     one row per member: their invite code, and who invited THEM
 //   TokenLedger      append-only. balance = SUM(delta). refKey makes it idempotent
@@ -343,20 +326,11 @@ export async function dbAccountByCode(prisma, code) {
   return rows[0] || null;
 }
 
-// Record that `discordId` arrived through `code`. Deliberately unforgiving, and
-// every one of these three rules is load-bearing:
-//
-//   * a member keeps the FIRST inviter they ever had, for good
-//   * nobody invites themselves
-//   * only somebody who has never raced can be claimed as an invite
-//
-// The last one is the one that stops the obvious exploit. Payouts for an invite
-// are retroactive over that person's whole career, so without it, sending your
-// link to a driver who has been in the league for three seasons and having them
-// click it would pay you for their seventy races. "Invited" has to mean "was
-// not here yet", and the honest version of that is: they have not raced.
-//
-// Returns the inviter's id when something was actually written.
+// Record that `discordId` arrived through `code`. Three rules, all of them
+// load-bearing: the first inviter sticks, nobody invites themselves, and only
+// somebody who has never raced can be claimed. The last one stops the obvious
+// one: invites pay retroactively, so claiming a three-season regular would pay
+// for their whole career. Returns the inviter's id if anything was written.
 export async function attachReferral(prisma, discordId, code) {
   if (!code) return null;
   const inviter = await dbAccountByCode(prisma, code);
@@ -576,9 +550,7 @@ export async function activityKeyValid(prisma, given) {
 
 
 // One day of one member's activity, as the bot reports it. Absolute totals for
-// that day, not increments: the bot can send today's numbers as often as it
-// likes — every five minutes, or twice because it restarted — and the row ends
-// up saying the same thing either way.
+// that day, not increments, so the bot can resend a day as often as it likes.
 export async function recordActivity(prisma, discordId, { day, messages = 0, minutes = 0 } = {}) {
   if (!discordId) return { error: "Which member?" };
   const d = String(day || leagueDay());
@@ -618,8 +590,8 @@ export async function activityTotals(prisma, discordId) {
   }
 }
 
-// The multiplier this member currently carries. Nothing writes the daily rows
-// yet, so this is 1.0 for everybody until the bot exists — see lib/tokenRules.js.
+// The multiplier this member currently carries. 1.0 for everybody until the
+// Discord bot is reporting, see lib/tokenRules.js.
 export async function multiplierFor(prisma, discordId) {
   const totals = await activityTotals(prisma, discordId);
   return { ...activityMultiplier(totals, tunedMultiplier()), ...totals, windowDays: ACTIVITY_WINDOW_DAYS };

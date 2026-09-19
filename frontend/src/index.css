@@ -1848,10 +1848,14 @@ body::before {
 .fx-lite .rcard-frame[data-edition="neon"] .rcard-innerline { animation: none !important; }
 
 /* 3D card flip (restored from the July build): front = the rating card, back =
-   the league's card back. User-triggered, so it stays enabled in lite mode. */
+   the league's card back. */
 .cardflip { position: relative; perspective: 1400px; }
 .cardflip-inner { position: relative; transform-style: preserve-3d;
   transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.25, 1); }
+/* The turn itself is off in lite mode and under reduced motion: the card still
+   swaps face, it just gets there without the half second of rotation. */
+@media (prefers-reduced-motion: reduce) { .cardflip-inner { transition: none; } }
+.fx-lite .cardflip-inner { transition: none; }
 .cardflip.is-flipped .cardflip-inner { transform: rotateY(180deg); }
 .cardflip-front, .cardflip-back { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .cardflip-back { position: absolute; inset: 0; transform: rotateY(180deg); }

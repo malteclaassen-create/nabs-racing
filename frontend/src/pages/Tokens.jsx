@@ -11,16 +11,9 @@ import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
 
 // ---------------------------------------------------------------------------
-// Server tokens: the member's own page.
-//
-// What they have, how it got there, how to get more, and what it buys. A TRIAL,
-// and the panel says so at the top rather than pretending otherwise: the shop
-// hands out nothing by itself yet, every order is filled by a person in the
-// league office, and the prices are a first guess.
-//
-// Lives as a section of the Personal Area (/profile?tab=tokens) rather than as
-// a page of its own, next to My Rating and Race Tools, because it is the same
-// kind of thing: yours, and nobody else's business.
+// NABS Points: the member's own page. What they have, how it got there, how to
+// get more, and what it buys. Lives as a tab of the Personal Area next to My
+// Rating, because it is the same kind of thing: yours and nobody else's.
 // ---------------------------------------------------------------------------
 
 // The site's own numbers read better grouped: 1 250 rather than 1250.
@@ -39,12 +32,6 @@ function Heading({ children }) {
     <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">{children}</div>
   );
 }
-
-// The balance, and the three numbers it was built out of.
-//
-// The numbers sit UNDER the balance in a row of three, not out to the right of
-// it: the page is up to 1600px wide, and pushing them to the far edge left the
-// two halves of one card shouting at each other across an empty middle.
 
 // ---------------------------------------------------------------------------
 // The balance as a number that MOVES: after a purchase it counts down from
@@ -297,7 +284,7 @@ function MultiplierBar({ a }) {
 // The invite link. The one thing on this page somebody actually has to do
 // something with, so it gets the copy button and the plain sentence about what
 // happens when it is used.
-function InviteCard({ code, botConnected }) {
+function InviteCard({ code, botConnected, earning = true }) {
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/?ref=${code}`;
 
@@ -317,7 +304,7 @@ function InviteCard({ code, botConnected }) {
         <Heading>Your invite link</Heading>
         <p className="mt-1 text-sm leading-relaxed text-light">
           Send this to someone you want on the grid. When they open it and sign in with Discord, the league knows
-          they came from you, and it keeps paying you as they keep racing.
+          they came from you{earning ? ", and it keeps paying you as they keep racing" : ". It is noted now and pays once the counting starts"}.
           {botConnected && " Same if they join the Discord server through an invite link you made: that counts too."}
         </p>
       </div>
@@ -348,11 +335,6 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
         <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
           The marked lines are multiplied by how active you are on Discord, chat and voice together, up to 3x.
           Yours is {(multiplier || 1).toFixed(1)}x right now.
-        </p>
-      )}
-      {!earning && (
-        <p className="mb-1 mt-1 text-xs leading-relaxed text-warn">
-          Not being counted yet. Have a look at what things cost. The league says when the counting starts.
         </p>
       )}
       {earning && startDay && (
@@ -701,6 +683,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
   // Nobody should have to buy a design to find out how it sits behind their own
   // face, and nobody should have to upload a photo to the league to try one.
   const [tryPhoto, setTryPhoto] = useState(null);
+  const photoInput = useRef(null);
   const running = useRef(false);
 
   async function pickPhoto(event) {
@@ -788,7 +771,16 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                   <div className="cardflip-inner">
                     <div
                       className="cardflip-front cursor-pointer"
+                      role="button"
+                      tabIndex={flipped ? -1 : 0}
+                      aria-label="Turn the card over"
                       onClick={() => setFlipped(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setFlipped(true);
+                        }
+                      }}
                       title="Turn the card over"
                     >
                       {/* keyed on the design so React swaps the card rather
@@ -806,7 +798,18 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                         />
                       </div>
                     </div>
-                    <div className="cardflip-back">
+                    <div
+                      className="cardflip-back"
+                      role="button"
+                      tabIndex={flipped ? 0 : -1}
+                      aria-label="Turn the card back"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setFlipped(false);
+                        }
+                      }}
+                    >
                       <CardBack
                         driver={previewDriver}
                         seasonLabel={previewDriver.seasonNumber ? `SEASON ${previewDriver.seasonNumber}` : ""}
@@ -819,10 +822,10 @@ function CardDesignWindow({ data, onClose, onChanged }) {
               ) : null}
 
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <label className="btn-secondary cursor-pointer">
+                <button type="button" className="btn-secondary" onClick={() => photoInput.current?.click()}>
                   {tryPhoto ? "Another picture" : ownPhoto ? "Try another picture" : "Try your own picture"}
-                  <input type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
-                </label>
+                </button>
+                <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
                 {tryPhoto && (
                   <button type="button" className="btn-secondary" onClick={() => setTryPhoto(null)}>
                     Remove
@@ -831,7 +834,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
               </div>
               <p className="mt-2 text-center text-xs leading-relaxed text-light">
                 Move the pointer across the card, and click it to turn it over. A picture you pick here stays on
-                your machine, only for this preview.
+                your machine, just for this preview.
               </p>
             </div>
 
@@ -887,7 +890,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tabular-nums text-medium">
             <TokenIcon className="h-4 w-4 text-brand" />
-            {design ? fmt(design.cost) : "—"}
+            {design ? fmt(design.cost) : "0"}
             <span className="ml-2 font-sans text-xs font-normal text-light">you have {fmt(balance)}</span>
           </span>
           <div className="flex items-center gap-2">
@@ -1071,31 +1074,30 @@ export default function Tokens() {
   const orders = data.orders || [];
   const goalItem = goal ? data.shop.find((i) => i.key === goal) || null : null;
 
-  // Rows, not columns.
-  //
-  // The page went through a column of six full-width blocks (every row's label
-  // on the far left and its number on the far right, with a hand's width of
-  // nothing in between) and then through two columns of three, which put a
-  // seven-tile shop next to a five-line list and left half of the left column
-  // empty down the page.
-  //
-  // So each block gets the width its content actually wants: the two cards you
-  // read first share the top row at equal height, the shop and the collection
-  // are pictures and take the whole width, and the two lists sit side by side
-  // where a half-width row still reads as one line.
+  // Rows, not columns: each block gets the width its content wants. The two
+  // cards you read first share the top row at equal height, the shop and the
+  // collection are pictures and take the whole width, and the two lists sit
+  // side by side where a half-width row still reads as one line.
+  const earning = data.earning !== false;
   return (
     <div className="space-y-5">
       <Notice kind="info">
-        A trial. Nothing here is final: the prices are a first guess, orders are filled by hand in the league
-        office, and the rules below can still change.
+        A trial. Prices are a first guess, orders are filled by hand in the league office, and the rules can
+        still change.
       </Notice>
+      {!earning && (
+        <Notice kind="warn">
+          Not counting yet. Have a look around and see what things cost. Nothing you do is being paid for until
+          the league starts the counting.
+        </Notice>
+      )}
 
       {/* Balance and invite link. `items-stretch` is the default and the point:
           the two cards hold different amounts of text, and two cards of
           different heights side by side is the thing that looks unfinished. */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Balance data={data} goal={goalItem} onClearGoal={() => setGoal(null)} />
-        <InviteCard code={data.code} botConnected={!!data.botConnected} />
+        <InviteCard code={data.code} botConnected={!!data.botConnected} earning={earning} />
       </div>
 
       <Shop data={data} onChanged={changed} goal={goal} onGoal={setGoal} />
@@ -1105,7 +1107,7 @@ export default function Tokens() {
       {orders.length > 0 && <Collection orders={orders} />}
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <EarnList rules={data.rules} multiplier={data.stats?.multiplier} startDay={data.startDay} earning={data.earning !== false} />
+        <EarnList rules={data.rules} multiplier={data.stats?.multiplier} startDay={data.startDay} earning={earning} />
         <History ledger={data.ledger || []} />
       </div>
     </div>

@@ -33,6 +33,22 @@ const FOCUSABLE =
 let lockCount = 0;
 let lockedOverflow = "";
 
+// Who is on top. Escape and Tab belong to the innermost overlay ONLY, and
+// stopPropagation cannot arrange that: two dialogs both listen on `document`,
+// which is the same node twice, so both handlers run whatever the first one
+// says. A confirm opened from inside a shop window used to close both with one
+// Escape, and Tab was tugged between the two panels.
+// One stack per job, because a Modal registers for both and the two must not
+// push each other off the top of a shared one.
+const overlays = { dismiss: [], focus: [] };
+function joinOverlays(kind, token) {
+  overlays[kind] = [...overlays[kind], token];
+  return () => {
+    overlays[kind] = overlays[kind].filter((t) => t !== token);
+  };
+}
+const isOnTop = (kind, token) => overlays[kind][overlays[kind].length - 1] === token;
+
 // The scroll lock as a hook, for an overlay that keeps its own markup (the
 // feedback sheet, whose panel is anchored to its floating button rather than
 // centred, so the Modal shells do not fit it).
@@ -57,14 +73,18 @@ function lockScroll() {
 // as well when the trigger sits outside the panel, so clicking the trigger
 // again closes rather than closing-then-reopening.
 export function useDismiss(open, onDismiss, { ref, anchorRef, escape = true, outside = true } = {}) {
+  const token = useRef({});
   useEffect(() => {
     if (!open) return;
+    const me = token.current;
+    const leave = joinOverlays("dismiss", me);
     const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation(); // innermost overlay wins, not every one at once
-        onDismiss();
-      }
+      if (e.key !== "Escape" || !isOnTop("dismiss", me)) return;
+      e.stopPropagation();
+      onDismiss();
     };
+    // No stack check here on purpose: a click somewhere else on the page should
+    // shut every open dropdown, not just the one opened last.
     const onDown = (e) => {
       if (ref?.current?.contains(e.target)) return;
       if (anchorRef?.current?.contains(e.target)) return;
@@ -78,6 +98,7 @@ export function useDismiss(open, onDismiss, { ref, anchorRef, escape = true, out
       document.addEventListener("touchstart", onDown);
     }
     return () => {
+      leave();
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("touchstart", onDown);
@@ -90,8 +111,11 @@ export function useDismiss(open, onDismiss, { ref, anchorRef, escape = true, out
 // half a keyboard user notices most: without it, closing a dialog drops you at
 // the top of the document and you tab through the whole page to get back.
 export function useFocusTrap(active, ref, { initialFocus } = {}) {
+  const token = useRef({});
   useEffect(() => {
     if (!active) return;
+    const me = token.current;
+    const leave = joinOverlays("focus", me);
     const returnTo = document.activeElement;
     const panel = ref.current;
     // Move in. Prefer what the caller asked for, else the first focusable
@@ -109,7 +133,9 @@ export function useFocusTrap(active, ref, { initialFocus } = {}) {
     // trap applies here.
     const t = setTimeout(() => first?.focus?.({ preventScroll: true }), 20);
     const onKey = (e) => {
-      if (e.key !== "Tab" || !panel) return;
+      // Not ours while something deeper is open, or Tab would be pulled back
+      // and forth between the two panels and never reach the top one's buttons.
+      if (e.key !== "Tab" || !panel || !isOnTop("focus", me)) return;
       const items = [...panel.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null || el === panel);
       if (!items.length) {
         e.preventDefault();
@@ -134,6 +160,7 @@ export function useFocusTrap(active, ref, { initialFocus } = {}) {
     };
     document.addEventListener("keydown", onKey);
     return () => {
+      leave();
       clearTimeout(t);
       document.removeEventListener("keydown", onKey);
       // Take focus back, but only if it is still ours to give: nobody home

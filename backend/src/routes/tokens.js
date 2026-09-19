@@ -391,6 +391,12 @@ adminRouter.put("/tuning", async (req, res, next) => {
       studio: [...new Set(STUDIO_SLOTS)],
     });
     if (out.error) return res.status(400).json({ error: out.error });
+    // The start day is stamped by the earning switch, not typed into this form.
+    // A save that does not mention it keeps it: dropping it would put every
+    // race back to season 1 in scope, which is the one thing here that cannot
+    // be undone by typing the number back.
+    const before = await ensureTuning(prisma);
+    if (req.body?.startDay === undefined && before.startDay) out.tuning.startDay = before.startDay;
     res.json({ ok: true, tuning: await saveTuning(prisma, out.tuning) });
   } catch (e) {
     next(e);

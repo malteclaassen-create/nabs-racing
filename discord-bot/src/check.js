@@ -15,7 +15,7 @@ if (missing.length) {
 }
 if (!missing.length) {
   ok(`site: ${config.siteUrl}`);
-  ok(`key: ${config.tokenKey.slice(0, 6)}… (${config.tokenKey.length} chars)`);
+  ok(`key: set (${config.tokenKey.length} characters)`);
   if (!config.discordToken) bad("DISCORD_TOKEN missing (not needed for this check, needed to run)");
   else ok("DISCORD_TOKEN set");
   if (!config.guildId) bad("GUILD_ID missing (not needed for this check, needed to run)");

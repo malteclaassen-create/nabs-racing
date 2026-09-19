@@ -52,11 +52,19 @@ describe("pendingActivity", () => {
 });
 
 describe("forgetOldDays", () => {
-  it("drops old days only", () => {
+  it("drops old days the site has taken", () => {
     const s = fresh();
     bumpMessages(s, "steve", 1, "2026-09-18");
     bumpMessages(s, "steve", 1, "2026-07-01");
+    markSent(s, [{ discordId: "steve", day: "2026-07-01", messages: 1, minutes: 0 }]);
     expect(forgetOldDays(s, Date.parse("2026-09-18T12:00:00Z"))).toBe(1);
     expect(Object.keys(s.days)).toEqual(["2026-09-18"]);
+  });
+
+  it("keeps an old day the site never took", () => {
+    const s = fresh();
+    bumpMessages(s, "steve", 1, "2026-07-01");
+    expect(forgetOldDays(s, Date.parse("2026-09-18T12:00:00Z"))).toBe(0);
+    expect(Object.keys(s.days)).toEqual(["2026-07-01"]);
   });
 });

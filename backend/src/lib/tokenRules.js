@@ -39,10 +39,8 @@
 // multiplier only ever multiplies RACING, so somebody parked in a channel all
 // week still earns nothing until they turn up on a Friday.
 //
-// NOTE: nothing fills those daily rows yet — that needs the league's Discord
-// bot, which does not exist. Until it does, every multiplier is 1.0x and the
-// maths below sits inert, which is why it is worth having pinned down by tests
-// now rather than written in a hurry the evening the bot arrives.
+// The daily rows are filled by the league's Discord bot (discord-bot/). With no
+// bot connected every multiplier is 1.0x and the maths below just sits there.
 // ---------------------------------------------------------------------------
 
 // How far back the multiplier looks, in days, counted in the league's own

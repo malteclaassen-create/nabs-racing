@@ -14,7 +14,8 @@ export function leagueDay(t = Date.now()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-// website looks at 30 days, keep a bit more in case a send failed
+// website looks at 30 days, keep a bit more. anything the site has not taken
+// yet is kept whatever its age (see forgetOldDays)
 export const KEEP_DAYS = 35;
 
 export function isStale(day, now = Date.now()) {

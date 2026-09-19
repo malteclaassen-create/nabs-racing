@@ -34,7 +34,14 @@ export const config = {
   tokenKey: process.env.TOKEN_KEY || "",
   countChannels: list(process.env.COUNT_CHANNELS),
   ignoreChannels: list(process.env.IGNORE_CHANNELS),
-  countAfkChannel: String(process.env.COUNT_AFK_CHANNEL ?? "true") !== "false",
+  // AFK channel off by default. On, it pays a full multiplier for leaving the
+  // client running overnight, which is the one way to earn here without doing
+  // anything at all.
+  countAfkChannel: String(process.env.COUNT_AFK_CHANNEL ?? "false") === "true",
+  // Muted or deafened is not "on Discord with the others", it is a window left
+  // open. Same for sitting in a channel alone.
+  countMuted: String(process.env.COUNT_MUTED ?? "false") === "true",
+  countAlone: String(process.env.COUNT_ALONE ?? "false") === "true",
   pushEveryMs: Math.max(1, Number(process.env.PUSH_EVERY_MINUTES) || 5) * 60 * 1000,
   statePath: join(ROOT, "state.json"),
 };
