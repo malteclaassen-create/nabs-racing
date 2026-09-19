@@ -815,6 +815,19 @@ model TokenActivity {
   @@index([day])
 }
 
+// What a race was worth, per driver, fixed the first time the round was saved.
+// The multiplier moves every day, so without this a round would be worth
+// whatever the member's last thirty days happened to look like on the day the
+// site got round to paying it. Stamped at import, never rewritten.
+model TokenRaceRate {
+  raceId    String
+  driverId  String
+  rate      Float
+  stampedAt DateTime @default(now())
+
+  @@id([raceId, driverId])
+}
+
 // What a member wears on their public profile page (profile studio): the
 // design id per slot, ownership lives in TokenRedemption.
 model ProfileStyle {

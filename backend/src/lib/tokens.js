@@ -7,10 +7,21 @@
 // anything is being COUNTED. So the league can put the whole thing in front of
 // the grid, set the prices, and start the counting on a day it picks.
 //
-// Nothing is awarded when it happens. The ledger is RECONCILED: reading a
-// balance counts what the member has actually done and writes the missing rows,
-// each under a refKey that is unique per member. Running it twice changes
-// nothing, and a rule added next month pays out retroactively.
+// A round is paid the moment it is SAVED (payRace, called from raceWriter), at
+// the multiplier each driver carries that night. That rate is stamped into
+// TokenRaceRate and never rewritten, so a correction three weeks later does not
+// re-value the evening.
+//
+// Everything else is RECONCILED: reading a balance counts what the member has
+// actually done and writes the missing rows, each under a refKey that is unique
+// per member. Running it twice changes nothing, a rule added next month pays out
+// retroactively, and a round that could not be paid on the night (the counting
+// was paused, the clean-race bonus was still with the stewards) is picked up
+// here, at the stamped rate.
+//
+// A payment for a round is filed under the ROUND and the DRIVER. Saving a round
+// deletes its result rows and writes them again with fresh ids, so a key built
+// from the row id looked new after every correction and paid the grid twice.
 //
 //   TokenAccount     one row per member: their invite code, and who invited THEM
 //   TokenLedger      append-only. balance = SUM(delta). refKey makes it idempotent
@@ -381,7 +392,11 @@ export async function dbAward(prisma, { discordId, delta, rule, title, detail = 
   const when = at ? new Date(at) : null;
   const stamp = when && !Number.isNaN(when.getTime()) ? when.toISOString() : null;
   try {
-    await prisma.$executeRawUnsafe(
+    // The count of rows actually written, so a caller can tell "paid" from
+    // "already paid": OR IGNORE swallows the second attempt silently, and a
+    // function that reports a payout either way is a function that lies in the
+    // log every time a round is saved again.
+    const written = await prisma.$executeRawUnsafe(
       `INSERT OR IGNORE INTO "TokenLedger" ("id","discordId","delta","rule","title","detail","refKey","createdAt")
        VALUES (?,?,?,?,?,?,?,COALESCE(?, CURRENT_TIMESTAMP))`,
       randomUUID(),
@@ -393,7 +408,7 @@ export async function dbAward(prisma, { discordId, delta, rule, title, detail = 
       refKey,
       stamp
     );
-    return true;
+    return Number(written) > 0;
   } catch {
     return false;
   }
@@ -485,6 +500,134 @@ function startOfStartDay() {
   return leagueDayStart(tunedStartDay());
 }
 
+// What a payment for a round is filed under. The ROUND and the DRIVER, never
+// the result row's id: saving a round deletes its result rows and writes them
+// again with fresh ids (services/raceWriter.js), so a key built from the row id
+// looks new after every correction and pays the whole grid a second time.
+const raceKey = (kind, r) => `${kind}:${r.raceId || "?"}:${r.driverId || "?"}`;
+
+// The Discord account behind each of these driver rows, following the person
+// links, so somebody who signed in on one season's row is found from another.
+async function discordForDrivers(prisma, driverIds) {
+  const out = new Map();
+  const ids = [...new Set((driverIds || []).filter(Boolean))];
+  if (!ids.length) return out;
+  const ph = ids.map(() => "?").join(",");
+  const own = await prisma
+    .$queryRawUnsafe(`SELECT "id","discordUserId" FROM "Driver" WHERE "id" IN (${ph})`, ...ids)
+    .catch(() => []);
+  for (const r of own) if (r.discordUserId) out.set(r.id, r.discordUserId);
+  const rest = ids.filter((id) => !out.has(id));
+  if (!rest.length) return out;
+  const ph2 = rest.map(() => "?").join(",");
+  const linked = await prisma
+    .$queryRawUnsafe(
+      `SELECT mine."driverId" AS "want", d."discordUserId" AS "discordId"
+         FROM "PersonLink" mine
+         JOIN "PersonLink" sib ON sib."personId" = mine."personId"
+         JOIN "Driver" d ON d."id" = sib."driverId"
+        WHERE mine."driverId" IN (${ph2}) AND d."discordUserId" IS NOT NULL`,
+      ...rest
+    )
+    .catch(() => []);
+  for (const r of linked) if (!out.has(r.want)) out.set(r.want, r.discordId);
+  return out;
+}
+
+// What this round is worth, fixed now and never again. Written the first time a
+// round is saved; a correction weeks later finds the stamp already there and
+// leaves it, so re-importing a round to fix one penalty does not re-value
+// everybody else's evening.
+export async function stampRaceRates(prisma, raceId) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT r."driverId" FROM "RaceResult" r
+         LEFT JOIN "TokenRaceRate" t ON t."raceId" = r."raceId" AND t."driverId" = r."driverId"
+        WHERE r."raceId" = ? AND t."driverId" IS NULL`,
+      raceId
+    )
+    .catch(() => []);
+  const ids = [...new Set(rows.map((r) => r.driverId).filter(Boolean))];
+  if (!ids.length) return 0;
+  const accounts = await discordForDrivers(prisma, ids);
+  let n = 0;
+  for (const driverId of ids) {
+    const discordId = accounts.get(driverId);
+    // No Discord account means no activity to measure, so a plain 1.0. Which is
+    // what they would have been paid anyway.
+    const rate = discordId ? (await multiplierFor(prisma, discordId)).total : 1;
+    const ok = await prisma
+      .$executeRawUnsafe(
+        `INSERT OR IGNORE INTO "TokenRaceRate" ("raceId","driverId","rate") VALUES (?,?,?)`,
+        raceId,
+        driverId,
+        Number(rate) || 1
+      )
+      .catch(() => 0);
+    if (ok) n++;
+  }
+  return n;
+}
+
+// A round has been saved: fix what it is worth and pay it out now, rather than
+// waiting for each member to open their page. Called from the tail of
+// saveRaceResults, best-effort — a reward currency must never be able to break
+// an import.
+export async function payRace(prisma, raceId) {
+  const stamped = await stampRaceRates(prisma, raceId);
+  if (!(await isEarningOn(prisma))) return { stamped, paid: 0 };
+  const from = startOfStartDay();
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT r."driverId" AS "driverId", r."penaltySeconds" AS "penaltySeconds",
+              r."gamePenalties" AS "gamePenalties",
+              ra."id" AS "raceId", ra."track" AS "track", ra."date" AS "date",
+              rate."rate" AS "rate"
+         FROM "RaceResult" r
+         JOIN "Race" ra ON ra."id" = r."raceId"
+         LEFT JOIN "TokenRaceRate" rate ON rate."raceId" = ra."id" AND rate."driverId" = r."driverId"
+        WHERE r."raceId" = ? AND ra."isCompleted" = 1 AND r."status" = 'FINISHED'
+          ${from == null ? "" : `AND ra."date" >= ?`}`,
+      ...(from == null ? [raceId] : [raceId, from])
+    )
+    .catch(() => []);
+  if (!rows.length) return { stamped, paid: 0 };
+  const accounts = await discordForDrivers(prisma, rows.map((r) => r.driverId));
+  let paid = 0;
+  for (const r of rows) {
+    const discordId = accounts.get(r.driverId);
+    if (!discordId) continue; // never signed in: nothing to pay it into yet
+    await ensureTokenAccount(prisma, discordId);
+    const rate = Number(r.rate) || 1;
+    if (ruleOn("race_finish")) {
+      const wrote = await dbAward(prisma, {
+        discordId,
+        delta: withMultiplier(tunedPoints("race_finish"), rate),
+        rule: "race_finish",
+        title: "Finished a race",
+        detail: r.track || null,
+        refKey: raceKey("race", r),
+        at: r.date,
+      });
+      if (wrote) paid++;
+    }
+    // Usually still open on the night: the bonus waits for the stewards and is
+    // picked up by syncEarned on the Tuesday, at the rate stamped above.
+    if (ruleOn("clean_race") && raceWasClean(r) && stewardingClosed(r.date)) {
+      await dbAward(prisma, {
+        discordId,
+        delta: withMultiplier(tunedPoints("clean_race"), rate),
+        rule: "clean_race",
+        title: "Clean race, no penalties",
+        detail: r.track || null,
+        refKey: raceKey("clean", r),
+        at: r.date,
+      });
+    }
+  }
+  return { stamped, paid };
+}
+
 // Every race this member has FINISHED, with what the round needs for the
 // clean-race bonus. DNS, DNF and DSQ are not finishes and pay nothing: the
 // league's sheet says "FINISH a race".
@@ -497,11 +640,14 @@ async function racesFinished(prisma, discordId) {
   // an integer, which is never true, and every race quietly pays nothing.
   const from = startOfStartDay();
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT r."id" AS "resultId", r."penaltySeconds" AS "penaltySeconds",
+    `SELECT r."id" AS "resultId", r."driverId" AS "driverId",
+            r."penaltySeconds" AS "penaltySeconds",
             r."gamePenalties" AS "gamePenalties",
-            ra."track" AS "track", ra."date" AS "date"
+            ra."id" AS "raceId", ra."track" AS "track", ra."date" AS "date",
+            rate."rate" AS "rate"
        FROM "RaceResult" r
        JOIN "Race" ra ON ra."id" = r."raceId"
+       LEFT JOIN "TokenRaceRate" rate ON rate."raceId" = ra."id" AND rate."driverId" = r."driverId"
       WHERE r."driverId" IN (${ph}) AND ra."isCompleted" = 1 AND r."status" = 'FINISHED'
         ${from == null ? "" : `AND ra."date" >= ?`}
       ORDER BY ra."date" ASC`,
@@ -605,12 +751,14 @@ export async function syncEarned(prisma, discordId) {
   // start day is credited in one go.
   if (!(await isEarningOn(prisma))) return;
   await ensureTokenAccount(prisma, discordId);
-  // The multiplier is applied when a race is PAID, and the row is written once
-  // and never rewritten. So it is the multiplier you had when the round landed,
-  // not the one you have today: racing in a week you were around for is worth
-  // what it was worth that week, and nobody's history silently re-values itself
-  // every time they say something on Discord.
-  const { total: multiplier } = await multiplierFor(prisma, discordId);
+  // A round is worth what it was worth the night it was imported: payRace
+  // stamps each driver's multiplier then (TokenRaceRate) and everything here
+  // reads that stamp. The live multiplier is only the fallback, for a round
+  // saved before any of this existed. Without it a race would be worth whatever
+  // the member's last thirty days happened to look like on the day the site got
+  // round to paying it, which is a different number every day.
+  const { total: live } = await multiplierFor(prisma, discordId);
+  const rateOf = (r) => Number(r.rate) || live;
 
   // --- what they finished themselves
   for (const r of await racesFinished(prisma, discordId)) {
@@ -619,11 +767,11 @@ export async function syncEarned(prisma, discordId) {
     if (ruleOn("race_finish"))
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("race_finish"), multiplier),
+        delta: withMultiplier(tunedPoints("race_finish"), rateOf(r)),
         rule: "race_finish",
         title: "Finished a race",
         detail: r.track || null,
-        refKey: `race:${r.resultId}`,
+        refKey: raceKey("race", r),
         at: r.date,
       });
     // The bonus for a round nobody was penalised in, once the stewards are done
@@ -632,11 +780,11 @@ export async function syncEarned(prisma, discordId) {
     if (ruleOn("clean_race") && raceWasClean(r) && stewardingClosed(r.date)) {
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("clean_race"), multiplier),
+        delta: withMultiplier(tunedPoints("clean_race"), rateOf(r)),
         rule: "clean_race",
         title: "Clean race, no penalties",
         detail: r.track || null,
-        refKey: `clean:${r.resultId}`,
+        refKey: raceKey("clean", r),
         at: r.date,
       });
     }
@@ -654,9 +802,9 @@ export async function syncEarned(prisma, discordId) {
       detail: who,
       refKey: `referral-join:${inv.discordId}`,
     });
-    // Their first twelve finishes pay, and then this stops. Keyed on the race
-    // itself rather than on a running count, so the cap cannot be walked past
-    // by a race being re-imported or a result being corrected.
+    // Their first twelve finishes pay, and then this stops. Keyed on the round
+    // rather than on a running count, so the cap cannot be walked past by a
+    // result being corrected.
     if (!ruleOn("referral_race")) continue;
     const theirs = (await racesFinished(prisma, inv.discordId)).slice(0, tunedReferralLimit());
     for (const r of theirs) {
@@ -666,7 +814,7 @@ export async function syncEarned(prisma, discordId) {
         rule: "referral_race",
         title: `${who} finished a race`,
         detail: r.track || null,
-        refKey: `referral-race:${inv.discordId}:${r.resultId}`,
+        refKey: `referral-race:${inv.discordId}:${r.raceId || r.resultId}`,
         at: r.date,
       });
     }

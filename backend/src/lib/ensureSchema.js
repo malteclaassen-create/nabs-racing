@@ -651,8 +651,8 @@ export async function ensureAppSchema(prisma) {
   // How active a member is on Discord, ONE ROW PER DAY (migration
   // token_activity). The multiplier looks at the last thirty of them, so what
   // is stored has to be able to shrink again — which a running total cannot.
-  // NOTHING writes these yet: they are what the league's Discord bot will
-  // report once it exists, and until then every multiplier is a plain 1.0x.
+  // Filled by the league's Discord bot (discord-bot/). With no bot connected
+  // there are no rows and every multiplier is a plain 1.0x.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenActivity" (
     "discordId" TEXT NOT NULL,
     "day" TEXT NOT NULL,
@@ -699,6 +699,18 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "TokenRedemption_discordId_idx" ON "TokenRedemption"("discordId")`
   );
+  // What a round was worth per driver (migration token_race_rate). The
+  // multiplier moves every day, so the rate is fixed the first time the round
+  // is saved and never rewritten: the race is worth what it was worth that
+  // night, whenever the site gets round to paying it out.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenRaceRate" (
+    "raceId" TEXT NOT NULL,
+    "driverId" TEXT NOT NULL,
+    "rate" REAL NOT NULL,
+    "stampedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("raceId", "driverId")
+  )`);
+
   // Profile studio: what each member has put on their profile page.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ProfileStyle" (
     "discordId" TEXT NOT NULL PRIMARY KEY,

@@ -50,6 +50,12 @@ Every number on that page is editable. Empty field = the default. Numbers raised
 pay out backwards (a race already driven gets the difference), numbers lowered
 leave what was paid.
 
+**When a race is paid:** the moment you import or save the result. The
+multiplier moves every day, so what the round pays is decided that night and
+written down per driver. Correcting a penalty and saving again does not change
+what the round was worth and does not pay anybody twice. The clean-race bonus
+still waits for the Tuesday, but at the rate from the night of the race.
+
 ## 3. The shop
 
 Also under "Rules and prices": price per item, and a "for sale" tick to hide one

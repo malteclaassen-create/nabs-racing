@@ -10,6 +10,7 @@ import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 import { invalidateCardRatingCache } from "./cardRatingService.js";
 import { readParentIds } from "../lib/sprintRaces.js";
+import { payRace } from "../lib/tokens.js";
 
 // Rejects obviously broken input BEFORE anything is written, with messages an
 // admin can act on. Throws a 400-flagged error (the express error handler
@@ -246,6 +247,12 @@ export async function saveRaceResults(prisma, raceId, results) {
   // a no-op there. Raw SQL so it works even before the generated client is
   // refreshed for the new column (same idiom as the telemetry columns above).
   const steamIdConflicts = await reconcileSteamIds(prisma, results, drivers);
+  // NABS Points for the round, now. The multiplier a member carries moves every
+  // day, so what a race pays is decided the night it is imported, not whenever
+  // that member next happens to open their points page. payRace fixes the rate
+  // per driver and writes the money straight away (lib/tokens.js). Best-effort
+  // like the steam ids above: a reward currency must never break an import.
+  await payRace(prisma, raceId).catch((e) => console.warn(`[tokens] round not paid: ${e.message}`));
   // New results move the all-time records — drop the Hall of Fame cache so the
   // page reflects the round immediately instead of after the cache TTL.
   invalidateRecordsCache();
