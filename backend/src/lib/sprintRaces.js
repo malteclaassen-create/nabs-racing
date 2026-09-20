@@ -126,12 +126,15 @@ export async function withSprintClassifications(prisma, rounds) {
 // sprint flag (lib/cockpitArchive.js). So every reader that goes from a race
 // row to a file (the reports, their anchors and contact lists) runs the rows
 // through here first: a child comes back with its event's `number` and
-// `sprint: true`, everything else with `sprint: false`. Rows carry at least
-// `id` and `number`.
+// `sprint: true`, everything else with `sprint: false`. An event that has a
+// sprint says so (`hasSprint`), so a label can call it the feature; and every
+// row names the round it belongs to (`roundId`: the event's id, its own for
+// anything else), so the two races of one evening count as one round. Rows
+// carry at least `id` and `number`.
 export async function withSprintRounds(prisma, races) {
   const rows = (races || []).filter(Boolean);
-  const parentOf = await readParentIds(prisma, rows.map((r) => r.id));
-  if (!parentOf.size) return rows.map((r) => ({ ...r, sprint: false }));
+  const ids = rows.map((r) => r.id);
+  const [parentOf, childOf] = await Promise.all([readParentIds(prisma, ids), readSprintChildren(prisma, ids)]);
   const known = new Map(rows.map((r) => [r.id, r.number]));
   const missing = [...new Set([...parentOf.values()])].filter((id) => !known.has(id));
   if (missing.length) {
@@ -141,7 +144,9 @@ export async function withSprintRounds(prisma, races) {
     for (const p of parents) known.set(p.id, p.number);
   }
   return rows.map((r) =>
-    parentOf.has(r.id) ? { ...r, number: known.get(parentOf.get(r.id)) ?? null, sprint: true } : { ...r, sprint: false }
+    parentOf.has(r.id)
+      ? { ...r, number: known.get(parentOf.get(r.id)) ?? null, sprint: true, hasSprint: false, roundId: parentOf.get(r.id) }
+      : { ...r, sprint: false, hasSprint: childOf.has(r.id), roundId: r.id }
   );
 }
 

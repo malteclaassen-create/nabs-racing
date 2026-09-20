@@ -14,6 +14,16 @@ describe("recentRoundIds", () => {
     expect([...recentRoundIds(races, 2)]).toEqual(["r3", "r2"]);
   });
 
+  it("counts a sprint weekend's two races as one round", () => {
+    const races = [
+      { id: "r3", date: "2026-08-14", roundId: "r3" },
+      { id: "r3s", date: "2026-08-14", roundId: "r3" }, // the sprint of r3
+      { id: "r2", date: "2026-08-07", roundId: "r2" },
+      { id: "r1", date: "2026-08-01", roundId: "r1" },
+    ];
+    expect([...recentRoundIds(races, 2)]).toEqual(["r3", "r3s", "r2"]);
+  });
+
   it("takes everything when there are fewer rounds than the window", () => {
     expect(recentRoundIds([race("r1", "2026-08-01")], 3).size).toBe(1);
   });

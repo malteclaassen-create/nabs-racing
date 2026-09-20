@@ -40,7 +40,8 @@ const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 // "R5 Spa", "R5 Spa Sprint". The desk's races already carry their event's
 // round number and the sprint flag (routes/admin.js, withSprintRounds).
-const raceLabel = (r) => `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.sprint ? " Sprint" : ""}`;
+const raceLabel = (r) =>
+  `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.sprint ? " Sprint" : r.hasSprint ? " Feature" : ""}`;
 
 // Where the file's own guess at the accused came from, in the two words a
 // steward needs to weigh it. "Matched" is the contact an in-game press was

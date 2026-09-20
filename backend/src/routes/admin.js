@@ -48,6 +48,7 @@ import {
 import { stashIncoming, archiveCommitted, refreshArchiveIndex } from "../lib/resultsArchive.js";
 import { archiveFilesFor } from "../lib/cockpitArchive.js";
 import { forgetRound } from "../lib/raceContacts.js";
+import { rehomeWeekendReports } from "../lib/reportRehome.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
@@ -707,6 +708,19 @@ router.post("/races/commit", async (req, res, next) => {
       // (lib/reportAnchor.js); whatever the contact reader cached for the round
       // before the file existed, or for the file this one replaces, is stale now.
       forgetRound(season, roundNumber, isSprint);
+      // A sprint weekend's in-game reports all arrived on the event; with the
+      // files' clocks known, the sprint's move to the sprint
+      // (lib/reportRehome.js). Best-effort like the archive itself.
+      try {
+        const parent = isSprint ? sprintOf : race;
+        const childId = isSprint ? race.id : (await readSprintChildren(prisma, [race.id])).get(race.id);
+        if (childId) {
+          const moved = await rehomeWeekendReports(prisma, { season, parent, child: { id: childId } });
+          if (moved) console.log(`reports: moved ${moved} in-game report(s) between round ${parent.number}'s feature and sprint`);
+        }
+      } catch (e) {
+        console.error("reports: rehome after import:", e.message);
+      }
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported

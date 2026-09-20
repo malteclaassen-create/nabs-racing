@@ -152,6 +152,16 @@ export function sessionStartForRound(season, raceNumber, sprint = false) {
   return contactsForRound(season, raceNumber, sprint).start;
 }
 
+// The session's clock window as unix seconds, { start, end }: the replay's
+// start (above) and the last lap anybody crossed the line on. Null without a
+// file. What tells a sprint weekend's two races apart by the clock
+// (lib/reportRehome.js).
+export function sessionWindowForRound(season, raceNumber, sprint = false) {
+  const round = contactsForRound(season, raceNumber, sprint);
+  if (!round.archived || round.start == null || round.end == null) return null;
+  return { start: round.start, end: round.end };
+}
+
 // Every participant's name in the file -> their Steam GUID, exactly as the
 // game wrote both. This is what lets a report be matched to a person whose
 // ROSTER spelling differs from their in-game name: the report's name came off
@@ -220,6 +230,12 @@ function buildRound(season, raceNumber, sprint) {
     lapsByGuid.get(l.DriverGuid).push(t);
   }
   for (const arr of lapsByGuid.values()) arr.sort((a, b) => a - b);
+  // The last lap crossed in the file: where the session's clock window ends.
+  let end = null;
+  for (const arr of lapsByGuid.values()) {
+    const last = arr[arr.length - 1];
+    if (last != null && (end == null || last > end)) end = last;
+  }
 
   // The position in the file is captured BEFORE anything is thrown away,
   // because that position is the one number the league's replay app puts in
@@ -278,7 +294,7 @@ function buildRound(season, raceNumber, sprint) {
       b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "", lap: lapAt(lapsByGuid.get(e.OtherDriver.Guid) || [], at) },
     });
   }
-  return { archived: true, start, contacts: out, names };
+  return { archived: true, start, end, contacts: out, names };
 }
 
 // Whether the round's result file is on disk at all. An empty contact list means

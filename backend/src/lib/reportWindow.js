@@ -20,18 +20,29 @@ export const RECENT_ROUNDS = 3;
 // The newest rounds by race date. A round with no date sorts LAST rather than
 // winning by accident: an undated row is a fixture somebody has not filled in
 // yet, and it must not push a real race night out of the window.
+//
+// The two races of a sprint weekend are ONE round here (`roundId`, set by
+// lib/sprintRaces.js withSprintRounds; a row without one is its own round):
+// they were one evening, and letting them take two of the three slots would
+// push a real race night out of the window.
 export function recentRoundIds(races, howMany = RECENT_ROUNDS) {
   if (!Array.isArray(races) || howMany <= 0) return new Set();
   const at = (r) => {
     const t = r?.date ? new Date(r.date).getTime() : NaN;
     return Number.isFinite(t) ? t : -Infinity;
   };
-  return new Set(
-    [...races]
-      .sort((a, b) => at(b) - at(a))
-      .slice(0, howMany)
-      .map((r) => r.id)
-  );
+  const sorted = [...races].sort((a, b) => at(b) - at(a));
+  const rounds = new Set();
+  const out = new Set();
+  for (const r of sorted) {
+    const round = r.roundId || r.id;
+    if (!rounds.has(round)) {
+      if (rounds.size >= howMany) continue;
+      rounds.add(round);
+    }
+    out.add(r.id);
+  }
+  return out;
 }
 
 // The reports a windowed list serves: everything in the newest rounds, plus

@@ -121,12 +121,12 @@ describe("withSprintRounds", () => {
     const child = await ensureSprintChild(prisma, parent);
     // The child on its own: the parent's number has to be looked up.
     const [alone] = await withSprintRounds(prisma, [{ id: child.id, number: null }]);
-    expect(alone).toMatchObject({ id: child.id, number: 5, sprint: true });
+    expect(alone).toMatchObject({ id: child.id, number: 5, sprint: true, hasSprint: false, roundId: parent.id });
     const rows = await withSprintRounds(prisma, [child, plain, parent]);
-    expect(rows.map((r) => [r.number, r.sprint])).toEqual([
-      [5, true],
-      [6, false],
-      [5, false],
+    expect(rows.map((r) => [r.number, r.sprint, r.hasSprint, r.roundId])).toEqual([
+      [5, true, false, parent.id],
+      [6, false, false, plain.id],
+      [5, false, true, parent.id],
     ]);
   });
 });

@@ -17,7 +17,8 @@ import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
 function raceLabel(r, races = []) {
   const parent = r.sprintOf ? races.find((x) => x.id === r.sprintOf) : null;
   const number = parent ? parent.number : r.number;
-  return `${number != null ? `R${number}` : "Session"} ${r.track}${r.sprintOf ? " Sprint" : ""}`;
+  const which = r.sprintOf ? " Sprint" : r.sprintRaceId ? " Feature" : "";
+  return `${number != null ? `R${number}` : "Session"} ${r.track}${which}`;
 }
 
 // ---------------------------------------------------------------------------

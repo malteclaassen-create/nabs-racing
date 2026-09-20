@@ -13,7 +13,7 @@ import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow
 import { liveRaceSecond } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
-import { withSprintRounds } from "../lib/sprintRaces.js";
+import { withSprintRounds, readParentIds } from "../lib/sprintRaces.js";
 
 const router = Router();
 
@@ -726,12 +726,18 @@ async function currentRaceId(prisma) {
       },
       select: { id: true },
       orderBy: { date: "desc" },
-      take: 1,
+      take: 5,
     });
+    // Never the sprint row of a sprint weekend. It shares its event's date,
+    // so by date alone the two tie and the press landed on either by luck.
+    // The event (the feature) takes every press of the evening; once the
+    // result files are in, the commit moves the sprint's presses onto the
+    // sprint by the session clock (lib/reportRehome.js).
+    const parentOf = await readParentIds(prisma, races.map((r) => r.id));
     // Nothing in the window is a real answer: the report lands under "no round
     // given" and an admin moves it, which is honest. Guessing a round from
     // three weeks ago is not.
-    return races[0]?.id || null;
+    return races.find((r) => !parentOf.has(r.id))?.id || null;
   } catch {
     return null;
   }
