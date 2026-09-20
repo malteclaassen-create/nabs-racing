@@ -58,25 +58,30 @@ function db({
       return row ? [{ laps: row.laps }] : [];
     }
     if (/SUM\("laps"\)/.test(sql)) {
+      // The page's read: every week of every server, grouped. Args are the
+      // member's Steam ids followed by the period keys.
+      if (/GROUP BY "server", "series", "period"/.test(sql)) {
+        const ids = args.filter((a) => /^\d{10,20}$/.test(String(a)));
+        const periodKeys = args.filter((a) => !ids.includes(a));
+        const out = new Map();
+        for (const [key, row] of practice) {
+          const [steamId, series, period, server] = key.split("|");
+          if (!ids.includes(steamId) || !periodKeys.includes(period)) continue;
+          const k = `${server}|${series}|${period}`;
+          out.set(k, { server, series, period, laps: (out.get(k)?.laps || 0) + row.laps, car: row.car });
+        }
+        return [...out.values()];
+      }
+      // countLap's own read: one server's laps in one week.
       const period = args[args.length - 1];
       const series = args[args.length - 2];
       const ids = args.slice(0, args.length - 2);
-      const byServer = new Map();
-      let trackKey = null;
+      let laps = 0;
       for (const [key, row] of practice) {
-        const [steamId, s, p, server] = key.split("|");
-        if (!ids.includes(steamId) || s !== series || p !== period) continue;
-        byServer.set(server, (byServer.get(server) || 0) + row.laps);
-        trackKey = row.trackKey;
+        const [steamId, s2, p2] = key.split("|");
+        if (ids.includes(steamId) && s2 === series && p2 === period) laps += row.laps;
       }
-      // The week as one number (what countLap asks) or split by server (what
-      // the page asks), the same way SQLite answers the two queries.
-      if (!/GROUP BY "server"/.test(sql)) {
-        return [{ laps: [...byServer.values()].reduce((a, b) => a + b, 0) }];
-      }
-      return [...byServer.entries()]
-        .map(([server, laps]) => ({ server, laps, trackKey, car: null }))
-        .sort((a, b) => b.laps - a.laps);
+      return [{ laps }];
     }
     if (/FROM "TokenLedger" WHERE "discordId" = \? AND "refKey" IN/.test(sql)) {
       return [...ledger.values()].filter((r) => args.includes(r.refKey)).map((r) => ({ refKey: r.refKey, createdAt: r.createdAt }));
@@ -287,6 +292,20 @@ describe("training laps", () => {
       trackKey: "somewhere_else--x",
     });
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
+  });
+
+  it("lists a server ONCE, however many series are running", async () => {
+    // The bug on the live site: two active series turned two race servers
+    // into four rows, and the same machine appeared twice with two different
+    // numbers under two different series.
+    const prisma = db({ seriesList: ["f1", "gt"], nextRaceBySeries: { f1: "Monza", gt: "Spa" } });
+    await drive(prisma, 24, { serverKey: "nabs2", trackKey: "spa--nabs-spa" });
+    const progress = await practiceProgress(prisma, "disc1");
+    expect(progress.weeks.map((w) => w.server)).toEqual(["nabs1", "nabs2"]);
+    const two = progress.weeks.find((w) => w.server === "nabs2");
+    expect(two.laps).toBe(24);
+    // And the series it names is the one those laps were counted for.
+    expect(two.series).toBe("gt");
   });
 
   it("keeps each server's week to itself: 19 and 19 is nothing", async () => {
