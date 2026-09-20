@@ -123,6 +123,7 @@ import {
   PROGRESS_STATES, parseProgress, readDriverProgress, writeDriverProgress,
 } from "../lib/driverProgress.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
+import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import {
@@ -932,6 +933,51 @@ router.put("/ratings/weights", async (req, res, next) => {
 // League-wide: which events notify, who hears about seat offers, and when the
 // race reminders go out. One Setting blob — see lib/notifications.js.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// THE RACE RECAP (lib/raceRecap.js): its switch, and a preview of any round
+// from any driver's seat so the league office can see what members will.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/race-recap -> { mode }
+router.get("/race-recap", async (req, res, next) => {
+  try {
+    res.json({ mode: await recapMode(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/race-recap { mode: off | admins | all }
+router.put("/race-recap", async (req, res, next) => {
+  try {
+    res.json({ ok: true, mode: await setRecapMode(prisma, req.body?.mode) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/race-recap/preview?raceId=&driverId= -> { recap } as that
+// driver would see it. The points block shows what THAT member's ledger says
+// for the round, which the office can see in the NABS Points tab anyway.
+router.get("/race-recap/preview", async (req, res, next) => {
+  try {
+    const raceId = String(req.query.raceId || "");
+    const driverId = String(req.query.driverId || "") || null;
+    if (!raceId) return res.status(400).json({ error: "raceId required" });
+    let discordId = null;
+    if (driverId) {
+      const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { discordUserId: true } });
+      if (!d) return res.status(404).json({ error: "Driver not found" });
+      discordId = d.discordUserId || null;
+    }
+    const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId, req });
+    if (!recap) return res.status(404).json({ error: "That round has no result yet" });
+    res.json({ recap });
+  } catch (e) {
+    next(e);
+  }
+});
 
 // GET /api/admin/notification-settings -> { settings, defaults, reminderOffsets }
 router.get("/notification-settings", async (req, res, next) => {

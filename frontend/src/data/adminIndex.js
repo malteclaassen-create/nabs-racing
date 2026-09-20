@@ -23,6 +23,8 @@ export const TAB_GROUPS = [
       { id: "edit", label: "Edit Results" },
       { id: "content", label: "Content" },
       { id: "photos", label: "Photos & Videos" },
+      // The recap members see after a round, and its switch.
+      { id: "recap", label: "Race recap" },
     ],
   },
   {
@@ -96,6 +98,19 @@ export function tabInfo(id) {
 // Add generously — an unused keyword costs nothing, a missing one costs the
 // colleague ten minutes of clicking through tabs.
 export const ADMIN_INDEX = [
+  // --- Race weekend: the race recap -----------------------------------------
+  {
+    tab: "recap",
+    title: "Switch the race recap on or off",
+    hint: "Off, admins only (to look at it first), or everyone. Members then see their recap once after each saved round.",
+    keywords: "race recap summary after race popup overlay wrapped story switch on off enable disable admins only everyone members see once",
+  },
+  {
+    tab: "recap",
+    title: "Preview a round's recap as any driver",
+    hint: "Pick a finished round and a driver and open the pages exactly as that driver would see them.",
+    keywords: "recap preview test look try round driver see what members see pages rating points championship",
+  },
   // --- League: transfers ------------------------------------------------------
   {
     tab: "transfers",

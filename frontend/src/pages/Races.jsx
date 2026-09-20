@@ -12,6 +12,7 @@ import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import RaceResults from "../components/RaceResults.jsx";
 import RaceLapChart from "../components/RaceLapChart.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
+import { RaceRecapButton } from "../components/RaceRecap.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
@@ -987,6 +988,12 @@ export default function Races() {
                               race, report an incident. On phones they take a
                               line of their own and leave the title its width. */}
                           <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                            {/* Your recap of this round, read again. The button
+                                decides for itself whether it is for you. */}
+                            <RaceRecapButton
+                              raceId={selectedId}
+                              ready={!detailIsStale && !!detail?.race?.isCompleted && (detail?.results?.length || 0) > 0}
+                            />
                             {/* The night's highlights, pasted in the admin's
                                 race details. A YouTube cut folds out into the
                                 player below (nothing is loaded from YouTube

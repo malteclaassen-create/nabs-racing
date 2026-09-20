@@ -16,6 +16,7 @@ import PreviewToggle from "./components/PreviewToggle.jsx";
 import ScrollBar from "./components/ScrollBar.jsx";
 import FeedbackWidget from "./components/FeedbackWidget.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
+import RaceRecapHost from "./components/RaceRecap.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
@@ -485,6 +486,9 @@ function SeriesScopedApp() {
         {/* "A new version is ready" for tabs that have been open since before
             the last deploy — the live page is left up for hours. */}
         <UpdateBanner />
+        {/* The round told from your seat, once, the first time you come back
+            after the office saved a result. Asks the server itself. */}
+        <RaceRecapHost />
         </ConfirmProvider>
       </SeasonProvider>
     </TourProvider>

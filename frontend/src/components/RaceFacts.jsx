@@ -38,7 +38,7 @@ function FactIcon({ name, className = "h-4 w-4" }) {
   );
 }
 
-function FactRow({ fact }) {
+export function FactRow({ fact }) {
   return (
     <div className="flex items-center gap-3 py-3" title={fact.hint || undefined}>
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-light">
@@ -108,7 +108,10 @@ function DriverOfTheDay({ row, name, pickedBy }) {
   );
 }
 
-export default function RaceFacts({ race, results, quali = null }) {
+// The facts themselves, apart from the card that shows them: the race recap
+// tells the same facts inside its own frame, and one list of rules is the
+// only way the two can never disagree about who had the fastest lap.
+export function buildRaceFacts(race, results, quali = null) {
   const finished = results.filter((r) => (!r.status || r.status === "FINISHED") && r.position != null);
   const rowById = new Map(results.map((r) => [r.driverId, r]));
   const winner = finished.find((r) => r.position === 1) || null;
@@ -240,6 +243,11 @@ export default function RaceFacts({ race, results, quali = null }) {
       hint: "Car-to-car contact incidents counted from the race telemetry." });
   }
 
+  return { facts, dotd, dotdRow, hasDotd };
+}
+
+export default function RaceFacts({ race, results, quali = null }) {
+  const { facts, dotd, dotdRow, hasDotd } = buildRaceFacts(race, results, quali);
   if (!hasDotd && facts.length < 2) return null; // not enough signal
 
   // Two balanced columns of rows on desktop, one on phones. Each column keeps

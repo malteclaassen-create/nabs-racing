@@ -26,6 +26,7 @@ import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { previewAccountDeletion, deleteMemberAccount } from "../services/accountDeletionService.js";
+import { recapVisibleTo, pendingRecapRace, buildRaceRecap, markRecapSeen } from "../lib/raceRecap.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const router = Router();
@@ -618,6 +619,65 @@ router.delete("/card-photo-image", async (req, res, next) => {
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
     res.json({ ok: true, cardPhotoUrl: null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// THE RACE RECAP (lib/raceRecap.js): the round told from the member's seat,
+// shown once after the league office saves a result.
+// ---------------------------------------------------------------------------
+
+// GET /api/me/race-recap -> { enabled, recap } — the recap waiting for this
+// member, or recap:null when there is none (nothing new, already seen, or the
+// feature is not on for them). Any visitor may ask; a logged-out one is
+// simply told there is nothing.
+router.get("/race-recap", async (req, res, next) => {
+  try {
+    if (!req.user || !(await recapVisibleTo(prisma, req))) return res.json({ enabled: false, recap: null });
+    const driverId = await resolveDriverId(prisma, req.user);
+    if (!driverId) return res.json({ enabled: true, recap: null });
+    const raceId = await pendingRecapRace(prisma, driverId, req.user.discordId);
+    if (!raceId) return res.json({ enabled: true, recap: null });
+    const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId: req.user.discordId, req });
+    res.json({ enabled: true, recap });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/race-recap/:raceId -> the recap of one round, for reading it
+// again from the race page. Own seasons only: the round has to be in a season
+// the person has a row in, or it is not their recap to read.
+router.get("/race-recap/:raceId", async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Sign in with Discord first" });
+    if (!(await recapVisibleTo(prisma, req))) return res.status(404).json({ error: "Not available" });
+    const driverId = await requireDriver(req, res);
+    if (!driverId) return;
+    const race = await prisma.race.findUnique({ where: { id: req.params.raceId }, select: { id: true, seasonId: true } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const linked = await getLinkedDriverIds(prisma, driverId);
+    const own = await prisma.driver.count({ where: { id: { in: linked.length ? linked : [driverId] }, seasonId: race.seasonId } });
+    if (!own) return res.status(404).json({ error: "Not your season" });
+    const recap = await buildRaceRecap(prisma, { raceId: race.id, driverId, discordId: req.user.discordId, req });
+    if (!recap) return res.status(404).json({ error: "No result yet" });
+    res.json({ recap });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/me/race-recap/seen { raceId } -> this member has seen that
+// round's recap (or closed it), so it is not offered again.
+router.post("/race-recap/seen", async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Sign in with Discord first" });
+    const raceId = String(req.body?.raceId || "");
+    if (!raceId) return res.status(400).json({ error: "raceId required" });
+    await markRecapSeen(prisma, req.user.discordId, raceId);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

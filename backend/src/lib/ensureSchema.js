@@ -430,6 +430,10 @@ export async function ensureAppSchema(prisma) {
   // SQLite, so accounts without one never collide.
   await addColumn(prisma, "MemberAccount", "steamId", "TEXT");
   await addColumn(prisma, "MemberAccount", "steamVerifiedAt", "DATETIME");
+  // The round whose race recap this member has already been shown (or closed).
+  // One id, not a list: the recap is only ever offered for the newest round,
+  // so "seen the newest one" is the whole state. See lib/raceRecap.js.
+  await addColumn(prisma, "MemberAccount", "recapSeenRaceId", "TEXT");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );

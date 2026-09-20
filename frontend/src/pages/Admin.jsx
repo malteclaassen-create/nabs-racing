@@ -28,6 +28,7 @@ import AdminAllTime from "../components/AdminAllTime.jsx";
 import AdminFeedback from "../components/AdminFeedback.jsx";
 import AdminTokens from "../components/AdminTokens.jsx";
 import AdminReports from "../components/AdminReports.jsx";
+import AdminRaceRecap from "../components/AdminRaceRecap.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
 // The navigation itself: the same twenty-two tabs as either the strip across
@@ -281,6 +282,7 @@ export default function Admin() {
           {tab === "edit" && <EditResults />}
           {tab === "content" && <AdminContent />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
+          {tab === "recap" && <AdminRaceRecap />}
           {tab === "ratings" && <AdminRatings />}
           {tab === "telemetry" && <AdminTelemetry />}
           {tab === "discord" && <DiscordEvents />}

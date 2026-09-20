@@ -313,10 +313,8 @@ export function tunedRules() {
   }));
 }
 const tunedRule = (key) => tunedRules().find((r) => r.key === key);
-// Exported for the race recap, which prices a clean-race bonus that is still
-// waiting for the stewards the same way the payout will.
-export const tunedPoints = (key) => tunedRule(key)?.points ?? 0;
-export const ruleOn = (key) => tunedRule(key)?.active !== false;
+const tunedPoints = (key) => tunedRule(key)?.points ?? 0;
+const ruleOn = (key) => tunedRule(key)?.active !== false;
 
 export function tunedShop() {
   const o = overrides().shop || {};

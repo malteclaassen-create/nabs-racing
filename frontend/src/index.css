@@ -746,6 +746,21 @@ body::before {
 @keyframes content-in { from { opacity: 0; } to { opacity: 1; } }
 .content-in { animation: content-in var(--t-base) ease both; }
 
+/* The race recap's pages. A page slides in from the side it was turned from
+   (--recap-dx is set by the dialog, negative for Back), the big number on it
+   lands a beat later, and its rows follow one after the other. */
+@keyframes recap-page {
+  from { opacity: 0; transform: translateX(var(--recap-dx, 18px)); }
+  to { opacity: 1; transform: none; }
+}
+.recap-page { animation: recap-page var(--t-slow) var(--e-out) both; }
+@keyframes recap-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+.recap-pop { animation: recap-pop var(--t-slow) var(--e-pop) both; animation-delay: 120ms; }
+.recap-row { animation: recap-pop var(--t-base) var(--e-out) both; animation-delay: calc(180ms + var(--i, 0) * 70ms); }
+
 /* --- Guided tour spotlight ------------------------------------------ */
 /* The cut-out over the highlighted control: a huge spreading shadow dims the
    rest of the screen, an inner ring draws the eye, and the whole thing lets
@@ -1159,6 +1174,7 @@ body::before {
   .bar-rise { height: var(--h, 0) !important; animation: none !important; }
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
+  .recap-page, .recap-pop, .recap-row { animation: none !important; opacity: 1; transform: none; }
   .podium-floor, .podium-ped, .podium-driver, .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
   /* The sector chips keep their colour, which is the fact; only the movement
@@ -1217,6 +1233,7 @@ body::before {
 .fx-lite .hero-anim, .fx-lite .hero-zoom, .fx-lite .gradient-anim,
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .recap-page, .fx-lite .recap-pop, .fx-lite .recap-row { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop.is-closing, .fx-lite .nav-scrim.is-closing { opacity: 0; }
 .fx-lite .collapse-row { transition: none !important; }
