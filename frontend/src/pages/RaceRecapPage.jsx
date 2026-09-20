@@ -111,7 +111,7 @@ export default function RaceRecapPage() {
           <RoundCard recap={recap} />
         </div>
       )}
-      {you?.raced && <StatCards you={you} story={story} race={race} />}
+      {you?.raced && <StatCards you={you} story={story} race={race} results={results} />}
       {you?.raced && (story?.stints?.length > 0 || incidents) && (
         <div className="grid gap-5 lg:grid-cols-2">
           {story?.stints?.length > 0 && <StintsCard stints={story.stints} />}
@@ -507,7 +507,7 @@ function RoundCard({ recap }) {
 // One number, its word, an icon that says which kind of number, and where it
 // has a place in the field, a thin bar for that.
 // With `onOpen` the tile is a button and says so in its last line.
-function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIcon, bar = null, index = 0, onOpen = null, openLabel = "Compare" }) {
+function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIcon, bar = null, index = 0, onOpen = null, openLabel = "Compare with everyone" }) {
   const Tag = onOpen ? "button" : "div";
   return (
     <Tag
@@ -540,52 +540,146 @@ function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIco
   );
 }
 
-// Everyone's race pace in one list, the driver's own row marked. The same
-// numbers the tile shows, for the whole field.
-function PaceTable({ table, onClose }) {
-  const rows = table?.rows || [];
-  const finish = (r) => (r.status && r.status !== "FINISHED" ? r.status : r.position != null ? `P${r.position}` : NO_VALUE);
+// One list for the whole field, the driver's own row marked: what the tile
+// says, for everyone. `columns` are { key, label, align, wide, render }; a
+// wide column stays off phones.
+function CompareTable({ title, description, footnote, columns, rows, onClose }) {
   return (
-    <Modal open onClose={onClose} title="Race pace" size="lg" description={`Median of each driver's clean laps. Ranked across the ${table?.field || rows.length} cars that ran at least 60% of the distance.`}>
+    <Modal open onClose={onClose} title={title} size="lg" description={description}>
       <div className="-mx-1 max-h-[65vh] overflow-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b border-border text-left font-mono text-[10px] uppercase tracking-[0.2em] text-light">
-              <th className="w-8 px-2 py-2 text-right">#</th>
-              <th className="px-2 py-2">Driver</th>
-              <th className="px-2 py-2 text-right">Finish</th>
-              <th className="hidden px-2 py-2 text-right sm:table-cell">Laps</th>
-              <th className="px-2 py-2 text-right">Pace</th>
-              <th className="px-2 py-2 text-right">Gap</th>
-              <th className="hidden px-2 py-2 text-right sm:table-cell">Best lap</th>
+            <tr className="border-b border-border font-mono text-[10px] uppercase tracking-[0.2em] text-light">
+              {columns.map((c) => (
+                <th key={c.key} className={`px-2 py-2 ${c.align === "left" ? "text-left" : "text-right"} ${c.wide ? "hidden sm:table-cell" : ""}`}>
+                  {c.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.driverId || r.name} className={`border-b border-border/60 ${r.you ? "bg-surface2 font-semibold text-accent" : "text-dark"}`}>
-                <td className="px-2 py-2 text-right font-mono tabular-nums text-light">{r.rank ?? NO_VALUE}</td>
-                <td className="truncate px-2 py-2">
-                  {r.name}
-                  {r.you && <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em]">you</span>}
-                </td>
-                <td className="px-2 py-2 text-right font-mono tabular-nums text-light">{finish(r)}</td>
-                <td className="hidden px-2 py-2 text-right font-mono tabular-nums text-light sm:table-cell">{r.laps}</td>
-                <td className="px-2 py-2 text-right font-mono tabular-nums">{fmtLap(r.paceMs)}</td>
-                <td className="px-2 py-2 text-right font-mono tabular-nums text-light">{r.gapMs == null ? NO_VALUE : r.gapMs === 0 ? "" : fmtLapDelta(r.gapMs)}</td>
-                <td className="hidden px-2 py-2 text-right font-mono tabular-nums text-light sm:table-cell">{fmtLap(r.bestLapMs) || NO_VALUE}</td>
+                {columns.map((c) => (
+                  <td
+                    key={c.key}
+                    className={`px-2 py-2 ${c.align === "left" ? "truncate" : "text-right font-mono tabular-nums"} ${c.wide ? "hidden sm:table-cell" : ""} ${c.muted && !r.you ? "text-light" : ""}`}
+                  >
+                    {c.render(r)}
+                    {c.key === "name" && r.you && <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em]">you</span>}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-light">A clean lap is within 8% of the driver's own typical lap, so pit stops, safety car laps and spins stay out. Cars without a rank ran too little of the race.</p>
+      {footnote && <p className="mt-3 text-xs text-light">{footnote}</p>}
     </Modal>
   );
 }
 
-function StatCards({ you, story, race }) {
-  const [paceOpen, setPaceOpen] = useState(false);
-  const paceTable = story?.paceTable?.rows?.length > 1 ? story.paceTable : null;
+const finishOf = (r) => (r.status && r.status !== "FINISHED" ? r.status : r.position != null ? `P${r.position}` : NO_VALUE);
+const COL = {
+  rank: { key: "rank", label: "#", muted: true, render: (r) => r.rank ?? NO_VALUE },
+  name: { key: "name", label: "Driver", align: "left", render: (r) => r.name },
+  finish: { key: "finish", label: "Finish", muted: true, render: (r) => finishOf(r) },
+};
+
+// The four lists behind the tiles. Each one ranks the classified field by
+// the tile's own number and marks the driver's row; `null` when the round
+// has no such numbers, and then the tile is a plain tile.
+function compareLists({ you, story, results }) {
+  const raced = (results || []).filter((r) => r.status !== "DNS");
+  const mark = (rows) => rows.map((r, i) => ({ ...r, rank: i + 1, you: r.driverId === you.driverId }));
+  const lists = {};
+
+  if (story?.paceTable?.rows?.length > 1) {
+    const t = story.paceTable;
+    lists.pace = {
+      title: "Race pace",
+      description: `Median of each driver's clean laps. Ranked across the ${t.field || t.rows.length} cars that ran at least 60% of the distance.`,
+      footnote: "A clean lap is within 8% of the driver's own typical lap, so pit stops, safety car laps and spins stay out. Cars without a rank ran too little of the race.",
+      rows: t.rows,
+      columns: [
+        COL.rank,
+        COL.name,
+        COL.finish,
+        { key: "laps", label: "Laps", muted: true, wide: true, render: (r) => r.laps },
+        { key: "pace", label: "Pace", render: (r) => fmtLap(r.paceMs) },
+        { key: "gap", label: "Gap", muted: true, render: (r) => (r.gapMs == null ? NO_VALUE : r.gapMs === 0 ? "" : fmtLapDelta(r.gapMs)) },
+      ],
+    };
+  }
+
+  const lapRows = raced.filter((r) => r.bestLapMs > 0).sort((a, b) => a.bestLapMs - b.bestLapMs);
+  if (lapRows.length > 1) {
+    const best = lapRows[0].bestLapMs;
+    lists.bestLap = {
+      title: "Best lap",
+      description: "Everyone's quickest lap of the race, fastest first.",
+      rows: mark(lapRows),
+      columns: [
+        COL.rank,
+        COL.name,
+        COL.finish,
+        { key: "best", label: "Best lap", render: (r) => fmtLap(r.bestLapMs) },
+        { key: "gap", label: "Gap", muted: true, render: (r) => (r.bestLapMs === best ? "" : fmtLapDelta(r.bestLapMs - best)) },
+      ],
+    };
+  }
+
+  const consRows = raced.filter((r) => r.consistencyPct > 0).sort((a, b) => b.consistencyPct - a.consistencyPct);
+  if (consRows.length > 1) {
+    lists.consistency = {
+      title: "Consistency",
+      description: "How close each driver's laps stayed to their own best, steadiest first.",
+      footnote: "100% would be every lap on your best time. Pit laps and laps far off your pace are left out.",
+      rows: mark(consRows),
+      columns: [
+        COL.rank,
+        COL.name,
+        COL.finish,
+        { key: "laps", label: "Laps", muted: true, wide: true, render: (r) => r.laps ?? NO_VALUE },
+        { key: "cons", label: "Consistency", render: (r) => `${r.consistencyPct.toFixed(1)}%` },
+      ],
+    };
+  }
+
+  const otRows = raced.filter((r) => r.overtakes != null).sort((a, b) => b.overtakes - a.overtakes || (a.position ?? 99) - (b.position ?? 99));
+  if (otRows.length > 1) {
+    lists.overtakes = {
+      title: "Overtakes",
+      description: "Estimated on-track passes per driver, most first.",
+      footnote: "Counted from the running order lap by lap, so a pass and a re-pass both count. Net is the places gained from the grid to the flag.",
+      rows: mark(otRows),
+      columns: [
+        COL.rank,
+        COL.name,
+        { key: "grid", label: "Grid", muted: true, wide: true, render: (r) => (r.grid != null ? `P${r.grid}` : NO_VALUE) },
+        COL.finish,
+        { key: "ot", label: "Overtakes", render: (r) => r.overtakes },
+        {
+          key: "net",
+          label: "Net",
+          muted: true,
+          render: (r) => {
+            if (r.grid == null || r.position == null || r.status !== "FINISHED") return NO_VALUE;
+            const n = r.grid - r.position;
+            return n > 0 ? `+${n}` : n < 0 ? `−${-n}` : "±0";
+          },
+        },
+      ],
+    };
+  }
+
+  return lists;
+}
+
+function StatCards({ you, story, race, results }) {
+  const [openList, setOpenList] = useState(null);
+  const lists = compareLists({ you, story, results });
+  const opener = (key) => (lists[key] ? () => setOpenList(key) : null);
   const fastest = you.bestLapMs != null && you.lapGapMs === 0;
   const field = race.starters || race.fieldSize || 1;
   const rankBar = (rank, of, text) => (rank && of ? { pct: ((of - rank + 1) / of) * 100, text: text || `P${rank} of ${of}` } : null);
@@ -597,6 +691,7 @@ function StatCards({ you, story, race }) {
           value: fmtLap(you.bestLapMs),
           tone: fastest ? "text-fl" : "text-dark",
           note: fastest ? "fastest lap of the race" : you.lapGapMs != null ? `${fmtLapDelta(you.lapGapMs)} to the fastest lap${story?.bestLapAt ? ` · set on lap ${story.bestLapAt}` : ""}` : null,
+          onOpen: opener("bestLap"),
         }
       : null,
     story?.paceMs
@@ -606,15 +701,14 @@ function StatCards({ you, story, race }) {
           value: fmtLap(story.paceMs),
           note: story.paceRank ? `pure race pace${story.gapToBestPaceMs > 0 ? ` · ${fmtLapDelta(story.gapToBestPaceMs)} a lap to the quickest` : " · the quickest car in the race"}` : "median of your real laps",
           bar: rankBar(story.paceRank, story.paceField, story.paceRank ? `P${story.paceRank} of ${story.paceField} on pace` : null),
-          onOpen: paceTable ? () => setPaceOpen(true) : null,
-          openLabel: "Compare with everyone",
+          onOpen: opener("pace"),
         }
       : null,
     you.consistencyPct > 0
-      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" } }
+      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" }, onOpen: opener("consistency") }
       : null,
     you.overtakes != null
-      ? { label: "Overtakes", icon: ArrowLeftRight, value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated" }
+      ? { label: "Overtakes", icon: ArrowLeftRight, value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated", onOpen: opener("overtakes") }
       : null,
     you.cleanLaps != null && you.laps != null
       ? {
@@ -665,7 +759,7 @@ function StatCards({ you, story, race }) {
           <Stat key={c.label} {...c} index={i} />
         ))}
       </div>
-      {paceOpen && paceTable && <PaceTable table={paceTable} onClose={() => setPaceOpen(false)} />}
+      {openList && lists[openList] && <CompareTable {...lists[openList]} onClose={() => setOpenList(null)} />}
     </div>
   );
 }
