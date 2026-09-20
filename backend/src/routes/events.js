@@ -343,7 +343,7 @@ async function standingSeatOffer(raceId, driverId) {
 // Delete the answers this person left on their OTHER rows for one race, having
 // just answered on `driverId`. Best-effort by design: an answer that was
 // recorded must never be lost because the tidying up behind it failed.
-async function clearOtherAnswers(raceId, driverId) {
+export async function clearOtherAnswers(raceId, driverId) {
   const { byDriver, byPerson } = await getPersonGroups(prisma);
   const siblings = (byPerson.get(byDriver.get(driverId)) || []).filter((id) => id !== driverId);
   if (!siblings.length) return 0;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Hourglass, Fingerprint, Copy, Check } from "lucide-react";
+import { Hourglass, Fingerprint, Copy, Check, X } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
@@ -114,39 +114,89 @@ function answerTime(iso) {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-// The admin's line under a name: when they answered, and their Steam id to
-// copy. Two things an admin building a grid or an entry list for the server
-// needs and nobody else has any business seeing, which is why they live behind
-// the header's toggle and come from their own request.
-function AdminLine({ answeredAt, steamId }) {
+// The Steam id, on the same line as the name and pushed to the right of it.
+// The sign-up usually runs with two columns rather than three (a league that
+// has switched Tentative off), which leaves the room for it — it went under the
+// name first and turned a grid of 43 into 86 lines to scroll past.
+//
+// The whole thing is the copy button: one click and the id is on the clipboard,
+// which is what an admin is here for. When they answered rides along as the
+// name's tooltip instead of a line of its own.
+function SteamTag({ steamId }) {
   const [done, setDone] = useState(false);
-  const when = answerTime(answeredAt);
   useEffect(() => {
     if (!done) return undefined;
     const t = setTimeout(() => setDone(false), 1200);
     return () => clearTimeout(t);
   }, [done]);
+  if (!steamId) {
+    return <span className="shrink-0 font-mono text-[10px] text-faint">no ID</span>;
+  }
   return (
-    <div className="mt-0.5 min-w-0 pl-[26px]">
-      {when && <p className="font-mono text-[10px] leading-tight text-faint">{when}</p>}
-      {steamId ? (
-        <button
-          type="button"
-          title="Copy this Steam ID"
-          onClick={async () => setDone(await copyText(steamId))}
-          className="flex w-full min-w-0 items-center gap-1 font-mono text-[10px] leading-tight text-light transition hover:text-dark"
-        >
-          {done ? (
-            <Check className="h-3 w-3 shrink-0 text-ok" aria-hidden="true" />
-          ) : (
-            <Copy className="h-3 w-3 shrink-0 opacity-50" aria-hidden="true" />
-          )}
-          <span className="truncate">{steamId}</span>
-        </button>
+    <button
+      type="button"
+      title="Copy this Steam ID"
+      onClick={async () => setDone(await copyText(steamId))}
+      className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-light transition hover:text-dark"
+    >
+      {done ? (
+        <Check className="h-3 w-3 shrink-0 text-ok" aria-hidden="true" />
       ) : (
-        <p className="font-mono text-[10px] leading-tight text-faint">no Steam ID</p>
+        <Copy className="h-3 w-3 shrink-0 opacity-40" aria-hidden="true" />
       )}
-    </div>
+      {steamId}
+    </button>
+  );
+}
+
+// The admin's hand on the wheel, one row at a time: move an accepted driver to
+// the waiting list, pull a named one out of the queue and onto the grid, or take
+// an answer away entirely.
+//
+// Icons rather than words because there are 43 of these rows and each one is
+// half a column wide. The server does not apply the grid size to any of it and
+// does not move anybody up by itself afterwards, so "take that one out, put
+// this one in" is two clicks that do exactly what they say.
+function RowActions({ status, name, busy, onSet }) {
+  const actions = [];
+  if (status !== WAITLIST) {
+    actions.push({
+      key: WAITLIST,
+      Icon: Hourglass,
+      title: `Move ${name} to the waiting list`,
+      className: "hover:border-sky-500/60 hover:text-link",
+    });
+  }
+  if (status !== "ACCEPTED") {
+    actions.push({
+      key: "ACCEPTED",
+      Icon: Check,
+      title: `Put ${name} on the grid`,
+      className: "hover:border-green-600/60 hover:text-ok",
+    });
+  }
+  actions.push({
+    key: null,
+    Icon: X,
+    title: `Remove ${name}'s answer`,
+    className: "hover:border-red-600/60 hover:text-bad",
+  });
+  return (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {actions.map((a) => (
+        <button
+          key={a.key || "clear"}
+          type="button"
+          title={a.title}
+          aria-label={a.title}
+          disabled={busy}
+          onClick={() => onSet(a.key)}
+          className={`rounded border border-transparent p-0.5 text-faint transition disabled:opacity-40 ${a.className}`}
+        >
+          <a.Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -173,8 +223,11 @@ export default function RaceSignupCard({
   seatHighlight = false,
   seatRef = null,
   // Unlocks the Steam-id view in the header. The ids themselves are fetched
-  // separately and only when asked for — see SteamIdBar.
+  // separately and only when asked for — see the header strip below.
   isAdmin = false,
+  // Refetch the entry list after an admin has moved somebody. Separate from
+  // reloadMarket on purpose: this one has nothing to do with the Driver Market.
+  onAnswersChanged,
 }) {
   // The market context of the RACE's season — see the note further down at
   // SeatMarket for why it is read this way even when null.
@@ -267,6 +320,21 @@ export default function RaceSignupCard({
     () => ev.rsvps.ACCEPTED.map((r) => steamIds?.[r.driverId]).filter(Boolean),
     [ev.rsvps.ACCEPTED, steamIds]
   );
+  // One row's answer, set or taken away. Errors land in the same line the copy
+  // note uses, so a refused edit says so where the admin is already looking.
+  const [rowBusy, setRowBusy] = useState(null);
+  async function setAnswerFor(driver, status) {
+    setRowBusy(driver.driverId);
+    setSteamError(null);
+    try {
+      await api.adminSetAnswer(ev.id, driver.driverId, status);
+      await onAnswersChanged?.();
+    } catch (e) {
+      setSteamError(e.message);
+    } finally {
+      setRowBusy(null);
+    }
+  }
   async function copyAllSteamIds() {
     const ok = await copyText(acceptedSteamIds.join("\n"));
     setCopyNote(ok ? `${acceptedSteamIds.length} Steam IDs copied` : "This browser blocked the clipboard");
@@ -464,7 +532,7 @@ export default function RaceSignupCard({
                 Copy accepted ({acceptedSteamIds.length})
               </button>
               <span className="text-xs text-light">
-                {copyNote || steamError || "Sign-up times and Steam IDs show under every name. Admins only."}
+                {copyNote || steamError || "Steam IDs beside every name, click to copy. The icons move people between the grid and the queue."}
               </span>
             </>
           )}
@@ -513,7 +581,11 @@ export default function RaceSignupCard({
             <ul className="cascade space-y-1.5">
               {ev.rsvps[status].map((r, i) => (
                 <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
-                  <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                  {/* Wraps rather than squeezes. With Tentative switched off the
+                      admin's Steam id sits beside the name on one line; with
+                      three columns there isn't the room, so it drops underneath
+                      instead of shortening the name to a letter and a dot. */}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2">
                   {/* The team's mark rather than a coloured dot: on a grid
                       with two cars per team the colour alone was a quiz, and
                       the logo says who at a glance. Falls back to the
@@ -526,17 +598,29 @@ export default function RaceSignupCard({
                     size={18}
                   />
                   {/* The full name is a hover away: the grid is three columns
-                      on a laptop and longer names get cut. */}
+                      on a laptop and longer names get cut. In the admin view the
+                      tooltip carries when they answered as well, which is what
+                      says who was the last one in. */}
                   <span
-                    className={`truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
-                    title={r.name}
+                    className={`min-w-[3.5rem] truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
+                    title={adminView && r.answeredAt ? `${r.name} · answered ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}
                   </span>
                   <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  {adminView && (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <SteamTag steamId={steamIds?.[r.driverId]} />
+                      <RowActions
+                        status={status}
+                        name={r.name}
+                        busy={rowBusy === r.driverId}
+                        onSet={(next) => setAnswerFor(r, next)}
+                      />
+                    </span>
+                  )}
                   </div>
-                  {adminView && <AdminLine answeredAt={r.answeredAt} steamId={steamIds?.[r.driverId]} />}
                 </li>
               ))}
               {ev.rsvps[status].length === 0 && <li className="text-sm text-faint"><NoData className="text-sm" /></li>}
@@ -565,7 +649,7 @@ export default function RaceSignupCard({
           <ol className="cascade grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
             {waiting.map((r, i) => (
               <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
-                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2">
                   <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">{i + 1}.</span>
                   <TeamLogo
                     id={r.team.id}
@@ -575,14 +659,24 @@ export default function RaceSignupCard({
                     size={18}
                   />
                   <span
-                    className={`truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
-                    title={r.name}
+                    className={`min-w-[3.5rem] truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
+                    title={adminView && r.answeredAt ? `${r.name} · joined ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}
                   </span>
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  {adminView && (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <SteamTag steamId={steamIds?.[r.driverId]} />
+                      <RowActions
+                        status={WAITLIST}
+                        name={r.name}
+                        busy={rowBusy === r.driverId}
+                        onSet={(next) => setAnswerFor(r, next)}
+                      />
+                    </span>
+                  )}
                 </div>
-                {adminView && <AdminLine answeredAt={r.answeredAt} steamId={steamIds?.[r.driverId]} />}
               </li>
             ))}
           </ol>

@@ -140,7 +140,8 @@ import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId, publicDriverId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
-import { promoteFromWaitlist } from "../lib/waitlist.js";
+import { WAITLIST, promoteFromWaitlist } from "../lib/waitlist.js";
+import { clearOtherAnswers } from "./events.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1286,6 +1287,66 @@ router.get("/market/history", async (req, res, next) => {
 });
 
 // DELETE /api/admin/market/:offerId -> remove any offer entirely.
+// ---------------------------------------------------------------------------
+// ATTENDANCE OVERRIDE (the sign-up card's admin view)
+//
+// The grid builds itself: members answer, the cap holds the number, and the
+// waiting list moves up on its own. This is the hand on the wheel for when it
+// doesn't work out. An admin can take somebody's answer away entirely, park an
+// accepted driver on the waiting list, or pull ONE named person out of the
+// queue and onto the grid.
+//
+// Two rules, both deliberate:
+//
+// The capacity does not apply here. An admin who puts a 43rd car on the grid
+// has decided to, and the page says so rather than refusing.
+//
+// And nothing is promoted automatically behind an admin's back. Freeing a seat
+// as a member does hands it to the front of the queue; freeing one from here
+// leaves it open, because the whole point of the button is usually to give that
+// seat to somebody specific in the next click.
+// ---------------------------------------------------------------------------
+
+// POST /api/admin/attendance/:raceId/answer  { driverId, status }
+// status null / "" removes the answer entirely.
+router.post("/attendance/:raceId/answer", async (req, res, next) => {
+  try {
+    const { driverId, status } = req.body || {};
+    if (!driverId) return res.status(400).json({ error: "Which driver?" });
+    const allowed = ["ACCEPTED", "DECLINED", "TENTATIVE", WAITLIST];
+    const want = status ? String(status).toUpperCase() : null;
+    if (want && !allowed.includes(want)) return res.status(400).json({ error: "Unknown answer" });
+
+    const race = await prisma.race.findUnique({ where: { id: req.params.raceId } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    // A run race's entry list is history. Who actually drove is in the result,
+    // and editing the sign-up behind it would only make the two disagree.
+    if (race.isCompleted) {
+      return res.status(400).json({ error: "Race already completed. Its entry list is the record now" });
+    }
+    const driver = await prisma.driver.findUnique({ where: { id: driverId } });
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+
+    if (want) {
+      await prisma.raceRsvp.upsert({
+        where: { raceId_driverId: { raceId: race.id, driverId } },
+        update: { status: want },
+        create: { raceId: race.id, driverId, status: want },
+      });
+      // Same tidy-up the member's own route does: one person, one answer, even
+      // when they have two roster rows in this season.
+      await clearOtherAnswers(race.id, driverId).catch(() => {});
+    } else {
+      await prisma.raceRsvp.deleteMany({ where: { raceId: race.id, driverId } });
+    }
+
+    const discord = await syncRaceToDiscord(prisma, race.id);
+    res.json({ ok: true, discord });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.delete("/market/:offerId", async (req, res, next) => {
   try {
     const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });

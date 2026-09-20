@@ -530,6 +530,16 @@ export const api = {
   // than a field on /events: a Steam id names a real account and the entry list
   // is a page the whole league reads.
   raceSteamIds: (raceId) => request(`/events/${raceId}/steam-ids`, { identityAuth: true }),
+  // Admin override on the sign-up card: set somebody's answer, or pass null to
+  // take it away. The capacity does not apply here and nothing moves up the
+  // waiting list by itself, so an admin can empty a seat and then give it to
+  // the person they meant.
+  adminSetAnswer: (raceId, driverId, status) =>
+    request(`/admin/attendance/${raceId}/answer`, {
+      method: "POST",
+      body: { driverId, status: status || null },
+      identityAuth: true,
+    }),
   // "I want to race": a logged-in account with no driver profile raises a hand
   // for a race; the admin sees it in Members → Needs attention.
   myRaceRequest: () => request("/me/race-request", { userAuth: true }),
