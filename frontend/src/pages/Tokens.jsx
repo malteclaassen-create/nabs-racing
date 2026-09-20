@@ -347,8 +347,7 @@ function PracticeCard({ week }) {
             <span className="font-mono tabular-nums">{t.laps}</span> laps +{t.points}
           </span>
         ))}
-        {", per server. Nineteen on each pays nothing."}
-        {week.paying === false && " Not paying yet."}
+        {", per server."}
       </p>
     </div>
   );
