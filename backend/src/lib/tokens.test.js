@@ -7,6 +7,11 @@ import {
   EARN_RULES,
   SHOP_BY_KEY,
   REDEMPTION_STATUSES,
+  CUSTOM_FLAIR_MAX,
+  cleanFlairText,
+  customFlairNote,
+  flairFromNote,
+  FLAIR_BY_KEY,
 } from "./tokens.js";
 
 // The rules and the shop are the two tables the league will actually edit, so
@@ -50,6 +55,34 @@ describe("nothing in the shop is a gamble", () => {
       expect(item.kind).toBeUndefined();
       expect(`${item.name} ${item.description}`.toLowerCase()).not.toContain("random");
     }
+  });
+});
+
+// A flair somebody wrote themselves is the only thing in the shop that puts a
+// member's own words on a public page, so the two things that keep it safe are
+// pinned here: what the text is allowed to be, and that it is never confused
+// with one of the fixed marks.
+describe("the flair you write yourself", () => {
+  it("tidies what was typed", () => {
+    expect(cleanFlairText("  Late   braker ")).toEqual({ text: "Late braker" });
+    expect(cleanFlairText("two\nlines")).toEqual({ text: "two lines" });
+  });
+
+  it("turns down nothing and turns down an essay", () => {
+    expect(cleanFlairText("   ").error).toBeTruthy();
+    expect(cleanFlairText(null).error).toBeTruthy();
+    expect(cleanFlairText("x".repeat(CUSTOM_FLAIR_MAX + 1)).error).toBeTruthy();
+    expect(cleanFlairText("x".repeat(CUSTOM_FLAIR_MAX))).toEqual({ text: "x".repeat(CUSTOM_FLAIR_MAX) });
+  });
+
+  it("reads back as its own kind, and never as a fixed mark", () => {
+    const note = customFlairNote("Runs on currywurst");
+    expect(flairFromNote(note)).toMatchObject({ label: "Runs on currywurst", custom: true });
+    expect(FLAIR_BY_KEY.has(note)).toBe(false);
+    expect(flairFromNote("night_owl")).toMatchObject({ label: "Night owl" });
+    expect(flairFromNote("night_owl").custom).toBeUndefined();
+    expect(flairFromNote("nothing_like_it")).toBeNull();
+    expect(flairFromNote("custom:   ")).toBeNull();
   });
 });
 

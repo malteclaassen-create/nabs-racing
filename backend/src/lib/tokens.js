@@ -184,12 +184,22 @@ export const SHOP_ITEMS = [
       "Send the league office your design (or a picture of what you want) and it goes into the skin pack everyone downloads, so the field sees it on track.",
   },
   {
+    key: "car_skin",
+    name: "Custom car skin",
+    cost: 2000,
+    category: "In the car",
+    description: "Your own livery on the car, added to the league's skin pack.",
+    blurb:
+      "Send the league office your livery (or a picture of what you are after) and it goes into the skin pack everyone downloads, so you run it on track.",
+  },
+  {
     key: "profile_flair",
     name: "Profile flair",
     cost: 500,
     category: "On the site",
     description: "A mark next to your name on your public profile.",
-    blurb: "Pick one of the marks below. It goes up the moment you buy it.",
+    blurb:
+      "Pick one of the marks below, or write your own. A mark from the list goes up the moment you buy it; wording you write yourself an admin reads first.",
     instant: true,
     once: true,
   },
@@ -251,6 +261,45 @@ export const FLAIRS = [
 ];
 export const FLAIR_BY_KEY = new Map(FLAIRS.map((f) => [f.key, f]));
 
+// --- the one you write yourself ---------------------------------------------
+// A flair is either one of the marks above or wording the member typed. Both
+// live in the same `note` column, the typed one behind a prefix, so nothing
+// that already reads a flair had to learn a second shape.
+//
+// The typed one is the only thing in the shop that ends up on a PUBLIC page
+// with words a member chose, so it does not go live on payment: it waits in
+// the admin's order list like a helmet does, and only a filled order is worn.
+export const CUSTOM_FLAIR_KEY = "custom";
+export const CUSTOM_FLAIR_MAX = 24;
+const CUSTOM_FLAIR_PREFIX = "custom:";
+
+export const customFlairNote = (text) => `${CUSTOM_FLAIR_PREFIX}${text}`;
+
+// Tidy up what was typed, or say what is wrong with it. Control characters out
+// (invisible, and they travel), runs of spaces down to one, and a length in
+// the same ballpark as the longest fixed mark.
+export function cleanFlairText(text) {
+  const s = [...String(text || "")]
+    .map((c) => (c < " " || c.charCodeAt(0) === 127 ? " " : c))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) return { error: "Write your wording first" };
+  if (s.length > CUSTOM_FLAIR_MAX) return { error: `Keep it to ${CUSTOM_FLAIR_MAX} characters or fewer` };
+  return { text: s };
+}
+
+// What a redemption's note stands for: one of the fixed marks, or the member's
+// own wording. null for a note that is neither (an old row, a typo).
+export function flairFromNote(note) {
+  const s = String(note || "");
+  if (s.startsWith(CUSTOM_FLAIR_PREFIX)) {
+    const text = s.slice(CUSTOM_FLAIR_PREFIX.length).trim();
+    return text ? { key: CUSTOM_FLAIR_KEY, label: text, custom: true } : null;
+  }
+  return FLAIR_BY_KEY.get(s) || null;
+}
+
 export const SHOP_BY_KEY = new Map(SHOP_ITEMS.map((i) => [i.key, i]));
 
 // --- the numbers as the league has set them (Admin -> Tokens -> Rules and
@@ -264,8 +313,10 @@ export function tunedRules() {
   }));
 }
 const tunedRule = (key) => tunedRules().find((r) => r.key === key);
-const tunedPoints = (key) => tunedRule(key)?.points ?? 0;
-const ruleOn = (key) => tunedRule(key)?.active !== false;
+// Exported for the race recap, which prices a clean-race bonus that is still
+// waiting for the stewards the same way the payout will.
+export const tunedPoints = (key) => tunedRule(key)?.points ?? 0;
+export const ruleOn = (key) => tunedRule(key)?.active !== false;
 
 export function tunedShop() {
   const o = overrides().shop || {};
@@ -901,15 +952,19 @@ export async function dbRedemptions(prisma, discordId = null) {
       );
   return rows.map((r) => {
     const item = SHOP_BY_KEY.get(r.itemKey);
+    const flair = r.itemKey === "profile_flair" ? flairFromNote(r.note) : null;
     return {
       ...r,
       cost: Number(r.cost),
       member: r.displayName || r.username || undefined,
-      // Only the things a person has to do (helmet, Discord role) are orders
-      // in the admin sense; card designs, flairs and wall entries the site
-      // fills itself and are just a record.
-      manual: !!item && !item.instant && !item.catalogue,
-      detail: r.itemKey === "profile_flair" ? FLAIR_BY_KEY.get(r.note)?.label || null : null,
+      // Only the things a person has to do (helmet, car skin, Discord role) are orders
+      // in the admin sense; card designs, fixed flairs and wall entries the
+      // site fills itself and are just a record. A flair somebody WROTE is a
+      // person's job again: those words go on a public page.
+      manual: !!item && (flair?.custom ? true : !item.instant && !item.catalogue),
+      detail: flair?.label || null,
+      // The wording itself, so the admin's row can show it and correct it.
+      flairText: flair?.custom ? flair.label : null,
     };
   });
 }
@@ -954,17 +1009,28 @@ async function spend(prisma, { discordId, cost, key, name, status, note = null, 
 
 // Spend tokens on a shop item. Returns { error } rather than throwing for the
 // two things a member can get wrong, so the page can say which one it was.
-export async function redeemItem(prisma, discordId, itemKey, choice = null) {
+export async function redeemItem(prisma, discordId, itemKey, choice = null, text = null) {
   const item = tunedItem(String(itemKey || ""));
   if (!item || !item.active) return { error: "Unknown item" };
   // The card designs are bought one by one from the catalogue (buyCardDesign),
   // never as a blank order for the league office.
   if (item.catalogue) return { error: "Pick a design from the catalogue" };
   let note = null;
+  // A flair somebody wrote themselves is the one instant item that is not
+  // instant: the words are going on a public page, so an admin reads them
+  // first and it waits in the order list until they do.
+  let instant = !!item.instant;
   if (item.key === "profile_flair") {
-    const flair = FLAIR_BY_KEY.get(String(choice || ""));
-    if (!flair) return { error: "Pick a mark first" };
-    note = flair.key;
+    if (String(choice || "") === CUSTOM_FLAIR_KEY) {
+      const clean = cleanFlairText(text);
+      if (clean.error) return { error: clean.error };
+      note = customFlairNote(clean.text);
+      instant = false;
+    } else {
+      const flair = FLAIR_BY_KEY.get(String(choice || ""));
+      if (!flair) return { error: "Pick a mark first" };
+      note = flair.key;
+    }
   }
   await syncEarned(prisma, discordId);
   // Instant items are filled by the site itself, the rest wait for a person.
@@ -973,16 +1039,16 @@ export async function redeemItem(prisma, discordId, itemKey, choice = null) {
     cost: item.cost,
     key: item.key,
     name: item.name,
-    status: item.instant ? "DONE" : "NEW",
+    status: instant ? "DONE" : "NEW",
     note,
     rule: "redeem",
-    title: `${item.instant ? "Bought" : "Ordered"}: ${item.name}`,
-    detail: item.instant ? "Yours right away" : "Waiting for the league office",
+    title: `${instant ? "Bought" : "Ordered"}: ${item.name}`,
+    detail: instant ? "Yours right away" : "Waiting for the league office",
     // A name on the wall and a mark are one each: without this a double click
     // pays twice for one line, and there is nothing to give back.
     owns: item.once ? (tx) => hasBought(tx, discordId, item.key, note) : null,
   });
-  return out.error ? out : { ...out, instant: !!item.instant };
+  return out.error ? out : { ...out, instant };
 }
 
 // Has this member already bought this item? For a flair, the mark matters: a
@@ -1015,8 +1081,8 @@ export async function flairsFor(prisma, discordIds) {
     )
     .catch(() => []);
   for (const r of rows) {
-    const f = FLAIR_BY_KEY.get(r.note);
-    if (f) out.set(r.discordId, f);
+    const f = flairFromNote(r.note);
+    if (f) out.set(r.discordId, { key: f.key, label: f.label });
   }
   return out;
 }
@@ -1262,19 +1328,27 @@ export async function buyStudioItem(prisma, discordId, itemId) {
 // An admin working through an order. Declining refunds it — the tokens were
 // never spent on anything, and a member who cannot see why an order vanished
 // writes to the admin about it, which is worse than the refund row.
-export async function setRedemptionStatus(prisma, id, status, note = null) {
+export async function setRedemptionStatus(prisma, id, status, note = null, flairText = null) {
   const s = String(status || "").toUpperCase();
   if (!REDEMPTION_STATUSES.includes(s)) return { error: "Unknown status" };
   const rows = await prisma.$queryRawUnsafe(`SELECT * FROM "TokenRedemption" WHERE "id" = ?`, id);
   const row = rows[0];
   if (!row) return { error: "Not found" };
   // A flair keeps WHICH mark was picked in the note, so an admin typing a note
-  // on the order would otherwise wipe the thing the member paid for.
-  const keepNote = row.itemKey === "profile_flair";
+  // on the order would otherwise wipe the thing the member paid for. The one
+  // they wrote themselves the admin may reword, which is the point of reading
+  // it, and that comes in as its own field rather than as the note.
+  const flair = row.itemKey === "profile_flair" ? flairFromNote(row.note) : null;
+  let keptNote = flair ? (row.note ?? null) : (note ?? row.note ?? null);
+  if (flair?.custom && flairText != null && String(flairText).trim() !== flair.label) {
+    const clean = cleanFlairText(flairText);
+    if (clean.error) return { error: clean.error };
+    keptNote = customFlairNote(clean.text);
+  }
   await prisma.$executeRawUnsafe(
     `UPDATE "TokenRedemption" SET "status" = ?, "note" = ?, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = ?`,
     s,
-    keepNote ? (row.note ?? null) : (note ?? row.note ?? null),
+    keptNote,
     id
   );
   const wasDeclined = String(row.status || "").toUpperCase() === "DECLINED";

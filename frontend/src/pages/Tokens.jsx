@@ -19,6 +19,10 @@ import { shrinkImage } from "../utils/imageResize.js";
 // The site's own numbers read better grouped: 1 250 rather than 1250.
 const fmt = (n) => new Intl.NumberFormat(undefined, { useGrouping: true }).format(n || 0);
 
+// The flair that is not on the list. Same string as CUSTOM_FLAIR_KEY in
+// backend/src/lib/tokens.js, which is what the server matches on.
+const CUSTOM_FLAIR = "custom";
+
 function fmtWhen(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -538,13 +542,24 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
   const [error, setError] = useState(null);
   const [ordered, setOrdered] = useState(false);
   const [choice, setChoice] = useState(null);
+  const [ownText, setOwnText] = useState("");
   const flairs = item.key === "profile_flair" ? data.flairs || [] : null;
+  // The one flair that is not on the list: your own wording. It is the only
+  // thing in the shop that puts words a member chose on a public page, so it
+  // goes to the league office first and is not worn until they say yes.
+  const ownFlair = !!flairs && choice === CUSTOM_FLAIR;
+  const maxFlair = data.customFlairMax || 24;
+  const ownReady = ownText.trim().length > 0;
   // Both of these move while the window is open, so they are read from the
   // freshly reloaded data every render rather than frozen at the moment the
   // tile was clicked.
   const balance = data.balance;
   const live = data.shop.find((i) => i.key === item.key) || item;
   const short = live.cost - balance;
+  // "Instant" is a property of the entry EXCEPT for a flair you wrote: that
+  // one waits for a person, so every line that says "yours right away" has to
+  // read this and not live.instant.
+  const instant = !!live.instant && !ownFlair;
 
   // A lock that is true the instant the button is pressed, rather than on the
   // next render the way `busy` is. This spends tokens: two clicks landing in
@@ -558,18 +573,22 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
     // deliberate second click rather than the first one landing in the wrong
     // place.
     const ok = await ask({
-      title: `${live.instant ? "Buy" : "Order"} ${live.name}?`,
+      title: `${instant ? "Buy" : "Order"} ${live.name}?`,
       body: `${fmt(live.cost)} points come off your balance. You have ${fmt(balance)}.${
-        live.instant ? "" : "\n\nThe league office fills this by hand and can decline it, which puts the points back."
+        ownFlair
+          ? `\n\nAn admin reads "${ownText.trim()}" before it goes up, and can decline it, which puts the points back.`
+          : instant
+            ? ""
+            : "\n\nThe league office fills this by hand and can decline it, which puts the points back."
       }`,
-      confirmLabel: `${live.instant ? "Buy" : "Order"} for ${fmt(live.cost)}`,
+      confirmLabel: `${instant ? "Buy" : "Order"} for ${fmt(live.cost)}`,
     });
     if (!ok) return;
     running.current = true;
     setBusy(true);
     setError(null);
     try {
-      await api.redeemToken(live.key, choice);
+      await api.redeemToken(live.key, choice, ownFlair ? ownText.trim() : null);
       setOrdered(true);
       onChanged?.();
     } catch (e) {
@@ -591,29 +610,64 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
           {error && <ErrorBox message={error} />}
           {ordered && (
             <Notice kind="success">
-              {live.instant
-                ? "Done. It is live on the site right now."
-                : "Ordered. The league office picks it up from here and will come back to you on Discord."}
+              {ownFlair
+                ? "Sent to the admins. They read your wording first, and it goes up on your profile once they say yes. If they turn it down you get the points back."
+                : instant
+                  ? "Done. It is live on the site right now."
+                  : "Ordered. The league office picks it up from here and will come back to you on Discord."}
             </Notice>
           )}
 
           <p className="text-sm leading-relaxed text-medium">{live.blurb || live.description}</p>
 
           {flairs && (
-            <div className="flex flex-wrap gap-2">
-              {flairs.map((f) => (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {flairs.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    disabled={ordered}
+                    onClick={() => setChoice(f.key)}
+                    className={`pill border px-3 py-1.5 text-xs transition ${
+                      choice === f.key ? "border-ok bg-ok/15 text-ok" : "border-border bg-surface2 text-medium hover:text-dark"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
                 <button
-                  key={f.key}
                   type="button"
                   disabled={ordered}
-                  onClick={() => setChoice(f.key)}
-                  className={`pill border px-3 py-1.5 text-xs transition ${
-                    choice === f.key ? "border-ok bg-ok/15 text-ok" : "border-border bg-surface2 text-medium hover:text-dark"
+                  onClick={() => setChoice(CUSTOM_FLAIR)}
+                  className={`pill border border-dashed px-3 py-1.5 text-xs transition ${
+                    ownFlair ? "border-ok bg-ok/15 text-ok" : "border-border bg-surface2 text-medium hover:text-dark"
                   }`}
                 >
-                  {f.label}
+                  Write your own
                 </button>
-              ))}
+              </div>
+
+              {ownFlair && (
+                <div className="space-y-2">
+                  <input
+                    className="input w-full"
+                    autoFocus
+                    disabled={ordered}
+                    maxLength={maxFlair}
+                    placeholder="Your wording"
+                    value={ownText}
+                    onChange={(e) => setOwnText(e.target.value)}
+                  />
+                  <div className="text-right font-mono text-[11px] text-light">
+                    {ownText.length} / {maxFlair}
+                  </div>
+                  <Notice kind="info">
+                    This one does not go up by itself. An admin reads it first and puts it on your profile if it is
+                    fine. Turn it down and your points come straight back.
+                  </Notice>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -637,8 +691,13 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
             <button type="button" className="btn-secondary" onClick={onClose}>
               {ordered ? "Done" : "Not now"}
             </button>
-            <button type="button" className="btn-primary" disabled={busy || ordered || short > 0 || (flairs && !choice)} onClick={act}>
-              {busy ? "…" : buyLabel(live, balance)}
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy || ordered || short > 0 || (flairs && (!choice || (ownFlair && !ownReady)))}
+              onClick={act}
+            >
+              {busy ? "…" : buyLabel({ ...live, instant }, balance)}
             </button>
           </div>
         </div>
@@ -949,7 +1008,7 @@ function Shop({ data, onChanged, goal, onGoal }) {
   const navigate = useNavigate();
 
   // One flat grid across the full width, rather than a little grid per
-  // category: with seven entries and four columns, grouping meant four rows of
+  // category: with a handful of entries and four columns, grouping meant four rows of
   // one or two tiles each and a lot of empty space to the right of every
   // heading. Each tile says which category it is in instead.
   return (

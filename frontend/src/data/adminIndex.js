@@ -446,8 +446,8 @@ export const ADMIN_INDEX = [
   {
     tab: "tokens",
     title: "Fill a shop order",
-    hint: "Somebody redeemed a helmet or a role. Mark it filled, or decline it and give the points back.",
-    keywords: "tokens shop order redeem helmet role prize reward refund decline fill",
+    hint: "Somebody redeemed a helmet, a car skin or a role. Mark it filled, or decline it and give the points back.",
+    keywords: "tokens shop order redeem helmet skin livery role prize reward refund decline fill",
   },
   {
     tab: "tokens",

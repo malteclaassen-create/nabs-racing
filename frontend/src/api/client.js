@@ -783,9 +783,22 @@ export const api = {
   tokenBalance: () => request("/tokens/balance", { userAuth: true }),
   // "I have shown them that number" — sent once the nav bar has played the rise.
   markTokensSeen: () => request("/tokens/seen", { method: "POST", userAuth: true }),
+  // The race recap (backend lib/raceRecap.js): the round waiting to be shown
+  // to this member, one round read again from its race page, and "seen".
+  myRaceRecap: () => request("/me/race-recap", { userAuth: true }),
+  myRaceRecapFor: (raceId) => request(`/me/race-recap/${encodeURIComponent(raceId)}`, { userAuth: true }),
+  markRaceRecapSeen: (raceId) => request("/me/race-recap/seen", { method: "POST", body: { raceId }, userAuth: true }),
+  adminRaceRecap: () => request("/admin/race-recap", { auth: true }),
+  setRaceRecapMode: (mode) => request("/admin/race-recap", { method: "PUT", body: { mode }, auth: true }),
+  adminRaceRecapPreview: (raceId, driverId) =>
+    request(
+      `/admin/race-recap/preview?raceId=${encodeURIComponent(raceId)}${driverId ? `&driverId=${encodeURIComponent(driverId)}` : ""}`,
+      { auth: true }
+    ),
   claimInvite: () => request("/tokens/invite", { method: "POST", body: { code: storedInvite() }, userAuth: true }),
-  redeemToken: (itemKey, choice = null) =>
-    request("/tokens/redeem", { method: "POST", body: { itemKey, choice }, userAuth: true }),
+  // `text` is only read for the flair you write yourself (choice "custom").
+  redeemToken: (itemKey, choice = null, text = null) =>
+    request("/tokens/redeem", { method: "POST", body: { itemKey, choice, text }, userAuth: true }),
   tokenWall: () => request("/tokens/wall"),
   tokenLeaderboard: () => request("/tokens/leaderboard", { userAuth: true }),
   tokensStudio: () => request("/tokens/studio", { userAuth: true }),

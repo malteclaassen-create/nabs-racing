@@ -24,6 +24,10 @@ import TokenIcon from "./TokenIcon.jsx";
 
 const fmt = (n) => new Intl.NumberFormat(undefined, { useGrouping: true }).format(n || 0);
 
+// Same ceiling as CUSTOM_FLAIR_MAX in backend/src/lib/tokens.js, which is what
+// actually enforces it.
+const CUSTOM_FLAIR_MAX = 24;
+
 const ORDER_STATUS = [
   { key: "NEW", label: "Waiting", cls: "bg-brand/20 text-dark" },
   { key: "DONE", label: "Filled", cls: "bg-emerald-500/15 text-ok" },
@@ -98,6 +102,10 @@ function TrialSwitch({ mode, onChange, busy }) {
 // declining refunds the tokens, which is why it says so on the button.
 function OrderRow({ order, onUpdate, busy }) {
   const [note, setNote] = useState(order.note || "");
+  // A flair somebody wrote themselves is the one order with words in it that
+  // will end up on a public page, so the row shows them and lets the admin
+  // fix a typo instead of declining over one.
+  const [flairText, setFlairText] = useState(order.flairText || "");
   const s = statusMeta(order.status);
   return (
     <li className="space-y-2 py-3">
@@ -118,6 +126,19 @@ function OrderRow({ order, onUpdate, busy }) {
           </span>
         </div>
       </div>
+      {order.flairText != null && order.status === "NEW" && (
+        <div className="space-y-1">
+          <div className="font-mono text-[11px] uppercase tracking-wider text-light">
+            They wrote this, and it goes on their public profile
+          </div>
+          <input
+            className="input w-full font-semibold"
+            maxLength={CUSTOM_FLAIR_MAX}
+            value={flairText}
+            onChange={(e) => setFlairText(e.target.value)}
+          />
+        </div>
+      )}
       {order.status === "NEW" && (
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -128,11 +149,11 @@ function OrderRow({ order, onUpdate, busy }) {
           />
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || (order.flairText != null && !flairText.trim())}
             className="btn-primary"
-            onClick={() => onUpdate(order.id, "DONE", note)}
+            onClick={() => onUpdate(order.id, "DONE", note, flairText)}
           >
-            Mark filled
+            {order.flairText != null ? "Approve and put it up" : "Mark filled"}
           </button>
           <button
             type="button"
@@ -586,9 +607,9 @@ export default function AdminTokens() {
                     key={o.id}
                     order={o}
                     busy={busy}
-                    onUpdate={(id, status, note) =>
+                    onUpdate={(id, status, note, flairText) =>
                       run(
-                        () => api.updateTokenOrder(id, { status, note }),
+                        () => api.updateTokenOrder(id, { status, note, flairText }),
                         status === "DONE" ? "Marked as filled." : "Declined and refunded."
                       )
                     }
@@ -599,7 +620,7 @@ export default function AdminTokens() {
           ) : (
             <EmptyState
               title="Nothing to do"
-              hint="Helmets and Discord roles land here when somebody orders one. Card designs, flairs and wall entries the site fills by itself."
+              hint="Helmets, car skins, Discord roles and flairs somebody wrote themselves land here when they order one. Card designs, the fixed flairs and wall entries the site fills by itself."
             />
           )}
           {auto.length > 0 && (

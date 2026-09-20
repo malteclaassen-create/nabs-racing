@@ -48,6 +48,7 @@ import {
   tunedReferralLimit,
   tunedMultiplier,
   FLAIRS,
+  CUSTOM_FLAIR_MAX,
   hallOfFameWall,
   leaderboard,
   syncEarned,
@@ -89,6 +90,7 @@ router.get("/", requireUser, async (req, res, next) => {
       rules: await rulesForDisplay(prisma),
       shop: tunedShop().filter((i) => i.active),
       flairs: FLAIRS,
+      customFlairMax: CUSTOM_FLAIR_MAX,
       botConnected: await botConnected(prisma),
       earning: await isEarningOn(prisma),
       startDay: tunedStartDay(),
@@ -173,7 +175,7 @@ router.post("/card-design", requireUser, async (req, res, next) => {
 router.post("/redeem", requireUser, async (req, res, next) => {
   try {
     if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
-    const out = await redeemItem(prisma, req.user.discordId, req.body?.itemKey, req.body?.choice);
+    const out = await redeemItem(prisma, req.user.discordId, req.body?.itemKey, req.body?.choice, req.body?.text);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
   } catch (e) {
@@ -455,10 +457,11 @@ adminRouter.post("/adjust", async (req, res, next) => {
   }
 });
 
-// PATCH /api/admin/tokens/orders/:id { status, note } — work through an order.
+// PATCH /api/admin/tokens/orders/:id { status, note, flairText } — work through
+// an order. flairText only does anything on a flair somebody wrote themselves.
 adminRouter.patch("/orders/:id", async (req, res, next) => {
   try {
-    const out = await setRedemptionStatus(prisma, req.params.id, req.body?.status, req.body?.note);
+    const out = await setRedemptionStatus(prisma, req.params.id, req.body?.status, req.body?.note, req.body?.flairText);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
   } catch (e) {
