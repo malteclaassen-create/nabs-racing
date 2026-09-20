@@ -422,6 +422,12 @@ function createRelay(server) {
   // The last lap of each driver handed to the training-points tally. Kept for
   // the life of the relay, not per session: lap stamps only ever go forwards.
   const tokenLapAtByGuid = new Map(); // guid -> seconds since epoch
+  // And their lap COUNT as the server last reported it, which is what makes
+  // the tally survive a gap. The upstream socket drops for entirely ordinary
+  // reasons and comes back seconds or minutes later; counting the difference
+  // means the laps driven in between are still counted, where counting "one
+  // lap per sighting" would have thrown away everything but the last of them.
+  const tokenLapsByGuid = new Map(); // guid -> NumLaps as last counted
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
   // CarID -> guid, rebuilt from every snapshot: ET53 only carries the CarID,
   // but the follow fast-lane (relayFollowedTelemetry) speaks public driver ids.
@@ -736,17 +742,40 @@ function createRelay(server) {
     // "last one seen" rather than the Set above, which has a cap on it: a
     // tally that starts counting the same lap again once the cap is hit would
     // pay somebody for standing in the pits.
+    //
+    // HOW MANY laps this is worth comes from the server's own counter rather
+    // than from "we saw a new lap, so that is one". First sight of a driver
+    // counts nothing and only takes their count down — the session on this
+    // server is a week old and full of laps from before the site was looking,
+    // and those are not this minute's. After that it is the difference, so a
+    // gap in the feed costs nothing. A count that went BACKWARDS is the
+    // session having started again, which is a new baseline and not a lap.
+    const nowLaps = Number(car?.NumLaps ?? 0) || 0;
+    const seenLaps = tokenLapsByGuid.get(guid);
+    if (seenLaps == null || nowLaps < seenLaps) {
+      tokenLapsByGuid.set(guid, nowLaps);
+      tokenLapAtByGuid.set(guid, sec);
+      return;
+    }
     if (sec <= (tokenLapAtByGuid.get(guid) || 0)) return;
+    // Capped, because one wrong number out of the upstream must not be able
+    // to pay somebody a season's worth of training in a single tick.
+    const laps = Math.min(50, Math.max(1, nowLaps - seenLaps));
+    tokenLapsByGuid.set(guid, nowLaps);
     tokenLapAtByGuid.set(guid, sec);
     if (looksLikeSafetyCar(ci?.CarSkin, ci?.CarModel)) return;
-    const [scope] = boardScopes(server.key);
-    if (!scope) return;
+    // Which series this lap counts for is NOT decided here. A server with no
+    // series assigned to it is the normal state of the second one, and a lap
+    // on it is still a lap; lib/practiceTokens.js works it out from the
+    // assignment, the track and the driver.
     noteTrainingLap(prisma, {
-      series: scope.series,
+      serverKey: server.key,
+      scopes: boardScopes(server.key),
       steamId: guid,
       car: ci?.CarModel || "",
       trackKey: trackKeyOf(si?.Track || "", si?.TrackConfig || ""),
       at: sec,
+      laps,
     });
   }
 

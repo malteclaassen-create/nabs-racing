@@ -33,6 +33,7 @@ import {
   discordForDrivers,
 } from "./tokens.js";
 import { leagueDay } from "./tokenRules.js";
+import { groupKeyFor } from "./trackKeys.js";
 
 const STEAM_RE = /^\d{10,20}$/;
 
@@ -106,8 +107,90 @@ export async function currentPeriod(prisma, series, now = Date.now()) {
 
 export function __clearCaches() {
   periodCache.clear();
+  seriesCache.clear();
   discordBySteam.clear();
   paidByPeriod.clear();
+}
+
+// ---- Which series a lap belongs to ------------------------------------------
+//
+// The league runs two race servers and more than one series, and the two do
+// not line up by themselves:
+//
+//   * a server with no series assigned to it (the admin has never touched the
+//     assignment, which is the normal state) used to drop every lap on the
+//     floor — and the second server is exactly the one the league practices on;
+//   * a server that serves BOTH series would have filed everybody's laps under
+//     whichever series happened to be listed first.
+//
+// So the server's assignment is the first word, not the last one. When it does
+// not decide the question on its own, the TRACK does: the practice server runs
+// the week's circuit, and the week's circuit is the next round's. When that
+// does not decide it either (an unknown track name, a fun session somewhere
+// else), the DRIVER does: which series they actually race in this season.
+// Only if all three are silent does it fall back to the first candidate.
+const seriesCache = new Map(); // `${server}|${trackKey}|${steamId}` -> { at, slug }
+const SERIES_TTL_MS = 5 * 60 * 1000;
+
+async function activeSeriesSlugs(prisma) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT DISTINCT se."slug" AS "slug"
+         FROM "Series" se JOIN "Season" s ON s."seriesId" = se."id"
+        WHERE s."isActive" = 1`
+    )
+    .catch(() => []);
+  return rows.map((r) => String(r.slug)).filter(Boolean);
+}
+
+// The series this Steam id races in this season, as slugs.
+async function seriesOfDriver(prisma, steamId) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT DISTINCT se."slug" AS "slug"
+         FROM "Driver" d
+         JOIN "Season" s ON s."id" = d."seasonId"
+         JOIN "Series" se ON se."id" = s."seriesId"
+        WHERE d."steamId" = ? AND s."isActive" = 1`,
+      String(steamId)
+    )
+    .catch(() => []);
+  return rows.map((r) => String(r.slug)).filter(Boolean);
+}
+
+export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackKey = "", steamId = "" } = {}) {
+  const key = `${serverKey}|${trackKey}|${steamId}`;
+  const hit = seriesCache.get(key);
+  if (hit && Date.now() - hit.at < SERIES_TTL_MS) return hit.slug;
+
+  const remember = (slug) => {
+    seriesCache.set(key, { at: Date.now(), slug: slug || null });
+    return slug || null;
+  };
+
+  const assigned = [...new Set((scopes || []).map((s) => String(s?.series || "")).filter(Boolean))];
+  if (assigned.length === 1) return remember(assigned[0]);
+
+  const candidates = assigned.length ? assigned : await activeSeriesSlugs(prisma);
+  if (!candidates.length) return remember(null);
+  if (candidates.length === 1) return remember(candidates[0]);
+
+  // The track the session is on, against each candidate's next round.
+  const onTrack = groupKeyFor(String(trackKey || "").split("--")[0]);
+  if (onTrack) {
+    const here = [];
+    for (const slug of candidates) {
+      const period = await currentPeriod(prisma, slug);
+      if (period?.track && groupKeyFor(period.track) === onTrack) here.push(slug);
+    }
+    if (here.length === 1) return remember(here[0]);
+  }
+
+  // Whose driver is this.
+  const mine = (await seriesOfDriver(prisma, steamId)).filter((slug) => candidates.includes(slug));
+  if (mine.length === 1) return remember(mine[0]);
+
+  return remember(candidates[0]);
 }
 
 // ---- Counting ---------------------------------------------------------------
@@ -128,11 +211,19 @@ export function practiceWritesSettled() {
   return chain;
 }
 
-async function countLap(prisma, { series, steamId, car = "", trackKey = "", at = 0 } = {}) {
+async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", trackKey = "", at = 0, laps = 1 } = {}) {
   const id = String(steamId || "");
   const stamp = Math.round(Number(at) || 0);
+  // More than one lap when the relay was away while they were driving: the
+  // caller counts the difference in the server's own lap counter, not the
+  // number of times it happened to look.
+  const many = Math.min(50, Math.max(1, Math.round(Number(laps) || 1)));
   if (!STEAM_RE.test(id) || stamp <= 0) return;
-  const period = await currentPeriod(prisma, series);
+  // `series` is only passed by the tests; the relay hands over what it knows
+  // about the server and lets the rule above decide.
+  const slug = series || (await seriesForLap(prisma, { serverKey, scopes, trackKey, steamId: id }));
+  if (!slug) return;
+  const period = await currentPeriod(prisma, slug);
   if (!period) return;
 
   // The lap is counted only when it is newer than the last one counted for this
@@ -141,17 +232,18 @@ async function countLap(prisma, { series, steamId, car = "", trackKey = "", at =
   const written = await prisma
     .$executeRawUnsafe(
       `INSERT INTO "TokenPractice" ("steamId","series","period","laps","trackKey","car","lastAt","updatedAt")
-       VALUES (?,?,?,1,?,?,?,CURRENT_TIMESTAMP)
+       VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
        ON CONFLICT("steamId","series","period") DO UPDATE SET
-         "laps" = "laps" + 1,
+         "laps" = "laps" + excluded."laps",
          "trackKey" = excluded."trackKey",
          "car" = excluded."car",
          "lastAt" = excluded."lastAt",
          "updatedAt" = CURRENT_TIMESTAMP
        WHERE excluded."lastAt" > "TokenPractice"."lastAt"`,
       id,
-      String(series || ""),
+      slug,
       period.key,
+      many,
       String(trackKey || "").slice(0, 80) || null,
       String(car || "").slice(0, 80) || null,
       stamp
@@ -168,7 +260,7 @@ async function countLap(prisma, { series, steamId, car = "", trackKey = "", at =
     .$queryRawUnsafe(
       `SELECT "laps" FROM "TokenPractice" WHERE "steamId" = ? AND "series" = ? AND "period" = ?`,
       id,
-      String(series || ""),
+      slug,
       period.key
     )
     .catch(() => []);
@@ -179,10 +271,10 @@ async function countLap(prisma, { series, steamId, car = "", trackKey = "", at =
 
   // Once a milestone is paid it stays paid, and re-running the whole payout on
   // every lap for the rest of the week is work with no answer in it.
-  const memo = paidMemo(series, period.key);
+  const memo = paidMemo(slug, period.key);
   const reached = tiers.filter((t) => Number(rows[0]?.laps || 0) >= t.laps);
   if (reached.every((t) => memo.has(`${discordId}:${t.key}`))) return;
-  await payPractice(prisma, discordId, { series, period });
+  await payPractice(prisma, discordId, { series: slug, period });
   for (const t of reached) memo.add(`${discordId}:${t.key}`);
 }
 

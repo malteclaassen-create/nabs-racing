@@ -4,14 +4,35 @@ import { notePracticeLap, practiceWritesSettled, practiceProgress, __clearCaches
 // A prisma stand-in with the three tables this touches: the lap tally, the
 // drivers behind the Steam ids, and the ledger with the same uniqueness the
 // real index has. Enough to answer "was this lap counted" and "was it paid".
-function db({ earning = "1", steam = { "76561100000000001": "d1" }, discord = { d1: "disc1" }, race = true } = {}) {
+function db({
+  earning = "1",
+  steam = { "76561100000000001": "d1" },
+  discord = { d1: "disc1" },
+  race = true,
+  seriesList = ["nabs"],
+  driverSeries = {},
+  nextRaceBySeries = null,
+} = {}) {
   const practice = new Map(); // `${steam}|${series}|${period}` -> row
   const ledger = new Map(); // refKey -> row
   const settings = new Map([["tokens_earning", earning]]);
 
   async function query(sql, ...args) {
-    if (/FROM "Race" ra/.test(sql)) return race ? [{ id: "race9", track: "Spa", number: 5, date: null }] : [];
-    if (/FROM "Series" se JOIN "Season"/.test(sql)) return [{ slug: "nabs", name: "NABS" }];
+    if (/FROM "Race" ra/.test(sql)) {
+      if (!race) return [];
+      if (nextRaceBySeries) {
+        const track = nextRaceBySeries[args[0]];
+        return track ? [{ id: `race-${args[0]}`, track, number: 5, date: null }] : [];
+      }
+      return [{ id: "race9", track: "Spa", number: 5, date: null }];
+    }
+    if (/SELECT DISTINCT se\."slug" AS "slug"\s+FROM "Series" se JOIN "Season"/.test(sql)) {
+      return seriesList.map((slug) => ({ slug }));
+    }
+    if (/FROM "Series" se JOIN "Season"/.test(sql)) return seriesList.map((slug) => ({ slug, name: slug }));
+    if (/FROM "Driver" d\s+JOIN "Season"/.test(sql)) {
+      return (driverSeries[args[0]] || []).map((slug) => ({ slug }));
+    }
     if (/FROM "Setting"/.test(sql)) {
       const key = args[0];
       return settings.has(key) ? [{ value: settings.get(key) }] : [];
@@ -58,15 +79,15 @@ function db({ earning = "1", steam = { "76561100000000001": "d1" }, discord = { 
 
   async function exec(sql, ...args) {
     if (/INSERT INTO "TokenPractice"/.test(sql)) {
-      const [steamId, series, period, trackKey, car, lastAt] = args;
+      const [steamId, series, period, laps, trackKey, car, lastAt] = args;
       const key = `${steamId}|${series}|${period}`;
       const row = practice.get(key);
       if (!row) {
-        practice.set(key, { laps: 1, trackKey, car, lastAt });
+        practice.set(key, { laps, trackKey, car, lastAt });
         return 1;
       }
       if (lastAt <= row.lastAt) return 0; // the same lap again
-      Object.assign(row, { laps: row.laps + 1, trackKey, car, lastAt });
+      Object.assign(row, { laps: row.laps + laps, trackKey, car, lastAt });
       return 1;
     }
     if (/INSERT OR IGNORE INTO "TokenLedger"/.test(sql)) {
@@ -98,9 +119,17 @@ function db({ earning = "1", steam = { "76561100000000001": "d1" }, discord = { 
 }
 
 // One driver doing `n` laps, a lap every two minutes.
-async function drive(prisma, n, { steamId = "76561100000000001", from = 1_700_000_000 } = {}) {
+async function drive(prisma, n, { steamId = "76561100000000001", from = 1_700_000_000, ...rest } = {}) {
   for (let i = 0; i < n; i++) {
-    notePracticeLap(prisma, { series: "nabs", steamId, car: "bmw", trackKey: "spa--nabs-spa", at: from + i * 120 });
+    notePracticeLap(prisma, {
+      serverKey: "nabs2",
+      scopes: [],
+      steamId,
+      car: "bmw",
+      trackKey: "spa--nabs-spa",
+      at: from + i * 120,
+      ...rest,
+    });
   }
   await practiceWritesSettled();
 }
@@ -193,6 +222,59 @@ describe("training laps", () => {
     await drive(prisma, 25);
     expect([...prisma.practice.values()][0].laps).toBe(25);
     expect([...prisma.ledger.values()]).toEqual([]);
+  });
+
+  it("counts the laps driven while the feed was away, not just the last one", async () => {
+    const prisma = db();
+    // Two laps seen, then the relay is gone for a while and comes back to a
+    // driver who has done eight more.
+    notePracticeLap(prisma, { serverKey: "nabs2", scopes: [], steamId: "76561100000000001", at: 1_700_000_000, laps: 1 });
+    notePracticeLap(prisma, { serverKey: "nabs2", scopes: [], steamId: "76561100000000001", at: 1_700_000_120, laps: 1 });
+    notePracticeLap(prisma, { serverKey: "nabs2", scopes: [], steamId: "76561100000000001", at: 1_700_001_200, laps: 8 });
+    await practiceWritesSettled();
+    expect([...prisma.practice.values()][0].laps).toBe(10);
+  });
+
+  it("counts laps on a server that has no series assigned to it", async () => {
+    // The second race server, which is the one the league practices on and the
+    // one nothing is assigned to.
+    const prisma = db();
+    await drive(prisma, 20, { serverKey: "nabs2", scopes: [] });
+    expect([...prisma.practice.values()][0]).toMatchObject({ laps: 20 });
+    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9"]);
+  });
+
+  it("follows the server's own assignment when it has exactly one series", async () => {
+    const prisma = db({ seriesList: ["f1", "gt"] });
+    await drive(prisma, 3, { serverKey: "nabs1", scopes: [{ series: "gt", season: 2 }] });
+    expect([...prisma.practice.keys()][0]).toContain("|gt|");
+  });
+
+  it("with two series on one server, the track this week decides", async () => {
+    const prisma = db({
+      seriesList: ["f1", "gt"],
+      nextRaceBySeries: { f1: "Monza", gt: "Spa" },
+    });
+    await drive(prisma, 3, {
+      serverKey: "nabs1",
+      scopes: [{ series: "f1", season: 8 }, { series: "gt", season: 2 }],
+      trackKey: "ks_monza--nabs-monza",
+    });
+    expect([...prisma.practice.keys()][0]).toContain("|f1|");
+  });
+
+  it("and when the track says nothing, the driver's own series does", async () => {
+    const prisma = db({
+      seriesList: ["f1", "gt"],
+      nextRaceBySeries: { f1: "Monza", gt: "Spa" },
+      driverSeries: { "76561100000000001": ["gt"] },
+    });
+    await drive(prisma, 3, {
+      serverKey: "nabs1",
+      scopes: [{ series: "f1", season: 8 }, { series: "gt", season: 2 }],
+      trackKey: "somewhere_else--x",
+    });
+    expect([...prisma.practice.keys()][0]).toContain("|gt|");
   });
 
   it("files laps under the week rather than the round when the calendar is empty", async () => {

@@ -4,10 +4,15 @@
 // Built to a mock-up Malte drew: a header with the track's name and your
 // driver chip, then cards that each say one thing with one big number and a
 // line of words under it (where you finished and what that meant, what it
-// paid, your pace against the field, where you stood in the race, the rating,
-// the season curve, the NABS Points, your team-mate, the night's honours).
-// Every card moves as it scrolls in: the car slides from grid to flag, the
-// numbers count from what they were, the curves draw themselves.
+// paid, your pace against the field, the tyres, your incidents, the lap chart,
+// the rating, the season curve, the NABS Points, your team-mate, the night's
+// honours).
+//
+// The page builds itself as you scroll. Each card is a .recap-reveal that the
+// page watches for itself (a stricter line than the site's own reveal: a card
+// has to be a good way into the screen), and everything inside a card waits
+// for its card: the car slides from grid to flag, the numbers tick from what
+// they were, the curves draw, the bars fill, the tags land last.
 //
 // Opened three ways. The host at the app root sends a member here the first
 // time they come back after the office saved a round (with the recap already
@@ -16,14 +21,16 @@
 // the admin preview opens it with ?seat=<driverId> to see any driver's version
 // of any round, which never counts as seen for anybody.
 // ---------------------------------------------------------------------------
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { motionOff, useInView } from "../hooks/motion.js";
-import { CountUp, DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton, CardsSkeleton } from "../components/ui.jsx";
+import { motionOff } from "../hooks/motion.js";
+import { DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton, CardsSkeleton } from "../components/ui.jsx";
 import { buildRaceFacts } from "../components/RaceFacts.jsx";
+import { TyreBadge } from "../components/TyreStrategy.jsx";
+import { tyreCompound } from "../data/liveTiming.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
@@ -73,6 +80,7 @@ export default function RaceRecapPage() {
     };
   }, [recap, raceId]);
 
+  useRecapReveal(recap, laps);
   useSpecificTitle(recap ? `Race recap · ${recap.race.track}` : "Race recap");
 
   if (error) return <ErrorBox message={error} />;
@@ -121,9 +129,9 @@ export default function RaceRecapPage() {
       )}
       {career && you && <CareerCard career={career} you={you} race={race} />}
       {showPoints && <PointsCard points={points} />}
-      {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} />}
+      {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} card={card} />}
       <HonoursRow race={race} results={results} quali={quali} />
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <div className="recap-reveal flex flex-wrap items-center justify-between gap-3 pt-2">
         <div className="flex flex-wrap gap-2">
           <Link to={resultsLink} className="btn-primary">
             Full race results
@@ -142,36 +150,88 @@ export default function RaceRecapPage() {
   );
 }
 
-// --- the pieces every card shares --------------------------------------------
+// --- the motion ---------------------------------------------------------------
 
-function Card({ children, className = "" }) {
-  return <div className={`reveal card p-5 sm:p-6 ${className}`}>{children}</div>;
+// Lets every .recap-reveal on the page in once it is a good way into the
+// screen (its top past the lower fifth of the viewport); several arriving in
+// one pass fan out top to bottom. A scroll check rather than an
+// IntersectionObserver, like the site's own reveal: it never leaves a card
+// stuck invisible, whatever the browser is doing with its frames. Re-armed
+// whenever the page grows (the lap chart card lands a beat later).
+function useRecapReveal(...deps) {
+  useEffect(() => {
+    const pending = () => [...document.querySelectorAll(".recap-reveal:not(.is-visible)")];
+    if (!pending().length) return;
+    if (motionOff()) {
+      pending().forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    // A short timer rather than an animation frame: frames stop when the tab
+    // is not painting, timers do not, and the site's own reveal learned the
+    // same lesson (hooks/useScrollReveal.js).
+    let timer = 0;
+    const check = () => {
+      timer = 0;
+      const line = window.innerHeight * 0.82;
+      const due = pending()
+        .map((el) => ({ el, top: el.getBoundingClientRect().top }))
+        .filter((x) => x.top < line)
+        .sort((a, b) => a.top - b.top);
+      due.forEach(({ el }, i) => {
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 6) * 110}ms`);
+        el.classList.add("is-visible");
+      });
+    };
+    const onScroll = () => {
+      if (!timer) timer = setTimeout(check, 40);
+    };
+    check();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 }
 
-function Label({ children, className = "", tone = "text-eyebrow" }) {
-  return <div className={`font-mono text-[10px] font-bold uppercase tracking-[0.2em] ${tone} ${className}`}>{children}</div>;
+// Whether the card this element sits in has been let in yet. Numbers wait
+// for that rather than for being on screen, or they would count up behind
+// a card that is still invisible.
+function useRevealed() {
+  const ref = useRef(null);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const host = ref.current?.closest(".recap-reveal");
+    if (!host) {
+      setOn(true);
+      return;
+    }
+    if (host.classList.contains("is-visible")) {
+      setOn(true);
+      return;
+    }
+    const mo = new MutationObserver(() => {
+      if (host.classList.contains("is-visible")) {
+        setOn(true);
+        mo.disconnect();
+      }
+    });
+    mo.observe(host, { attributes: true, attributeFilter: ["class"] });
+    return () => mo.disconnect();
+  }, []);
+  return [ref, on];
 }
 
-function Delta({ value, decimals = 0, suffix = "", className = "", arrow = false }) {
-  if (value == null || !Number.isFinite(value)) return null;
-  const zero = Math.abs(value) < (decimals ? 0.05 : 0.5);
-  const up = value > 0;
-  const text = zero ? `±0${suffix}` : `${up ? "+" : "−"}${Math.abs(value).toFixed(decimals)}${suffix}`;
-  return (
-    <span className={`font-mono font-bold tabular-nums ${zero ? "text-light" : up ? "text-ok" : "text-bad"} ${className}`}>
-      {arrow && !zero && (up ? "▲ " : "▼ ")}
-      {text}
-    </span>
-  );
-}
-
-// A number that ticks from what it was to what it is once it is on screen.
-function Tween({ from, to, decimals = 0, duration = 1400, delay = 350, className = "" }) {
-  const [ref, inView] = useInView({ rootMargin: "0px 0px 10% 0px" });
+// A number that ticks from what it was to what it is, once its card is in.
+function Tween({ from = 0, to, decimals = 0, duration = 1400, delay = 350, prefix = "", suffix = "", className = "" }) {
+  const [ref, on] = useRevealed();
   const start = from == null || !Number.isFinite(from) ? to : from;
   const [n, setN] = useState(start);
   useEffect(() => {
-    if (!inView || !Number.isFinite(to)) return;
+    if (!on || !Number.isFinite(to)) return;
     if (motionOff() || start === to) {
       setN(to);
       return;
@@ -186,10 +246,39 @@ function Tween({ from, to, decimals = 0, duration = 1400, delay = 350, className
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [inView, start, to, duration, delay]);
+  }, [on, start, to, duration, delay]);
+  const shown = decimals ? n.toFixed(decimals) : Math.round(n).toLocaleString("en-US");
   return (
     <span ref={ref} className={`tabular-nums ${className}`}>
-      {decimals ? n.toFixed(decimals) : Math.round(n)}
+      {prefix}
+      {shown}
+      {suffix}
+    </span>
+  );
+}
+
+// --- the pieces every card shares --------------------------------------------
+
+function Card({ children, className = "" }) {
+  return <div className={`recap-reveal card p-5 sm:p-6 ${className}`}>{children}</div>;
+}
+
+function Label({ children, className = "", tone = "text-eyebrow" }) {
+  return <div className={`font-mono text-[10px] font-bold uppercase tracking-[0.2em] ${tone} ${className}`}>{children}</div>;
+}
+
+// "+3" in green, "−1" in red. `goodWhen` says which way is the good one:
+// "up" for places gained and points, "down" for lap time lost per lap.
+function Delta({ value, decimals = 0, suffix = "", className = "", arrow = false, goodWhen = "up" }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  const zero = Math.abs(value) < (decimals ? 0.005 : 0.5);
+  const up = value > 0;
+  const good = goodWhen === "up" ? up : !up;
+  const text = zero ? `±0${suffix}` : `${up ? "+" : "−"}${Math.abs(value).toFixed(decimals)}${suffix}`;
+  return (
+    <span className={`font-mono font-bold tabular-nums ${zero ? "text-light" : good ? "text-ok" : "text-bad"} ${className}`}>
+      {arrow && !zero && (up ? "▲ " : "▼ ")}
+      {text}
     </span>
   );
 }
@@ -205,6 +294,27 @@ function Row({ label, value, tone = "text-dark" }) {
   );
 }
 
+const ICONS = {
+  stopwatch: "M12 13V9M9 2h6M19 6l-1.5 1.5M12 21a8 8 0 100-16 8 8 0 000 16z",
+  gauge: "M5 17a8 8 0 1114 0M12 17l3.5-5",
+  steady: "M3 12h4l2-5 4 10 2-5h6",
+  swap: "M4 8h13l-3-3M20 16H7l3 3",
+  shield: "M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z",
+  flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
+  tyre: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 15a3 3 0 100-6 3 3 0 000 6z",
+  hourglass: "M6 3h12M6 21h12M8 3v4l4 5-4 5v4M16 3v4l-4 5 4 5v4",
+  lights: "M3 6h18v6H3zM7 9h.01M12 9h.01M17 9h.01",
+  lead: "M5 20h14M6 20V9l3 2 3-6 3 6 3-2v11",
+};
+
+function Icon({ name, className = "h-4 w-4" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICONS[name] || ICONS.flag} />
+    </svg>
+  );
+}
+
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
 const nth = (n) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
@@ -217,7 +327,7 @@ function Header({ recap, preview }) {
   const tier = card?.driver?.tier ?? results.find((r) => r.driverId === you?.driverId)?.driverTier ?? null;
   const time = race.date ? fmtRaceTime(race.date) : "";
   return (
-    <div className="reveal flex flex-wrap items-end justify-between gap-6 border-b border-border pb-6">
+    <div className="recap-reveal flex flex-wrap items-end justify-between gap-6 border-b border-border pb-6">
       <div className="min-w-0">
         <Label>
           {[you ? "Your race summary" : "Race summary", race.seasonNumber != null ? `Season ${race.seasonNumber}` : null, race.number != null ? `Round ${race.number}` : null, preview ? "preview" : null]
@@ -252,19 +362,30 @@ function Header({ recap, preview }) {
 
 // --- finishing position -------------------------------------------------------
 
-// The car slides along a short track from its grid slot to where it finished.
+// The whole grid as a track, back of the field on the left and P1 on the
+// right, and the car sliding from where it started to where it finished,
+// leaving its team colour behind it.
 function GridToFlag({ grid, finish, field }) {
   const at = (p) => ((field - p) / Math.max(1, field - 1)) * 100;
   const from = at(grid);
   const to = at(finish);
   const lo = Math.min(from, to);
   const w = Math.abs(to - from);
+  const step = field > 30 ? 10 : field > 12 ? 5 : 1;
+  const ticks = [];
+  for (let p = field; p >= 1; p -= 1) if (p === 1 || p === field || p % step === 0) ticks.push(p);
   return (
-    <div className="relative h-8 w-full">
-      <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
-      <div className="recap-sweep-trail absolute top-1/2 h-[3px] -translate-y-1/2" style={{ left: `${lo}%`, "--w": `${w}%`, background: "var(--recap-team)", opacity: 0.6 }} />
-      <div className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-card" style={{ left: `${from}%` }} />
-      <div className="recap-sweep-dot absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ "--from": `${from}%`, "--to": `${to}%`, left: `${to}%` }}>
+    <div className="relative h-14 w-full">
+      <div className="absolute inset-x-0 top-5 h-px bg-border" />
+      {ticks.map((p) => (
+        <div key={p} className="absolute top-5 -translate-x-1/2" style={{ left: `${at(p)}%` }}>
+          <div className="mx-auto h-2 w-px bg-border" />
+          <div className="mt-1 font-mono text-[10px] font-bold tabular-nums text-faint">P{p}</div>
+        </div>
+      ))}
+      <div className="recap-sweep-trail absolute top-[19px] h-[3px]" style={{ left: `${lo}%`, "--w": `${w}%`, background: "var(--recap-team)", opacity: 0.6 }} />
+      <div className="absolute top-5 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-card" style={{ left: `${from}%` }} title={`Grid P${grid}`} />
+      <div className="recap-sweep-dot absolute top-5 -translate-x-1/2 -translate-y-1/2" style={{ "--from": `${from}%`, "--to": `${to}%`, left: `${to}%` }}>
         <div className="h-4 w-4 rounded-full ring-4 ring-card" style={{ background: "var(--recap-team)" }} />
       </div>
     </div>
@@ -293,52 +414,76 @@ function finishStory(recap) {
   const mate = teammates?.[0];
   if (you.finished && mate && teammates.length === 1 && (mate.position == null || mate.position > you.position)) ahead.push("your own team-mate");
   if (ahead.length) bits.push(`You finished ahead of ${ahead.join(" and ")}.`);
-  if (you.finished && you.position === 1) bits.unshift("Race winner.");
-  else if (you.finished && you.position <= 3) bits.unshift(`${nth(you.position)} place, on the podium.`);
   return bits.join(" ");
 }
 
 function FinishCard({ recap }) {
   const { you, race } = recap;
   const story = finishStory(recap);
+  const headline = !you.raced
+    ? "Did not start"
+    : !you.finished
+      ? you.status === "DNF"
+        ? "Did not finish"
+        : you.status === "DSQ"
+          ? "Disqualified"
+          : you.status
+      : you.position === 1
+        ? "Race winner"
+        : you.position <= 3
+          ? `${nth(you.position)} place, on the podium`
+          : you.gained > 0
+            ? `Up ${you.gained} from the grid`
+            : you.gained < 0
+              ? `Down ${-you.gained} from the grid`
+              : "Held position from the grid";
+  const field = race.starters || race.fieldSize;
   return (
-    <Card>
-      <Label>Finishing position</Label>
-      <div className="mt-4 flex flex-wrap items-center gap-8">
+    <Card className="flex flex-col">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <Label>Finishing position</Label>
+        {you.finished && <Label tone="text-light">of {race.finishers} classified · {field} starters</Label>}
+      </div>
+      <div className="mt-2 flex flex-wrap items-end gap-x-8 gap-y-3">
         <div className="recap-pop flex items-start font-display font-black leading-none tracking-tighter text-dark">
           <span className="mt-3 text-4xl text-light sm:mt-5 sm:text-5xl">P</span>
           <span className="text-[6.5rem] sm:text-[8.5rem]">{you.finished ? you.position : you.raced ? you.status : "DNS"}</span>
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="mb-3 min-w-0 flex-1">
+          <div className="font-display text-2xl font-black uppercase tracking-tight sm:text-3xl" style={{ color: you.finished && you.position <= 3 ? "var(--medal-1)" : "var(--c-text)" }}>
+            {headline}
+          </div>
           {you.finished && you.grid != null && (
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="recap-tag mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs font-bold text-light">P{you.grid}</span>
-              <div className="min-w-[5rem] max-w-[12rem] flex-1">
-                <GridToFlag grid={you.grid} finish={you.position} field={race.starters || race.fieldSize} />
-              </div>
+              <span className="text-light">→</span>
               <span className="rounded-md border px-2 py-0.5 font-mono text-xs font-bold text-dark" style={{ borderColor: "var(--recap-team)" }}>
                 P{you.position}
               </span>
               {you.gained !== 0 && (
-                <span className="flex items-baseline gap-1.5">
-                  <Delta value={you.gained} className="text-2xl" />
+                <span className="ml-2 flex items-baseline gap-1.5">
+                  <Delta value={you.gained} className="text-xl" />
                   <Label tone="text-light">{Math.abs(you.gained) === 1 ? "place" : "places"} {you.gained > 0 ? "gained" : "lost"}</Label>
                 </span>
               )}
             </div>
           )}
-          {!you.finished && (
-            <div className="font-display text-xl font-extrabold uppercase tracking-tight text-medium">
-              {!you.raced ? "Did not start" : you.status === "DNF" ? "Did not finish" : you.status === "DSQ" ? "Disqualified" : you.status}
-              {you.grid != null && you.raced ? `, from P${you.grid} on the grid` : ""}
-            </div>
-          )}
-          {story && <p className="mt-4 max-w-md text-sm leading-relaxed text-medium">{story}</p>}
-          {you.finished && you.rawPosition != null && you.rawPosition !== you.position && (
-            <p className="mt-2 text-xs text-light">Crossed the line P{you.rawPosition}; the stewards made it P{you.position}.</p>
-          )}
+          {!you.finished && you.raced && you.grid != null && <div className="mt-2 font-mono text-xs text-light">from P{you.grid} on the grid</div>}
         </div>
       </div>
+      {you.finished && you.grid != null && field > 1 && (
+        <div className="mt-2">
+          <GridToFlag grid={you.grid} finish={you.position} field={field} />
+        </div>
+      )}
+      {(story || (you.finished && you.rawPosition != null && you.rawPosition !== you.position)) && (
+        <div className="recap-tag mt-auto border-t border-border pt-4" style={{ "--tag-delay": "1400ms" }}>
+          {story && <p className="text-sm leading-relaxed text-medium">{story}</p>}
+          {you.finished && you.rawPosition != null && you.rawPosition !== you.position && (
+            <p className="mt-1 text-xs text-light">Crossed the line P{you.rawPosition}; the stewards made it P{you.position}.</p>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -359,7 +504,7 @@ function RoundCard({ recap }) {
       <div className="flex items-start justify-between gap-4">
         <Label>Championship points</Label>
         <span className="font-display text-5xl font-black leading-none tabular-nums text-accent">
-          <CountUp end={you.points || 0} prefix={you.points > 0 ? "+" : ""} />
+          <Tween to={you.points || 0} prefix={you.points > 0 ? "+" : ""} />
           <span className="ml-1 font-mono text-xs font-bold text-light">pts</span>
         </span>
       </div>
@@ -377,63 +522,115 @@ function RoundCard({ recap }) {
 
 // --- the stat cards -----------------------------------------------------------
 
-function Stat({ label, value, note, tone = "text-dark", index = 0 }) {
+// One number, its word, an icon that says which kind of number, and where it
+// has a place in the field, a thin bar for that.
+function Stat({ label, value, note, tone = "text-dark", icon = "flag", bar = null, index = 0 }) {
   return (
-    <div className="card p-5" style={{ "--i": index }}>
-      <Label tone="text-light">{label}</Label>
+    <div className="card flex flex-col p-5" style={{ "--i": index }}>
+      <div className="flex items-start justify-between gap-3">
+        <Label tone="text-light">{label}</Label>
+        <span className={`-mt-0.5 shrink-0 ${tone === "text-dark" ? "text-faint" : tone}`}>
+          <Icon name={icon} />
+        </span>
+      </div>
       <div className={`mt-3 font-mono text-2xl font-bold tabular-nums leading-none sm:text-[1.7rem] ${tone}`}>{value ?? NO_VALUE}</div>
       {note && <div className="mt-2 text-xs text-light">{note}</div>}
+      {bar && (
+        <div className="mt-auto pt-3">
+          <div className="h-1 w-full rounded-full bg-surface2">
+            <div className={`bar-fill h-1 rounded-full ${bar.tone || "bg-light"}`} style={{ "--w": `${Math.max(3, Math.min(100, bar.pct))}%`, "--bar-delay": `${200 + index * 90}ms` }} />
+          </div>
+          {bar.text && <div className="mt-1 font-mono text-[10px] text-faint">{bar.text}</div>}
+        </div>
+      )}
     </div>
   );
 }
 
 function StatCards({ you, story, race }) {
   const fastest = you.bestLapMs != null && you.lapGapMs === 0;
-  const consistencyRank = null; // the field's ranks come with the classification rows below
+  const field = race.starters || race.fieldSize || 1;
+  const rankBar = (rank, of, text) => (rank && of ? { pct: ((of - rank + 1) / of) * 100, text: text || `P${rank} of ${of}` } : null);
   const cells = [
     fmtLap(you.bestLapMs)
-      ? { label: "Best lap", value: fmtLap(you.bestLapMs), tone: fastest ? "text-fl" : "text-dark", note: fastest ? "fastest lap of the race" : you.lapGapMs != null ? `${fmtLapDelta(you.lapGapMs)} to the fastest lap${story?.bestLapAt ? ` · lap ${story.bestLapAt}` : ""}` : null }
+      ? {
+          label: "Best lap",
+          icon: "stopwatch",
+          value: fmtLap(you.bestLapMs),
+          tone: fastest ? "text-fl" : "text-dark",
+          note: fastest ? "fastest lap of the race" : you.lapGapMs != null ? `${fmtLapDelta(you.lapGapMs)} to the fastest lap${story?.bestLapAt ? ` · set on lap ${story.bestLapAt}` : ""}` : null,
+        }
       : null,
     story?.paceMs
-      ? { label: "Race pace", value: fmtLap(story.paceMs), note: story.paceRank ? `P${story.paceRank} of ${story.paceField} on pure race pace${story.gapToBestPaceMs > 0 ? ` · ${fmtLapDelta(story.gapToBestPaceMs)} a lap` : ""}` : "median of your real laps" }
+      ? {
+          label: "Race pace",
+          icon: "gauge",
+          value: fmtLap(story.paceMs),
+          note: story.paceRank ? `pure race pace${story.gapToBestPaceMs > 0 ? ` · ${fmtLapDelta(story.gapToBestPaceMs)} a lap to the quickest` : " · the quickest car in the race"}` : "median of your real laps",
+          bar: rankBar(story.paceRank, story.paceField, story.paceRank ? `P${story.paceRank} of ${story.paceField} on pace` : null),
+        }
       : null,
-    you.consistencyPct > 0 ? { label: "Consistency", value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: consistencyRank || "how close your laps stayed to your best" } : null,
-    you.overtakes != null ? { label: "Overtakes", value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained}` : "estimated" } : null,
+    you.consistencyPct > 0
+      ? { label: "Consistency", icon: "steady", value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" } }
+      : null,
+    you.overtakes != null
+      ? { label: "Overtakes", icon: "swap", value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated" }
+      : null,
     you.cleanLaps != null && you.laps != null
-      ? { label: "Clean laps", value: `${you.cleanLaps} / ${you.laps}`, note: `${you.contacts ?? 0} car contact${you.contacts === 1 ? "" : "s"}${you.penaltySeconds > 0 ? ` · +${you.penaltySeconds}s penalty` : you.cleanRace ? " · no penalty" : ""}` }
+      ? {
+          label: "Clean laps",
+          icon: "shield",
+          value: `${you.cleanLaps} / ${you.laps}`,
+          tone: you.cleanLaps === you.laps ? "text-ok" : "text-dark",
+          note: `${you.contacts ?? 0} car contact${you.contacts === 1 ? "" : "s"}${you.penaltySeconds > 0 ? ` · +${you.penaltySeconds}s penalty` : you.cleanRace ? " · no penalty" : ""}`,
+          bar: { pct: (you.cleanLaps / you.laps) * 100, tone: you.cleanLaps === you.laps ? "bg-ok" : "bg-light" },
+        }
       : you.laps != null
-        ? { label: "Laps", value: String(you.laps), note: `${you.contacts ?? 0} car contacts` }
+        ? { label: "Laps", icon: "shield", value: String(you.laps), note: `${you.contacts ?? 0} car contacts` }
         : null,
     story?.bestPosition
-      ? { label: "Best position in race", value: `P${story.bestPosition}`, note: story.bestRun ? (story.bestRun.from === story.bestRun.to ? `on lap ${story.bestRun.from}` : `held from lap ${story.bestRun.from} to lap ${story.bestRun.to}`) : null }
+      ? {
+          label: "Best position in race",
+          icon: "flag",
+          value: `P${story.bestPosition}`,
+          tone: story.bestPosition === 1 ? "text-fl" : "text-dark",
+          note: story.bestRun ? (story.bestRun.from === story.bestRun.to ? `on lap ${story.bestRun.from}` : `held from lap ${story.bestRun.from} to lap ${story.bestRun.to}`) : null,
+          bar: rankBar(story.bestPosition, field, `P${story.bestPosition} of ${field} at best`),
+        }
       : you.lapsLed > 0
-        ? { label: "Laps led", value: String(you.lapsLed), note: "at the start/finish line" }
+        ? { label: "Laps led", icon: "lead", value: String(you.lapsLed), note: "at the start/finish line" }
         : null,
-    story?.stints?.length
-      ? { label: "Stints", value: story.stints.map((s) => s.tyre).join(" · "), note: story.stints.map((s) => `${s.laps} on ${s.tyre}`).join(", ") }
-      : story?.lap1Pos
-        ? { label: "After lap 1", value: `P${story.lap1Pos}`, note: you.grid != null ? `from P${you.grid} on the grid` : null }
-        : null,
+    story?.lap1Pos
+      ? {
+          label: "After lap 1",
+          icon: "lights",
+          value: `P${story.lap1Pos}`,
+          tone: you.grid != null && story.lap1Pos < you.grid ? "text-ok" : you.grid != null && story.lap1Pos > you.grid ? "text-bad" : "text-dark",
+          note: you.grid != null ? (story.lap1Pos < you.grid ? `${you.grid - story.lap1Pos} up at the start, from P${you.grid}` : story.lap1Pos > you.grid ? `${story.lap1Pos - you.grid} down at the start, from P${you.grid}` : `held P${you.grid} through the first lap`) : null,
+        }
+      : null,
     // Past a minute and a half it is a safety car or a red flag, not the
     // driver, and the number would only mislead.
     story?.offPaceMs != null && story.offPaceMs < 90_000
-      ? { label: "Time lost off pace", value: `${(story.offPaceMs / 1000).toFixed(1)} s`, tone: story.offPaceMs > 10_000 ? "text-warn" : "text-dark", note: "laps well off your own clean pace: pits, spins, traffic" }
-      : you.lapsLed > 0
-        ? { label: "Laps led", value: String(you.lapsLed), note: "at the start/finish line" }
+      ? { label: "Time lost off pace", icon: "hourglass", value: `${(story.offPaceMs / 1000).toFixed(1)} s`, tone: story.offPaceMs > 10_000 ? "text-warn" : "text-dark", note: "laps well off your own clean pace: pits, spins, traffic" }
+      : you.lapsLed > 0 && story?.bestPosition
+        ? { label: "Laps led", icon: "lead", value: String(you.lapsLed), note: "at the start/finish line" }
         : null,
   ].filter(Boolean);
   if (!cells.length) return null;
   return (
-    <div className="cascade reveal grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      {cells.map((c, i) => (
-        <Stat key={c.label} {...c} index={i} />
-      ))}
+    <div className="recap-reveal">
+      <div className="recap-cascade grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {cells.map((c, i) => (
+          <Stat key={c.label} {...c} index={i} />
+        ))}
+      </div>
     </div>
   );
 }
 
 // The driver's position lap by lap, drawn over the rest of the field on a
-// timing-screen grid. The line draws itself when it scrolls into view.
+// timing-screen grid. The line draws itself when its card is let in.
 function RaceTrace({ laps, driverId, lapsDriven = null }) {
   const W = 1000;
   const H = 280;
@@ -454,7 +651,7 @@ function RaceTrace({ laps, driverId, lapsDriven = null }) {
   const lapStep = maxLap > 40 ? 10 : maxLap > 15 ? 5 : 1;
   const lapTicks = Array.from({ length: Math.floor(maxLap / lapStep) }, (_, i) => (i + 1) * lapStep).filter((l) => l > maxLap * 0.06 && l < maxLap * 0.93);
   return (
-    <div className="reveal-chart">
+    <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <Label>Lap by lap · your position at the line</Label>
         <div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
@@ -516,11 +713,15 @@ const RATING_PARTS = [
   { key: "pac", label: "Pace" },
 ];
 
+// The big number ticks from last round's value; each of the four bars keeps
+// last round's length in the brand colour and grows the piece this round
+// added in green (or shows the piece it took in red), with the change
+// landing as a tag once the bar has settled.
 function RatingCard({ rating: r, card }) {
   const was = r.before?.overall;
   return (
     <Card>
-      <div className="grid gap-8 lg:grid-cols-[auto,1fr] lg:gap-14">
+      <div className="grid gap-8 lg:grid-cols-[minmax(15rem,auto),1fr] lg:items-center lg:gap-16">
         <div>
           <Label>Driver rating</Label>
           <div className="mt-2 flex items-end gap-4">
@@ -528,26 +729,27 @@ function RatingCard({ rating: r, card }) {
               <Tween from={was} to={r.after.overall} />
             </span>
             {r.delta && (
-              <div className="mb-3">
-                <span className="rounded-md border border-border px-2 py-0.5">
+              <div className="recap-tag mb-3">
+                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 ${r.delta.overall > 0.05 ? "border-ok/40 bg-ok/10" : r.delta.overall < -0.05 ? "border-bad/40 bg-bad/10" : "border-border"}`}>
                   <Delta value={r.delta.overall} decimals={1} className="text-sm" arrow />
                 </span>
                 {was != null && <div className="mt-1.5 font-mono text-[11px] text-light">was {Math.round(was)}</div>}
               </div>
             )}
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-[11px] text-light">
+          <div className="mt-4 flex flex-wrap items-center gap-2 font-mono text-[11px] text-light">
             {r.rank != null && r.fieldSize != null && (
               <>
                 <span className="rounded-md border border-border px-2 py-0.5 font-bold text-dark">#{r.rank}</span>
                 <span>live form rank of {r.fieldSize}</span>
               </>
             )}
-            {card && <span className="text-faint">· your card stays at {Math.round(card.rating.ratings.overall)} this season</span>}
           </div>
+          {card && <div className="mt-2 font-mono text-[11px] text-faint">Your card stays at {Math.round(card.rating.ratings.overall)} this season.</div>}
+          {r.provisional && <div className="mt-1 font-mono text-[11px] text-faint">Still provisional: a few more starts and it settles.</div>}
         </div>
-        <div className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
-          {RATING_PARTS.map((p) => {
+        <div className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
+          {RATING_PARTS.map((p, i) => {
             const v = r.after[p.key];
             const b = r.before?.[p.key];
             const d = r.delta ? r.delta[p.key] : null;
@@ -555,32 +757,38 @@ function RatingCard({ rating: r, card }) {
             const base = Math.max(0, Math.min(100, b ?? v));
             const lo = Math.min(base, v);
             const change = Math.abs(v - base);
+            const gained = v >= base;
             return (
               <div key={p.key}>
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-baseline justify-between gap-3">
                   <Label tone="text-light">{p.label}</Label>
                   <span className="flex items-baseline gap-2">
-                    <span className="font-mono text-lg font-bold tabular-nums text-dark">
+                    {d != null && Math.abs(d) >= 0.05 && (
+                      <span className="recap-tag" style={{ "--tag-delay": `${1100 + i * 120}ms` }}>
+                        <Delta value={d} decimals={0} className="text-xs" arrow />
+                      </span>
+                    )}
+                    <span className="font-mono text-2xl font-bold tabular-nums leading-none text-dark">
                       <Tween from={b} to={v} />
                     </span>
-                    {d != null && <Delta value={d} decimals={0} className="text-xs" />}
                   </span>
                 </div>
-                <div className="relative mt-2 h-1.5 w-full rounded-full bg-surface2">
-                  <div className="bar-fill absolute left-0 top-0 h-1.5 rounded-full bg-brand" style={{ "--w": `${Math.max(2, lo)}%` }} />
+                <div className="relative mt-3 h-2 w-full rounded-full bg-surface2">
+                  <div className="bar-fill absolute left-0 top-0 h-2 rounded-full bg-brand" style={{ "--w": `${Math.max(2, lo)}%`, "--bar-delay": `${i * 90}ms` }} />
                   {change >= 0.5 && (
                     <div
-                      className="bar-fill absolute top-0 h-1.5 rounded-full"
-                      style={{ left: `${lo}%`, "--w": `${change}%`, background: v >= base ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))", animationDelay: "calc(var(--reveal-delay, 0s) + 900ms)" }}
+                      className="bar-fill absolute top-0 h-2 rounded-r-full"
+                      style={{ left: `${lo}%`, "--w": `${change}%`, background: gained ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))", "--bar-delay": `${800 + i * 90}ms` }}
                     />
                   )}
+                  {/* the mark where it stood, when it moved */}
+                  {change >= 0.5 && <div className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-dark opacity-60" style={{ left: `${base}%` }} />}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-      {r.provisional && <p className="mt-4 font-mono text-[11px] text-light">Still provisional: a few more starts and it settles.</p>}
     </Card>
   );
 }
@@ -616,38 +824,36 @@ function SeasonCurve({ season, you }) {
         <Label>Your championship points, round by round</Label>
         {kept && <span className="font-mono text-[11px] text-light">cumulative · {kept}</span>}
       </div>
-      <div className="reveal-chart">
-        <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-auto w-full" role="img" aria-label="Championship points round by round">
-          {gridY.map((v) => (
-            <g key={v}>
-              <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth="1" />
-              <text x={PAD.l - 8} y={y(v) + 4} textAnchor="end" className="fill-faint font-mono text-[10px] font-bold">
-                {v}
-              </text>
-            </g>
-          ))}
-          <path d={area} fill="var(--recap-team)" opacity="0.12" />
-          <path d={line} fill="none" stroke="var(--recap-team)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
-          {pts.map((p) => (
-            <g key={p.number}>
-              <circle cx={x(p.number)} cy={y(p.cum)} r={p.number === last.number ? 6 : 4} fill={p.status === "DNS" || p.dropped ? "var(--c-card)" : "var(--recap-team)"} stroke="var(--recap-team)" strokeWidth="2" />
-              {(p.status === "DNS" || p.dropped) && (
-                <text x={x(p.number)} y={y(p.cum) - 10} textAnchor="middle" className="fill-light font-mono text-[9px] font-bold uppercase">
-                  {p.status === "DNS" ? "DNS" : "dropped"}
-                </text>
-              )}
-            </g>
-          ))}
-          <text x={x(last.number)} y={y(last.cum) - 12} textAnchor="middle" className="fill-dark font-display text-[15px] font-black">
-            {last.cum}
-          </text>
-          {rounds.map((r) => (
-            <text key={r.number} x={x(r.number)} y={H - 10} textAnchor="middle" className={`font-mono text-[10px] font-bold ${r.run ? (r.number === last.number ? "fill-eyebrow" : "fill-light") : "fill-faint"}`}>
-              R{r.number}
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-auto w-full" role="img" aria-label="Championship points round by round">
+        {gridY.map((v) => (
+          <g key={v}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth="1" />
+            <text x={PAD.l - 8} y={y(v) + 4} textAnchor="end" className="fill-faint font-mono text-[10px] font-bold">
+              {v}
             </text>
-          ))}
-        </svg>
-      </div>
+          </g>
+        ))}
+        <path d={area} fill="var(--recap-team)" opacity="0.12" />
+        <path d={line} fill="none" stroke="var(--recap-team)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
+        {pts.map((p) => (
+          <g key={p.number}>
+            <circle cx={x(p.number)} cy={y(p.cum)} r={p.number === last.number ? 6 : 4} fill={p.status === "DNS" || p.dropped ? "var(--c-card)" : "var(--recap-team)"} stroke="var(--recap-team)" strokeWidth="2" />
+            {(p.status === "DNS" || p.dropped) && (
+              <text x={x(p.number)} y={y(p.cum) - 10} textAnchor="middle" className="fill-light font-mono text-[9px] font-bold uppercase">
+                {p.status === "DNS" ? "DNS" : "dropped"}
+              </text>
+            )}
+          </g>
+        ))}
+        <text x={x(last.number)} y={y(last.cum) - 12} textAnchor="middle" className="fill-dark font-display text-[15px] font-black">
+          {last.cum}
+        </text>
+        {rounds.map((r) => (
+          <text key={r.number} x={x(r.number)} y={H - 10} textAnchor="middle" className={`font-mono text-[10px] font-bold ${r.run ? (r.number === last.number ? "fill-eyebrow" : "fill-light") : "fill-faint"}`}>
+            R{r.number}
+          </text>
+        ))}
+      </svg>
       {you && <p className="mt-2 font-mono text-[11px] text-light">Filled marks scored, hollow ones did not count: a no-show, or a round the drop rule takes away.</p>}
     </Card>
   );
@@ -665,13 +871,18 @@ function ChampionshipCard({ standings: s, team, season }) {
         </div>
         <div className="mb-1">
           <div className="font-mono text-[11px] text-light">of {s.fieldSize} drivers</div>
-          {moved != null && <Delta value={moved} suffix={` place${Math.abs(moved) === 1 ? "" : "s"}`} className="text-xs" arrow />}
+          {moved != null && (
+            <div className="recap-tag mt-1">
+              {s.before && s.before.position !== s.after.position && <span className="mr-2 font-mono text-[11px] text-light line-through">P{s.before.position}</span>}
+              <Delta value={moved} suffix={` place${Math.abs(moved) === 1 ? "" : "s"}`} className="text-xs" arrow />
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4 divide-y divide-border border-t border-border">
         <Row label="Season points" value={<Tween from={s.before?.total} to={s.after.total} />} />
         {s.isLeader ? (
-          s.behind && <Row label={`Lead over ${s.behind.name}`} value={`+${s.behind.gap} pts`} tone="text-ok" />
+          s.behind && <Row label={`Lead over ${s.behind.name}`} value={<Tween from={s.behindGapBefore} to={s.behind.gap} prefix="+" suffix=" pts" />} tone="text-ok" />
         ) : (
           <>
             {s.ahead && (
@@ -679,9 +890,9 @@ function ChampionshipCard({ standings: s, team, season }) {
                 label={`To P${s.after.position - 1} ahead`}
                 value={
                   <>
-                    −{s.ahead.gap} pts
+                    <Tween from={s.aheadGapBefore} to={s.ahead.gap} prefix="−" suffix=" pts" />
                     {s.aheadGapBefore != null && s.aheadGapBefore !== s.ahead.gap && (
-                      <span className="ml-2 text-xs font-semibold text-light">was −{s.aheadGapBefore}</span>
+                      <span className="recap-tag ml-2 inline-block text-xs font-semibold text-light">was −{s.aheadGapBefore}</span>
                     )}
                   </>
                 }
@@ -697,7 +908,11 @@ function ChampionshipCard({ standings: s, team, season }) {
             value={
               <>
                 P{team.after.position}
-                {team.before && team.before.position !== team.after.position && <Delta value={team.before.position - team.after.position} className="ml-2 text-xs" arrow />}
+                {team.before && team.before.position !== team.after.position && (
+                  <span className="recap-tag ml-2 inline-block">
+                    <Delta value={team.before.position - team.after.position} className="text-xs" arrow />
+                  </span>
+                )}
               </>
             }
           />
@@ -719,19 +934,20 @@ function PointsCard({ points: p }) {
         <div>
           <Label>{p.hypothetical ? "NABS Points this round would pay" : "NABS Points earned"}</Label>
           <div className="mt-2 flex items-end gap-3">
+            <TokenIcon className="champ-chip mb-3 h-12 w-12 sm:h-14 sm:w-14" />
             <span className="recap-pop font-display text-[5.5rem] font-black leading-none tracking-tighter text-accent">
-              <CountUp end={p.earned} prefix="+" />
+              <Tween to={p.earned} prefix="+" delay={500} />
             </span>
             <span className="mb-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">this race</span>
           </div>
-          <div className="cascade mt-3 flex flex-wrap gap-2">
+          <div className="recap-cascade mt-3 flex flex-wrap gap-2">
             {p.entries.map((e, i) => (
-              <span key={i} className="rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-medium" style={{ "--i": i }}>
+              <span key={i} className="rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-medium" style={{ "--i": i + 6 }}>
                 {e.title} <span className="font-bold text-dark">+{e.delta}</span>
               </span>
             ))}
             {p.pending && (
-              <span className="rounded-md border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-light" style={{ "--i": p.entries.length }}>
+              <span className="rounded-md border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-light" style={{ "--i": p.entries.length + 6 }}>
                 {p.pending.title} <span className="font-bold">+{p.pending.delta}</span> · once the stewards are done
               </span>
             )}
@@ -745,15 +961,15 @@ function PointsCard({ points: p }) {
               <Label tone="text-light">Season total</Label>
               <span className="flex items-center gap-2 font-display text-3xl font-black tabular-nums text-dark">
                 <TokenIcon className="h-5 w-5" />
-                <Tween from={before} to={p.balance} delay={900} />
+                <Tween from={before} to={p.balance} delay={1500} />
               </span>
             </div>
             {next && (
               <>
                 <div className="mt-3 h-2 w-full rounded-full bg-surface2">
-                  <div className="bar-fill h-2 rounded-full bg-brand" style={{ "--w": `${pct}%` }} />
+                  <div className="bar-fill h-2 rounded-full bg-brand" style={{ "--w": `${pct}%`, "--bar-delay": "1500ms" }} />
                 </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-light">
+                <div className="recap-tag mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-light" style={{ "--tag-delay": "2400ms" }}>
                   <span>{p.balance >= next.cost ? `Enough for the next card design` : `${(next.cost - p.balance).toLocaleString("en-US")} to the next card design`}</span>
                   <span className="rounded-md border border-border px-2 py-0.5">
                     <span className="font-bold uppercase tracking-wider text-dark">{next.name}</span> {next.cost.toLocaleString("en-US")}
@@ -770,7 +986,7 @@ function PointsCard({ points: p }) {
 
 // --- the team-mate ------------------------------------------------------------
 
-function TeammateCard({ you, mates, standings }) {
+function TeammateCard({ you, mates, standings, card }) {
   const m = mates[0];
   const better = (a, b, lowerWins = true) => {
     if (a == null || b == null) return 0;
@@ -784,23 +1000,29 @@ function TeammateCard({ you, mates, standings }) {
     { label: "Season points", a: standings?.after?.total ?? NO_VALUE, b: m.seasonPoints ?? NO_VALUE, win: better(standings?.after?.total, m.seasonPoints, false) },
   ];
   const tone = (w) => (w > 0 ? "text-ok" : w < 0 ? "text-bad" : "text-dark");
+  const duel = m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) ? m.duel : null;
+  const score = (w, l) => (w > l ? "text-ok" : w < l ? "text-bad" : "text-dark");
   return (
     <Card>
-      <Label>Team-mate head to head{you.team ? ` · ${you.team.name}` : ""}</Label>
-      <div className="mt-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <DriverAvatar name={you.name} photoUrl={null} color={you.team?.color || "#232833"} size={36} />
-          <span className="font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{you.name}</span>
+      <Label>Team-mate head to head</Label>
+      {/* The two names on one line, the team between them. */}
+      <div className="mt-4 grid grid-cols-[1fr,auto,1fr] items-center gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <DriverAvatar name={you.name} photoUrl={card?.driver?.photoUrl || null} color={you.team?.color || "#232833"} size={40} />
+          <span className="truncate font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{you.name}</span>
         </div>
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-light">vs</span>
-        <Link to={`/drivers/${m.driverId}`} className="flex items-center gap-3 text-right transition hover:text-brand">
-          <span className="font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{m.name}</span>
-          <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={you.team?.color || "#232833"} size={36} />
+        <div className="flex flex-col items-center gap-1">
+          {you.team && <TeamLogo id={you.team.id} name={you.team.name} color={you.team.color} logoUrl={you.team.logoUrl} size={26} />}
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">{you.team?.name || "vs"}</span>
+        </div>
+        <Link to={`/drivers/${m.driverId}`} className="flex min-w-0 items-center justify-end gap-3 transition hover:text-brand">
+          <span className="truncate text-right font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{m.name}</span>
+          <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={you.team?.color || "#232833"} size={40} />
         </Link>
       </div>
-      <div className="mt-4 divide-y divide-border border-t border-border">
-        {rows.map((r) => (
-          <div key={r.label} className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-4 py-3">
+      <div className="recap-cascade mt-4 divide-y divide-border border-t border-border">
+        {rows.map((r, i) => (
+          <div key={r.label} className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-4 py-3" style={{ "--i": i }}>
             <span className={`font-mono text-sm font-bold tabular-nums ${tone(r.win)}`}>{r.a}</span>
             <Label tone="text-light" className="text-center">
               {r.label}
@@ -808,28 +1030,40 @@ function TeammateCard({ you, mates, standings }) {
             <span className={`text-right font-mono text-sm font-bold tabular-nums ${tone(-r.win)}`}>{r.b}</span>
           </div>
         ))}
+        {duel && (
+          <div className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-4 py-3" style={{ "--i": rows.length }}>
+            <span className="font-mono text-sm font-bold tabular-nums">
+              {m.duel.raceWins + m.duel.raceLosses > 0 && (
+                <span className={score(m.duel.raceWins, m.duel.raceLosses)}>
+                  {m.duel.raceWins}:{m.duel.raceLosses}
+                </span>
+              )}
+              {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
+                <span className={`ml-3 ${score(m.duel.qualiWins, m.duel.qualiLosses)}`}>
+                  {m.duel.qualiWins}:{m.duel.qualiLosses}
+                  <span className="ml-1 text-[10px] text-light">grid</span>
+                </span>
+              )}
+            </span>
+            <Label tone="text-light" className="text-center">
+              Season duel
+            </Label>
+            <span className="text-right font-mono text-sm font-bold tabular-nums">
+              {m.duel.raceWins + m.duel.raceLosses > 0 && (
+                <span className={score(m.duel.raceLosses, m.duel.raceWins)}>
+                  {m.duel.raceLosses}:{m.duel.raceWins}
+                </span>
+              )}
+              {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
+                <span className={`ml-3 ${score(m.duel.qualiLosses, m.duel.qualiWins)}`}>
+                  {m.duel.qualiLosses}:{m.duel.qualiWins}
+                  <span className="ml-1 text-[10px] text-light">grid</span>
+                </span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
-      {m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) && (
-        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-4">
-          <Label tone="text-light">Season duel</Label>
-          {m.duel.raceWins + m.duel.raceLosses > 0 && (
-            <span className="font-mono text-sm font-bold tabular-nums">
-              <span className="text-light">Race </span>
-              <span className={m.duel.raceWins > m.duel.raceLosses ? "text-ok" : m.duel.raceWins < m.duel.raceLosses ? "text-bad" : "text-dark"}>
-                {m.duel.raceWins}:{m.duel.raceLosses}
-              </span>
-            </span>
-          )}
-          {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
-            <span className="font-mono text-sm font-bold tabular-nums">
-              <span className="text-light">Grid </span>
-              <span className={m.duel.qualiWins > m.duel.qualiLosses ? "text-ok" : m.duel.qualiWins < m.duel.qualiLosses ? "text-bad" : "text-dark"}>
-                {m.duel.qualiWins}:{m.duel.qualiLosses}
-              </span>
-            </span>
-          )}
-        </div>
-      )}
       {mates.length > 1 && <p className="mt-3 font-mono text-[11px] text-light">Also in your colours: {mates.slice(1).map((x) => `${x.name} (${x.position != null ? `P${x.position}` : x.status})`).join(", ")}.</p>}
     </Card>
   );
@@ -837,43 +1071,63 @@ function TeammateCard({ you, mates, standings }) {
 
 // --- tyres, incidents, the season and the career --------------------------------
 
-const TYRE_COLOUR = { S: "#ef4444", M: "#eab308", H: "#e5e7eb", I: "#22c55e", W: "#3b82f6" };
-
-// Each stint as a piece of the race, and how the tyre behaved over it: the
-// slope over its clean laps, in seconds per lap. Positive means it fell away.
+// Each stint as a piece of the race on the live page's tyre strip, the
+// compound's disc pinned where the stint began, and how the tyre behaved
+// over it: the slope over its clean laps in seconds per lap. Positive is
+// slower, so it reads "+0.14 s/lap" in red; a tyre that came to the driver
+// reads "−0.07 s/lap" in green.
 function StintsCard({ stints }) {
   const total = stints.reduce((n, st) => n + st.laps, 0) || 1;
+  let acc = 0;
+  const segs = stints.map((st) => {
+    const seg = { ...st, start: acc, t: tyreCompound(st.tyre) };
+    acc += st.laps;
+    return seg;
+  });
   return (
     <Card>
-      <Label>Tyres and stints</Label>
-      <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-surface2">
-        {stints.map((st, i) => (
-          <div key={i} className="bar-fill h-full" style={{ "--w": `${(st.laps / total) * 100}%`, background: TYRE_COLOUR[st.tyre] || "var(--c-text3)", animationDelay: `calc(var(--reveal-delay, 0s) + ${i * 250}ms)` }} title={`${st.laps} laps on ${st.tyre}`} />
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Label>Tyres and stints</Label>
+        <span className="font-mono text-[11px] text-light">
+          {stints.length === 1 ? "no stop" : `${stints.length - 1} stop${stints.length === 2 ? "" : "s"}`} · {total} laps
+        </span>
+      </div>
+      <div className="relative mt-5 h-10 w-full">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+        {segs.map((s, i) => (
+          <div key={i}>
+            <div
+              className="bar-fill absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
+              style={{ left: `${(s.start / total) * 100}%`, "--w": `${(s.laps / total) * 100}%`, backgroundColor: s.t.color, boxShadow: s.t.light ? "0 0 0 1px rgba(17,24,39,0.3)" : "none", "--bar-delay": `${i * 350}ms` }}
+              title={`${s.t.name} · ${s.laps} laps`}
+            />
+            <span className="recap-tag absolute top-1/2 z-10 flex -translate-y-1/2" style={{ left: `max(0px, calc(${(s.start / total) * 100}% - 13px))`, "--tag-delay": `${i * 350}ms` }}>
+              <TyreBadge t={s.t} size={26} />
+            </span>
+          </div>
         ))}
       </div>
-      <div className="mt-3 divide-y divide-border border-t border-border">
-        {stints.map((st, i) => {
-          const perLap = st.degMsPerLap != null ? st.degMsPerLap / 1000 : null;
+      <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
+        {segs.map((s, i) => {
+          const perLap = s.degMsPerLap != null ? s.degMsPerLap / 1000 : null;
           const words =
             perLap == null
               ? "too short to read the tyre"
               : perLap > 0.05
                 ? `fell away by ${perLap.toFixed(2)} s a lap`
                 : perLap < -0.05
-                  ? `got faster by ${(-perLap).toFixed(2)} s a lap`
+                  ? `came to you by ${(-perLap).toFixed(2)} s a lap`
                   : "held its pace to the end";
           return (
-            <div key={i} className="flex items-center gap-4 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] font-display text-sm font-black text-dark" style={{ borderColor: TYRE_COLOUR[st.tyre] || "var(--c-border)" }}>
-                {st.tyre}
-              </span>
+            <div key={i} className="flex items-center gap-4 py-3" style={{ "--i": i + 3 }}>
+              <TyreBadge t={s.t} size={30} />
               <div className="min-w-0 flex-1">
                 <div className="font-mono text-sm font-bold text-dark">
-                  Stint {i + 1} · {st.laps} laps
+                  Stint {i + 1} · {s.laps} laps on {s.t.name.toLowerCase()}
                 </div>
                 <div className="text-xs text-light">{words}</div>
               </div>
-              {perLap != null && <Delta value={-perLap} decimals={2} suffix=" s/lap" className="text-sm" />}
+              {perLap != null && <Delta value={perLap} decimals={2} suffix=" s/lap" goodWhen="down" className="text-sm" />}
             </div>
           );
         })}
@@ -896,11 +1150,11 @@ function IncidentsCard({ incidents, you }) {
         </span>
       </div>
       {list.length === 0 ? (
-        <p className="mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-ok">A clean race. No contact with another car.</p>
+        <p className="recap-pop mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-ok">A clean race. No contact with another car.</p>
       ) : (
-        <div className="mt-3 divide-y divide-border border-t border-border">
+        <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
           {list.map((c, i) => (
-            <div key={i} className="flex items-center gap-4 py-3">
+            <div key={i} className="flex items-center gap-4 py-3" style={{ "--i": i }}>
               <span className="w-14 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Lap {c.lap ?? "?"}</span>
               <span className="min-w-0 flex-1 truncate font-display text-base font-extrabold uppercase tracking-tight text-dark">
                 {c.driverId ? (
@@ -916,7 +1170,7 @@ function IncidentsCard({ incidents, you }) {
           ))}
         </div>
       )}
-      <p className="mt-3 text-xs text-light">
+      <p className="recap-tag mt-3 text-xs text-light">
         {you.penaltySeconds > 0 ? `The stewards gave you +${you.penaltySeconds}s.` : list.length > 0 ? "No penalty from the stewards." : you.gamePenalties > 0 ? `${you.gamePenalties} in-game penalt${you.gamePenalties === 1 ? "y" : "ies"} for track limits.` : "Nothing for the stewards to look at."}
       </p>
     </Card>
@@ -957,7 +1211,7 @@ function CareerCard({ career: c, you, race }) {
       <div className="grid gap-6 lg:grid-cols-[1fr,auto] lg:gap-14">
         <div>
           <Label>Your season and career</Label>
-          <div className="cascade mt-3 divide-y divide-border border-t border-border">
+          <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
             {lines.map((l, i) => (
               <div key={l.key} className={`py-3 text-sm leading-relaxed ${l.tone || "text-medium"}`} style={{ "--i": i }}>
                 {l.text}
@@ -970,11 +1224,11 @@ function CareerCard({ career: c, you, race }) {
             { label: "Starts", value: c.starts },
             { label: "Wins", value: c.wins },
             { label: "Podiums", value: c.podiums },
-          ].map((x) => (
+          ].map((x, i) => (
             <div key={x.label}>
               <Label tone="text-light">{x.label}</Label>
               <div className="mt-1 font-display text-3xl font-black tabular-nums leading-none text-dark">
-                <CountUp end={x.value} />
+                <Tween to={x.value} delay={300 + i * 150} />
               </div>
             </div>
           ))}
@@ -1002,23 +1256,25 @@ function HonoursRow({ race, results, quali }) {
     .slice(0, 4);
   if (!cells.length) return null;
   return (
-    <div className="cascade reveal grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      {cells.map((c, i) => (
-        <div key={c.key} className="card p-5" style={{ "--i": i }}>
-          <Label tone={c.tone || "text-light"}>{c.label}</Label>
-          <div className="mt-2 flex items-center gap-2">
-            {c.driverId ? (
-              <Link to={`/drivers/${c.driverId}`} className="truncate font-display text-xl font-black uppercase tracking-tight text-dark transition hover:text-brand">
-                {c.name}
-              </Link>
-            ) : (
-              <span className="truncate font-display text-xl font-black uppercase tracking-tight text-dark">{c.name}</span>
-            )}
-            {c.country && <Flag code={c.country} w={16} h={12} />}
+    <div className="recap-reveal">
+      <div className="recap-cascade grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {cells.map((c, i) => (
+          <div key={c.key} className="card p-5" style={{ "--i": i }}>
+            <Label tone={c.tone || "text-light"}>{c.label}</Label>
+            <div className="mt-2 flex items-center gap-2">
+              {c.driverId ? (
+                <Link to={`/drivers/${c.driverId}`} className="truncate font-display text-xl font-black uppercase tracking-tight text-dark transition hover:text-brand">
+                  {c.name}
+                </Link>
+              ) : (
+                <span className="truncate font-display text-xl font-black uppercase tracking-tight text-dark">{c.name}</span>
+              )}
+              {c.country && <Flag code={c.country} w={16} h={12} />}
+            </div>
+            {c.value && <div className={`mt-1 font-mono text-xs ${c.tone || "text-light"}`}>{c.value}</div>}
           </div>
-          {c.value && <div className={`mt-1 font-mono text-xs ${c.tone || "text-light"}`}>{c.value}</div>}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
