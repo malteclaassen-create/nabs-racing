@@ -690,12 +690,16 @@ router.post("/races/commit", async (req, res, next) => {
       await refreshArchiveIndex(prisma);
       // A sprint is filed under its EVENT's round number (the child has none)
       // with a "-sprint" suffix, which is how the archive readers tell the
-      // weekend's two files apart (lib/cockpitArchive.js).
+      // weekend's two files apart (lib/cockpitArchive.js). The suffix is the
+      // archive's own doing (lib/resultsArchive.js), not a word tacked onto
+      // the track name: that word was cut off long circuit names and the
+      // sprint then overwrote the feature's file.
       const roundNumber = isSprint ? sprintOf.number : race.number;
       archiveCommitted(archiveKey, {
         season,
         raceNumber: roundNumber,
-        track: isSprint ? `${race.track} Sprint` : race.track,
+        track: race.track,
+        sprint: isSprint,
       });
       // The reports of this round anchor themselves to that file
       // (lib/reportAnchor.js); whatever the contact reader cached for the round

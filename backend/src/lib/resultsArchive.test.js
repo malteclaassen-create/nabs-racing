@@ -67,6 +67,36 @@ describe("with the index", () => {
     expect(existsSync(f1) && existsSync(gt)).toBe(true);
   });
 
+  // The weekend's two files. The reader (lib/cockpitArchive.js) tells them
+  // apart by the "-sprint" suffix alone, so the suffix has to survive whatever
+  // the file name does to the track — which, for a long circuit name, is cut
+  // it to 40 characters. Before this the sprint of "Autodromo Internazionale
+  // Enzo e Dino Ferrari" lost its suffix and overwrote the feature's file.
+  it("files a weekend's sprint beside its feature race, whatever the circuit is called", () => {
+    const season = { id: "s8-gt", number: 8 };
+    const dir = join(dataDir, "results-archive", "sunday-gt", "season8");
+    const feature = saveDirect({ Type: "RACE" }, { season, raceNumber: 5, track: "Spa" });
+    const sprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 5, track: "Spa", sprint: true });
+    expect(feature).toBe(join(dir, "r05-spa.json"));
+    expect(sprint).toBe(join(dir, "r05-spa-sprint.json"));
+
+    const long = "Autodromo Internazionale Enzo e Dino Ferrari";
+    const longFeature = saveDirect({ Type: "RACE" }, { season, raceNumber: 6, track: long });
+    const longSprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 6, track: long, sprint: true });
+    expect(longFeature).not.toBe(longSprint);
+    expect(longSprint.endsWith("-sprint.json")).toBe(true);
+    expect(longFeature.endsWith("-sprint.json")).toBe(false);
+    expect(existsSync(longFeature) && existsSync(longSprint)).toBe(true);
+
+    // A circuit whose own name ends in "Sprint" is still not the weekend's
+    // second race.
+    const odd = saveDirect({ Type: "RACE" }, { season, raceNumber: 7, track: "Silverstone Sprint" });
+    expect(odd.endsWith("-sprint.json")).toBe(false);
+    expect(saveDirect({ Type: "RACE" }, { season, raceNumber: 7, track: "Silverstone Sprint", sprint: true })).toBe(
+      join(dir, "r07-silverstone-sprint-sprint.json")
+    );
+  });
+
   it("moves the pre-series folders under the first series, once, without clobbering", () => {
     const root = join(dataDir, "results-archive");
     mkdirSync(join(root, "season7"), { recursive: true });
