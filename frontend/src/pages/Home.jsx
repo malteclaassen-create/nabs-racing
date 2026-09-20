@@ -771,7 +771,8 @@ export default function Home() {
   const feature = podiumBlock(latest);
   const podium = feature.podium;
   // The sprint's podium, only on a weekend that ran one and once its result
-  // is in. It goes ABOVE the feature's in the hero: it was raced first.
+  // is in. It goes UNDER the feature's in the hero: the league runs the
+  // feature first and the sprint after it.
   const sprint = lastRace?.sprintRaceId && latestSprint ? podiumBlock(latestSprint) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
@@ -806,8 +807,8 @@ export default function Home() {
   // it used to jump to a champions-of-last-season hero on activation, which
   // read as if something had happened when nothing had.
   // The hero's podium strip for one race. A sprint weekend renders it twice,
-  // sprint first with a label over each, so the two races of the evening read
-  // as two and not as one podium with the wrong names on it.
+  // feature first with a label over each, so the two races of the evening
+  // read as two and not as one podium with the wrong names on it.
   const podiumStrip = (block, { label = null, first = true, delay = 0 } = {}) =>
     block.podium.length > 0 && (
       <div key={label || "race"} className={first ? "mt-8 max-w-2xl" : "mt-3 max-w-2xl"}>
@@ -1252,9 +1253,9 @@ export default function Home() {
             </p>
 
             {/* podium strip — the latest race's top 3, or on a sprint weekend
-                both races' (the sprint above, as it was run first) */}
+                both races' (the feature above, as it is run first) */}
             {sprint
-              ? [podiumStrip(sprint, { label: "Sprint" }), podiumStrip(feature, { label: "Feature", first: false, delay: 0.3 })]
+              ? [podiumStrip(feature, { label: "Feature" }), podiumStrip(sprint, { label: "Sprint", first: false, delay: 0.3 })]
               : podiumStrip({ ...feature, podium: heroPodium })}
 
             <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
