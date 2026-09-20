@@ -143,9 +143,14 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   // the week's laps are driven in practice, and on a race night this card is
   // about the race.
   const detailsOpen = open || showMore;
-  // Folded, the thumb-wide bar is still on screen and still has to fill up
-  // while somebody watches, so it keeps a slow clock rather than none.
-  const week = usePracticeWeek(detailsOpen ? 20000 : 60000);
+  // Folded, the short bar is still on screen and still has to fill up while
+  // somebody watches, so it keeps a slow clock rather than none.
+  const practiceWeek = usePracticeWeek(detailsOpen ? 20000 : 60000);
+  // This page is a PUBLIC one, so the week only appears here once the league
+  // has put NABS Points in front of everybody. While the trial is still
+  // admins-only an admin sees it on their own points page and nowhere else,
+  // which is the same rule the flair and the hall of fame wall follow.
+  const week = practiceWeek?.publicPages ? practiceWeek : null;
   const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.

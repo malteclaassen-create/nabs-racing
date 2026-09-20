@@ -23,6 +23,7 @@
 // whose laps were driven while the counting was switched off.
 // ---------------------------------------------------------------------------
 import {
+  tokensPublic,
   tunedRules,
   tunedStartDay,
   isEarningOn,
@@ -363,6 +364,11 @@ export async function practiceProgress(prisma, discordId) {
     // Whether a milestone would actually pay right now. The bar says so rather
     // than promising points the trial is not handing out yet.
     paying: await payingNow(prisma),
+    // Whether the feature is out in the open (everyone-mode) rather than shown
+    // to admins only. The live page is a public page and waits for this, the
+    // same rule the flair and the wall follow; the member's own points page
+    // does not, which is what lets an admin try the whole thing first.
+    publicPages: await tokensPublic(prisma),
     laps: best.laps,
     // What the bar runs to, so the second milestone is the end of it.
     target: tiers[tiers.length - 1].laps,

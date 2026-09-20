@@ -162,6 +162,16 @@ describe("training laps", () => {
     expect([...prisma.ledger.values()].map((r) => r.rule)).toEqual(["practice_20"]);
   });
 
+  it("says whether the feature is out in the open, which the live page waits for", async () => {
+    const prisma = db();
+    await drive(prisma, 5);
+    prisma.settings.set("tokens_enabled", "admins");
+    __clearCaches();
+    expect((await practiceProgress(prisma, "disc1")).publicPages).toBe(false);
+    prisma.settings.set("tokens_enabled", "all");
+    expect((await practiceProgress(prisma, "disc1")).publicPages).toBe(true);
+  });
+
   it("tells the page how far it is to the next milestone", async () => {
     const prisma = db();
     await drive(prisma, 30);

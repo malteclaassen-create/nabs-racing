@@ -779,6 +779,26 @@ body::before {
 .recap-sweep-dot { animation: recap-sweep var(--t-draw) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 450ms); }
 @keyframes recap-trail { from { width: 0; } to { width: var(--w); } }
 .recap-sweep-trail { animation: recap-trail var(--t-draw) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 450ms); }
+/* The recap builds as you scroll: its own reveal class, watched by the page
+   itself (a stricter line than the site-wide one, a card has to be a good way
+   into the screen), and everything inside a card waits for the card. */
+.recap-reveal { opacity: 0; transform: translateY(18px); }
+.recap-reveal.is-visible { animation: nabs-rise var(--t-slow) var(--e-out) both; animation-delay: var(--reveal-delay, 0s); }
+.recap-reveal:not(.is-visible) .bar-fill { width: 0; }
+.recap-reveal.is-visible .bar-fill { animation: grow-x var(--t-draw) var(--e-draw) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--bar-delay, 0s)); }
+.recap-reveal.is-visible .recap-pop { animation: recap-pop var(--t-slow) var(--e-pop) both; animation-delay: calc(var(--reveal-delay, 0s) + 220ms); }
+.recap-reveal:not(.is-visible) .recap-sweep-dot,
+.recap-reveal:not(.is-visible) .recap-sweep-trail,
+.recap-reveal:not(.is-visible) .recap-strike,
+.recap-reveal:not(.is-visible) .champ-chip { animation-play-state: paused; }
+.recap-reveal .recap-cascade > * { opacity: 0; }
+.recap-reveal.is-visible .recap-cascade > * { animation: nabs-rise var(--t-slow) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 120ms + var(--i, 0) * 70ms); }
+.recap-reveal:not(.is-visible) .chart-line { stroke-dashoffset: 1; }
+.recap-reveal.is-visible .chart-line { animation: nabs-line-draw 1.5s var(--e-draw) forwards; animation-delay: calc(var(--reveal-delay, 0s) + 250ms); }
+/* A late arrival slides up under the number it belongs to. */
+@keyframes recap-tag { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.recap-reveal .recap-tag { opacity: 0; }
+.recap-reveal.is-visible .recap-tag { animation: recap-tag var(--t-base) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--tag-delay, 900ms)); }
 /* The line striking out last week's position. */
 @keyframes recap-strike { from { width: 0; } to { width: 100%; } }
 .recap-strike { animation: recap-strike var(--t-slow) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 500ms); }
@@ -1197,6 +1217,9 @@ body::before {
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .recap-pop { animation: none !important; opacity: 1; transform: none; }
+  .recap-reveal, .recap-reveal .recap-cascade > *, .recap-reveal .recap-tag { animation: none !important; opacity: 1; transform: none; }
+  .recap-reveal .bar-fill { width: var(--w, 0) !important; animation: none !important; }
+  .recap-reveal .chart-line { animation: none !important; stroke-dashoffset: 0; }
   .recap-sweep-dot { animation: none !important; left: var(--to); }
   .recap-sweep-trail { animation: none !important; width: var(--w); }
   .recap-strike { animation: none !important; width: 100%; }
@@ -1259,6 +1282,9 @@ body::before {
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .recap-pop { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .recap-reveal, .fx-lite .recap-reveal .recap-cascade > *, .fx-lite .recap-reveal .recap-tag { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .recap-reveal .bar-fill { width: var(--w, 0) !important; animation: none !important; }
+.fx-lite .recap-reveal .chart-line { animation: none !important; stroke-dashoffset: 0; }
 .fx-lite .recap-sweep-dot { animation: none !important; left: var(--to); }
 .fx-lite .recap-sweep-trail { animation: none !important; width: var(--w); }
 .fx-lite .recap-strike { animation: none !important; width: 100%; }
