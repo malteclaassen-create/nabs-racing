@@ -226,8 +226,19 @@ router.post("/callback", async (req, res, next) => {
 
     // Keep the driver's Discord avatar fresh on each login (used as the profile
     // picture unless an admin has set an explicit photoUrl).
-    if (driver && avatarUrl && driver.discordAvatar !== avatarUrl) {
-      await prisma.driver.update({ where: { id: driver.id }, data: { discordAvatar: avatarUrl } });
+    //
+    // On EVERY row of the person, not only the one carrying the Discord id. A
+    // row's own picture always wins over the identity fallback, so a linked
+    // row in another series (or an old season) kept the avatar it captured
+    // back then; Discord retires the old file when the picture changes, and
+    // that profile showed an initial while the current season's showed the
+    // face.
+    if (driver && avatarUrl) {
+      const linked = await getLinkedDriverIds(prisma, driver.id).catch(() => [driver.id]);
+      await prisma.driver.updateMany({
+        where: { id: { in: [...new Set([driver.id, ...linked])] }, NOT: { discordAvatar: avatarUrl } },
+        data: { discordAvatar: avatarUrl },
+      });
     }
 
     const profile = {
