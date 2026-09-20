@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { api, storedInvite } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
+import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
 import { Spinner, ErrorBox, EmptyState, Notice, DriverAvatar } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { Modal, useAsk } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
+import TrainingBar from "../components/TrainingBar.jsx";
 import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
 
@@ -309,64 +311,19 @@ function MultiplierBar({ a }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// The training week: laps done on the practice server since the last race,
-// and the two milestones they pay. The bar runs to the far milestone with a
-// mark where the near one sits, so the whole week reads in one glance.
-//
-// Asked again every half minute while the page is open, so somebody driving
-// on the second screen watches it fill.
-// ---------------------------------------------------------------------------
-function PracticeCard({ practice, earning = true }) {
-  const p = practice;
-  if (!p) return null;
-  const target = p.target || 50;
-  const fill = Math.max(0, Math.min(1, (p.laps || 0) / target));
+// The training week, in the card the points page gives it. The bar itself is
+// shared with the live page (components/TrainingBar.jsx).
+function PracticeCard({ week }) {
+  if (!week) return null;
   return (
     <div className="card px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>Training</Heading>
-        <div className="text-xs text-light">{p.label}</div>
+        <div className="text-xs text-light">{week.label}</div>
       </div>
-      <div className="mt-3 flex items-end justify-between gap-4">
-        <div className="flex items-baseline gap-2">
-          <MovingNumber value={p.laps || 0} className="font-mono text-3xl font-bold tabular-nums text-dark" />
-          <span className="text-sm text-light">{(p.laps || 0) === 1 ? "lap" : "laps"} on the practice server</span>
-        </div>
-        {/* What the week has actually paid. Nothing has while the counting is
-            off, and a green +10 beside "nothing is paid out" is a lie. */}
-        {earning && p.earned > 0 && (
-          <div className="shrink-0 font-mono text-sm font-bold tabular-nums text-ok">+{fmt(p.earned)}</div>
-        )}
+      <div className="mt-3">
+        <TrainingBar week={week} />
       </div>
-
-      {/* The bar, with the near milestone marked on it. */}
-      <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-surface2">
-        <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${fill * 100}%` }} />
-        {(p.tiers || []).slice(0, -1).map((t) => (
-          <span
-            key={t.laps}
-            className="absolute top-0 h-full w-0.5 bg-card"
-            style={{ left: `${Math.min(100, (t.laps / target) * 100)}%` }}
-          />
-        ))}
-      </div>
-      <div className="mt-2 flex items-center justify-between gap-4 text-xs">
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {(p.tiers || []).map((t) => (
-            <span key={t.laps} className={t.done ? "text-ok" : "text-light"}>
-              <span className="font-mono tabular-nums">{t.laps} laps</span> +{fmt(t.points)}
-            </span>
-          ))}
-        </div>
-      </div>
-      <p className="mt-2 text-[11px] leading-relaxed text-light">
-        {!earning
-          ? "Laps are being counted, but nothing is paid out until the league starts the counting."
-          : p.next
-            ? `${p.next.toGo} more ${p.next.toGo === 1 ? "lap" : "laps"} for the next ${fmt(p.next.points)}.`
-            : "Both milestones are yours for this week. The count starts again after the race."}
-      </p>
     </div>
   );
 }
@@ -1197,26 +1154,10 @@ export default function Tokens() {
     window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
   }, [reload]);
 
-  // The training week, followed on its own clock: the panel around it is a
-  // heavy call, and this one is three small queries.
-  const [practice, setPractice] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    const ask = () => {
-      if (document.visibilityState !== "visible") return;
-      api
-        .tokenPractice()
-        .then((r) => alive && r?.practice !== undefined && setPractice(r.practice))
-        .catch(() => {});
-    };
-    const timer = setInterval(ask, 30000);
-    document.addEventListener("visibilitychange", ask);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", ask);
-    };
-  }, []);
+  // The training week comes from the shared store (the cue at the bottom of
+  // the site and the live page read the same one), asked for briskly while
+  // this page is open: somebody driving on a second screen watches it fill.
+  const week = usePracticeWeek(30000);
 
   // The one shop entry you are saving for, if any. This browser only.
   const [goal, setGoalState] = useState(readGoal);
@@ -1266,7 +1207,7 @@ export default function Tokens() {
         <InviteCard code={data.code} botConnected={!!data.botConnected} earning={earning} />
       </div>
 
-      <PracticeCard practice={practice ?? data.practice} earning={earning} />
+      <PracticeCard week={week ?? data.practice} />
 
       <Shop data={data} onChanged={changed} goal={goal} onGoal={setGoal} />
 

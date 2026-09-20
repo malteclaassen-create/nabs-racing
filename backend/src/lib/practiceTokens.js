@@ -263,6 +263,10 @@ async function lapsOf(prisma, steamIds, series, periodKey) {
 
 // ---- Paying ------------------------------------------------------------------
 
+// What a milestone's payment is filed under. One place, because the page reads
+// the same keys back to find out WHEN a milestone paid.
+const refKeyFor = (tierKey, series, periodKey) => `practice:${tierKey}:${series}:${periodKey}`;
+
 // Has the counting even started? Same two gates every other rule passes: the
 // league's switch, and the day it decided to start from.
 async function payingNow(prisma) {
@@ -292,7 +296,7 @@ export async function payPractice(prisma, discordId, { series, period, laps = nu
       rule: tier.key,
       title: tier.label,
       detail: period.label,
-      refKey: `practice:${tier.key}:${series}:${period.key}`,
+      refKey: refKeyFor(tier.key, series, period.key),
     });
     if (written) paid += tier.points;
   }
@@ -336,18 +340,47 @@ export async function practiceProgress(prisma, discordId) {
 
   if (best.laps) await payPractice(prisma, discordId, { series: best.series, period: best.period, laps: best.laps });
 
+  // When each milestone paid. The cue at the bottom of the site celebrates a
+  // payment from the last few hours and stays quiet about an older one, which
+  // is what stops a week's worth of milestones popping up on a Sunday visit.
+  const paidAt = new Map();
+  const keys = tiers.map((t) => refKeyFor(t.key, best.series, best.period.key));
+  if (keys.length) {
+    const ph = keys.map(() => "?").join(",");
+    const rows = await prisma
+      .$queryRawUnsafe(
+        `SELECT "refKey","createdAt" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (${ph})`,
+        discordId,
+        ...keys
+      )
+      .catch(() => []);
+    for (const r of rows) paidAt.set(r.refKey, r.createdAt);
+  }
+
   const done = tiers.filter((t) => best.laps >= t.laps);
   const next = tiers.find((t) => best.laps < t.laps) || null;
   return {
+    // Whether a milestone would actually pay right now. The bar says so rather
+    // than promising points the trial is not handing out yet.
+    paying: await payingNow(prisma),
     laps: best.laps,
     // What the bar runs to, so the second milestone is the end of it.
     target: tiers[tiers.length - 1].laps,
     label: best.period.label,
+    // The week's own key, so a browser can remember which milestones it has
+    // already celebrated without mistaking next week's for the same one.
+    period: best.period.key,
     series: best.series,
     seriesName: best.seriesName,
     car: best.car || null,
     earned: done.reduce((sum, t) => sum + t.points, 0),
     next: next ? { laps: next.laps, points: next.points, toGo: next.laps - best.laps } : null,
-    tiers: tiers.map((t) => ({ laps: t.laps, points: t.points, done: best.laps >= t.laps })),
+    tiers: tiers.map((t) => ({
+      key: t.key,
+      laps: t.laps,
+      points: t.points,
+      done: best.laps >= t.laps,
+      paidAt: paidAt.get(refKeyFor(t.key, best.series, best.period.key)) || null,
+    })),
   };
 }

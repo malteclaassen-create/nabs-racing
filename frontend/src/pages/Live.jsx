@@ -19,6 +19,7 @@ import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
+import TrainingPanel from "../components/TrainingPanel.jsx";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
@@ -3626,6 +3627,12 @@ export default function Live() {
             patreonUrl={social.data?.patreon}
             lastDataAt={board?.lastDataAt ?? null}
           />
+
+          {/* The viewer's OWN training week, folded away under one line. Only
+              outside a race: the week's laps are driven in practice, and on a
+              race night the board is about the race. It shows nothing at all
+              for anybody the race server cannot put a name to. */}
+          {session.type !== "Race" && <TrainingPanel />}
 
           {quiet ? (
             // Empty server: the best-times board takes the "right now" slot,

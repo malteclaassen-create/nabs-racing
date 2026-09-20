@@ -49,6 +49,9 @@ function db({ earning = "1", steam = { "76561100000000001": "d1" }, discord = { 
       }
       return [{ laps, trackKey, car: null }];
     }
+    if (/FROM "TokenLedger" WHERE "discordId" = \? AND "refKey" IN/.test(sql)) {
+      return [...ledger.values()].filter((r) => args.includes(r.refKey)).map((r) => ({ refKey: r.refKey, createdAt: r.createdAt }));
+    }
     if (/FROM "TokenAccount"/.test(sql)) return [{ discordId: args[0], code: "ABC123", referredBy: null }];
     return [];
   }
@@ -69,7 +72,14 @@ function db({ earning = "1", steam = { "76561100000000001": "d1" }, discord = { 
     if (/INSERT OR IGNORE INTO "TokenLedger"/.test(sql)) {
       const refKey = args[6];
       if (ledger.has(refKey)) return 0;
-      ledger.set(refKey, { discordId: args[1], delta: args[2], rule: args[3], detail: args[5] });
+      ledger.set(refKey, {
+        discordId: args[1],
+        delta: args[2],
+        rule: args[3],
+        detail: args[5],
+        refKey,
+        createdAt: args[7] || new Date().toISOString(),
+      });
       return 1;
     }
     return 0;
@@ -158,10 +168,14 @@ describe("training laps", () => {
     const progress = await practiceProgress(prisma, "disc1");
     expect(progress).toMatchObject({ laps: 30, target: 50, earned: 10, label: "Round 5, Spa" });
     expect(progress.next).toEqual({ laps: 50, points: 20, toGo: 20 });
-    expect(progress.tiers).toEqual([
-      { laps: 20, points: 10, done: true },
-      { laps: 50, points: 20, done: false },
+    expect(progress.tiers.map(({ key, laps, points, done }) => ({ key, laps, points, done }))).toEqual([
+      { key: "practice_20", laps: 20, points: 10, done: true },
+      { key: "practice_50", laps: 50, points: 20, done: false },
     ]);
+    // The cue at the bottom of the site only celebrates a fresh payment, so it
+    // has to be told when the milestone paid.
+    expect(progress.tiers[0].paidAt).toBeTruthy();
+    expect(progress.tiers[1].paidAt).toBeNull();
   });
 
   it("keeps the laps of a driver nobody has linked to a login", async () => {
