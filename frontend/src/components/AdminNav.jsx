@@ -68,7 +68,22 @@ function useAdminBadges() {
     // A server reset waiting to be answered lives on the "Social & Live" tab,
     // in the training best times card.
     social: attention.data?.resets || 0,
+    // Open incident reports. NOT a badge: this one is a quiet number (see
+    // Count), and it is deliberately no part of the dot's sum either.
+    reports: attention.data?.reports || 0,
   };
+}
+
+// A plain count, not a badge. The same shape the nav bar uses for "how many
+// cars are on track": a fact you might like to know, in the row's own colour,
+// which is a different thing from the red badge above ("somebody is waiting on
+// you"). Incident reports are counted this way on purpose — see the note on
+// GET /api/admin/attention.
+function Count({ n }) {
+  if (!n) return null;
+  return (
+    <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{n}</span>
+  );
 }
 
 function Badge({ n }) {
@@ -168,6 +183,8 @@ function TabStrip({ tab, onPick, badges }) {
                 {t.id === "feedback" && <Badge n={badges.feedback} />}
                 {t.id === "members" && <Badge n={badges.members} />}
                 {t.id === "market" && <Badge n={badges.market} />}
+                {t.id === "social" && <Badge n={badges.social} />}
+                {t.id === "reports" && <Count n={badges.reports} />}
               </button>
             ))}
           </div>
@@ -259,7 +276,10 @@ function SideRail({ tab, onPick, badges }) {
         {TAB_GROUPS.map((g, gi) => {
           const isOpen = open.includes(g.label);
           const holdsActive = g.tabs.some((t) => t.id === tab);
-          const hidden = g.tabs.reduce((n, t) => n + countFor(t.id), 0);
+          // What the fold is hiding, as a RED badge, so reports are left out of
+          // it: their number is the quiet kind and must not turn into an alarm
+          // just because the group it sits in is closed.
+          const hidden = g.tabs.reduce((n, t) => (t.id === "reports" ? n : n + countFor(t.id)), 0);
           return (
             <div key={g.label} className={gi ? "border-t border-border" : ""}>
               <h3>
@@ -306,7 +326,7 @@ function SideRail({ tab, onPick, badges }) {
                               }`}
                             >
                               <span className="flex-1 truncate">{t.label}</span>
-                              <Badge n={countFor(t.id)} />
+                              {t.id === "reports" ? <Count n={badges.reports} /> : <Badge n={countFor(t.id)} />}
                             </button>
                           </li>
                         );
