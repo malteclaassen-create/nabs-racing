@@ -1,7 +1,7 @@
 // The profile studio: try designs on your own profile page and buy them with
 // NABS Points. Ported from the league's design copy; the catalogue lives in
 // shared/profileCosmetics.json, ownership and payment in the tokens API.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
@@ -13,17 +13,20 @@ import { PageHeader } from "../components/ui.jsx";
 import { useAsk } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
 import ProfileAppearance, { ProfileBanner, PROFILE_COSMETICS, EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT, useProfilePageTheme } from "../components/ProfileAppearance.jsx";
-import { PROFILE_SLOTS, profileItemPrice, applyProfileItem } from "../../../shared/profileCustomization.mjs";
+import { PROFILE_SLOTS, CUSTOM_BACKGROUND_ITEM_ID, profileItemPrice, applyProfileItem } from "../../../shared/profileCustomization.mjs";
+import DriverRow from "../components/DriverStandingsRow.jsx";
+import ProfileEffect from "../components/ProfileEffect.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 import "./profileStyle.css";
 
 const CATEGORIES = [{ id: "theme", label: "Themes" }, { id: "banner", label: "Banners" }, { id: "nameplate", label: "Name" }, { id: "stats", label: "Statistics" }, { id: "effect", label: "Effects" }, { id: "layout", label: "Layout" }];
+const BACKGROUND_ITEM = PROFILE_COSMETICS.find(item => item.id === CUSTOM_BACKGROUND_ITEM_ID);
 const CATEGORY_FIELDS = {
-  theme: ["accentColor"],
+  theme: ["accentColor", "backgroundImage", "backgroundPositionX", "backgroundPositionY", "backgroundStrength", "backgroundFit", "backgroundScroll"],
   banner: ["bannerImage", "bannerPosition", "bannerStrength"],
-  nameplate: ["title", "nameCase", "nameScale"],
+  nameplate: ["title", "nameCase", "nameScale", "nameColor", "namePlateColor", "nameInStandings"],
   stats: [],
-  effect: ["effectStrength"],
+  effect: ["effectStrength", "lightningColor", "lavaAmount", "lavaColor", "lavaOpaquePanels"],
   layout: ["panelShape", "density", "motion"],
 };
 function categoryStatus(id, appearance, content, baseline, baselineContent) {
@@ -41,11 +44,24 @@ function readFavorites() {
 function RangeControl({ label, value, min = 0, max = 100, onChange, disabled = false }) {
   return <label className="shop-range"><span>{label}<span className="shop-range-value" aria-hidden="true">{value}%</span></span><input aria-label={label} type="range" min={min} max={max} value={value} disabled={disabled} onChange={e => onChange(Number(e.target.value))} /></label>;
 }
+function ColorControl({ label, value, fallback, defaultLabel, teamLabel = "Team color", teamColor, onChange }) {
+  const id = useId();
+  return <div className="shop-color-control">
+    <div className="shop-color-heading"><label htmlFor={id}>{label}</label><span>{value ? value.toUpperCase() : "Design default"}</span></div>
+    <div className="shop-color-options">
+      <input id={id} type="color" value={value || fallback} onInput={e => onChange(e.currentTarget.value)} onChange={e => onChange(e.target.value)} />
+      <div className="shop-color-presets" role="group" aria-label={`${label} presets`}>
+        <button type="button" aria-pressed={!value} onClick={() => onChange(null)}>{defaultLabel}</button>
+        <button type="button" aria-pressed={!!value && value.toLowerCase() === teamColor.toLowerCase()} onClick={() => onChange(teamColor)}><i aria-hidden="true" style={{ backgroundColor: teamColor }} />{teamLabel}</button>
+      </div>
+    </div>
+  </div>;
+}
 function DesignSwatch({ item, driver, appearance, stats }) {
-  const sample = { ...driver, id: undefined, profileContent: { ...EMPTY_PROFILE_CONTENT, motion: false } };
+  const sample = { ...driver, id: undefined, profileContent: { ...EMPTY_PROFILE_CONTENT, nameColor: driver?.profileContent?.nameColor, namePlateColor: driver?.profileContent?.namePlateColor, nameCase: driver?.profileContent?.nameCase, motion: false } };
   const look = { ...EMPTY_APPEARANCE, theme: appearance.theme, [item.slot]: item.id };
   if (item.slot === "banner") return <ProfileBanner compact driver={{ ...sample, profileContent: EMPTY_PROFILE_CONTENT }} appearance={look} />;
-  if (item.slot === "effect") return <div className="shop-effect-swatch"><div className="profile-surface-effect" data-finish={item.finish} /><span /></div>;
+  if (item.slot === "effect") return <div className="shop-effect-swatch"><ProfileEffect finish={item.finish} motion={false} lightningColor={driver?.profileContent?.lightningColor} lavaAmount={driver?.profileContent?.lavaAmount} lavaColor={driver?.profileContent?.lavaColor} teamColor={driver?.team?.color} /></div>;
   return <ProfileAppearance driver={sample} appearance={look} className={`shop-design-swatch shop-design-swatch--${item.slot}`}>
     {item.slot === "theme" ? <div className="shop-palette"><span /><span /><span /><span /></div> : item.slot === "nameplate" ? <span className="profile-driver-name">{driver?.name || "Driver"}</span> : <div className="profile-stats"><div><span>WINS</span><strong className="font-display">{stats?.wins ?? 0}</strong></div><div><span>PODIUMS</span><strong className="font-display">{stats?.podiums ?? 0}</strong></div><div><span>POLES</span><strong className="font-display">{stats?.polePositions ?? 0}</strong></div></div>}
   </ProfileAppearance>;
@@ -85,6 +101,7 @@ export default function ProfileStyle() {
   const uploaded = useRef(new Map());
   const photoRef = useRef();
   const bannerRef = useRef();
+  const backgroundRef = useRef();
 
 
   useEffect(() => {
@@ -121,7 +138,9 @@ export default function ProfileStyle() {
   const catalogue = account?.items || PROFILE_COSMETICS;
   const selected = PROFILE_COSMETICS.find(i => i.id === draft[slot]);
   const price = selected ? profileItemPrice(catalogue, selected, owned) : 0;
-  const locked = PROFILE_SLOTS.some(s => draft[s] && !owned.includes(draft[s]));
+  const backgroundOwned = owned.includes(CUSTOM_BACKGROUND_ITEM_ID);
+  const backgroundPrice = profileItemPrice(catalogue, BACKGROUND_ITEM, owned);
+  const locked = PROFILE_SLOTS.some(s => draft[s] && !owned.includes(draft[s])) || (!!content.backgroundImage && !backgroundOwned);
   const baseline = account?.equipped || loadedDriver?.appearance || EMPTY_APPEARANCE;
   const baselineContent = account?.content || loadedDriver?.profileContent || EMPTY_PROFILE_CONTENT;
   const previewAppearance = comparing ? baseline : draft;
@@ -129,8 +148,9 @@ export default function ProfileStyle() {
   useProfilePageTheme(previewAppearance.theme, true, previewContent, driver?.team?.color);
   const changed = !same(draft, baseline) || JSON.stringify(content) !== JSON.stringify(baselineContent);
   const items = PROFILE_COSMETICS.filter(i => i.slot === slot && (!ownedOnly || owned.includes(i.id)) && (!favoritesOnly || favorites.includes(i.id)) && (slot !== "theme" || tone === "all" || i.tone === tone) && i.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const missing = catalogue.filter(item => draft[item.slot] === item.id && !owned.includes(item.id));
+  const missing = catalogue.filter(item => (draft[item.slot] === item.id || (item.id === CUSTOM_BACKGROUND_ITEM_ID && content.backgroundImage)) && !owned.includes(item.id));
   const missingCost = missing.reduce((sum, item) => sum + item.price, 0);
+  const standingDriver = publicDrivers.find(d => d.driverId === driverId);
   const settings = { ...EMPTY_PROFILE_CONTENT, ...content };
   function changeCategory(id) { setSlot(id); setSearch(""); setNotice(""); }
   function toggleFavorite(id) {
@@ -155,32 +175,32 @@ export default function ProfileStyle() {
     if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 8 * 1024 * 1024) { setError("Use a PNG, JPG or WebP image, up to 8 MB."); return; }
     const url = URL.createObjectURL(file); mediaUrls.current.add(url); setError("");
     if (kind === "profile") setPhoto(url);
-    else { setFiles(f => ({ ...f, [kind]: file })); editContent({ bannerImage: url }); }
+    else { setFiles(f => ({ ...f, [kind]: file })); editContent({ [kind === "background" ? "backgroundImage" : "bannerImage"]: url }); }
   }
-  async function act(kind) {
+  async function act(kind, item = selected, cost = price) {
     if (busyRef.current || !account) return;
     // Buying spends points and cannot be undone; applying a look can be
     // changed back any time, so only the purchase asks.
     if (kind === "buy") {
       const ok = await ask({
-        title: `Buy ${selected.name}?`,
-        body: `${price.toLocaleString()} points come off your balance. You have ${account.balance.toLocaleString()}.\n\nIt stays in your collection and you can put it on and take it off whenever you like.`,
-        confirmLabel: `Buy for ${price.toLocaleString()}`,
+        title: `Buy ${item.name}?`,
+        body: `${cost.toLocaleString()} points come off your balance. You have ${account.balance.toLocaleString()}.\n\nIt stays in your collection and you can put it on and take it off whenever you like.`,
+        confirmLabel: `Buy for ${cost.toLocaleString()}`,
       });
       if (!ok) return;
     }
     busyRef.current = true; setBusy(true); setError(""); setNotice("");
     try {
       if (kind === "buy") {
-        const result = await api.buyStudioItem(selected.id);
-        setAccount(a => ({ ...a, ...result })); setNotice(`${selected.name} added to your collection.`);
+        const result = await api.buyStudioItem(item.id);
+        setAccount(a => ({ ...a, ...result })); setNotice(`${item.name} added to your collection.`);
         window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
       } else {
         const next = { ...content };
         for (const [kind, file] of Object.entries(files)) {
           let url = uploaded.current.get(file);
           if (!url) { url = (await api.uploadStudioImage(kind, file)).url; uploaded.current.set(file, url); }
-          next.bannerImage = url;
+          next[kind === "background" ? "backgroundImage" : "bannerImage"] = url;
         }
         const result = await api.equipStudio({ appearance: draft, content: next });
         setAccount(a => ({ ...a, ...result })); setDraft(result.equipped); setContent(result.content); setFiles({}); setNotice("Profile updated.");
@@ -220,17 +240,65 @@ export default function ProfileStyle() {
         </div>
         {!items.length && <div className="shop-empty"><span>No matching designs.</span><button type="button" className="text-link" onClick={() => { setSearch(""); setTone("all"); setFavoritesOnly(false); setOwnedOnly(false); }}>Clear filters</button></div>}
         </>}
-        <fieldset className="shop-content-editor" disabled={editingDisabled}>
-          {slot === "theme" && <div className="shop-accent"><label>Accent color<input type="color" aria-label="Accent color" value={settings.accentColor || driver?.team?.color || "#efaac1"} onInput={e => editContent({ accentColor: e.currentTarget.value })} onChange={e => editContent({ accentColor: e.target.value })} /></label><button type="button" className="btn-secondary" aria-pressed={!settings.accentColor} onClick={() => editContent({ accentColor: null })}>Theme color</button><button type="button" className="btn-secondary" onClick={() => editContent({ accentColor: driver?.team?.color || "#efaac1" })}>Team color</button></div>}
-          {slot === "nameplate" && <><label>Personal title<input className="input" maxLength={32} value={settings.title} onChange={e => editContent({ title: e.target.value })} placeholder="Your own short title" /></label><label>Letter case<select className="input" value={settings.nameCase} onChange={e => editContent({ nameCase: e.target.value })}><option value="theme">Design default</option><option value="upper">UPPERCASE</option><option value="natural">Original spelling</option></select></label><RangeControl label="Name size" value={settings.nameScale} min={80} max={120} onChange={nameScale => editContent({ nameScale })} /></>}
+        <fieldset className={`shop-content-editor ${slot === "nameplate" ? "shop-content-editor--name" : ""}`} disabled={editingDisabled}>
+          {slot === "theme" && <ColorControl label="Accent color" value={settings.accentColor} fallback={driver?.team?.color || "#efaac1"} defaultLabel="Theme color" teamColor={driver?.team?.color || "#efaac1"} onChange={accentColor => editContent({ accentColor })} />}
+          {slot === "nameplate" && <>
+            <div className="shop-name-colors">
+              <ColorControl label="Name color" value={settings.nameColor} fallback={driver?.team?.color || "#efaac1"} defaultLabel="Design color" teamColor={driver?.team?.color || "#efaac1"} onChange={nameColor => editContent({ nameColor })} />
+              {draft.nameplate === "name-race" && <ColorControl label="Plate color" value={settings.namePlateColor} fallback="#0354d4" defaultLabel="Default plate" teamLabel="Team plate" teamColor={driver?.team?.color || "#0354d4"} onChange={namePlateColor => editContent({ namePlateColor })} />}
+            </div>
+            <div className="shop-name-typography">
+              <label>Personal title<input className="input" maxLength={32} value={settings.title} onChange={e => editContent({ title: e.target.value })} placeholder="Your own short title" /></label>
+              <label>Letter case<select className="input" value={settings.nameCase} onChange={e => editContent({ nameCase: e.target.value })}><option value="theme">Design default</option><option value="upper">UPPERCASE</option><option value="natural">Original spelling</option></select></label>
+              <RangeControl label="Name size" value={settings.nameScale} min={80} max={120} onChange={nameScale => editContent({ nameScale })} />
+            </div>
+            <label className="shop-name-standings"><span>Show name design in standings<small>Use your lettering and colors in the driver table.</small></span><input type="checkbox" role="switch" aria-label="Show name design in standings" checked={settings.nameInStandings} onChange={e => editContent({ nameInStandings: e.target.checked })} /></label>
+          </>}
           {slot === "banner" && <><button className="btn-secondary" onClick={() => bannerRef.current?.click()} type="button">{content.bannerImage ? "Change banner photo" : "Add banner photo"}</button><RangeControl label="Banner strength" value={settings.bannerStrength} disabled={!draft.banner && !content.bannerImage} onChange={bannerStrength => editContent({ bannerStrength })} />{content.bannerImage && <><RangeControl label="Photo position" value={settings.bannerPosition} onChange={bannerPosition => editContent({ bannerPosition })} /><button type="button" className="btn-secondary" onClick={() => { editContent({ bannerImage: null }); setFiles(f => { const next = { ...f }; delete next.banner; return next; }); }}>Remove photo</button></>}</>}
-          {slot === "effect" && <RangeControl label="Effect strength" value={settings.effectStrength} disabled={!draft.effect} onChange={effectStrength => editContent({ effectStrength })} />}
+          {slot === "effect" && <>
+            <RangeControl label="Effect strength" value={settings.effectStrength} disabled={!draft.effect} onChange={effectStrength => editContent({ effectStrength })} />
+            {draft.effect === "effect-lightning" && <label>Lightning color<select className="input" aria-label="Lightning color" value={settings.lightningColor} onChange={e => editContent({ lightningColor: e.target.value })}><option value="default">Standard (ice blue)</option><option value="team">Team color</option></select></label>}
+            {draft.effect === "effect-lava" && <><RangeControl label="Lava amount" min={10} value={settings.lavaAmount} onChange={lavaAmount => editContent({ lavaAmount })} /><label>Lava color<select className="input" aria-label="Lava color" value={settings.lavaColor} onChange={e => editContent({ lavaColor: e.target.value })}><option value="default">Standard (warm blend)</option><option value="team">Team color</option><option value="ocean">Ocean blue</option><option value="amethyst">Amethyst</option><option value="mint">Mint green</option></select></label></>}
+            <label className="shop-check"><input type="checkbox" checked={settings.lavaOpaquePanels} disabled={!draft.effect} onChange={e => editContent({ lavaOpaquePanels: e.target.checked })} /> Opaque info cards</label>
+            <label className="shop-check"><input type="checkbox" checked={settings.motion} onChange={e => editContent({ motion: e.target.checked })} /> Animate decorations</label>
+            {selected?.description && <p className="shop-effect-description">{selected.description}</p>}
+          </>}
           {slot === "layout" && <><label>Panel corners<select className="input" value={settings.panelShape} onChange={e => editContent({ panelShape: e.target.value })}><option value="theme">Theme default</option><option value="square">Square</option><option value="soft">Soft</option><option value="round">Rounded</option></select></label><label>Spacing<select className="input" value={settings.density} onChange={e => editContent({ density: e.target.value })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label className="shop-check"><input type="checkbox" checked={settings.motion} onChange={e => editContent({ motion: e.target.checked })} /> Animate decorations</label><button type="button" className="btn-secondary" onClick={() => editContent({ panelShape: "theme", density: "comfortable", motion: true })}>Reset layout</button></>}
         </fieldset>
+        {slot === "theme" && <section className="shop-background" aria-label="Custom page background">
+          <div className="shop-background-intro">
+            <button type="button" className="shop-background-image" disabled={editingDisabled} aria-label={content.backgroundImage ? "Change background image" : "Choose background image"} onClick={() => backgroundRef.current?.click()}>
+              {content.backgroundImage ? <img src={content.backgroundImage} alt="Your page background" style={{ objectFit: settings.backgroundFit, objectPosition: `${settings.backgroundPositionX}% ${settings.backgroundPositionY}%` }} /> : <svg viewBox="0 0 64 44" fill="none" aria-hidden="true"><rect x="2" y="2" width="60" height="40" rx="5" /><circle cx="44" cy="14" r="5" /><path d="m3 35 16-17 16 16 8-8 18 15" /></svg>}
+              <span>{content.backgroundImage ? "Change image" : "Choose an image"}</span>
+            </button>
+            <div className="shop-background-copy">
+              <div className="shop-background-title"><h3>Custom background</h3><span>{backgroundOwned ? "✓ Unlocked" : `${backgroundPrice.toLocaleString()} points · one-time`}</span></div>
+              <p>Your own picture across the whole profile page. Try it here, unlock it once, and change the picture whenever you like.</p>
+              <small>PNG, JPG or WebP · up to 8 MB</small>
+              <div className="shop-background-actions">
+                {!backgroundOwned && (!user ? <Link to="/profile" className="btn-secondary">Sign in to unlock</Link> : <button type="button" className="btn-primary" disabled={busy || !account || account.balance < backgroundPrice} onClick={() => act("buy", BACKGROUND_ITEM, backgroundPrice)}>{busy ? "Working…" : account && account.balance < backgroundPrice ? `${(backgroundPrice - account.balance).toLocaleString()} points short` : `Unlock for ${backgroundPrice.toLocaleString()} points`}</button>)}
+                {content.backgroundImage && <button type="button" className="btn-secondary" disabled={editingDisabled} onClick={() => { editContent({ backgroundImage: null }); setFiles(f => { const next = { ...f }; delete next.background; return next; }); }}>Remove background</button>}
+              </div>
+            </div>
+          </div>
+          {content.backgroundImage && <fieldset className="shop-content-editor shop-background-controls" disabled={editingDisabled}>
+            <label>Background scrolling<select className="input" value={settings.backgroundScroll} onChange={e => editContent({ backgroundScroll: e.target.value })}><option value="fixed">Fixed to screen</option><option value="scroll">Scroll with page</option></select></label>
+            <label>Image fit<select className="input" value={settings.backgroundFit} onChange={e => editContent({ backgroundFit: e.target.value })}><option value="cover">Fill background</option><option value="contain">Show whole image</option></select></label>
+            <RangeControl label="Background strength" value={settings.backgroundStrength} onChange={backgroundStrength => editContent({ backgroundStrength })} />
+            <RangeControl label="Horizontal position" value={settings.backgroundPositionX} onChange={backgroundPositionX => editContent({ backgroundPositionX })} />
+            <RangeControl label="Vertical position" value={settings.backgroundPositionY} onChange={backgroundPositionY => editContent({ backgroundPositionY })} />
+          </fieldset>}
+          <input type="file" ref={backgroundRef} hidden accept="image/png,image/jpeg,image/webp" onChange={e => pickImage(e, "background")} />
+        </section>}
+        {slot === "nameplate" && driver && <section className="shop-standings-preview" aria-label="Driver standings preview">
+          <div className="shop-section-head"><h3>Driver standings preview</h3><span>{previewContent.nameInStandings ? "Your name design" : "Standard name"}</span></div>
+          {standingDriver ? <div className="card overflow-hidden"><DriverRow d={{ ...standingDriver, ...(photo ? { photoUrl: photo } : {}), nameStyle: previewContent.nameInStandings ? { nameplate: previewAppearance.nameplate, nameColor: previewContent.nameColor, namePlateColor: previewContent.namePlateColor, nameCase: previewContent.nameCase, nameScale: previewContent.nameScale } : null }} leaderTotal={publicDrivers[0]?.total || 0} /></div> : <p>This driver is not in the current season's standings.</p>}
+          <p>The preview follows every change. Apply to profile to keep it in the real table.</p>
+        </section>}
         <input type="file" ref={bannerRef} hidden accept="image/png,image/jpeg,image/webp" onChange={e => pickImage(e, "banner")} />
         {slot !== "layout" && <div className="shop-selection"><div><strong>{selected?.name || "Original"}</strong><span>{price > 0 ? `${price} points` : "In your collection"}</span></div>{!user ? <Link to="/profile" className="btn-primary">Sign in to buy</Link> : selected && price > 0 ? <button className="btn-primary" disabled={busy || !account || account.balance < price} onClick={() => act("buy")}>{busy ? "Working…" : account && account.balance < price ? `${price - account.balance} points short` : `Buy for ${price} points`}</button> : <span className="shop-owned">✓ Owned</span>}</div>}
         <div className="shop-save"><button type="button" className="btn-primary" disabled={!account || editingDisabled || locked || !changed} onClick={() => act("save")}>{busy ? "Working…" : "Apply to profile"}</button><button type="button" className="btn-secondary" disabled={editingDisabled || !changed} onClick={reset}>Reset preview</button></div>
-        {locked && <div className="shop-unlock-summary"><span>{missing.length} {missing.length === 1 ? "design" : "designs"} to unlock · {missingCost.toLocaleString()} points</span>{missing.map(item => <button key={item.id} type="button" onClick={() => changeCategory(item.slot)}>{item.name}</button>)}</div>}{notice && <p role="status" className="shop-message">{notice}</p>}
+        {locked && <div className="shop-unlock-summary"><span>{missing.length} {missing.length === 1 ? "design" : "designs"} to unlock · {missingCost.toLocaleString()} points</span>{missing.map(item => <button key={item.id} type="button" onClick={() => changeCategory(item.slot === "background" ? "theme" : item.slot)}>{item.name}</button>)}</div>}{notice && <p role="status" className="shop-message">{notice}</p>}
       </section>
       <div className="shop-section-head shop-profile-picker"><h2>{me?.isLinked ? "Your profile" : driver?.name || "Driver profile"}</h2><div className="flex flex-wrap items-center gap-3">
         <button type="button" className="btn-secondary" aria-pressed={comparing} disabled={editingDisabled || !changed} onClick={() => setComparing(value => !value)}>{comparing ? "Back to your changes" : "Compare with saved"}</button>

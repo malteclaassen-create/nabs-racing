@@ -1,5 +1,12 @@
 [
   {
+    "id": "background-custom",
+    "slot": "background",
+    "name": "Custom background",
+    "price": 600,
+    "finish": "custom"
+  },
+  {
     "id": "theme-team",
     "slot": "theme",
     "name": "Team colours",
@@ -224,6 +231,78 @@
     "name": "Brushed metal",
     "price": 350,
     "finish": "metal"
+  },
+  {
+    "id": "effect-lightning",
+    "slot": "effect",
+    "name": "Lightning",
+    "description": "Ice-blue lightning grows inward from changing points along the page edges, with varied lengths, branching paths and a lingering glow.",
+    "price": 150,
+    "finish": "lightning"
+  },
+  {
+    "id": "effect-lava",
+    "slot": "effect",
+    "name": "Lava Lamp",
+    "description": "Slowly floating molten forms. Choose your colors and adjust the amount from a few drifting blobs to a full lava lamp.",
+    "price": 150,
+    "finish": "lava"
+  },
+  {
+    "id": "effect-fireworks",
+    "slot": "effect",
+    "name": "Fireworks",
+    "description": "Staggered champagne-gold, ice-blue and rose fireworks with fine glowing trails.",
+    "price": 150,
+    "finish": "fireworks"
+  },
+  {
+    "id": "effect-embers",
+    "slot": "effect",
+    "name": "Embers",
+    "description": "Hot copper embers drift upward, glowing and cooling as they scatter in the air.",
+    "price": 150,
+    "finish": "embers"
+  },
+  {
+    "id": "effect-rain",
+    "slot": "effect",
+    "name": "Rain",
+    "description": "Fine silver-blue rain ends in expanding ripples, with a separate rhythm for every drop.",
+    "price": 150,
+    "finish": "rain"
+  },
+  {
+    "id": "effect-prism",
+    "slot": "effect",
+    "name": "Crystals",
+    "description": "Faceted glass crystals turn slowly, catching cyan, violet and rose highlights.",
+    "price": 150,
+    "finish": "prism"
+  },
+  {
+    "id": "effect-orbits",
+    "slot": "effect",
+    "name": "Orbits",
+    "description": "Luminous particles trace tilted orbital rings around softly glowing cores.",
+    "price": 150,
+    "finish": "orbits"
+  },
+  {
+    "id": "effect-bubbles",
+    "slot": "effect",
+    "name": "Bubbles",
+    "description": "Translucent bubbles rise and sway, with pearlescent rims and soft reflections.",
+    "price": 150,
+    "finish": "bubbles"
+  },
+  {
+    "id": "effect-meteors",
+    "slot": "effect",
+    "name": "Meteors",
+    "description": "Shooting stars with luminous tails passing through a softly twinkling starfield.",
+    "price": 150,
+    "finish": "meteors"
   },
   {
     "id": "effect-grain",

@@ -11,6 +11,7 @@ import {
   ownedStudioItems,
   EMPTY_PROFILE_CONTENT,
 } from "./profileStudio.js";
+import { CUSTOM_BACKGROUND_ITEM_ID } from "../../../shared/profileCustomization.mjs";
 import { SHOP_ITEMS } from "./tokens.js";
 
 describe("the studio catalogue", () => {
@@ -18,9 +19,12 @@ describe("the studio catalogue", () => {
     const ids = STUDIO_ITEMS.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const i of STUDIO_ITEMS) {
-      expect(STUDIO_SLOTS).toContain(i.slot);
+      // The page background is the one thing bought here that is not worn in a
+      // slot: there is nothing to pick, only your own picture.
+      if (i.id !== CUSTOM_BACKGROUND_ITEM_ID) expect(STUDIO_SLOTS).toContain(i.slot);
       expect(Number.isInteger(i.price) && i.price > 0).toBe(true);
     }
+    expect(STUDIO_BY_ID.get(CUSTOM_BACKGROUND_ITEM_ID)).toBeTruthy();
   });
 
   it("prices per type, with the league's override winning", () => {

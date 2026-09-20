@@ -1,6 +1,8 @@
 import catalog from "../../../shared/profileCosmetics.json";
 import { useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import ProfileEffect from "./ProfileEffect.jsx";
+import { profileNameProps } from "./DriverName.jsx";
 import { EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT } from "../../../shared/profileCustomization.mjs";
 import { DriverAvatar } from "./ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
@@ -33,6 +35,12 @@ export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFI
   // sets inline but the document root does not, and it takes the team colour as
   // its accent unless the member picked one.
   const accent = content?.accentColor || (finish === "team" ? teamColour : null);
+  const backgroundImage = content?.backgroundImage;
+  const backgroundStrength = content?.backgroundStrength;
+  const backgroundPositionX = content?.backgroundPositionX;
+  const backgroundPositionY = content?.backgroundPositionY;
+  const backgroundFit = content?.backgroundFit;
+  const backgroundScroll = content?.backgroundScroll;
   const { theme: viewerTheme } = useTheme();
   const tone = cosmeticTone(theme) || viewerTheme;
   useLayoutEffect(() => {
@@ -40,22 +48,35 @@ export function useProfilePageTheme(theme, enabled = true, content = EMPTY_PROFI
     const root = document.documentElement;
     const previous = root.getAttribute("data-profile-theme");
     const previousTone = root.getAttribute("data-profile-tone");
+    const previousBackground = root.getAttribute("data-profile-background");
+    // Only a picture this site holds, so a saved profile cannot pull an image
+    // (and a visitor's address) from somewhere else. blob: is the studio preview.
+    const hasBackground = /^(blob:|\/api\/uploads\/profile-studio\/)/.test(backgroundImage || "");
     const overrides = {
       ...(finish === "team" && teamColour ? { "--profile-team": teamColour } : {}),
       ...accentStyle(accent, tone),
+      "--profile-background-image": hasBackground ? `url(${JSON.stringify(backgroundImage)})` : "none",
+      "--profile-background-strength": bounded(backgroundStrength, 65, 0, 100) / 100,
+      "--profile-background-position": `${bounded(backgroundPositionX, 50, 0, 100)}% ${bounded(backgroundPositionY, 50, 0, 100)}%`,
+      "--profile-background-fit": backgroundFit === "contain" ? "contain" : "cover",
+      "--profile-background-attachment": backgroundScroll === "scroll" ? "absolute" : "fixed",
     };
     const previousStyles = Object.keys(overrides).map(key => [key, root.style.getPropertyValue(key), root.style.getPropertyPriority(key)]);
     root.setAttribute("data-profile-theme", finish);
     root.setAttribute("data-profile-tone", tone);
+    if (hasBackground) root.setAttribute("data-profile-background", "image");
+    else root.removeAttribute("data-profile-background");
     Object.entries(overrides).forEach(([key, value]) => root.style.setProperty(key, value));
     return () => {
       if (previous === null) root.removeAttribute("data-profile-theme");
       else root.setAttribute("data-profile-theme", previous);
       if (previousTone === null) root.removeAttribute("data-profile-tone");
       else root.setAttribute("data-profile-tone", previousTone);
+      if (previousBackground === null) root.removeAttribute("data-profile-background");
+      else root.setAttribute("data-profile-background", previousBackground);
       previousStyles.forEach(([key, value, priority]) => value ? root.style.setProperty(key, value, priority) : root.style.removeProperty(key));
     };
-  }, [theme, enabled, accent, tone, finish, teamColour]);
+  }, [theme, enabled, accent, tone, finish, teamColour, backgroundImage, backgroundStrength, backgroundPositionX, backgroundPositionY, backgroundFit, backgroundScroll]);
 }
 
 export function ProfileBanner({ driver, appearance = EMPTY_APPEARANCE, compact = false, backgroundOnly = false }) {
@@ -78,15 +99,17 @@ export default function ProfileAppearance({ driver, appearance = driver.appearan
   const content = driver.profileContent || EMPTY_PROFILE_CONTENT;
   const effectScale = bounded(content.effectStrength, 50, 0, 100) / 50;
   const motion = content.motion !== false;
+  const nameProps = profileNameProps(content, appearance.nameplate, driver.team?.color);
   const style = {
+    ...nameProps.style,
     "--profile-team": driver.team?.color || "#638daf",
     "--profile-banner-opacity": bounded(content.bannerStrength, 60, 0, 100) / (tone === "light" ? 300 : 100),
     "--profile-effect-scale": effectScale,
     "--profile-name-scale": bounded(content.nameScale, 100, 80, 120) / 100,
     ...accentStyle(content.accentColor || (cosmeticFinish(appearance.theme) === "team" ? driver.team?.color : null), tone),
   };
-  return <div className={`profile-appearance ${decorated ? "profile-appearance--custom" : ""} ${className}`} style={style} data-theme={cosmeticFinish(appearance.theme)} data-theme-tone={tone} data-nameplate={cosmeticFinish(appearance.nameplate)} data-stats={cosmeticFinish(appearance.stats)} data-effect={effect} data-panel-shape={content.panelShape || "theme"} data-density={content.density || "comfortable"} data-motion={motion} data-name-case={content.nameCase || "theme"}>
-    {driver.id && effect !== "default" && effectScale > 0 && createPortal(<div key={appearance.effect} className="profile-page-effect profile-surface-effect" style={{ "--profile-effect-scale": effectScale }} data-finish={effect} data-theme={cosmeticFinish(appearance.theme)} data-theme-tone={tone} data-motion={motion} aria-hidden="true" />, document.body)}
+  return <div {...nameProps} className={`profile-appearance ${decorated ? "profile-appearance--custom" : ""} ${className}`} style={style} data-theme={cosmeticFinish(appearance.theme)} data-theme-tone={tone} data-stats={cosmeticFinish(appearance.stats)} data-effect={effect} data-opaque-panels={effect !== "default" && content.lavaOpaquePanels !== false} data-panel-shape={content.panelShape || "theme"} data-density={content.density || "comfortable"} data-motion={motion}>
+    {driver.id && effect !== "default" && effectScale > 0 && createPortal(<ProfileEffect key={appearance.effect} className="profile-page-effect" strength={effectScale} finish={effect} theme={cosmeticFinish(appearance.theme)} tone={tone} motion={motion} lightningColor={content.lightningColor} lavaAmount={content.lavaAmount} lavaColor={content.lavaColor} opaquePanels={content.lavaOpaquePanels} teamColor={driver.team?.color} />, document.body)}
     <div className="profile-appearance-content">{children}</div>
   </div>;
 }

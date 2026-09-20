@@ -225,7 +225,7 @@ router.put("/studio/appearance", requireUser, async (req, res, next) => {
     next(e);
   }
 });
-// A banner or showcase picture. Kept under the member's hashed id so the save
+// A banner, showcase or page-background picture. Kept under the member's hashed id so the save
 // above can tell their own uploads from anything else.
 const studioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 router.post(
@@ -239,7 +239,7 @@ router.post(
   async (req, res, next) => {
     try {
       if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
-      if (!["banner", "showcase"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid picture type" });
+      if (!["banner", "showcase", "background"].includes(req.params.kind)) return res.status(400).json({ error: "Invalid picture type" });
       const b = req.file?.buffer;
       const isPng = b?.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
       const isJpg = b?.[0] === 255 && b?.[1] === 216 && b?.[2] === 255;

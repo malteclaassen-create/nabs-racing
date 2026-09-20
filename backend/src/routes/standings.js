@@ -13,6 +13,7 @@ import { parseCardPhotoPos } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
 import { getIdentityOverrides } from "../lib/persons.js";
 import { isAdminRequest } from "../middleware/auth.js";
+import { readDriverNameStyles } from "../lib/profileStudio.js";
 
 const router = Router();
 
@@ -36,7 +37,10 @@ function upToParam(req) {
 router.get("/drivers", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req) }));
+    const result = await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req) });
+    // Members who asked for their own lettering in the table get it here.
+    const names = await readDriverNameStyles(prisma, result.standings.map((d) => d.driverId));
+    res.json({ ...result, standings: result.standings.map((d) => ({ ...d, nameStyle: names.get(d.driverId) || null })) });
   } catch (e) {
     next(e);
   }

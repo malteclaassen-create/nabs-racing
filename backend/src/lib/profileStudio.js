@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { discordIdsForDrivers } from "./persons.js";
-import { PROFILE_SLOTS, EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT } from "../../../shared/profileCustomization.mjs";
+import { PROFILE_SLOTS, CUSTOM_BACKGROUND_ITEM_ID, EMPTY_APPEARANCE, EMPTY_PROFILE_CONTENT } from "../../../shared/profileCustomization.mjs";
 
 export const STUDIO_ITEMS = JSON.parse(
   readFileSync(new URL("../../../shared/profileCosmetics.json", import.meta.url), "utf8")
@@ -99,6 +99,7 @@ export async function equipStudio(prisma, discordId, appearance, content) {
   }
   const cleaned = content === undefined ? current.content : validateContent(content, discordId, current.content);
   if (cleaned?.error) return cleaned;
+  if (cleaned.backgroundImage && !owned.has(CUSTOM_BACKGROUND_ITEM_ID)) return { error: "Unlock the custom background before using a picture" };
   const cols = STUDIO_SLOTS.map((s) => `"${s}"`).join(",");
   const marks = STUDIO_SLOTS.map(() => "?").join(",");
   const sets = STUDIO_SLOTS.map((s) => `"${s}"=excluded."${s}"`).join(",");
@@ -124,23 +125,31 @@ export function validateContent(input, discordId, previous = EMPTY_PROFILE_CONTE
     c[field] = c[field].trim();
   }
   if (!Number.isFinite(c.bannerPosition) || c.bannerPosition < 0 || c.bannerPosition > 100) return bad("Invalid banner position");
-  if (c.accentColor !== null && (typeof c.accentColor !== "string" || !/^#[0-9a-f]{6}$/i.test(c.accentColor))) return bad("Invalid accent colour");
+  for (const [field, label] of [["accentColor", "accent colour"], ["nameColor", "name colour"], ["namePlateColor", "name plate colour"]]) {
+    if (c[field] !== null && (typeof c[field] !== "string" || !/^#[0-9a-f]{6}$/i.test(c[field]))) return bad(`Invalid ${label}`);
+  }
   for (const [field, choices] of [
     ["panelShape", ["theme", "square", "soft", "round"]],
     ["density", ["comfortable", "compact"]],
     ["nameCase", ["theme", "upper", "natural"]],
+    ["lightningColor", ["default", "team"]],
+    ["lavaColor", ["default", "team", "ocean", "amethyst", "mint"]],
+    ["backgroundFit", ["cover", "contain"]],
+    ["backgroundScroll", ["fixed", "scroll"]],
   ]) {
     if (!choices.includes(c[field])) return bad(`Invalid ${field}`);
   }
-  for (const [field, min, max] of [["bannerStrength", 0, 100], ["effectStrength", 0, 100], ["nameScale", 80, 120]]) {
+  for (const [field, min, max] of [["bannerStrength", 0, 100], ["effectStrength", 0, 100], ["lavaAmount", 10, 100], ["nameScale", 80, 120], ["backgroundPositionX", 0, 100], ["backgroundPositionY", 0, 100], ["backgroundStrength", 0, 100]]) {
     if (!Number.isSafeInteger(c[field]) || c[field] < min || c[field] > max) return bad(`Invalid ${field}`);
   }
-  if (typeof c.motion !== "boolean") return bad("Invalid motion preference");
+  for (const field of ["motion", "lavaOpaquePanels", "nameInStandings"]) {
+    if (typeof c[field] !== "boolean") return bad(`Invalid ${field}`);
+  }
   if (!["card", "photo", "achievement"].includes(c.showcaseMode)) return bad("Invalid showcase type");
   if (c.achievementKey !== null && (typeof c.achievementKey !== "string" || !/^[a-z0-9_-]{1,80}$/i.test(c.achievementKey))) return bad("Invalid achievement");
   // Pictures have to be the member's own uploads, nothing linked from elsewhere.
   const prefix = `/api/uploads/profile-studio/${profileMediaOwner(discordId)}-`;
-  for (const field of ["bannerImage", "showcaseImage"]) {
+  for (const field of ["bannerImage", "showcaseImage", "backgroundImage"]) {
     const v = c[field];
     if (v === null) continue;
     if (typeof v !== "string" || !v.startsWith(prefix)) return bad("Use one of your uploaded pictures");
@@ -157,4 +166,37 @@ export async function readDriverStudio(prisma, driverId) {
   const owned = await ownedStudioItems(prisma, discordId);
   const row = await styleRow(prisma, discordId);
   return { appearance: wornFrom(row, owned), profileContent: readContent(row?.content) };
+}
+
+// For the standings: the name treatment of everyone who asked for it there, and
+// nothing else. One lookup for the whole table, and a nameplate still has to be
+// owned to show up.
+export async function readDriverNameStyles(prisma, driverIds) {
+  const identities = await discordIdsForDrivers(prisma, driverIds);
+  const ids = [...new Set(identities.values())];
+  if (!ids.length) return new Map();
+  const ph = ids.map(() => "?").join(",");
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT s."discordId", s."nameplate", s."content", r."itemKey" AS "ownedNameplate"
+         FROM "ProfileStyle" s
+         LEFT JOIN "TokenRedemption" r
+           ON r."discordId" = s."discordId" AND r."itemKey" = s."nameplate" AND r."status" <> 'DECLINED'
+        WHERE s."discordId" IN (${ph})`,
+      ...ids
+    )
+    .catch(() => []);
+  const styles = new Map();
+  for (const row of rows) {
+    const content = readContent(row.content);
+    if (content.nameInStandings !== true) continue;
+    styles.set(row.discordId, {
+      nameplate: row.ownedNameplate && STUDIO_BY_ID.get(row.nameplate)?.slot === "nameplate" ? row.nameplate : null,
+      nameColor: /^#[0-9a-f]{6}$/i.test(content.nameColor || "") ? content.nameColor : null,
+      namePlateColor: /^#[0-9a-f]{6}$/i.test(content.namePlateColor || "") ? content.namePlateColor : null,
+      nameCase: ["upper", "natural"].includes(content.nameCase) ? content.nameCase : "theme",
+      nameScale: Number.isSafeInteger(content.nameScale) && content.nameScale >= 80 && content.nameScale <= 120 ? content.nameScale : 100,
+    });
+  }
+  return new Map([...identities].filter(([, id]) => styles.has(id)).map(([driverId, id]) => [driverId, styles.get(id)]));
 }

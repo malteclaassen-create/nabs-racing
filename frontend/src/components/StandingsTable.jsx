@@ -4,6 +4,7 @@ import { TierBadge, Rank, PosDelta, CountUp, DriverAvatar } from "./ui.jsx";
 import { playStandingsReplay } from "../utils/standingsReplay.js";
 import { countryFor } from "../data/driverCountries.js";
 import Flag from "./Flag.jsx";
+import DriverName from "./DriverName.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 
 // Tracks how far a horizontal scroller is scrolled, so the frozen Pos/Team and
@@ -318,9 +319,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                         <DriverAvatar name={row.name} photoUrl={row.photoUrl} color={row.team.color} size={30} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-2">
-                            <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
-                              {row.name}
-                            </span>
+                            <DriverName driver={row} className="truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg" />
                             {/* The photo already costs this frozen column
                                 ~40px; on a 375px screen the flag on top of it
                                 would eat the name itself. */}

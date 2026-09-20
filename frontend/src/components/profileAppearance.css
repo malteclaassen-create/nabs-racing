@@ -1,4 +1,8 @@
 .profile-appearance { min-width: 0; color: var(--c-text); }
+/* A member's own picture behind the whole page, outer margins included. */
+:root[data-profile-background="image"] body::before { display:none; }
+:root[data-profile-background="image"] body { position:relative; min-height:100vh; isolation:isolate; }
+:root[data-profile-background="image"] body::after { content:""; position:var(--profile-background-attachment,fixed); inset:0; z-index:-1; pointer-events:none; background-image:var(--profile-background-image); background-size:var(--profile-background-fit,cover); background-position:var(--profile-background-position,50% 50%); background-repeat:no-repeat; opacity:var(--profile-background-strength,.65); }
 .profile-appearance--custom { padding: 0; border: 0; background: transparent; }
 .profile-appearance-content { min-width: 0; }
 .profile-appearance[data-theme-tone="light"], :root[data-profile-tone="light"] { color-scheme: light; }
@@ -46,10 +50,6 @@
 .profile-banner-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -1; }
 .profile-banner:has(.profile-banner-photo)::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(0deg,#000a,transparent 85%); }
 .profile-personal-title { display: inline-block; margin-top: 8px; font: 700 12px/1.4 monospace; letter-spacing: .1em; color: var(--c-text3); }
-.profile-appearance[data-nameplate="chrome"] .profile-driver-name, .shop-item-art[data-finish="chrome"] .shop-finish-label { background: linear-gradient(115deg, color-mix(in srgb, var(--c-text) 65%, #71849a) 0%, var(--c-text) 35%, color-mix(in srgb, var(--c-text) 72%, #8294a7) 68%, var(--c-text) 100%); background-clip: text; -webkit-background-clip: text; color: transparent; }
-.profile-appearance[data-nameplate="spectrum"] .profile-driver-name { background: linear-gradient(100deg,color-mix(in srgb,var(--c-text) 65%,#479eb6),color-mix(in srgb,var(--c-text) 65%,#9974c8),color-mix(in srgb,var(--c-text) 65%,#c86689),color-mix(in srgb,var(--c-text) 65%,#cc9861)); background-clip: text; -webkit-background-clip: text; color: transparent; }
-.profile-appearance[data-nameplate="race"] .profile-driver-name { background: #0354d4; color: #fff; padding: 6px 18px 8px 12px; font-style: italic; clip-path: polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%); }
-.profile-appearance[data-nameplate="editorial"] .profile-driver-name { font-family: Georgia,serif; font-weight: 700; text-transform: none; font-style: italic; letter-spacing: -.045em; border-bottom: 2px solid currentColor; padding-bottom: 5px; }
 .profile-appearance[data-stats="timing"] .profile-stats { border-radius: 0; border: 1px solid #4f6453; }
 .profile-appearance[data-stats="timing"] .profile-stats > div { --c-card: #111915; --c-text: #d6eead; --c-text3: #afc49e; --c-border: #374733; background: #111915; }
 .profile-appearance[data-stats="timing"] .profile-stats .font-display { font-family: monospace; letter-spacing: -.08em; }
@@ -98,8 +98,15 @@
 .fx-lite .profile-surface-effect { animation: none !important; background-position: 50% 50%; }
 
 /* One viewport layer covers the complete profile, including content below the fold.
-   The portal is mounted only by the real profile and removed on navigation. */
+   The portal is mounted only by the real profile and removed on navigation.
+   The measured effects (lightning and the drifting ones) override this with a
+   document-tall layer that scrolls with the page. */
 .profile-page-effect { position: fixed; inset: 0; z-index: 20; border-radius: 0; pointer-events: none; user-select: none; }
+/* Sitting the decoration BEHIND the app, with the page background below it,
+   lets the cards occlude it by themselves, rounded corners and all. */
+body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: relative; z-index: 1; }
+.profile-page-effect[data-opaque-panels="true"] { z-index: 0; }
+.profile-appearance[data-opaque-panels="true"] .card { background-color: var(--c-card); }
 .profile-page-effect[data-finish="grain"] { opacity: calc(.16 * var(--profile-effect-scale,1)); }
 .profile-page-effect[data-finish="edge"] { border: 0; box-shadow: inset 0 0 60px #82b5e844; }
 .profile-appearance[data-effect="edge"] .card { position: relative; }
@@ -143,10 +150,6 @@
 .profile-banner[data-finish="mesh"] { background: radial-gradient(circle,#11151a 2px,transparent 3px) 0 0 / 9px 9px,linear-gradient(130deg,#77828c,#252e37); }
 .profile-banner[data-finish="contour"] { background: repeating-radial-gradient(ellipse at 85% -40%,transparent 0 24px,#83b4b838 25px 26px,transparent 27px 49px),#172b31; }
 .profile-banner[data-finish="pinstripe"] { background: repeating-linear-gradient(110deg,transparent 0 48px,#cfb27766 49px 50px,transparent 51px 98px),#26252b; }
-.profile-appearance[data-nameplate="team"] .profile-driver-name { color: color-mix(in srgb,var(--profile-team) 35%,var(--c-text)); }
-.profile-appearance[data-nameplate="outline"] .profile-driver-name { color: color-mix(in srgb,var(--c-text) 8%,transparent); -webkit-text-stroke: 1.2px var(--c-text); }
-.profile-appearance[data-nameplate="mono"] .profile-driver-name { font-family: monospace; letter-spacing: -.07em; font-weight: 800; }
-.profile-appearance[data-nameplate="serif"] .profile-driver-name { font-family: Georgia,serif; text-transform: none; letter-spacing: -.03em; font-weight: 500; }
 .profile-appearance[data-stats="minimal"] .profile-stats { border: 0; border-radius: 0; gap: 16px; background: transparent; box-shadow: none; }
 .profile-appearance[data-stats="minimal"] .profile-stats > div { border: 0; background: transparent; padding-inline: 0; }
 .profile-appearance[data-stats="team"] .profile-stats { border: 0; border-radius: 4px; gap: 1px; background: var(--c-border); }
@@ -271,8 +274,6 @@
 .profile-banner[data-finish="vignette"] { background: radial-gradient(ellipse at 73% 15%,#73818b 0%,#3a4957 28%,#17202c 65%,#101722 100%); }
 .profile-banner[data-finish="vignette"] .profile-banner-lines { background: radial-gradient(ellipse at 50% 45%,transparent 20%,#07111c99 100%); }
 
-.profile-appearance[data-nameplate="underline"] .profile-driver-name { padding-bottom: .13em; border-bottom: .08em solid rgb(var(--c-accent)); letter-spacing: -.045em; }
-.profile-appearance[data-nameplate="condensed"] .profile-driver-name { font-family: Impact,"Arial Narrow",sans-serif; font-weight: 400; letter-spacing: .015em; }
 .profile-appearance[data-stats="ledger"] .profile-stats { grid-template-columns: repeat(2,minmax(0,1fr)); border-radius: 0; border: 0; gap: 0 24px; background: transparent; }
 .profile-appearance[data-stats="ledger"] .profile-stats > div { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 12px; margin: 0; padding: 14px 0; border: 0; border-bottom: 1px solid var(--c-border); background: transparent; }
 .profile-appearance[data-stats="ledger"] .profile-stats > div > .font-display { margin: 0; font-size: 1.75rem; }
@@ -292,10 +293,8 @@
 .profile-appearance[data-density="compact"] .profile-appearance-content > .space-y-6 > .grid { gap: 16px; }
 .profile-appearance[data-density="compact"] .card > .border-b { padding-block: 10px; }
 .profile-appearance[data-density="compact"] .card tbody td { padding-block: 8px; }
-.profile-appearance .profile-driver-name { font-size: calc(2.25rem * var(--profile-name-scale,1)); overflow-wrap: break-word; }
+.profile-appearance .profile-driver-name { font-size: calc(2.25rem * var(--profile-name-scale,1)); overflow-wrap: anywhere; }
 @media (min-width: 640px) { .profile-appearance .profile-driver-name { font-size: calc(3rem * var(--profile-name-scale,1)); } }
-.profile-appearance[data-name-case="upper"] .profile-driver-name { text-transform: uppercase; }
-.profile-appearance[data-name-case="natural"] .profile-driver-name { text-transform: none; }
 .profile-appearance[data-motion="false"] .profile-banner-lines,
 .profile-appearance[data-motion="false"] .profile-surface-effect,
 .profile-appearance[data-motion="false"][data-effect="edge"] .card::after,
