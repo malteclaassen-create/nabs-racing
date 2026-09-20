@@ -261,7 +261,7 @@ function Opening({ recap, preview, index }) {
               <CircuitMap track={race.track} animate className="h-36 w-full text-dark sm:h-44" strokeWidth={2.2} />
             </Cell>
             <Stat label="Date" value={race.date ? fmtRaceDateFull(race.date).replace(/^\w+,\s*/, "").replace(/\s\d{4}$/, "") : NO_VALUE} note={race.date ? new Date(race.date).getFullYear() : null} />
-            <Stat label="Distance" value={race.raceLaps ? plural(race.raceLaps, "lap", "laps") : NO_VALUE} />
+            <Stat label="Distance" value={(race.raceLaps || winner?.laps) ? plural(race.raceLaps || winner.laps, "lap", "laps") : NO_VALUE} />
             <Stat label="Classified" value={`${race.finishers} of ${race.fieldSize}`} />
             <Stat label="Winner" value={winner?.name || NO_VALUE} />
             <Stat label="Pole" value={pole?.name || NO_VALUE} note={pole?.qualiTimeMs ? fmtLap(pole.qualiTimeMs) : null} />
