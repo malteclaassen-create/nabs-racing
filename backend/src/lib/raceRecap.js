@@ -225,7 +225,10 @@ async function ratingMove(prisma, rowId, raceId) {
 // The NABS Points this round paid the member, read straight off the ledger,
 // plus a clean-race bonus that is still waiting for the stewards. null when
 // the feature is not on for this request.
-async function pointsFor(prisma, req, discordId, race, rowId, own) {
+// `demo` (the admin preview) fills in what the round WOULD pay when the
+// ledger has nothing for it yet (counting paused, or a round before the
+// start day), so the chapter can be looked at before the first real payout.
+async function pointsFor(prisma, req, discordId, race, rowId, own, demo = false) {
   if (!discordId || !(await tokensVisibleTo(prisma, req))) return null;
   const earning = await isEarningOn(prisma);
   if (earning) await syncEarned(prisma, discordId).catch(() => {});
@@ -258,12 +261,24 @@ async function pointsFor(prisma, req, discordId, race, rowId, own) {
   ) {
     pending = { rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1) };
   }
+  let hypothetical = false;
+  if (demo && !entries.length && !pending && own?.finished) {
+    const finishRule = tunedRules().find((r) => r.key === "race_finish");
+    if (finishRule && finishRule.active !== false) {
+      entries.push({ rule: "race_finish", title: "Finished a race", delta: withMultiplier(finishRule.points, rate || 1) });
+    }
+    if (own.cleanRace && cleanRule && cleanRule.active !== false) {
+      pending = { rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1) };
+    }
+    hypothetical = entries.length > 0;
+  }
   return {
     earning,
     rate,
     entries,
     earned: entries.reduce((s, e) => s + e.delta, 0),
     pending,
+    hypothetical,
     balance: await dbBalance(prisma, discordId),
   };
 }
@@ -311,7 +326,7 @@ async function cardFor(prisma, race, rowId, ownRow) {
 // rows; the one in the race's season is used). `discordId` is the member the
 // points belong to; `req` decides what they may see. driverId null = a
 // spectator's recap: the round's story without a "you" in it.
-export async function buildRaceRecap(prisma, { raceId, driverId = null, discordId = null, req = null }) {
+export async function buildRaceRecap(prisma, { raceId, driverId = null, discordId = null, req = null, demo = false }) {
   const race = await prisma.race.findUnique({
     where: { id: raceId },
     include: { season: { select: { id: true, number: true, name: true, seriesId: true } } },
@@ -402,7 +417,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   const own = ownRace(ownRow, cell, fastestLapMs, finished.length);
   const [rating, points, series, card, heroes, seasonHero] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
-    rowId ? pointsFor(prisma, req, discordId, race, rowId, own) : null,
+    rowId ? pointsFor(prisma, req, discordId, race, rowId, own, demo) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
     cardFor(prisma, race, rowId, ownRow),
     readRaceHeroes(prisma, [race.id]).catch(() => new Map()),

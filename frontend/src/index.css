@@ -767,6 +767,21 @@ body::before {
   margin-bottom: -1.5rem;
 }
 @media (min-width: 640px) { .recap-bleed-strip { margin-top: -2.5rem; margin-bottom: -2.5rem; } }
+/* The recap's own motion. Everything waits for its chapter to scroll into
+   view (the chapter is a .reveal), so nothing plays to an empty screen. */
+.reveal:not(.is-visible) .podium-driver,
+.reveal:not(.is-visible) .champ-chip,
+.reveal:not(.is-visible) .recap-sweep-dot,
+.reveal:not(.is-visible) .recap-sweep-trail,
+.reveal:not(.is-visible) .recap-strike { animation-play-state: paused; }
+/* The car sliding from its grid slot to where it finished. */
+@keyframes recap-sweep { from { left: var(--from); } to { left: var(--to); } }
+.recap-sweep-dot { animation: recap-sweep var(--t-draw) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 450ms); }
+@keyframes recap-trail { from { width: 0; } to { width: var(--w); } }
+.recap-sweep-trail { animation: recap-trail var(--t-draw) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 450ms); }
+/* The line striking out last week's position. */
+@keyframes recap-strike { from { width: 0; } to { width: 100%; } }
+.recap-strike { animation: recap-strike var(--t-slow) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 500ms); }
 
 /* --- Guided tour spotlight ------------------------------------------ */
 /* The cut-out over the highlighted control: a huge spreading shadow dims the
@@ -1182,6 +1197,9 @@ body::before {
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
   .recap-pop { animation: none !important; opacity: 1; transform: none; }
+  .recap-sweep-dot { animation: none !important; left: var(--to); }
+  .recap-sweep-trail { animation: none !important; width: var(--w); }
+  .recap-strike { animation: none !important; width: 100%; }
   .podium-floor, .podium-ped, .podium-driver, .champ-chip { animation: none !important; opacity: 1; transform: none; clip-path: none; }
   .nav-drop, .nav-scrim { animation: none !important; opacity: 1; transform: none; }
   /* The sector chips keep their colour, which is the fact; only the movement
@@ -1241,6 +1259,9 @@ body::before {
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .recap-pop { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .recap-sweep-dot { animation: none !important; left: var(--to); }
+.fx-lite .recap-sweep-trail { animation: none !important; width: var(--w); }
+.fx-lite .recap-strike { animation: none !important; width: 100%; }
 .fx-lite .nav-drop, .fx-lite .nav-scrim { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .nav-drop.is-closing, .fx-lite .nav-scrim.is-closing { opacity: 0; }
 .fx-lite .collapse-row { transition: none !important; }

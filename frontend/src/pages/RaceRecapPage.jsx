@@ -7,22 +7,26 @@
 // things, the bar under the big number and the driver's own line on the
 // lap chart. No gradients, no glows.
 //
+// And it moves. Every chapter tells its one thing in motion as it scrolls
+// in: the circuit draws itself, the car slides from its grid slot to where
+// it finished, the lap chart traces the race, the podium rises, last week's
+// place is struck out and the new one lands, the rating ticks from what it
+// was to what it is, the points count in. All of it waits for the chapter
+// to be on screen and all of it stands still under reduced motion.
+//
 // Opened three ways. The host at the app root sends a member here the first
 // time they come back after the office saved a round (with the recap already
 // in hand, in the location state, and `pending` set so arriving counts as
 // seen). The Recap button on a race page links here for a second look. And
 // the admin preview opens it with ?seat=<driverId> to see any driver's version
 // of any round, which never counts as seen for anybody.
-//
-// Everything on the page comes from one payload (backend lib/raceRecap.js);
-// the only extra request is the lap-by-lap order for the race trace.
 // ---------------------------------------------------------------------------
-import { useCallback, useEffect, useState } from "react";
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { useParallax } from "../hooks/motion.js";
+import { motionOff, useInView, useParallax } from "../hooks/motion.js";
 import { CountUp, DriverAvatar, MEDAL_TEXT, ErrorBox, PageHeaderSkeleton } from "../components/ui.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import { buildRaceFacts } from "../components/RaceFacts.jsx";
@@ -151,11 +155,16 @@ function Chapter({ index, title, meta, children }) {
 // The plate: cells separated by hairlines, one border around the lot. Each
 // cell brings its own top and left line and pulls itself a pixel up and left
 // over the previous one, so no line is ever doubled and a last row that does
-// not fill up leaves plain page behind it, not a slab of line colour.
+// not fill up leaves plain page behind it. The cells deal themselves in one
+// after the other (.cascade, --i per child).
 function Plate({ children, className = "", style }) {
+  let i = 0;
+  const dealt = Children.map(children, (c) =>
+    isValidElement(c) ? cloneElement(c, { style: { ...(c.props.style || {}), "--i": i++ } }) : c
+  );
   return (
-    <div className={`grid overflow-hidden border border-border ${className}`} style={style}>
-      {children}
+    <div className={`cascade grid overflow-hidden border border-border ${className}`} style={style}>
+      {dealt}
     </div>
   );
 }
@@ -182,9 +191,9 @@ function Giant({ children, bar = true, className = "" }) {
 }
 
 // A number and its word, for the data plates.
-function Stat({ value, label, note, tone = "text-dark", className = "" }) {
+function Stat({ value, label, note, tone = "text-dark", className = "", style }) {
   return (
-    <Cell className={`p-5 sm:p-6 ${className}`}>
+    <Cell className={`p-5 sm:p-6 ${className}`} style={style}>
       <Label>{label}</Label>
       <div className={`mt-3 break-words font-display text-2xl font-black tabular-nums leading-none tracking-tight sm:text-3xl ${tone}`}>{value ?? NO_VALUE}</div>
       {note && <div className="mt-2 font-mono text-[11px] text-faint">{note}</div>}
@@ -198,6 +207,36 @@ function Delta({ value, decimals = 0, suffix = "", className = "" }) {
   const up = value > 0;
   const text = zero ? `±0${suffix}` : `${up ? "+" : "−"}${Math.abs(value).toFixed(decimals)}${suffix}`;
   return <span className={`font-mono font-bold tabular-nums ${zero ? "text-light" : up ? "text-ok" : "text-bad"} ${className}`}>{text}</span>;
+}
+
+// A number that ticks from what it was to what it is once it is on screen.
+// CountUp starts at zero; this starts at last week, which is the story.
+function Tween({ from, to, decimals = 0, duration = 1400, delay = 350, className = "" }) {
+  const [ref, inView] = useInView({ rootMargin: "0px 0px 10% 0px" });
+  const start = from == null || !Number.isFinite(from) ? to : from;
+  const [n, setN] = useState(start);
+  useEffect(() => {
+    if (!inView || !Number.isFinite(to)) return;
+    if (motionOff() || start === to) {
+      setN(to);
+      return;
+    }
+    let raf = 0;
+    const t0 = performance.now() + delay;
+    const tick = (t) => {
+      const p = Math.min(1, Math.max(0, (t - t0) / duration));
+      const e = 1 - Math.pow(1 - p, 3);
+      setN(start + (to - start) * e);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, start, to, duration, delay]);
+  return (
+    <span ref={ref} className={`tabular-nums ${className}`}>
+      {decimals ? n.toFixed(decimals) : Math.round(n)}
+    </span>
+  );
 }
 
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
@@ -256,12 +295,12 @@ function Opening({ recap, preview, index }) {
             )}
           </div>
           {/* The plate: the round's own numbers and the circuit, as a data card. */}
-          <Plate className="hero-anim grid-cols-2" style={{ animationDelay: "0.25s" }}>
+          <Plate className="grid-cols-2">
             <Cell className="col-span-2 flex items-center justify-center p-6">
               <CircuitMap track={race.track} animate className="h-36 w-full text-dark sm:h-44" strokeWidth={2.2} />
             </Cell>
             <Stat label="Date" value={race.date ? fmtRaceDateFull(race.date).replace(/^\w+,\s*/, "").replace(/\s\d{4}$/, "") : NO_VALUE} note={race.date ? new Date(race.date).getFullYear() : null} />
-            <Stat label="Distance" value={(race.raceLaps || winner?.laps) ? plural(race.raceLaps || winner.laps, "lap", "laps") : NO_VALUE} />
+            <Stat label="Distance" value={race.raceLaps || winner?.laps ? plural(race.raceLaps || winner.laps, "lap", "laps") : NO_VALUE} />
             <Stat label="Classified" value={`${race.finishers} of ${race.fieldSize}`} />
             <Stat label="Winner" value={winner?.name || NO_VALUE} />
             <Stat label="Pole" value={pole?.name || NO_VALUE} note={pole?.qualiTimeMs ? fmtLap(pole.qualiTimeMs) : null} />
@@ -280,7 +319,6 @@ function YouChapter({ recap, laps, index }) {
   const photo = recap.card?.driver?.photoUrl || recap.results.find((r) => r.driverId === y.driverId)?.photoUrl || null;
   const fastest = y.finished && y.bestLapMs != null && y.lapGapMs === 0;
   const stats = [
-    y.grid != null ? { label: "Grid", value: `P${y.grid}` } : null,
     y.finished && y.rawPosition != null && y.rawPosition !== y.position ? { label: "At the line", value: `P${y.rawPosition}`, note: "before penalties" } : null,
     { label: "Points", value: y.points > 0 ? `+${y.points}` : "0", tone: y.points > 0 ? "text-dark" : "text-light", note: y.fastestLapBonus > 0 ? `incl. ${y.fastestLapBonus} fastest lap` : recap.standings?.roundDropped ? "dropped round" : null },
     y.sprint ? { label: "Sprint", value: y.sprint.position != null ? `P${y.sprint.position}` : y.sprint.status, note: y.sprint.points > 0 ? `+${y.sprint.points} pts` : null } : null,
@@ -333,6 +371,7 @@ function YouChapter({ recap, laps, index }) {
           </div>
         </div>
       </div>
+      {y.finished && y.grid != null && recap.race.fieldSize > 1 && <GridToFlag grid={y.grid} finish={y.position} field={recap.race.fieldSize} />}
       <Plate className="mt-12 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (
           <Stat key={s.label} {...s} />
@@ -340,6 +379,47 @@ function YouChapter({ recap, laps, index }) {
       </Plate>
       {laps && <RaceTrace laps={laps} driverId={y.driverId} lapsDriven={y.laps} />}
     </Chapter>
+  );
+}
+
+// The race in one move: a track of grid slots from the back of the field on
+// the left to P1 on the right, and the car sliding from where it started to
+// where it finished, leaving its team colour behind it.
+function GridToFlag({ grid, finish, field }) {
+  const at = (p) => ((field - p) / (field - 1)) * 100;
+  const from = at(grid);
+  const to = at(finish);
+  const lo = Math.min(from, to);
+  const w = Math.abs(to - from);
+  const step = field > 30 ? 10 : field > 12 ? 5 : 1;
+  const ticks = [];
+  for (let p = field; p >= 1; p -= 1) if (p === 1 || p === field || p % step === 0) ticks.push(p);
+  const gained = grid - finish;
+  return (
+    <div className="mt-12 border-t border-border pt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Label>Grid to flag</Label>
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
+          P{grid} → P{finish} {gained !== 0 && <Delta value={gained} suffix={` place${Math.abs(gained) === 1 ? "" : "s"}`} className="ml-2 normal-case tracking-normal" />}
+        </span>
+      </div>
+      <div className="relative mt-8 h-16">
+        <div className="absolute inset-x-0 top-7 h-px bg-border" />
+        {ticks.map((p) => (
+          <div key={p} className="absolute top-7 -translate-x-1/2" style={{ left: `${at(p)}%` }}>
+            <div className="mx-auto h-2 w-px bg-border" />
+            <div className="mt-1 font-mono text-[10px] font-bold tabular-nums text-faint">P{p}</div>
+          </div>
+        ))}
+        {/* what the move leaves behind, then the car itself */}
+        <div className="recap-sweep-trail absolute top-[27px] h-[3px]" style={{ left: `${lo}%`, "--w": `${w}%`, background: "var(--recap-team)", opacity: 0.55 }} />
+        <div className="absolute top-7 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-bg" style={{ left: `${from}%` }} title={`Grid P${grid}`} />
+        <div className="recap-sweep-dot absolute top-7 -translate-x-1/2 -translate-y-1/2" style={{ "--from": `${from}%`, "--to": `${to}%`, left: `${to}%` }}>
+          <div className="h-4 w-4 rounded-full ring-4 ring-bg" style={{ background: "var(--recap-team)" }} />
+          <div className="absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap font-display text-sm font-black text-dark">P{finish}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -443,24 +523,28 @@ function PodiumChapter({ results, index }) {
     }
     return fmtGap(t - winMs) || null;
   };
-  // 2 | 1 | 3 across, the winner first on a phone.
+  // 2 | 1 | 3 across, the winner first on a phone. They rise third, second,
+  // winner, the way a podium ceremony goes (--pd delays).
   const order = [top[1], top[0], top[2]].filter(Boolean);
+  const delay = { 0: "0.6s", 1: "0.3s", 2: "0.05s" };
   return (
     <Chapter index={index} title="The podium" meta={`${finished.length} classified`}>
-      <Plate className="sm:grid-cols-3">
+      <div className="grid overflow-hidden border border-border sm:grid-cols-3">
         {order.map((r) => {
           const i = r.position - 1;
           const team = teamOf(r);
           const win = i === 0;
           return (
-            <Cell key={r.driverId} className={`flex flex-col p-6 sm:p-8 ${win ? "order-first sm:order-none" : ""}`}>
+            <Cell key={r.driverId} className={`flex flex-col p-6 sm:p-8 ${win ? "order-first sm:order-none" : ""}`} style={{ "--pd": delay[i] }}>
               <div className="flex items-baseline justify-between">
-                <span className="font-display text-6xl font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
+                <span className="podium-driver font-display text-6xl font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
                   {i + 1}
                 </span>
-                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">{win ? "Winner" : gapOf(r, i) || ""}</span>
+                <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light ${win ? "champ-chip" : "podium-driver"}`}>
+                  {win ? "Winner" : gapOf(r, i) || ""}
+                </span>
               </div>
-              <div className={`mt-8 flex flex-col items-center text-center ${win ? "sm:mt-6" : "sm:mt-12"}`}>
+              <div className={`podium-driver mt-8 flex flex-col items-center text-center ${win ? "sm:mt-6" : "sm:mt-12"}`}>
                 <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={team?.color || "#232833"} size={win ? 160 : 112} />
                 <Link to={`/drivers/${r.driverId}`} className={`mt-6 flex items-center gap-2 font-display font-black uppercase tracking-tight text-dark transition hover:text-brand ${win ? "text-3xl" : "text-2xl"}`}>
                   {r.name}
@@ -468,14 +552,14 @@ function PodiumChapter({ results, index }) {
                 </Link>
                 {team && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} showName className="mt-2" nameClassName="text-sm text-light" />}
               </div>
-              <div className="mt-auto flex items-baseline justify-between border-t border-border pt-4">
+              <div className="podium-driver mt-auto flex items-baseline justify-between border-t border-border pt-4">
                 <Label>Points</Label>
                 <span className="font-display text-2xl font-black tabular-nums text-dark">{r.points > 0 ? `+${r.points}` : "0"}</span>
               </div>
             </Cell>
           );
         })}
-      </Plate>
+      </div>
     </Chapter>
   );
 }
@@ -509,14 +593,18 @@ function ChampionshipChapter({ recap, index }) {
             {s.before && s.before.position !== s.after.position && (
               <div className="mb-3">
                 <Label>Was</Label>
-                <div className="mt-1 font-display text-[clamp(2.5rem,7vw,5rem)] font-black leading-none tabular-nums text-light line-through decoration-[5px]">P{s.before.position}</div>
+                <div className="relative mt-1 inline-block font-display text-[clamp(2.5rem,7vw,5rem)] font-black leading-none tabular-nums text-light">
+                  P{s.before.position}
+                  {/* struck out as the new one lands */}
+                  <span className="recap-strike absolute left-0 top-1/2 h-[5px] -translate-y-1/2 bg-light" style={{ width: "100%" }} />
+                </div>
               </div>
             )}
             <Giant className="text-[clamp(6rem,18vw,14rem)]">P{s.after.position}</Giant>
           </div>
           <div className="mt-6 flex flex-wrap items-baseline gap-x-5 gap-y-2">
             <span className="font-display text-4xl font-black tabular-nums tracking-tight text-dark">
-              <CountUp end={s.after.total} />
+              <Tween from={s.before?.total} to={s.after.total} />
               <span className="ml-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">pts</span>
             </span>
             {you && you.points > 0 && !s.roundDropped && <Delta value={you.points} className="text-lg" />}
@@ -591,7 +679,9 @@ function RatingChapter({ recap, index }) {
           {r?.after ? (
             <>
               <div className="flex items-end gap-6">
-                <Giant className="text-[clamp(6rem,16vw,12rem)]">{Math.round(r.after.overall)}</Giant>
+                <Giant className="text-[clamp(6rem,16vw,12rem)]">
+                  <Tween from={r.before?.overall} to={r.after.overall} />
+                </Giant>
                 <div className="mb-3">
                   {r.delta && (
                     <div>
@@ -612,19 +702,32 @@ function RatingChapter({ recap, index }) {
               <Plate className="mt-10 grid-cols-2 sm:grid-cols-4">
                 {RATING_PARTS.map((p) => {
                   const v = r.after[p.key];
+                  const was = r.before?.[p.key];
                   const d = r.delta ? r.delta[p.key] : null;
                   if (v == null) return null;
+                  const base = Math.max(0, Math.min(100, was ?? v));
+                  const lo = Math.min(base, v);
+                  const change = Math.abs(v - base);
                   return (
                     <Cell key={p.key} className="p-5 sm:p-6">
                       <Label>
                         {p.label} <span className="ml-1 text-faint">{p.name}</span>
                       </Label>
                       <div className="mt-3 flex items-baseline gap-2">
-                        <span className="font-display text-4xl font-black tabular-nums leading-none text-dark">{Math.round(v)}</span>
+                        <span className="font-display text-4xl font-black tabular-nums leading-none text-dark">
+                          <Tween from={was} to={v} />
+                        </span>
                         {d != null && <Delta value={d} decimals={1} className="text-sm" />}
                       </div>
-                      <div className="mt-4 h-1 w-full bg-border">
-                        <div className="bar-fill h-1 bg-dark" style={{ "--w": `${Math.max(2, Math.min(100, v))}%` }} />
+                      {/* where it stood, and the piece this round added or took, in the team's colour or in red */}
+                      <div className="relative mt-4 h-1 w-full bg-border">
+                        <div className="bar-fill absolute left-0 top-0 h-1 bg-dark" style={{ "--w": `${Math.max(2, lo)}%` }} />
+                        {change >= 0.5 && (
+                          <div
+                            className="bar-fill absolute top-0 h-1"
+                            style={{ left: `${lo}%`, "--w": `${change}%`, background: v >= base ? "var(--recap-team)" : "rgb(var(--c-bad))", animationDelay: "calc(var(--reveal-delay, 0s) + 900ms)" }}
+                          />
+                        )}
                       </div>
                     </Cell>
                   );
@@ -644,25 +747,26 @@ function RatingChapter({ recap, index }) {
 // --- 06 the points ----------------------------------------------------------
 
 function PointsChapter({ points: p, index }) {
+  const before = p.balance != null ? p.balance - (p.hypothetical ? 0 : p.earned) : null;
   return (
-    <Chapter index={index} title="NABS Points" meta={p.rate > 1 ? `paid at ×${p.rate.toFixed(2)}` : "this round"}>
+    <Chapter index={index} title="NABS Points" meta={p.hypothetical ? "what this round would pay" : p.rate > 1 ? `paid at ×${p.rate.toFixed(2)}` : "this round"}>
       <div className="grid gap-12 lg:grid-cols-[auto,1fr] lg:items-end lg:gap-20">
         <div className="flex items-end gap-6">
-          <TokenIcon className="mb-3 h-16 w-16 sm:h-24 sm:w-24" />
+          <TokenIcon className="champ-chip mb-3 h-16 w-16 sm:h-24 sm:w-24" />
           <Giant className="text-[clamp(6rem,18vw,14rem)]">
             <CountUp end={p.earned} prefix="+" />
           </Giant>
         </div>
         <div>
-          <div className="divide-y divide-border border-y border-border">
+          <div className="cascade divide-y divide-border border-y border-border">
             {p.entries.map((e, i) => (
-              <div key={i} className="flex items-baseline justify-between gap-4 py-4">
+              <div key={i} className="flex items-baseline justify-between gap-4 py-4" style={{ "--i": i }}>
                 <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{e.title}</span>
                 <span className="font-display text-2xl font-black tabular-nums text-dark">+{e.delta}</span>
               </div>
             ))}
             {p.pending && (
-              <div className="flex items-baseline justify-between gap-4 py-4">
+              <div className="flex items-baseline justify-between gap-4 py-4" style={{ "--i": p.entries.length }}>
                 <span className="font-display text-lg font-extrabold uppercase tracking-tight text-light">
                   {p.pending.title}
                   <span className="ml-3 font-mono text-[10px] tracking-[0.2em]">once the stewards are done</span>
@@ -671,16 +775,19 @@ function PointsChapter({ points: p, index }) {
               </div>
             )}
             {p.balance != null && (
-              <div className="flex items-baseline justify-between gap-4 py-4">
-                <Label>Balance now</Label>
+              <div className="flex items-baseline justify-between gap-4 py-4" style={{ "--i": p.entries.length + 1 }}>
+                <Label>{p.hypothetical ? "Balance today" : "Balance now"}</Label>
                 <span className="flex items-center gap-2 font-display text-2xl font-black tabular-nums text-dark">
                   <TokenIcon className="h-5 w-5" />
-                  <CountUp end={p.balance} />
+                  <Tween from={before} to={p.balance} delay={900} />
                 </span>
               </div>
             )}
           </div>
-          {p.rate > 1 && <p className="mt-4 font-mono text-[11px] text-light">Your Discord week counted: every race point paid at ×{p.rate.toFixed(2)}.</p>}
+          {p.hypothetical && (
+            <p className="mt-4 font-mono text-[11px] text-light">Preview: nothing has been paid for this round yet. This is what the rules pay a finish like this.</p>
+          )}
+          {!p.hypothetical && p.rate > 1 && <p className="mt-4 font-mono text-[11px] text-light">Your Discord week counted: every race point paid at ×{p.rate.toFixed(2)}.</p>}
         </div>
       </div>
     </Chapter>

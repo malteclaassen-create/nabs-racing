@@ -971,7 +971,7 @@ router.get("/race-recap/preview", async (req, res, next) => {
       if (!d) return res.status(404).json({ error: "Driver not found" });
       discordId = d.discordUserId || null;
     }
-    const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId, req });
+    const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId, req, demo: true });
     if (!recap) return res.status(404).json({ error: "That round has no result yet" });
     res.json({ recap });
   } catch (e) {
