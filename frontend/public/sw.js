@@ -26,9 +26,10 @@
 //                 those file names. A given URL's content can never change, so
 //                 a hit is always correct, and a new build simply asks for new
 //                 names.
-//   images/fonts  cache first as well, refreshed in the background: a team logo
-//                 or a flag that changed is not worth a round trip on every
-//                 page, but it should not be frozen for ever either.
+//   images/fonts  cache first as well, revalidated in the background: a team
+//                 logo or a flag that changed is not worth waiting for, but it
+//                 must not be frozen either, so the copy on screen is the
+//                 cached one and the next page load has the new one.
 //   everything else, /api included, goes straight to the network, untouched.
 //
 // Bumping CACHE_VERSION throws away every previous cache on activation. Do it
@@ -36,7 +37,7 @@
 // ordinary case (a new deploy) on their own.
 // ---------------------------------------------------------------------------
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const SHELL_CACHE = `nabs-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `nabs-assets-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -86,7 +87,15 @@ async function cacheFirst(request, cacheName, { revalidate = false } = {}) {
     if (revalidate) {
       // Refresh in the background. Failures are ignored on purpose: the visitor
       // already has a usable answer in their hands.
-      fetch(request)
+      //
+      // `cache: "no-cache"` is the whole point of this line and was missing:
+      // a plain fetch() is allowed to come out of the BROWSER's own cache, and
+      // these files are served with a week's max-age, so the "refresh" was
+      // quietly re-storing the same stale bytes for up to seven days. A shop
+      // picture or a team logo replaced under its old name never arrived. This
+      // forces a conditional request instead — one ETag round trip, answered
+      // with a 304 and no body while the file is unchanged.
+      fetch(request, { cache: "no-cache" })
         .then((res) => (res.ok ? cache.put(request, res.clone()) : null))
         .catch(() => {});
     }
