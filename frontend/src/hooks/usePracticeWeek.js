@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "./useAuth.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 
 // ---------------------------------------------------------------------------
 // This member's training week: laps done on the practice server since the last
@@ -20,15 +21,17 @@ import { useAuth } from "./useAuth.js";
 // ---------------------------------------------------------------------------
 
 let cached; // undefined = never asked, null = nothing to show
+let cachedFor; // the series the answer was asked for
 let inflight = null;
 const subs = new Map(); // setter -> how often that subscriber wants it, in ms
 let timer = null;
 let lastAsk = 0;
 
-function load() {
+function load(series) {
   if (!inflight) {
+    cachedFor = series;
     inflight = api
-      .tokenPractice()
+      .tokenPractice(series)
       .then((r) => {
         cached = r?.enabled ? r.practice || null : null;
         return cached;
@@ -49,10 +52,10 @@ function load() {
 // from a moment ago is good enough: the cue, the points page and the live
 // card all mount at once, and three of them landing in the same second is one
 // question asked three times.
-function ask({ force = false } = {}) {
-  if (!force && cached !== undefined && Date.now() - lastAsk < 1500) return;
+function ask({ force = false, series = null } = {}) {
+  if (!force && cached !== undefined && cachedFor === series && Date.now() - lastAsk < 1500) return;
   lastAsk = Date.now();
-  load().then((week) => {
+  load(series).then((week) => {
     for (const set of subs.keys()) set(week);
   });
 }
@@ -66,7 +69,7 @@ function retime() {
   const wanted = [...subs.values()].filter((ms) => ms > 0);
   if (!wanted.length) return;
   timer = setInterval(() => {
-    if (document.visibilityState === "visible") ask();
+    if (document.visibilityState === "visible") ask({ series: cachedFor });
   }, Math.min(...wanted));
 }
 
@@ -78,6 +81,11 @@ export function refreshPracticeWeek() {
 
 export function usePracticeWeek(everyMs = 5 * 60 * 1000) {
   const { isLoggedIn } = useAuth();
+  // Which series the site is showing. The answer leads with that one's week
+  // and carries every other series' week beside it: the points themselves are
+  // the site's, not a series'.
+  const { slug, active } = useSeries();
+  const series = slug || active?.slug || null;
   const [week, setWeek] = useState(() => (cached === undefined ? null : cached));
 
   useEffect(() => {
@@ -88,7 +96,7 @@ export function usePracticeWeek(everyMs = 5 * 60 * 1000) {
     }
     subs.set(setWeek, everyMs);
     retime();
-    if (cached === undefined) ask();
+    if (cached === undefined || cachedFor !== series) ask({ series });
     else setWeek(cached);
 
     // Coming back to a tab that was left open on the live page all evening.
@@ -96,7 +104,7 @@ export function usePracticeWeek(everyMs = 5 * 60 * 1000) {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastAsk < MIN_GAP) return;
-      ask();
+      ask({ series });
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
@@ -106,7 +114,7 @@ export function usePracticeWeek(everyMs = 5 * 60 * 1000) {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [isLoggedIn, everyMs]);
+  }, [isLoggedIn, everyMs, series]);
 
   return week;
 }

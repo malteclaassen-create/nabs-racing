@@ -398,14 +398,19 @@ export async function payPractice(prisma, discordId, { series, period, laps = nu
 
 // ---- What the page draws -----------------------------------------------------
 
-// This member's training week: how many laps, what the next milestone is, and
-// which of them are already in the ledger. Pays anything outstanding on the
-// way past, so opening the page settles a week the relay could not pay for.
+// This member's training weeks: how many laps, what the next milestone is,
+// and which of them are already in the ledger. Pays anything outstanding on
+// the way past, so opening the page settles a week the relay could not pay
+// for.
 //
-// A member who races in two series gets the one they have done the most laps
-// in this week, which on this league's calendar is the only one they are
-// training for anyway.
-export async function practiceProgress(prisma, discordId) {
+// EVERY series, not one. NABS Points are the site's, not a series' — racing
+// anywhere pays, and so does practising for anywhere. A member who races in
+// two of them has two weeks running at once (each series has its own next
+// round) and each pays its own milestones, exactly as two races in a week pay
+// twice. `weeks` carries them all; the top level is the one that page should
+// lead with, which is the series it is showing (`prefer`) and otherwise the
+// one with the most laps in it.
+export async function practiceProgress(prisma, discordId, { prefer = null } = {}) {
   const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
   if (!tiers.length || !discordId) return null;
   // No Steam id on file means the race server cannot tell this member's laps
@@ -421,64 +426,72 @@ export async function practiceProgress(prisma, discordId) {
     )
     .catch(() => []);
 
-  let best = null;
+  const paying = await payingNow(prisma);
+  const publicPages = await tokensPublic(prisma);
+  const target = tiers[tiers.length - 1].laps;
+
+  const weeks = [];
   for (const row of seriesRows) {
     const period = await currentPeriod(prisma, row.slug);
     if (!period) continue;
-    const { laps, trackKey, car } = await lapsOf(prisma, steamIds, row.slug, period.key);
-    const cand = { series: row.slug, seriesName: row.name, period, laps, trackKey, car };
-    if (!best || cand.laps > best.laps) best = cand;
-  }
-  if (!best) return null;
+    const { laps, car } = await lapsOf(prisma, steamIds, row.slug, period.key);
+    if (laps) await payPractice(prisma, discordId, { series: row.slug, period, laps });
 
-  if (best.laps) await payPractice(prisma, discordId, { series: best.series, period: best.period, laps: best.laps });
-
-  // When each milestone paid. The cue at the bottom of the site celebrates a
-  // payment from the last few hours and stays quiet about an older one, which
-  // is what stops a week's worth of milestones popping up on a Sunday visit.
-  const paidAt = new Map();
-  const keys = tiers.map((t) => refKeyFor(t.key, best.series, best.period.key));
-  if (keys.length) {
+    // When each milestone paid. The cue at the bottom of the site celebrates a
+    // payment from the last few hours and stays quiet about an older one,
+    // which is what stops a week of milestones popping up on a Sunday visit.
+    const keys = tiers.map((t) => refKeyFor(t.key, row.slug, period.key));
     const ph = keys.map(() => "?").join(",");
-    const rows = await prisma
+    const paidRows = await prisma
       .$queryRawUnsafe(
         `SELECT "refKey","createdAt" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (${ph})`,
         discordId,
         ...keys
       )
       .catch(() => []);
-    for (const r of rows) paidAt.set(r.refKey, r.createdAt);
-  }
+    const paidAt = new Map(paidRows.map((r) => [r.refKey, r.createdAt]));
 
-  const done = tiers.filter((t) => best.laps >= t.laps);
-  const next = tiers.find((t) => best.laps < t.laps) || null;
+    const next = tiers.find((t) => laps < t.laps) || null;
+    weeks.push({
+      series: row.slug,
+      seriesName: row.name,
+      laps,
+      target,
+      label: period.label,
+      period: period.key,
+      car: car || null,
+      earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
+      next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
+      tiers: tiers.map((t) => ({
+        key: t.key,
+        laps: t.laps,
+        points: t.points,
+        done: laps >= t.laps,
+        paidAt: paidAt.get(refKeyFor(t.key, row.slug, period.key)) || null,
+      })),
+    });
+  }
+  if (!weeks.length) return null;
+
+  const wanted = prefer ? weeks.find((w) => w.series === prefer) : null;
+  const lead = wanted || weeks.reduce((a, b) => (b.laps > a.laps ? b : a), weeks[0]);
+  // A series this member has not turned a lap in is not their week. The one
+  // the page is showing stays either way, so a driver who has not started yet
+  // still sees an empty bar to fill rather than nothing at all.
+  const shown = weeks.filter((w) => w.laps > 0 || w.series === lead.series);
+
   return {
     // Whether a milestone would actually pay right now. The bar says so rather
     // than promising points the trial is not handing out yet.
-    paying: await payingNow(prisma),
+    paying,
     // Whether the feature is out in the open (everyone-mode) rather than shown
     // to admins only. The live page is a public page and waits for this, the
     // same rule the flair and the wall follow; the member's own points page
     // does not, which is what lets an admin try the whole thing first.
-    publicPages: await tokensPublic(prisma),
-    laps: best.laps,
-    // What the bar runs to, so the second milestone is the end of it.
-    target: tiers[tiers.length - 1].laps,
-    label: best.period.label,
-    // The week's own key, so a browser can remember which milestones it has
-    // already celebrated without mistaking next week's for the same one.
-    period: best.period.key,
-    series: best.series,
-    seriesName: best.seriesName,
-    car: best.car || null,
-    earned: done.reduce((sum, t) => sum + t.points, 0),
-    next: next ? { laps: next.laps, points: next.points, toGo: next.laps - best.laps } : null,
-    tiers: tiers.map((t) => ({
-      key: t.key,
-      laps: t.laps,
-      points: t.points,
-      done: best.laps >= t.laps,
-      paidAt: paidAt.get(refKeyFor(t.key, best.series, best.period.key)) || null,
-    })),
+    publicPages,
+    ...lead,
+    // Every series' week they have driven in, so a page can show the lot
+    // rather than hide one.
+    weeks: shown,
   };
 }

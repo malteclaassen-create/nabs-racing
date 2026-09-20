@@ -260,7 +260,10 @@ router.post(
 router.get("/practice", requireUser, async (req, res, next) => {
   try {
     if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
-    res.json({ enabled: true, practice: await practiceProgress(prisma, req.user.discordId) });
+    // `?series=` is the page saying which one it is showing; the answer leads
+    // with that week and carries the others alongside it.
+    const prefer = String(req.query.series || "").slice(0, 80) || null;
+    res.json({ enabled: true, practice: await practiceProgress(prisma, req.user.discordId, { prefer }) });
   } catch (e) {
     next(e);
   }

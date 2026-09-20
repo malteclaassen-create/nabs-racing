@@ -313,16 +313,34 @@ function MultiplierBar({ a }) {
 
 // The training week, in the card the points page gives it. The bar itself is
 // shared with the live page (components/TrainingBar.jsx).
+//
+// One bar per series the member races in: NABS Points belong to the site
+// rather than to a series, and somebody in two of them is preparing for two
+// rounds and earns for both. With one series there is nothing to label, so
+// the round rides up beside the heading as before.
 function PracticeCard({ week }) {
   if (!week) return null;
+  const weeks = week.weeks?.length ? week.weeks : [week];
+  const many = weeks.length > 1;
   return (
     <div className="card px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>Training</Heading>
-        <div className="text-xs text-light">{week.label}</div>
+        {!many && <div className="text-xs text-light">{week.label}</div>}
       </div>
-      <div className="mt-3">
-        <TrainingBar week={week} />
+      <div className={many ? "mt-1 divide-y divide-border" : "mt-3"}>
+        {weeks.map((w) => (
+          <div key={w.series} className={many ? "py-3" : ""}>
+            {many && (
+              <div className="mb-2 text-xs text-light">
+                <span className="font-semibold text-medium">{w.seriesName}</span> · {w.label}
+              </div>
+            )}
+            {/* Whether the league is paying is the site's answer, not the
+                week's, so it travels down with each of them. */}
+            <TrainingBar week={{ ...w, paying: week.paying }} />
+          </div>
+        ))}
       </div>
     </div>
   );

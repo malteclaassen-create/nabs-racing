@@ -803,7 +803,8 @@ export const api = {
   tokenLeaderboard: () => request("/tokens/leaderboard", { userAuth: true }),
   // The training week on its own, asked again every so often while the page
   // is open: somebody driving on a second screen watches the bar fill.
-  tokenPractice: () => request("/tokens/practice", { userAuth: true }),
+  tokenPractice: (series = null) =>
+    request(`/tokens/practice${series ? `?series=${encodeURIComponent(series)}` : ""}`, { userAuth: true }),
   tokensStudio: () => request("/tokens/studio", { userAuth: true }),
   buyStudioItem: (itemId) => request("/tokens/studio/buy", { method: "POST", body: { itemId }, userAuth: true }),
   equipStudio: (body) => request("/tokens/studio/appearance", { method: "PUT", body, userAuth: true }),
