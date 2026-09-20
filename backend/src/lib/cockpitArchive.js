@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { archiveDirsFor, SPRINT_SUFFIX } from "./resultsArchive.js";
+import { archiveDirsFor, isSprintFile, roundPrefix } from "./resultsArchive.js";
 
 // Laps beyond 30 minutes are import artefacts (pit-through outliers included
 // by AC on session joins), same guard as driverProfileService.
@@ -64,10 +64,7 @@ function readArchiveFile(path) {
   return data;
 }
 
-// Find the archived raw JSON for one round: season folder + rNN prefix. Two
-// files can share a round number (a track rename re-archived under a new
-// slug) — the one whose lap count is largest wins, as re-imports overwrite
-// content but old names may linger.
+// Find the archived raw JSON for one round: season folder + rNN prefix.
 // `season` is the season row ({ id, number }): the file is looked for in that
 // season's series folder (lib/resultsArchive.js archiveDirsFor). A bare number
 // still works for the rounds filed before series existed.
@@ -76,13 +73,35 @@ function readArchiveFile(path) {
 // it on). `sprint` picks that file; without it the sprint's file is never a
 // candidate, so the feature's readers cannot be handed the shorter race by
 // mistake.
-const isSprintFile = (name) => name.endsWith(`${SPRINT_SUFFIX}.json`);
-
+//
+// Two files can still share a round number and kind (a track rename
+// re-archived under a new slug, from before the commit swept the old one
+// away). The NEWEST wins: the round's result is whatever the admin imported
+// last. It used to be the one with the most laps, which was meant for exactly
+// that rename — same content, two names — and went wrong the moment the two
+// files were not the same race: the reports of the feature race read a file
+// the admin had long replaced, and said the driver had no contact in a race
+// they were hit in.
 function roundFiles(dir, raceNumber, sprint) {
-  const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
+  const prefix = roundPrefix(raceNumber);
   return readdirSync(dir).filter(
     (n) => n.startsWith(prefix) && n.endsWith(".json") && isSprintFile(n) === !!sprint
   );
+}
+
+// Newest first, by the file's modification time; a tie (a copied folder)
+// falls back to the name, which at least makes the answer stable.
+function newestFirst(dir, names) {
+  return names
+    .map((name) => {
+      try {
+        return { name, mtime: statSync(join(dir, name)).mtimeMs };
+      } catch {
+        return { name, mtime: 0 };
+      }
+    })
+    .sort((a, b) => b.mtime - a.mtime || a.name.localeCompare(b.name))
+    .map((x) => x.name);
 }
 
 export function findArchiveFor(season, raceNumber, { sprint = false } = {}) {
@@ -90,19 +109,66 @@ export function findArchiveFor(season, raceNumber, { sprint = false } = {}) {
     if (!existsSync(dir)) continue;
     const names = roundFiles(dir, raceNumber, sprint);
     if (!names.length) continue;
-    let best = null;
-    for (const name of names) {
+    for (const name of newestFirst(dir, names)) {
       try {
-        const data = readArchiveFile(join(dir, name));
-        const laps = Array.isArray(data?.Laps) ? data.Laps.length : 0;
-        if (!best || laps > best.laps) best = { data, laps, name };
+        return readArchiveFile(join(dir, name));
       } catch {
         /* unreadable file — try the next candidate */
       }
     }
-    if (best) return best.data;
   }
   return null;
+}
+
+// Every archived file of one round, feature and sprint alike, as a list the
+// admin can read: which file it is, what race it holds and whether it is the
+// one the readers above actually use. This is what turns "the reports say I
+// had no contact" from a mystery into a look at the folder.
+export function archiveFilesFor(season, raceNumber) {
+  const out = [];
+  for (const dir of archiveDirsFor(season)) {
+    if (!existsSync(dir)) continue;
+    let names;
+    try {
+      names = readdirSync(dir).filter((n) => n.startsWith(roundPrefix(raceNumber)) && n.endsWith(".json"));
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const path = join(dir, name);
+      let mtime = null;
+      let data = null;
+      try {
+        mtime = statSync(path).mtimeMs;
+        data = readArchiveFile(path);
+      } catch {
+        /* an unreadable file is still listed, as unreadable */
+      }
+      const laps = data ? lapsByGuid(data) : new Map();
+      out.push({
+        name,
+        sprint: isSprintFile(name),
+        readable: !!data,
+        track: data?.TrackName || null,
+        date: data?.Date || null,
+        type: data?.Type || null,
+        drivers: laps.size,
+        leaderLaps: laps.size ? Math.max(...[...laps.values()].map((l) => l.length)) : 0,
+        modifiedAt: mtime ? new Date(mtime).toISOString() : null,
+        inUse: false,
+      });
+    }
+    // The folder that has the round's files is the one the readers stop at,
+    // same as findArchiveFor: a later folder is a fallback, not a sibling.
+    if (out.length) break;
+  }
+  // What findArchiveFor would hand back for each kind: the newest readable.
+  for (const sprint of [false, true]) {
+    const mine = out.filter((f) => f.sprint === sprint && f.readable);
+    mine.sort((a, b) => (b.modifiedAt || "").localeCompare(a.modifiedAt || "") || a.name.localeCompare(b.name));
+    if (mine[0]) mine[0].inUse = true;
+  }
+  return out.sort((a, b) => Number(a.sprint) - Number(b.sprint) || (b.modifiedAt || "").localeCompare(a.modifiedAt || ""));
 }
 
 // The archived file that IS this race's. The archive is filed by season and

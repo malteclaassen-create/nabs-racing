@@ -127,6 +127,58 @@ function SessionOptions({ sessions, track }) {
   );
 }
 
+// The round's raw result files as the server holds them: one line per file
+// with the race it contains (by its distance and date) and whether it is the
+// one the reports and the Cockpit read. A stale file from an earlier import
+// under another spelling of the circuit shows up here as "replaced", and the
+// next import of that race sweeps it away.
+function ArchiveFiles({ files, error, sprintWeekend }) {
+  if (error) return <p className="text-sm text-warn">The result files of this round could not be listed: {error}</p>;
+  if (!files.length) {
+    return (
+      <p className="text-sm text-light">
+        No raw result file on record for this round yet. The reports' contact lists and the Cockpit's lap charts
+        come from that file, so they stay empty until the race is imported from the server or from a file.
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border bg-surface2/40 p-3 text-sm">
+      <div className="font-display text-xs font-bold uppercase tracking-tight text-medium">
+        Result files on record for this round
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {files.map((f) => (
+          <li key={f.name} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className={`pill ${f.sprint ? "bg-sky-500/15 text-link" : "bg-surface2 text-light"}`}>
+              {f.sprint ? "sprint" : sprintWeekend ? "feature race" : "race"}
+            </span>
+            <span className="font-mono text-xs text-medium">{f.name}</span>
+            {f.readable ? (
+              <span className="text-light">
+                {f.leaderLaps} laps · {f.drivers} drivers{f.date ? ` · ${fmtStampTime(f.date)}` : ""}
+                {f.track ? ` · ${f.track}` : ""}
+              </span>
+            ) : (
+              <span className="text-warn">unreadable</span>
+            )}
+            {f.inUse ? (
+              <span className="pill bg-emerald-500/15 text-ok">read by the reports</span>
+            ) : (
+              <span className="pill bg-amber-500/15 text-warn">replaced · swept on the next import</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-xs text-light">
+        The reports offer a driver the contacts of the file marked as read; the lap count says which race a file
+        really is. If the feature race's file has the sprint's lap count, the two were imported the wrong way
+        round — import them again.
+      </p>
+    </div>
+  );
+}
+
 export default function AdminImport({ onCommitted }) {
   const ask = useAsk();
   const { current: currentSeason } = useSeason();
@@ -167,6 +219,23 @@ export default function AdminImport({ onCommitted }) {
   const [weekendStep, setWeekendStep] = useState(null); // "FEATURE" | "SPRINT" | null
   const [sprintRemoteId, setSprintRemoteId] = useState("");
   const [sprintRemoteAuto, setSprintRemoteAuto] = useState(false);
+  // The raw result files on record for the picked round, so the admin can see
+  // what the reports and the Cockpit are reading for it — the answer to "the
+  // site says I had no contact in that race" is in this list.
+  const [archive, setArchive] = useState({ raceId: null, files: null, error: null });
+  const loadArchive = useCallback((raceId) => {
+    if (!raceId || raceId === NEW_ROUND) {
+      setArchive({ raceId: null, files: null, error: null });
+      return;
+    }
+    api
+      .adminRaceArchive(raceId)
+      .then((d) => setArchive({ raceId, files: d.files || [], error: null }))
+      .catch((e) => setArchive({ raceId, files: [], error: e.message }));
+  }, []);
+  useEffect(() => {
+    loadArchive(targetRaceId);
+  }, [targetRaceId, loadArchive]);
   const targetRace = useMemo(
     () => (seasonRaces.data || []).find((r) => r.id === targetRaceId) || null,
     [seasonRaces.data, targetRaceId]
@@ -351,6 +420,16 @@ export default function AdminImport({ onCommitted }) {
   // the file when it is loaded (below); this catches the admin switching it
   // back by hand, and a file loaded before the session was known.
   const sessionMismatch = fileSession != null && fileSession !== targetSession;
+  // A file that is neither race by its distance: a restart that was abandoned,
+  // a session picked from the wrong night. Not a decision, a look.
+  const fileLaps = parsed ? leaderLapsOf(parsed.entries) : null;
+  const oddDistance =
+    isSprintWeekend &&
+    parsed &&
+    fileSession == null &&
+    Number(targetRace?.raceLaps) > 0 &&
+    Number(targetRace?.sprintLaps) > 0 &&
+    fileLaps != null;
 
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   // `step` is the race of the two-race walk the file was loaded as, when it was.
@@ -673,6 +752,7 @@ export default function AdminImport({ onCommitted }) {
       // picker can hold it like any other. Refresh and select it, which also
       // opens the qualifying card underneath for the session that just ran.
       seasonRaces.reload();
+      loadArchive(targetRaceId === NEW_ROUND ? res.raceId : targetRaceId);
       if (targetRaceId === NEW_ROUND && res.raceId) {
         setTargetRaceId(res.raceId);
         setNewRoundNumber("");
@@ -842,11 +922,21 @@ export default function AdminImport({ onCommitted }) {
               " Training and event results are viewable on the Races page but never count towards any standings."}
           </p>
         )}
+        {oddDistance && (
+          <Notice kind="warn">
+            The leader of this file ran {fileLaps} laps, which is neither the feature distance ({targetRace.raceLaps}) nor the
+            sprint ({targetRace.sprintLaps}). Make sure it is the right session before you save it as the{" "}
+            {asSprint ? "sprint" : "feature race"}.
+          </Notice>
+        )}
         {targetRaceId === NEW_ROUND && (
           <p className="text-sm text-medium">
             The round is created with this number when you save. Use it only for a race that was run but never
             entered in the calendar.
           </p>
+        )}
+        {targetRace && targetRace.number != null && archive.files && archive.raceId === targetRace.id && (
+          <ArchiveFiles files={archive.files} error={archive.error} sprintWeekend={isSprintWeekend} />
         )}
       </div>
 

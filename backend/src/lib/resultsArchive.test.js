@@ -97,6 +97,22 @@ describe("with the index", () => {
     );
   });
 
+  // A re-import under another spelling of the circuit replaces the round's
+  // file rather than joining it: the round has one result, the newest.
+  it("sweeps the round's older file of the same kind when a re-import lands under a new name", () => {
+    const season = { id: "s8-gt", number: 8 };
+    const dir = join(dataDir, "results-archive", "sunday-gt", "season8");
+    const old = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "NABS Baku 2024" });
+    const oldSprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "NABS Baku 2024", sprint: true });
+    const fresh = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "Baku" });
+    expect(old).toBe(join(dir, "r09-nabs-baku-2024.json"));
+    expect(fresh).toBe(join(dir, "r09-baku.json"));
+    expect(existsSync(old)).toBe(false); // gone: same round, same kind
+    expect(existsSync(oldSprint)).toBe(true); // the sprint is not the feature's business
+    // Another round's file is never touched.
+    expect(readdirSync(dir).filter((n) => n.startsWith("r02-")).length).toBe(1);
+  });
+
   it("moves the pre-series folders under the first series, once, without clobbering", () => {
     const root = join(dataDir, "results-archive");
     mkdirSync(join(root, "season7"), { recursive: true });
