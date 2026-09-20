@@ -78,7 +78,7 @@ export default function RaceRecapPage() {
   if (error) return <ErrorBox message={error} />;
   if (!recap) return <PageHeaderSkeleton />;
 
-  const { race, results, quali, you, story, season, teammates, standings, team, rating, points, card } = recap;
+  const { race, results, quali, you, story, incidents, career, season, teammates, standings, team, rating, points, card } = recap;
   const resultsLink = seriesPath(`/races?race=${race.id}`);
   const showPoints = points && (points.entries.length > 0 || points.pending);
   const leave = () => (pending ? navigate(-1) : navigate(resultsLink));
@@ -93,6 +93,12 @@ export default function RaceRecapPage() {
         </div>
       )}
       {you?.raced && <StatCards you={you} story={story} race={race} />}
+      {you?.raced && (story?.stints?.length > 0 || incidents) && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          {story?.stints?.length > 0 && <StintsCard stints={story.stints} />}
+          {incidents && <IncidentsCard incidents={incidents} you={you} />}
+        </div>
+      )}
       {laps && you?.raced && (
         <Card>
           <RaceTrace laps={laps} driverId={you.driverId} lapsDriven={you.laps} />
@@ -105,6 +111,7 @@ export default function RaceRecapPage() {
           <ChampionshipCard standings={standings} team={team} season={season} />
         </div>
       )}
+      {career && you && <CareerCard career={career} you={you} race={race} />}
       {showPoints && <PointsCard points={points} />}
       {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} />}
       <HonoursRow race={race} results={results} quali={quali} />
@@ -659,7 +666,19 @@ function ChampionshipCard({ standings: s, team, season }) {
           s.behind && <Row label={`Lead over ${s.behind.name}`} value={`+${s.behind.gap} pts`} tone="text-ok" />
         ) : (
           <>
-            {s.ahead && <Row label={`To P${s.after.position - 1} ahead`} value={`−${s.ahead.gap} pts`} />}
+            {s.ahead && (
+              <Row
+                label={`To P${s.after.position - 1} ahead`}
+                value={
+                  <>
+                    −{s.ahead.gap} pts
+                    {s.aheadGapBefore != null && s.aheadGapBefore !== s.ahead.gap && (
+                      <span className="ml-2 text-xs font-semibold text-light">was −{s.aheadGapBefore}</span>
+                    )}
+                  </>
+                }
+              />
+            )}
             {s.leader && s.ahead?.name !== s.leader.name && <Row label={`To ${s.leader.name} (P1)`} value={`−${s.leader.total - s.after.total} pts`} />}
           </>
         )}
@@ -782,7 +801,177 @@ function TeammateCard({ you, mates, standings }) {
           </div>
         ))}
       </div>
+      {m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-4">
+          <Label tone="text-light">Season duel</Label>
+          {m.duel.raceWins + m.duel.raceLosses > 0 && (
+            <span className="font-mono text-sm font-bold tabular-nums">
+              <span className="text-light">Race </span>
+              <span className={m.duel.raceWins > m.duel.raceLosses ? "text-ok" : m.duel.raceWins < m.duel.raceLosses ? "text-bad" : "text-dark"}>
+                {m.duel.raceWins}:{m.duel.raceLosses}
+              </span>
+            </span>
+          )}
+          {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
+            <span className="font-mono text-sm font-bold tabular-nums">
+              <span className="text-light">Grid </span>
+              <span className={m.duel.qualiWins > m.duel.qualiLosses ? "text-ok" : m.duel.qualiWins < m.duel.qualiLosses ? "text-bad" : "text-dark"}>
+                {m.duel.qualiWins}:{m.duel.qualiLosses}
+              </span>
+            </span>
+          )}
+        </div>
+      )}
       {mates.length > 1 && <p className="mt-3 font-mono text-[11px] text-light">Also in your colours: {mates.slice(1).map((x) => `${x.name} (${x.position != null ? `P${x.position}` : x.status})`).join(", ")}.</p>}
+    </Card>
+  );
+}
+
+// --- tyres, incidents, the season and the career --------------------------------
+
+const TYRE_COLOUR = { S: "#ef4444", M: "#eab308", H: "#e5e7eb", I: "#22c55e", W: "#3b82f6" };
+
+// Each stint as a piece of the race, and how the tyre behaved over it: the
+// slope over its clean laps, in seconds per lap. Positive means it fell away.
+function StintsCard({ stints }) {
+  const total = stints.reduce((n, st) => n + st.laps, 0) || 1;
+  return (
+    <Card>
+      <Label>Tyres and stints</Label>
+      <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-surface2">
+        {stints.map((st, i) => (
+          <div key={i} className="bar-fill h-full" style={{ "--w": `${(st.laps / total) * 100}%`, background: TYRE_COLOUR[st.tyre] || "var(--c-text3)", animationDelay: `calc(var(--reveal-delay, 0s) + ${i * 250}ms)` }} title={`${st.laps} laps on ${st.tyre}`} />
+        ))}
+      </div>
+      <div className="mt-3 divide-y divide-border border-t border-border">
+        {stints.map((st, i) => {
+          const perLap = st.degMsPerLap != null ? st.degMsPerLap / 1000 : null;
+          const words =
+            perLap == null
+              ? "too short to read the tyre"
+              : perLap > 0.05
+                ? `fell away by ${perLap.toFixed(2)} s a lap`
+                : perLap < -0.05
+                  ? `got faster by ${(-perLap).toFixed(2)} s a lap`
+                  : "held its pace to the end";
+          return (
+            <div key={i} className="flex items-center gap-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] font-display text-sm font-black text-dark" style={{ borderColor: TYRE_COLOUR[st.tyre] || "var(--c-border)" }}>
+                {st.tyre}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-sm font-bold text-dark">
+                  Stint {i + 1} · {st.laps} laps
+                </div>
+                <div className="text-xs text-light">{words}</div>
+              </div>
+              {perLap != null && <Delta value={-perLap} decimals={2} suffix=" s/lap" className="text-sm" />}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// The contacts from the driver's side: the lap, who with, how hard.
+function IncidentsCard({ incidents, you }) {
+  const list = incidents.contacts || [];
+  const hard = (kph) => (kph >= 60 ? "text-bad" : kph >= 25 ? "text-warn" : "text-light");
+  return (
+    <Card>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Label>Your incidents</Label>
+        <span className="font-mono text-[11px] text-light">
+          {list.length} car contact{list.length === 1 ? "" : "s"}
+          {incidents.envContacts > 0 ? ` · ${incidents.envContacts} with the scenery` : ""}
+        </span>
+      </div>
+      {list.length === 0 ? (
+        <p className="mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-ok">A clean race. No contact with another car.</p>
+      ) : (
+        <div className="mt-3 divide-y divide-border border-t border-border">
+          {list.map((c, i) => (
+            <div key={i} className="flex items-center gap-4 py-3">
+              <span className="w-14 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Lap {c.lap ?? "?"}</span>
+              <span className="min-w-0 flex-1 truncate font-display text-base font-extrabold uppercase tracking-tight text-dark">
+                {c.driverId ? (
+                  <Link to={`/drivers/${c.driverId}`} className="transition hover:text-brand">
+                    {c.name}
+                  </Link>
+                ) : (
+                  c.name
+                )}
+              </span>
+              {c.kph != null && <span className={`font-mono text-sm font-bold tabular-nums ${hard(c.kph)}`}>{c.kph} km/h</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="mt-3 text-xs text-light">
+        {you.penaltySeconds > 0 ? `The stewards gave you +${you.penaltySeconds}s.` : list.length > 0 ? "No penalty from the stewards." : you.gamePenalties > 0 ? `${you.gamePenalties} in-game penalt${you.gamePenalties === 1 ? "y" : "ies"} for track limits.` : "Nothing for the stewards to look at."}
+      </p>
+    </Card>
+  );
+}
+
+// The race set against the season and the career: the firsts, the record
+// at this track, the run, where the season points at this rate.
+function CareerCard({ career: c, you, race }) {
+  const lines = [];
+  for (const f of c.firsts) lines.push({ key: f.key, text: f.text, tone: "text-ok" });
+  const t = c.track;
+  if (you.bestLapMs && t.recordBeforeMs) {
+    const d = you.bestLapMs - t.recordBeforeMs;
+    lines.push(
+      t.newRecord
+        ? { key: "rec", text: `New personal best at ${race.track}: ${fmtLap(you.bestLapMs)}, ${fmtLapDelta(d)} on your record from season ${t.recordSeason}.`, tone: "text-fl" }
+        : { key: "rec", text: `${fmtLapDelta(d)} off your own ${race.track} record, ${fmtLap(t.recordBeforeMs)} from season ${t.recordSeason}.` }
+    );
+  } else if (you.bestLapMs && t.visits === 0) {
+    lines.push({ key: "rec", text: `Your first race at ${race.track}. ${fmtLap(you.bestLapMs)} is now the mark to beat.` });
+  }
+  if (you.finished && t.bestFinishBefore != null) {
+    lines.push(
+      you.position < t.bestFinishBefore
+        ? { key: "here", text: `Your best result here, P${t.bestFinishBefore} before this.`, tone: "text-ok" }
+        : { key: "here", text: `Best result here so far: P${t.bestFinishBefore}.` }
+    );
+  }
+  if (c.pointsRun >= 2) lines.push({ key: "run", text: `${c.pointsRun} points finishes in a row.` });
+  else if (c.finishRun >= 3) lines.push({ key: "run", text: `${c.finishRun} finishes in a row.` });
+  if (c.projection) {
+    lines.push({ key: "proj", text: `At this rate: about ${c.projection.total} points by the end of the season, ${c.projection.perRound} a round with ${c.projection.roundsLeft} to go.` });
+  }
+  if (!lines.length && !c.starts) return null;
+  return (
+    <Card>
+      <div className="grid gap-6 lg:grid-cols-[1fr,auto] lg:gap-14">
+        <div>
+          <Label>Your season and career</Label>
+          <div className="cascade mt-3 divide-y divide-border border-t border-border">
+            {lines.map((l, i) => (
+              <div key={l.key} className={`py-3 text-sm leading-relaxed ${l.tone || "text-medium"}`} style={{ "--i": i }}>
+                {l.text}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-8 lg:flex-col lg:gap-4">
+          {[
+            { label: "Starts", value: c.starts },
+            { label: "Wins", value: c.wins },
+            { label: "Podiums", value: c.podiums },
+          ].map((x) => (
+            <div key={x.label}>
+              <Label tone="text-light">{x.label}</Label>
+              <div className="mt-1 font-display text-3xl font-black tabular-nums leading-none text-dark">
+                <CountUp end={x.value} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }
