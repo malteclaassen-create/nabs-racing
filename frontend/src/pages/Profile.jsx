@@ -783,7 +783,7 @@ function CopyProfileLink({ driverId }) {
 // `attention` is how much is waiting in the admin area, or 0. It rides on the
 // Admin tab so the chain from the nav bar is unbroken: a dot on your profile
 // chip, then a dot on the one tab that leads to the work.
-function memberTabs(isAdmin, attention = 0, tokens = null) {
+function memberTabs(isAdmin, attention = 0, tokens = null, attentionSummary = "") {
   return [
     { key: "profile", label: "Edit Profile" },
     ...COCKPIT_TABS,
@@ -810,10 +810,10 @@ function memberTabs(isAdmin, attention = 0, tokens = null) {
             label: (
               <span className="relative inline-flex items-center">
                 Admin
-                <AttentionDot total={attention} className="absolute -right-2.5 -top-0.5" />
+                <AttentionDot total={attention} summary={attentionSummary} className="absolute -right-2.5 -top-0.5" />
               </span>
             ),
-            title: attention ? `${attention} waiting in the admin area` : "Admin area",
+            title: attentionSummary ? `Waiting in the admin area: ${attentionSummary}` : "Admin area",
           },
         ]
       : []),
@@ -822,7 +822,7 @@ function memberTabs(isAdmin, attention = 0, tokens = null) {
 
 function MyProfile() {
   const { user, logout } = useAuth();
-  const { total: adminAttention } = useAdminAttention();
+  const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const tokenBalance = useTokenBalance();
   const navigate = useNavigate();
   const me = useApi(useCallback(() => api.me(), []));
@@ -894,7 +894,7 @@ function MyProfile() {
             </Link>
             <div className="scrollbar-slim max-w-full overflow-x-auto pb-0.5">
               <SlidingTabs
-                items={memberTabs(!!user?.isAdmin, adminAttention, tokenBalance)}
+                items={memberTabs(!!user?.isAdmin, adminAttention, tokenBalance, adminSummary)}
                 // While the settings drawer is open the pill sits on Settings,
                 // and glides back to the section underneath when it closes.
                 value={settingsOpen ? "settings" : tab}

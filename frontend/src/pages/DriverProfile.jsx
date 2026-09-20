@@ -1638,7 +1638,7 @@ export default function DriverProfile({ previewId, preview }) {
   const id = previewId || routeId;
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
-  const { total: adminAttention } = useAdminAttention();
+  const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const location = useLocation();
 
   // Honour a ?season=N deep link (search results / career-table links): steer
@@ -1845,7 +1845,7 @@ export default function DriverProfile({ previewId, preview }) {
           <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
         </svg>
         Personal Area
-        <AttentionDot total={adminAttention} className="absolute -right-1 -top-1" />
+        <AttentionDot total={adminAttention} summary={adminSummary} className="absolute -right-1 -top-1" />
       </Link>
       {/* Site settings moved into the /profile member bar — no gear here. */}
     </div>

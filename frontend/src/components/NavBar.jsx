@@ -156,7 +156,7 @@ function AuthControl({ mobile = false }) {
   const { user, isLoggedIn } = useAuth();
   // Nothing for anyone but an admin, and nothing at all when the office is
   // clear. See hooks/useAdminAttention.js for why it lives on the profile chip.
-  const { total } = useAdminAttention();
+  const { total, summary } = useAdminAttention();
   if (isLoggedIn) {
     const name = user.driverName || user.discordName || "Profile";
     const chip = (
@@ -180,7 +180,7 @@ function AuthControl({ mobile = false }) {
       >
         <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={26} className="nav-avatar" />
         <span className={`max-w-[8rem] truncate ${mobile ? "" : "hidden xl:inline"}`}>{name}</span>
-        <AttentionDot total={total} className="absolute right-1 top-1" />
+        <AttentionDot total={total} summary={summary} className="absolute right-1 top-1" />
       </NavLink>
     );
     return mobile ? (

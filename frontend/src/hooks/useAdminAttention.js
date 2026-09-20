@@ -96,14 +96,28 @@ export function useAdminAttention() {
     if (!isAdmin) setCounts(null);
   }, [isAdmin]);
 
+  const parts = [
+    { key: "feedback", tab: "feedback", n: counts?.feedback || 0, one: "bug report", many: "bug reports" },
+    { key: "members", tab: "members", n: counts?.members || 0, one: "login without a driver", many: "logins without a driver" },
+    { key: "market", tab: "market", n: counts?.market || 0, one: "seat waiting", many: "seats waiting" },
+    // A server reset whose practice times are waiting to be kept or dropped
+    // (the Live Timing tab, "Training best times").
+    { key: "resets", tab: "social", n: counts?.resets || 0, one: "server reset", many: "server resets" },
+  ].filter((p) => p.n > 0);
+
   return {
     isAdmin,
     total: counts?.total || 0,
     feedback: counts?.feedback || 0,
     members: counts?.members || 0,
     market: counts?.market || 0,
-    // A server reset whose practice times are waiting to be kept or dropped
-    // (the Live Timing tab, "Training best times").
     resets: counts?.resets || 0,
+    // WHAT is waiting, not just how much. The dot used to be a red spot with a
+    // number behind it and no way to find out what it meant: an admin saw it,
+    // opened the admin area, and the thing it was about was folded away inside
+    // a group in the side rail. Every caller that shows the dot now says what
+    // it is about, and the admin area itself lists the parts as buttons.
+    parts,
+    summary: parts.map((p) => `${p.n} ${p.n === 1 ? p.one : p.many}`).join(" · "),
   };
 }

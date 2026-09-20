@@ -28,7 +28,7 @@ import AdminAllTime from "../components/AdminAllTime.jsx";
 import AdminFeedback from "../components/AdminFeedback.jsx";
 import AdminTokens from "../components/AdminTokens.jsx";
 import AdminReports from "../components/AdminReports.jsx";
-import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
+import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
 // The navigation itself: the same twenty-two tabs as either the strip across
 // the top or a folding list down the left, plus the switch between the two.
@@ -228,6 +228,8 @@ export default function Admin() {
           already know which of the five menus below holds the thing they came
           for. */}
       <AdminSearch onGo={goTo} />
+
+      <WaitingLine onPick={setTab} />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
           the panel below is the same element in either layout, so switching the
@@ -1008,6 +1010,35 @@ function LiveServersAdmin() {
       <button className="btn-primary" onClick={save} disabled={busy}>
         {busy ? "Saving…" : "Save servers"}
       </button>
+    </div>
+  );
+}
+
+// What is waiting, in words, with a way to each of it.
+//
+// The dot beside the profile picture says there is work. It used to stop there:
+// an admin followed it in, and the thing it was about was folded away inside a
+// group in the side rail, so the honest answer to "where do I go" was "open the
+// five menus and look". This is the answer written down. It is not there at all
+// when nothing is waiting, which is most of the time.
+function WaitingLine({ onPick }) {
+  const { parts } = useAdminAttention();
+  if (!parts.length) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-surface2/60 px-4 py-2.5 text-sm">
+      <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">Waiting</span>
+      {parts.map((p, i) => (
+        <span key={p.key} className="flex items-center gap-2">
+          {i > 0 && <span className="text-border">·</span>}
+          <button
+            type="button"
+            className="font-semibold text-medium underline-offset-2 transition hover:text-dark hover:underline"
+            onClick={() => onPick(p.tab)}
+          >
+            {p.n} {p.n === 1 ? p.one : p.many}
+          </button>
+        </span>
+      ))}
     </div>
   );
 }

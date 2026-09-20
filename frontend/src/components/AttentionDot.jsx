@@ -9,14 +9,18 @@
 // from whatever it sits on, including an avatar photo.
 //
 // Where the number comes from: hooks/useAdminAttention.js.
-export default function AttentionDot({ total, className = "" }) {
+export default function AttentionDot({ total, summary = "", className = "" }) {
   if (!total) return null;
+  // `summary` is the breakdown in words ("1 seat waiting · 2 logins without a
+  // driver"). Without it the dot is a red spot that says "something, somewhere",
+  // and an admin who opens the admin area still has to go looking.
+  const said = summary || `${total} ${total === 1 ? "thing is" : "things are"} waiting on an admin`;
   return (
     <span
       className={`pointer-events-none block h-2 w-2 rounded-full bg-bad ring-2 ring-card ${className}`}
       role="status"
-      aria-label={`${total} ${total === 1 ? "thing needs" : "things need"} an admin`}
-      title={`${total} ${total === 1 ? "thing is" : "things are"} waiting on an admin`}
+      aria-label={summary ? `Waiting on an admin: ${summary}` : `${total} ${total === 1 ? "thing needs" : "things need"} an admin`}
+      title={said}
     />
   );
 }

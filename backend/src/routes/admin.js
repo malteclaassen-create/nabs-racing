@@ -3167,11 +3167,22 @@ router.get("/attention", async (req, res, next) => {
       // A seat still on the market that somebody has actually put their hand up
       // for, on a race that has not been run. An offer nobody wants is not work,
       // and neither is one whose race is over: the market ignores those too.
+      //
+      // `isSpecialEvent: false` is here for the same reason the market page has
+      // it: a training race has no driver market, so an offer left on one (a
+      // round turned into a special event after the fact) is a seat the tab
+      // will never list. Counting it lit the dot beside the profile picture and
+      // sent an admin to a page with nothing on it, which is the exact thing
+      // the note at the top of this route promises not to do.
       prisma.seatOffer
         .count({
           where: {
             status: "OPEN",
-            race: { isCompleted: false, ...(scope ? { seasonId: { in: scope.seasonIds } } : {}) },
+            race: {
+              isCompleted: false,
+              isSpecialEvent: false,
+              ...(scope ? { seasonId: { in: scope.seasonIds } } : {}),
+            },
             interests: { some: {} },
           },
         })
