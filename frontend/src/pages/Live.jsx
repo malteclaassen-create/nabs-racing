@@ -19,7 +19,8 @@ import { circuitForLive } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
-import TrainingPanel from "../components/TrainingPanel.jsx";
+import TrainingBar from "../components/TrainingBar.jsx";
+import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
@@ -135,6 +136,14 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   const [showMore, setShowMore] = useState(false);
   // Start compact on every visit, regardless of the previous visit's toggle.
   const [open, setOpen] = useState(false);
+  // The viewer's own training week, under the session's numbers. Asked for
+  // only while the details are actually unfolded, and then often enough that
+  // somebody watching from the pits sees their own lap count go up. Empty for
+  // a visitor the race server cannot put a name to, and left out of a race:
+  // the week's laps are driven in practice, and on a race night this card is
+  // about the race.
+  const detailsOpen = open || showMore;
+  const week = usePracticeWeek(detailsOpen ? 20000 : 0);
   const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
@@ -374,6 +383,15 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
                 </div>
               </Stat>
             </div>
+            {/* One line of your own, under the session's. From sm up the two
+                wrappers around this are `display: contents`, so it is a grid
+                item of the card itself and has to be told to take the whole
+                row. */}
+            {!isRace && week && (
+              <div className="mt-4 border-t border-border pt-3 sm:col-span-2 lg:col-span-4">
+                <TrainingBar week={week} variant="row" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -3627,12 +3645,6 @@ export default function Live() {
             patreonUrl={social.data?.patreon}
             lastDataAt={board?.lastDataAt ?? null}
           />
-
-          {/* The viewer's OWN training week, folded away under one line. Only
-              outside a race: the week's laps are driven in practice, and on a
-              race night the board is about the race. It shows nothing at all
-              for anybody the race server cannot put a name to. */}
-          {session.type !== "Race" && <TrainingPanel />}
 
           {quiet ? (
             // Empty server: the best-times board takes the "right now" slot,

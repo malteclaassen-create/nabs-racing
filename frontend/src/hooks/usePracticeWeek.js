@@ -45,7 +45,12 @@ function load() {
   return inflight;
 }
 
-function ask() {
+// `force` is for a caller that knows something changed. Otherwise an answer
+// from a moment ago is good enough: the cue, the points page and the live
+// card all mount at once, and three of them landing in the same second is one
+// question asked three times.
+function ask({ force = false } = {}) {
+  if (!force && cached !== undefined && Date.now() - lastAsk < 1500) return;
   lastAsk = Date.now();
   load().then((week) => {
     for (const set of subs.keys()) set(week);
@@ -68,7 +73,7 @@ function retime() {
 // After something that could have changed the laps (nothing does today, but a
 // page that pays out would want to say so).
 export function refreshPracticeWeek() {
-  ask();
+  ask({ force: true });
 }
 
 export function usePracticeWeek(everyMs = 5 * 60 * 1000) {
