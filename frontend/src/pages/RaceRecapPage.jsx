@@ -546,7 +546,7 @@ function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIco
 function CompareTable({ title, description, footnote, columns, rows, onClose }) {
   return (
     <Modal open onClose={onClose} title={title} size="lg" description={description}>
-      <div className="-mx-1 max-h-[65vh] overflow-auto">
+      <div className="scrollbar-slim -mx-1 max-h-[65vh] overflow-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b border-border font-mono text-[10px] uppercase tracking-[0.2em] text-light">
@@ -641,7 +641,7 @@ function compareLists({ you, story, results }) {
         COL.name,
         COL.finish,
         { key: "laps", label: "Laps", muted: true, wide: true, render: (r) => r.laps ?? NO_VALUE },
-        { key: "cons", label: "Consistency", render: (r) => `${r.consistencyPct.toFixed(1)}%` },
+        { key: "cons", label: "Consistency", render: (r) => `${r.consistencyPct.toFixed(2)}%` },
       ],
     };
   }
@@ -705,7 +705,7 @@ function StatCards({ you, story, race, results }) {
         }
       : null,
     you.consistencyPct > 0
-      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" }, onOpen: opener("consistency") }
+      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(2)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" }, onOpen: opener("consistency") }
       : null,
     you.overtakes != null
       ? { label: "Overtakes", icon: ArrowLeftRight, value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated", onOpen: opener("overtakes") }
