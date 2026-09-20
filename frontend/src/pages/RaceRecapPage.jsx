@@ -338,20 +338,25 @@ function YouChapter({ recap, laps, index }) {
           <Stat key={s.label} {...s} />
         ))}
       </Plate>
-      {laps && <RaceTrace laps={laps} driverId={y.driverId} />}
+      {laps && <RaceTrace laps={laps} driverId={y.driverId} lapsDriven={y.laps} />}
     </Chapter>
   );
 }
 
 // The driver's position lap by lap, drawn over the rest of the field on a
 // timing-screen grid. The line draws itself when it scrolls into view.
-function RaceTrace({ laps, driverId }) {
+function RaceTrace({ laps, driverId, lapsDriven = null }) {
   const W = 1000;
   const H = 300;
   const PAD = { l: 44, r: 64, t: 18, b: 30 };
   const drivers = (laps.drivers || []).filter((d) => (d.points || []).length > 1);
   const me = drivers.find((d) => d.driverId === driverId);
   if (!me) return null;
+  // The chart has to be this driver's race: the laps in the file and the laps
+  // on the classification agree, give or take the lap the file lost at the
+  // flag. Anything else is a file from another night, and no chart beats a
+  // wrong one.
+  if (lapsDriven != null && Math.abs(me.points.length - lapsDriven) > 2) return null;
   const maxLap = Math.max(1, laps.maxLap || 0, ...drivers.flatMap((d) => d.points.map((p) => p.lap)));
   const maxPos = Math.max(1, ...drivers.flatMap((d) => d.points.map((p) => p.position)));
   const x = (lap) => PAD.l + ((lap - 1) / Math.max(1, maxLap - 1)) * (W - PAD.l - PAD.r);

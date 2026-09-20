@@ -289,7 +289,15 @@ router.get("/:id/laps", async (req, res, next) => {
     }
 
     const json = findArchiveFor(race.season?.number, race.number);
-    const chart = json ? lapChartFrom(json) : null;
+    // A file that is not from this race night is not this race's chart. The
+    // archive is filed by season and round number only, and a folder can hold
+    // a stray file under the same name (another Watkins Glen, months apart),
+    // which would draw somebody a race they never drove. Two days of slack:
+    // a race past midnight, a file stamped in another zone.
+    const fileDay = json?.Date ? Date.parse(json.Date) : NaN;
+    const raceDay = race.date ? new Date(race.date).getTime() : NaN;
+    const stray = Number.isFinite(fileDay) && Number.isFinite(raceDay) && Math.abs(fileDay - raceDay) > 2 * 86_400_000;
+    const chart = json && !stray ? lapChartFrom(json) : null;
     if (!chart) return res.json({ available: false, maxLap: 0, drivers: [] });
 
     const [drivers, overrides] = await Promise.all([
