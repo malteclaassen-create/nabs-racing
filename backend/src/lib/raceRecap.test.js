@@ -15,10 +15,10 @@ vi.mock("../services/ratingHistoryService.js", () => ({}));
 vi.mock("../services/raceDetailService.js", () => ({}));
 vi.mock("./series.js", () => ({}));
 vi.mock("./tokens.js", () => ({}));
-vi.mock("./tokenRules.js", () => ({}));
+vi.mock("./tokenRules.js", () => ({ raceWasClean: (row) => !(Number(row.penaltySeconds) > 0) }));
 vi.mock("./standingsRow.js", () => ({ isIdleReserve: () => false }));
 
-const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId } = await import("./raceRecap.js");
+const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId, sprintChapter } = await import("./raceRecap.js");
 
 function fakePrisma({ setting = null, drivers = [], race = null, seen = null } = {}) {
   return {
@@ -96,5 +96,52 @@ describe("which round is owed", () => {
       throw new Error("no such column");
     });
     expect(await seenRecapRaceId(prisma, "discord-1")).toBeNull();
+  });
+});
+
+describe("the sprint chapter of a sprint weekend", () => {
+  const team = (id) => ({ id, name: id, color: "#000", tier: 1 });
+  const rows = [
+    { driverId: "a", name: "A", status: "FINISHED", position: 1, grid: 3, points: 25, fastestLap: 0, bestLapMs: 90_000, team: team("red") },
+    { driverId: "b", name: "B", status: "FINISHED", position: 2, grid: 1, points: 19, fastestLap: 1, bestLapMs: 89_500, team: team("blue") },
+    { driverId: "c", name: "C", status: "FINISHED", position: 3, grid: 2, points: 15, fastestLap: 0, bestLapMs: 91_000, team: team("blue") },
+    { driverId: "d", name: "D", status: "DNF", position: null, grid: 4, points: 0, fastestLap: 0, bestLapMs: 92_000, team: team("red") },
+    { driverId: "e", name: "E", status: "DNS", position: null, grid: null, points: 0, fastestLap: 0, bestLapMs: null, team: team("green") },
+  ];
+  const race = { id: "sprint-1", track: "Monza", date: "2026-09-20T18:00:00Z", raceLaps: 12, hasPositions: true, scores: true };
+
+  it("is nothing on a round without a sprint, or before the sprint is saved", () => {
+    expect(sprintChapter({ race: null, rows })).toBeNull();
+    expect(sprintChapter({ race, rows: [] })).toBeNull();
+  });
+
+  it("tells the driver's sprint from their seat, paid as the standings cell says", () => {
+    const cell = { points: 43, status: "FINISHED", position: 2, sprint: { points: 25, status: "FINISHED", position: 1 } };
+    const ch = sprintChapter({ race, rows, rowId: "a", cell });
+    expect(ch.race).toMatchObject({ id: "sprint-1", laps: 12, fieldSize: 5, starters: 4, finishers: 3 });
+    expect(ch.you).toMatchObject({ driverId: "a", finished: true, position: 1, grid: 3, gained: 2, points: 25, racePoints: 25, fieldSize: 3 });
+    expect(ch.you.fastestLapMs).toBe(89_500);
+    expect(ch.you.lapGapMs).toBe(500);
+    // Both blue cars finished behind: a whole team beaten.
+    expect(ch.you.beatTeams).toEqual(["blue"]);
+    expect(ch.you.sprint).toBeNull();
+  });
+
+  it("falls back to the classification's own points without a standings cell", () => {
+    const ch = sprintChapter({ race, rows, rowId: "b" });
+    expect(ch.you.points).toBe(19);
+    expect(ch.you.racePoints).toBe(19);
+    expect(ch.you.fastestLapBonus).toBe(1);
+    expect(ch.you.beatTeams).toEqual([]);
+  });
+
+  it("has no 'you' for a spectator or somebody who was not in the sprint", () => {
+    expect(sprintChapter({ race, rows }).you).toBeNull();
+    expect(sprintChapter({ race, rows, rowId: "zz" }).you).toBeNull();
+    expect(sprintChapter({ race, rows, rowId: "zz" }).results).toHaveLength(5);
+  });
+
+  it("takes the event's sprint distance when the child row has no length of its own", () => {
+    expect(sprintChapter({ race: { ...race, raceLaps: null, sprintLaps: 10 }, rows }).race.laps).toBe(10);
   });
 });

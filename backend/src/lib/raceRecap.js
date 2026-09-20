@@ -2,7 +2,9 @@
 // The race recap: what a driver sees the first time they open the site after
 // the league office has saved a round. One round, told from their seat: where
 // they finished, what it did to the championship, how the live rating moved,
-// what it paid in NABS Points, and the round's facts for everyone.
+// what it paid in NABS Points, and the round's facts for everyone. A sprint
+// weekend is still one round and one recap: the sprint rides along as a
+// chapter of the feature race's page (sprintChapter below).
 //
 // Nothing here is stored. Every number is derived on request from the same
 // services the site's pages use (the classification, the standings frozen at
@@ -355,12 +357,16 @@ async function careerFor(prisma, race, rowId, ownRow, season) {
   };
 }
 
-// The driver's own line of the round: the classification row plus what it
-// paid, phrased from the standings cell (which folds a sprint in).
+// The driver's own line of a race: the classification row plus what it
+// paid, phrased from the standings cell. For the feature race of a sprint
+// weekend the cell folds the sprint in, so `points` is the whole round's
+// pay (what the championship card counts) and `racePoints` is this one
+// race's share of it; on a plain round the two are the same number.
 function ownRace(row, cell, fastestLapMs, fieldSize) {
   if (!row) return null;
   const finished = row.status === "FINISHED" && row.position != null;
   const raced = row.status !== "DNS";
+  const points = cell?.points ?? row.points ?? 0;
   return {
     driverId: row.driverId,
     name: row.name,
@@ -373,7 +379,8 @@ function ownRace(row, cell, fastestLapMs, fieldSize) {
     grid: raced ? row.grid ?? null : null,
     gained: finished && row.grid != null ? row.grid - row.position : null,
     fieldSize,
-    points: cell?.points ?? row.points ?? 0,
+    points,
+    racePoints: cell ? points - (cell.sprint?.points || 0) : points,
     fastestLapBonus: cell?.fastestLap ?? row.fastestLap ?? 0,
     sprint: cell?.sprint || null,
     bestLapMs: raced ? row.bestLapMs ?? null : null,
@@ -388,6 +395,81 @@ function ownRace(row, cell, fastestLapMs, fieldSize) {
     consistencyPct: raced ? row.consistencyPct ?? null : null,
     cleanRace: raced ? raceWasClean(row) : null,
   };
+}
+
+// The sprint of a sprint+feature weekend, as its own chapter of the round's
+// recap. The sprint's classification lives on a hidden child race
+// (lib/sprintRaces.js) and scores under the weekend's round number, so the
+// recap of the round (the feature race, the one the member is offered)
+// carries the sprint with it rather than a second recap of its own: one
+// evening, one page, both races.
+//
+// `rows` is the child's classification as raceDetailPayload builds it,
+// `cell` the driver's standings cell of the round, whose `sprint` share says
+// what the sprint paid. Pure so the shape can be tested without a database.
+// Nothing the archive knows (pace, stints, contacts) is here: the archived
+// file is the feature race's, and a sprint has none of its own.
+export function sprintChapter({ race, rows, rowId = null, cell = null }) {
+  if (!race || !rows?.length) return null;
+  const finished = rows.filter((r) => r.status === "FINISHED" && r.position != null);
+  const fastestLapMs = rows.reduce((b, r) => (r.bestLapMs != null && (b == null || r.bestLapMs < b) ? r.bestLapMs : b), null);
+  const ownRow = rowId ? rows.find((r) => r.driverId === rowId) || null : null;
+  // The sprint's share of the cell, shaped like a cell of its own, so the
+  // driver's sprint line pays what the standings say the sprint paid.
+  const sprintCell = cell?.sprint ? { points: cell.sprint.points, fastestLap: cell.sprint.fastestLap } : null;
+  const you = ownRace(ownRow, sprintCell, fastestLapMs, finished.length);
+  if (you) {
+    const byTeam = new Map();
+    for (const r of finished) {
+      const t = r.effectiveTeam || r.team;
+      if (!t || t.id === (ownRow.effectiveTeam || ownRow.team)?.id) continue;
+      if (!byTeam.has(t.id)) byTeam.set(t.id, { name: t.name, positions: [] });
+      byTeam.get(t.id).positions.push(r.position);
+    }
+    you.beatTeams = you.finished
+      ? [...byTeam.values()].filter((t) => t.positions.length >= 2 && t.positions.every((p) => p > you.position)).map((t) => t.name)
+      : [];
+  }
+  return {
+    race: {
+      id: race.id,
+      track: race.track,
+      date: race.date,
+      // The sprint distance: the child row's own race length (ensureSprintChild
+      // copies the event's sprintLaps there), else the event's sprintLaps.
+      laps: race.raceLaps ?? race.sprintLaps ?? null,
+      hasPositions: !!race.hasPositions,
+      fastestLapDriverId: race.fastestLapDriverId ?? null,
+      fastestLapPoints: race.fastestLapPoints ?? 0,
+      driverOfTheDay: race.driverOfTheDay ?? null,
+      scores: race.scores !== false,
+      fieldSize: rows.length,
+      starters: rows.filter((r) => r.status !== "DNS").length,
+      finishers: finished.length,
+    },
+    results: rows,
+    you,
+  };
+}
+
+// The sprint chapter of `race`, read from its hidden child race when the
+// classification is on file. null on a single-race round, or while the
+// office has only saved the feature so far.
+async function sprintFor(prisma, race, detail, rowId, cell) {
+  const childId = detail?.race?.sprintRaceId;
+  if (!childId) return null;
+  const child = await prisma.race.findUnique({
+    where: { id: childId },
+    include: { season: { select: { id: true, number: true, name: true, seriesId: true } } },
+  });
+  if (!child) return null;
+  const childDetail = await raceDetailPayload(prisma, child);
+  return sprintChapter({
+    race: { ...childDetail.race, sprintLaps: detail.race.sprintLaps ?? null },
+    rows: childDetail.results || [],
+    rowId,
+    cell,
+  });
 }
 
 // What this round did to the live rating. The card a driver carries is frozen
@@ -642,6 +724,9 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
                 else duel.qualiLosses += 1;
               }
             }
+            // Their sprint of this weekend, off their standings cell, so the
+            // head-to-head can put the two sprints side by side too.
+            const theirSprint = srow?.perRace?.[number]?.sprint || null;
             return {
               duel,
               driverId: r.driverId,
@@ -652,6 +737,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
               status: r.status,
               grid: r.grid ?? null,
               bestLapMs: r.bestLapMs ?? null,
+              sprint: theirSprint ? { position: theirSprint.status === "FINISHED" ? theirSprint.position ?? null : null, status: theirSprint.status ?? null, points: theirSprint.points ?? 0 } : null,
               seasonPoints: srow?.total ?? null,
               seasonPosition: srow ? list.indexOf(srow) + 1 : null,
             };
@@ -717,7 +803,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     own.beatTeams = [...byTeam.values()].filter((t) => t.positions.length >= 2 && t.positions.every((p) => p > own.position)).map((t) => t.name);
   }
   const steamRow = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null) : null;
-  const [rating, points, series, card, heroes, seasonHero, story, incidents, career] = await Promise.all([
+  const [rating, points, series, card, heroes, seasonHero, story, incidents, career, sprint] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
     rowId ? pointsFor(prisma, req, discordId, race, rowId, own, demo) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
@@ -730,6 +816,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     storyFor(prisma, race, rowId, ownRow, rows).catch(() => null),
     incidentsFor(prisma, race, rowId, ownRow, steamRow?.steamId).catch(() => null),
     careerFor(prisma, race, rowId, ownRow, season).catch(() => null),
+    sprintFor(prisma, race, detail, rowId, cell).catch(() => null),
   ]);
 
   return {
@@ -750,6 +837,8 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     results: rows,
     quali: detail.quali,
     you: own,
+    // The sprint of a sprint+feature weekend, or null on a single-race round.
+    sprint,
     story,
     incidents,
     career,

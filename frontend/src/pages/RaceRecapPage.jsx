@@ -6,7 +6,9 @@
 // line of words under it (where you finished and what that meant, what it
 // paid, your pace against the field, the tyres, your incidents, the lap chart,
 // the rating, the season curve, the NABS Points, your team-mate, the night's
-// honours).
+// honours). A sprint weekend is one round and one page: the feature race is
+// the headline, and the sprint gets a chapter of its own (SprintCard) once
+// the feature's story is told, with the round's points split between them.
 //
 // The page builds itself as you scroll. Each card is a .recap-reveal that the
 // page watches for itself (a stricter line than the site's own reveal: a card
@@ -97,18 +99,21 @@ export default function RaceRecapPage() {
     );
   }
 
-  const { race, results, quali, you, story, incidents, career, season, teammates, standings, team, rating, points, card } = recap;
+  const { race, results, quali, you, sprint, story, incidents, career, season, teammates, standings, team, rating, points, card } = recap;
   const resultsLink = seriesPath(`/races?race=${race.id}`);
   const showPoints = points && (points.entries.length > 0 || points.pending);
   const leave = () => (pending ? navigate(-1) : navigate(resultsLink));
+  // A sprint weekend: the feature race is the round's headline, and the
+  // sprint has a chapter of its own once the feature's story is told.
+  const weekend = !!sprint;
 
   return (
     <div className="space-y-5" style={{ "--recap-team": you?.team?.color || "var(--c-text)" }}>
       <Header recap={recap} preview={seat != null} />
       {you && (
         <div className="grid gap-5 lg:grid-cols-[1.75fr,1fr]">
-          <FinishCard recap={recap} />
-          <RoundCard recap={recap} />
+          <FinishCard recap={recap} weekend={weekend} />
+          <RoundCard recap={recap} weekend={weekend} />
         </div>
       )}
       {you?.raced && <StatCards you={you} story={story} race={race} results={results} />}
@@ -123,6 +128,7 @@ export default function RaceRecapPage() {
           <RaceTrace laps={laps} driverId={you.driverId} lapsDriven={you.laps} />
         </Card>
       )}
+      {sprint && <SprintCard sprint={sprint} feature={you} />}
       {rating?.after && <RatingCard rating={rating} card={card} />}
       {season && standings?.after && (
         <div className="grid gap-5 lg:grid-cols-[1.75fr,1fr]">
@@ -132,8 +138,8 @@ export default function RaceRecapPage() {
       )}
       {career && you && <CareerCard career={career} you={you} race={race} />}
       {showPoints && <PointsCard points={points} />}
-      {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} card={card} />}
-      <HonoursRow race={race} results={results} quali={quali} />
+      {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} card={card} sprint={sprint?.you || null} />}
+      <HonoursRow race={race} results={results} quali={quali} weekend={weekend} />
       <div className="recap-reveal flex flex-wrap items-center justify-between gap-3 pt-2">
         <div className="flex flex-wrap gap-2">
           <Link to={resultsLink} className="btn-primary">
@@ -308,11 +314,19 @@ function Header({ recap, preview }) {
   const photo = card?.driver?.photoUrl || results.find((r) => r.driverId === you?.driverId)?.photoUrl || null;
   const tier = card?.driver?.tier ?? results.find((r) => r.driverId === you?.driverId)?.driverTier ?? null;
   const time = race.date ? fmtRaceTime(race.date) : "";
+  // A sprint weekend names both races and their distances; a plain round
+  // its one race's.
+  const weekend = !!recap.sprint;
+  const distance = weekend
+    ? [recap.sprint.race.laps ? `${recap.sprint.race.laps} lap sprint` : "sprint", race.raceLaps ? `${race.raceLaps} lap feature race` : "feature race"].join(" + ")
+    : race.raceLaps
+      ? `${race.raceLaps} laps`
+      : null;
   return (
     <div className="recap-reveal flex flex-wrap items-end justify-between gap-6 border-b border-border pb-6">
       <div className="min-w-0">
         <Label>
-          {[you ? "Your race summary" : "Race summary", race.seasonNumber != null ? `Season ${race.seasonNumber}` : null, race.number != null ? `Round ${race.number}` : null, preview ? "preview" : null]
+          {[you ? (weekend ? "Your race weekend summary" : "Your race summary") : weekend ? "Race weekend summary" : "Race summary", race.seasonNumber != null ? `Season ${race.seasonNumber}` : null, race.number != null ? `Round ${race.number}` : null, preview ? "preview" : null]
             .filter(Boolean)
             .join(" · ")}
         </Label>
@@ -321,7 +335,7 @@ function Header({ recap, preview }) {
           <span className="min-w-0">{race.track}</span>
         </h1>
         <div className="mt-3 text-sm text-medium">
-          {[race.date ? fmtRaceDateFull(race.date) : null, time || null, race.raceLaps ? `${race.raceLaps} laps` : null, race.starters ? `${race.starters} starters` : null]
+          {[race.date ? fmtRaceDateFull(race.date) : null, time || null, distance, race.starters ? `${race.starters} starters` : null]
             .filter(Boolean)
             .join(" · ")}
         </div>
@@ -399,31 +413,26 @@ function finishStory(recap) {
   return bits.join(" ");
 }
 
-function FinishCard({ recap }) {
+// The words over the finishing position, from the driver's line of a race.
+function finishHeadline(you, winnerWord = "Race winner") {
+  if (!you.raced) return "Did not start";
+  if (!you.finished) return you.status === "DNF" ? "Did not finish" : you.status === "DSQ" ? "Disqualified" : you.status;
+  if (you.position === 1) return winnerWord;
+  if (you.position <= 3) return `${nth(you.position)} place, on the podium`;
+  if (you.gained > 0) return `Up ${you.gained} from the grid`;
+  if (you.gained < 0) return `Down ${-you.gained} from the grid`;
+  return "Held position from the grid";
+}
+
+function FinishCard({ recap, weekend = false }) {
   const { you, race } = recap;
   const story = finishStory(recap);
-  const headline = !you.raced
-    ? "Did not start"
-    : !you.finished
-      ? you.status === "DNF"
-        ? "Did not finish"
-        : you.status === "DSQ"
-          ? "Disqualified"
-          : you.status
-      : you.position === 1
-        ? "Race winner"
-        : you.position <= 3
-          ? `${nth(you.position)} place, on the podium`
-          : you.gained > 0
-            ? `Up ${you.gained} from the grid`
-            : you.gained < 0
-              ? `Down ${-you.gained} from the grid`
-              : "Held position from the grid";
+  const headline = finishHeadline(you, weekend ? "Feature race winner" : "Race winner");
   const field = race.starters || race.fieldSize;
   return (
     <Card className="flex flex-col">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <Label>Finishing position</Label>
+        <Label>{weekend ? "Finishing position · feature race" : "Finishing position"}</Label>
         {you.finished && <Label tone="text-light">of {race.finishers} classified · {field} starters</Label>}
       </div>
       <div className="mt-2 flex flex-wrap items-end gap-x-8 gap-y-3">
@@ -470,8 +479,8 @@ function FinishCard({ recap }) {
   );
 }
 
-function RoundCard({ recap }) {
-  const { you, results, race, standings } = recap;
+function RoundCard({ recap, weekend = false }) {
+  const { you, results, race, standings, sprint } = recap;
   const mine = results.find((r) => r.driverId === you.driverId);
   const finished = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position);
   const adj = (r) => (r?.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
@@ -491,13 +500,177 @@ function RoundCard({ recap }) {
         </span>
       </div>
       <div className="mt-4 divide-y divide-border border-t border-border">
-        <Row label="Race time" value={myMs ? fmtDuration(myMs) : null} />
+        {/* On a sprint weekend the big number is the whole round's pay, and
+            these two rows say how the two races split it. */}
+        {weekend && <Row label="Feature race" value={`${you.racePoints > 0 ? "+" : ""}${you.racePoints ?? 0} pts`} />}
+        {weekend && <Row label="Sprint race" value={sprint?.you ? `${sprint.you.points > 0 ? "+" : ""}${sprint.you.points} pts` : "not started"} tone={sprint?.you ? "text-dark" : "text-light"} />}
+        <Row label={weekend ? "Feature race time" : "Race time"} value={myMs ? fmtDuration(myMs) : null} />
         <Row label="Gap to winner" value={you.position === 1 ? "Winner" : lapsDown(mine) || gapTo(winMs)} />
         {ahead && <Row label={`Gap to P${ahead.position}`} value={gapTo(aheadMs) || (lapsDown(mine) && !lapsDown(ahead) ? lapsDown(mine) : null)} />}
         {you.finished && race.starters > 0 && <Row label="Starters beaten" value={`${race.starters - you.position} of ${race.starters}`} />}
-        {you.fastestLapBonus > 0 && <Row label="Fastest lap bonus" value={`+${you.fastestLapBonus}`} tone="text-fl" />}
+        {you.fastestLapBonus > 0 && <Row label={weekend ? "Fastest lap bonus · feature" : "Fastest lap bonus"} value={`+${you.fastestLapBonus}`} tone="text-fl" />}
         {standings?.roundDropped && <Row label="Drop rule" value="this round does not count" tone="text-light" />}
       </div>
+    </Card>
+  );
+}
+
+// --- the sprint ---------------------------------------------------------------
+
+// The sprint of a sprint+feature weekend, one card: where you finished it
+// and what it paid on the left, its numbers on the right, the sprint's own
+// honours along the bottom. A spectator, or a driver who sat the sprint
+// out, gets the podium and the honours. The lap chart, the pace and the
+// incidents stay with the feature race: the archived file is that race's.
+function SprintCard({ sprint, feature }) {
+  const { race, results, you } = sprint;
+  const finished = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position);
+  const adj = (r) => (r?.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
+  const mine = you ? results.find((r) => r.driverId === you.driverId) : null;
+  const myMs = adj(mine);
+  const winMs = adj(finished[0]);
+  const gapToWinner = you?.finished && you.position > 1 && myMs && winMs && myMs > winMs ? fmtGap(myMs - winMs) : null;
+  const lapsDown = mine && finished[0]?.laps != null && mine.laps != null && mine.laps < finished[0].laps ? finished[0].laps - mine.laps : 0;
+  const field = race.starters || race.fieldSize;
+  const fastest = you?.bestLapMs != null && you.lapGapMs === 0;
+  // The sprint's honours, by the same rules as the race page's facts.
+  const { facts } = buildRaceFacts(race, results, null);
+  const by = (key) => facts.find((f) => f.key === key) || null;
+  const winner = finished[0] || null;
+  const honours = [
+    winner ? { key: "winner", label: "Sprint winner", name: winner.name, driverId: winner.driverId, country: countryFor(winner.driverId, winner.country), value: teamOf(winner)?.name || null } : null,
+    by("fl") ? { ...by("fl"), tone: "text-fl" } : null,
+    by("climb") ? { ...by("climb"), tone: "text-ok" } : null,
+    by("margin") ? { ...by("margin") } : null,
+  ]
+    .filter(Boolean)
+    .slice(0, 3);
+  // Against the feature race, when both were driven to the flag.
+  const swing = you?.finished && feature?.finished ? you.position - feature.position : null;
+  const words = [];
+  if (you?.finished) {
+    const bt = you.beatTeams || [];
+    if (bt.length === 1) words.push(`You finished the sprint ahead of both ${bt[0]} cars.`);
+    else if (bt.length > 1) words.push(`You finished the sprint ahead of both cars of ${bt.length} teams.`);
+    if (swing != null && swing !== 0) words.push(swing > 0 ? `${swing} place${swing === 1 ? "" : "s"} better in the feature race.` : `${-swing} place${swing === -1 ? "" : "s"} better than in the feature race.`);
+    else if (swing === 0) words.push("The same finish in both races.");
+  }
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <Label>Sprint race</Label>
+        <Label tone="text-light">{[race.laps ? `${race.laps} laps` : null, field ? `${field} starters` : null, race.finishers != null ? `${race.finishers} classified` : null].filter(Boolean).join(" · ")}</Label>
+      </div>
+      {you ? (
+        <div className="mt-2 grid gap-6 lg:grid-cols-[1.6fr,1fr] lg:gap-12">
+          <div className="flex flex-col">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <div className="recap-pop flex items-start font-display font-black leading-none tracking-tighter text-dark">
+                <span className="mt-2 text-3xl text-light sm:mt-3 sm:text-4xl">P</span>
+                <span className="text-[5rem] sm:text-[6.5rem]">{you.finished ? you.position : you.raced ? you.status : "DNS"}</span>
+              </div>
+              <div className="mb-2 min-w-0 flex-1">
+                <div className="font-display text-xl font-black uppercase tracking-tight sm:text-2xl" style={{ color: you.finished && you.position <= 3 ? "var(--medal-1)" : "var(--c-text)" }}>
+                  {finishHeadline(you, "Sprint winner")}
+                </div>
+                {you.finished && you.grid != null && (
+                  <div className="recap-tag mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs font-bold text-light">P{you.grid}</span>
+                    <span className="text-light">→</span>
+                    <span className="rounded-md border px-2 py-0.5 font-mono text-xs font-bold text-dark" style={{ borderColor: "var(--recap-team)" }}>
+                      P{you.position}
+                    </span>
+                    {you.gained !== 0 && (
+                      <span className="ml-2 flex items-baseline gap-1.5">
+                        <Delta value={you.gained} className="text-lg" />
+                        <Label tone="text-light">{Math.abs(you.gained) === 1 ? "place" : "places"} {you.gained > 0 ? "gained" : "lost"}</Label>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {!you.finished && you.raced && you.grid != null && <div className="mt-2 font-mono text-xs text-light">from P{you.grid} on the grid</div>}
+              </div>
+            </div>
+            {you.finished && you.grid != null && field > 1 && (
+              <div className="mt-1">
+                <GridToFlag grid={you.grid} finish={you.position} field={field} />
+              </div>
+            )}
+            {(words.length > 0 || (you.finished && you.rawPosition != null && you.rawPosition !== you.position)) && (
+              <div className="recap-tag mt-auto pt-3" style={{ "--tag-delay": "1400ms" }}>
+                {words.length > 0 && <p className="text-sm leading-relaxed text-medium">{words.join(" ")}</p>}
+                {you.finished && you.rawPosition != null && you.rawPosition !== you.position && (
+                  <p className="mt-1 text-xs text-light">Crossed the line P{you.rawPosition}; the stewards made it P{you.position}.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="flex items-start justify-between gap-4">
+              <Label tone="text-light">Sprint points</Label>
+              <span className="font-display text-4xl font-black leading-none tabular-nums text-accent">
+                <Tween to={you.points || 0} prefix={you.points > 0 ? "+" : ""} />
+                <span className="ml-1 font-mono text-xs font-bold text-light">pts</span>
+              </span>
+            </div>
+            <div className="mt-3 divide-y divide-border border-t border-border">
+              <Row label="Race time" value={myMs ? fmtDuration(myMs) : null} />
+              {you.finished && <Row label="Gap to winner" value={you.position === 1 ? "Winner" : lapsDown > 0 ? `+${lapsDown} lap${lapsDown > 1 ? "s" : ""}` : gapToWinner} />}
+              <Row
+                label="Best lap"
+                value={fmtLap(you.bestLapMs) ? `${fmtLap(you.bestLapMs)}${!fastest && you.lapGapMs != null ? ` (${fmtLapDelta(you.lapGapMs)})` : ""}` : null}
+                tone={fastest ? "text-fl" : "text-dark"}
+              />
+              {you.fastestLapBonus > 0 && <Row label="Fastest lap bonus" value={`+${you.fastestLapBonus}`} tone="text-fl" />}
+              {you.overtakes != null && <Row label="Overtakes" value={String(you.overtakes)} />}
+              {you.consistencyPct > 0 && <Row label="Consistency" value={`${you.consistencyPct.toFixed(2)}%`} />}
+              {you.raced && (you.penaltySeconds > 0 || you.contacts != null) && (
+                <Row
+                  label="Stewards"
+                  value={you.penaltySeconds > 0 ? `+${you.penaltySeconds}s penalty` : `${you.contacts ?? 0} car contact${you.contacts === 1 ? "" : "s"} · no penalty`}
+                  tone={you.penaltySeconds > 0 ? "text-bad" : "text-dark"}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        finished.length > 0 && (
+          <div className="recap-cascade mt-4 flex flex-wrap gap-x-8 gap-y-3">
+            {finished.slice(0, 3).map((r, i) => (
+              <div key={r.driverId} className="flex items-center gap-3" style={{ "--i": i }}>
+                <span className="font-display text-3xl font-black leading-none tracking-tighter text-light">P{r.position}</span>
+                <div className="min-w-0">
+                  <Link to={`/drivers/${r.driverId}`} className="block truncate font-display text-base font-black uppercase tracking-tight text-dark transition hover:text-brand">
+                    {r.name}
+                  </Link>
+                  {teamOf(r) && <div className="font-mono text-[11px] text-light">{teamOf(r).name}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+      {honours.length > 0 && (
+        <div className="recap-cascade mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-3">
+          {honours.map((c, i) => (
+            <div key={c.key} className="min-w-0" style={{ "--i": i + 4 }}>
+              <Label tone={c.tone || "text-light"}>{c.label}</Label>
+              <div className="mt-1 flex items-center gap-2">
+                {c.driverId ? (
+                  <Link to={`/drivers/${c.driverId}`} className="truncate font-display text-base font-black uppercase tracking-tight text-dark transition hover:text-brand">
+                    {c.name}
+                  </Link>
+                ) : (
+                  <span className="truncate font-display text-base font-black uppercase tracking-tight text-dark">{c.name}</span>
+                )}
+                {c.country && <Flag code={c.country} w={16} h={12} />}
+              </div>
+              {c.value && <div className={`mt-0.5 truncate font-mono text-xs ${c.tone || "text-light"}`}>{c.value}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
@@ -1121,19 +1294,30 @@ function PointsCard({ points: p }) {
 
 // --- the team-mate ------------------------------------------------------------
 
-function TeammateCard({ you, mates, standings, card }) {
+// `sprint` is the driver's own sprint line on a sprint weekend, so the two
+// sprints stand beside the two feature races.
+function TeammateCard({ you, mates, standings, card, sprint = null }) {
   const m = mates[0];
   const better = (a, b, lowerWins = true) => {
     if (a == null || b == null) return 0;
     if (a === b) return 0;
     return (lowerWins ? a < b : a > b) ? 1 : -1;
   };
+  const weekend = !!sprint || !!m.sprint;
   const rows = [
-    { label: "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position) },
+    weekend
+      ? {
+          label: "Sprint",
+          a: sprint ? (sprint.finished ? `P${sprint.position}` : sprint.status) : NO_VALUE,
+          b: m.sprint ? (m.sprint.position != null ? `P${m.sprint.position}` : m.sprint.status || NO_VALUE) : NO_VALUE,
+          win: better(sprint?.finished ? sprint.position : null, m.sprint?.position ?? null),
+        }
+      : null,
+    { label: weekend ? "Feature race" : "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position) },
     { label: "Grid", a: you.grid != null ? `P${you.grid}` : NO_VALUE, b: m.grid != null ? `P${m.grid}` : NO_VALUE, win: better(you.grid, m.grid) },
     { label: "Best lap", a: fmtLap(you.bestLapMs) || NO_VALUE, b: fmtLap(m.bestLapMs) || NO_VALUE, win: better(you.bestLapMs, m.bestLapMs) },
     { label: "Season points", a: standings?.after?.total ?? NO_VALUE, b: m.seasonPoints ?? NO_VALUE, win: better(standings?.after?.total, m.seasonPoints, false) },
-  ];
+  ].filter(Boolean);
   const tone = (w) => (w > 0 ? "text-ok" : w < 0 ? "text-bad" : "text-dark");
   const duel = m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) ? m.duel : null;
   const score = (w, l) => (w > l ? "text-ok" : w < l ? "text-bad" : "text-dark");
@@ -1375,12 +1559,14 @@ function CareerCard({ career: c, you, race }) {
 
 // --- the honours row ------------------------------------------------------------
 
-function HonoursRow({ race, results, quali }) {
+// `weekend` on a sprint weekend: these are the feature race's honours, and
+// the winner's label says so (the sprint's are on its own card).
+function HonoursRow({ race, results, quali, weekend = false }) {
   const { facts, dotd, dotdRow, hasDotd } = buildRaceFacts(race, results, quali);
   const winner = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position)[0] || null;
   const by = (key) => facts.find((f) => f.key === key) || null;
   const cells = [
-    winner ? { key: "winner", label: "Race winner", name: winner.name, driverId: winner.driverId, country: countryFor(winner.driverId, winner.country), value: [teamOf(winner)?.name, winner.totalTimeMs ? fmtDuration(winner.totalTimeMs + (winner.penaltySeconds || 0) * 1000) : null].filter(Boolean).join(" · ") } : null,
+    winner ? { key: "winner", label: weekend ? "Feature race winner" : "Race winner", name: winner.name, driverId: winner.driverId, country: countryFor(winner.driverId, winner.country), value: [teamOf(winner)?.name, winner.totalTimeMs ? fmtDuration(winner.totalTimeMs + (winner.penaltySeconds || 0) * 1000) : null].filter(Boolean).join(" · ") } : null,
     by("fl") ? { ...by("fl"), label: "Fastest lap", tone: "text-fl" } : null,
     by("pole") ? { ...by("pole"), label: "Pole position" } : null,
     by("climb") ? { ...by("climb"), label: "Biggest climber", tone: "text-ok" } : null,
