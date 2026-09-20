@@ -864,15 +864,31 @@ export default function Home() {
                       className="pointer-events-none absolute inset-0"
                       style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
                     />
+                    {/* The position, as a results graphic writes it: the P a
+                        small prefix and the NUMBER the thing you read. Set at
+                        one size the two competed, and "P" — the part that is
+                        the same on all three cards — was as loud as the part
+                        that differs. Baseline-aligned so the lockup sits on
+                        one line however the two sizes are tuned. */}
                     <span
-                      className={`font-display font-black tabular-nums ${compact ? "text-xl" : "text-2xl"}`}
+                      className="flex shrink-0 items-baseline font-display font-black tabular-nums"
                       style={{ color: MEDAL[i] }}
                     >
-                      P{p.position}
+                      <span className={compact ? "text-[11px]" : "text-[13px]"} style={{ opacity: 0.7 }}>
+                        P
+                      </span>
+                      <span className={compact ? "text-[26px] leading-none" : "text-[30px] leading-none"}>
+                        {p.position}
+                      </span>
                     </span>
                     <span className="min-w-0 flex-1">
+                      {/* Archivo, not Inter: the rank and the points beside it
+                          are already set in the display face, and the name
+                          between them was the one part of the card still in
+                          body text. Tighter tracking buys back the width the
+                          heavier face costs, so nothing new truncates. */}
                       <span
-                        className={`flex items-center gap-1.5 font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white ${
+                        className={`flex items-center gap-1.5 font-display font-extrabold leading-tight tracking-tight text-ink transition group-hover:text-brand dark:text-white ${
                           compact ? "text-[15px]" : "text-base"
                         }`}
                       >
@@ -886,6 +902,7 @@ export default function Home() {
                           color={p.subForTeam.color}
                           logoUrl={p.subForTeam.logoUrl}
                           size={16}
+                          boxWidth={36}
                           showName
                           className="mt-0.5"
                           nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
@@ -897,6 +914,12 @@ export default function Home() {
                           color={p.team.color}
                           logoUrl={p.team.logoUrl}
                           size={16}
+                          // A wider slot for the mark: a square badge still
+                          // draws at 16x16, while a wide wordmark (DAMS,
+                          // Jaguar) gets the room it needs instead of being
+                          // squeezed into a square and vanishing. Fixed width,
+                          // so the team names still line up down the strip.
+                          boxWidth={36}
                           showName
                           className="mt-0.5"
                           nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"

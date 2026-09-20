@@ -39,13 +39,15 @@ function monogram(id, name) {
  * teams); falls back to the bundled /teams/<id>.png for older data that
  * predates stored logo paths.
  *
- * Props: id, name, color, size (px), logoUrl, showName, nameClassName, className.
+ * Props: id, name, color, size (px), boxWidth (px), logoUrl, showName,
+ * nameClassName, className.
  */
 export default function TeamLogo({
   id,
   name,
   color = "#888",
   size = 22,
+  boxWidth = 0,
   logoUrl,
   showName = false,
   className = "",
@@ -62,7 +64,18 @@ export default function TeamLogo({
       alt={name || teamId}
       title={name}
       onError={() => setErrored(true)}
-      style={{ width: size, height: size }}
+      // A team mark is not always square. Squeezed into a size x size box, a
+      // wide wordmark contains itself down to a few pixels tall and stops
+      // being readable at all — the bundled Toro Rosso logo is 5.3:1, so at
+      // size 16 it renders 3px high, and the uploaded DAMS and Jaguar marks
+      // are the same shape. `boxWidth` opts a caller into a WIDER slot of a
+      // fixed width: the mark is bounded by `size` in height and can run out
+      // to the full slot, so a wordmark gets the room its shape needs while a
+      // square badge still draws at size x size, centred. Fixed and not
+      // shrink-to-fit on purpose — in a list, a slot that changed width per
+      // team would step the team names in and out down the column. A caller
+      // that leaves it unset gets exactly the old square box.
+      style={boxWidth ? { height: size, width: boxWidth } : { width: size, height: size }}
       className="shrink-0 object-contain"
     />
   ) : (
