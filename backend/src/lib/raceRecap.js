@@ -32,7 +32,7 @@ import { readDriverRoles } from "./driverRoles.js";
 import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
 import { raceWasClean, stewardingClosed, withMultiplier } from "./tokenRules.js";
-import { findArchiveForRace, analyzeRaceFor, raceInsightsFor } from "./cockpitArchive.js";
+import { findArchiveForRace, analyzeRaceFor, raceInsightsFor, fieldPaceTable } from "./cockpitArchive.js";
 import { contactsForDriver } from "./raceContacts.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
@@ -173,7 +173,7 @@ async function standingsAround(prisma, seasonId, number) {
 // classification does not: pace against the field, the best place they held
 // and for how long, the lap the best lap came on, the time lost off their
 // own pace, the stints. null without a file, or a driver without a Steam id.
-async function storyFor(prisma, race, rowId, ownRow) {
+async function storyFor(prisma, race, rowId, ownRow, rows = []) {
   if (!rowId || !ownRow || ownRow.status === "DNS") return null;
   const d = await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null);
   if (!d?.steamId) return null;
@@ -182,6 +182,7 @@ async function storyFor(prisma, race, rowId, ownRow) {
   const a = analyzeRaceFor(json, d.steamId);
   if (!a) return null;
   const ins = raceInsightsFor(json, d.steamId);
+  const paceTable = await paceTableFor(prisma, race, json, d.steamId, rows).catch(() => null);
   const positions = a.laps.map((l) => l.position).filter((p) => p != null);
   const bestPosition = positions.length ? Math.min(...positions) : null;
   let bestRun = null;
@@ -208,6 +209,40 @@ async function storyFor(prisma, race, rowId, ownRow) {
     bestLapAt: a.laps.find((l) => l.timeMs != null && l.timeMs === a.bestLapMs)?.lap ?? null,
     stints: ins?.stints || [],
     laps: a.laps.map((l) => ({ lap: l.lap, position: l.position, timeMs: l.timeMs, slow: !!l.slow })),
+    paceTable,
+  };
+}
+
+// Everyone's race pace, so the driver's own number has company. The file
+// knows cars by Steam id and its own names; the league's names and the
+// classification come from the saved result, matched on the Steam id.
+async function paceTableFor(prisma, race, json, ownGuid, rows) {
+  const table = fieldPaceTable(json);
+  if (!table?.rows.length) return null;
+  const guids = table.rows.map((r) => r.guid);
+  const drivers = await prisma.driver.findMany({
+    where: { seasonId: race.seasonId, steamId: { in: guids } },
+    select: { id: true, steamId: true },
+  });
+  const idByGuid = new Map(drivers.map((d) => [String(d.steamId), d.id]));
+  const rowById = new Map(rows.map((r) => [r.driverId, r]));
+  return {
+    field: table.field,
+    rows: table.rows.map((r) => {
+      const row = rowById.get(idByGuid.get(r.guid));
+      return {
+        driverId: row?.driverId || null,
+        name: row?.name || r.name || "?",
+        position: row?.position ?? null,
+        status: row?.status || null,
+        laps: r.laps,
+        paceMs: r.paceMs,
+        rank: r.rank,
+        gapMs: r.gapMs,
+        bestLapMs: r.bestLapMs,
+        you: r.guid === String(ownGuid),
+      };
+    }),
   };
 }
 
@@ -692,7 +727,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       .$queryRawUnsafe(`SELECT "heroImageUrl" FROM "Season" WHERE "id" = ?`, race.seasonId)
       .then((rows) => rows[0]?.heroImageUrl || null)
       .catch(() => null),
-    storyFor(prisma, race, rowId, ownRow).catch(() => null),
+    storyFor(prisma, race, rowId, ownRow, rows).catch(() => null),
     incidentsFor(prisma, race, rowId, ownRow, steamRow?.steamId).catch(() => null),
     careerFor(prisma, race, rowId, ownRow, season).catch(() => null),
   ]);

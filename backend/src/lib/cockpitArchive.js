@@ -310,15 +310,10 @@ function cleanPace(laps) {
   return median(clean);
 }
 
-export function raceInsightsFor(json, guid) {
-  if (!json || !guid) return null;
-  const byGuid = lapsByGuid(json);
-  const own = byGuid.get(String(guid));
-  if (!own || own.length < 5) return null;
-
-  // True pace rank: everyone who ran at least 60% of the winner's laps is
-  // ranked by their clean median lap. Finishing position rewards survival;
-  // this number is raw speed.
+// The pace ranking of the whole field: everyone who ran at least 60% of the
+// winner's laps, by their clean median lap. Finishing position rewards
+// survival; this number is raw speed.
+function rankedPaces(byGuid) {
   const maxLaps = Math.max(...[...byGuid.values()].map((l) => l.length));
   const paces = [];
   for (const [g, laps] of byGuid) {
@@ -327,6 +322,47 @@ export function raceInsightsFor(json, guid) {
     if (p != null) paces.push({ guid: g, pace: p });
   }
   paces.sort((a, b) => a.pace - b.pace);
+  return paces;
+}
+
+// The race pace of every car in the file, ranked, so one driver's number can
+// be read against the rest. Cars that ran too little for a rank still get
+// their pace, just no rank and no gap. Names are the file's own; the caller
+// maps them to league drivers.
+export function fieldPaceTable(json) {
+  if (!json) return null;
+  const byGuid = lapsByGuid(json);
+  if (!byGuid.size) return null;
+  const ranked = rankedPaces(byGuid);
+  const rankOf = new Map(ranked.map((p, i) => [p.guid, i + 1]));
+  const best = ranked[0]?.pace ?? null;
+  const names = new Map((json.Result || []).map((r) => [String(r?.DriverGuid), r?.DriverName || null]));
+  const rows = [];
+  for (const [g, laps] of byGuid) {
+    const pace = rankOf.has(g) ? ranked[rankOf.get(g) - 1].pace : cleanPace(laps);
+    if (pace == null) continue;
+    const real = laps.map((l) => l.LapTime).filter(isRealLap);
+    rows.push({
+      guid: String(g),
+      name: names.get(String(g)) || null,
+      laps: laps.length,
+      paceMs: pace,
+      rank: rankOf.get(g) ?? null,
+      gapMs: rankOf.has(g) && best != null ? pace - best : null,
+      bestLapMs: real.length ? Math.min(...real) : null,
+    });
+  }
+  rows.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || a.paceMs - b.paceMs);
+  return { field: ranked.length, rows };
+}
+
+export function raceInsightsFor(json, guid) {
+  if (!json || !guid) return null;
+  const byGuid = lapsByGuid(json);
+  const own = byGuid.get(String(guid));
+  if (!own || own.length < 5) return null;
+
+  const paces = rankedPaces(byGuid);
   const paceIdx = paces.findIndex((p) => p.guid === String(guid));
   const ownPace = paceIdx >= 0 ? paces[paceIdx].pace : cleanPace(own);
 
