@@ -733,16 +733,27 @@ export async function ensureAppSchema(prisma) {
   // Training laps per driver per race week (migration token_practice). Written
   // by the live relay, one row per driver per week, and read back by
   // lib/practiceTokens.js to decide whether a milestone has been reached.
+  // The server is part of the key, and SQLite cannot add a column to a primary
+  // key in place. The table has never been anywhere but a laptop, so the old
+  // shape is dropped rather than migrated: a week of practice laps is not
+  // worth a copy routine that would then live here forever.
+  {
+    const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("TokenPractice")`).catch(() => []);
+    if (cols.length && !cols.some((c) => c.name === "server")) {
+      await prisma.$executeRawUnsafe(`DROP TABLE "TokenPractice"`);
+    }
+  }
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenPractice" (
     "steamId" TEXT NOT NULL,
     "series" TEXT NOT NULL,
     "period" TEXT NOT NULL,
+    "server" TEXT NOT NULL DEFAULT '',
     "laps" INTEGER NOT NULL DEFAULT 0,
     "trackKey" TEXT,
     "car" TEXT,
     "lastAt" INTEGER NOT NULL DEFAULT 0,
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY ("steamId", "series", "period")
+    PRIMARY KEY ("steamId", "series", "period", "server")
   )`);
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "TokenPractice_period_idx" ON "TokenPractice"("series","period")`

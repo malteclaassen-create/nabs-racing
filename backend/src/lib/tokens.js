@@ -324,6 +324,11 @@ export function tunedShop() {
 }
 const tunedItem = (key) => tunedShop().find((i) => i.key === key);
 export const tunedReferralLimit = () => overrides().referralRaceLimit ?? REFERRAL_RACE_LIMIT;
+// Does this race server's practice count towards the training milestones?
+// Nothing said about a server means yes: the league switches one OFF, it does
+// not have to switch them on.
+export const practiceServerOn = (key) => overrides().practiceServers?.[String(key || "")] !== false;
+export const tunedPracticeServers = () => overrides().practiceServers || {};
 export const tunedStudio = () => overrides().studio || {};
 export function tunedMultiplier() {
   const o = overrides().multiplier || {};

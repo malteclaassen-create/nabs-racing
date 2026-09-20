@@ -84,6 +84,19 @@ export function cleanTuning(body, allowed) {
     if (d) out.startDay = d;
   }
 
+  // Which race servers training laps count on. `{ nabs1: false }` means the
+  // laps driven there are not counted at all; a server the league has never
+  // said anything about counts, which is what makes this a switch to turn OFF
+  // rather than a list to remember to fill in.
+  if (body?.practiceServers && typeof body.practiceServers === "object") {
+    const m = {};
+    for (const key of allowed.servers || []) {
+      if (!(key in body.practiceServers)) continue;
+      m[key] = !!body.practiceServers[key];
+    }
+    if (Object.keys(m).length) out.practiceServers = m;
+  }
+
   if (body?.referralRaceLimit !== undefined) {
     const n = int(body.referralRaceLimit);
     if (Number.isNaN(n)) return bad("referral limit: whole number, 0 or more");

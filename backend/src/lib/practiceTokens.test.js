@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { notePracticeLap, practiceWritesSettled, practiceProgress, __clearCaches } from "./practiceTokens.js";
+import { saveTuning } from "./tokenTuning.js";
 
 // A prisma stand-in with the three tables this touches: the lap tally, the
 // drivers behind the Steam ids, and the ledger with the same uniqueness the
@@ -51,24 +52,26 @@ function db({
         .map(([id]) => ({ id }));
     }
     if (/FROM "PersonLink"/.test(sql)) return [];
-    if (/SELECT "laps" FROM "TokenPractice"/.test(sql)) {
-      const row = practice.get(args.join("|"));
-      return row ? [{ laps: row.laps }] : [];
-    }
     if (/SUM\("laps"\)/.test(sql)) {
       const period = args[args.length - 1];
       const series = args[args.length - 2];
       const ids = args.slice(0, args.length - 2);
-      let laps = 0;
+      const byServer = new Map();
       let trackKey = null;
       for (const [key, row] of practice) {
-        const [steamId, s, p] = key.split("|");
-        if (ids.includes(steamId) && s === series && p === period) {
-          laps += row.laps;
-          trackKey = row.trackKey;
-        }
+        const [steamId, s, p, server] = key.split("|");
+        if (!ids.includes(steamId) || s !== series || p !== period) continue;
+        byServer.set(server, (byServer.get(server) || 0) + row.laps);
+        trackKey = row.trackKey;
       }
-      return [{ laps, trackKey, car: null }];
+      // The week as one number (what countLap asks) or split by server (what
+      // the page asks), the same way SQLite answers the two queries.
+      if (!/GROUP BY "server"/.test(sql)) {
+        return [{ laps: [...byServer.values()].reduce((a, b) => a + b, 0) }];
+      }
+      return [...byServer.entries()]
+        .map(([server, laps]) => ({ server, laps, trackKey, car: null }))
+        .sort((a, b) => b.laps - a.laps);
     }
     if (/FROM "TokenLedger" WHERE "discordId" = \? AND "refKey" IN/.test(sql)) {
       return [...ledger.values()].filter((r) => args.includes(r.refKey)).map((r) => ({ refKey: r.refKey, createdAt: r.createdAt }));
@@ -79,8 +82,8 @@ function db({
 
   async function exec(sql, ...args) {
     if (/INSERT INTO "TokenPractice"/.test(sql)) {
-      const [steamId, series, period, laps, trackKey, car, lastAt] = args;
-      const key = `${steamId}|${series}|${period}`;
+      const [steamId, series, period, server, laps, trackKey, car, lastAt] = args;
+      const key = `${steamId}|${series}|${period}|${server}`;
       const row = practice.get(key);
       if (!row) {
         practice.set(key, { laps, trackKey, car, lastAt });
@@ -111,6 +114,10 @@ function db({
     $executeRawUnsafe: exec,
     setting: {
       findUnique: async ({ where }) => (settings.has(where.key) ? { value: settings.get(where.key) } : null),
+      upsert: async ({ where, create, update }) => {
+        settings.set(where.key, (update?.value ?? create?.value) || "");
+        return { key: where.key, value: settings.get(where.key) };
+      },
     },
     settings,
     ledger,
@@ -275,6 +282,30 @@ describe("training laps", () => {
       trackKey: "somewhere_else--x",
     });
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
+  });
+
+  it("adds up both servers into one week, and says where the laps came from", async () => {
+    const prisma = db();
+    await drive(prisma, 12, { serverKey: "nabs1", from: 1_700_000_000 });
+    await drive(prisma, 9, { serverKey: "nabs2", from: 1_700_500_000 });
+    const progress = await practiceProgress(prisma, "disc1");
+    expect(progress.laps).toBe(21);
+    expect(progress.servers.map(({ key, laps }) => ({ key, laps }))).toEqual([
+      { key: "nabs1", laps: 12 },
+      { key: "nabs2", laps: 9 },
+    ]);
+    // Named, because "nabs2" is not what the league calls it.
+    expect(progress.servers[0].name).toBe("NABS Server 1");
+    // One milestone for the week, not one per server.
+    expect([...prisma.ledger.values()].map((r) => r.rule)).toEqual(["practice_20"]);
+  });
+
+  it("counts nothing on a server the league has switched off", async () => {
+    const prisma = db();
+    await saveTuning(prisma, { practiceServers: { nabs2: false } });
+    await drive(prisma, 25, { serverKey: "nabs2" });
+    expect([...prisma.practice.values()]).toEqual([]);
+    await saveTuning(prisma, {});
   });
 
   it("files laps under the week rather than the round when the calendar is empty", async () => {

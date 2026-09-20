@@ -23,6 +23,7 @@
 // whose laps were driven while the counting was switched off.
 // ---------------------------------------------------------------------------
 import {
+  practiceServerOn,
   tokensPublic,
   tunedRules,
   tunedStartDay,
@@ -34,6 +35,7 @@ import {
 } from "./tokens.js";
 import { leagueDay } from "./tokenRules.js";
 import { groupKeyFor } from "./trackKeys.js";
+import { LIVE_SERVERS } from "./liveServers.js";
 
 const STEAM_RE = /^\d{10,20}$/;
 
@@ -219,6 +221,11 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // number of times it happened to look.
   const many = Math.min(50, Math.max(1, Math.round(Number(laps) || 1)));
   if (!STEAM_RE.test(id) || stamp <= 0) return;
+  // A server the league has switched off pays nothing and is not even
+  // counted: a bar that fills from a server that will never pay for it is a
+  // promise the site cannot keep.
+  const from = String(serverKey || "");
+  if (!practiceServerOn(from)) return;
   // `series` is only passed by the tests; the relay hands over what it knows
   // about the server and lets the rule above decide.
   const slug = series || (await seriesForLap(prisma, { serverKey, scopes, trackKey, steamId: id }));
@@ -231,9 +238,9 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // Nothing written means exactly that, and there is nothing else to do.
   const written = await prisma
     .$executeRawUnsafe(
-      `INSERT INTO "TokenPractice" ("steamId","series","period","laps","trackKey","car","lastAt","updatedAt")
-       VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-       ON CONFLICT("steamId","series","period") DO UPDATE SET
+      `INSERT INTO "TokenPractice" ("steamId","series","period","server","laps","trackKey","car","lastAt","updatedAt")
+       VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+       ON CONFLICT("steamId","series","period","server") DO UPDATE SET
          "laps" = "laps" + excluded."laps",
          "trackKey" = excluded."trackKey",
          "car" = excluded."car",
@@ -243,6 +250,7 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
       id,
       slug,
       period.key,
+      from,
       many,
       String(trackKey || "").slice(0, 80) || null,
       String(car || "").slice(0, 80) || null,
@@ -258,7 +266,8 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   if (!tiers.length) return;
   const rows = await prisma
     .$queryRawUnsafe(
-      `SELECT "laps" FROM "TokenPractice" WHERE "steamId" = ? AND "series" = ? AND "period" = ?`,
+      `SELECT COALESCE(SUM("laps"), 0) AS "laps" FROM "TokenPractice"
+        WHERE "steamId" = ? AND "series" = ? AND "period" = ?`,
       id,
       slug,
       period.key
@@ -338,19 +347,33 @@ async function lapsOf(prisma, steamIds, series, periodKey) {
   const ph = steamIds.map(() => "?").join(",");
   const rows = await prisma
     .$queryRawUnsafe(
-      `SELECT COALESCE(SUM("laps"), 0) AS "laps",
+      `SELECT "server" AS "server", COALESCE(SUM("laps"), 0) AS "laps",
               MAX("trackKey") AS "trackKey", MAX("car") AS "car"
          FROM "TokenPractice"
-        WHERE "steamId" IN (${ph}) AND "series" = ? AND "period" = ?`,
+        WHERE "steamId" IN (${ph}) AND "series" = ? AND "period" = ?
+        GROUP BY "server"
+        ORDER BY "laps" DESC`,
       ...steamIds,
       String(series || ""),
       String(periodKey || "")
     )
     .catch(() => []);
   return {
-    laps: Number(rows[0]?.laps || 0),
+    laps: rows.reduce((sum, r) => sum + Number(r.laps || 0), 0),
     trackKey: rows[0]?.trackKey || null,
     car: rows[0]?.car || null,
+    // Where the week's laps were driven, biggest first. One server is the
+    // normal case and says nothing worth printing; two is worth saying.
+    servers: rows
+      .map((r) => {
+        const key = String(r.server || "");
+        return {
+          key,
+          name: LIVE_SERVERS.find((s) => s.key === key)?.name || key || "Unknown server",
+          laps: Number(r.laps || 0),
+        };
+      })
+      .filter((r) => r.laps > 0),
   };
 }
 
@@ -434,7 +457,7 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
   for (const row of seriesRows) {
     const period = await currentPeriod(prisma, row.slug);
     if (!period) continue;
-    const { laps, car } = await lapsOf(prisma, steamIds, row.slug, period.key);
+    const { laps, car, servers } = await lapsOf(prisma, steamIds, row.slug, period.key);
     if (laps) await payPractice(prisma, discordId, { series: row.slug, period, laps });
 
     // When each milestone paid. The cue at the bottom of the site celebrates a
@@ -460,6 +483,7 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
       label: period.label,
       period: period.key,
       car: car || null,
+      servers,
       earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
       next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
       tiers: tiers.map((t) => ({

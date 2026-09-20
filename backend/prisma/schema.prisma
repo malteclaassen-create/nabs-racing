@@ -851,13 +851,17 @@ model TokenPractice {
   steamId   String
   series    String // series slug
   period    String // "race:<raceId>" — the race this week's practice leads up to
+  server    String @default("") // which race server the laps were driven on
   laps      Int      @default(0)
   trackKey  String?
   car       String?
   lastAt    Int      @default(0) // seconds since the epoch
   updatedAt DateTime @default(now())
 
-  @@id([steamId, series, period])
+  // Per SERVER as well, so the week can say where its laps came from and so
+  // the league can stop counting one server without losing what it already
+  // counted. The week itself is the sum of these rows.
+  @@id([steamId, series, period, server])
   @@index([series, period])
 }
 

@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwner } from "../lib/profileStudio.js";
 import { practiceProgress } from "../lib/practiceTokens.js";
+import { LIVE_SERVERS } from "../lib/liveServers.js";
 import prisma from "../lib/prisma.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
@@ -47,6 +48,7 @@ import {
   buyStudioItem,
   tunedStartDay,
   tunedReferralLimit,
+  tunedPracticeServers,
   tunedMultiplier,
   FLAIRS,
   CUSTOM_FLAIR_MAX,
@@ -349,6 +351,9 @@ adminRouter.get("/", async (req, res, next) => {
         cards: CARD_COLLECTIONS,
         referralRaceLimit: REFERRAL_RACE_LIMIT,
         multiplier: MULTIPLIER,
+        // The race servers, for the "which of these do training laps count
+        // on" switches. Nothing said about one means it counts.
+        servers: LIVE_SERVERS.map((s) => ({ key: s.key, name: s.name })),
       },
       cards: CARD_COLLECTIONS.map((c) => ({ ...c, cost: overrides().cards?.[c.key]?.cost ?? c.cost })),
       // The studio's per-type prices: the catalogue's own number per slot
@@ -359,6 +364,7 @@ adminRouter.get("/", async (req, res, next) => {
         defaultCost: studioCatalogue().find((i) => i.slot === slot).price,
       })),
       referralRaceLimit: tunedReferralLimit(),
+      practiceServers: tunedPracticeServers(),
       multiplier: tunedMultiplier(),
       startDay: tunedStartDay(),
     });
@@ -408,6 +414,7 @@ adminRouter.put("/tuning", async (req, res, next) => {
       shop: SHOP_ITEMS.map((i) => i.key),
       cards: CARD_COLLECTIONS.map((c) => c.key),
       studio: [...new Set(STUDIO_SLOTS)],
+      servers: LIVE_SERVERS.map((s) => s.key),
     });
     if (out.error) return res.status(400).json({ error: out.error });
     // The start day is stamped by the earning switch, not typed into this form.

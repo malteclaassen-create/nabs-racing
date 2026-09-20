@@ -416,6 +416,45 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                 </li>
               );
             })}
+            {/* Which race servers a training lap counts on. Nothing said
+                about a server means it counts, so this is a switch to turn
+                one OFF: the race server on a quiet Tuesday is practice like
+                any other, until the league decides it is not. */}
+            {(defaults.servers || []).length > 0 && (
+              <li className="flex items-center justify-between gap-4 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-dark">Training laps count on</div>
+                  <div className="text-xs text-light">
+                    Which race server a practice lap has to be driven on to count towards the two milestones above.
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+                  {defaults.servers.map((srv) => {
+                    const on = t?.practiceServers?.[srv.key] ?? true;
+                    return (
+                      <label key={srv.key} className="flex items-center gap-2 text-xs text-light">
+                        {srv.name}
+                        <OnOff
+                          checked={!!on}
+                          onChange={(v) =>
+                            setT((prev) => {
+                              const next = JSON.parse(JSON.stringify(prev || {}));
+                              next.practiceServers ||= {};
+                              // Back to "counts" is the default, and a default
+                              // belongs nowhere rather than in the blob.
+                              if (v) delete next.practiceServers[srv.key];
+                              else next.practiceServers[srv.key] = false;
+                              if (!Object.keys(next.practiceServers).length) delete next.practiceServers;
+                              return next;
+                            })
+                          }
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </li>
+            )}
             <li className="flex items-center justify-between gap-4 py-2.5">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-dark">Referral races that pay</div>

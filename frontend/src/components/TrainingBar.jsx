@@ -113,6 +113,19 @@ export default function TrainingBar({ week, variant = "card" }) {
         ))}
       </div>
 
+      {/* Where the week's laps were driven. One server says nothing worth
+          printing; two is worth saying, because otherwise a bar that adds up
+          two evenings on two servers looks like it lost one of them. */}
+      {(week.servers || []).length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-light">
+          {week.servers.map((s) => (
+            <span key={s.key}>
+              {s.name} <span className="font-mono tabular-nums text-medium">{s.laps}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <p className="mt-2 text-[11px] leading-relaxed text-light">
         {!earning
           ? "Laps are being counted, but nothing is paid out until the league starts the counting."
