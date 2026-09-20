@@ -3,14 +3,14 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
-import { openRaceRecap } from "./RaceRecap.jsx";
 import { fmtStamp } from "../utils/format.js";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 
 // The race recap's switch, and a way to look at it before anybody else does.
 //
-// The recap is what a member sees the first time they open the site after a
-// round has been saved: a few pages about their race, the championship, their
-// live rating and the NABS Points it paid (backend lib/raceRecap.js). Off is
+// The recap is where a member lands the first time they open the site after a
+// round has been saved: one long page about their race, the championship,
+// their live rating and the NABS Points it paid (backend lib/raceRecap.js). Off is
 // off; "admins only" puts it in front of league admins on the real site so it
 // can be checked on a real round first; "everyone" is the launch.
 
@@ -45,6 +45,7 @@ function ModeSwitch({ mode, onChange, busy }) {
 export default function AdminRaceRecap() {
   const { data, error: loadError, reload } = useApi(useCallback(() => api.adminRaceRecap(), []));
   const { data: races } = useApi(useCallback(() => api.races(), []));
+  const { seriesPath } = useSeriesPath();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
@@ -92,19 +93,10 @@ export default function AdminRaceRecap() {
     }
   }
 
-  async function preview() {
-    if (!raceId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api.adminRaceRecapPreview(raceId, driverId || null);
-      if (r?.recap) openRaceRecap(r.recap, { preview: true });
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // The page itself, in a new tab, from that driver's seat (?seat= with no
+  // driver is the spectator's version). The admin's own session carries the
+  // rights the preview route asks for.
+  const previewHref = raceId ? seriesPath(`/recap/${raceId}?seat=${encodeURIComponent(driverId || "")}`) : null;
 
   if (loadError) return <ErrorBox message={loadError} onRetry={reload} />;
   if (!data) return null;
@@ -119,9 +111,9 @@ export default function AdminRaceRecap() {
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="What members get" title="How the recap works" />
         <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-light">
-          <li>It opens once, on the first page a member visits after a round was saved, and not over the live page or the admin.</li>
-          <li>It is offered for the newest finished round only, and only within ten days of the race. Closing it counts as seen.</li>
-          <li>The pages: the podium, the member's own race in numbers, where the championship stands now, the live rating's move, and what the round paid in NABS Points. The rating page only shows once the driver has a rating; the points page only while NABS Points are switched on for that member.</li>
+          <li>A member is taken to it once, on their first visit after a round was saved, and not from the live page or the admin.</li>
+          <li>It is offered for the newest finished round only, and only within ten days of the race. Arriving on it counts as seen.</li>
+          <li>The chapters: the round, the member's own race in numbers with the lap-by-lap trace, the podium, where the championship stands now, the live rating's move, and what the round paid in NABS Points. The rating chapter only shows once the driver has a rating; the points chapter only while NABS Points are switched on for that member.</li>
           <li>A member can read it again from the Recap button on that round's results page.</li>
           <li>Everything is worked out from the saved results when the recap opens, so a penalty added later shows the next time it is read.</li>
         </ul>
@@ -130,7 +122,7 @@ export default function AdminRaceRecap() {
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="See it first" title="Preview a round" />
         <p className="text-sm text-light">
-          Open the recap of any finished round from any driver's seat. A preview never counts as seen for anybody.
+          Open the recap of any finished round from any driver's seat, in a new tab. A preview never counts as seen for anybody.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -162,9 +154,13 @@ export default function AdminRaceRecap() {
               </option>
             ))}
           </select>
-          <button type="button" className="btn-primary" onClick={preview} disabled={busy || !raceId}>
-            {busy ? "Opening…" : "Open preview"}
-          </button>
+          {previewHref ? (
+            <a href={previewHref} target="_blank" rel="noreferrer" className="btn-primary">
+              Open preview
+            </a>
+          ) : (
+            <span className="btn-primary pointer-events-none opacity-50">Open preview</span>
+          )}
         </div>
         {!rounds.length && <p className="text-xs text-light">No finished round in the season being edited yet.</p>}
       </div>

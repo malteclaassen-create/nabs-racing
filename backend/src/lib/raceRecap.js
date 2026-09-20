@@ -24,6 +24,12 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { getLinkedDriverIds } from "./persons.js";
 import { isIdleReserve } from "./standingsRow.js";
 import { getSeriesById } from "./series.js";
+import { readRaceHeroes } from "./raceHero.js";
+import { getCardRating } from "../services/cardRatingService.js";
+import { readCardEdition, readCardAnim } from "./cardEditions.js";
+import { readCardPhotoPos } from "./cardPhoto.js";
+import { readDriverRoles } from "./driverRoles.js";
+import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
 import { raceWasClean, stewardingClosed, withMultiplier } from "./tokenRules.js";
 
@@ -262,6 +268,45 @@ async function pointsFor(prisma, req, discordId, race, rowId, own) {
   };
 }
 
+// The rating card the driver carries this season, with what the card needs
+// to draw itself (the same fields the profile hands RatingCard). null when
+// the season has cards switched off or nobody has rated them yet.
+async function cardFor(prisma, race, rowId, ownRow) {
+  if (!rowId) return null;
+  const enabled = await prisma
+    .$queryRawUnsafe(`SELECT "cardsEnabled" FROM "Season" WHERE "id" = ?`, race.seasonId)
+    .then((rows) => rows[0]?.cardsEnabled == null || !!Number(rows[0].cardsEnabled))
+    .catch(() => true);
+  if (!enabled) return null;
+  const rating = await getCardRating(prisma, race.seasonId, rowId).catch(() => null);
+  if (!rating?.ratings) return null;
+  const driver = await prisma.driver.findUnique({ where: { id: rowId }, include: { team: true } });
+  if (!driver) return null;
+  const idov = (await getIdentityOverrides(prisma)).get(rowId);
+  const cardPhotoUrl = (
+    await prisma.$queryRawUnsafe(`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ?`, rowId).catch(() => [])
+  )[0]?.cardPhotoUrl || null;
+  const team = ownRow?.effectiveTeam || ownRow?.team || driver.team;
+  return {
+    driver: {
+      id: driver.id,
+      name: ownRow?.name || driver.name,
+      number: driver.number ?? null,
+      country: driver.country || idov?.country || null,
+      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
+      cardPhotoUrl,
+      photoPos: (await readCardPhotoPos(prisma, rowId)) || idov?.photoPos || null,
+      cardStyle: await readCardEdition(prisma, rowId),
+      cardAnim: await readCardAnim(prisma, rowId),
+      tier: driver.tier,
+      role: (await readDriverRoles(prisma, [rowId])).get(rowId) || null,
+      seasonNumber: race.season.number,
+      team: team ? { id: team.id, name: team.name, color: team.color, logoUrl: team.logoUrl } : null,
+    },
+    rating,
+  };
+}
+
 // Build the recap of `raceId` for the person behind `driverId` (any of their
 // rows; the one in the race's season is used). `discordId` is the member the
 // points belong to; `req` decides what they may see. driverId null = a
@@ -306,9 +351,24 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       const list = listAfter;
       const i = list.indexOf(meAfter);
       const leader = list[0];
+      // The table around the driver, two rows either side, each with where
+      // it stood a round ago: the page glides them from there.
+      const prevPos = new Map(listBefore.map((r, n) => [r.driverId, n + 1]));
+      const start = Math.max(0, Math.min(i - 2, list.length - 5));
+      const window = list.slice(start, start + 5).map((r) => ({
+        driverId: r.driverId,
+        name: r.name,
+        country: r.country,
+        team: r.team ? { id: r.team.id, name: r.team.name, color: r.team.color, logoUrl: r.team.logoUrl } : null,
+        total: r.total,
+        position: list.indexOf(r) + 1,
+        prevPosition: prevPos.get(r.driverId) ?? null,
+        roundPoints: r.perRace?.[number]?.points ?? 0,
+      }));
       standings = {
         before: meBefore ? { position: listBefore.indexOf(meBefore) + 1, total: meBefore.total } : null,
         after: { position: i + 1, total: meAfter.total },
+        window,
         fieldSize: list.length,
         leader: leader && leader.driverId !== rowId ? { name: leader.name, total: leader.total } : null,
         ahead: i > 0 ? { name: list[i - 1].name, gap: list[i - 1].total - meAfter.total } : null,
@@ -340,10 +400,16 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   }
 
   const own = ownRace(ownRow, cell, fastestLapMs, finished.length);
-  const [rating, points, series] = await Promise.all([
+  const [rating, points, series, card, heroes, seasonHero] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
     rowId ? pointsFor(prisma, req, discordId, race, rowId, own) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
+    cardFor(prisma, race, rowId, ownRow),
+    readRaceHeroes(prisma, [race.id]).catch(() => new Map()),
+    prisma
+      .$queryRawUnsafe(`SELECT "heroImageUrl" FROM "Season" WHERE "id" = ?`, race.seasonId)
+      .then((rows) => rows[0]?.heroImageUrl || null)
+      .catch(() => null),
   ]);
 
   return {
@@ -355,7 +421,11 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       seriesName: series?.name || null,
       fieldSize: rows.length,
       finishers: finished.length,
+      // The picture over the page: the round's own photo, else the season's,
+      // else the frontend's league default.
+      heroImageUrl: heroes.get(race.id) || seasonHero || null,
     },
+    card,
     results: rows,
     quali: detail.quali,
     you: own,

@@ -16,7 +16,9 @@ const CFG = {
   2: { h: "h-12 sm:h-20", avatar: 56, name: "text-xs sm:text-lg" },
 };
 
-export default function Podium({ entries = [] }) {
+// `chipLabel` and `unit` let the same podium stand for one RACE: "Winner"
+// over the top step and the round's points under each name (the race recap).
+export default function Podium({ entries = [], chipLabel = "Champion", unit = "PTS" }) {
   const columns = COLUMN_ORDER.map((i) => ({ e: entries[i], rank: i })).filter((c) => c.e);
   if (columns.length === 0) return null;
 
@@ -49,7 +51,7 @@ export default function Podium({ entries = [] }) {
                 <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
                   <path d="M3 8l4.5 3.5L12 5l4.5 6.5L21 8l-1.6 9.5a1 1 0 01-1 .83H5.6a1 1 0 01-1-.83L3 8z" />
                 </svg>
-                Champion
+                {chipLabel}
               </span>
             )}
 
@@ -78,7 +80,7 @@ export default function Podium({ entries = [] }) {
 
               <span className="mt-2 font-display text-xl font-black leading-none tabular-nums sm:text-2xl" style={{ color: tone }}>
                 <CountUp end={e.total} />
-                <span className="ml-1 align-middle text-[10px] font-bold text-ink/45 dark:text-white/45">PTS</span>
+                <span className="ml-1 align-middle text-[10px] font-bold text-ink/45 dark:text-white/45">{unit}</span>
               </span>
             </Link>
 

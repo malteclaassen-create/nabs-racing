@@ -69,6 +69,9 @@ const InstallApp = lazy(() => import("./pages/InstallApp.jsx"));
 // (an app store listing cannot be published without one), so it lives in its
 // own chunk rather than in everybody's first download.
 const Privacy = lazy(() => import("./pages/Privacy.jsx"));
+// The race recap: a member lands here once after each saved round, and can
+// come back from the race page. Never on a first page view of a visitor.
+const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
 // Leaving the league. Its own address rather than a panel inside the profile,
 // because it has to be readable while signed OUT too: it is the page that
 // explains what deletion does, and an app store expects to find one.
@@ -230,6 +233,7 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/calendar" element={<Races />} />
         <Route path="/s/:seriesSlug/attendance" element={<Attendance />} />
         <Route path="/s/:seriesSlug/live" element={<Live />} />
+        <Route path="/s/:seriesSlug/recap/:raceId" element={<RaceRecapPage />} />
 
         {/* The root shows the primary series' home ITSELF instead of bouncing to
             /s/<slug>. It used to be a redirect that happened in the browser,
@@ -260,6 +264,7 @@ function AppRoutes() {
         <Route path="/calendar" element={<ToSeries sub="/calendar" />} />
         <Route path="/attendance" element={<ToSeries sub="/attendance" />} />
         <Route path="/live" element={<ToSeries sub="/live" />} />
+        <Route path="/recap/:raceId" element={<ToSeries sub="/recap/:raceId" />} />
 
         {/* Global pages (shared across series): no prefix. */}
         {/* The newcomer page under an address of its own. The home route shows
