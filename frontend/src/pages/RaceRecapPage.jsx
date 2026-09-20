@@ -314,11 +314,12 @@ function Header({ recap, preview }) {
   const photo = card?.driver?.photoUrl || results.find((r) => r.driverId === you?.driverId)?.photoUrl || null;
   const tier = card?.driver?.tier ?? results.find((r) => r.driverId === you?.driverId)?.driverTier ?? null;
   const time = race.date ? fmtRaceTime(race.date) : "";
-  // A sprint weekend names both races and their distances; a plain round
-  // its one race's.
+  // A sprint weekend names both races and their distances, feature first as
+  // everywhere else on the site (lib/raceFormat.js); a plain round its one
+  // race's.
   const weekend = !!recap.sprint;
   const distance = weekend
-    ? [recap.sprint.race.laps ? `${recap.sprint.race.laps} lap sprint` : "sprint", race.raceLaps ? `${race.raceLaps} lap feature race` : "feature race"].join(" + ")
+    ? [race.raceLaps ? `${race.raceLaps} lap feature race` : "feature race", recap.sprint.race.laps ? `${recap.sprint.race.laps} lap sprint` : "sprint"].join(" + ")
     : race.raceLaps
       ? `${race.raceLaps} laps`
       : null;
@@ -1305,6 +1306,7 @@ function TeammateCard({ you, mates, standings, card, sprint = null }) {
   };
   const weekend = !!sprint || !!m.sprint;
   const rows = [
+    { label: weekend ? "Feature race" : "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position) },
     weekend
       ? {
           label: "Sprint",
@@ -1313,7 +1315,6 @@ function TeammateCard({ you, mates, standings, card, sprint = null }) {
           win: better(sprint?.finished ? sprint.position : null, m.sprint?.position ?? null),
         }
       : null,
-    { label: weekend ? "Feature race" : "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position) },
     { label: "Grid", a: you.grid != null ? `P${you.grid}` : NO_VALUE, b: m.grid != null ? `P${m.grid}` : NO_VALUE, win: better(you.grid, m.grid) },
     { label: "Best lap", a: fmtLap(you.bestLapMs) || NO_VALUE, b: fmtLap(m.bestLapMs) || NO_VALUE, win: better(you.bestLapMs, m.bestLapMs) },
     { label: "Season points", a: standings?.after?.total ?? NO_VALUE, b: m.seasonPoints ?? NO_VALUE, win: better(standings?.after?.total, m.seasonPoints, false) },
