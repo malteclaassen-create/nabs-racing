@@ -87,6 +87,20 @@ export function findArchiveFor(seasonNumber, raceNumber) {
   return best?.data ?? null;
 }
 
+// The archived file that IS this race's. The archive is filed by season and
+// round number only, and a folder can hold a stray file under the same name
+// (another Watkins Glen, months apart), which would draw somebody a race they
+// never drove. So the file's own date has to sit within two days of the race:
+// a race past midnight, a file stamped in another zone, nothing wider.
+export function findArchiveForRace(race) {
+  const json = findArchiveFor(race?.season?.number ?? race?.seasonNumber, race?.number);
+  if (!json) return null;
+  const fileDay = json.Date ? Date.parse(json.Date) : NaN;
+  const raceDay = race?.date ? new Date(race.date).getTime() : NaN;
+  if (Number.isFinite(fileDay) && Number.isFinite(raceDay) && Math.abs(fileDay - raceDay) > 2 * 86_400_000) return null;
+  return json;
+}
+
 // Is there an archived file for this round at all? A directory listing and a
 // name check, no reading and no parsing — cheap enough to answer on every
 // results request, which is what lets the round page offer its lap-by-lap view

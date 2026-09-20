@@ -32,6 +32,8 @@ import { readDriverRoles } from "./driverRoles.js";
 import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
 import { raceWasClean, stewardingClosed, withMultiplier } from "./tokenRules.js";
+import { findArchiveForRace, analyzeRaceFor, raceInsightsFor } from "./cockpitArchive.js";
+import { cardCatalogueFor } from "./tokens.js";
 
 export const RECAP_SETTING = "race_recap";
 export const RECAP_MODES = ["off", "admins", "all"];
@@ -164,6 +166,48 @@ async function standingsAround(prisma, seasonId, number) {
   return { after, before, teams: { 1: [t1, t1Before], 2: [t2, t2Before] } };
 }
 
+// What the archived result file knows about the driver's race that the
+// classification does not: pace against the field, the best place they held
+// and for how long, the lap the best lap came on, the time lost off their
+// own pace, the stints. null without a file, or a driver without a Steam id.
+async function storyFor(prisma, race, rowId, ownRow) {
+  if (!rowId || !ownRow || ownRow.status === "DNS") return null;
+  const d = await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null);
+  if (!d?.steamId) return null;
+  const json = findArchiveForRace(race);
+  if (!json) return null;
+  const a = analyzeRaceFor(json, d.steamId);
+  if (!a) return null;
+  const ins = raceInsightsFor(json, d.steamId);
+  const positions = a.laps.map((l) => l.position).filter((p) => p != null);
+  const bestPosition = positions.length ? Math.min(...positions) : null;
+  let bestRun = null;
+  if (bestPosition != null) {
+    let start = null;
+    for (const l of a.laps) {
+      if (l.position === bestPosition) {
+        if (start == null) start = l.lap;
+        if (!bestRun || l.lap - start > bestRun.to - bestRun.from) bestRun = { from: start, to: l.lap };
+      } else {
+        start = null;
+      }
+    }
+  }
+  return {
+    paceMs: ins?.ownPaceMs ?? a.ownPaceMs ?? null,
+    paceRank: ins?.paceRank ?? null,
+    paceField: ins?.paceField ?? null,
+    gapToBestPaceMs: ins?.gapToBestPaceMs ?? null,
+    lap1Pos: ins?.lap1Pos ?? null,
+    offPaceMs: ins?.offPaceMs ?? null,
+    bestPosition,
+    bestRun,
+    bestLapAt: a.laps.find((l) => l.timeMs != null && l.timeMs === a.bestLapMs)?.lap ?? null,
+    stints: ins?.stints || [],
+    laps: a.laps.map((l) => ({ lap: l.lap, position: l.position, timeMs: l.timeMs, slow: !!l.slow })),
+  };
+}
+
 // The driver's own line of the round: the classification row plus what it
 // paid, phrased from the standings cell (which folds a sprint in).
 function ownRace(row, cell, fastestLapMs, fieldSize) {
@@ -272,6 +316,16 @@ async function pointsFor(prisma, req, discordId, race, rowId, own, demo = false)
     }
     hypothetical = entries.length > 0;
   }
+  // The cheapest card design still to be bought, so the chapter can say how
+  // far the balance is from the next one.
+  let nextCard = null;
+  try {
+    const designs = (await cardCatalogueFor(prisma, discordId)).flatMap((c) => c.designs.map((d) => ({ ...d, collectionName: c.name })));
+    const open = designs.filter((d) => !d.owned && d.cost > 0).sort((a, b) => a.cost - b.cost);
+    if (open[0]) nextCard = { name: open[0].name, collection: open[0].collectionName || null, cost: open[0].cost };
+  } catch {
+    nextCard = null;
+  }
   return {
     earning,
     rate,
@@ -280,6 +334,7 @@ async function pointsFor(prisma, req, discordId, race, rowId, own, demo = false)
     pending,
     hypothetical,
     balance: await dbBalance(prisma, discordId),
+    nextCard,
   };
 }
 
@@ -351,6 +406,8 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   let standings = null;
   let team = null;
   let cell = null;
+  let season = null;
+  let teammates = [];
   const number = race.number;
   if (number != null && !race.isSpecialEvent) {
     const around = await standingsAround(prisma, race.seasonId, number);
@@ -380,6 +437,58 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
         prevPosition: prevPos.get(r.driverId) ?? null,
         roundPoints: r.perRace?.[number]?.points ?? 0,
       }));
+      // The season so far, round by round, for the points curve: every
+      // championship round of the calendar, the driver's points and status on
+      // the ones already run, and which of them the drop rule takes away.
+      const calendar = await prisma.race.findMany({
+        where: { seasonId: race.seasonId, isSpecialEvent: false, number: { not: null } },
+        orderBy: { number: "asc" },
+        select: { id: true, number: true, track: true, isCompleted: true },
+      });
+      const dropped = new Set(meAfter.droppedRounds || []);
+      const rounds = calendar.map((r) => {
+        const c = meAfter.perRace?.[r.number] || null;
+        const run = r.isCompleted && r.number <= number;
+        return {
+          number: r.number,
+          raceId: r.id,
+          track: r.track,
+          run,
+          points: run ? c?.points ?? 0 : null,
+          status: run ? c?.status ?? "DNS" : null,
+          position: run && c?.status === "FINISHED" ? c.position ?? null : null,
+          grid: run ? c?.grid ?? null : null,
+          dropped: run && dropped.has(r.number),
+        };
+      });
+      const finishes = rounds.filter((r) => r.position != null);
+      const bestFinish = finishes.length ? finishes.reduce((b, r) => (r.position < b.position ? r : b)) : null;
+      season = {
+        rounds,
+        dropWorst: around.after.dropWorst ?? 0,
+        bestFinish: bestFinish ? { position: bestFinish.position, track: bestFinish.track, number: bestFinish.number } : null,
+      };
+      // The other cars in the same colours, with their race and their season.
+      const myTeamId = (ownRow?.effectiveTeam || ownRow?.team)?.id || null;
+      if (myTeamId) {
+        teammates = rows
+          .filter((r) => r.driverId !== rowId && (r.effectiveTeam || r.team)?.id === myTeamId)
+          .map((r) => {
+            const srow = list.find((x) => x.driverId === r.driverId);
+            return {
+              driverId: r.driverId,
+              name: r.name,
+              country: r.country,
+              photoUrl: r.photoUrl,
+              position: r.status === "FINISHED" ? r.position : null,
+              status: r.status,
+              grid: r.grid ?? null,
+              bestLapMs: r.bestLapMs ?? null,
+              seasonPoints: srow?.total ?? null,
+              seasonPosition: srow ? list.indexOf(srow) + 1 : null,
+            };
+          });
+      }
       standings = {
         before: meBefore ? { position: listBefore.indexOf(meBefore) + 1, total: meBefore.total } : null,
         after: { position: i + 1, total: meAfter.total },
@@ -415,7 +524,20 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   }
 
   const own = ownRace(ownRow, cell, fastestLapMs, finished.length);
-  const [rating, points, series, card, heroes, seasonHero] = await Promise.all([
+  if (own?.finished) {
+    // Whole teams the driver finished ahead of: every classified car of that
+    // team behind them (only teams that got two or more cars home, so "both
+    // Williams cars" is true as written).
+    const byTeam = new Map();
+    for (const r of finished) {
+      const t = r.effectiveTeam || r.team;
+      if (!t || t.id === (ownRow.effectiveTeam || ownRow.team)?.id) continue;
+      if (!byTeam.has(t.id)) byTeam.set(t.id, { name: t.name, positions: [] });
+      byTeam.get(t.id).positions.push(r.position);
+    }
+    own.beatTeams = [...byTeam.values()].filter((t) => t.positions.length >= 2 && t.positions.every((p) => p > own.position)).map((t) => t.name);
+  }
+  const [rating, points, series, card, heroes, seasonHero, story] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
     rowId ? pointsFor(prisma, req, discordId, race, rowId, own, demo) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
@@ -425,6 +547,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       .$queryRawUnsafe(`SELECT "heroImageUrl" FROM "Season" WHERE "id" = ?`, race.seasonId)
       .then((rows) => rows[0]?.heroImageUrl || null)
       .catch(() => null),
+    storyFor(prisma, race, rowId, ownRow).catch(() => null),
   ]);
 
   return {
@@ -435,6 +558,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       seriesSlug: series?.slug || null,
       seriesName: series?.name || null,
       fieldSize: rows.length,
+      starters: rows.filter((r) => r.status !== "DNS").length,
       finishers: finished.length,
       // The picture over the page: the round's own photo, else the season's,
       // else the frontend's league default.
@@ -444,6 +568,9 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     results: rows,
     quali: detail.quali,
     you: own,
+    story,
+    season,
+    teammates,
     standings,
     team,
     rating,
