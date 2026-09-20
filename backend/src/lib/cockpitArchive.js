@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { archiveDirsFor } from "./resultsArchive.js";
+import { archiveDirsFor, SPRINT_SUFFIX } from "./resultsArchive.js";
 
 // Laps beyond 30 minutes are import artefacts (pit-through outliers included
 // by AC on session joins), same guard as driverProfileService.
@@ -72,10 +72,11 @@ function readArchiveFile(path) {
 // season's series folder (lib/resultsArchive.js archiveDirsFor). A bare number
 // still works for the rounds filed before series existed.
 // A sprint weekend files two results under one round number: the feature race
-// as ever, and the sprint with a "-sprint" suffix (the commit names it so).
-// `sprint` picks that file; without it the sprint's file is never a candidate,
-// so the feature's readers cannot be handed the shorter race by mistake.
-const isSprintFile = (name) => name.endsWith("-sprint.json");
+// as ever, and the sprint with a "-sprint" suffix (lib/resultsArchive.js puts
+// it on). `sprint` picks that file; without it the sprint's file is never a
+// candidate, so the feature's readers cannot be handed the shorter race by
+// mistake.
+const isSprintFile = (name) => name.endsWith(`${SPRINT_SUFFIX}.json`);
 
 function roundFiles(dir, raceNumber, sprint) {
   const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;

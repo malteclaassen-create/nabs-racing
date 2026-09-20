@@ -125,10 +125,25 @@ export function migrateArchiveLayout() {
   return moved;
 }
 
-function roundFileName(raceNumber, track) {
+// A sprint weekend files two results under one round number: the feature race
+// as `rNN-<track>.json` and the sprint as `rNN-<track>-sprint.json`. The
+// readers (lib/cockpitArchive.js) tell the two apart by that suffix alone, so
+// it is put on AFTER the track slug is cut to length rather than being part
+// of the name that gets cut: "Autodromo Internazionale Enzo e Dino Ferrari
+// Sprint" lost its "-sprint" to the 40-character limit and landed on top of
+// the feature's file, which then served the sprint's contacts under the
+// feature race while the sprint had no file at all. And a feature race at a
+// circuit whose own name ends in "Sprint" gets "-race" appended, so its file
+// can never be taken for the weekend's second race.
+export const SPRINT_SUFFIX = "-sprint";
+
+function roundFileName(raceNumber, track, sprint = false) {
   const n = Number(raceNumber);
   const rr = Number.isFinite(n) ? `r${String(n).padStart(2, "0")}` : "r--";
-  return `${rr}-${slug(track)}.json`;
+  let name = slug(track);
+  if (sprint) name += SPRINT_SUFFIX;
+  else if (name.endsWith(SPRINT_SUFFIX)) name += "-race";
+  return `${rr}-${name}.json`;
 }
 
 // Best-effort sweep of stale incoming stashes (a parse that was never committed).
@@ -166,15 +181,19 @@ export function stashIncoming(json) {
 // Move a stashed JSON into its season folder once the round is known. Silent
 // no-op when the key is missing/expired (archiving must never fail an import).
 // `season` is the season row ({ id, number }); `seasonNumber` alone still
-// works and files at the root.
-export function archiveCommitted(archiveKey, { season = null, seasonNumber = null, raceNumber, track } = {}) {
+// works and files at the root. `sprint` files the JSON as the round's sprint
+// (see roundFileName), under the EVENT's round number.
+export function archiveCommitted(
+  archiveKey,
+  { season = null, seasonNumber = null, raceNumber, track, sprint = false } = {}
+) {
   if (!archiveKey) return null;
   try {
     const src = join(INCOMING_DIR, `${archiveKey}.json`);
     if (!existsSync(src)) return null;
     const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
-    const dest = join(dir, roundFileName(raceNumber, track));
+    const dest = join(dir, roundFileName(raceNumber, track, sprint));
     if (existsSync(dest)) unlinkSync(dest); // overwrite a re-import of the same round
     renameSync(src, dest);
     return dest;
@@ -186,11 +205,11 @@ export function archiveCommitted(archiveKey, { season = null, seasonNumber = nul
 
 // Write a JSON straight into a season folder (used by the backfill script, which
 // already knows the round). Overwrites an existing file for that round.
-export function saveDirect(json, { season = null, seasonNumber = null, raceNumber, track } = {}) {
+export function saveDirect(json, { season = null, seasonNumber = null, raceNumber, track, sprint = false } = {}) {
   try {
     const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
-    const dest = join(dir, roundFileName(raceNumber, track));
+    const dest = join(dir, roundFileName(raceNumber, track, sprint));
     writeFileSync(dest, JSON.stringify(json));
     return dest;
   } catch (e) {

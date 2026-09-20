@@ -8,6 +8,7 @@ import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
 import { fmtTimeCell } from "../utils/raceDuration.js";
 import { fmtStamp } from "../utils/format.js";
+import { pickNightSession, sessionOfFile, leaderLapsOf } from "../utils/sprintWeekend.mjs";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
 
@@ -64,20 +65,27 @@ function sameCircuit(session, track) {
   return canonicalTrack(name) === canon || wordHit(name, canon) || wordHit(name, track);
 }
 
+// The server sessions of a round's race night at its circuit, newest first.
+// Empty when the round has no date to compare against — guessing from the
+// circuit alone would happily hand back the same race from a previous season.
+function nightSessions(sessions, track, dateIso) {
+  if (!track || !dateIso) return [];
+  const ts = new Date(dateIso).getTime();
+  if (!Number.isFinite(ts)) return [];
+  return (sessions || [])
+    .filter((s) => s.ts != null && s.ts > ts - BEFORE_MS && s.ts < ts + AFTER_MS && sameCircuit(s, track))
+    .sort((a, b) => b.ts - a.ts);
+}
+
 // The server session that belongs to a round: same circuit, on the round's
 // race night. Several the same evening (a practice race before the real one)
-// resolve to the last, which is how a race night runs. Returns null when the
-// round has no date to compare against — guessing from the circuit alone would
-// happily hand back the same race from a previous season.
-function sessionForRace(sessions, track, dateIso) {
-  if (!track || !dateIso) return null;
-  const ts = new Date(dateIso).getTime();
-  if (!Number.isFinite(ts)) return null;
-  return (
-    (sessions || [])
-      .filter((s) => s.ts != null && s.ts > ts - BEFORE_MS && s.ts < ts + AFTER_MS && sameCircuit(s, track))
-      .sort((a, b) => b.ts - a.ts)[0] || null
-  );
+// resolve to the last, which is how a race night runs — except on a sprint
+// weekend, where the last one is the SPRINT and the feature is the race before
+// it (utils/sprintWeekend.mjs). Taking the last for both handed the feature
+// import the sprint's file, and with it the sprint's contacts under the
+// feature's reports.
+function sessionForRace(sessions, track, dateIso, { sprintWeekend = false, session = "RACE" } = {}) {
+  return pickNightSession(nightSessions(sessions, track, dateIso), { sprintWeekend, session });
 }
 
 // A select of server sessions with the picked round's circuit lifted to the
@@ -186,10 +194,13 @@ export default function AdminImport({ onCommitted }) {
   const targetTrack = targetRace?.track || "";
   const targetDate = targetRace?.date ? String(targetRace.date) : "";
   useEffect(() => {
-    const pick = sessionForRace(remote.data?.results, targetTrack, targetDate);
+    const pick = sessionForRace(remote.data?.results, targetTrack, targetDate, {
+      sprintWeekend: isSprintWeekend,
+      session: targetSession,
+    });
     setRemoteId(pick?.id || "");
     setRemoteAuto(!!pick);
-  }, [targetTrack, targetDate, remote.data]);
+  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession]);
 
   // The standalone attach's server pick, same idea. Here a circuit-only match
   // is an acceptable fallback for dateless archive rounds: a wrong qualifying
@@ -298,9 +309,38 @@ export default function AdminImport({ onCommitted }) {
   }
   const pitNote = pitRecordingNote(parsed?.pitRecording);
 
+  // Which race of a sprint weekend the loaded FILE is, read off its distance
+  // (utils/sprintWeekend.mjs): the sprint's leader ran the sprint's laps, the
+  // feature's the feature's. Null on an ordinary round, or when the file
+  // matches neither distance.
+  const fileSession = useMemo(() => {
+    if (!isSprintWeekend || !parsed) return null;
+    return sessionOfFile({
+      leaderLaps: leaderLapsOf(parsed.entries),
+      raceLaps: targetRace?.raceLaps,
+      sprintLaps: targetRace?.sprintLaps,
+    });
+  }, [isSprintWeekend, parsed, targetRace?.raceLaps, targetRace?.sprintLaps]);
+  // The file says one race and the page is set to the other. The page follows
+  // the file when it is loaded (below); this catches the admin switching it
+  // back by hand, and a file loaded before the session was known.
+  const sessionMismatch = fileSession != null && fileSession !== targetSession;
+
   // Shared: turn a parsed AC result (from upload or server) into the review form.
   function applyParsed(res) {
     setParsed(res);
+    // On a sprint weekend the file itself says which race it is, by its
+    // distance, and that beats whatever the dropdown happened to be set to:
+    // the sprint was imported as the feature more than once with nothing on
+    // the page to say so.
+    if (isSprintWeekend) {
+      const detected = sessionOfFile({
+        leaderLaps: leaderLapsOf(res.entries),
+        raceLaps: targetRace?.raceLaps,
+        sprintLaps: targetRace?.sprintLaps,
+      });
+      if (detected) setTargetSession(detected);
+    }
     const trackName = canonicalTrack(res.track) || "";
     setMeta({
       track: trackName,
@@ -664,7 +704,29 @@ export default function AdminImport({ onCommitted }) {
             {targetRace.sprintRaceId && (
               <span className="pill bg-surface2 text-light">sprint result already stored</span>
             )}
+            {fileSession && !sessionMismatch && (
+              <span className="pill bg-emerald-500/15 text-ok">
+                {fileSession === "SPRINT"
+                  ? `detected: the sprint (${targetRace.sprintLaps} laps)`
+                  : `detected: the feature race (${targetRace.raceLaps} laps)`}
+              </span>
+            )}
           </div>
+        )}
+        {sessionMismatch && (
+          <Notice kind="warn">
+            {fileSession === "SPRINT"
+              ? `This file looks like the sprint: its leader ran ${targetRace.sprintLaps} laps, the sprint distance. Saving it as the feature race would replace the feature's result with the sprint's.`
+              : `This file looks like the feature race: its leader ran ${targetRace.raceLaps} laps, the feature distance. Saving it as the sprint would replace the sprint's result with the feature's.`}{" "}
+            <button
+              type="button"
+              className="font-bold underline"
+              onClick={() => { setTargetSession(fileSession); setDone(null); }}
+              disabled={busy}
+            >
+              {fileSession === "SPRINT" ? "Import it as the sprint" : "Import it as the feature race"}
+            </button>
+          </Notice>
         )}
         {targetRace && (
           <p className="text-sm text-medium">
