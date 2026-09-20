@@ -27,8 +27,8 @@ function fmtRemote(r) {
   const d = r.date ? new Date(r.date) : null;
   const when = d
     ? fmtStamp(d)
-    : r.id;
-  return `${when} · ${r.trackShort || r.track || r.type}`;
+    : r.sessionId || r.id;
+  return `${when} · ${r.trackShort || r.track || r.type}${r.serverName ? ` · ${r.serverName}` : ""}`;
 }
 
 // "Round 9 · Spa · 12 Aug 2026" — how a race of this season reads in a picker.
@@ -251,6 +251,7 @@ export default function AdminImport({ onCommitted }) {
     const cands = (remoteQuali.data?.results || [])
       .filter(
         (q) =>
+          q.server === race.server &&
           q.trackShort === race.trackShort &&
           q.ts != null &&
           race.ts != null &&
@@ -583,7 +584,7 @@ export default function AdminImport({ onCommitted }) {
   const remoteList = remote.data?.results || [];
   const filteredRemote = remoteQuery.trim()
     ? remoteList.filter((r) =>
-        `${r.dateStr || ""} ${r.track || ""}`.toLowerCase().includes(remoteQuery.trim().toLowerCase())
+        `${r.dateStr || ""} ${r.track || ""} ${r.serverName || ""}`.toLowerCase().includes(remoteQuery.trim().toLowerCase())
       )
     : remoteList;
 
@@ -704,11 +705,11 @@ export default function AdminImport({ onCommitted }) {
               <span className="pill bg-emerald-500/15 text-ok">recommended · penalty-corrected</span>
             </div>
             <p className="mt-1 text-sm text-light">
-              Pull the finished race straight from NABS Server 1. No file export needed.
+              Pull the finished race straight from the race servers. No file export needed.
             </p>
             {remote.error ? (
               <p className="mt-3 text-sm text-warn">
-                Couldn’t reach the race server. Use the file upload below instead.
+                Couldn’t reach the race servers. Use the file upload below instead.
               </p>
             ) : (
               <div className="mt-3 space-y-2">
@@ -734,7 +735,7 @@ export default function AdminImport({ onCommitted }) {
                         ? "Loading sessions…"
                         : remoteList.length
                         ? `Choose a race… (${filteredRemote.length})`
-                        : "No races on server"}
+                        : "No races on the servers"}
                     </option>
                     <SessionOptions sessions={filteredRemote} track={targetTrack} />
                   </select>

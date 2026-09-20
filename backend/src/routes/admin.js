@@ -9,7 +9,7 @@ import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
-import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
+import { listRemoteResults, fetchRemoteResult, RESULT_REF_RE } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
@@ -571,7 +571,7 @@ router.get("/results/remote", async (req, res, next) => {
 router.post("/results/remote/import", async (req, res, next) => {
   try {
     const { id, season, series } = req.body || {};
-    if (!id || !/^[A-Za-z0-9_]+$/.test(id)) return res.status(400).json({ error: "Valid result id required" });
+    if (!id || !RESULT_REF_RE.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
     const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series });
     const drivers = await attachSteamIds(await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } }));
@@ -734,7 +734,7 @@ router.post("/races/:id/quali", upload.single("file"), async (req, res, next) =>
     } else if (req.body && req.body.remoteId) {
       // Pull the QUALIFY session straight from the AC Server Manager (same
       // source as the remote race import).
-      if (!/^[A-Za-z0-9_]+$/.test(String(req.body.remoteId))) {
+      if (!RESULT_REF_RE.test(String(req.body.remoteId))) {
         return res.status(400).json({ error: "Valid result id required" });
       }
       json = await fetchRemoteResult(String(req.body.remoteId));
