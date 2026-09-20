@@ -14,6 +14,7 @@ import { seasonRowForDriver } from "../lib/persons.js";
 import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled, notifyAdminsSeatDropped } from "../lib/notifications.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
+import { promoteFromWaitlist } from "../lib/waitlist.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -351,6 +352,13 @@ router.delete("/offer/:offerId", async (req, res, next) => {
       return res.status(403).json({ error: "You can only withdraw your own offer" });
     }
     await prisma.seatOffer.delete({ where: { id: offer.id } });
+    // The offer held the seat open (lib/waitlist.js counts an open offer as
+    // taken) and the DECLINED behind it stays, so withdrawing it really does
+    // leave a car nobody is in. That one goes to the front of the queue.
+    const promoted = await promoteFromWaitlist(prisma, offer.raceId);
+    // Somebody moved onto the grid, so the Discord post's columns are out of
+    // date. Never fails the withdrawal.
+    if (promoted.length) await syncRaceToDiscord(prisma, offer.raceId).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     next(e);

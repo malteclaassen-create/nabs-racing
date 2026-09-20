@@ -526,6 +526,10 @@ export const api = {
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
+  // Steam ids for one race's entry list, admins only. Its own request rather
+  // than a field on /events: a Steam id names a real account and the entry list
+  // is a page the whole league reads.
+  raceSteamIds: (raceId) => request(`/events/${raceId}/steam-ids`, { identityAuth: true }),
   // "I want to race": a logged-in account with no driver profile raises a hand
   // for a race; the admin sees it in Members → Needs attention.
   myRaceRequest: () => request("/me/race-request", { userAuth: true }),

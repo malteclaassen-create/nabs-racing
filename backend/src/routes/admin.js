@@ -140,6 +140,7 @@ import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId, publicDriverId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
+import { promoteFromWaitlist } from "../lib/waitlist.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1290,6 +1291,10 @@ router.delete("/market/:offerId", async (req, res, next) => {
     const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
     await prisma.seatOffer.delete({ where: { id: offer.id } });
+    // Same as a driver withdrawing their own: the seat the offer was holding
+    // open is a real free seat now (see lib/waitlist.js).
+    const promoted = await promoteFromWaitlist(prisma, offer.raceId);
+    if (promoted.length) await syncRaceToDiscord(prisma, offer.raceId).catch(() => {});
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -6006,6 +6011,13 @@ router.put("/attendance-grid", async (req, res, next) => {
       where: { isCompleted: false, season: { seriesId: series.id } },
       data: { capacity: size },
     });
+    // A bigger grid is seats coming free: whoever is waiting for this series'
+    // rounds moves up right away rather than on the next answer somebody gives.
+    const affected = await prisma.race.findMany({
+      where: { isCompleted: false, season: { seriesId: series.id } },
+      select: { id: true },
+    });
+    for (const r of affected) await promoteFromWaitlist(prisma, r.id);
     // An already-announced round shows the count in its Discord embed, so the
     // posts that are still up follow along instead of drifting.
     const announced = await prisma.race.findMany({

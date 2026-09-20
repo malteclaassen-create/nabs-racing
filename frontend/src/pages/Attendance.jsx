@@ -432,6 +432,10 @@ export default function Attendance() {
               busy={busy}
               onSetStatus={setStatus}
               onClear={clearStatus}
+              // Unlocks the Steam-id view in the card's header. The ids come
+              // from their own admin-only request, so this only decides whether
+              // the button is there to press.
+              isAdmin={!!user?.isAdmin}
               // Takes the height the video leaves over in the split layout; no
               // effect in the single-column one, where nothing is flexing.
               className="lg:grow"

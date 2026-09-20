@@ -457,6 +457,29 @@ export async function notifySeatFilled(prisma, { offerId, raceId, reserve }) {
   }
 }
 
+// A seat came free and the front of the waiting list moved onto the grid. Not
+// muteable: it is the answer to a question they asked by joining the queue, and
+// somebody who does not hear it turns up to a race they think they are not in
+// (or, worse, does not turn up to one they are).
+export async function notifyWaitlistPromoted(prisma, { race, driver }) {
+  try {
+    if (!driver?.discordUserId || !race?.id) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    await dbCreateNotification(prisma, {
+      type: "ATTENDANCE",
+      title: `You're on the grid for ${roundName(race)}`,
+      body: `A seat came free at ${race.track} and you were next on the waiting list. You're down as accepted.`,
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId: driver.discordUserId,
+      // No dedupe key: this only ever fires on a real move from the queue onto
+      // the grid, and somebody who drops out and moves up again needs to hear
+      // it the second time too.
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // --- admin alerts -------------------------------------------------------------
 // The two things in the Members tab that need a HUMAN: somebody signed in and no
 // driver row claims them, and somebody asked for a seat. Both sit in the admin

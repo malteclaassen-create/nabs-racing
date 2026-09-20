@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Hourglass, Fingerprint, Copy, Check } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { api } from "../api/client.js";
+import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
 
 // Quiet by default, colour only where it means something: the three answer
@@ -43,6 +45,23 @@ export const STATUS_UI = {
     active: "border-amber-500 bg-amber-500 text-white",
     bar: "bg-amber-500",
   },
+};
+
+// The waiting list.
+//
+// Not a fourth answer button and not one of the admin's three columns: it is
+// what Accept turns into once the grid is full, and it gets its own numbered
+// block under the columns because a queue is an order, not a set. Blue, because
+// it is neither a yes nor a no: it is "next, if a seat comes free".
+export const WAITLIST = "WAITLIST";
+
+const WAITLIST_UI = {
+  label: "Join waiting list",
+  title: "Waiting list",
+  Icon: Hourglass,
+  idle: "border-border bg-card text-medium hover:border-sky-500/60 hover:text-dark",
+  idleIcon: "text-link",
+  active: "border-sky-600 bg-sky-600 text-white",
 };
 
 export function StatusIcon({ d, className = "" }) {
@@ -86,6 +105,51 @@ export function SubMark({ sub }) {
   );
 }
 
+// When an answer was given, short. The date is in there because a sign-up that
+// opened five days ago is five days of "19:42" otherwise.
+function answerTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// The admin's line under a name: when they answered, and their Steam id to
+// copy. Two things an admin building a grid or an entry list for the server
+// needs and nobody else has any business seeing, which is why they live behind
+// the header's toggle and come from their own request.
+function AdminLine({ answeredAt, steamId }) {
+  const [done, setDone] = useState(false);
+  const when = answerTime(answeredAt);
+  useEffect(() => {
+    if (!done) return undefined;
+    const t = setTimeout(() => setDone(false), 1200);
+    return () => clearTimeout(t);
+  }, [done]);
+  return (
+    <div className="mt-0.5 min-w-0 pl-[26px]">
+      {when && <p className="font-mono text-[10px] leading-tight text-faint">{when}</p>}
+      {steamId ? (
+        <button
+          type="button"
+          title="Copy this Steam ID"
+          onClick={async () => setDone(await copyText(steamId))}
+          className="flex w-full min-w-0 items-center gap-1 font-mono text-[10px] leading-tight text-light transition hover:text-dark"
+        >
+          {done ? (
+            <Check className="h-3 w-3 shrink-0 text-ok" aria-hidden="true" />
+          ) : (
+            <Copy className="h-3 w-3 shrink-0 opacity-50" aria-hidden="true" />
+          )}
+          <span className="truncate">{steamId}</span>
+        </button>
+      ) : (
+        <p className="font-mono text-[10px] leading-tight text-faint">no Steam ID</p>
+      )}
+    </div>
+  );
+}
+
 // One upcoming race: attendance buttons (when signed in) + the three status
 // columns + the embedded Driver Market. State/actions are owned by the parent.
 export default function RaceSignupCard({
@@ -108,6 +172,9 @@ export default function RaceSignupCard({
   // block so the page can scroll to it and notice when it is on screen.
   seatHighlight = false,
   seatRef = null,
+  // Unlocks the Steam-id view in the header. The ids themselves are fetched
+  // separately and only when asked for — see SteamIdBar.
+  isAdmin = false,
 }) {
   // The market context of the RACE's season — see the note further down at
   // SeatMarket for why it is read this way even when null.
@@ -118,8 +185,8 @@ export default function RaceSignupCard({
   // the login's row left a member looking at their own answer with no way to
   // take it back, because the card did not recognise it as theirs.
   const myIds = new Set([driverId, meHere?.driverId].filter(Boolean));
-  const myStatus = ["ACCEPTED", "DECLINED", "TENTATIVE"].find((s) =>
-    ev.rsvps[s].some((r) => myIds.has(r.driverId))
+  const myStatus = ["ACCEPTED", "DECLINED", "TENTATIVE", WAITLIST].find((s) =>
+    (ev.rsvps[s] || []).some((r) => myIds.has(r.driverId))
   );
   // A seat handed to the Driver Market has answered the question already: the
   // offer files a DECLINED with it (routes/market.js) and the server refuses
@@ -153,6 +220,57 @@ export default function RaceSignupCard({
   }
   const capacity = ev.capacity ?? 40;
   const accepted = ev.rsvps.ACCEPTED.length;
+  // The queue, in join order (the server sorts it, and promotes in the same
+  // order). `gridFull` is the server's verdict rather than a sum worked out
+  // here, so the button and what happens when you press it always agree: a car
+  // being handed over in the Driver Market still counts as taken.
+  const waiting = ev.rsvps[WAITLIST] || [];
+  const gridFull = !!ev.gridFull;
+  const myWaitingPlace = waiting.findIndex((r) => myIds.has(r.driverId)) + 1;
+
+  // Admin view: Steam ids + answer times beside the names. Fetched on the first
+  // ask and kept for as long as the card stays on this race, so flicking it on
+  // and off does not hit the server every time. Reset when the race changes —
+  // the ids belong to that entry list and nobody else's.
+  const [adminView, setAdminView] = useState(false);
+  const [steamIds, setSteamIds] = useState(null);
+  const [steamError, setSteamError] = useState(null);
+  const [copyNote, setCopyNote] = useState(null);
+  useEffect(() => {
+    setAdminView(false);
+    setSteamIds(null);
+    setSteamError(null);
+  }, [ev.id]);
+  useEffect(() => {
+    if (!copyNote) return undefined;
+    const t = setTimeout(() => setCopyNote(null), 2000);
+    return () => clearTimeout(t);
+  }, [copyNote]);
+  async function toggleAdminView() {
+    if (adminView) {
+      setAdminView(false);
+      return;
+    }
+    setAdminView(true);
+    if (steamIds) return;
+    try {
+      const res = await api.raceSteamIds(ev.id);
+      setSteamIds(res?.ids || {});
+    } catch (e) {
+      setSteamError(e.message);
+    }
+  }
+  // The whole accepted column as a list of ids, which is the shape an entry
+  // list for the server wants. Names left out on purpose: this is the thing
+  // that gets pasted, and a name beside it only has to be deleted again.
+  const acceptedSteamIds = useMemo(
+    () => ev.rsvps.ACCEPTED.map((r) => steamIds?.[r.driverId]).filter(Boolean),
+    [ev.rsvps.ACCEPTED, steamIds]
+  );
+  async function copyAllSteamIds() {
+    const ok = await copyText(acceptedSteamIds.join("\n"));
+    setCopyNote(ok ? `${acceptedSteamIds.length} Steam IDs copied` : "This browser blocked the clipboard");
+  }
 
   // Sign-up window (admin-configured): before it opens, the buttons make way
   // for a note saying when. Which answer columns show is also the admin's call.
@@ -214,8 +332,21 @@ export default function RaceSignupCard({
         ) : canSignUp ? (
           <div className="flex flex-wrap items-center gap-2">
             {/* Only the answers the admin offers get a button (the same list
-                that decides the columns below). The server refuses the rest. */}
-            {Object.entries(STATUS_UI).filter(([status]) => visible.includes(status)).map(([status, ui]) => {
+                that decides the columns below). The server refuses the rest.
+
+                On a full grid the Accept button becomes the waiting list: the
+                seat it promises does not exist, and a button that answers with
+                an error is worse than one that says what it can actually do.
+                Somebody who already holds a seat keeps their Accept, however
+                full the round is. */}
+            {Object.entries(STATUS_UI)
+              .filter(([status]) => visible.includes(status))
+              .map(([status, ui]) =>
+                status === "ACCEPTED" && gridFull && myStatus !== "ACCEPTED"
+                  ? [WAITLIST, WAITLIST_UI]
+                  : [status, ui]
+              )
+              .map(([status, ui]) => {
               const active = myStatus === status;
               return (
                 <button
@@ -231,8 +362,12 @@ export default function RaceSignupCard({
                     active ? ui.active : ui.idle
                   } ${myOffer ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
                 >
-                  <StatusIcon d={ui.icon} className={active ? "" : ui.idleIcon} />
-                  {ui.label}
+                  {ui.Icon ? (
+                    <ui.Icon className={`h-4 w-4 ${active ? "" : ui.idleIcon}`} aria-hidden="true" />
+                  ) : (
+                    <StatusIcon d={ui.icon} className={active ? "" : ui.idleIcon} />
+                  )}
+                  {active && status === WAITLIST && myWaitingPlace ? `Waiting, no. ${myWaitingPlace}` : ui.label}
                 </button>
               );
             })}
@@ -301,16 +436,53 @@ export default function RaceSignupCard({
         )}
       </div>
 
+      {/* The admin's own row. Off by default and off again as soon as the card
+          moves to another race: it puts Steam ids on screen, which is not
+          something to leave lying around on a page with a league in it. */}
+      {isAdmin && !notYetOpen && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-5 py-2.5">
+          <button
+            type="button"
+            onClick={toggleAdminView}
+            aria-pressed={adminView}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+              adminView ? "border-brand bg-brand text-ink" : "border-border bg-card text-medium hover:text-dark"
+            }`}
+          >
+            <Fingerprint className="h-3.5 w-3.5" aria-hidden="true" />
+            Steam IDs
+          </button>
+          {adminView && (
+            <>
+              <button
+                type="button"
+                onClick={copyAllSteamIds}
+                disabled={!acceptedSteamIds.length}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:text-dark disabled:opacity-40"
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Copy accepted ({acceptedSteamIds.length})
+              </button>
+              <span className="text-xs text-light">
+                {copyNote || steamError || "Sign-up times and Steam IDs show under every name. Admins only."}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* grid fill: how many of the available seats are taken */}
       {!notYetOpen && visible.includes("ACCEPTED") && (
       <div className="border-b border-border px-5 py-3">
         <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
           <span>Grid</span>
-          <span className="tabular-nums text-medium">{accepted}/{capacity} seats taken</span>
+          <span className={`tabular-nums ${gridFull ? "text-warn" : "text-medium"}`}>
+            {gridFull ? `Full · ${accepted}/${capacity} seats taken` : `${accepted}/${capacity} seats taken`}
+          </span>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">
           <div
-            className="h-full rounded-full bg-green-600 transition-all"
+            className={`h-full rounded-full transition-all ${gridFull ? "bg-amber-500" : "bg-green-600"}`}
             style={{ width: `${Math.min(100, (accepted / capacity) * 100)}%` }}
           />
         </div>
@@ -340,7 +512,8 @@ export default function RaceSignupCard({
                 for, so the names arrive one after another instead of as a block. */}
             <ul className="cascade space-y-1.5">
               {ev.rsvps[status].map((r, i) => (
-                <li key={r.driverId} style={{ "--i": i }} className="flex min-w-0 items-center gap-1.5 text-sm sm:gap-2">
+                <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
+                  <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                   {/* The team's mark rather than a coloured dot: on a grid
                       with two cars per team the colour alone was a quiz, and
                       the logo says who at a glance. Falls back to the
@@ -362,6 +535,8 @@ export default function RaceSignupCard({
                   </span>
                   <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  </div>
+                  {adminView && <AdminLine answeredAt={r.answeredAt} steamId={steamIds?.[r.driverId]} />}
                 </li>
               ))}
               {ev.rsvps[status].length === 0 && <li className="text-sm text-faint"><NoData className="text-sm" /></li>}
@@ -369,6 +544,49 @@ export default function RaceSignupCard({
           </div>
         ))}
       </div>
+      )}
+
+      {/* The queue, under the columns rather than beside them: it is an order,
+          not a fourth answer, and a fourth narrow column of truncated names on
+          a phone would have said neither. Numbered, because the number is the
+          whole information — first in line is first onto the grid. */}
+      {!notYetOpen && waiting.length > 0 && (
+        <div className="border-t border-border px-4 py-4 sm:px-5">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+              <Hourglass className="h-3.5 w-3.5 shrink-0 text-link" aria-hidden="true" />
+              Waiting list
+              <span className="text-light">({waiting.length})</span>
+            </span>
+            <span className="text-xs text-light">
+              The grid is full. First in line moves up the moment a seat comes free.
+            </span>
+          </div>
+          <ol className="cascade grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            {waiting.map((r, i) => (
+              <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
+                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                  <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">{i + 1}.</span>
+                  <TeamLogo
+                    id={r.team.id}
+                    name={r.team.name}
+                    color={r.team.color}
+                    logoUrl={r.team.logoUrl}
+                    size={18}
+                  />
+                  <span
+                    className={`truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
+                    title={r.name}
+                  >
+                    {r.name}
+                  </span>
+                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                </div>
+                {adminView && <AdminLine answeredAt={r.answeredAt} steamId={steamIds?.[r.driverId]} />}
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
 
       {/* meHere is the market context of the RACE's season (a member can be

@@ -159,10 +159,16 @@ function seasonLabel(season) {
 
 function buildEmbed(race, rsvps, offered = Object.keys(STATUS_META)) {
   const groups = { ACCEPTED: [], TENTATIVE: [], DECLINED: [] };
+  const named = (r) => r.driver?.discordName || r.driver?.name || r.driverId;
   for (const r of rsvps) {
-    const name = r.driver?.discordName || r.driver?.name || r.driverId;
-    if (groups[r.status]) groups[r.status].push(name);
+    if (groups[r.status]) groups[r.status].push(named(r));
   }
+  // In join order, which is what the queue means — the site's list reads the
+  // same way (lib/waitlist.js).
+  const waiting = rsvps
+    .filter((r) => r.status === "WAITLIST")
+    .sort((a, b) => new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0))
+    .map(named);
 
   const cap = race.capacity || 40;
   // Only the answers the admin offers get a column (Notifications tab); a
@@ -176,6 +182,18 @@ function buildEmbed(race, rsvps, offered = Object.keys(STATUS_META)) {
       inline: true,
     };
   });
+
+  // The waiting list is not one of the admin's columns and cannot be switched
+  // off, so it is appended rather than filtered — and only when somebody is
+  // actually on it, which on a league that never fills its grid is never.
+  // In join order, the same order lib/waitlist.js promotes in.
+  if (waiting.length) {
+    fields.push({
+      name: `⏳ Waiting list (${waiting.length})`,
+      value: waiting.map((n, i) => `${i + 1}. ${n}`).join("\n"),
+      inline: true,
+    });
+  }
 
   const desc = [`**${fmtDate(race.date)}**`];
   // Session format line (Apollo-style), only the parts that are actually set.

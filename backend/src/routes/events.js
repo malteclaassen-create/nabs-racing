@@ -17,10 +17,14 @@ import { applyMemberSteamId } from "../lib/members.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
+import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 
 const router = Router();
-const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE"];
+// WAITLIST is an answer like any other in the table, but not one the admin
+// can switch on or off and not one the buttons offer freely: it is what
+// Accept turns into once the grid is full. See lib/waitlist.js.
+const VALID = ["ACCEPTED", "DECLINED", "TENTATIVE", WAITLIST];
 
 // Season ids whose upcoming races the events feature covers. An explicit
 // ?season keeps the old single-season behaviour; otherwise EVERY season of the
@@ -135,6 +139,19 @@ router.get("/", async (req, res, next) => {
     // the column off and give the width back to the sign-up.
     const showHotlaps = await hotlapsShownFor(prisma, req.query.series || null);
 
+    // Cars being handed over in the Driver Market. They still occupy their seat
+    // even though the offering driver is down as declined, which is the rule
+    // lib/waitlist.js enforces — the page has to know it too, or Accept would
+    // look available for a seat the server will refuse.
+    const openOffers = new Map();
+    for (const row of await prisma.seatOffer.groupBy({
+      by: ["raceId"],
+      where: { raceId: { in: races.map((r) => r.id) }, status: "OPEN" },
+      _count: { _all: true },
+    })) {
+      openOffers.set(row.raceId, row._count._all);
+    }
+
     // Sign-up gating + which answer columns the page shows (admin-configured).
     //
     // `people` is what keeps one human to one line. A person with two roster
@@ -159,7 +176,7 @@ router.get("/", async (req, res, next) => {
 
     const events = races.map((race) => {
       const gate = attendanceGate(race, notify, overrides);
-      const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [] };
+      const grouped = { ACCEPTED: [], DECLINED: [], TENTATIVE: [], [WAITLIST]: [] };
       // Both ends of every completed seat swap for this race, by driver id.
       // `IN` is the reserve who took the car — their own row says "Reserve",
       // which is not the car they are driving on Sunday, so the swap carries
@@ -179,6 +196,11 @@ router.get("/", async (req, res, next) => {
           driverId: r.driverId,
           name: r.driver.name,
           discordName: r.driver.discordName,
+          // When this answer was last given. It orders the waiting list (first
+          // in, first onto the grid) and it is what finally answers "who was
+          // the last one in" for a round that filled up — the admin's Steam-id
+          // view on the sign-up card shows it beside the name.
+          answeredAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null,
           // Linked-person fallback: a row without its own flag shows the
           // person's current one (same rule as the standings).
           country: r.driver.country || identity.get(r.driverId)?.country || null,
@@ -202,6 +224,9 @@ router.get("/", async (req, res, next) => {
           sub: swap && { direction: swap.direction, teamName: swap.team.name, forName: swap.forName },
         });
       }
+      // The queue is an order, not a set: oldest answer first, which is the
+      // order lib/waitlist.js promotes in.
+      grouped[WAITLIST].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0));
       return {
         id: race.id,
         number: race.number,
@@ -236,10 +261,17 @@ router.get("/", async (req, res, next) => {
         // Only ever true in the admin's own view (see the filter above).
         hidden: hidden.has(race.id),
         visibleStatuses: notify.attendanceShow,
+        // Is there still a seat to accept? The grid size is a rule now, not a
+        // label: past it the Accept button becomes "join the waiting list".
+        // Deliberately the server's verdict rather than a sum the page works
+        // out for itself, so the button and the answer to pressing it agree.
+        gridFull:
+          grouped.ACCEPTED.length + (openOffers.get(race.id) || 0) >= (race.capacity || 40),
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
           DECLINED: grouped.DECLINED.length,
           TENTATIVE: grouped.TENTATIVE.length,
+          [WAITLIST]: grouped[WAITLIST].length,
         },
         rsvps: grouped,
       };
@@ -346,7 +378,10 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // An answer the admin switched off (Notifications tab) has no button on
     // the page; this keeps a stale tab or an old ?rsvp=maybe link from
     // filing it anyway.
-    if (!notify.attendanceShow.includes(status)) {
+    // The waiting list is not one of the admin's three columns and can't be
+    // switched off — it is what Accept becomes on a full grid, so what it needs
+    // offered is ACCEPTED.
+    if (!notify.attendanceShow.includes(status === WAITLIST ? "ACCEPTED" : status)) {
       return res.status(400).json({ error: "That answer isn't offered any more. Please pick one of the others" });
     }
     const opens = gate.opensAt;
@@ -393,11 +428,40 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       });
     }
 
-    await prisma.raceRsvp.upsert({
+    // The grid size is a rule, not a label. Accept is refused once the round is
+    // full and the waiting list is what's on offer instead (lib/waitlist.js).
+    // Somebody who is already in keeps their seat whatever the count says —
+    // that matters for a round that was already over capacity before any of
+    // this existed, where nobody is pushed out.
+    const seats = await seatsFor(prisma, race, driver.id);
+    if (status === "ACCEPTED" && seats.mine !== "ACCEPTED" && !seats.free) {
+      return res.status(409).json({
+        error: `The grid is full (${seats.accepted}/${seats.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
+        gridFull: true,
+      });
+    }
+    // And the other way round: a tab that has been open since the grid was full
+    // must not put somebody in a queue that no longer exists.
+    const want = status === WAITLIST && (seats.free || seats.mine === "ACCEPTED") ? "ACCEPTED" : status;
+
+    // Written only when it actually changes. RaceRsvp.updatedAt is the waiting
+    // list's queue position, so re-pressing the button you are already on would
+    // otherwise send you to the back of it.
+    const existing = await prisma.raceRsvp.findUnique({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
-      update: { status },
-      create: { raceId: race.id, driverId: driver.id, status },
+      select: { status: true },
     });
+    if (existing?.status !== want) {
+      await prisma.raceRsvp.upsert({
+        where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+        update: { status: want },
+        create: { raceId: race.id, driverId: driver.id, status: want },
+      });
+    }
+    // Giving up a seat hands it to whoever is at the front of the queue.
+    if (existing?.status === "ACCEPTED" && want !== "ACCEPTED") {
+      await promoteFromWaitlist(prisma, race.id);
+    }
 
     // And take back any answer this PERSON left on another of their rows for
     // this race. That is how the duplicates got made: sign up, change your
@@ -449,8 +513,52 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
     await prisma.raceRsvp.deleteMany({
       where: { raceId: req.params.id, driverId: driver?.id || driverId },
     });
+    // Taking an answer back can free a seat, same as declining one.
+    await promoteFromWaitlist(prisma, req.params.id);
     const discord = await syncRaceToDiscord(prisma, req.params.id);
     res.json({ ok: true, discord });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/events/:id/steam-ids -> { ids: { <driverId>: "765611…" } }
+//
+// Admins only, and deliberately its own request rather than a field on the
+// entry list: a Steam id identifies a real account and has no business being in
+// a page the whole league reads. The admin asks for it when they need it (the
+// "Steam IDs" button on the sign-up card), which is when a grid is being built
+// or an entry list written for the server.
+//
+// Falls back to the Steam account the member proved on their own profile when
+// the roster row has not captured one from a result import yet — for a driver
+// who has never raced that is the only one there is.
+router.get("/:id/steam-ids", optionalUser, async (req, res, next) => {
+  try {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: "Admins only" });
+    const rsvps = await prisma.raceRsvp.findMany({
+      where: { raceId: req.params.id },
+      include: { driver: { select: { id: true, steamId: true, discordUserId: true } } },
+    });
+    const ids = {};
+    const needFallback = [];
+    for (const r of rsvps) {
+      const d = r.driver;
+      if (!d) continue;
+      if (d.steamId) ids[d.id] = d.steamId;
+      else if (d.discordUserId) needFallback.push(d);
+    }
+    if (needFallback.length) {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "discordId", "steamId" FROM "MemberAccount" WHERE "steamId" IS NOT NULL`
+      );
+      const byDiscord = new Map(rows.map((m) => [m.discordId, m.steamId]));
+      for (const d of needFallback) {
+        const sid = byDiscord.get(d.discordUserId);
+        if (sid) ids[d.id] = sid;
+      }
+    }
+    res.json({ ids });
   } catch (e) {
     next(e);
   }
