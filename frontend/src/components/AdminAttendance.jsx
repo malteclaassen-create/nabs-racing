@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, Notice, CardHead, HelpNote } from "./ui.jsx";
+import { ErrorBox, Notice, CardHead, HelpNote, Field } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
@@ -44,10 +44,47 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
   // Per-race sign-up switches, plus the general rule they fall back to.
   const [gates, setGates] = useState({});
   const [rule, setRule] = useState(null);
+  // How many seats the sign-up counts up to. One number for the series, not a
+  // constant: a league that moves to a bigger server changes it here.
+  const [grid, setGrid] = useState(null);
+  const [gridInput, setGridInput] = useState("");
   useEffect(() => {
     api.attendanceGates().then(setGates).catch((e) => setError(e.message));
     api.adminNotificationSettings().then((d) => setRule(d.settings || d)).catch(() => {});
+    api.attendanceGrid()
+      .then((d) => {
+        setGrid(d.size);
+        setGridInput(String(d.size));
+      })
+      .catch(() => {});
   }, []);
+
+  async function saveGrid(ev) {
+    ev.preventDefault();
+    const size = Number(gridInput);
+    if (!Number.isInteger(size) || size < 1 || size > 128) {
+      setError("Grid size must be a whole number between 1 and 128.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await api.saveAttendanceGrid(size);
+      setGrid(res.size);
+      setGridInput(String(res.size));
+      await events.reload();
+      setMsg(
+        res.updated === 1
+          ? `Grid is ${res.size} seats. One round still to run was changed.`
+          : `Grid is ${res.size} seats, across ${res.updated} rounds still to run.`
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // On or off the attendance page. Separate from the gate below: a race that
   // has been hidden keeps whatever open/closed setting it had for when it
@@ -119,6 +156,12 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
         onChange={setView}
       />
 
+      {/* What the switches, the reminder and the grid size have to say for
+          themselves. The strings were always written, they just had nowhere
+          to land. */}
+      {error && <ErrorBox message={error} title="That didn't save" />}
+      {msg && <Notice>{msg}</Notice>}
+
       {view === "history" && <AdminAttendanceHistory />}
 
       {view === "activity" && <AdminAttendanceActivity />}
@@ -135,6 +178,38 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="Attendance page" title="Who can sign up" />
         <p className="text-sm text-light">Which races are taking answers, and which are on the page at all.</p>
+
+        {/* The grid size. It reads as a setting rather than a per-race switch,
+            so it sits above the list instead of in every row. */}
+        <form onSubmit={saveGrid} className="rounded-xl border border-border bg-surface2/40 px-4 py-3">
+          <Field
+            label="Seats on the grid"
+            hint="What the sign-up counts up to, here and in the Discord post. Rounds already run keep their old number."
+          >
+            {(props) => (
+              <div className="flex items-center gap-2">
+                <input
+                  {...props}
+                  type="number"
+                  min="1"
+                  max="128"
+                  className="input w-24"
+                  value={gridInput}
+                  disabled={busy || grid === null}
+                  onChange={(e) => setGridInput(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+                  disabled={busy || grid === null || String(grid) === gridInput.trim()}
+                >
+                  Save
+                </button>
+              </div>
+            )}
+          </Field>
+        </form>
+
         <HelpNote label="How the switches work">
           <ul className="space-y-1">
             <li>
@@ -198,7 +273,7 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
                       {e.type === "TRAINING" ? "Training" : `Round ${e.number}`} · {e.track}
                     </div>
                     <div className="font-mono text-[11px] uppercase tracking-wider text-light">
-                      {fmtDate(e.date)} · {e.hidden ? "hidden" : effective} · {e.counts?.ACCEPTED ?? 0} in
+                      {fmtDate(e.date)} · {e.hidden ? "hidden" : effective} · {e.counts?.ACCEPTED ?? 0}/{e.capacity ?? 40} in
                     </div>
                   </div>
                   {/* The open/closed switch is meaningless while the race isn't

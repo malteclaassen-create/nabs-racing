@@ -1411,6 +1411,11 @@ export const api = {
   // the gate above, so hiding a race doesn't forget its open/closed setting.
   setAttendanceVisible: (raceId, hidden) =>
     request(`/admin/races/${raceId}/attendance-visibility`, { method: "PUT", body: { hidden }, auth: true }),
+  // How many seats the sign-up counts up to, for this series. Saving it also
+  // stamps every round that has not been run yet.
+  attendanceGrid: () => request(`/admin/attendance-grid${seriesQ()}`, { auth: true }),
+  saveAttendanceGrid: (size) =>
+    request(`/admin/attendance-grid${seriesQ()}`, { method: "PUT", body: { size }, auth: true }),
 
   // Race Info page content (public read + admin edit)
   raceInfo: () => request("/settings/race-info"),

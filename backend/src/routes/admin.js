@@ -111,6 +111,7 @@ import {
 } from "../lib/socialFeed.js";
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
+import { gridSizeFor, setGridSize, parseGridSize } from "../lib/gridSize.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
@@ -3935,12 +3936,18 @@ router.post("/events", async (req, res, next) => {
     if (extras.error) return res.status(400).json({ error: extras.error });
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
+    // The grid size the league is on right now (Attendance tab), so a new round
+    // is born with the same number of seats as the rest of the calendar.
+    const season = await prisma.season.findUnique({ where: { id: targetSeasonId }, select: { seriesId: true } });
+    const seriesOfSeason = season?.seriesId ? await getSeriesById(prisma, season.seriesId) : null;
+    const capacity = await gridSizeFor(prisma, seriesOfSeason?.slug || null);
     const race = await prisma.race.create({
       data: {
         number: isChampionship ? Number(number) : null,
         track,
         date: date ? new Date(date) : null,
         isCompleted: false,
+        capacity,
         // Derived flag every scoring read filters on: TRAINING carries it too,
         // so a session can never sneak into standings or round numbering.
         isSpecialEvent: !isChampionship,
@@ -5920,6 +5927,43 @@ router.put("/drivers/:id/progress", async (req, res, next) => {
 router.get("/attendance-gates", async (req, res, next) => {
   try {
     res.json(await readAttendanceOverrides(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/attendance-grid?series= -> how many seats this series'
+// sign-up counts up to ("Accepted 28/40"). Saving it stamps every round that
+// has not been run yet and becomes the number new rounds are created with;
+// finished rounds keep the grid they actually ran with.
+router.get("/attendance-grid", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    res.json({ series: series?.slug || null, size: await gridSizeFor(prisma, series?.slug || null) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/attendance-grid", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const parsed = parseGridSize(req.body?.size);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const size = await setGridSize(prisma, series.slug, parsed.value);
+    const { count } = await prisma.race.updateMany({
+      where: { isCompleted: false, season: { seriesId: series.id } },
+      data: { capacity: size },
+    });
+    // An already-announced round shows the count in its Discord embed, so the
+    // posts that are still up follow along instead of drifting.
+    const announced = await prisma.race.findMany({
+      where: { isCompleted: false, season: { seriesId: series.id }, discordMessageId: { not: null } },
+      select: { id: true },
+    });
+    for (const r of announced) syncRaceToDiscord(prisma, r.id).catch(() => {});
+    res.json({ series: series.slug, size, updated: count });
   } catch (e) {
     next(e);
   }
