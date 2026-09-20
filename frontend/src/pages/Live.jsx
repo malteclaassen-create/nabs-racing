@@ -292,6 +292,17 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
               </span>
             </div>
           )}
+          {/* Folded, the week is one short bar tucked under the session line:
+              no numbers, just how far along it is, and drawn at nought laps
+              too so it can be watched filling up. It keeps to the width of the
+              text above it rather than the whole card, which is what stops the
+              folded card growing a row taller than its buttons. Unfolded, the
+              line under the session's own numbers takes over. */}
+          {!detailsOpen && !isRace && week && (
+            <div className={`order-4 -mt-1 w-full max-w-[19rem] basis-full ${showMore ? "hidden sm:block" : "block"}`}>
+              <TrainingBar week={week} variant="mini" />
+            </div>
+          )}
         </div>
 
         {/* Below sm the panel slides (the measured height); from sm up the
@@ -421,16 +432,6 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
           </button>
         </div>
       </div>
-
-      {/* Folded, the week is one thin bar across the bottom of the card: no
-          numbers, just how far along it is. Empty is a perfectly good thing
-          for it to say, which is why it is drawn at nought laps too. Unfolded,
-          the line under the session's numbers takes over. */}
-      {!detailsOpen && !isRace && week && (
-        <div className="px-4 pb-3 sm:px-6 sm:pb-4">
-          <TrainingBar week={week} variant="mini" />
-        </div>
-      )}
 
       {/* Mobile-only expand toggle. */}
       <button

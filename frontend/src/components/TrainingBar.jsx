@@ -46,7 +46,7 @@ export default function TrainingBar({ week, variant = "card" }) {
         className="flex w-full items-center gap-2.5"
         title={`Your training: ${laps} of ${target} laps this week`}
       >
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-light">Training</span>
+        <span className="shrink-0 font-mono text-[10px] uppercase leading-none tracking-wider text-light">Training</span>
         <span className="relative block h-1 flex-1 overflow-hidden rounded-full bg-surface2">
           <span
             className="absolute inset-y-0 left-0 rounded-full bg-brand transition-[width] duration-500"
