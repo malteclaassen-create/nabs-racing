@@ -9,7 +9,7 @@ import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { getCardRatings } from "../services/cardRatingService.js";
-import { parseCardPhotoPos } from "../lib/cardPhoto.js";
+import { parseCardPhotoPos, cardPictureFor } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
 import { getIdentityOverrides } from "../lib/persons.js";
 import { isAdminRequest } from "../middleware/auth.js";
@@ -78,6 +78,10 @@ router.get("/ratings", async (req, res, next) => {
         // brings its own card framing along.
         const idov = identity.get(r.driverId);
         const ownPhoto = d.photoUrl || d.discordAvatar || null;
+        const card = cardPictureFor(
+          { cardPhotoUrl: d.cardPhotoUrl || null, photoUrl: ownPhoto, photoPos: parseCardPhotoPos(d.cardPhotoPos) },
+          idov
+        );
         return {
           ...r,
           number: d.number ?? null,
@@ -86,8 +90,8 @@ router.get("/ratings", async (req, res, next) => {
           photoUrl: ownPhoto || idov?.photoUrl || null,
           cardStyle: isKnownEdition(d.cardStyle) && d.cardStyle !== DEFAULT_CARD_EDITION ? d.cardStyle : null,
           cardAnim: d.cardAnim === "off" ? "off" : null,
-          photoPos: parseCardPhotoPos(d.cardPhotoPos || (!ownPhoto && idov ? idov.photoPos : null)),
-          cardPhotoUrl: d.cardPhotoUrl || null,
+          photoPos: card.photoPos,
+          cardPhotoUrl: card.cardPhotoUrl,
         };
       }),
     });

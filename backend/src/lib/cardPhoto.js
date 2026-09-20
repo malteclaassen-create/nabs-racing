@@ -54,3 +54,25 @@ export async function readCardPhotoPos(prisma, driverId) {
     return null;
   }
 }
+
+// Which picture a rating card shows for one driver row, and how it sits.
+//
+// `own` = { cardPhotoUrl, photoUrl, photoPos } of the row itself (photoUrl =
+// its avatar or Discord picture, photoPos its parsed framing); `idov` = the
+// person's identity override (lib/persons.js), or undefined when the row
+// isn't linked to anybody.
+//
+// Own values always win: the row's card-only picture first, then its own
+// avatar (RatingCard falls back to that by itself). Only a row with neither
+// borrows from the PERSON — their card picture before their avatar, since the
+// card picture is the one most members actually set. The framing travels with
+// the picture: a borrowed picture keeps the framing of the row it came from,
+// falling back to this row's own.
+export function cardPictureFor(own, idov) {
+  const { cardPhotoUrl = null, photoUrl = null, photoPos = null } = own || {};
+  if (cardPhotoUrl || photoUrl) return { cardPhotoUrl, photoPos };
+  if (idov?.cardPhotoUrl) {
+    return { cardPhotoUrl: idov.cardPhotoUrl, photoPos: parseCardPhotoPos(idov.cardPhotoPos) || photoPos };
+  }
+  return { cardPhotoUrl: null, photoPos: parseCardPhotoPos(idov?.photoPos) || photoPos };
+}

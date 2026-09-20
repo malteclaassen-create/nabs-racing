@@ -276,10 +276,12 @@ export function resolveNameOverrides(rows, activeSeasonNumber = null) {
 
 // Pure core of the identity resolution (exported for testing). `rows` =
 // [{ personId, driverId, seasonNumber, photoUrl, discordAvatar, country,
-// cardPhotoPos, draft? }]. Returns Map<driverId, { photoUrl, photoPos,
-// country }> with the person's CURRENT identity: the photo (and its card
-// framing) from their newest row that has one, the country likewise — so
-// archive rows show the same face and flag as the person's latest season.
+// cardPhotoUrl, cardPhotoPos, draft? }]. Returns Map<driverId, { photoUrl,
+// photoPos, cardPhotoUrl, cardPhotoPos, country }> with the person's CURRENT
+// identity: the photo (and its card framing) from their newest row that has
+// one, the card-only picture from their newest row that has one, the country
+// likewise — so archive rows and a second league's row show the same face and
+// flag as the person's latest season.
 // Pre-season DRAFT rows (cloned rosters of unstarted seasons — the `draft`
 // flag, computed per series, or the `activeSeasonNumber` cap as fallback)
 // rank last, so a stale clone can't shadow a photo/flag the member changes on
@@ -300,12 +302,20 @@ export function resolveIdentityOverrides(rows, activeSeasonNumber = null) {
       (a, b) => (isDraft(a) ? 1 : 0) - (isDraft(b) ? 1 : 0) || (b.seasonNumber ?? -1) - (a.seasonNumber ?? -1)
     );
     const photoRow = sorted.find((m) => m.photoUrl || m.discordAvatar);
+    // The card-only picture is looked up on its own: a member who never set a
+    // profile avatar but dressed one league's card in a picture still has a
+    // face to lend their other rows (that is the usual case — the card is
+    // where people put a picture).
+    const cardRow = sorted.find((m) => m.cardPhotoUrl);
     const countryRow = sorted.find((m) => m.country);
-    if (!photoRow && !countryRow) continue;
+    if (!photoRow && !cardRow && !countryRow) continue;
     const identity = {
       photoUrl: photoRow ? photoRow.photoUrl || photoRow.discordAvatar : null,
       // raw JSON string; consumers parse via lib/cardPhoto parseCardPhotoPos
       photoPos: photoRow ? photoRow.cardPhotoPos || null : null,
+      cardPhotoUrl: cardRow ? cardRow.cardPhotoUrl : null,
+      // framing of the row the card picture came from (raw JSON string too)
+      cardPhotoPos: cardRow ? cardRow.cardPhotoPos || null : null,
       country: countryRow ? countryRow.country : null,
     };
     for (const m of members) out.set(m.driverId, identity);
@@ -322,7 +332,8 @@ export async function getIdentityOverrides(prisma) {
       `SELECT pl."personId" AS "personId", d."id" AS "driverId", s."number" AS "seasonNumber",
               s."seriesId" AS "seriesId",
               d."photoUrl" AS "photoUrl", d."discordAvatar" AS "discordAvatar",
-              d."country" AS "country", d."cardPhotoPos" AS "cardPhotoPos"
+              d."country" AS "country", d."cardPhotoPos" AS "cardPhotoPos",
+              d."cardPhotoUrl" AS "cardPhotoUrl"
        FROM "PersonLink" pl
        JOIN "Driver" d ON d."id" = pl."driverId"
        LEFT JOIN "Season" s ON s."id" = d."seasonId"`
