@@ -658,8 +658,8 @@ export default function AdminImport({ onCommitted }) {
               onChange={(e) => { setTargetSession(e.target.value); setDone(null); }}
               disabled={busy}
             >
-              <option value="RACE">Feature race (the main result)</option>
-              <option value="SPRINT">Sprint race</option>
+              <option value="SPRINT">Sprint race (the first race of the evening)</option>
+              <option value="RACE">Feature race (the second race, the main result)</option>
             </select>
             {targetRace.sprintRaceId && (
               <span className="pill bg-surface2 text-light">sprint result already stored</span>

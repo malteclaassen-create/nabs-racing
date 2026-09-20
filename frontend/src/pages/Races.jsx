@@ -1099,9 +1099,10 @@ export default function Races() {
                                 pillClassName="rounded-md bg-brand shadow"
                                 items={[
                                   // With a sprint on file the evening has two
-                                  // races — name the main one what it is.
-                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
+                                  // races, in the order they were run: the
+                                  // sprint first, then the feature.
                                   ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
+                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
                                   ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),
                                 ]}
                                 value={shownSession}
