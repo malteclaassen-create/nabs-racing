@@ -39,6 +39,8 @@ import { flagFor } from "../data/circuits.js";
 import { fmtLap, fmtLapDelta, fmtRaceDateFull, NO_VALUE } from "../utils/format.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
+// The tile icons, all from Lucide, all the same size and stroke.
+import { Timer, Gauge, Activity, ArrowLeftRight, ShieldCheck, Flag as FlagIcon, Hourglass, Rocket, Crown } from "lucide-react";
 
 export default function RaceRecapPage() {
   const { raceId } = useParams();
@@ -294,27 +296,6 @@ function Row({ label, value, tone = "text-dark" }) {
   );
 }
 
-const ICONS = {
-  stopwatch: "M12 13V9M9 2h6M19 6l-1.5 1.5M12 21a8 8 0 100-16 8 8 0 000 16z",
-  gauge: "M5 17a8 8 0 1114 0M12 17l3.5-5",
-  steady: "M3 12h4l2-5 4 10 2-5h6",
-  swap: "M4 8h13l-3-3M20 16H7l3 3",
-  shield: "M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z",
-  flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
-  tyre: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 15a3 3 0 100-6 3 3 0 000 6z",
-  hourglass: "M6 3h12M6 21h12M8 3v4l4 5-4 5v4M16 3v4l-4 5 4 5v4",
-  lights: "M3 6h18v6H3zM7 9h.01M12 9h.01M17 9h.01",
-  lead: "M5 20h14M6 20V9l3 2 3-6 3 6 3-2v11",
-};
-
-function Icon({ name, className = "h-4 w-4" }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={ICONS[name] || ICONS.flag} />
-    </svg>
-  );
-}
-
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
 const nth = (n) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
 
@@ -524,14 +505,12 @@ function RoundCard({ recap }) {
 
 // One number, its word, an icon that says which kind of number, and where it
 // has a place in the field, a thin bar for that.
-function Stat({ label, value, note, tone = "text-dark", icon = "flag", bar = null, index = 0 }) {
+function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIcon, bar = null, index = 0 }) {
   return (
     <div className="card flex flex-col p-5" style={{ "--i": index }}>
       <div className="flex items-start justify-between gap-3">
         <Label tone="text-light">{label}</Label>
-        <span className={`-mt-0.5 shrink-0 ${tone === "text-dark" ? "text-faint" : tone}`}>
-          <Icon name={icon} />
-        </span>
+        <TileIcon className={`-mt-0.5 h-4 w-4 shrink-0 ${tone === "text-dark" ? "text-faint" : tone}`} strokeWidth={2} aria-hidden="true" />
       </div>
       <div className={`mt-3 font-mono text-2xl font-bold tabular-nums leading-none sm:text-[1.7rem] ${tone}`}>{value ?? NO_VALUE}</div>
       {note && <div className="mt-2 text-xs text-light">{note}</div>}
@@ -555,7 +534,7 @@ function StatCards({ you, story, race }) {
     fmtLap(you.bestLapMs)
       ? {
           label: "Best lap",
-          icon: "stopwatch",
+          icon: Timer,
           value: fmtLap(you.bestLapMs),
           tone: fastest ? "text-fl" : "text-dark",
           note: fastest ? "fastest lap of the race" : you.lapGapMs != null ? `${fmtLapDelta(you.lapGapMs)} to the fastest lap${story?.bestLapAt ? ` · set on lap ${story.bestLapAt}` : ""}` : null,
@@ -564,46 +543,46 @@ function StatCards({ you, story, race }) {
     story?.paceMs
       ? {
           label: "Race pace",
-          icon: "gauge",
+          icon: Gauge,
           value: fmtLap(story.paceMs),
           note: story.paceRank ? `pure race pace${story.gapToBestPaceMs > 0 ? ` · ${fmtLapDelta(story.gapToBestPaceMs)} a lap to the quickest` : " · the quickest car in the race"}` : "median of your real laps",
           bar: rankBar(story.paceRank, story.paceField, story.paceRank ? `P${story.paceRank} of ${story.paceField} on pace` : null),
         }
       : null,
     you.consistencyPct > 0
-      ? { label: "Consistency", icon: "steady", value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" } }
+      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(1)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" } }
       : null,
     you.overtakes != null
-      ? { label: "Overtakes", icon: "swap", value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated" }
+      ? { label: "Overtakes", icon: ArrowLeftRight, value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated" }
       : null,
     you.cleanLaps != null && you.laps != null
       ? {
           label: "Clean laps",
-          icon: "shield",
+          icon: ShieldCheck,
           value: `${you.cleanLaps} / ${you.laps}`,
           tone: you.cleanLaps === you.laps ? "text-ok" : "text-dark",
           note: `${you.contacts ?? 0} car contact${you.contacts === 1 ? "" : "s"}${you.penaltySeconds > 0 ? ` · +${you.penaltySeconds}s penalty` : you.cleanRace ? " · no penalty" : ""}`,
           bar: { pct: (you.cleanLaps / you.laps) * 100, tone: you.cleanLaps === you.laps ? "bg-ok" : "bg-light" },
         }
       : you.laps != null
-        ? { label: "Laps", icon: "shield", value: String(you.laps), note: `${you.contacts ?? 0} car contacts` }
+        ? { label: "Laps", icon: ShieldCheck, value: String(you.laps), note: `${you.contacts ?? 0} car contacts` }
         : null,
     story?.bestPosition
       ? {
           label: "Best position in race",
-          icon: "flag",
+          icon: FlagIcon,
           value: `P${story.bestPosition}`,
           tone: story.bestPosition === 1 ? "text-fl" : "text-dark",
           note: story.bestRun ? (story.bestRun.from === story.bestRun.to ? `on lap ${story.bestRun.from}` : `held from lap ${story.bestRun.from} to lap ${story.bestRun.to}`) : null,
           bar: rankBar(story.bestPosition, field, `P${story.bestPosition} of ${field} at best`),
         }
       : you.lapsLed > 0
-        ? { label: "Laps led", icon: "lead", value: String(you.lapsLed), note: "at the start/finish line" }
+        ? { label: "Laps led", icon: Crown, value: String(you.lapsLed), note: "at the start/finish line" }
         : null,
     story?.lap1Pos
       ? {
           label: "After lap 1",
-          icon: "lights",
+          icon: Rocket,
           value: `P${story.lap1Pos}`,
           tone: you.grid != null && story.lap1Pos < you.grid ? "text-ok" : you.grid != null && story.lap1Pos > you.grid ? "text-bad" : "text-dark",
           note: you.grid != null ? (story.lap1Pos < you.grid ? `${you.grid - story.lap1Pos} up at the start, from P${you.grid}` : story.lap1Pos > you.grid ? `${story.lap1Pos - you.grid} down at the start, from P${you.grid}` : `held P${you.grid} through the first lap`) : null,
@@ -612,9 +591,9 @@ function StatCards({ you, story, race }) {
     // Past a minute and a half it is a safety car or a red flag, not the
     // driver, and the number would only mislead.
     story?.offPaceMs != null && story.offPaceMs < 90_000
-      ? { label: "Time lost off pace", icon: "hourglass", value: `${(story.offPaceMs / 1000).toFixed(1)} s`, tone: story.offPaceMs > 10_000 ? "text-warn" : "text-dark", note: "laps well off your own clean pace: pits, spins, traffic" }
+      ? { label: "Time lost off pace", icon: Hourglass, value: `${(story.offPaceMs / 1000).toFixed(1)} s`, tone: story.offPaceMs > 10_000 ? "text-warn" : "text-dark", note: "laps well off your own clean pace: pits, spins, traffic" }
       : you.lapsLed > 0 && story?.bestPosition
-        ? { label: "Laps led", icon: "lead", value: String(you.lapsLed), note: "at the start/finish line" }
+        ? { label: "Laps led", icon: Crown, value: String(you.lapsLed), note: "at the start/finish line" }
         : null,
   ].filter(Boolean);
   if (!cells.length) return null;
