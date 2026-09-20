@@ -23,6 +23,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwner } from "../lib/profileStudio.js";
+import { practiceProgress } from "../lib/practiceTokens.js";
 import prisma from "../lib/prisma.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
@@ -100,6 +101,8 @@ router.get("/", requireUser, async (req, res, next) => {
       ledger: await dbLedger(prisma, discordId),
       orders: await dbRedemptions(prisma, discordId),
       stats: await tokenStats(prisma, discordId),
+      // This week's training laps, and what they have paid so far.
+      practice: await practiceProgress(prisma, discordId).catch(() => null),
     });
   } catch (e) {
     next(e);
@@ -251,6 +254,17 @@ router.post(
     }
   }
 );
+
+// GET /api/tokens/practice — the training week on its own, so the page can
+// follow it while somebody is out on track without rebuilding the whole panel.
+router.get("/practice", requireUser, async (req, res, next) => {
+  try {
+    if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
+    res.json({ enabled: true, practice: await practiceProgress(prisma, req.user.discordId) });
+  } catch (e) {
+    next(e);
+  }
+});
 
 // GET /api/tokens/leaderboard: top earners and the most present on Discord.
 router.get("/leaderboard", requireUser, async (req, res, next) => {

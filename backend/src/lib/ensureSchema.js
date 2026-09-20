@@ -730,6 +730,24 @@ export async function ensureAppSchema(prisma) {
     PRIMARY KEY ("raceId", "driverId")
   )`);
 
+  // Training laps per driver per race week (migration token_practice). Written
+  // by the live relay, one row per driver per week, and read back by
+  // lib/practiceTokens.js to decide whether a milestone has been reached.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenPractice" (
+    "steamId" TEXT NOT NULL,
+    "series" TEXT NOT NULL,
+    "period" TEXT NOT NULL,
+    "laps" INTEGER NOT NULL DEFAULT 0,
+    "trackKey" TEXT,
+    "car" TEXT,
+    "lastAt" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("steamId", "series", "period")
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "TokenPractice_period_idx" ON "TokenPractice"("series","period")`
+  );
+
   // Profile studio: what each member has put on their profile page.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ProfileStyle" (
     "discordId" TEXT NOT NULL PRIMARY KEY,

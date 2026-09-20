@@ -841,6 +841,26 @@ model TokenRaceRate {
   @@id([raceId, driverId])
 }
 
+// Training laps on the league's practice server, one row per driver per race
+// week (migration token_practice). Counted by the live relay as each lap is
+// completed, keyed by the Steam id because that is what the race server knows;
+// the Discord account behind it is looked up when a milestone pays out.
+// `lastAt` is the stamp of the last lap counted, which is what stops the same
+// lap being counted twice after a restart.
+model TokenPractice {
+  steamId   String
+  series    String // series slug
+  period    String // "race:<raceId>" — the race this week's practice leads up to
+  laps      Int      @default(0)
+  trackKey  String?
+  car       String?
+  lastAt    Int      @default(0) // seconds since the epoch
+  updatedAt DateTime @default(now())
+
+  @@id([steamId, series, period])
+  @@index([series, period])
+}
+
 // What a member wears on their public profile page (profile studio): the
 // design id per slot, ownership lives in TokenRedemption.
 model ProfileStyle {

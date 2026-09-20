@@ -66,7 +66,9 @@ export function cleanTuning(body, allowed) {
     if (Object.keys(dst).length) out[name] = dst;
   };
 
-  let r = section("rules", ["points", "active"]);
+  // `laps` is the training milestone (20 and 50 by default); the rules that do
+  // not have one simply never send it.
+  let r = section("rules", ["points", "active", "laps"]);
   if (r?.error) return r;
   r = section("shop", ["cost", "active"]);
   if (r?.error) return r;

@@ -7,9 +7,23 @@
 //
 //   Finish a race                50   x multiplier
 //   ...with no penalties         20   x multiplier   (decided after stewarding)
+//   20 laps on the training
+//   server in a race week        10
+//   ...50 laps in that week      20   on top of the 10
 //   Somebody signs up through
 //   your referral                50
 //   That person finishes a race  30   for their first 12 races, then it stops
+//
+// --- the training laps ------------------------------------------------------
+//
+// The training server runs the week's track and car and sits there between one
+// race and the next, so what it counts IS the week's practice: every lap a
+// driver completes on it, cut or not, because this pays for time spent, not for
+// speed. The week is the gap between two races rather than a calendar week, so
+// a fortnight's break is one week's worth of laps, not two.
+//
+// Flat, like the referral rules: the multiplier is for racing. The counting
+// happens in lib/practiceTokens.js, fed by the live relay.
 //
 // --- the multiplier ---------------------------------------------------------
 //
@@ -100,7 +114,9 @@ export function withMultiplier(points, multiplier) {
 // --- the rules themselves ----------------------------------------------------
 //
 // `boosted` marks the ones the multiplier applies to — the green boxes on the
-// league's sheet. `active: false` is a rule the site cannot measure yet.
+// league's sheet. `active: false` is a rule the site cannot measure yet, and
+// `laps` is the threshold of a training rule (both the points and the threshold
+// are editable in the admin).
 export const EARN_RULES = [
   {
     key: "race_finish",
@@ -118,6 +134,24 @@ export const EARN_RULES = [
     points: 20,
     unit: "per clean race",
     boosted: true,
+    active: true,
+  },
+  {
+    key: "practice_20",
+    label: "20 training laps",
+    hint: "On the training server, between one race and the next.",
+    points: 10,
+    laps: 20,
+    unit: "per race week",
+    active: true,
+  },
+  {
+    key: "practice_50",
+    label: "50 training laps",
+    hint: "On top of the 10, same week. Every lap counts, quick or not.",
+    points: 20,
+    laps: 50,
+    unit: "per race week",
     active: true,
   },
   {

@@ -392,6 +392,20 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                   ) : (
                     <div className="flex shrink-0 items-center gap-3">
                       <OnOff checked={!!on} onChange={(v) => set("rules", r.key, "active", v === r.active ? "" : v)} />
+                      {/* A training rule pays at a lap count, and the league
+                          can move that as well as the points. */}
+                      {r.laps != null && (
+                        <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-light">
+                          at
+                          <NumberField
+                            className="!w-16"
+                            value={get("rules", r.key, "laps")}
+                            placeholder={r.laps}
+                            onChange={(v) => set("rules", r.key, "laps", v)}
+                          />
+                          laps
+                        </label>
+                      )}
                       <NumberField
                         value={get("rules", r.key, "points")}
                         placeholder={r.points}

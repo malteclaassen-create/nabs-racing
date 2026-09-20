@@ -801,6 +801,9 @@ export const api = {
     request("/tokens/redeem", { method: "POST", body: { itemKey, choice, text }, userAuth: true }),
   tokenWall: () => request("/tokens/wall"),
   tokenLeaderboard: () => request("/tokens/leaderboard", { userAuth: true }),
+  // The training week on its own, asked again every so often while the page
+  // is open: somebody driving on a second screen watches the bar fill.
+  tokenPractice: () => request("/tokens/practice", { userAuth: true }),
   tokensStudio: () => request("/tokens/studio", { userAuth: true }),
   buyStudioItem: (itemId) => request("/tokens/studio/buy", { method: "POST", body: { itemId }, userAuth: true }),
   equipStudio: (body) => request("/tokens/studio/appearance", { method: "PUT", body, userAuth: true }),

@@ -34,6 +34,7 @@ import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
+import { notePracticeLap as noteTrainingLap } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
 import { resolveSeason } from "./seasonService.js";
@@ -418,6 +419,9 @@ function createRelay(server) {
   // carries the same fact across a restart (liveResetKeep's notifiedAt).
   let lastResetAlertAt = 0;
   const practiceStampsByGuid = new Map(); // guid -> Set(seconds since epoch)
+  // The last lap of each driver handed to the training-points tally. Kept for
+  // the life of the relay, not per session: lap stamps only ever go forwards.
+  const tokenLapAtByGuid = new Map(); // guid -> seconds since epoch
   const liveByCar = new Map(); // CarID -> latest EventType 53 telemetry
   // CarID -> guid, rebuilt from every snapshot: ET53 only carries the CarID,
   // but the follow fast-lane (relayFollowedTelemetry) speaks public driver ids.
@@ -720,13 +724,30 @@ function createRelay(server) {
   // Note when this driver last crossed the line. Called for every driver on
   // every snapshot of a practice session; the Set is what makes the repeat
   // sightings of one lap one lap.
-  function notePracticeLap(guid, car) {
+  function notePracticeLap(guid, car, ci, si) {
     const at = car?.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || null : null;
     if (!at) return;
+    const sec = Math.round(at / 1000);
     let stamps = practiceStampsByGuid.get(guid);
     if (!stamps) practiceStampsByGuid.set(guid, (stamps = new Set()));
-    if (stamps.size >= PRACTICE_STAMPS_MAX) return;
-    stamps.add(Math.round(at / 1000));
+    if (stamps.size < PRACTICE_STAMPS_MAX) stamps.add(sec);
+
+    // The same lap, for the training points (lib/practiceTokens.js). Its own
+    // "last one seen" rather than the Set above, which has a cap on it: a
+    // tally that starts counting the same lap again once the cap is hit would
+    // pay somebody for standing in the pits.
+    if (sec <= (tokenLapAtByGuid.get(guid) || 0)) return;
+    tokenLapAtByGuid.set(guid, sec);
+    if (looksLikeSafetyCar(ci?.CarSkin, ci?.CarModel)) return;
+    const [scope] = boardScopes(server.key);
+    if (!scope) return;
+    noteTrainingLap(prisma, {
+      series: scope.series,
+      steamId: guid,
+      car: ci?.CarModel || "",
+      trackKey: trackKeyOf(si?.Track || "", si?.TrackConfig || ""),
+      at: sec,
+    });
   }
 
   // The best lap of every driver in the session on file, in the shape a lap is
@@ -859,7 +880,7 @@ function createRelay(server) {
       if (ci.IsSpectator) continue;
       const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
       recordCrossing(guid, car);
-      if (si.Type === 1) notePracticeLap(guid, car);
+      if (si.Type === 1) notePracticeLap(guid, car, ci, si);
       const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
       const tyre = ci.Tyres || car?.TyreBestLap || "";
       const pits = d.NumPits ?? car?.NumPits ?? 0;

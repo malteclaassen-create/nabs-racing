@@ -309,6 +309,8 @@ export function tunedRules() {
   return EARN_RULES.map((r) => ({
     ...r,
     points: o[r.key]?.points ?? r.points,
+    // Only the training rules have one, and only they can have it moved.
+    ...(r.laps == null ? {} : { laps: o[r.key]?.laps ?? r.laps }),
     active: r.key === "activity" ? r.active : (o[r.key]?.active ?? r.active),
   }));
 }
@@ -490,7 +492,7 @@ export async function dbLedger(prisma, discordId, limit = 50) {
 // Every driver row that belongs to this Discord account, across seasons and
 // series — the rows they are linked to directly, plus the ones an admin has
 // tied to the same person (PersonLink).
-async function driverIdsFor(prisma, discordId) {
+export async function driverIdsFor(prisma, discordId) {
   const own = await prisma.$queryRawUnsafe(
     `SELECT "id" FROM "Driver" WHERE "discordUserId" = ?`,
     discordId
@@ -559,7 +561,7 @@ const raceKey = (kind, r) => `${kind}:${r.raceId || "?"}:${r.driverId || "?"}`;
 
 // The Discord account behind each of these driver rows, following the person
 // links, so somebody who signed in on one season's row is found from another.
-async function discordForDrivers(prisma, driverIds) {
+export async function discordForDrivers(prisma, driverIds) {
   const out = new Map();
   const ids = [...new Set((driverIds || []).filter(Boolean))];
   if (!ids.length) return out;
