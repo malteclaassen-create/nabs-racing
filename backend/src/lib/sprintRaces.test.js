@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf } from "./sprintRaces.js";
+import { ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf, withSprintRounds } from "./sprintRaces.js";
 
 // A minimal in-memory Race table speaking just enough prisma for the lib: the
 // raw reads/writes it does are pinned here, because the sprint child is the one
@@ -17,6 +17,7 @@ function fakePrisma() {
         return row;
       },
       findUnique: async ({ where }) => rows.get(where.id) || null,
+      findMany: async ({ where }) => [...rows.values()].filter((r) => where.id.in.includes(r.id)),
     },
     $queryRawUnsafe: async (sql, ...args) => {
       if (sql.includes('"parentRaceId" IS NOT NULL')) {
@@ -106,5 +107,23 @@ describe("read maps", () => {
     const children = await readSprintChildren(prisma, [parent.id, plain.id]);
     expect(children.get(parent.id)).toBe(child.id);
     expect(children.has(plain.id)).toBe(false);
+  });
+});
+
+describe("withSprintRounds", () => {
+  it("hands a sprint child its event's round number and the flag, and leaves the rest alone", async () => {
+    const prisma = fakePrisma();
+    const parent = await prisma.race.create({ data: { number: 5, track: "Barcelona", seasonId: "s8" } });
+    const plain = await prisma.race.create({ data: { number: 6, track: "Monza", seasonId: "s8" } });
+    const child = await ensureSprintChild(prisma, parent);
+    // The child on its own: the parent's number has to be looked up.
+    const [alone] = await withSprintRounds(prisma, [{ id: child.id, number: null }]);
+    expect(alone).toMatchObject({ id: child.id, number: 5, sprint: true });
+    const rows = await withSprintRounds(prisma, [child, plain, parent]);
+    expect(rows.map((r) => [r.number, r.sprint])).toEqual([
+      [5, true],
+      [6, false],
+      [5, false],
+    ]);
   });
 });

@@ -81,4 +81,20 @@ describe("contactsForRound", () => {
     forgetRound(8, 5);
     expect(contactsForDriver(8, 5, A)).toEqual([]);
   });
+
+  it("keeps a weekend's sprint and feature race apart under the same round number", () => {
+    const dir = join(dataDir, "results-archive", "season8");
+    // The feature has no contact tonight; the sprint, filed beside it, has one.
+    writeFileSync(join(dir, "r06-spa.json"), JSON.stringify(file({ events: false })));
+    writeFileSync(join(dir, "r06-spa-sprint.json"), JSON.stringify(file()));
+
+    expect(contactsForRound(8, 6).archived).toBe(true);
+    expect(contactsForDriver(8, 6, A)).toEqual([]);
+    expect(contactsForDriver(8, 6, A, true)).toHaveLength(1);
+
+    // And the sprint's file alone is not the round's feature race.
+    writeFileSync(join(dir, "r07-monza-sprint.json"), JSON.stringify(file()));
+    expect(contactsForRound(8, 7).archived).toBe(false);
+    expect(contactsForRound(8, 7, true).archived).toBe(true);
+  });
 });

@@ -71,11 +71,23 @@ function readArchiveFile(path) {
 // `season` is the season row ({ id, number }): the file is looked for in that
 // season's series folder (lib/resultsArchive.js archiveDirsFor). A bare number
 // still works for the rounds filed before series existed.
-export function findArchiveFor(season, raceNumber) {
+// A sprint weekend files two results under one round number: the feature race
+// as ever, and the sprint with a "-sprint" suffix (the commit names it so).
+// `sprint` picks that file; without it the sprint's file is never a candidate,
+// so the feature's readers cannot be handed the shorter race by mistake.
+const isSprintFile = (name) => name.endsWith("-sprint.json");
+
+function roundFiles(dir, raceNumber, sprint) {
   const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
+  return readdirSync(dir).filter(
+    (n) => n.startsWith(prefix) && n.endsWith(".json") && isSprintFile(n) === !!sprint
+  );
+}
+
+export function findArchiveFor(season, raceNumber, { sprint = false } = {}) {
   for (const dir of archiveDirsFor(season)) {
     if (!existsSync(dir)) continue;
-    const names = readdirSync(dir).filter((n) => n.startsWith(prefix) && n.endsWith(".json"));
+    const names = roundFiles(dir, raceNumber, sprint);
     if (!names.length) continue;
     let best = null;
     for (const name of names) {
@@ -111,11 +123,10 @@ export function findArchiveForRace(race) {
 // name check, no reading and no parsing — cheap enough to answer on every
 // results request, which is what lets the round page offer its lap-by-lap view
 // only where there is one to show.
-export function hasArchiveFor(season, raceNumber) {
-  const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
+export function hasArchiveFor(season, raceNumber, { sprint = false } = {}) {
   for (const dir of archiveDirsFor(season)) {
     try {
-      if (existsSync(dir) && readdirSync(dir).some((n) => n.startsWith(prefix) && n.endsWith(".json"))) return true;
+      if (existsSync(dir) && roundFiles(dir, raceNumber, sprint).length) return true;
     } catch {
       /* unreadable folder: try the next */
     }

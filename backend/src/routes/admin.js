@@ -26,7 +26,7 @@ import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
-import { ensureSprintChild, readSprintChildren, readParentIds } from "../lib/sprintRaces.js";
+import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -688,15 +688,19 @@ router.post("/races/commit", async (req, res, next) => {
       // index that knows the series is refreshed first, in case this season is
       // newer than the last boot.
       await refreshArchiveIndex(prisma);
+      // A sprint is filed under its EVENT's round number (the child has none)
+      // with a "-sprint" suffix, which is how the archive readers tell the
+      // weekend's two files apart (lib/cockpitArchive.js).
+      const roundNumber = isSprint ? sprintOf.number : race.number;
       archiveCommitted(archiveKey, {
         season,
-        raceNumber: race.number,
+        raceNumber: roundNumber,
         track: isSprint ? `${race.track} Sprint` : race.track,
       });
       // The reports of this round anchor themselves to that file
       // (lib/reportAnchor.js); whatever the contact reader cached for the round
       // before the file existed, or for the file this one replaces, is stale now.
-      forgetRound(season, race.number);
+      forgetRound(season, roundNumber, isSprint);
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported
@@ -6498,11 +6502,16 @@ router.get("/reports", async (req, res, next) => {
     // The races they belong to, so the tab can group by round without the
     // browser fetching the calendar and joining it by hand.
     const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
+    // Through withSprintRounds, so a sprint's reports read the sprint's own
+    // file and the tab can label the group "R5 Spa Sprint".
     const races = ids.length
-      ? await prisma.race.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
-        })
+      ? await withSprintRounds(
+          prisma,
+          await prisma.race.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
+          })
+        )
       : [];
     res.json({
       // Who filed what, once: the anchor needs it to pin an in-game press to a

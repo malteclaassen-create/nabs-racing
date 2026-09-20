@@ -13,6 +13,7 @@ import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow
 import { liveRaceSecond } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
+import { withSprintRounds } from "../lib/sprintRaces.js";
 
 const router = Router();
 
@@ -77,13 +78,10 @@ router.post("/", optionalUser, async (req, res, next) => {
     // "lap 4, 80 km/h" into a report about a tap that never happened.
     let pinned = null;
     if (b.contactId && b.raceId) {
-      const race = await prisma.race.findUnique({
-        where: { id: String(b.raceId) },
-        select: { number: true, season: { select: { id: true, number: true } } },
-      });
+      const race = await archiveRaceById(String(b.raceId));
       const guid = race?.season ? await steamIdOf(prisma, me.discordId) : null;
       if (guid) {
-        const mine = contactsForDriver(race.season, race.number, guid);
+        const mine = contactsForDriver(race.season, race.number, guid, race.sprint);
         pinned = mine.find((c) => c.id === b.contactId) || null;
       }
       if (!pinned) return res.status(400).json({ error: "That contact is not one of yours in this round" });
@@ -244,14 +242,11 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
     if (!me.discordId) return res.json({ contacts: [], reason: "signed-out" });
-    const race = await prisma.race.findUnique({
-      where: { id: String(req.query.raceId || "") },
-      select: { number: true, season: { select: { id: true, number: true } } },
-    });
+    const race = await archiveRaceById(String(req.query.raceId || ""));
     if (!race?.season) return res.json({ contacts: [], reason: "no-race" });
     const guid = await steamIdOf(prisma, me.discordId);
     if (!guid) return res.json({ contacts: [], reason: "no-steam-id" });
-    const contacts = contactsForDriver(race.season, race.number, guid);
+    const contacts = contactsForDriver(race.season, race.number, guid, race.sprint);
     // An empty list has two very different causes and the driver deserves the
     // right one: the round's result file has not been imported yet (nobody has
     // contacts, come back tomorrow), or it has and Assetto Corsa recorded no
@@ -260,25 +255,39 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
     if (contacts.length) return res.json({ contacts, reason: null });
     res.json({
       contacts: [],
-      reason: roundHasArchive(race.season, race.number) ? "none-recorded" : "not-imported",
+      reason: roundHasArchive(race.season, race.number, race.sprint) ? "none-recorded" : "not-imported",
     });
   } catch (e) {
     next(e);
   }
 });
 
+// One race the way the archive readers want it: season, round number and
+// whether it is the weekend's sprint (a sprint child has no number of its
+// own, so it borrows its event's; lib/sprintRaces.js). Null when unknown.
+async function archiveRaceById(id) {
+  if (!id) return null;
+  const race = await prisma.race.findUnique({
+    where: { id },
+    select: { id: true, number: true, season: { select: { id: true, number: true } } },
+  });
+  if (!race) return null;
+  return (await withSprintRounds(prisma, [race]))[0];
+}
+
 // The rounds a set of reports belong to, in the shape the anchor needs: it
 // measures "N into the session" against the round's archived result file, and
-// finds that file by season number and round number.
+// finds that file by season number, round number and the sprint flag.
 async function racesForReports(reports) {
   const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
   if (!ids.length) return [];
-  return prisma.race
+  const rows = await prisma.race
     .findMany({
       where: { id: { in: ids } },
       select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
     })
     .catch(() => []);
+  return withSprintRounds(prisma, rows);
 }
 
 // GET /api/reports -> the ones this member may see

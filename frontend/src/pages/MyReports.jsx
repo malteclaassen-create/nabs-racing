@@ -11,6 +11,15 @@ import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
 
+// "R5 Spa", "R5 Spa Sprint", "Session Most". A sprint row carries no round
+// number of its own; it borrows its event's (the sprintOf link) and says
+// which of the weekend's two races it is.
+function raceLabel(r, races = []) {
+  const parent = r.sprintOf ? races.find((x) => x.id === r.sprintOf) : null;
+  const number = parent ? parent.number : r.number;
+  return `${number != null ? `R${number}` : "Session"} ${r.track}${r.sprintOf ? " Sprint" : ""}`;
+}
+
 // ---------------------------------------------------------------------------
 // A driver's side of the stewarding conversation: the incident reports they
 // filed, the ones that name them, and anything the stewards wrote back.
@@ -128,8 +137,7 @@ function Thread({ id, races, onBack, onChanged }) {
               argument about an evening nobody can place. */}
           {race && (
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              {race.number != null ? `R${race.number} ` : ""}
-              {race.track}
+              {raceLabel(race, races)}
             </span>
           )}
           {/* The same anchor the row carried, and here it is a real button: a
@@ -340,7 +348,7 @@ function NewReport({ races, presetRaceId, onFiled }) {
           <option value="">Pick the round</option>
           {races.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.number != null ? `R${r.number}` : "Session"} {r.track}
+              {raceLabel(r, races)}
             </option>
           ))}
         </select>
@@ -605,7 +613,9 @@ export default function MyReports() {
       [isLoggedIn, allRounds]
     )
   );
-  const { data: races } = useApi(useCallback(() => api.races().catch(() => []), []));
+  // With the hidden sprint rows: a sprint is a race of its own with its own
+  // contacts, and a report about one has to say so.
+  const { data: races } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }).catch(() => []), []));
   const list = useMemo(() => data?.reports || [], [data]);
   const older = data?.older || 0;
   const raceList = useMemo(() => races || [], [races]);
@@ -766,8 +776,7 @@ function Section({ title, hint, rows, races, onOpen, empty }) {
                     )}
                     {race && (
                       <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                        {race.number != null ? `R${race.number} ` : ""}
-                        {race.track}
+                        {raceLabel(race, races)}
                       </span>
                     )}
                     <span className="text-sm font-semibold text-dark">
