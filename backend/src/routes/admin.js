@@ -46,6 +46,7 @@ import {
   deleteStoredFile, listOrphanFiles,
 } from "../lib/downloads.js";
 import { stashIncoming, archiveCommitted, refreshArchiveIndex } from "../lib/resultsArchive.js";
+import { archiveFilesFor } from "../lib/cockpitArchive.js";
 import { forgetRound } from "../lib/raceContacts.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
@@ -840,6 +841,28 @@ router.delete("/races/:id/quali", async (req, res, next) => {
       .$executeRawUnsafe(`UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ?`, race.id)
       .catch(() => {});
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/races/:id/archive -> { files } — the raw result files on
+// record for this round: the feature race's and, on a sprint weekend, the
+// sprint's, each with what it holds and whether the reports and the Cockpit
+// read it (lib/cockpitArchive.js archiveFilesFor). For an admin who is being
+// told "no contact in this race" by a file they cannot otherwise see.
+router.get("/races/:id/archive", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, number: true, season: { select: { id: true, number: true } } },
+    });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    // A sprint child has no number of its own; its files are its event's.
+    const [row] = await withSprintRounds(prisma, [race]);
+    if (row.number == null || !row.season) return res.json({ files: [] });
+    await refreshArchiveIndex(prisma);
+    res.json({ files: archiveFilesFor(row.season, row.number) });
   } catch (e) {
     next(e);
   }

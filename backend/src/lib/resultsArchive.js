@@ -136,14 +136,47 @@ export function migrateArchiveLayout() {
 // circuit whose own name ends in "Sprint" gets "-race" appended, so its file
 // can never be taken for the weekend's second race.
 export const SPRINT_SUFFIX = "-sprint";
+export const isSprintFile = (name) => name.endsWith(`${SPRINT_SUFFIX}.json`);
+
+// "r05-" — what every file of round 5 starts with, feature and sprint alike.
+export function roundPrefix(raceNumber) {
+  const n = Number(raceNumber);
+  return Number.isFinite(n) ? `r${String(n).padStart(2, "0")}-` : "r---";
+}
 
 function roundFileName(raceNumber, track, sprint = false) {
-  const n = Number(raceNumber);
-  const rr = Number.isFinite(n) ? `r${String(n).padStart(2, "0")}` : "r--";
   let name = slug(track);
   if (sprint) name += SPRINT_SUFFIX;
   else if (name.endsWith(SPRINT_SUFFIX)) name += "-race";
-  return `${rr}-${name}.json`;
+  return `${roundPrefix(raceNumber)}${name}.json`;
+}
+
+// One file per round and race. A re-import under a different track name (the
+// circuit renamed, a file from another mod spelling it differently) used to
+// leave the old file beside the new one, and the reader picked between the two
+// by lap count — which is not "the one the admin just imported". The round's
+// result IS the newest import, so the others of its kind go when it lands.
+// `keep` is the file being written; nothing else of that round and kind stays.
+function dropStaleRoundFiles(dir, raceNumber, sprint, keep) {
+  const prefix = roundPrefix(raceNumber);
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return 0;
+  }
+  let dropped = 0;
+  for (const name of names) {
+    if (name === keep || !name.startsWith(prefix) || !name.endsWith(".json")) continue;
+    if (isSprintFile(name) !== !!sprint) continue;
+    try {
+      unlinkSync(join(dir, name));
+      dropped += 1;
+    } catch {
+      /* best effort */
+    }
+  }
+  return dropped;
 }
 
 // Best-effort sweep of stale incoming stashes (a parse that was never committed).
@@ -193,8 +226,10 @@ export function archiveCommitted(
     if (!existsSync(src)) return null;
     const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
-    const dest = join(dir, roundFileName(raceNumber, track, sprint));
+    const name = roundFileName(raceNumber, track, sprint);
+    const dest = join(dir, name);
     if (existsSync(dest)) unlinkSync(dest); // overwrite a re-import of the same round
+    dropStaleRoundFiles(dir, raceNumber, sprint, name);
     renameSync(src, dest);
     return dest;
   } catch (e) {
@@ -209,7 +244,9 @@ export function saveDirect(json, { season = null, seasonNumber = null, raceNumbe
   try {
     const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
-    const dest = join(dir, roundFileName(raceNumber, track, sprint));
+    const name = roundFileName(raceNumber, track, sprint);
+    const dest = join(dir, name);
+    dropStaleRoundFiles(dir, raceNumber, sprint, name);
     writeFileSync(dest, JSON.stringify(json));
     return dest;
   } catch (e) {
