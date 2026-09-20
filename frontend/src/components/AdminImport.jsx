@@ -7,7 +7,7 @@ import RacePreview from "./RacePreview.jsx";
 import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
 import { fmtTimeCell } from "../utils/raceDuration.js";
-import { fmtStamp } from "../utils/format.js";
+import { fmtStamp, fmtStampTime } from "../utils/format.js";
 import { pickNightSession, sessionOfFile, leaderLapsOf } from "../utils/sprintWeekend.mjs";
 
 const STATUSES = ["FINISHED", "DNS", "DNF", "DSQ"];
@@ -24,10 +24,13 @@ const NEW_ROUND = "new";
 const BEFORE_MS = 12 * 3600 * 1000;
 const AFTER_MS = 30 * 3600 * 1000;
 
+// With the time of day: a sprint weekend puts two sessions of the same
+// circuit on the same date, and without the clock the list showed them as
+// two identical lines.
 function fmtRemote(r) {
   const d = r.date ? new Date(r.date) : null;
   const when = d
-    ? fmtStamp(d)
+    ? fmtStampTime(d)
     : r.sessionId || r.id;
   return `${when} · ${r.trackShort || r.track || r.type}${r.serverName ? ` · ${r.serverName}` : ""}`;
 }
@@ -153,6 +156,17 @@ export default function AdminImport({ onCommitted }) {
   // Which race of a sprint+feature weekend this file is. Only asked when the
   // chosen event actually runs the format; everyone else never sees it.
   const [targetSession, setTargetSession] = useState("RACE");
+  // How a sprint weekend is imported. BOTH walks the admin through the two
+  // races in turn — the feature race, then the sprint, each from its own
+  // server session picked beside the other — so the second half is never
+  // forgotten and never filed as the first. ONE imports whichever race the
+  // dropdown says, for the night when only one of them needs redoing.
+  const [weekendMode, setWeekendMode] = useState("BOTH");
+  // Where the two-race walk is: which race the table on the page belongs to.
+  // Null outside the walk.
+  const [weekendStep, setWeekendStep] = useState(null); // "FEATURE" | "SPRINT" | null
+  const [sprintRemoteId, setSprintRemoteId] = useState("");
+  const [sprintRemoteAuto, setSprintRemoteAuto] = useState(false);
   const targetRace = useMemo(
     () => (seasonRaces.data || []).find((r) => r.id === targetRaceId) || null,
     [seasonRaces.data, targetRaceId]
@@ -165,6 +179,7 @@ export default function AdminImport({ onCommitted }) {
     (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
   );
   const isSprintWeekend = targetRace?.raceFormat === "SPRINT_FEATURE";
+  const importBoth = isSprintWeekend && weekendMode === "BOTH";
   const asSprint = isSprintWeekend && targetSession === "SPRINT";
   // Where the result goes on save, in the shape the commit endpoint wants. On
   // a sprint weekend the session rides along: SPRINT lands on the event's
@@ -194,13 +209,24 @@ export default function AdminImport({ onCommitted }) {
   const targetTrack = targetRace?.track || "";
   const targetDate = targetRace?.date ? String(targetRace.date) : "";
   useEffect(() => {
-    const pick = sessionForRace(remote.data?.results, targetTrack, targetDate, {
+    // Mid-walk the sessions were settled when it began; a calendar refresh
+    // after the feature's save must not re-pick them under the sprint.
+    if (weekendStep) return;
+    const night = nightSessions(remote.data?.results, targetTrack, targetDate);
+    const pick = pickNightSession(night, {
       sprintWeekend: isSprintWeekend,
-      session: targetSession,
+      session: importBoth ? "RACE" : targetSession,
     });
     setRemoteId(pick?.id || "");
     setRemoteAuto(!!pick);
-  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession]);
+    // The weekend's second session, for the walk. Never the same session
+    // twice: a night with one session so far has run one race, and offering
+    // it as both would import it as both.
+    const second = importBoth ? pickNightSession(night, { sprintWeekend: true, session: "SPRINT" }) : null;
+    const sprintPick = second && second.id !== pick?.id ? second : null;
+    setSprintRemoteId(sprintPick?.id || "");
+    setSprintRemoteAuto(!!sprintPick);
+  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep]);
 
   // The standalone attach's server pick, same idea. Here a circuit-only match
   // is an acceptable fallback for dateless archive rounds: a wrong qualifying
@@ -327,13 +353,17 @@ export default function AdminImport({ onCommitted }) {
   const sessionMismatch = fileSession != null && fileSession !== targetSession;
 
   // Shared: turn a parsed AC result (from upload or server) into the review form.
-  function applyParsed(res) {
+  // `step` is the race of the two-race walk the file was loaded as, when it was.
+  function applyParsed(res, { step = null } = {}) {
     setParsed(res);
     // On a sprint weekend the file itself says which race it is, by its
     // distance, and that beats whatever the dropdown happened to be set to:
     // the sprint was imported as the feature more than once with nothing on
     // the page to say so.
-    if (isSprintWeekend) {
+    // In the two-race walk the step says which race this is and a file that
+    // disagrees is a swapped pair of sessions, which the warning below offers
+    // to swap back — the page does not quietly file it as the other race.
+    if (isSprintWeekend && !step) {
       const detected = sessionOfFile({
         leaderLaps: leaderLapsOf(res.entries),
         raceLaps: targetRace?.raceLaps,
@@ -410,7 +440,7 @@ export default function AdminImport({ onCommitted }) {
     setDone(null);
     setBusy(true);
     try {
-      applyParsed(await api.importRace(file));
+      applyParsed(await api.importRace(file), { step: weekendStep });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -418,18 +448,36 @@ export default function AdminImport({ onCommitted }) {
     }
   }
 
-  async function loadRemote() {
-    if (!remoteId) return;
+  // `step` is the race of the two-race walk this session is loaded as
+  // ("FEATURE" or "SPRINT"); null loads it as whatever the page is set to.
+  async function loadRemote(id = remoteId, step = null) {
+    if (!id) return;
     setError(null);
     setDone(null);
     setBusy(true);
     try {
-      applyParsed(await api.importRemoteResult(remoteId));
+      if (step) setTargetSession(step === "SPRINT" ? "SPRINT" : "RACE");
+      setWeekendStep(step);
+      applyParsed(await api.importRemoteResult(id), { step });
     } catch (err) {
       setError(err.message);
+      setWeekendStep(null);
     } finally {
       setBusy(false);
     }
+  }
+
+  // The file loaded for one race of the walk is the other race: the two
+  // sessions were the wrong way round. Swap them and load the right one for
+  // the step that is open.
+  async function swapWeekendSessions() {
+    const feature = sprintRemoteId;
+    const sprint = remoteId;
+    setRemoteId(feature);
+    setSprintRemoteId(sprint);
+    setRemoteAuto(false);
+    setSprintRemoteAuto(false);
+    await loadRemote(weekendStep === "SPRINT" ? sprint : feature, weekendStep);
   }
 
   function setRow(i, patch) {
@@ -591,13 +639,36 @@ export default function AdminImport({ onCommitted }) {
             .map((c) => c.name)
             .join(", ")}). Check for a mis-mapping or a shared account.`
         : "";
-      setDone(
+      const savedMsg =
         res.number != null
           ? `Round ${res.number}${res.session === "SPRINT" ? " sprint" : ""} saved. Standings recalculated.${qualiMsg}${conflictNote}`
-          : `Training/event results saved (not scored).${qualiMsg}${conflictNote}`
-      );
+          : `Training/event results saved (not scored).${qualiMsg}${conflictNote}`;
+      setDone(savedMsg);
       setParsed(null);
       setRows([]);
+      // The two-race walk: the feature is in, the sprint is next. It loads
+      // on its own from the session picked beside the feature's, so the
+      // second half of the weekend is one more "save" and not a second visit.
+      if (weekendStep === "FEATURE" && sprintRemoteId) {
+        setWeekendStep("SPRINT");
+        setTargetSession("SPRINT");
+        try {
+          applyParsed(await api.importRemoteResult(sprintRemoteId), { step: "SPRINT" });
+          setDone(`${savedMsg} Now the sprint: check the drivers below and save again.`);
+        } catch (err) {
+          setWeekendStep(null);
+          setError(`The feature race is saved, but the sprint could not be loaded: ${err.message}`);
+        }
+      } else if (weekendStep === "FEATURE") {
+        // No sprint session on the server to hand over to: say what is left.
+        setWeekendStep(null);
+        setTargetSession("SPRINT");
+        setDone(`${savedMsg} The sprint is still to come: pick its session above, or upload its file.`);
+      } else if (weekendStep === "SPRINT") {
+        setWeekendStep(null);
+        setTargetSession("RACE");
+        setDone(`${savedMsg} That was both races of the weekend: feature and sprint are in.`);
+      }
       // A round created from a typed number now exists in the calendar, so the
       // picker can hold it like any other. Refresh and select it, which also
       // opens the qualifying card underneath for the session that just ran.
@@ -648,6 +719,7 @@ export default function AdminImport({ onCommitted }) {
               setTargetRaceId(e.target.value);
               setNewRoundNumber("");
               setTargetSession("RACE");
+              setWeekendStep(null);
               setQualiNote(null);
               setDone(null);
             }}
@@ -689,27 +761,48 @@ export default function AdminImport({ onCommitted }) {
           )}
         </div>
         {isSprintWeekend && (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-semibold text-medium">This result file is the</span>
-            <select
-              aria-label="Which race of the sprint weekend"
-              className="input max-w-xs"
-              value={targetSession}
-              onChange={(e) => { setTargetSession(e.target.value); setDone(null); }}
-              disabled={busy}
-            >
-              <option value="RACE">Feature race (the first race of the evening, the main result)</option>
-              <option value="SPRINT">Sprint race (the second race)</option>
-            </select>
-            {targetRace.sprintRaceId && (
-              <span className="pill bg-surface2 text-light">sprint result already stored</span>
-            )}
-            {fileSession && !sessionMismatch && (
-              <span className="pill bg-emerald-500/15 text-ok">
-                {fileSession === "SPRINT"
-                  ? `detected: the sprint (${targetRace.sprintLaps} laps)`
-                  : `detected: the feature race (${targetRace.raceLaps} laps)`}
-              </span>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-medium">This weekend ran two races. Import</span>
+              <select
+                aria-label="How to import the sprint weekend"
+                className="input max-w-xs"
+                value={weekendMode}
+                onChange={(e) => { setWeekendMode(e.target.value); setTargetSession("RACE"); setDone(null); }}
+                disabled={busy || !!weekendStep}
+              >
+                <option value="BOTH">both: the feature race, then the sprint</option>
+                <option value="ONE">one of them only</option>
+              </select>
+              {!importBoth && (
+                <select
+                  aria-label="Which race of the sprint weekend"
+                  className="input max-w-xs"
+                  value={targetSession}
+                  onChange={(e) => { setTargetSession(e.target.value); setDone(null); }}
+                  disabled={busy}
+                >
+                  <option value="RACE">the feature race (the first race of the evening, the main result)</option>
+                  <option value="SPRINT">the sprint (the second race)</option>
+                </select>
+              )}
+              {targetRace.sprintRaceId && (
+                <span className="pill bg-surface2 text-light">sprint result already stored</span>
+              )}
+              {fileSession && !sessionMismatch && (
+                <span className="pill bg-emerald-500/15 text-ok">
+                  {fileSession === "SPRINT"
+                    ? `detected: the sprint (${targetRace.sprintLaps} laps)`
+                    : `detected: the feature race (${targetRace.raceLaps} laps)`}
+                </span>
+              )}
+            </div>
+            {importBoth && (
+              <p className="text-sm text-light">
+                Two sessions are picked from the race server below, the feature race and the sprint after it.
+                Load the feature race, check and save it, and the sprint loads by itself for its own check and
+                save. Both score full points under this round.
+              </p>
             )}
           </div>
         )}
@@ -718,14 +811,20 @@ export default function AdminImport({ onCommitted }) {
             {fileSession === "SPRINT"
               ? `This file looks like the sprint: its leader ran ${targetRace.sprintLaps} laps, the sprint distance. Saving it as the feature race would replace the feature's result with the sprint's.`
               : `This file looks like the feature race: its leader ran ${targetRace.raceLaps} laps, the feature distance. Saving it as the sprint would replace the sprint's result with the feature's.`}{" "}
-            <button
-              type="button"
-              className="font-bold underline"
-              onClick={() => { setTargetSession(fileSession); setDone(null); }}
-              disabled={busy}
-            >
-              {fileSession === "SPRINT" ? "Import it as the sprint" : "Import it as the feature race"}
-            </button>
+            {weekendStep && remoteId && sprintRemoteId ? (
+              <button type="button" className="font-bold underline" onClick={swapWeekendSessions} disabled={busy}>
+                The two sessions are the wrong way round: swap them and load again
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="font-bold underline"
+                onClick={() => { setTargetSession(fileSession); setWeekendStep(null); setDone(null); }}
+                disabled={busy}
+              >
+                {fileSession === "SPRINT" ? "Import it as the sprint" : "Import it as the feature race"}
+              </button>
+            )}
           </Notice>
         )}
         {targetRace && (
@@ -755,7 +854,15 @@ export default function AdminImport({ onCommitted }) {
         <div className="card space-y-5 p-5">
           <CardHead
             eyebrow="Step 2"
-            title={targetRace?.resultCount ? "Import the race result again" : "Import the race result"}
+            title={
+              importBoth
+                ? weekendStep === "SPRINT"
+                  ? "Import the sprint (2 of 2)"
+                  : "Import the feature race and the sprint"
+                : targetRace?.resultCount
+                  ? "Import the race result again"
+                  : "Import the race result"
+            }
           />
 
           {/* Source A — straight from the race server */}
@@ -785,12 +892,13 @@ export default function AdminImport({ onCommitted }) {
                   />
                 )}
                 <div className="flex flex-wrap items-center gap-2">
+                  {importBoth && <span className="w-24 text-sm font-semibold text-medium">Feature race</span>}
                   <select
-                    aria-label="Race on the server"
+                    aria-label={importBoth ? "Feature race on the server" : "Race on the server"}
                     className="input max-w-sm"
                     value={remoteId}
                     onChange={(e) => { setRemoteId(e.target.value); setRemoteAuto(false); }}
-                    disabled={remote.loading || busy}
+                    disabled={remote.loading || busy || !!weekendStep}
                   >
                     <option value="">
                       {remote.loading
@@ -804,10 +912,56 @@ export default function AdminImport({ onCommitted }) {
                   {remoteAuto && remoteId && (
                     <span className="pill bg-emerald-500/15 text-ok">found for this round</span>
                   )}
-                  <button className="btn-primary" onClick={loadRemote} disabled={!remoteId || busy}>
-                    {busy ? "Loading…" : "Load"}
+                  {weekendStep === "FEATURE" && <span className="pill bg-sky-500/15 text-link">loaded · 1 of 2</span>}
+                  <button
+                    className="btn-primary"
+                    onClick={() => loadRemote(remoteId, importBoth ? "FEATURE" : null)}
+                    disabled={!remoteId || busy || weekendStep === "SPRINT"}
+                  >
+                    {busy ? "Loading…" : importBoth ? "Load the feature race" : "Load"}
                   </button>
                 </div>
+                {/* The weekend's second race, picked beside the first. The
+                    walk loads it by itself after the feature is saved; the
+                    button is for a night when only the sprint is missing. */}
+                {importBoth && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-24 text-sm font-semibold text-medium">Sprint</span>
+                    <select
+                      aria-label="Sprint on the server"
+                      className="input max-w-sm"
+                      value={sprintRemoteId}
+                      onChange={(e) => { setSprintRemoteId(e.target.value); setSprintRemoteAuto(false); }}
+                      disabled={remote.loading || busy || !!weekendStep}
+                    >
+                      <option value="">
+                        {remote.loading ? "Loading sessions…" : "No sprint session yet — choose one…"}
+                      </option>
+                      <SessionOptions sessions={filteredRemote} track={targetTrack} />
+                    </select>
+                    {sprintRemoteAuto && sprintRemoteId && (
+                      <span className="pill bg-emerald-500/15 text-ok">found: the session after the feature</span>
+                    )}
+                    {weekendStep === "SPRINT" && <span className="pill bg-sky-500/15 text-link">loaded · 2 of 2</span>}
+                    <button
+                      className="btn-secondary"
+                      onClick={() => loadRemote(sprintRemoteId, "SPRINT")}
+                      disabled={!sprintRemoteId || busy || !!weekendStep}
+                    >
+                      Load the sprint only
+                    </button>
+                    {weekendStep && (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-medium underline"
+                        onClick={() => { setWeekendStep(null); setTargetSession("RACE"); setParsed(null); setRows([]); setDone(null); setError(null); }}
+                        disabled={busy}
+                      >
+                        Start the weekend over
+                      </button>
+                    )}
+                  </div>
+                )}
                 {/* second row: the qualifying session, auto-found for the picked
                     race (same circuit, right before the start). Saved together
                     with the race on confirm. */}
@@ -942,6 +1096,16 @@ export default function AdminImport({ onCommitted }) {
               eyebrow="Step 3"
               title={`Check the drivers and save into ${
                 targetRace ? raceLabel(targetRace) : `Round ${newRoundNumber}`
+              }${
+                weekendStep === "FEATURE"
+                  ? " · feature race (1 of 2)"
+                  : weekendStep === "SPRINT"
+                    ? " · sprint (2 of 2)"
+                    : asSprint
+                      ? " · sprint"
+                      : isSprintWeekend
+                        ? " · feature race"
+                        : ""
               }`}
             />
             <div className="grid gap-4 sm:grid-cols-3">
