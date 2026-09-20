@@ -342,7 +342,7 @@ function Rules({ content, tokens }) {
           <p className="text-xs leading-relaxed text-light">
             <span className="font-bold text-fl">Fastest lap:</span> the driver who sets the fastest race lap scores +
             {season.fastestLapPoints} on top of their finishing points, if they finish the race. On a sprint weekend the
-            sprint and the feature race each pay it.
+            feature race and the sprint each pay it.
           </p>
         )}
         {content.pointsFootnote && (

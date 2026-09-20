@@ -2354,12 +2354,16 @@ function EditResults() {
               onChange={(e) =>
                 setMeta({ ...meta, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : meta.sprintLaps })}>
               <option value="SINGLE">One race</option>
-              <option value="SPRINT_FEATURE">Sprint + feature race</option>
+              <option value="SPRINT_FEATURE">Feature + sprint race</option>
             </select>
           </Field>
           <Field label="Qualifying (min)" tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
               onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
+          </Field>
+          <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
+            <input className="input w-32" type="number" min="1" value={meta.raceLaps}
+              onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
           </Field>
           {meta.raceFormat === "SPRINT_FEATURE" && (
             <Field label="Sprint laps" tone="plain">
@@ -2367,10 +2371,6 @@ function EditResults() {
                 onChange={(e) => setMeta({ ...meta, sprintLaps: e.target.value })} />
             </Field>
           )}
-          <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
-            <input className="input w-32" type="number" min="1" value={meta.raceLaps}
-              onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
-          </Field>
           <Field className="w-full" label="Custom points for this round (optional)" tone="plain">
             <RacePointsInput value={meta.pointsTable} onChange={(v) => setMeta({ ...meta, pointsTable: v })} />
           </Field>
@@ -3964,7 +3964,7 @@ function DiscordEvents() {
               onChange={(e) =>
                 setEvent({ ...event, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : event.sprintLaps })}>
               <option value="SINGLE">One race</option>
-              <option value="SPRINT_FEATURE">Sprint + feature race (F2 style)</option>
+              <option value="SPRINT_FEATURE">Feature + sprint race</option>
             </select>
           </Field>
           {event.type === "CHAMPIONSHIP" && (
@@ -3979,12 +3979,6 @@ function DiscordEvents() {
               <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="e.g. 15" value={event.qualiMinutes}
                 onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
             </Field>
-            {event.raceFormat === "SPRINT_FEATURE" && (
-              <Field label="Sprint laps" tone="plain">
-                <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="e.g. 12" value={event.sprintLaps}
-                  onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
-              </Field>
-            )}
             <Field label={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
               <input
                 aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
@@ -3992,6 +3986,12 @@ function DiscordEvents() {
                 value={event.raceLaps}
                 onChange={(e) => setEvent({ ...event, raceLaps: e.target.value })} />
             </Field>
+            {event.raceFormat === "SPRINT_FEATURE" && (
+              <Field label="Sprint laps" tone="plain">
+                <input aria-label="Sprint laps" className="input" type="number" min="1" placeholder="e.g. 12" value={event.sprintLaps}
+                  onChange={(e) => setEvent({ ...event, sprintLaps: e.target.value })} />
+              </Field>
+            )}
           </div>
           <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
             value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
@@ -4067,7 +4067,7 @@ function DiscordEvents() {
                           onChange={(e) =>
                             setEdit({ ...edit, raceFormat: e.target.value, sprintLaps: e.target.value === "SINGLE" ? "" : edit.sprintLaps })}>
                           <option value="SINGLE">One race</option>
-                          <option value="SPRINT_FEATURE">Sprint + feature race</option>
+                          <option value="SPRINT_FEATURE">Feature + sprint race</option>
                         </select>
                       </Field>
                       {edit.type === "CHAMPIONSHIP" && (
@@ -4079,16 +4079,16 @@ function DiscordEvents() {
                         <input className="input" type="number" min="1" value={edit.qualiMinutes}
                           onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
                       </Field>
+                      <Field label={edit.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
+                        <input className="input" type="number" min="1" value={edit.raceLaps}
+                          onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
+                      </Field>
                       {edit.raceFormat === "SPRINT_FEATURE" && (
                         <Field label="Sprint laps" tone="plain">
                           <input className="input" type="number" min="1" value={edit.sprintLaps}
                             onChange={(e) => setEdit({ ...edit, sprintLaps: e.target.value })} />
                         </Field>
                       )}
-                      <Field label={edit.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
-                        <input className="input" type="number" min="1" value={edit.raceLaps}
-                          onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />
-                      </Field>
                     </div>
                     <Field label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
                       <textarea className="input min-h-24" value={edit.info}
@@ -4496,7 +4496,7 @@ function SeasonScoring({ season, onSaved, onError }) {
           Fastest lap
           <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="100"
             value={flPoints} onChange={(e) => setFlPoints(e.target.value)}
-            title="Bonus points for the fastest race lap, on top of the finishing points. Goes to the driver who set the race's best lap, only if they finished the race (a DNF gets nothing). 0 = no bonus. On a sprint weekend the sprint and the feature race each pay it." />
+            title="Bonus points for the fastest race lap, on top of the finishing points. Goes to the driver who set the race's best lap, only if they finished the race (a DNF gets nothing). 0 = no bonus. On a sprint weekend the feature race and the sprint each pay it." />
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
           Champion

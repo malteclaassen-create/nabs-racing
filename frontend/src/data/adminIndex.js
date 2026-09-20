@@ -145,8 +145,8 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "discord",
-    title: "Sprint + feature race day",
-    hint: "Give an event two races: a short sprint and the feature, each with its own lap count.",
+    title: "Feature + sprint race day",
+    hint: "Give an event two races: the feature first and a short sprint after it, each with its own lap count.",
     keywords: "sprint feature two races f2 formula 2 double header race day format laps second race",
   },
   {

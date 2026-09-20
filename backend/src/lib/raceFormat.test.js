@@ -15,11 +15,11 @@ describe("sessionLines", () => {
   it("names both races on a sprint weekend", () => {
     expect(
       sessionLines({ qualiMinutes: 15, sprintLaps: 12, raceLaps: 20, raceFormat: "SPRINT_FEATURE" })
-    ).toEqual(["15 min qualifying", "12 lap sprint", "20 lap feature race"]);
+    ).toEqual(["15 min qualifying", "20 lap feature race", "12 lap sprint"]);
   });
 
   it("still announces both races when the distances are not decided yet", () => {
-    expect(sessionLines({ raceFormat: "SPRINT_FEATURE" })).toEqual(["sprint race", "feature race"]);
+    expect(sessionLines({ raceFormat: "SPRINT_FEATURE" })).toEqual(["feature race", "sprint race"]);
   });
 
   it("says nothing about a round with no format set", () => {
