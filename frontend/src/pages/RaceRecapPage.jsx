@@ -1,10 +1,11 @@
 // ---------------------------------------------------------------------------
-// The race recap: the round told from your seat, as one long scroll.
+// The race recap: the round told from your seat, as one long page.
 //
-// It does not look like the rest of the site on purpose. No cards, no
-// tables: full-width chapters, each the height of the screen, a photo where
-// there is one and otherwise the page's own dark with a wash of the team's
-// colour, and a few very large numbers with a line of words under each.
+// It is set like a broadcast graphic, not like the rest of the site: a flat
+// page, hairlines instead of cards, numbered chapters, very large numerals
+// with a mono word under each, and the team's colour used for exactly two
+// things, the bar under the big number and the driver's own line on the
+// lap chart. No gradients, no glows.
 //
 // Opened three ways. The host at the app root sends a member here the first
 // time they come back after the office saved a round (with the recap already
@@ -22,7 +23,7 @@ import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { useParallax } from "../hooks/motion.js";
-import { CountUp, DriverAvatar, MEDAL, MEDAL_TEXT, ErrorBox, PageHeaderSkeleton } from "../components/ui.jsx";
+import { CountUp, DriverAvatar, MEDAL_TEXT, ErrorBox, PageHeaderSkeleton } from "../components/ui.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import { buildRaceFacts } from "../components/RaceFacts.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
@@ -64,8 +65,8 @@ export default function RaceRecapPage() {
     if (pending) api.markRaceRecapSeen(raceId).catch(() => {});
   }, [pending, raceId]);
 
-  // The chapters run edge to edge, past the page's own gutters. The body is
-  // told not to grow a sideways scrollbar over the few pixels a 100vw strip
+  // The page runs edge to edge, past the site's own gutters. The body is told
+  // not to grow a sideways scrollbar over the few pixels a 100vw strip
   // reaches past a real scrollbar.
   useEffect(() => {
     document.body.classList.add("recap-bleed");
@@ -93,24 +94,27 @@ export default function RaceRecapPage() {
   const resultsLink = seriesPath(`/races?race=${race.id}`);
   const showPoints = points && (points.entries.length > 0 || points.pending);
   const leave = () => (pending ? navigate(-1) : navigate(resultsLink));
-  const teamColor = you?.team?.color || null;
+
+  // Chapter numbers count only what is on the page.
+  let n = 1;
+  const num = () => String(n++).padStart(2, "0");
 
   return (
-    <div className="recap-bleed-strip" style={{ "--recap-team": teamColor || "var(--c-eyebrow)" }}>
-      <Opening recap={recap} preview={seat != null} />
-      {you && <YouChapter recap={recap} laps={laps} />}
-      <PodiumChapter results={results} />
-      {standings?.after && <ChampionshipChapter recap={recap} />}
-      {(rating?.after || card) && <RatingChapter recap={recap} />}
-      {showPoints && <PointsChapter points={points} />}
-      <FactsChapter race={race} results={results} quali={quali} />
-      <Chapter className="min-h-[60svh]">
-        <div className="reveal mx-auto flex max-w-3xl flex-col items-center text-center">
-          <Eyebrow>That was {race.track}</Eyebrow>
-          <p className="mt-4 max-w-xl text-lg text-medium">
-            The full classification, every lap and the stewards' decisions are on the race page.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+    <div className="recap-bleed-strip bg-bg" style={{ "--recap-team": you?.team?.color || "var(--c-text)" }}>
+      <Opening recap={recap} preview={seat != null} index={num()} />
+      {you && <YouChapter recap={recap} laps={laps} index={num()} />}
+      <PodiumChapter results={results} index={num()} />
+      {standings?.after && <ChampionshipChapter recap={recap} index={num()} />}
+      {(rating?.after || card) && <RatingChapter recap={recap} index={num()} />}
+      {showPoints && <PointsChapter points={points} index={num()} />}
+      <FactsChapter race={race} results={results} quali={quali} index={num()} />
+      <section className="border-t border-border">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-6 px-6 py-12 sm:px-12">
+          <div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-light">End of recap</div>
+            <div className="mt-2 font-display text-2xl font-black uppercase tracking-tight text-dark">{race.track}, round {race.number}</div>
+          </div>
+          <div className="flex flex-wrap gap-3">
             <Link to={resultsLink} className="btn-secondary px-6 py-3 text-base">
               Full results
             </Link>
@@ -119,56 +123,72 @@ export default function RaceRecapPage() {
             </button>
           </div>
         </div>
-      </Chapter>
+      </section>
     </div>
   );
 }
 
-// --- the frame every chapter shares -----------------------------------------
+// --- the shared pieces --------------------------------------------------------
 
-// A chapter is the height of the screen and the width of the window; the
-// content inside keeps to a readable column.
-function Chapter({ children, className = "", photo = null, glow = false, id }) {
-  const img = useParallax(0.12);
+// A chapter: a hairline across the page, a numbered mono header, the content.
+function Chapter({ index, title, meta, children }) {
   return (
-    <section id={id} className={`relative flex min-h-[100svh] w-full items-center overflow-hidden ${className}`}>
-      {photo && (
-        <>
-          <img ref={img} src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          <div className="recap-scrim absolute inset-0" />
-        </>
-      )}
-      {glow && <div className="recap-glow pointer-events-none absolute inset-0" aria-hidden="true" />}
-      <div className="relative mx-auto w-full max-w-6xl px-6 py-20 sm:px-12 sm:py-24">{children}</div>
+    <section className="border-t border-border">
+      <div className="mx-auto max-w-7xl px-6 sm:px-12">
+        <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-5 font-mono text-[11px] font-bold uppercase tracking-[0.25em]">
+          <div className="flex items-baseline gap-4">
+            <span className="text-faint">{index}</span>
+            <span className="text-dark">{title}</span>
+          </div>
+          {meta && <div className="text-light">{meta}</div>}
+        </header>
+        <div className="reveal pb-20 pt-6 sm:pb-28 sm:pt-10">{children}</div>
+      </div>
     </section>
   );
 }
 
-function Eyebrow({ children, className = "", style }) {
+// The plate: cells separated by hairlines, one border around the lot. Each
+// cell brings its own top and left line and pulls itself a pixel up and left
+// over the previous one, so no line is ever doubled and a last row that does
+// not fill up leaves plain page behind it, not a slab of line colour.
+function Plate({ children, className = "", style }) {
   return (
-    <div className={`flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow sm:text-[13px] ${className}`} style={style}>
-      <span className="h-px w-8 bg-current opacity-50" />
-      <span>{children}</span>
+    <div className={`grid overflow-hidden border border-border ${className}`} style={style}>
+      {children}
+    </div>
+  );
+}
+function Cell({ children, className = "", style }) {
+  return (
+    <div className={`-ml-px -mt-px border-l border-t border-border bg-bg ${className}`} style={style}>
+      {children}
     </div>
   );
 }
 
-// A giant number with a word under it. The whole page is made of these.
-function Giant({ children, className = "" }) {
+function Label({ children, className = "" }) {
+  return <div className={`font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-light ${className}`}>{children}</div>;
+}
+
+// A giant numeral with the team's colour as a bar under it.
+function Giant({ children, bar = true, className = "" }) {
   return (
-    <div className={`recap-pop font-display font-black leading-[0.85] tracking-tighter text-dark ${className}`}>{children}</div>
+    <div className={className}>
+      <div className="recap-pop font-display font-black leading-[0.82] tracking-tighter text-dark">{children}</div>
+      {bar && <div className="bar-fill mt-4 h-1.5 w-full max-w-[9rem]" style={{ "--w": "100%", background: "var(--recap-team)" }} />}
+    </div>
   );
 }
 
-// A value and its word, no box around it, for a row of a few of them.
-function Stat({ value, label, note, tone = "text-dark" }) {
-  if (value == null || value === "") return null;
+// A number and its word, for the data plates.
+function Stat({ value, label, note, tone = "text-dark", className = "" }) {
   return (
-    <div className="min-w-[7rem]">
-      <div className={`font-display text-4xl font-black tabular-nums leading-none sm:text-5xl ${tone}`}>{value}</div>
-      <div className="mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">{label}</div>
-      {note && <div className="mt-0.5 text-xs text-faint">{note}</div>}
-    </div>
+    <Cell className={`p-5 sm:p-6 ${className}`}>
+      <Label>{label}</Label>
+      <div className={`mt-3 break-words font-display text-2xl font-black tabular-nums leading-none tracking-tight sm:text-3xl ${tone}`}>{value ?? NO_VALUE}</div>
+      {note && <div className="mt-2 font-mono text-[11px] text-faint">{note}</div>}
+    </Cell>
   );
 }
 
@@ -181,123 +201,154 @@ function Delta({ value, decimals = 0, suffix = "", className = "" }) {
 }
 
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-// --- 1. the opening ---------------------------------------------------------
+// --- 01 the round -----------------------------------------------------------
 
-function Opening({ recap, preview }) {
-  const { race, you } = recap;
+function Opening({ recap, preview, index }) {
+  const { race, results, you } = recap;
   const flag = flagFor(race.track, race.country);
   const photo = heroFor({ number: race.seasonNumber, heroImageUrl: race.heroImageUrl });
+  const img = useParallax(0.1);
+  const finished = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position);
+  const winner = finished[0] || null;
+  const fastest = results.filter((r) => r.bestLapMs != null).sort((a, b) => a.bestLapMs - b.bestLapMs)[0] || null;
+  const pole = results.find((r) => r.grid === 1) || null;
+  const line = !you
+    ? null
+    : !you.raced
+      ? "You sat this one out."
+      : !you.finished
+        ? `${you.status} for you${you.grid != null ? `, from P${you.grid} on the grid` : ""}.`
+        : you.gained > 0
+          ? `You finished P${you.position}, up ${you.gained} from P${you.grid} on the grid.`
+          : you.gained < 0
+            ? `You finished P${you.position}, down ${-you.gained} from P${you.grid} on the grid.`
+            : `You finished P${you.position}${you.grid != null ? ", where you started" : ""}.`;
   return (
-    <Chapter photo={photo} className="items-end">
-      <CircuitMap
-        track={race.track}
-        animate
-        className="pointer-events-none absolute right-0 top-1/2 h-[75vh] w-[60vw] -translate-y-1/2 text-dark opacity-[0.18]"
-        strokeWidth={1.6}
-      />
-      <div className="relative">
-        <Eyebrow className="hero-anim" style={{ animationDelay: "0.05s" }}>
-          {["Race recap", race.number != null ? `Round ${race.number}` : null, race.seasonNumber != null ? `Season ${race.seasonNumber}` : null, preview ? "preview" : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </Eyebrow>
-        <h1 className="hero-anim mt-6 font-display text-[clamp(3.5rem,12vw,11rem)] font-black uppercase leading-[0.85] tracking-tighter text-dark" style={{ animationDelay: "0.15s" }}>
-          {race.track}
-        </h1>
-        <div className="hero-anim mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[13px] uppercase tracking-[0.2em] text-medium" style={{ animationDelay: "0.3s" }}>
-          {flag && <Flag code={flag.country} w={34} h={25} className="rounded-sm" />}
-          {race.date && <span>{fmtRaceDateFull(race.date)}</span>}
-          <span>{race.finishers} of {race.fieldSize} classified</span>
-          {race.raceLaps && <span>{race.raceLaps} laps</span>}
-        </div>
-        <div className="hero-anim mt-16 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-light" style={{ animationDelay: "0.6s" }}>
-          <svg viewBox="0 0 24 24" className="scroll-cue h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-          {you ? "Your race, from the top" : "The race, from the top"}
+    <section>
+      {/* The photo, edge to edge, with nothing drawn over it but a corner label. */}
+      <div className="relative h-[52svh] min-h-[300px] w-full overflow-hidden border-b border-border">
+        <img ref={img} src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-ink/20" />
+        <div className="absolute left-6 top-6 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white sm:left-12 sm:top-8">
+          <span className="text-white/60">{index}</span>
+          <span>Race recap</span>
+          {preview && <span className="border border-white/50 px-2 py-0.5 text-[10px]">preview</span>}
         </div>
       </div>
-    </Chapter>
+      <div className="mx-auto max-w-7xl px-6 sm:px-12">
+        <div className="grid gap-10 py-10 lg:grid-cols-[1.35fr,1fr] lg:gap-16 lg:py-14">
+          <div className="min-w-0">
+            <div className="hero-anim flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+              {[race.seriesName, race.seasonNumber != null ? `Season ${race.seasonNumber}` : null, race.number != null ? `Round ${race.number}` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+            <h1 className="hero-anim mt-5 flex flex-wrap items-end gap-x-6 gap-y-3 font-display text-[clamp(3.25rem,10vw,9rem)] font-black uppercase leading-[0.85] tracking-tighter text-dark" style={{ animationDelay: "0.15s" }}>
+              <span className="min-w-0 break-words">{race.track}</span>
+              {flag && <Flag code={flag.country} w={56} h={42} className="mb-3 rounded-[3px]" />}
+            </h1>
+            {line && (
+              <p className="hero-anim mt-8 max-w-2xl font-display text-2xl font-extrabold uppercase leading-tight tracking-tight text-medium sm:text-3xl" style={{ animationDelay: "0.3s" }}>
+                {line}
+              </p>
+            )}
+          </div>
+          {/* The plate: the round's own numbers and the circuit, as a data card. */}
+          <Plate className="hero-anim grid-cols-2" style={{ animationDelay: "0.25s" }}>
+            <Cell className="col-span-2 flex items-center justify-center p-6">
+              <CircuitMap track={race.track} animate className="h-36 w-full text-dark sm:h-44" strokeWidth={2.2} />
+            </Cell>
+            <Stat label="Date" value={race.date ? fmtRaceDateFull(race.date).replace(/^\w+,\s*/, "").replace(/\s\d{4}$/, "") : NO_VALUE} note={race.date ? new Date(race.date).getFullYear() : null} />
+            <Stat label="Distance" value={race.raceLaps ? plural(race.raceLaps, "lap", "laps") : NO_VALUE} />
+            <Stat label="Classified" value={`${race.finishers} of ${race.fieldSize}`} />
+            <Stat label="Winner" value={winner?.name || NO_VALUE} />
+            <Stat label="Pole" value={pole?.name || NO_VALUE} note={pole?.qualiTimeMs ? fmtLap(pole.qualiTimeMs) : null} />
+            <Stat label="Fastest lap" value={fastest?.name || NO_VALUE} note={fastest ? fmtLap(fastest.bestLapMs) : null} />
+          </Plate>
+        </div>
+      </div>
+    </section>
   );
 }
 
-// --- 2. you -----------------------------------------------------------------
+// --- 02 your race -----------------------------------------------------------
 
-function YouChapter({ recap, laps }) {
+function YouChapter({ recap, laps, index }) {
   const y = recap.you;
   const photo = recap.card?.driver?.photoUrl || recap.results.find((r) => r.driverId === y.driverId)?.photoUrl || null;
   const fastest = y.finished && y.bestLapMs != null && y.lapGapMs === 0;
-  const line = !y.raced
-    ? "You sat this one out."
-    : !y.finished
-      ? `${y.status}${y.grid != null ? `, from P${y.grid} on the grid` : ""}.`
-      : y.gained > 0
-        ? `Up ${y.gained} from P${y.grid} on the grid.`
-        : y.gained < 0
-          ? `Down ${-y.gained} from P${y.grid} on the grid.`
-          : y.grid != null
-            ? "Held from lights to flag."
-            : "";
   const stats = [
-    y.points > 0 ? { value: `+${y.points}`, label: "points", note: y.fastestLapBonus > 0 ? `incl. ${y.fastestLapBonus} for the fastest lap` : recap.standings?.roundDropped ? "a dropped round" : null } : null,
-    y.sprint ? { value: y.sprint.position != null ? `P${y.sprint.position}` : y.sprint.status, label: "sprint", note: y.sprint.points > 0 ? `+${y.sprint.points} pts` : null } : null,
-    fmtLap(y.bestLapMs) ? { value: fmtLap(y.bestLapMs), label: "best lap", note: fastest ? "fastest of the race" : y.lapGapMs != null ? `${fmtLapDelta(y.lapGapMs)} to the fastest` : null, tone: fastest ? "text-fl" : "text-dark" } : null,
-    y.lapsLed > 0 ? { value: String(y.lapsLed), label: y.lapsLed === 1 ? "lap led" : "laps led" } : null,
-    y.overtakes != null ? { value: String(y.overtakes), label: "overtakes", note: "estimated" } : null,
-    y.contacts != null ? { value: String(y.contacts), label: y.contacts === 1 ? "contact" : "contacts", tone: y.contacts === 0 ? "text-ok" : "text-dark" } : null,
-    y.consistencyPct > 0 ? { value: `${y.consistencyPct.toFixed(1)}%`, label: "consistency" } : null,
+    y.grid != null ? { label: "Grid", value: `P${y.grid}` } : null,
+    y.finished && y.rawPosition != null && y.rawPosition !== y.position ? { label: "At the line", value: `P${y.rawPosition}`, note: "before penalties" } : null,
+    { label: "Points", value: y.points > 0 ? `+${y.points}` : "0", tone: y.points > 0 ? "text-dark" : "text-light", note: y.fastestLapBonus > 0 ? `incl. ${y.fastestLapBonus} fastest lap` : recap.standings?.roundDropped ? "dropped round" : null },
+    y.sprint ? { label: "Sprint", value: y.sprint.position != null ? `P${y.sprint.position}` : y.sprint.status, note: y.sprint.points > 0 ? `+${y.sprint.points} pts` : null } : null,
+    fmtLap(y.bestLapMs) ? { label: "Best lap", value: fmtLap(y.bestLapMs), tone: fastest ? "text-fl" : "text-dark", note: fastest ? "fastest of the race" : y.lapGapMs != null ? `${fmtLapDelta(y.lapGapMs)} to fastest` : null } : null,
+    y.laps != null ? { label: "Laps", value: String(y.laps) } : null,
+    y.lapsLed != null ? { label: "Laps led", value: String(y.lapsLed) } : null,
+    y.overtakes != null ? { label: "Overtakes", value: String(y.overtakes), note: "estimated" } : null,
+    y.contacts != null ? { label: "Car contacts", value: String(y.contacts) } : null,
+    y.consistencyPct > 0 ? { label: "Consistency", value: `${y.consistencyPct.toFixed(1)}%` } : null,
     y.raced
       ? y.penaltySeconds > 0
-        ? { value: `+${y.penaltySeconds}s`, label: "penalty", note: "from the stewards", tone: "text-bad" }
+        ? { label: "Penalties", value: `+${y.penaltySeconds}s`, tone: "text-bad", note: "stewards" }
         : y.cleanRace
-          ? { value: "Clean", label: "no penalties", tone: "text-ok" }
+          ? { label: "Penalties", value: "None", tone: "text-ok", note: "clean race" }
           : y.gamePenalties > 0
-            ? { value: String(y.gamePenalties), label: "in-game penalties", tone: "text-warn" }
+            ? { label: "Penalties", value: String(y.gamePenalties), note: "in-game" }
             : null
       : null,
   ].filter(Boolean);
+  const headline = !y.raced
+    ? "Did not start"
+    : !y.finished
+      ? y.status === "DNF"
+        ? "Did not finish"
+        : y.status === "DSQ"
+          ? "Disqualified"
+          : y.status
+      : y.position === 1
+        ? "Race winner"
+        : y.position <= 3
+          ? "On the podium"
+          : y.gained > 0
+            ? `Up ${y.gained} from the grid`
+            : y.gained < 0
+              ? `Down ${-y.gained} from the grid`
+              : "Held position";
   return (
-    <Chapter glow>
-      <div className="reveal flex flex-col gap-10 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex items-center gap-4">
-            <DriverAvatar name={y.name} photoUrl={photo} color={y.team?.color || "#232833"} size={56} />
-            <div>
-              <div className="font-display text-xl font-black uppercase tracking-tight text-dark">{y.name}</div>
-              {y.team && <TeamLogo id={y.team.id} name={y.team.name} color={y.team.color} logoUrl={y.team.logoUrl} size={14} showName nameClassName="text-sm text-light" />}
+    <Chapter index={index} title="Your race" meta={`${y.name}${y.team ? ` · ${y.team.name}` : ""}`}>
+      <div className="grid gap-10 lg:grid-cols-[auto,1fr] lg:items-end lg:gap-16">
+        <Giant className="text-[clamp(7rem,22vw,17rem)]">{y.finished ? `P${y.position}` : y.raced ? y.status : "DNS"}</Giant>
+        <div className="flex items-center gap-4 lg:pb-6">
+          <DriverAvatar name={y.name} photoUrl={photo} color={y.team?.color || "#232833"} size={64} />
+          <div className="min-w-0">
+            <div className="font-display text-2xl font-black uppercase tracking-tight sm:text-3xl" style={{ color: y.finished && y.position <= 3 ? MEDAL_TEXT[y.position - 1] : "var(--c-text)" }}>
+              {headline}
+            </div>
+            <div className="mt-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
+              {y.finished ? `of ${y.fieldSize} classified` : y.grid != null ? `from P${y.grid} on the grid` : ""}
             </div>
           </div>
-          <Eyebrow className="mt-10">{y.finished ? "You finished" : y.raced ? "Your race ended" : "Your race"}</Eyebrow>
-          <Giant className="mt-4 text-[clamp(7rem,26vw,20rem)]">{y.finished ? `P${y.position}` : y.raced ? y.status : "DNS"}</Giant>
-          <p className="mt-6 max-w-xl font-display text-2xl font-extrabold uppercase tracking-tight text-medium sm:text-3xl">
-            {y.finished && y.position <= 3 && (
-              <span className="mr-3" style={{ color: MEDAL_TEXT[y.position - 1] }}>
-                {y.position === 1 ? "Winner." : "Podium."}
-              </span>
-            )}
-            {line}
-          </p>
-          {y.finished && y.rawPosition != null && y.rawPosition !== y.position && (
-            <p className="mt-2 text-sm text-light">Crossed the line P{y.rawPosition}; the stewards made it P{y.position}.</p>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-x-10 gap-y-8 sm:grid-cols-3 lg:max-w-md lg:grid-cols-2">
-          {stats.map((s) => (
-            <Stat key={s.label} {...s} />
-          ))}
         </div>
       </div>
-      {laps && <RaceTrace laps={laps} driverId={y.driverId} color={y.team?.color} />}
+      <Plate className="mt-12 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {stats.map((s) => (
+          <Stat key={s.label} {...s} />
+        ))}
+      </Plate>
+      {laps && <RaceTrace laps={laps} driverId={y.driverId} />}
     </Chapter>
   );
 }
 
-// The driver's position lap by lap over the faint traces of everyone else.
-function RaceTrace({ laps, driverId, color }) {
+// The driver's position lap by lap, drawn over the rest of the field on a
+// timing-screen grid. The line draws itself when it scrolls into view.
+function RaceTrace({ laps, driverId }) {
   const W = 1000;
-  const H = 260;
-  const PAD = { l: 40, r: 60, t: 16, b: 28 };
+  const H = 300;
+  const PAD = { l: 44, r: 64, t: 18, b: 30 };
   const drivers = (laps.drivers || []).filter((d) => (d.points || []).length > 1);
   const me = drivers.find((d) => d.driverId === driverId);
   if (!me) return null;
@@ -308,51 +359,77 @@ function RaceTrace({ laps, driverId, color }) {
   const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(p.lap).toFixed(1)} ${y(p.position).toFixed(1)}`).join(" ");
   const first = me.points[0];
   const last = me.points[me.points.length - 1];
-  const stroke = color || "var(--c-eyebrow)";
+  const posStep = maxPos > 24 ? 10 : maxPos > 10 ? 5 : 1;
+  const posLines = [1, ...Array.from({ length: Math.floor(maxPos / posStep) }, (_, i) => (i + 1) * posStep)].filter((v, i, a) => a.indexOf(v) === i && v <= maxPos);
+  const lapStep = maxLap > 40 ? 10 : maxLap > 15 ? 5 : 1;
+  // Ticks keep clear of the two end labels.
+  const lapTicks = Array.from({ length: Math.floor(maxLap / lapStep) }, (_, i) => (i + 1) * lapStep).filter(
+    (l) => l > maxLap * 0.06 && l < maxLap * 0.93
+  );
   return (
-    <div className="reveal-chart mt-16">
-      <div className="flex items-baseline justify-between font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
-        <span>Lap by lap</span>
-        <span className="text-faint">position at the line</span>
+    <div className="reveal-chart mt-12 border-t border-border pt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Label>Lap by lap · position at the line</Label>
+        <div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
+          <span className="flex items-center gap-2">
+            <span className="h-0.5 w-6" style={{ background: "var(--recap-team)" }} />
+            You
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-px w-6 bg-light opacity-60" />
+            The field
+          </span>
+        </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-auto w-full" role="img" aria-label="Your position lap by lap">
-        {[1, maxPos].map((p) => (
-          <text key={p} x={PAD.l - 10} y={y(p) + 4} textAnchor="end" className="fill-light font-mono text-[12px] font-bold">
-            P{p}
-          </text>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-auto w-full" role="img" aria-label="Your position lap by lap">
+        {posLines.map((p) => (
+          <g key={p}>
+            <line x1={PAD.l} x2={W - PAD.r} y1={y(p)} y2={y(p)} className="stroke-border" strokeWidth="1" />
+            <text x={PAD.l - 12} y={y(p) + 4} textAnchor="end" className="fill-light font-mono text-[11px] font-bold">
+              P{p}
+            </text>
+          </g>
         ))}
+        {lapTicks.map((l) => (
+          <g key={l}>
+            <line x1={x(l)} x2={x(l)} y1={PAD.t} y2={H - PAD.b} className="stroke-border" strokeWidth="1" strokeDasharray="2 4" />
+            <text x={x(l)} y={H - 8} textAnchor="middle" className="fill-faint font-mono text-[10px] font-bold">
+              {l}
+            </text>
+          </g>
+        ))}
+        <text x={PAD.l} y={H - 8} textAnchor="start" className="fill-light font-mono text-[10px] font-bold uppercase tracking-widest">
+          Lap 1
+        </text>
+        <text x={W - PAD.r} y={H - 8} textAnchor="end" className="fill-light font-mono text-[10px] font-bold uppercase tracking-widest">
+          Lap {maxLap}
+        </text>
         {drivers
           .filter((d) => d !== me)
           .map((d) => (
-            <path key={d.driverId || d.name} d={path(d.points)} fill="none" stroke="currentColor" className="text-dark opacity-10" strokeWidth="1.2" strokeLinejoin="round" />
+            <path key={d.driverId || d.name} d={path(d.points)} fill="none" className="stroke-light opacity-30" strokeWidth="1" strokeLinejoin="round" />
           ))}
-        <path d={path(me.points)} fill="none" stroke={stroke} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
-        <circle cx={x(first.lap)} cy={y(first.position)} r="5" fill={stroke} />
-        <circle cx={x(last.lap)} cy={y(last.position)} r="7" fill={stroke} stroke="var(--c-bg)" strokeWidth="3" />
+        <path d={path(me.points)} fill="none" stroke="var(--recap-team)" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
+        <circle cx={x(first.lap)} cy={y(first.position)} r="5" fill="var(--recap-team)" />
+        <circle cx={x(last.lap)} cy={y(last.position)} r="7" fill="var(--recap-team)" className="stroke-bg" strokeWidth="3" />
         <text x={x(last.lap) + 12} y={y(last.position) + 5} className="fill-dark font-display text-[16px] font-black">
           P{last.position}
-        </text>
-        <text x={PAD.l} y={H - 6} className="fill-light font-mono text-[11px] font-bold uppercase tracking-widest">
-          Lap 1
-        </text>
-        <text x={W - PAD.r} y={H - 6} textAnchor="end" className="fill-light font-mono text-[11px] font-bold uppercase tracking-widest">
-          Lap {maxLap}
         </text>
       </svg>
     </div>
   );
 }
 
-// --- 3. the podium ----------------------------------------------------------
+// --- 03 the podium ----------------------------------------------------------
 
-function PodiumChapter({ results }) {
+function PodiumChapter({ results, index }) {
   const finished = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position);
   const top = finished.slice(0, 3);
   if (!top.length) return null;
   const adj = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
   const winMs = adj(top[0]);
   const gapOf = (r, i) => {
-    if (i === 0) return "Winner";
+    if (i === 0) return null;
     const t = adj(r);
     if (!t || !winMs) return null;
     if (top[0].laps != null && r.laps != null && r.laps < top[0].laps) {
@@ -361,112 +438,115 @@ function PodiumChapter({ results }) {
     }
     return fmtGap(t - winMs) || null;
   };
-  // P2 | P1 | P3 on wide screens, the winner first on a phone.
+  // 2 | 1 | 3 across, the winner first on a phone.
   const order = [top[1], top[0], top[2]].filter(Boolean);
   return (
-    <Chapter>
-      <Eyebrow className="reveal justify-center">The podium</Eyebrow>
-      <div className="cascade mt-14 flex flex-col items-center gap-12 sm:flex-row sm:items-end sm:justify-center sm:gap-6 lg:gap-14">
+    <Chapter index={index} title="The podium" meta={`${finished.length} classified`}>
+      <Plate className="sm:grid-cols-3">
         {order.map((r) => {
           const i = r.position - 1;
           const team = teamOf(r);
           const win = i === 0;
           return (
-            <div key={r.driverId} className={`flex flex-col items-center text-center ${win ? "order-first sm:order-none sm:mb-10" : ""}`} style={{ "--i": win ? 2 : i === 1 ? 1 : 0 }}>
-              <div className="relative">
-                <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={team?.color || "#232833"} size={win ? 168 : 124} className="ring-4 ring-bg shadow-2xl shadow-black/40" />
-                <span
-                  className="absolute -bottom-2 left-1/2 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full font-display text-xl font-black text-ink shadow-lg ring-4 ring-bg"
-                  style={{ backgroundColor: MEDAL[i] }}
-                >
+            <Cell key={r.driverId} className={`flex flex-col p-6 sm:p-8 ${win ? "order-first sm:order-none" : ""}`}>
+              <div className="flex items-baseline justify-between">
+                <span className="font-display text-6xl font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
                   {i + 1}
                 </span>
+                <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">{win ? "Winner" : gapOf(r, i) || ""}</span>
               </div>
-              <Link to={`/drivers/${r.driverId}`} className={`mt-7 flex items-center gap-2 font-display font-black uppercase tracking-tight text-dark transition hover:text-brand ${win ? "text-3xl sm:text-4xl" : "text-2xl"}`}>
-                {r.name}
-                <Flag code={countryFor(r.driverId, r.country)} w={win ? 22 : 18} h={win ? 16 : 13} />
-              </Link>
-              {team && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} showName className="mt-2" nameClassName="text-sm text-light" />}
-              <div className="mt-3 font-mono text-sm font-bold tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
-                {gapOf(r, i) || NO_VALUE}
-                <span className="ml-3 text-light">{r.points > 0 ? `+${r.points} pts` : ""}</span>
+              <div className={`mt-8 flex flex-col items-center text-center ${win ? "sm:mt-6" : "sm:mt-12"}`}>
+                <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={team?.color || "#232833"} size={win ? 160 : 112} />
+                <Link to={`/drivers/${r.driverId}`} className={`mt-6 flex items-center gap-2 font-display font-black uppercase tracking-tight text-dark transition hover:text-brand ${win ? "text-3xl" : "text-2xl"}`}>
+                  {r.name}
+                  <Flag code={countryFor(r.driverId, r.country)} w={win ? 22 : 18} h={win ? 16 : 13} />
+                </Link>
+                {team && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} showName className="mt-2" nameClassName="text-sm text-light" />}
               </div>
-            </div>
+              <div className="mt-auto flex items-baseline justify-between border-t border-border pt-4">
+                <Label>Points</Label>
+                <span className="font-display text-2xl font-black tabular-nums text-dark">{r.points > 0 ? `+${r.points}` : "0"}</span>
+              </div>
+            </Cell>
           );
         })}
-      </div>
+      </Plate>
     </Chapter>
   );
 }
 
-// --- 4. the championship ----------------------------------------------------
+// --- 04 the championship ----------------------------------------------------
 
-function ChampionshipChapter({ recap }) {
+function ChampionshipChapter({ recap, index }) {
   const s = recap.standings;
   const { you, team } = recap;
   const moved = s.before ? s.before.position - s.after.position : null;
   const arm = useCallback((el) => {
     if (el) playStandingsReplay(el, { holdMs: 900 });
   }, []);
-  const sentence = s.isLeader
-    ? s.behind
-      ? `${s.after.total} points, ${s.behind.gap} clear of ${s.behind.name}.`
-      : `${s.after.total} points, out in front.`
-    : s.leader
-      ? `${s.after.total} points, ${s.leader.total - s.after.total} behind ${s.leader.name}${s.ahead && s.ahead.name !== s.leader.name ? ` and ${s.ahead.gap} behind ${s.ahead.name}` : ""}.`
-      : `${s.after.total} points.`;
+  const gaps = [
+    s.isLeader
+      ? { label: "Lead", value: s.behind ? `${s.behind.gap} pts` : NO_VALUE, note: s.behind ? `over ${s.behind.name}` : null }
+      : s.leader
+        ? { label: "To the leader", value: `−${s.leader.total - s.after.total}`, note: s.leader.name }
+        : null,
+    !s.isLeader && s.ahead ? { label: "To the car ahead", value: `−${s.ahead.gap}`, note: s.ahead.name } : null,
+    !s.isLeader && s.behind ? { label: "Over the car behind", value: `+${s.behind.gap}`, note: s.behind.name } : null,
+    team?.after
+      ? { label: `${team.name} · T${team.tier} constructors`, value: `P${team.after.position}`, note: `${team.after.total} pts${team.before && team.before.position !== team.after.position ? ` · ${team.before.position - team.after.position > 0 ? "up" : "down"} ${Math.abs(team.before.position - team.after.position)}` : ""}` }
+      : null,
+  ].filter(Boolean);
   return (
-    <Chapter glow>
-      <div className="reveal grid gap-12 lg:grid-cols-[1.1fr,1fr] lg:items-center">
+    <Chapter index={index} title="Championship" meta={s.before ? "after this round" : "after the season opener"}>
+      <div className="grid gap-12 lg:grid-cols-[1fr,1.1fr] lg:gap-16">
         <div>
-          <Eyebrow>{s.before ? "Championship, after this round" : "Championship, after the opener"}</Eyebrow>
-          <div className="mt-4 flex items-end gap-5">
+          <div className="flex items-end gap-6">
             {s.before && s.before.position !== s.after.position && (
-              <span className="mb-4 font-display text-[clamp(2.5rem,7vw,5rem)] font-black leading-none tabular-nums text-light line-through decoration-[6px] decoration-light">
-                P{s.before.position}
-              </span>
+              <div className="mb-3">
+                <Label>Was</Label>
+                <div className="mt-1 font-display text-[clamp(2.5rem,7vw,5rem)] font-black leading-none tabular-nums text-light line-through decoration-[5px]">P{s.before.position}</div>
+              </div>
             )}
-            <Giant className="text-[clamp(6rem,20vw,15rem)]">P{s.after.position}</Giant>
+            <Giant className="text-[clamp(6rem,18vw,14rem)]">P{s.after.position}</Giant>
           </div>
-          <div className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            {moved != null && <Delta value={moved} suffix={` place${Math.abs(moved) === 1 ? "" : "s"}`} className="text-xl" />}
-            <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-light">of {s.fieldSize} drivers</span>
+          <div className="mt-6 flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <span className="font-display text-4xl font-black tabular-nums tracking-tight text-dark">
+              <CountUp end={s.after.total} />
+              <span className="ml-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">pts</span>
+            </span>
+            {you && you.points > 0 && !s.roundDropped && <Delta value={you.points} className="text-lg" />}
+            {moved != null && <Delta value={moved} suffix={` place${Math.abs(moved) === 1 ? "" : "s"}`} className="text-lg" />}
+            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">of {s.fieldSize}</span>
           </div>
-          <p className="mt-6 max-w-xl font-display text-2xl font-extrabold uppercase tracking-tight text-medium sm:text-3xl">
-            <CountUp end={s.after.total} /> points
-            {you && you.points > 0 && !s.roundDropped && <Delta value={you.points} className="ml-3 text-lg" />}
-          </p>
-          <p className="mt-2 max-w-xl text-base text-light">{sentence}</p>
-          {team?.after && (
-            <div className="mt-8 flex items-center gap-3">
-              <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={28} />
-              <span className="text-base text-medium">
-                <span className="font-display font-extrabold uppercase tracking-tight text-dark">{team.name}</span> P{team.after.position} in the Tier {team.tier} constructors
-                {team.before && team.before.position !== team.after.position ? (
-                  <>
-                    , <Delta value={team.before.position - team.after.position} />
-                  </>
-                ) : null}
-                , {team.after.total} pts.
-              </span>
-            </div>
-          )}
+          <Plate className="mt-10 grid-cols-2">
+            {gaps.map((g) => (
+              <Stat key={g.label} {...g} />
+            ))}
+          </Plate>
         </div>
         <div>
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">Around you</div>
-          <div ref={arm} className="mt-3 divide-y divide-border border-y border-border">
+          <div className="flex items-baseline justify-between border-b border-border pb-3">
+            <Label>Around you</Label>
+            <Label>Round · Total</Label>
+          </div>
+          <div ref={arm} className="divide-y divide-border">
             {s.window.map((r) => {
               const mine = r.driverId === you?.driverId;
               const d = r.prevPosition != null ? r.prevPosition - r.position : null;
               return (
-                <div key={r.driverId} data-replay-prev={r.prevPosition ?? ""} className="flex items-center gap-4 bg-bg py-4">
-                  <span className={`w-10 font-display text-3xl font-black tabular-nums leading-none ${mine ? "text-dark" : "text-light"}`}>{r.position}</span>
-                  <Link to={`/drivers/${r.driverId}`} className={`min-w-0 flex-1 truncate font-display text-xl font-extrabold uppercase tracking-tight transition hover:text-brand ${mine ? "text-dark" : "text-medium"}`} style={mine && r.team?.color ? { color: r.team.color } : undefined}>
+                <div key={r.driverId} data-replay-prev={r.prevPosition ?? ""} className="flex items-center gap-3 bg-bg py-4 sm:gap-4">
+                  <span className={`w-9 font-display text-3xl font-black tabular-nums leading-none sm:w-12 ${mine ? "text-dark" : "text-light"}`}>{r.position}</span>
+                  {mine && <span className="h-8 w-1 shrink-0" style={{ background: "var(--recap-team)" }} />}
+                  <Link to={`/drivers/${r.driverId}`} className={`min-w-0 flex-1 truncate font-display text-lg font-extrabold uppercase tracking-tight transition hover:text-brand sm:text-xl ${mine ? "text-dark" : "text-medium"}`}>
                     {r.name}
                   </Link>
-                  <span className="w-12 text-right font-mono text-xs font-bold tabular-nums text-light">{r.roundPoints > 0 ? `+${r.roundPoints}` : ""}</span>
-                  <span className="w-14 text-right font-display text-2xl font-black tabular-nums text-dark">{r.total}</span>
-                  <span className="w-8 text-right">{d != null && <Delta value={d} className="text-xs" />}</span>
+                  <span className="hidden items-center gap-3 sm:flex">
+                    <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} />
+                    {r.team && <TeamLogo id={r.team.id} name={r.team.name} color={r.team.color} logoUrl={r.team.logoUrl} size={16} />}
+                  </span>
+                  <span className="w-10 text-right font-mono text-xs font-bold tabular-nums text-light sm:w-12">{r.roundPoints > 0 ? `+${r.roundPoints}` : ""}</span>
+                  <span className="w-12 text-right font-display text-2xl font-black tabular-nums text-dark sm:w-14">{r.total}</span>
+                  <span className="w-8 text-right sm:w-9">{d != null && <Delta value={d} className="text-xs" />}</span>
                 </div>
               );
             })}
@@ -477,7 +557,7 @@ function ChampionshipChapter({ recap }) {
   );
 }
 
-// --- 5. the rating ----------------------------------------------------------
+// --- 05 the rating ----------------------------------------------------------
 
 const RATING_PARTS = [
   { key: "exp", label: "EXP", name: "Experience" },
@@ -486,66 +566,69 @@ const RATING_PARTS = [
   { key: "aha", label: "AWA", name: "Awareness" },
 ];
 
-function RatingChapter({ recap }) {
+function RatingChapter({ recap, index }) {
   const r = recap.rating;
   const card = recap.card;
   return (
-    <Chapter>
-      <div className="reveal grid gap-14 lg:grid-cols-[auto,1fr] lg:items-center lg:gap-24">
+    <Chapter index={index} title="Rating" meta="live form after this round">
+      <div className="grid gap-12 lg:grid-cols-[auto,1fr] lg:items-start lg:gap-20">
         {card && (
-          <div className="flex justify-center lg:justify-start">
-            <div className="scale-110 sm:scale-125">
-              <RatingCard driver={card.driver} rating={card.rating} />
-            </div>
+          <div className="flex flex-col items-center gap-4 lg:items-start">
+            <RatingCard driver={card.driver} rating={card.rating} />
+            <p className="max-w-[16rem] text-center font-mono text-[11px] leading-relaxed text-light lg:text-left">
+              {card.rating.card?.source === "live"
+                ? "First season: the card moves with the form until the season ends."
+                : `The card keeps its numbers all season, set at the end of season ${card.rating.card?.fromSeasonNumber ?? ""}.`}
+            </p>
           </div>
         )}
         <div>
-          <Eyebrow>Live form, after this round</Eyebrow>
           {r?.after ? (
             <>
-              <div className="mt-4 flex items-end gap-5">
-                <Giant className="text-[clamp(6rem,18vw,13rem)]">{Math.round(r.after.overall)}</Giant>
-                <span className="mb-4 flex flex-col gap-1">
-                  {r.delta && <Delta value={r.delta.overall} decimals={1} className="text-2xl" />}
-                  {r.rank != null && r.fieldSize != null && (
-                    <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
-                      #{r.rank} of {r.fieldSize}
-                    </span>
+              <div className="flex items-end gap-6">
+                <Giant className="text-[clamp(6rem,16vw,12rem)]">{Math.round(r.after.overall)}</Giant>
+                <div className="mb-3">
+                  {r.delta && (
+                    <div>
+                      <Label>This round</Label>
+                      <Delta value={r.delta.overall} decimals={1} className="text-3xl" />
+                    </div>
                   )}
-                </span>
+                  {r.rank != null && r.fieldSize != null && (
+                    <div className="mt-3">
+                      <Label>Field</Label>
+                      <div className="font-display text-2xl font-black tabular-nums text-dark">
+                        #{r.rank} <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">of {r.fieldSize}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="mt-10 grid grid-cols-2 gap-x-10 gap-y-8 sm:grid-cols-4 lg:grid-cols-2">
+              <Plate className="mt-10 grid-cols-2 sm:grid-cols-4">
                 {RATING_PARTS.map((p) => {
                   const v = r.after[p.key];
                   const d = r.delta ? r.delta[p.key] : null;
                   if (v == null) return null;
                   return (
-                    <div key={p.key}>
-                      <div className="flex items-baseline gap-2">
+                    <Cell key={p.key} className="p-5 sm:p-6">
+                      <Label>
+                        {p.label} <span className="ml-1 text-faint">{p.name}</span>
+                      </Label>
+                      <div className="mt-3 flex items-baseline gap-2">
                         <span className="font-display text-4xl font-black tabular-nums leading-none text-dark">{Math.round(v)}</span>
                         {d != null && <Delta value={d} decimals={1} className="text-sm" />}
                       </div>
-                      <div className="mt-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">
-                        {p.label} <span className="ml-1 text-faint">{p.name}</span>
+                      <div className="mt-4 h-1 w-full bg-border">
+                        <div className="bar-fill h-1 bg-dark" style={{ "--w": `${Math.max(2, Math.min(100, v))}%` }} />
                       </div>
-                      <div className="mt-2 h-px w-full bg-border">
-                        <div className="bar-fill h-px bg-dark" style={{ "--w": `${Math.max(2, Math.min(100, v))}%` }} />
-                      </div>
-                    </div>
+                    </Cell>
                   );
                 })}
-              </div>
-              <p className="mt-10 max-w-md text-sm leading-relaxed text-light">
-                {r.provisional ? "Still provisional: a few more starts and it settles. " : ""}
-                {card
-                  ? card.rating.card?.source === "live"
-                    ? "Your first season's card moves with this until the season ends."
-                    : `The card keeps the numbers it got at the end of season ${card.rating.card?.fromSeasonNumber ?? ""}; this is the form behind it, round by round.`
-                  : "The form behind your card, round by round."}
-              </p>
+              </Plate>
+              {r.provisional && <p className="mt-4 font-mono text-[11px] text-light">Still provisional: a few more starts and it settles.</p>}
             </>
           ) : (
-            <p className="mt-4 text-base text-light">No live rating for this round yet.</p>
+            <p className="text-base text-light">No live rating for this round yet.</p>
           )}
         </div>
       </div>
@@ -553,90 +636,90 @@ function RatingChapter({ recap }) {
   );
 }
 
-// --- 6. the points ----------------------------------------------------------
+// --- 06 the points ----------------------------------------------------------
 
-function PointsChapter({ points: p }) {
+function PointsChapter({ points: p, index }) {
   return (
-    <Chapter glow>
-      <div className="reveal flex flex-col items-center text-center">
-        <Eyebrow>NABS Points, this round</Eyebrow>
-        <div className="mt-8 flex items-center gap-6">
-          <TokenIcon className="h-20 w-20 sm:h-28 sm:w-28" />
-          <Giant className="text-[clamp(6rem,20vw,15rem)]">
+    <Chapter index={index} title="NABS Points" meta={p.rate > 1 ? `paid at ×${p.rate.toFixed(2)}` : "this round"}>
+      <div className="grid gap-12 lg:grid-cols-[auto,1fr] lg:items-end lg:gap-20">
+        <div className="flex items-end gap-6">
+          <TokenIcon className="mb-3 h-16 w-16 sm:h-24 sm:w-24" />
+          <Giant className="text-[clamp(6rem,18vw,14rem)]">
             <CountUp end={p.earned} prefix="+" />
           </Giant>
         </div>
-        <div className="mt-10 space-y-3">
-          {p.entries.map((e, i) => (
-            <div key={i} className="font-display text-xl font-extrabold uppercase tracking-tight text-medium sm:text-2xl">
-              <span className="text-dark">+{e.delta}</span> {e.title}
-            </div>
-          ))}
-          {p.pending && (
-            <div className="font-display text-xl font-extrabold uppercase tracking-tight text-light sm:text-2xl">
-              +{p.pending.delta} {p.pending.title}
-              <span className="ml-3 font-mono text-[11px] tracking-[0.2em]">once the stewards are done</span>
-            </div>
-          )}
-        </div>
-        {p.rate > 1 && <p className="mt-6 text-sm text-light">Paid at ×{p.rate.toFixed(2)}: your Discord week counted.</p>}
-        {p.balance != null && (
-          <div className="mt-12 flex items-center gap-3 font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-light">
-            Balance now
-            <span className="flex items-center gap-1.5 font-display text-3xl font-black tabular-nums tracking-tight text-dark">
-              <TokenIcon className="h-6 w-6" />
-              <CountUp end={p.balance} />
-            </span>
+        <div>
+          <div className="divide-y divide-border border-y border-border">
+            {p.entries.map((e, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-4 py-4">
+                <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{e.title}</span>
+                <span className="font-display text-2xl font-black tabular-nums text-dark">+{e.delta}</span>
+              </div>
+            ))}
+            {p.pending && (
+              <div className="flex items-baseline justify-between gap-4 py-4">
+                <span className="font-display text-lg font-extrabold uppercase tracking-tight text-light">
+                  {p.pending.title}
+                  <span className="ml-3 font-mono text-[10px] tracking-[0.2em]">once the stewards are done</span>
+                </span>
+                <span className="font-display text-2xl font-black tabular-nums text-light">+{p.pending.delta}</span>
+              </div>
+            )}
+            {p.balance != null && (
+              <div className="flex items-baseline justify-between gap-4 py-4">
+                <Label>Balance now</Label>
+                <span className="flex items-center gap-2 font-display text-2xl font-black tabular-nums text-dark">
+                  <TokenIcon className="h-5 w-5" />
+                  <CountUp end={p.balance} />
+                </span>
+              </div>
+            )}
           </div>
-        )}
+          {p.rate > 1 && <p className="mt-4 font-mono text-[11px] text-light">Your Discord week counted: every race point paid at ×{p.rate.toFixed(2)}.</p>}
+        </div>
       </div>
     </Chapter>
   );
 }
 
-// --- 7. the facts -----------------------------------------------------------
+// --- 07 the facts -----------------------------------------------------------
 
-function FactsChapter({ race, results, quali }) {
+function FactsChapter({ race, results, quali, index }) {
   const { facts, dotd, dotdRow, hasDotd } = buildRaceFacts(race, results, quali);
   if (!hasDotd && !facts.length) return null;
+  const cells = [
+    hasDotd
+      ? {
+          key: "dotd",
+          label: dotd.pickedBy ? `${dotd.pickedBy}’s Driver of the Day` : "Driver of the Day",
+          driverId: dotdRow?.driverId || null,
+          name: dotd.name || dotdRow?.name || NO_VALUE,
+          country: dotdRow ? countryFor(dotdRow.driverId, dotdRow.country) : null,
+          value: dotdRow ? [dotdRow.position != null ? `P${dotdRow.position}` : null, teamOf(dotdRow)?.name].filter(Boolean).join(" · ") : null,
+        }
+      : null,
+    ...facts,
+  ].filter(Boolean);
   return (
-    <Chapter className="min-h-0 py-10">
-      <div className="reveal">
-        <Eyebrow>The night in facts</Eyebrow>
-        {hasDotd && (
-          <div className="mt-8">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">{dotd.pickedBy ? `${dotd.pickedBy}’s Driver of the Day` : "Driver of the Day"}</div>
-            <div className="mt-2 flex items-center gap-3">
-              {dotdRow ? (
-                <Link to={`/drivers/${dotdRow.driverId}`} className="font-display text-4xl font-black uppercase tracking-tight text-dark transition hover:text-brand sm:text-5xl">
-                  {dotd.name || dotdRow.name}
+    <Chapter index={index} title="The night in facts" meta={`${race.track} · round ${race.number}`}>
+      <Plate className="sm:grid-cols-2 lg:grid-cols-3">
+        {cells.map((f) => (
+          <Cell key={f.key} className="p-6">
+            <Label>{f.label}</Label>
+            <div className="mt-3 flex items-center gap-2">
+              {f.driverId ? (
+                <Link to={`/drivers/${f.driverId}`} className="truncate font-display text-2xl font-black uppercase tracking-tight text-dark transition hover:text-brand">
+                  {f.name}
                 </Link>
               ) : (
-                <span className="font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">{dotd.name || NO_VALUE}</span>
+                <span className="truncate font-display text-2xl font-black uppercase tracking-tight text-dark">{f.name}</span>
               )}
-              {dotdRow && <Flag code={countryFor(dotdRow.driverId, dotdRow.country)} w={24} h={18} />}
+              {f.country && <Flag code={f.country} w={18} h={13} />}
             </div>
-          </div>
-        )}
-        <div className="cascade mt-10 grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-          {facts.map((f, i) => (
-            <div key={f.key} style={{ "--i": i }}>
-              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">{f.label}</div>
-              <div className="mt-2 flex items-center gap-2">
-                {f.driverId ? (
-                  <Link to={`/drivers/${f.driverId}`} className="font-display text-2xl font-black uppercase tracking-tight text-dark transition hover:text-brand">
-                    {f.name}
-                  </Link>
-                ) : (
-                  <span className="font-display text-2xl font-black uppercase tracking-tight text-dark">{f.name}</span>
-                )}
-                {f.country && <Flag code={f.country} w={18} h={13} />}
-              </div>
-              {f.value && <div className="mt-1 font-mono text-sm font-bold tabular-nums text-medium">{f.value}</div>}
-            </div>
-          ))}
-        </div>
-      </div>
+            {f.value && <div className="mt-2 font-mono text-sm font-bold tabular-nums text-medium">{f.value}</div>}
+          </Cell>
+        ))}
+      </Plate>
     </Chapter>
   );
 }
