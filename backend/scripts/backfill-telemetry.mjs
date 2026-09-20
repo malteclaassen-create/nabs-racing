@@ -32,7 +32,7 @@ import prisma from "../src/lib/prisma.js";
 import { ensureAppSchema } from "../src/lib/ensureSchema.js";
 import { parseAcRaceJson } from "../src/services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult } from "../src/services/emperorResults.js";
-import { saveDirect } from "../src/lib/resultsArchive.js";
+import { saveDirect, refreshArchiveIndex } from "../src/lib/resultsArchive.js";
 import { trackKeyFor, displayNameFor } from "../src/lib/trackKeys.js";
 import { getDriverStandings, applyDropScores } from "../src/services/standingsService.js";
 
@@ -195,6 +195,8 @@ async function main() {
   if (!args.dryRun) await ensureAppSchema(prisma);
 
   const season = await prisma.season.findFirst({ where: { number: args.season } });
+  // The archive files a season under its series (lib/resultsArchive.js).
+  await refreshArchiveIndex(prisma);
   if (!season) throw new Error(`No season ${args.season} in the DB`);
   const overrideMap = OVERRIDES[args.season] || {};
 
@@ -292,7 +294,7 @@ async function main() {
 
     await writeRound(race, matched);
     saveDirect(source.json, {
-      seasonNumber: season.number,
+      season,
       raceNumber: race.number,
       track: jsonKey ? displayNameFor(jsonKey) : race.track,
     });

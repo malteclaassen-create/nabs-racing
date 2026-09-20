@@ -47,7 +47,7 @@ export function withSessionSecond(reports, races) {
     if (!startOf.has(race.id)) {
       let start = null;
       try {
-        start = sessionStartForRound(race.season.number, race.number);
+        start = sessionStartForRound(race.season, race.number);
       } catch {
         start = null;
       }
@@ -182,7 +182,7 @@ export async function reporterGuids(prisma, reports, races = []) {
     if (!race || race.number == null || race.season?.number == null) continue;
     let fileNames;
     try {
-      fileNames = guidsByNameForRound(race.season.number, race.number);
+      fileNames = guidsByNameForRound(race.season, race.number);
     } catch {
       continue;
     }
@@ -203,10 +203,10 @@ export async function reporterGuids(prisma, reports, races = []) {
 // The LATEST one in the window, not the nearest. A first-corner pile-up is
 // several contacts over a few seconds and the press comes after all of them;
 // the one that finally made the driver reach for the key is the last.
-function contactBehind(seasonNumber, raceNumber, guid, second) {
+function contactBehind(season, raceNumber, guid, second) {
   let mine;
   try {
-    mine = contactsForDriver(seasonNumber, raceNumber, guid);
+    mine = contactsForDriver(season, raceNumber, guid);
   } catch {
     return null;
   }
@@ -241,7 +241,7 @@ export async function anchorReports(prisma, reports, races, knownGuids = null, {
     const guid = wanted.has(r.id) ? guids.get(r.id) : null;
     if (!guid) return r;
     const race = byId.get(r.raceId);
-    const hit = contactBehind(race.season.number, race.number, guid, r.sessionSecond);
+    const hit = contactBehind(race.season, race.number, guid, r.sessionSecond);
     if (!hit) return r;
     return {
       ...r,

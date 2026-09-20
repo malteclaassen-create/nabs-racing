@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { RESULTS_ARCHIVE_DIR } from "./resultsArchive.js";
+import { archiveDirsFor } from "./resultsArchive.js";
 
 // Laps beyond 30 minutes are import artefacts (pit-through outliers included
 // by AC on session joins), same guard as driverProfileService.
@@ -68,23 +68,28 @@ function readArchiveFile(path) {
 // files can share a round number (a track rename re-archived under a new
 // slug) — the one whose lap count is largest wins, as re-imports overwrite
 // content but old names may linger.
-export function findArchiveFor(seasonNumber, raceNumber) {
-  const dir = join(RESULTS_ARCHIVE_DIR, `season${seasonNumber}`);
-  if (!existsSync(dir)) return null;
+// `season` is the season row ({ id, number }): the file is looked for in that
+// season's series folder (lib/resultsArchive.js archiveDirsFor). A bare number
+// still works for the rounds filed before series existed.
+export function findArchiveFor(season, raceNumber) {
   const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
-  const names = readdirSync(dir).filter((n) => n.startsWith(prefix) && n.endsWith(".json"));
-  if (!names.length) return null;
-  let best = null;
-  for (const name of names) {
-    try {
-      const data = readArchiveFile(join(dir, name));
-      const laps = Array.isArray(data?.Laps) ? data.Laps.length : 0;
-      if (!best || laps > best.laps) best = { data, laps, name };
-    } catch {
-      /* unreadable file — try the next candidate */
+  for (const dir of archiveDirsFor(season)) {
+    if (!existsSync(dir)) continue;
+    const names = readdirSync(dir).filter((n) => n.startsWith(prefix) && n.endsWith(".json"));
+    if (!names.length) continue;
+    let best = null;
+    for (const name of names) {
+      try {
+        const data = readArchiveFile(join(dir, name));
+        const laps = Array.isArray(data?.Laps) ? data.Laps.length : 0;
+        if (!best || laps > best.laps) best = { data, laps, name };
+      } catch {
+        /* unreadable file — try the next candidate */
+      }
     }
+    if (best) return best.data;
   }
-  return best?.data ?? null;
+  return null;
 }
 
 // The archived file that IS this race's. The archive is filed by season and
@@ -93,7 +98,8 @@ export function findArchiveFor(seasonNumber, raceNumber) {
 // never drove. So the file's own date has to sit within two days of the race:
 // a race past midnight, a file stamped in another zone, nothing wider.
 export function findArchiveForRace(race) {
-  const json = findArchiveFor(race?.season?.number ?? race?.seasonNumber, race?.number);
+  const season = race?.season?.number != null ? race.season : { id: race?.seasonId ?? null, number: race?.seasonNumber };
+  const json = findArchiveFor(season, race?.number);
   if (!json) return null;
   const fileDay = json.Date ? Date.parse(json.Date) : NaN;
   const raceDay = race?.date ? new Date(race.date).getTime() : NaN;
@@ -105,15 +111,16 @@ export function findArchiveForRace(race) {
 // name check, no reading and no parsing — cheap enough to answer on every
 // results request, which is what lets the round page offer its lap-by-lap view
 // only where there is one to show.
-export function hasArchiveFor(seasonNumber, raceNumber) {
-  const dir = join(RESULTS_ARCHIVE_DIR, `season${seasonNumber}`);
-  if (!existsSync(dir)) return false;
+export function hasArchiveFor(season, raceNumber) {
   const prefix = `r${String(Number(raceNumber)).padStart(2, "0")}-`;
-  try {
-    return readdirSync(dir).some((n) => n.startsWith(prefix) && n.endsWith(".json"));
-  } catch {
-    return false;
+  for (const dir of archiveDirsFor(season)) {
+    try {
+      if (existsSync(dir) && readdirSync(dir).some((n) => n.startsWith(prefix) && n.endsWith(".json"))) return true;
+    } catch {
+      /* unreadable folder: try the next */
+    }
   }
+  return false;
 }
 
 // --- lap-level extraction ------------------------------------------------------

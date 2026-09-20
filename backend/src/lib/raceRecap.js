@@ -219,7 +219,7 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId) {
   if (!rowId || !steamId || !findArchiveForRace(race)) return null;
   let list = [];
   try {
-    list = contactsForDriver(race.season?.number, race.number, steamId);
+    list = contactsForDriver(race.season, race.number, steamId);
   } catch {
     return null;
   }

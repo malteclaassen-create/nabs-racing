@@ -25,7 +25,7 @@
 // ---------------------------------------------------------------------------
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { RESULTS_ARCHIVE_DIR } from "./dataDirs.js";
+import { archiveDirsFor } from "./resultsArchive.js";
 import { trackKeyFor } from "./trackKeys.js";
 import { findPitFile, loadPitStops, pitTrackKey } from "./pitEventsStore.js";
 import { extractTelemetry } from "../services/telemetryExtractor.js";
@@ -34,14 +34,15 @@ import { extractTelemetry } from "../services/telemetryExtractor.js";
 // Returns { racesMatched, rowsChanged, rowsSame, notes: [] }.
 export async function recomputeSeasonStints(prisma, seasonNumber, { dryRun = false, log = () => {} } = {}) {
   const out = { racesMatched: 0, rowsChanged: 0, rowsSame: 0, notes: [] };
-  const dir = join(RESULTS_ARCHIVE_DIR, `season${seasonNumber}`);
-  if (!existsSync(dir)) {
-    out.notes.push(`no archive folder for season ${seasonNumber}`);
-    return out;
-  }
   const season = await prisma.season.findFirst({ where: { number: seasonNumber } });
   if (!season) {
     out.notes.push(`season ${seasonNumber} not in the database`);
+    return out;
+  }
+  // The season's own folder (its series' one, or the root for the old files).
+  const dir = archiveDirsFor(season).find((d) => existsSync(d));
+  if (!dir) {
+    out.notes.push(`no archive folder for season ${seasonNumber}`);
     return out;
   }
   // GUID -> driver for this season's roster; (seasonId, steamId) is unique, so

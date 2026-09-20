@@ -45,7 +45,7 @@ import {
   listDiskFiles, statFile, fmtSize, shapeDownload, ensureDownloadsDir, DOWNLOADS_DIR,
   deleteStoredFile, listOrphanFiles,
 } from "../lib/downloads.js";
-import { stashIncoming, archiveCommitted } from "../lib/resultsArchive.js";
+import { stashIncoming, archiveCommitted, refreshArchiveIndex } from "../lib/resultsArchive.js";
 import { forgetRound } from "../lib/raceContacts.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
@@ -682,15 +682,19 @@ router.post("/races/commit", async (req, res, next) => {
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
       const season = await prisma.season.findUnique({ where: { id: race.seasonId || targetSeasonId } });
+      // The file goes under the season's series (lib/resultsArchive.js); the
+      // index that knows the series is refreshed first, in case this season is
+      // newer than the last boot.
+      await refreshArchiveIndex(prisma);
       archiveCommitted(archiveKey, {
-        seasonNumber: season?.number ?? null,
+        season,
         raceNumber: race.number,
         track: isSprint ? `${race.track} Sprint` : race.track,
       });
       // The reports of this round anchor themselves to that file
       // (lib/reportAnchor.js); whatever the contact reader cached for the round
       // before the file existed, or for the file this one replaces, is stale now.
-      forgetRound(season?.number ?? null, race.number);
+      forgetRound(season, race.number);
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported
@@ -2446,7 +2450,7 @@ router.get("/driver-db", async (req, res, next) => {
     const [drivers, persons] = await Promise.all([
       prisma.driver.findMany({
         where: wide ? {} : { seasonId: { in: ownSeasonIds } },
-        include: { team: { select: { name: true } }, season: { select: { number: true } } },
+        include: { team: { select: { name: true } }, season: { select: { id: true, number: true } } },
       }),
       getPersonGroups(prisma),
     ]);
@@ -6424,7 +6428,7 @@ router.get("/reports", async (req, res, next) => {
     const races = ids.length
       ? await prisma.race.findMany({
           where: { id: { in: ids } },
-          select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
+          select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
         })
       : [];
     res.json({
@@ -6462,7 +6466,7 @@ router.get("/reports/:id", async (req, res, next) => {
       ? await prisma.race
           .findUnique({
             where: { id: report.raceId },
-            select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
+            select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
           })
           .catch(() => null)
       : null;

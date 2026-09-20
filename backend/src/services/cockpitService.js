@@ -863,7 +863,7 @@ export async function getCockpitRaceAnalysis(prisma, driverId, raceId) {
   // no captured SteamID (old imports), fall back to an exact name match in
   // the file's classification.
   let analysis = null;
-  const json = findArchiveFor(race.season?.number, race.number);
+  const json = findArchiveFor(race.season, race.number);
   if (json) {
     let guid = myRow.steamId || null;
     if (!guid) {
@@ -951,8 +951,7 @@ export async function getCockpitInsights(prisma, driverId) {
 
   const races = [];
   for (const r of rows) {
-    const seasonNumber = rowBySeason.get(r.race.seasonId)?.season.number;
-    const json = findArchiveFor(seasonNumber, r.race.number);
+    const json = findArchiveFor(rowBySeason.get(r.race.seasonId)?.season, r.race.number);
     if (!json) continue;
     const myRow = rowBySeason.get(r.race.seasonId);
     let guid = myRow?.steamId || null;

@@ -281,7 +281,7 @@ router.get("/:id/laps", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({
       where: { id: req.params.id },
-      include: { season: { select: { number: true } } },
+      include: { season: { select: { id: true, number: true } } },
     });
     if (!race) return res.status(404).json({ error: "Race not found" });
     if (race.seasonId && !isAdminRequest(req) && (await getPrivateSeasonIds(prisma)).has(race.seasonId)) {
@@ -331,7 +331,7 @@ router.get("/:id/results", async (req, res, next) => {
   try {
     const race = await prisma.race.findUnique({
       where: { id: req.params.id },
-      include: { season: { select: { number: true } } },
+      include: { season: { select: { id: true, number: true } } },
     });
     if (!race) return res.status(404).json({ error: "Race not found" });
     // A race in a private (unpublished) season is 404 to the public.

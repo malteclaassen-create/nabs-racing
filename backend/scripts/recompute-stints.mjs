@@ -26,13 +26,23 @@ if (!existsSync(ROOT)) {
   process.exit(1);
 }
 
+// Season folders sit under their series now (results-archive/<slug>/season<N>),
+// with any pre-series folders still at the root until the next boot moves them.
+const seasonNumbersIn = (dir) =>
+  readdirSync(dir)
+    .map((d) => /^season(\d+)$/.exec(d)?.[1])
+    .filter(Boolean)
+    .map(Number);
 const seasons = onlySeason
   ? [onlySeason]
-  : readdirSync(ROOT)
-      .map((d) => /^season(\d+)$/.exec(d)?.[1])
-      .filter(Boolean)
-      .map(Number)
-      .sort((a, b) => a - b);
+  : [
+      ...new Set([
+        ...seasonNumbersIn(ROOT),
+        ...readdirSync(ROOT, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && !/^season\d+$/.test(e.name) && e.name !== "incoming")
+          .flatMap((e) => seasonNumbersIn(resolve(ROOT, e.name))),
+      ]),
+    ].sort((a, b) => a - b);
 
 let racesMatched = 0;
 let rowsChanged = 0;

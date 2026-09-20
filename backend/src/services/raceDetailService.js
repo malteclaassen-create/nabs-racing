@@ -308,7 +308,7 @@ export async function raceDetailPayload(prisma, race) {
       // lap-by-lap view to switch the classification over to. A directory
       // listing, not a parse (lib/cockpitArchive.js) — the chart itself is
       // fetched only if somebody asks for it.
-      hasLapChart: hasArchiveFor(race.season?.number, race.number),
+      hasLapChart: hasArchiveFor(race.season, race.number),
       // Championship round, training session or special event. The list
       // endpoint has always sent this; the detail one did not, so the results
       // table had no way to tell them apart and showed a points column for

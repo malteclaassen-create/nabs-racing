@@ -2,14 +2,23 @@
 // Keeps the raw AC result JSON of every imported/committed round on disk, so the
 // distilled telemetry can be recomputed later (when the extractor improves)
 // without re-downloading from the race server. Files live under
-// DATA_DIR/results-archive/season<N>/r<NN>-<track>.json.
+// DATA_DIR/results-archive/<series slug>/season<N>/r<NN>-<track>.json.
+//
+// One folder per series, because two leagues both have a "season 8, round 2"
+// and used to file them on top of each other. Readers hand in the SEASON ROW
+// ({ id, number }); the season's series is looked up in a small index kept in
+// memory (refreshArchiveIndex), because most readers are synchronous and sit
+// deep inside request handling. Files from before series existed lie in
+// results-archive/season<N> at the root; the first boot after this change
+// moves them under the first series ever created, which is the league those
+// rounds belonged to, and the root is still read as a fallback for it.
 //
 // Import is a two-step flow (parse/review, then commit), so an incoming file is
 // first stashed under results-archive/incoming/<key>.json and only moved into
 // its season folder once the admin confirms the round it belongs to.
 // ---------------------------------------------------------------------------
 import { join } from "path";
-import { existsSync, mkdirSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync, rmdirSync } from "fs";
 import { randomUUID } from "crypto";
 import { RESULTS_ARCHIVE_DIR } from "./dataDirs.js";
 
@@ -32,8 +41,88 @@ function slug(s) {
     .slice(0, 40) || "track";
 }
 
-function seasonDir(seasonNumber) {
-  return join(RESULTS_ARCHIVE_DIR, `season${seasonNumber ?? "unknown"}`);
+// --- which series a season belongs to ---------------------------------------
+
+const slugBySeasonId = new Map(); // seasonId -> series slug
+let primarySlug = null; // the series created first: owner of the root-level files
+
+// A season handed in as a bare number (old callers, tests) is a season with
+// no known series, which reads and writes the root folder as before.
+function seasonOf(season) {
+  if (season && typeof season === "object") return season;
+  return { id: null, number: season };
+}
+
+export async function refreshArchiveIndex(prisma) {
+  try {
+    const [seasons, series] = await Promise.all([
+      prisma.$queryRawUnsafe(`SELECT "id", "seriesId" FROM "Season"`),
+      prisma.$queryRawUnsafe(`SELECT "id", "slug" FROM "Series" ORDER BY "createdAt" ASC`),
+    ]);
+    const slugOf = new Map(series.map((s) => [s.id, s.slug]));
+    slugBySeasonId.clear();
+    for (const s of seasons) if (s.seriesId && slugOf.has(s.seriesId)) slugBySeasonId.set(s.id, slugOf.get(s.seriesId));
+    primarySlug = series[0]?.slug || null;
+  } catch {
+    /* fresh database: no series yet, everything stays at the root */
+  }
+}
+
+export function seriesSlugForSeason(seasonId) {
+  return (seasonId && slugBySeasonId.get(seasonId)) || null;
+}
+
+// Where a season's files are READ from, in order: the series folder, then the
+// root for the first series (its files from before) or for a season whose
+// series is not known.
+export function archiveDirsFor(season) {
+  const s = seasonOf(season);
+  const n = s.number ?? "unknown";
+  const slug = seriesSlugForSeason(s.id);
+  const dirs = [];
+  if (slug) dirs.push(join(RESULTS_ARCHIVE_DIR, slug, `season${n}`));
+  if (!slug || slug === primarySlug) dirs.push(join(RESULTS_ARCHIVE_DIR, `season${n}`));
+  return dirs;
+}
+
+// Where a season's files are WRITTEN: the series folder when the series is
+// known, the root when it is not.
+function seasonDir(season) {
+  return archiveDirsFor(season)[0];
+}
+
+// The one-time move of the root-level season folders under the first series.
+// Safe to run on every boot: with nothing at the root it does nothing, and a
+// file that already exists at the destination is left where it is.
+export function migrateArchiveLayout() {
+  if (!primarySlug || !existsSync(RESULTS_ARCHIVE_DIR)) return 0;
+  let moved = 0;
+  try {
+    for (const name of readdirSync(RESULTS_ARCHIVE_DIR)) {
+      if (!/^season\d+$/.test(name)) continue;
+      const src = join(RESULTS_ARCHIVE_DIR, name);
+      if (!statSync(src).isDirectory()) continue;
+      const dest = join(RESULTS_ARCHIVE_DIR, primarySlug, name);
+      if (!existsSync(dest)) {
+        ensureDir(join(RESULTS_ARCHIVE_DIR, primarySlug));
+        renameSync(src, dest);
+        moved += 1;
+        continue;
+      }
+      for (const f of readdirSync(src)) {
+        const to = join(dest, f);
+        if (!existsSync(to)) {
+          renameSync(join(src, f), to);
+          moved += 1;
+        }
+      }
+      if (!readdirSync(src).length) rmdirSync(src);
+    }
+    if (moved) console.log(`results archive: moved ${moved} item(s) under ${primarySlug}/`);
+  } catch (e) {
+    console.error("results archive: layout migration:", e.message);
+  }
+  return moved;
 }
 
 function roundFileName(raceNumber, track) {
@@ -76,12 +165,14 @@ export function stashIncoming(json) {
 
 // Move a stashed JSON into its season folder once the round is known. Silent
 // no-op when the key is missing/expired (archiving must never fail an import).
-export function archiveCommitted(archiveKey, { seasonNumber, raceNumber, track } = {}) {
+// `season` is the season row ({ id, number }); `seasonNumber` alone still
+// works and files at the root.
+export function archiveCommitted(archiveKey, { season = null, seasonNumber = null, raceNumber, track } = {}) {
   if (!archiveKey) return null;
   try {
     const src = join(INCOMING_DIR, `${archiveKey}.json`);
     if (!existsSync(src)) return null;
-    const dir = seasonDir(seasonNumber);
+    const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
     const dest = join(dir, roundFileName(raceNumber, track));
     if (existsSync(dest)) unlinkSync(dest); // overwrite a re-import of the same round
@@ -95,9 +186,9 @@ export function archiveCommitted(archiveKey, { seasonNumber, raceNumber, track }
 
 // Write a JSON straight into a season folder (used by the backfill script, which
 // already knows the round). Overwrites an existing file for that round.
-export function saveDirect(json, { seasonNumber, raceNumber, track } = {}) {
+export function saveDirect(json, { season = null, seasonNumber = null, raceNumber, track } = {}) {
   try {
-    const dir = seasonDir(seasonNumber);
+    const dir = seasonDir(season || seasonNumber);
     ensureDir(dir);
     const dest = join(dir, roundFileName(raceNumber, track));
     writeFileSync(dest, JSON.stringify(json));

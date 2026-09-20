@@ -54,6 +54,7 @@ import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlug
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
+import { refreshArchiveIndex, migrateArchiveLayout } from "./lib/resultsArchive.js";
 import { TRACK_EDITOR_ENABLED } from "./lib/features.js";
 import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/notifications.js";
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
@@ -67,6 +68,10 @@ import { UPLOADS_DIR } from "./lib/dataDirs.js";
 // the columns it reads are guaranteed to exist.
 ensureAppSchema(prisma)
   .then(() => ensureDownloadTables(prisma))
+  // The results archive is filed per series; learn which season belongs to
+  // which, and move the pre-series folders under the first series once.
+  .then(() => refreshArchiveIndex(prisma))
+  .then(() => migrateArchiveLayout())
   .then(() => backfillCardIntro(prisma))
   // One-time stint recompute, S8 onwards (flag-guarded): carries the stint fix
   // to databases whose races were imported under the old rule — this is the

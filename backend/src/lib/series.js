@@ -11,6 +11,7 @@
 // Series model in prisma/schema.prisma.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
+import { refreshArchiveIndex } from "./resultsArchive.js";
 
 // Shape a raw row for callers: numbers/booleans normalised.
 function shapeSeries(r) {
@@ -239,4 +240,6 @@ export async function seasonSeriesMap(prisma) {
 // Assign a season to a series (used by the admin season editor).
 export async function setSeasonSeries(prisma, seasonId, seriesId) {
   await prisma.$executeRawUnsafe(`UPDATE "Season" SET "seriesId" = ? WHERE "id" = ?`, seriesId, seasonId);
+  // The results archive files a season under its series: tell it.
+  await refreshArchiveIndex(prisma);
 }

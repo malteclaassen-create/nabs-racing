@@ -79,11 +79,11 @@ router.post("/", optionalUser, async (req, res, next) => {
     if (b.contactId && b.raceId) {
       const race = await prisma.race.findUnique({
         where: { id: String(b.raceId) },
-        select: { number: true, season: { select: { number: true } } },
+        select: { number: true, season: { select: { id: true, number: true } } },
       });
       const guid = race?.season ? await steamIdOf(prisma, me.discordId) : null;
       if (guid) {
-        const mine = contactsForDriver(race.season.number, race.number, guid);
+        const mine = contactsForDriver(race.season, race.number, guid);
         pinned = mine.find((c) => c.id === b.contactId) || null;
       }
       if (!pinned) return res.status(400).json({ error: "That contact is not one of yours in this round" });
@@ -246,12 +246,12 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
     if (!me.discordId) return res.json({ contacts: [], reason: "signed-out" });
     const race = await prisma.race.findUnique({
       where: { id: String(req.query.raceId || "") },
-      select: { number: true, season: { select: { number: true } } },
+      select: { number: true, season: { select: { id: true, number: true } } },
     });
     if (!race?.season) return res.json({ contacts: [], reason: "no-race" });
     const guid = await steamIdOf(prisma, me.discordId);
     if (!guid) return res.json({ contacts: [], reason: "no-steam-id" });
-    const contacts = contactsForDriver(race.season.number, race.number, guid);
+    const contacts = contactsForDriver(race.season, race.number, guid);
     // An empty list has two very different causes and the driver deserves the
     // right one: the round's result file has not been imported yet (nobody has
     // contacts, come back tomorrow), or it has and Assetto Corsa recorded no
@@ -260,7 +260,7 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
     if (contacts.length) return res.json({ contacts, reason: null });
     res.json({
       contacts: [],
-      reason: roundHasArchive(race.season.number, race.number) ? "none-recorded" : "not-imported",
+      reason: roundHasArchive(race.season, race.number) ? "none-recorded" : "not-imported",
     });
   } catch (e) {
     next(e);
@@ -276,7 +276,7 @@ async function racesForReports(reports) {
   return prisma.race
     .findMany({
       where: { id: { in: ids } },
-      select: { id: true, number: true, track: true, date: true, season: { select: { number: true } } },
+      select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
     })
     .catch(() => []);
 }

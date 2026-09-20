@@ -115,7 +115,7 @@ export async function withContactSuggestions(prisma, reports, races, guidOf) {
     const race = byId.get(r.raceId);
     let mine;
     try {
-      mine = contactsForDriver(race.season.number, race.number, guidOf.get(r.id));
+      mine = contactsForDriver(race.season, race.number, guidOf.get(r.id));
     } catch {
       continue; // no archived file for that round, or an unreadable one
     }
