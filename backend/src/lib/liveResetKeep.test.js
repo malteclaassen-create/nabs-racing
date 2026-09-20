@@ -187,7 +187,10 @@ describe("liveResetKeep", () => {
     markNotified(first.id);
     expect(mine()[0].notifiedAt).toBeTruthy();
 
-    park({ laps: [lap(A, 94_000, "Alice")] }); // restarted again
+    // Restarted again, a little later. The id is the moment the session
+    // ended, so the second reset is given its own moment: on a fast runner
+    // two parks landed in the same millisecond and became the same question.
+    park({ laps: [lap(A, 94_000, "Alice")], endedAt: new Date(Date.now() + 60_000).toISOString() });
     const second = mine()[0];
     expect(second.id).not.toBe(first.id); // a new question, the newer times
     expect(second.notifiedAt).toBeTruthy(); // but not a new announcement
