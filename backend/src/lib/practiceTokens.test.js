@@ -52,6 +52,11 @@ function db({
         .map(([id]) => ({ id }));
     }
     if (/FROM "PersonLink"/.test(sql)) return [];
+    // One server's own row, which is what a payout is measured against.
+    if (/SELECT "laps" FROM "TokenPractice"/.test(sql)) {
+      const row = practice.get(args.join("|"));
+      return row ? [{ laps: row.laps }] : [];
+    }
     if (/SUM\("laps"\)/.test(sql)) {
       const period = args[args.length - 1];
       const series = args[args.length - 2];
@@ -162,8 +167,8 @@ describe("training laps", () => {
   it("files the payment under the round the week led up to", async () => {
     const prisma = db();
     await drive(prisma, 20);
-    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9"]);
-    expect([...prisma.ledger.values()][0].detail).toBe("Round 5, Spa");
+    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9:nabs2"]);
+    expect([...prisma.ledger.values()][0].detail).toBe("NABS Server 2");
   });
 
   it("does not count the same lap twice", async () => {
@@ -248,7 +253,7 @@ describe("training laps", () => {
     const prisma = db();
     await drive(prisma, 20, { serverKey: "nabs2", scopes: [] });
     expect([...prisma.practice.values()][0]).toMatchObject({ laps: 20 });
-    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9"]);
+    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9:nabs2"]);
   });
 
   it("follows the server's own assignment when it has exactly one series", async () => {
@@ -284,20 +289,32 @@ describe("training laps", () => {
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
   });
 
-  it("adds up both servers into one week, and says where the laps came from", async () => {
+  it("keeps each server's week to itself: 19 and 19 is nothing", async () => {
     const prisma = db();
-    await drive(prisma, 12, { serverKey: "nabs1", from: 1_700_000_000 });
-    await drive(prisma, 9, { serverKey: "nabs2", from: 1_700_500_000 });
+    await drive(prisma, 19, { serverKey: "nabs1", from: 1_700_000_000 });
+    await drive(prisma, 19, { serverKey: "nabs2", from: 1_700_500_000 });
+    expect([...prisma.ledger.values()]).toEqual([]);
+
     const progress = await practiceProgress(prisma, "disc1");
-    expect(progress.laps).toBe(21);
-    expect(progress.servers.map(({ key, laps }) => ({ key, laps }))).toEqual([
-      { key: "nabs1", laps: 12 },
-      { key: "nabs2", laps: 9 },
-    ]);
+    const byServer = Object.fromEntries(progress.weeks.map((w) => [w.server, w.laps]));
+    expect(byServer).toEqual({ nabs1: 19, nabs2: 19 });
     // Named, because "nabs2" is not what the league calls it.
-    expect(progress.servers[0].name).toBe("NABS Server 1");
-    // One milestone for the week, not one per server.
-    expect([...prisma.ledger.values()].map((r) => r.rule)).toEqual(["practice_20"]);
+    expect(progress.weeks[0].serverName).toBe("NABS Server 1");
+  });
+
+  it("pays the server the twentieth lap was driven on, and only that one", async () => {
+    const prisma = db();
+    await drive(prisma, 20, { serverKey: "nabs1", from: 1_700_000_000 });
+    await drive(prisma, 19, { serverKey: "nabs2", from: 1_700_500_000 });
+    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:nabs:race:race9:nabs1"]);
+    expect([...prisma.ledger.values()][0].detail).toBe("NABS Server 1");
+
+    // The other server reaching it later pays on its own account.
+    await drive(prisma, 1, { serverKey: "nabs2", from: 1_700_600_000 });
+    expect([...prisma.ledger.keys()]).toEqual([
+      "practice:practice_20:nabs:race:race9:nabs1",
+      "practice:practice_20:nabs:race:race9:nabs2",
+    ]);
   });
 
   it("counts nothing on a server the league has switched off", async () => {
@@ -312,6 +329,6 @@ describe("training laps", () => {
     const prisma = db({ race: false });
     await drive(prisma, 20);
     const [key] = [...prisma.ledger.keys()];
-    expect(key).toMatch(/^practice:practice_20:nabs:week:\d{4}-\d{2}-\d{2}$/);
+    expect(key).toMatch(/^practice:practice_20:nabs:week:\d{4}-\d{2}-\d{2}:nabs2$/);
   });
 });

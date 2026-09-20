@@ -61,7 +61,11 @@ export default function TrainingCue() {
     const seen = readSeen();
     const now = Date.now();
     let best = null;
-    for (const tier of week.tiers || []) {
+    // Every server's week, because each one pays its own milestones.
+    const candidates = (week.weeks?.length ? week.weeks : [week]).flatMap((w) =>
+      (w.tiers || []).map((tier) => ({ ...tier, week: w }))
+    );
+    for (const tier of candidates) {
       if (!tier.done || !tier.paidAt) continue;
       // SQLite hands its timestamps over as "YYYY-MM-DD HH:MM:SS" in UTC, and
       // a row written with an explicit time comes through as ISO. Read both,
@@ -69,9 +73,9 @@ export default function TrainingCue() {
       const stamp = String(tier.paidAt);
       const at = Date.parse(stamp.replace(" ", "T") + (/[Z+]|[+-]\d\d:\d\d$/.test(stamp) ? "" : "Z"));
       if (!Number.isFinite(at) || now - at > FRESH_MS) continue;
-      const key = `${week.series}:${week.period}:${tier.key || tier.laps}`;
+      const key = `${tier.week.series}:${tier.week.period}:${tier.week.server || ""}:${tier.key || tier.laps}`;
       if (seen.includes(key)) continue;
-      if (!best || tier.laps > best.tier.laps) best = { key, tier, at };
+      if (!best || tier.laps > best.tier.laps) best = { key, tier, at, on: tier.week.serverName || null };
     }
     return best;
   }, [week]);
@@ -99,7 +103,7 @@ export default function TrainingCue() {
         </span>
         <span className="min-w-0 text-sm text-dark">
           <strong className="font-semibold">{shown.tier.laps} training laps</strong>
-          <span className="text-light"> this week. </span>
+          <span className="text-light">{shown.on ? ` on ${shown.on}. ` : " this week. "}</span>
           <Link to="/profile?tab=tokens" className="inline-flex items-baseline gap-1 font-semibold text-dark underline decoration-border underline-offset-2 hover:decoration-brand">
             <TokenIcon className="h-3.5 w-3.5 translate-y-0.5" />
             <span className="font-mono tabular-nums">+{shown.tier.points}</span>

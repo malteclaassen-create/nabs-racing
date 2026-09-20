@@ -6,6 +6,10 @@
 // session card on the live page — because they are the same fact and a week
 // that reads differently in two places is a week nobody trusts.
 //
+// One bar is ONE SERVER's week. Each race server carries its own milestones
+// (nineteen laps on each of them is nothing), so the points page draws one
+// bar per server and the live page draws the one for the board you are on.
+//
 // The bar runs to the FAR milestone, with a notch where the near one sits, so
 // the whole week is one shape rather than two bars in a row.
 //
@@ -20,7 +24,7 @@
 // ---------------------------------------------------------------------------
 const fmt = (n) => new Intl.NumberFormat(undefined, { useGrouping: true }).format(n || 0);
 
-export default function TrainingBar({ week, variant = "card" }) {
+export default function TrainingBar({ week, variant = "card", label = "Your training", showTiers = true }) {
   if (!week) return null;
   // Whether the league is paying at all right now: the week says so itself, so
   // the two places that draw it cannot disagree about it.
@@ -65,23 +69,31 @@ export default function TrainingBar({ week, variant = "card" }) {
   if (variant === "row") {
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Your training</span>
+        <span className="min-w-[6.5rem] font-mono text-[10px] font-bold uppercase tracking-wider text-light">{label}</span>
         <div className="relative h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-surface2">
           <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${fill * 100}%` }} />
           {notches}
         </div>
         <span className="whitespace-nowrap font-mono text-sm font-bold tabular-nums text-dark">
           {laps}
-          <span className="font-normal text-light">/{target} laps</span>
+          <span className="font-normal text-light">/{target}</span>
         </span>
-        <span className="flex flex-wrap items-center gap-x-3 font-mono text-[11px] tabular-nums">
-          {tiers.map((t) => (
-            <span key={t.laps} className={t.done ? "text-ok" : "text-light"}>
-              {t.laps} +{t.points}
-            </span>
-          ))}
-          {!earning && <span className="text-faint">not paying yet</span>}
-        </span>
+        {/* The milestones spelled out belong beside ONE bar. A page with a bar
+            per server says it once underneath them all instead. */}
+        {showTiers ? (
+          <span className="flex flex-wrap items-center gap-x-3 font-mono text-[11px] tabular-nums">
+            {tiers.map((t) => (
+              <span key={t.laps} className={t.done ? "text-ok" : "text-light"}>
+                {t.laps} +{t.points}
+              </span>
+            ))}
+            {!earning && <span className="text-faint">not paying yet</span>}
+          </span>
+        ) : (
+          <span className="w-10 text-right font-mono text-[11px] font-bold tabular-nums text-ok">
+            {earning && week.earned > 0 ? `+${fmt(week.earned)}` : ""}
+          </span>
+        )}
       </div>
     );
   }
@@ -91,7 +103,9 @@ export default function TrainingBar({ week, variant = "card" }) {
       <div className="flex items-end justify-between gap-4">
         <div className="flex items-baseline gap-2">
           <span className="font-mono text-3xl font-bold tabular-nums text-dark">{laps}</span>
-          <span className="text-sm text-light">{laps === 1 ? "lap" : "laps"} on the practice server</span>
+          {/* The server is the heading above this, so the line under the
+              number does not say it again. */}
+          <span className="text-sm text-light">{laps === 1 ? "lap" : "laps"} this week</span>
         </div>
         {/* What the week has actually paid. Nothing has while the counting is
             off, and a green +10 beside "nothing is paid out" is a lie. */}
@@ -113,26 +127,16 @@ export default function TrainingBar({ week, variant = "card" }) {
         ))}
       </div>
 
-      {/* Where the week's laps were driven. One server says nothing worth
-          printing; two is worth saying, because otherwise a bar that adds up
-          two evenings on two servers looks like it lost one of them. */}
-      {(week.servers || []).length > 1 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-light">
-          {week.servers.map((s) => (
-            <span key={s.key}>
-              {s.name} <span className="font-mono tabular-nums text-medium">{s.laps}</span>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <p className="mt-2 text-[11px] leading-relaxed text-light">
-        {!earning
-          ? "Laps are being counted, but nothing is paid out until the league starts the counting."
-          : week.next
+      {/* What is left to do on THIS server. That the league is not paying yet
+          is the card's line, not this one: it is the same sentence for every
+          bar on the page and belongs under all of them, once. */}
+      {earning && (
+        <p className="mt-2 text-[11px] leading-relaxed text-light">
+          {week.next
             ? `${week.next.toGo} more ${week.next.toGo === 1 ? "lap" : "laps"} for the next ${fmt(week.next.points)}.`
             : "Both milestones are yours for this week. The count starts again after the race."}
-      </p>
+        </p>
+      )}
     </div>
   );
 }

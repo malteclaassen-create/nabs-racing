@@ -6,6 +6,12 @@
 // 20 laps pays 10 points, 50 laps pays another 20. Every completed lap counts,
 // cut or not, because this pays for time spent rather than for speed.
 //
+// EACH RACE SERVER COUNTS FOR ITSELF. Nineteen laps on one and nineteen on the
+// other is nothing: the milestone is twenty laps on a server, not twenty laps
+// added up across the league's machines. The two servers run different cars on
+// different circuits in the same week, so a week split between them is two
+// half-weeks of preparation and not one whole one.
+//
 // The laps arrive one at a time from the live relay (services/liveTiming.js),
 // which is connected to the race server around the clock whether anybody is
 // watching the live page or not. One row per driver per week in TokenPractice,
@@ -264,16 +270,20 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // rest of it is worth doing at all.
   const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
   if (!tiers.length) return;
+  // THIS server's laps in this week, which is what the milestones are counted
+  // against. The other server's week is its own.
   const rows = await prisma
     .$queryRawUnsafe(
-      `SELECT COALESCE(SUM("laps"), 0) AS "laps" FROM "TokenPractice"
-        WHERE "steamId" = ? AND "series" = ? AND "period" = ?`,
+      `SELECT "laps" FROM "TokenPractice"
+        WHERE "steamId" = ? AND "series" = ? AND "period" = ? AND "server" = ?`,
       id,
       slug,
-      period.key
+      period.key,
+      from
     )
     .catch(() => []);
-  if (Number(rows[0]?.laps || 0) < tiers[0].laps) return;
+  const here = Number(rows[0]?.laps || 0);
+  if (here < tiers[0].laps) return;
 
   const discordId = await discordForSteamIds(prisma, [id]);
   if (!discordId) return; // nobody to pay yet; the laps are kept all the same
@@ -281,10 +291,10 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // Once a milestone is paid it stays paid, and re-running the whole payout on
   // every lap for the rest of the week is work with no answer in it.
   const memo = paidMemo(slug, period.key);
-  const reached = tiers.filter((t) => Number(rows[0]?.laps || 0) >= t.laps);
-  if (reached.every((t) => memo.has(`${discordId}:${t.key}`))) return;
-  await payPractice(prisma, discordId, { series: slug, period });
-  for (const t of reached) memo.add(`${discordId}:${t.key}`);
+  const reached = tiers.filter((t) => here >= t.laps);
+  if (reached.every((t) => memo.has(`${discordId}:${from}:${t.key}`))) return;
+  await payPractice(prisma, discordId, { series: slug, period, server: from, laps: here });
+  for (const t of reached) memo.add(`${discordId}:${from}:${t.key}`);
 }
 
 // What this process has already paid, for the week it is in. One week at a
@@ -342,8 +352,10 @@ async function steamIdsFor(prisma, discordId) {
   return rows.map((r) => String(r.steamId)).filter((v) => STEAM_RE.test(v));
 }
 
-async function lapsOf(prisma, steamIds, series, periodKey) {
-  if (!steamIds.length) return { laps: 0, trackKey: null, car: null };
+// This member's laps in one week, per server: `{ nabs1: { laps, car }, … }`.
+// The week is never added up across servers — each one is its own milestone.
+async function lapsByServer(prisma, steamIds, series, periodKey) {
+  if (!steamIds.length) return new Map();
   const ph = steamIds.map(() => "?").join(",");
   const rows = await prisma
     .$queryRawUnsafe(
@@ -351,37 +363,37 @@ async function lapsOf(prisma, steamIds, series, periodKey) {
               MAX("trackKey") AS "trackKey", MAX("car") AS "car"
          FROM "TokenPractice"
         WHERE "steamId" IN (${ph}) AND "series" = ? AND "period" = ?
-        GROUP BY "server"
-        ORDER BY "laps" DESC`,
+        GROUP BY "server"`,
       ...steamIds,
       String(series || ""),
       String(periodKey || "")
     )
     .catch(() => []);
-  return {
-    laps: rows.reduce((sum, r) => sum + Number(r.laps || 0), 0),
-    trackKey: rows[0]?.trackKey || null,
-    car: rows[0]?.car || null,
-    // Where the week's laps were driven, biggest first. One server is the
-    // normal case and says nothing worth printing; two is worth saying.
-    servers: rows
-      .map((r) => {
-        const key = String(r.server || "");
-        return {
-          key,
-          name: LIVE_SERVERS.find((s) => s.key === key)?.name || key || "Unknown server",
-          laps: Number(r.laps || 0),
-        };
-      })
-      .filter((r) => r.laps > 0),
-  };
+  const out = new Map();
+  for (const r of rows) {
+    out.set(String(r.server || ""), {
+      laps: Number(r.laps || 0),
+      trackKey: r.trackKey || null,
+      car: r.car || null,
+    });
+  }
+  return out;
 }
 
 // ---- Paying ------------------------------------------------------------------
 
+// What the league calls a race server.
+export const serverName = (key) =>
+  LIVE_SERVERS.find((s) => s.key === String(key || ""))?.name || String(key || "") || "Unknown server";
+
+// The servers a training lap can count on right now: the league's, minus any
+// it has switched off in the admin.
+export const countingServers = () => LIVE_SERVERS.filter((s) => practiceServerOn(s.key));
+
 // What a milestone's payment is filed under. One place, because the page reads
 // the same keys back to find out WHEN a milestone paid.
-const refKeyFor = (tierKey, series, periodKey) => `practice:${tierKey}:${series}:${periodKey}`;
+const refKeyFor = (tierKey, series, periodKey, server) =>
+  `practice:${tierKey}:${series}:${periodKey}:${server || ""}`;
 
 // Has the counting even started? Same two gates every other rule passes: the
 // league's switch, and the day it decided to start from.
@@ -393,26 +405,27 @@ async function payingNow(prisma) {
 
 // Pay whatever this member has reached in one week and has not been paid for.
 // Safe to call as often as you like: the ledger drops the second attempt.
-export async function payPractice(prisma, discordId, { series, period, laps = null } = {}) {
-  if (!discordId || !period) return 0;
+export async function payPractice(prisma, discordId, { series, period, server = "", laps = 0 } = {}) {
+  if (!discordId || !period || !laps) return 0;
   const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
   if (!tiers.length) return 0;
   if (!(await payingNow(prisma))) return 0;
 
-  const count = laps == null ? (await lapsOf(prisma, await steamIdsFor(prisma, discordId), series, period.key)).laps : laps;
-  if (!count) return 0;
-
+  const where = serverName(server);
   let paid = 0;
   for (const tier of tiers) {
-    if (count < tier.laps) continue;
+    if (laps < tier.laps) continue;
     await ensureTokenAccount(prisma, discordId);
     const written = await dbAward(prisma, {
       discordId,
       delta: tier.points,
       rule: tier.key,
       title: tier.label,
-      detail: period.label,
-      refKey: refKeyFor(tier.key, series, period.key),
+      // The server, and nothing about the round: the milestones are per
+      // server, the two servers are not at the same round in the same week,
+      // and the ledger row carries its own date for "which week was that".
+      detail: where,
+      refKey: refKeyFor(tier.key, series, period.key, server),
     });
     if (written) paid += tier.points;
   }
@@ -426,13 +439,13 @@ export async function payPractice(prisma, discordId, { series, period, laps = nu
 // the way past, so opening the page settles a week the relay could not pay
 // for.
 //
-// EVERY series, not one. NABS Points are the site's, not a series' — racing
-// anywhere pays, and so does practising for anywhere. A member who races in
-// two of them has two weeks running at once (each series has its own next
-// round) and each pays its own milestones, exactly as two races in a week pay
-// twice. `weeks` carries them all; the top level is the one that page should
-// lead with, which is the series it is showing (`prefer`) and otherwise the
-// one with the most laps in it.
+// EVERY series and EVERY server, not one. NABS Points are the site's, not a
+// series' — racing anywhere pays, and so does practising for anywhere. And
+// each race server carries its own milestones, so what comes back is one
+// entry per series and server: `weeks`. The top level is the one a page
+// should lead with, which is the series it is showing (`prefer`) and
+// otherwise the fullest one. A page that cares which SERVER it is showing
+// (the live one does) picks that entry out of `weeks` itself.
 export async function practiceProgress(prisma, discordId, { prefer = null } = {}) {
   const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
   if (!tiers.length || !discordId) return null;
@@ -452,18 +465,18 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
   const paying = await payingNow(prisma);
   const publicPages = await tokensPublic(prisma);
   const target = tiers[tiers.length - 1].laps;
+  const servers = countingServers();
+  if (!servers.length) return null;
 
   const weeks = [];
   for (const row of seriesRows) {
     const period = await currentPeriod(prisma, row.slug);
     if (!period) continue;
-    const { laps, car, servers } = await lapsOf(prisma, steamIds, row.slug, period.key);
-    if (laps) await payPractice(prisma, discordId, { series: row.slug, period, laps });
+    const byServer = await lapsByServer(prisma, steamIds, row.slug, period.key);
 
-    // When each milestone paid. The cue at the bottom of the site celebrates a
-    // payment from the last few hours and stays quiet about an older one,
-    // which is what stops a week of milestones popping up on a Sunday visit.
-    const keys = tiers.map((t) => refKeyFor(t.key, row.slug, period.key));
+    // All of this week's milestone payments in one read, for every server.
+    const keys = [];
+    for (const srv of servers) for (const t of tiers) keys.push(refKeyFor(t.key, row.slug, period.key, srv.key));
     const ph = keys.map(() => "?").join(",");
     const paidRows = await prisma
       .$queryRawUnsafe(
@@ -474,34 +487,41 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
       .catch(() => []);
     const paidAt = new Map(paidRows.map((r) => [r.refKey, r.createdAt]));
 
-    const next = tiers.find((t) => laps < t.laps) || null;
-    weeks.push({
-      series: row.slug,
-      seriesName: row.name,
-      laps,
-      target,
-      label: period.label,
-      period: period.key,
-      car: car || null,
-      servers,
-      earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
-      next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
-      tiers: tiers.map((t) => ({
-        key: t.key,
-        laps: t.laps,
-        points: t.points,
-        done: laps >= t.laps,
-        paidAt: paidAt.get(refKeyFor(t.key, row.slug, period.key)) || null,
-      })),
-    });
+    for (const srv of servers) {
+      const mine = byServer.get(srv.key) || { laps: 0, car: null };
+      const laps = mine.laps;
+      if (laps) await payPractice(prisma, discordId, { series: row.slug, period, server: srv.key, laps });
+      const next = tiers.find((t) => laps < t.laps) || null;
+      weeks.push({
+        series: row.slug,
+        seriesName: row.name,
+        server: srv.key,
+        serverName: srv.name,
+        laps,
+        target,
+        label: period.label,
+        period: period.key,
+        car: mine.car || null,
+        earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
+        next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
+        tiers: tiers.map((t) => ({
+          key: t.key,
+          laps: t.laps,
+          points: t.points,
+          done: laps >= t.laps,
+          paidAt: paidAt.get(refKeyFor(t.key, row.slug, period.key, srv.key)) || null,
+        })),
+      });
+    }
   }
   if (!weeks.length) return null;
 
-  const wanted = prefer ? weeks.find((w) => w.series === prefer) : null;
-  const lead = wanted || weeks.reduce((a, b) => (b.laps > a.laps ? b : a), weeks[0]);
-  // A series this member has not turned a lap in is not their week. The one
-  // the page is showing stays either way, so a driver who has not started yet
-  // still sees an empty bar to fill rather than nothing at all.
+  const mine = prefer ? weeks.filter((w) => w.series === prefer) : [];
+  const pool = mine.length ? mine : weeks;
+  const lead = pool.reduce((a, b) => (b.laps > a.laps ? b : a), pool[0]);
+  // A series this member has not turned a lap in is not their week. The
+  // series the page is showing keeps ALL its servers either way, so somebody
+  // who has not started yet sees the empty bars they could fill.
   const shown = weeks.filter((w) => w.laps > 0 || w.series === lead.series);
 
   return {
@@ -514,8 +534,8 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
     // does not, which is what lets an admin try the whole thing first.
     publicPages,
     ...lead,
-    // Every series' week they have driven in, so a page can show the lot
-    // rather than hide one.
+    // Every series and server they could be earning on, so a page can show
+    // the lot rather than hide one.
     weeks: shown,
   };
 }

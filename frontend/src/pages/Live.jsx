@@ -124,7 +124,7 @@ function agoLabel(ts, now = Date.now()) {
   return m ? `${h} h ${m} min ago` : `${h} h ago`;
 }
 
-function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = null }) {
+function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = null, serverKey = null }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
   const isRace = session.type === "Race";
@@ -150,7 +150,14 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   // has put NABS Points in front of everybody. While the trial is still
   // admins-only an admin sees it on their own points page and nowhere else,
   // which is the same rule the flair and the hall of fame wall follow.
-  const week = practiceWeek?.publicPages ? practiceWeek : null;
+  //
+  // And it is THIS board's server: the milestones are per server, so the week
+  // shown beside a board has to be the week of the server that board is.
+  const week = useMemo(() => {
+    if (!practiceWeek?.publicPages) return null;
+    const mine = (practiceWeek.weeks || []).find((w) => w.server === serverKey);
+    return mine ? { ...practiceWeek, ...mine } : practiceWeek;
+  }, [practiceWeek, serverKey]);
   const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
@@ -3662,6 +3669,9 @@ export default function Live() {
             links={extLinks}
             patreonUrl={social.data?.patreon}
             lastDataAt={board?.lastDataAt ?? null}
+            // Whose board this is, so the training bar under it is that
+            // server's week and not the other one's.
+            serverKey={board?.serverKey || serverKey}
           />
 
           {quiet ? (

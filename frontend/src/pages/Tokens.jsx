@@ -311,37 +311,45 @@ function MultiplierBar({ a }) {
   );
 }
 
-// The training week, in the card the points page gives it. The bar itself is
-// shared with the live page (components/TrainingBar.jsx).
-//
-// One bar per series the member races in: NABS Points belong to the site
-// rather than to a series, and somebody in two of them is preparing for two
-// rounds and earns for both. With one series there is nothing to label, so
-// the round rides up beside the heading as before.
+// The training week, in the card the points page gives it: one LINE per race
+// server, because each server carries its own milestones (nineteen laps on
+// each of them is nothing). The rule itself is written once, underneath,
+// rather than repeated beside every bar.
 function PracticeCard({ week }) {
   if (!week) return null;
   const weeks = week.weeks?.length ? week.weeks : [week];
-  const many = weeks.length > 1;
+  const manySeries = new Set(weeks.map((w) => w.series)).size > 1;
+  const tiers = weeks[0]?.tiers || [];
   return (
     <div className="card px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>Training</Heading>
-        {!many && <div className="text-xs text-light">{week.label}</div>}
+        {/* Not the round: the two race servers run different cars on
+            different circuits in the same week, so naming one round over a
+            pair of bars would be wrong for one of them. */}
+        <div className="text-xs text-light">This week</div>
       </div>
-      <div className={many ? "mt-1 divide-y divide-border" : "mt-3"}>
+      <div className="mt-3 space-y-2">
         {weeks.map((w) => (
-          <div key={w.series} className={many ? "py-3" : ""}>
-            {many && (
-              <div className="mb-2 text-xs text-light">
-                <span className="font-semibold text-medium">{w.seriesName}</span> · {w.label}
-              </div>
-            )}
-            {/* Whether the league is paying is the site's answer, not the
-                week's, so it travels down with each of them. */}
-            <TrainingBar week={{ ...w, paying: week.paying }} />
-          </div>
+          <TrainingBar
+            key={`${w.series}:${w.server}`}
+            week={{ ...w, paying: week.paying }}
+            variant="row"
+            showTiers={false}
+            label={manySeries ? `${w.seriesName} · ${w.serverName}` : w.serverName}
+          />
         ))}
       </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-light">
+        {tiers.map((t, i) => (
+          <span key={t.laps}>
+            {i > 0 && ", "}
+            <span className="font-mono tabular-nums">{t.laps}</span> laps +{t.points}
+          </span>
+        ))}
+        {", per server. Nineteen on each pays nothing."}
+        {week.paying === false && " Not paying yet."}
+      </p>
     </div>
   );
 }
