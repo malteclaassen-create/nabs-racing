@@ -530,16 +530,30 @@ export const api = {
   // than a field on /events: a Steam id names a real account and the entry list
   // is a page the whole league reads.
   raceSteamIds: (raceId) => request(`/events/${raceId}/steam-ids`, { identityAuth: true }),
-  // Admin override on the sign-up card: set somebody's answer, or pass null to
-  // take it away. The capacity does not apply here and nothing moves up the
-  // waiting list by itself, so an admin can empty a seat and then give it to
-  // the person they meant.
+  // Admin override, from Admin -> Attendance -> "Grid & waiting list": set
+  // somebody's answer, or pass null to take it away. The capacity does not
+  // apply here and nothing moves up the waiting list by itself, so an admin
+  // can empty a seat and then give it to the person they meant.
   adminSetAnswer: (raceId, driverId, status) =>
     request(`/admin/attendance/${raceId}/answer`, {
       method: "POST",
       body: { driverId, status: status || null },
       identityAuth: true,
     }),
+  // One click for the pair of moves: the accepted driver to the queue, the
+  // waiting one into their seat. Net zero against the grid size, which the
+  // two-step version is not while it sits between the clicks.
+  adminSwapAnswers: (raceId, outDriverId, inDriverId) =>
+    request(`/admin/attendance/${raceId}/swap`, {
+      method: "POST",
+      body: { outDriverId, inDriverId },
+      identityAuth: true,
+    }),
+  // A grid that is over its number, back onto it: the last answers in move to
+  // the waiting list, keeping their own sign-up time and so their place in the
+  // queue. Nobody is promoted behind them.
+  adminTrimGrid: (raceId) =>
+    request(`/admin/attendance/${raceId}/trim`, { method: "POST", identityAuth: true }),
   // "I want to race": a logged-in account with no driver profile raises a hand
   // for a race; the admin sees it in Members → Needs attention.
   myRaceRequest: () => request("/me/race-request", { userAuth: true }),

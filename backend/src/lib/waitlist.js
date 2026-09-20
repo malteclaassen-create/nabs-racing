@@ -107,3 +107,72 @@ export async function promoteFromWaitlist(prisma, raceId) {
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// The admin's hand on the wheel (Admin -> Attendance -> "Grid & waiting list").
+//
+// Everything above runs by itself. What follows only ever happens because an
+// admin pressed something, and it breaks two of the rules above on purpose:
+//
+// The grid size does not apply. An admin who puts a 43rd car on the grid has
+// decided to, and the panel says so rather than refusing.
+//
+// And nothing is promoted automatically behind an admin's back. Freeing a seat
+// as a member does hands it to the front of the queue; freeing one from here
+// leaves it open, because the point is usually to give that seat to somebody
+// specific in the next click — and for the trim below, auto-promotion would
+// simply undo the thing that was asked for.
+// ---------------------------------------------------------------------------
+
+// Where somebody sits in the queue: 1 is next onto the grid, null is "not in
+// it". Only for the message that tells them — "you are on the waiting list"
+// without a number is the start of a Discord conversation, not the end of one.
+export async function queuePlace(prisma, raceId, driverId) {
+  try {
+    const { kept } = await answersFor(prisma, raceId);
+    const queue = kept.filter((r) => r.status === WAITLIST).sort((a, b) => joinedAt(a) - joinedAt(b));
+    const i = queue.findIndex((r) => r.driverId === driverId);
+    return i < 0 ? null : i + 1;
+  } catch {
+    return null;
+  }
+}
+
+// Grid -> queue, WITHOUT sending them to the back of it.
+//
+// RaceRsvp.updatedAt is the queue position, and an accepted driver's timestamp
+// is when they took the seat — which on a round that filled up is before
+// anybody who is now waiting. Writing it back untouched is what puts the 43rd
+// accepted driver at the FRONT of the queue instead of behind the people who
+// only ever joined it, which is the whole difference between "you lost your
+// seat" and "you lost your seat and your place in line".
+//
+// Prisma honours an explicit value for an @updatedAt field, so this is the
+// write it looks like rather than a raw statement.
+export async function moveToWaitlist(prisma, raceId, driverId) {
+  const row = await prisma.raceRsvp.findUnique({
+    where: { raceId_driverId: { raceId, driverId } },
+    include: { driver: { select: { id: true, name: true, discordUserId: true } } },
+  });
+  if (!row) return null;
+  if (row.status === WAITLIST) return row;
+  await prisma.raceRsvp.update({
+    where: { id: row.id },
+    data: { status: WAITLIST, updatedAt: row.updatedAt },
+  });
+  return row;
+}
+
+// Who is over the line, newest answer first: the last people in are the ones
+// who made the grid too big, and they are the ones this offers to move.
+//
+// Counted the same way everything else here counts, open Driver Market offers
+// included, so the panel's "43 of 42" and the button's "move 1" never disagree
+// with the rule that refuses the 43rd Accept in the first place.
+export async function overCapacity(prisma, race) {
+  const capacity = race?.capacity || DEFAULT_GRID_SIZE;
+  const [{ kept }, reserved] = await Promise.all([answersFor(prisma, race.id), openOffers(prisma, race.id)]);
+  const accepted = kept.filter((r) => r.status === "ACCEPTED").sort((a, b) => joinedAt(b) - joinedAt(a));
+  const over = accepted.length + reserved - capacity;
+  return { capacity, accepted: accepted.length, reserved, over: Math.max(0, over), tail: accepted.slice(0, Math.max(0, over)) };
+}
