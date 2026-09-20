@@ -9,10 +9,14 @@
 // The bar runs to the FAR milestone, with a notch where the near one sits, so
 // the whole week is one shape rather than two bars in a row.
 //
-// Two shapes. The `card` one is the block on the points page. The `row` one is
-// a single line for the live page's session card, where it sits under the
+// Three shapes. The `card` one is the block on the points page. The `row` one
+// is a single line for the live page's session card, where it sits under the
 // session's own numbers and has to read like one of them: the eyebrow, the
-// bar, the count, the two milestones, and nothing else.
+// bar, the count, the two milestones, and nothing else. The `mini` one is a
+// thumb-wide bar for that same card while it is FOLDED — no numbers at all,
+// just the week filling up out of the corner of your eye. It is drawn at zero
+// laps too, because a bar that only appears once you have done something says
+// nothing about the thing you have not started yet.
 // ---------------------------------------------------------------------------
 const fmt = (n) => new Intl.NumberFormat(undefined, { useGrouping: true }).format(n || 0);
 
@@ -35,6 +39,24 @@ export default function TrainingBar({ week, variant = "card" }) {
       style={{ left: `${Math.min(100, (t.laps / target) * 100)}%` }}
     />
   ));
+
+  if (variant === "mini") {
+    return (
+      <span
+        className="flex w-full items-center gap-2.5"
+        title={`Your training: ${laps} of ${target} laps this week`}
+      >
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-light">Training</span>
+        <span className="relative block h-1 flex-1 overflow-hidden rounded-full bg-surface2">
+          <span
+            className="absolute inset-y-0 left-0 rounded-full bg-brand transition-[width] duration-500"
+            style={{ width: `${fill * 100}%` }}
+          />
+          {notches}
+        </span>
+      </span>
+    );
+  }
 
   if (variant === "row") {
     return (

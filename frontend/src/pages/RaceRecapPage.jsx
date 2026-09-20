@@ -22,7 +22,7 @@ import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { motionOff, useInView } from "../hooks/motion.js";
-import { CountUp, DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton } from "../components/ui.jsx";
+import { CountUp, DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton, CardsSkeleton } from "../components/ui.jsx";
 import { buildRaceFacts } from "../components/RaceFacts.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -76,7 +76,15 @@ export default function RaceRecapPage() {
   useSpecificTitle(recap ? `Race recap · ${recap.race.track}` : "Race recap");
 
   if (error) return <ErrorBox message={error} />;
-  if (!recap) return <PageHeaderSkeleton />;
+  if (!recap) {
+    return (
+      <div className="space-y-5">
+        <PageHeaderSkeleton />
+        <CardsSkeleton count={3} cols="lg:grid-cols-[1.75fr,1fr]" />
+        <CardsSkeleton count={4} cols="sm:grid-cols-2 lg:grid-cols-4" />
+      </div>
+    );
+  }
 
   const { race, results, quali, you, story, incidents, career, season, teammates, standings, team, rating, points, card } = recap;
   const resultsLink = seriesPath(`/races?race=${race.id}`);
@@ -127,7 +135,7 @@ export default function RaceRecapPage() {
           )}
         </div>
         <button type="button" onClick={leave} className="text-sm font-semibold text-light transition hover:text-dark">
-          {pending ? "Don't show this again" : "Done"}
+          {pending ? "Carry on to the site" : "Done"}
         </button>
       </div>
     </div>
@@ -350,7 +358,7 @@ function RoundCard({ recap }) {
     <Card>
       <div className="flex items-start justify-between gap-4">
         <Label>Championship points</Label>
-        <span className="font-display text-5xl font-black leading-none tabular-nums text-brand">
+        <span className="font-display text-5xl font-black leading-none tabular-nums text-accent">
           <CountUp end={you.points || 0} prefix={you.points > 0 ? "+" : ""} />
           <span className="ml-1 font-mono text-xs font-bold text-light">pts</span>
         </span>
@@ -711,7 +719,7 @@ function PointsCard({ points: p }) {
         <div>
           <Label>{p.hypothetical ? "NABS Points this round would pay" : "NABS Points earned"}</Label>
           <div className="mt-2 flex items-end gap-3">
-            <span className="recap-pop font-display text-[5.5rem] font-black leading-none tracking-tighter text-brand">
+            <span className="recap-pop font-display text-[5.5rem] font-black leading-none tracking-tighter text-accent">
               <CountUp end={p.earned} prefix="+" />
             </span>
             <span className="mb-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">this race</span>

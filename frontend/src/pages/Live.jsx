@@ -143,7 +143,9 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   // the week's laps are driven in practice, and on a race night this card is
   // about the race.
   const detailsOpen = open || showMore;
-  const week = usePracticeWeek(detailsOpen ? 20000 : 0);
+  // Folded, the thumb-wide bar is still on screen and still has to fill up
+  // while somebody watches, so it keeps a slow clock rather than none.
+  const week = usePracticeWeek(detailsOpen ? 20000 : 60000);
   const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
   // starts moving immediately instead of idling through a too-generous cap.
@@ -419,6 +421,16 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
           </button>
         </div>
       </div>
+
+      {/* Folded, the week is one thin bar across the bottom of the card: no
+          numbers, just how far along it is. Empty is a perfectly good thing
+          for it to say, which is why it is drawn at nought laps too. Unfolded,
+          the line under the session's numbers takes over. */}
+      {!detailsOpen && !isRace && week && (
+        <div className="px-4 pb-3 sm:px-6 sm:pb-4">
+          <TrainingBar week={week} variant="mini" />
+        </div>
+      )}
 
       {/* Mobile-only expand toggle. */}
       <button

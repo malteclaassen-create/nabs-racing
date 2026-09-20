@@ -9,7 +9,7 @@ import { useSeriesPath } from "../context/SeriesContext.jsx";
 // The race recap's switch, and a way to look at it before anybody else does.
 //
 // The recap is where a member lands the first time they open the site after a
-// round has been saved: one long page about their race, the championship,
+// round has been saved: a page of cards about their race, the championship,
 // their live rating and the NABS Points it paid (backend lib/raceRecap.js). Off is
 // off; "admins only" puts it in front of league admins on the real site so it
 // can be checked on a real round first; "everyone" is the launch.
@@ -113,7 +113,7 @@ export default function AdminRaceRecap() {
         <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-light">
           <li>A member is taken to it once, on their first visit after a round was saved, and not from the live page or the admin.</li>
           <li>It is offered for the newest finished round only, and only within ten days of the race. Arriving on it counts as seen.</li>
-          <li>The chapters: the round, the member's own race in numbers with the lap-by-lap trace, the podium, where the championship stands now, the live rating's move, and what the round paid in NABS Points. The rating chapter only shows once the driver has a rating; the points chapter only while NABS Points are switched on for that member.</li>
+          <li>The cards: where they finished and what that meant, what it paid, their pace against the field, tyres and stints, their incidents, the lap-by-lap trace, the rating's move, the season curve and their place in the championship, the season and career around it, the NABS Points, the team-mate head to head, and the night's honours. Cards whose data a round does not have (no archived result file, no rating yet, NABS Points off) simply stay away.</li>
           <li>A member can read it again from the Recap button on that round's results page.</li>
           <li>Everything is worked out from the saved results when the recap opens, so a penalty added later shows the next time it is read.</li>
         </ul>
