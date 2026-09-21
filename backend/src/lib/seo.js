@@ -140,6 +140,9 @@ const GLOBAL_SEGMENTS = new Set([
   "feedback",
   "reports",
   "profile",
+  // One person's whole record, every league in it (/career/<handle>). It sits
+  // outside the series prefix on purpose: it is nobody's league page.
+  "career",
   // Theme, performance and where your own name in the bar takes you. A page
   // of its own since the settings drawer became one, and one a member may well
   // bookmark, so the server has to answer it 200 rather than 404.

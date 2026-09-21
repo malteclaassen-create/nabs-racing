@@ -300,14 +300,28 @@ function OtherSeriesLines({ otherSeries }) {
 // resolved. The backend folds two rows of the SAME season (handle change
 // mid-season) into a single line, so this renders whenever there's anything
 // aggregated at all; other series show as one summary line each underneath.
-function CareerBlock({ career, otherSeries }) {
+// The link out to /career/<handle>: this table is one league's half of it.
+function CareerLink({ careerKey }) {
+  if (!careerKey) return null;
+  return (
+    <Link
+      to={`/career/${careerKey}`}
+      className="transition inline-flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:text-brand"
+    >
+      Full career
+      <span aria-hidden="true">↗</span>
+    </Link>
+  );
+}
+
+function CareerBlock({ career, otherSeries, careerKey }) {
   const hasTable = career && (career.seasons?.length ?? 0) >= 1;
   if (!hasTable && !otherSeries?.length) return null;
   if (!hasTable) {
     // The person only spans series, not seasons: just the summary lines.
     return (
       <div className="reveal card overflow-hidden">
-        <CardBar title="Across the leagues" />
+        <CardBar title="Across the leagues" right={<CareerLink careerKey={careerKey} />} />
         <OtherSeriesLines otherSeries={otherSeries} />
       </div>
     );
@@ -315,7 +329,7 @@ function CareerBlock({ career, otherSeries }) {
   const { seasons, totals } = career;
   return (
     <div className="reveal card overflow-hidden">
-      <CardBar title="Career across seasons" />
+      <CardBar title="Career across seasons" right={<CareerLink careerKey={careerKey} />} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1515,6 +1529,17 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-medium lg:mx-0">{driver.bio}</p>
               )}
               <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
+              {/* Out to the page that has no season and no league: everything
+                  this person has ever done, in one place. */}
+              <div className="mt-3.5 flex justify-center lg:justify-start">
+                <Link
+                  to={`/career/${driver.handle || driver.id}`}
+                  className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
+                >
+                  Career record
+                  <span aria-hidden="true">↗</span>
+                </Link>
+              </div>
             </div>
 
             {/* trophy shelf — its own column just LEFT of the scoreboard's
@@ -2149,7 +2174,7 @@ export default function DriverProfile({ previewId, preview }) {
       </div>
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
-      <CareerBlock career={p.career} otherSeries={p.otherSeries} />
+      <CareerBlock career={p.career} otherSeries={p.otherSeries} careerKey={p.driver.handle || p.driver.id} />
 
       <div>
         <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">← All drivers</Link>

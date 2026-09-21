@@ -53,6 +53,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
+import { invalidateCareerCache } from "../services/careerService.js";
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
@@ -2579,6 +2580,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // Honours move career stats, the Hall of Fame and the rating curves, and
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
+    invalidateCareerCache();
     invalidateRatingHistoryCache();
     invalidateCardRatingCache();
     notifyCardUnlocksForSeason(prisma, race.seasonId);
@@ -4868,6 +4870,7 @@ router.put("/seasons/:id/manual-points", async (req, res, next) => {
     }
     // The Hall of Fame caches its walk over every season for a few minutes.
     invalidateRecordsCache();
+    invalidateCareerCache();
     res.json({ saved: parsed.length });
   } catch (e) {
     next(e);

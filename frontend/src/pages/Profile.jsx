@@ -912,6 +912,7 @@ function MyProfile() {
           tokens: tokenBalance,
           reportsOpen: REPORTS_OPEN_TO_MEMBERS,
           cockpitTabs: COCKPIT_TABS,
+          careerTo: previewId ? `/career/${previewId}` : null,
         })}
         value={tab}
         onSelect={setTab}

@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "fs";
 
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
+import careerRoutes from "./routes/career.js";
 import racesRoutes from "./routes/races.js";
 import tracksRoutes from "./routes/tracks.js";
 import telemetryLapsRoutes from "./routes/telemetryLaps.js";
@@ -292,6 +293,7 @@ app.get("/api/live/championship", async (req, res, next) => {
 // Public
 app.use("/api/standings", standingsRoutes);
 app.use("/api/drivers", driversRoutes);
+app.use("/api/career", careerRoutes);
 app.use("/api/races", racesRoutes);
 app.use("/api/tracks", tracksRoutes);
 // Telemetry laps: the in-game recorder posts here (key-gated), /tools reads.

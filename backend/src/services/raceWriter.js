@@ -7,6 +7,7 @@ import { writeConstructorScores } from "./constructorScores.js";
 import { readTransfers, byDriver, teamForRound, syncRosterToTransfers } from "./driverTransfers.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
+import { invalidateCareerCache } from "./careerService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 import { invalidateCardRatingCache } from "./cardRatingService.js";
 import { readParentIds } from "../lib/sprintRaces.js";
@@ -256,6 +257,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   // New results move the all-time records — drop the Hall of Fame cache so the
   // page reflects the round immediately instead of after the cache TTL.
   invalidateRecordsCache();
+  invalidateCareerCache();
   // New results also reshape the round-by-round rating curves — and the last
   // round of a season turns that season into the next one's card values.
   invalidateRatingHistoryCache();

@@ -424,6 +424,10 @@ export const api = {
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
   // the season the site is currently viewing (within the current series).
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
+  // One person's whole record, every league in it (the /career page). `key` is
+  // the person's handle or any of their row ids — never series-scoped, which is
+  // the point of the page.
+  career: (key) => request(`/career/${key}`, { auth: true }),
   driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
   // The public profile page: `id` may be the person's handle (name in url

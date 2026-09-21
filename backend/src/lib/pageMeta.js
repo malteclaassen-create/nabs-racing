@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 import { resolveDriverRow } from "./driverHandles.js";
 import { getDriverStandings } from "../services/standingsService.js";
+import { getCareer } from "../services/careerService.js";
 import { resolveSeason, resolveSeasonId } from "../services/seasonService.js";
 import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
 import { applyPenalties } from "../services/pointsCalculator.js";
@@ -108,6 +109,23 @@ async function driverMeta(prisma, seriesSlug, driverId) {
   return {
     title: `${driver.name} · ${season}`,
     description: line ? `${line}. Full record, form and head-to-head on the NABS Racing League site.` : undefined,
+  };
+}
+
+// /career/<handle> — the cross-league record of one person.
+async function careerMeta(prisma, key) {
+  const career = await getCareer(prisma, key).catch(() => null);
+  if (!career) return null;
+  const t = career.totals;
+  const bits = [
+    `${t.starts} starts`,
+    `${t.wins} ${t.wins === 1 ? "win" : "wins"}`,
+    `${t.podiums} ${t.podiums === 1 ? "podium" : "podiums"}`,
+    `${t.points} points`,
+  ];
+  return {
+    title: `${career.person.name} · Career`,
+    description: `${bits.join(", ")} across ${career.span.seasonsRaced} ${career.span.seasonsRaced === 1 ? "season" : "seasons"} of NABS Racing.`,
   };
 }
 
@@ -460,6 +478,8 @@ export async function buildPageMeta(prisma, pathname, query = {}) {
     if (!parts.length || (parts.length === 1 && parts[0] === "join")) {
       return await cachedSeasonMeta(prisma, "/", undefined);
     }
+    // /career/<handle>: a person, not a season.
+    if (parts[0] === "career" && parts[1]) return await careerMeta(prisma, decodeURIComponent(parts[1]));
     if (parts[0] !== "s" || !parts[1]) return null;
     const [, seriesSlug, section, id] = parts;
     if (!section) return await cachedSeasonMeta(prisma, `/s/${seriesSlug}`, seriesSlug);

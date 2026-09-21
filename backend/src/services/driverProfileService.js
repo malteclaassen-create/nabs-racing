@@ -98,7 +98,7 @@ export function sprintStatsOf(sprintRows) {
 // `seasonFilter`, when given, is a Set of the seasonIds that may contribute —
 // used by the card editions to cap the career at "seasons <= N of this series"
 // while everything else keeps the full all-time view.
-async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilter = null) {
+export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, seasonFilter = null) {
   const results = await withClassifiedPositions(
     prisma,
     await prisma.raceResult.findMany({

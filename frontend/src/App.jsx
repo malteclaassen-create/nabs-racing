@@ -77,6 +77,9 @@ const Settings = lazy(() => import("./pages/Settings.jsx"));
 // The race recap: a member lands here once after each saved round, and can
 // come back from the race page. Never on a first page view of a visitor.
 const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
+// The career page belongs to a person, not a league, so it sits outside the
+// series-scoped routes and loads on its own chunk.
+const DriverCareer = lazy(() => import("./pages/DriverCareer.jsx"));
 // Leaving the league. Its own address rather than a panel inside the profile,
 // because it has to be readable while signed OUT too: it is the page that
 // explains what deletion does, and an app store expects to find one.
@@ -278,6 +281,7 @@ function AppRoutes() {
             no link to hand someone in a Discord listing or a forum post. Same
             page, always, whoever is looking. */}
         <Route path="/join" element={<Welcome />} />
+        <Route path="/career/:key" element={<DriverCareer />} />
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/content-check" element={<ContentCheck />} />
         {/* How to put the site on a phone's home screen (Android, iOS and

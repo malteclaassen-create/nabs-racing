@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   Activity,
   ChevronDown,
+  History,
   MessageSquare,
   Shield,
   SlidersHorizontal,
@@ -33,6 +34,7 @@ const ICONS = {
   tools: Activity,
   settings: SlidersHorizontal,
   feedback: MessageSquare,
+  career: History,
   reports: TriangleAlert,
   admin: Shield,
 };

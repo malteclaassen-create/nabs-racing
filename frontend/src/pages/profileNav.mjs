@@ -17,7 +17,7 @@
 // `kind` drives the renderer: "section" swaps the panel and owns ?tab=,
 // "panel" opens an overlay, "page" is a real navigation and is drawn as a link
 // (middle-click, open-in-new-tab, and the right announcement).
-export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false, cockpitTabs = [] } = {}) {
+export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false, cockpitTabs = [], careerTo = null } = {}) {
   return {
     sections: [
       { kind: "section", key: "profile", label: "Edit Profile", icon: "profile" },
@@ -44,6 +44,9 @@ export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false
       // corner is the Report widget's now, and this is where the things you do
       // ABOUT the site rather than in it belong anyway.
       { kind: "panel", key: "feedback", label: "Feedback", icon: "feedback" },
+      // Your whole record, every league in it. A page of its own, outside the
+      // series prefix — null while the login has no driver row to name.
+      ...(careerTo ? [{ kind: "page", key: "career", label: "Career record", icon: "career", to: careerTo }] : []),
       // Stewarding threads. A page rather than a panel, because it is where a
       // notification lands and a notification has to have somewhere to land.
       ...(reportsOpen ? [{ kind: "page", key: "reports", label: "My reports", icon: "reports", to: "/reports" }] : []),
