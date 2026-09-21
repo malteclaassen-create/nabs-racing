@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
+import { getProfileHome } from "../hooks/useProfileHome.js";
+import { profileHomePath } from "../hooks/profileHome.mjs";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,10 @@ const FIND_TIMEOUT_MS = 5000;
 // optional, so "step 3 of 7" counts the steps this reader will actually see.
 function buildTour(name, { user, p, desktop }) {
   const driverId = user?.driverId;
+  // Where this reader's own name in the bar leads. The default is the personal
+  // area, and a tour that walks somebody through a button their own settings
+  // have removed is a tour that gets stuck.
+  const personalFirst = profileHomePath(getProfileHome(), driverId) === "/profile";
   switch (name) {
     // The "show me around" tour, offered on the landing page. Written for
     // somebody who has never seen the site and may not have an account: every
@@ -193,15 +199,25 @@ function buildTour(name, { user, p, desktop }) {
         {
           target: '[data-tour="nav-profile"]',
           title: "Your profile",
-          body: "Tap your name to open your driver profile.",
-          to: driverId ? `/drivers/${driverId}` : "/profile",
+          body: personalFirst
+            ? "Tap your name to open your own area."
+            : "Tap your name to open your driver profile.",
+          to: profileHomePath(getProfileHome(), driverId),
         },
-        {
-          target: '[data-tour="personal-area"]',
-          title: "Personal Area",
-          body: "Open your Personal Area from here.",
-          to: "/profile",
-        },
+        // Only for a reader whose name leads to the PUBLIC page: they arrive
+        // one door short, and this button is the rest of the way. Whoever kept
+        // the default went straight to the personal area a step ago, and the
+        // button does not exist on their public page at all.
+        ...(personalFirst
+          ? []
+          : [
+              {
+                target: '[data-tour="personal-area"]',
+                title: "Personal Area",
+                body: "Open your Personal Area from here.",
+                to: "/profile",
+              },
+            ]),
         {
           target: '[data-tour="tab-rating"]',
           title: "The new tab",

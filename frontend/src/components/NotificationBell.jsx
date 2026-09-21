@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./overlay.jsx";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
-import { SettingsDrawer, GearIcon } from "./SettingsPanel.jsx";
+import { GearIcon } from "./SettingsPanel.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
 // a minute, opening the panel loads the list and marks everything seen.
 // Logged-out visitors still get the bell — it explains the feature. It also
-// carries the Settings row at the bottom of the panel: theme and the Lite
-// performance mode otherwise hang off the "Settings" tab on /profile, which
-// needs a Discord login and a linked driver row, so a plain visitor could not
-// reach either. The bell is in the bar for everyone, which makes it the one
-// place those two are always available from.
+// carries the Settings row at the bottom of the panel: the settings live in
+// the personal area, which needs a Discord login behind it, so a plain visitor
+// could not reach the theme or the Lite mode at all. The bell is in the bar for
+// everyone, which makes it the one place the settings are always available
+// from. The row points at /settings either way, and that address sends a
+// signed-in member on to their own area — see pages/Settings.jsx.
 
 // `ringing` swings the bell on a slow loop (see .bell-ring in index.css) — set
 // while there is something unread and the panel is shut. The badge on its own
@@ -138,7 +139,6 @@ export default function NotificationBell({ className = "" }) {
   const navigate = useNavigate();
   const { startTour } = useTour();
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
@@ -286,25 +286,25 @@ export default function NotificationBell({ className = "" }) {
             </div>
 
             {/* Settings live down here, and that is the whole point: theme and
-                the Lite performance mode used to be reachable only through the
-                "Settings" tab on /profile, which needs a Discord login AND a
-                driver row behind it. A visitor who just wants the light theme,
-                or someone on a slow machine who wants the animations off, could
-                not get to either. The bell is in the bar for everyone, signed in
-                or not, so it is the one place that always works. */}
-            <button
-              type="button"
-              onClick={() => { close(); setSettingsOpen(true); }}
+                the Lite performance mode are otherwise a panel of the personal
+                area, which needs a Discord login behind it. A visitor who just
+                wants the light theme, or someone on a slow machine who wants
+                the animations off, could not get to either. The bell is in the
+                bar for everyone, signed in or not, so it is the one place that
+                always works. A link rather than a button opening a drawer:
+                /settings is an address, and for a member it leads on to the
+                same panel their profile shows. */}
+            <Link
+              to="/settings"
+              onClick={close}
               className="flex w-full items-center gap-2.5 border-t border-border px-4 py-3 text-left text-sm font-semibold text-medium transition hover:bg-surface2 hover:text-dark"
             >
               <GearIcon />
               Settings
-            </button>
+            </Link>
           </div>
         </>
       )}
-
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

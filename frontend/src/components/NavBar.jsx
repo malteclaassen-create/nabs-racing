@@ -6,6 +6,8 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import { useProfileHome } from "../hooks/useProfileHome.js";
+import { PROFILE_HOME_PUBLIC } from "../hooks/profileHome.mjs";
 import { useReserveSeats } from "../hooks/useReserveSeats.js";
 import AttentionDot from "./AttentionDot.jsx";
 import { api } from "../api/client.js";
@@ -157,12 +159,16 @@ function AuthControl({ mobile = false }) {
   // Nothing for anyone but an admin, and nothing at all when the office is
   // clear. See hooks/useAdminAttention.js for why it lives on the profile chip.
   const { total, summary } = useAdminAttention();
+  // Where "me" leads. My Profile by default — the page that is actually yours
+  // — with the public driver page one button away on it. Whoever wants the old
+  // order back sets it in Settings; see hooks/profileHome.mjs.
+  const { mode: profileHome, pathFor } = useProfileHome();
   if (isLoggedIn) {
     const name = user.driverName || user.discordName || "Profile";
     const chip = (
       <NavLink
-        to={user.driverId ? `/drivers/${user.driverId}` : "/profile"}
-        title="Your driver profile"
+        to={pathFor(user.driverId)}
+        title={profileHome === PROFILE_HOME_PUBLIC && user.driverId ? "Your public driver page" : "Your profile"}
         data-tour="nav-profile"
         className={({ isActive }) =>
           // `relative` is new: the dot below is positioned against this chip,

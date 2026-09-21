@@ -140,6 +140,10 @@ const GLOBAL_SEGMENTS = new Set([
   "feedback",
   "reports",
   "profile",
+  // Theme, performance and where your own name in the bar takes you. A page
+  // of its own since the settings drawer became one, and one a member may well
+  // bookmark, so the server has to answer it 200 rather than 404.
+  "settings",
   "cockpit",
   "cards",
   "rules",
