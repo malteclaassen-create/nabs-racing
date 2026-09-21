@@ -8,7 +8,7 @@ import { RATING_INFO } from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { flagFor } from "../data/circuits.js";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { pickedLeague } from "./myRatingLeague.mjs";
+import { pickedLeague } from "./viewedLeague.mjs";
 
 // ---------------------------------------------------------------------------
 // "My Rating" — the private deep dive behind the four numbers on the card.
@@ -742,15 +742,17 @@ function CardCompare({ card, live, color }) {
 
 // `me` is the /api/me payload the Personal Area already holds (name, team, …);
 // `leagues` the person's row per league (api.myLeagues), for the picker. Which
-// of those leagues the numbers are for lives in myRatingLeague.mjs — the
+// of those leagues the numbers are for lives in viewedLeague.mjs — the
 // Personal Area sits outside the /s/<slug> URLs, so the panel has to say.
 export default function MyRating({ me, leagues = [] }) {
-  const { slug } = useSeries();
+  // The series the HEADER names — see the note in Profile.jsx: outside the
+  // /s/<slug> URLs there may be no slug while a series is still on show.
+  const { current: viewedSeries } = useSeries();
   const multiLeague = leagues.length > 1;
   // null = follow the series the site is on; a driverId = the league the
   // reader picked here, which then stays put while they switch series.
   const [pick, setPick] = useState(null);
-  const picked = pickedLeague(leagues, slug, pick);
+  const picked = pickedLeague(leagues, viewedSeries?.slug || null, pick);
   const leagueId = picked?.driverId || null;
   const leagueName = picked?.seriesName || picked?.seasonName || null;
 

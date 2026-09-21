@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leagueRowFor, pickedLeague } from "./myRatingLeague.mjs";
+import { leagueRowFor, pickedLeague } from "./viewedLeague.mjs";
 
 // The shape api.myLeagues() answers with: the login's own row first, one per
 // series. This person's Discord link sits on their Friday row.
@@ -33,6 +33,16 @@ test("a league the person doesn't race in falls back to their own row", () => {
 test("a pick by hand outranks the viewed series", () => {
   assert.equal(pickedLeague(LEAGUES, "sunday-championship", "d-fri").driverId, "d-fri");
   assert.equal(pickedLeague(LEAGUES, "friday-cup", "d-sun").driverId, "d-sun");
+});
+
+test("with no pick at all, the viewed series decides — the profile editor's case", () => {
+  // The profile editor has no picker of its own on "Applies to: Every league";
+  // it just asks which league is on screen. Browsing Sunday must not show the
+  // Friday card, which is the bug this answers.
+  assert.equal(pickedLeague(LEAGUES, "sunday-championship", null).driverId, "d-sun");
+  assert.equal(pickedLeague(LEAGUES, "friday-cup", null).driverId, "d-fri");
+  // One league: nothing to choose, and the caller falls back to its own row.
+  assert.equal(pickedLeague([LEAGUES[0]], "friday-cup", null), null);
 });
 
 test("a pick that no longer exists falls back instead of blanking the panel", () => {

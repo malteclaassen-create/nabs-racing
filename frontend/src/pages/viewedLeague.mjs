@@ -1,5 +1,8 @@
 // ---------------------------------------------------------------------------
-// Which league the My Rating panel is about.
+// Which league a Personal Area panel is about.
+//
+// Used by both panels that show one league's things: My Rating (the numbers)
+// and the profile editor (the driver card and the public-page preview).
 //
 // A rating is a LEAGUE's rating. It ranks you against that league's field over
 // that series' seasons, so a person racing in two of them carries two ratings
@@ -12,7 +15,7 @@
 // site is viewing: switch the series in the header and the card changes while
 // the rating panel did not, which reads as the numbers simply being wrong.
 //
-// So the panel names the row it wants: the league matching the viewed series by
+// So a panel names the row it wants: the league matching the viewed series by
 // default, or whichever league the reader picks by hand. Kept free of React so
 // the choice itself can be tested.
 // ---------------------------------------------------------------------------
