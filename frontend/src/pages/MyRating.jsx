@@ -7,6 +7,8 @@ import Flag from "../components/Flag.jsx";
 import { RATING_INFO } from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { flagFor } from "../data/circuits.js";
+import { useSeries } from "../context/SeriesContext.jsx";
+import { pickedLeague } from "./myRatingLeague.mjs";
 
 // ---------------------------------------------------------------------------
 // "My Rating" — the private deep dive behind the four numbers on the card.
@@ -734,9 +736,21 @@ function CardCompare({ card, live, color }) {
   );
 }
 
-// `me` is the /api/me payload the Personal Area already holds (name, team, …).
-export default function MyRating({ me }) {
-  const { data, loading, error } = useApi(useCallback(() => api.myRatingHistory(), []));
+// `me` is the /api/me payload the Personal Area already holds (name, team, …);
+// `leagues` the person's row per league (api.myLeagues), for the picker. Which
+// of those leagues the numbers are for lives in myRatingLeague.mjs — the
+// Personal Area sits outside the /s/<slug> URLs, so the panel has to say.
+export default function MyRating({ me, leagues = [] }) {
+  const { slug } = useSeries();
+  const multiLeague = leagues.length > 1;
+  // null = follow the series the site is on; a driverId = the league the
+  // reader picked here, which then stays put while they switch series.
+  const [pick, setPick] = useState(null);
+  const picked = pickedLeague(leagues, slug, pick);
+  const leagueId = picked?.driverId || null;
+  const leagueName = picked?.seriesName || picked?.seasonName || null;
+
+  const { data, loading, error } = useApi(useCallback(() => api.myRatingHistory(leagueId), [leagueId]));
   const [stat, setStat] = useState("overall");
   // "season" = this season round by round · "career" = across the seasons
   const [scope, setScope] = useState("season");
@@ -746,39 +760,76 @@ export default function MyRating({ me }) {
   // the reader actually switches to it, and then kept.
   const [racePoints, setRacePoints] = useState(null);
   const [raceLoading, setRaceLoading] = useState(false);
+  // Another league means another career: drop the one already fetched, or the
+  // all-time chart would keep drawing the league the reader just left.
+  useEffect(() => {
+    setRacePoints(null);
+  }, [leagueId]);
   useEffect(() => {
     if (scope !== "career" || grain !== "races" || racePoints || raceLoading) return;
     setRaceLoading(true);
     api
-      .myRatingCareer()
+      .myRatingCareer(leagueId)
       .then((r) => setRacePoints(r.points || []))
       .catch(() => setRacePoints([]))
       .finally(() => setRaceLoading(false));
-  }, [scope, grain, racePoints, raceLoading]);
+  }, [scope, grain, racePoints, raceLoading, leagueId]);
 
   const points = data?.points || [];
   const ratedPoints = useMemo(() => points.filter((p) => p.race?.raced || p.ratings), [points]);
 
+  // Which league these numbers are, above everything the panel can show —
+  // including the empty and error states, which is where "this is not my
+  // league" is the likeliest thing to be thinking.
+  const picker = multiLeague && (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface2/50 px-4 py-3">
+      <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Rating for</span>
+      <SlidingTabs
+        items={leagues.map((l) => ({ key: l.driverId, label: l.seriesName || l.seasonName || "League" }))}
+        value={leagueId}
+        onChange={setPick}
+        wrapClassName="scrollbar-slim flex min-w-0 max-w-full flex-nowrap overflow-x-auto rounded-xl border border-border bg-card p-1"
+        btnClassName="whitespace-nowrap px-3 py-1.5 text-[13px]"
+      />
+      <span className="basis-full text-xs text-light sm:basis-auto sm:flex-1">
+        Each league rates you against its own field, so these numbers only compare within{" "}
+        {leagueName || "the league"}.
+      </span>
+    </div>
+  );
+  const shell = (children) => (
+    <div className="space-y-6">
+      {picker}
+      {children}
+    </div>
+  );
+
   if (loading)
-    return (
-      <div className="space-y-6">
+    return shell(
+      <>
         <Skeleton className="h-40 w-full rounded-xl" />
         <Skeleton className="h-72 w-full rounded-xl" />
-      </div>
+      </>
     );
   // No rating yet (no starts this season) comes back as a 404 — show it kindly.
   if (error)
     return /no rating yet/i.test(String(error)) ? (
-      <div className="card px-6 py-14 text-center">
-        <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">No rating yet</h2>
-        <p className="mt-2 text-sm text-medium">Start a race this season and your rating breakdown appears here.</p>
-      </div>
+      shell(
+        <div className="card px-6 py-14 text-center">
+          <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">No rating yet</h2>
+          <p className="mt-2 text-sm text-medium">
+            Start a race this season{leagueName ? ` in ${leagueName}` : ""} and your rating breakdown appears here.
+          </p>
+        </div>
+      )
     ) : (
-      <ErrorBox message={error} />
+      shell(<ErrorBox message={error} />)
     );
 
   const rating = data.current;
-  const color = me?.team?.color || data.driver?.team?.color || "#3b4254";
+  // The row that ANSWERED leads the colour: with a league picked, `me` is still
+  // the login's own row and may sit in another team entirely.
+  const color = data.driver?.team?.color || me?.team?.color || "#3b4254";
   // The chart can zoom out: "season" = this season round by round, "career" =
   // the whole career, either one point per season or every race. The all-time
   // view only makes sense once the person has more than one rated season.
@@ -790,6 +841,7 @@ export default function MyRating({ me }) {
   if (!rating || ratedPoints.length === 0) {
     return (
       <div className="space-y-6">
+        {picker}
         {/* The card itself is carried over, so it exists even before the first
             round — show it first, then say why the live column is empty. */}
         <CardCompare card={data.card} live={null} color={color} />
@@ -858,6 +910,7 @@ export default function MyRating({ me }) {
 
   return (
     <div className="space-y-6">
+      {picker}
       {/* headline: the number, your place in the rated field, and the
           strengths / weak spots the formula sees right now */}
       <div className="reveal card relative overflow-hidden p-5 sm:p-6">
@@ -875,9 +928,11 @@ export default function MyRating({ me }) {
               </h2>
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
                 {/* This whole page is the LIVE view — the number on the card is
-                    frozen for the season and sits in the compare block below. */}
+                    frozen for the season and sits in the compare block below.
+                    With two leagues in play the headline number says which one
+                    it belongs to, so it is never read against the wrong card. */}
                 <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                  live · this season so far
+                  live · this season so far{multiLeague && leagueName ? ` · ${leagueName}` : ""}
                 </span>
                 {latest?.rank != null && (
                   <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
