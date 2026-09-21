@@ -55,24 +55,47 @@ export async function readCardPhotoPos(prisma, driverId) {
   }
 }
 
-// Which picture a rating card shows for one driver row, and how it sits.
+// The pictures one driver row can show, best first.
 //
-// `own` = { cardPhotoUrl, photoUrl, photoPos } of the row itself (photoUrl =
-// its avatar or Discord picture, photoPos its parsed framing); `idov` = the
-// person's identity override (lib/persons.js), or undefined when the row
-// isn't linked to anybody.
+// `own` = { cardPhotoUrl, photoUrl, discordAvatar, photoPos } of the row
+// itself; `idov` = the person's identity override (lib/persons.js), or
+// undefined when the row isn't linked to anybody. `card` includes the
+// card-only pictures, which belong on a rating card but never on the round
+// profile avatar.
 //
-// Own values always win: the row's card-only picture first, then its own
-// avatar (RatingCard falls back to that by itself). Only a row with neither
-// borrows from the PERSON — their card picture before their avatar, since the
-// card picture is the one most members actually set. The framing travels with
-// the picture: a borrowed picture keeps the framing of the row it came from,
-// falling back to this row's own.
+// The order says what a picture is worth. An UPLOAD is a choice somebody made
+// for that row, so the row's own uploads come first, then the person's from
+// their other rows. A DISCORD AVATAR is neither: it is copied from Discord at
+// login and its URL dies as soon as the member changes their picture there,
+// leaving whichever rows logged in earlier pointing at nothing. So an avatar
+// ranks last on both sides, and the PERSON's newest one — the row that logged
+// in most recently, the only one still resolving — beats the row's own.
+// The framing always travels with the picture it was set for.
+function rankedPictures(own, idov, { card }) {
+  const { cardPhotoUrl = null, photoUrl = null, discordAvatar = null, photoPos = null } = own || {};
+  const out = [];
+  if (card && cardPhotoUrl) out.push({ url: cardPhotoUrl, pos: photoPos, own: true });
+  if (photoUrl) out.push({ url: photoUrl, pos: photoPos, own: true });
+  if (card && idov?.cardPhotoUrl) out.push({ url: idov.cardPhotoUrl, pos: parseCardPhotoPos(idov.cardPhotoPos) });
+  if (idov?.photoUrl) out.push({ url: idov.photoUrl, pos: parseCardPhotoPos(idov.photoPos) });
+  if (idov?.avatarUrl) out.push({ url: idov.avatarUrl, pos: parseCardPhotoPos(idov.avatarPos) });
+  if (discordAvatar) out.push({ url: discordAvatar, pos: photoPos, own: true });
+  return out;
+}
+
+// The round profile picture for one row: the best non-card picture, or null.
+// Takes and returns exactly what the old `row.photoUrl || row.discordAvatar ||
+// idov?.photoUrl` did, minus the stale-avatar trap.
+export function personPhotoFor(own, idov) {
+  return rankedPictures(own, idov, { card: false })[0]?.url || null;
+}
+
+// Which picture a rating card shows for one driver row, and how it sits:
+// { cardPhotoUrl, photoPos }. RatingCard renders `cardPhotoUrl || photoUrl`,
+// so the winner is handed over as cardPhotoUrl whatever it came from, and the
+// framing belongs to the row that picture was set on.
 export function cardPictureFor(own, idov) {
-  const { cardPhotoUrl = null, photoUrl = null, photoPos = null } = own || {};
-  if (cardPhotoUrl || photoUrl) return { cardPhotoUrl, photoPos };
-  if (idov?.cardPhotoUrl) {
-    return { cardPhotoUrl: idov.cardPhotoUrl, photoPos: parseCardPhotoPos(idov.cardPhotoPos) || photoPos };
-  }
-  return { cardPhotoUrl: null, photoPos: parseCardPhotoPos(idov?.photoPos) || photoPos };
+  const best = rankedPictures(own, idov, { card: true })[0];
+  if (!best) return { cardPhotoUrl: null, photoPos: own?.photoPos ?? null };
+  return { cardPhotoUrl: best.url, photoPos: best.pos ?? null };
 }

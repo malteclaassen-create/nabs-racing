@@ -277,11 +277,12 @@ export function resolveNameOverrides(rows, activeSeasonNumber = null) {
 // Pure core of the identity resolution (exported for testing). `rows` =
 // [{ personId, driverId, seasonNumber, photoUrl, discordAvatar, country,
 // cardPhotoUrl, cardPhotoPos, draft? }]. Returns Map<driverId, { photoUrl,
-// photoPos, cardPhotoUrl, cardPhotoPos, country }> with the person's CURRENT
-// identity: the photo (and its card framing) from their newest row that has
-// one, the card-only picture from their newest row that has one, the country
-// likewise — so archive rows and a second league's row show the same face and
-// flag as the person's latest season.
+// photoPos, avatarUrl, avatarPos, cardPhotoUrl, cardPhotoPos, country }> with
+// the person's CURRENT identity: the uploaded photo (and its card framing)
+// from their newest row that has one, their newest Discord avatar, the
+// card-only picture from their newest row that has one, the country likewise
+// — so archive rows and a second league's row show the same face and flag as
+// the person's latest season.
 // Pre-season DRAFT rows (cloned rosters of unstarted seasons — the `draft`
 // flag, computed per series, or the `activeSeasonNumber` cap as fallback)
 // rank last, so a stale clone can't shadow a photo/flag the member changes on
@@ -301,18 +302,27 @@ export function resolveIdentityOverrides(rows, activeSeasonNumber = null) {
     const sorted = [...members].sort(
       (a, b) => (isDraft(a) ? 1 : 0) - (isDraft(b) ? 1 : 0) || (b.seasonNumber ?? -1) - (a.seasonNumber ?? -1)
     );
-    const photoRow = sorted.find((m) => m.photoUrl || m.discordAvatar);
+    // An UPLOADED picture and a Discord avatar are kept apart. An upload is a
+    // choice somebody made; an avatar is a snapshot taken at login, and its
+    // URL rots the moment the member changes their Discord picture — only the
+    // row that logged in most recently holds one that still resolves. Ranking
+    // them separately lets a row prefer the person's live avatar over the dead
+    // one of its own (lib/cardPhoto personPhotoFor).
+    const photoRow = sorted.find((m) => m.photoUrl);
+    const avatarRow = sorted.find((m) => m.discordAvatar);
     // The card-only picture is looked up on its own: a member who never set a
     // profile avatar but dressed one league's card in a picture still has a
     // face to lend their other rows (that is the usual case — the card is
     // where people put a picture).
     const cardRow = sorted.find((m) => m.cardPhotoUrl);
     const countryRow = sorted.find((m) => m.country);
-    if (!photoRow && !cardRow && !countryRow) continue;
+    if (!photoRow && !avatarRow && !cardRow && !countryRow) continue;
     const identity = {
-      photoUrl: photoRow ? photoRow.photoUrl || photoRow.discordAvatar : null,
+      photoUrl: photoRow ? photoRow.photoUrl : null,
       // raw JSON string; consumers parse via lib/cardPhoto parseCardPhotoPos
       photoPos: photoRow ? photoRow.cardPhotoPos || null : null,
+      avatarUrl: avatarRow ? avatarRow.discordAvatar : null,
+      avatarPos: avatarRow ? avatarRow.cardPhotoPos || null : null,
       cardPhotoUrl: cardRow ? cardRow.cardPhotoUrl : null,
       // framing of the row the card picture came from (raw JSON string too)
       cardPhotoPos: cardRow ? cardRow.cardPhotoPos || null : null,

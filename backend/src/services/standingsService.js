@@ -16,6 +16,7 @@ import {
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
+import { personPhotoFor } from "../lib/cardPhoto.js";
 import { readSprintChildrenOf, readParentIds } from "../lib/sprintRaces.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readManualFastestLaps } from "../lib/raceHonours.js";
@@ -726,7 +727,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
       tier: driver.tier,
       isActive: driver.isActive,
       country: driver.country || idov?.country || null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
+      photoUrl: personPhotoFor(driver, idov),
       team: {
         id: driver.team.id,
         name: driver.team.name,

@@ -9,7 +9,7 @@ import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { getCardRatings } from "../services/cardRatingService.js";
-import { parseCardPhotoPos, cardPictureFor } from "../lib/cardPhoto.js";
+import { parseCardPhotoPos, cardPictureFor, personPhotoFor } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
 import { getIdentityOverrides } from "../lib/persons.js";
 import { isAdminRequest } from "../middleware/auth.js";
@@ -74,20 +74,23 @@ router.get("/ratings", async (req, res, next) => {
       ratings: cards.rows.map((r) => {
         const d = byId.get(r.driverId) || {};
         // Linked-person fallback (same rule as the standings): a row without
-        // its own flag/photo shows the person's current one; a borrowed photo
+        // a picture of its own — or with nothing but a Discord avatar from an
+        // old login — shows the person's current one, and a borrowed picture
         // brings its own card framing along.
         const idov = identity.get(r.driverId);
-        const ownPhoto = d.photoUrl || d.discordAvatar || null;
-        const card = cardPictureFor(
-          { cardPhotoUrl: d.cardPhotoUrl || null, photoUrl: ownPhoto, photoPos: parseCardPhotoPos(d.cardPhotoPos) },
-          idov
-        );
+        const ownPictures = {
+          cardPhotoUrl: d.cardPhotoUrl || null,
+          photoUrl: d.photoUrl || null,
+          discordAvatar: d.discordAvatar || null,
+          photoPos: parseCardPhotoPos(d.cardPhotoPos),
+        };
+        const card = cardPictureFor(ownPictures, idov);
         return {
           ...r,
           number: d.number ?? null,
           country: d.country || idov?.country || null,
           role: d.role || null,
-          photoUrl: ownPhoto || idov?.photoUrl || null,
+          photoUrl: personPhotoFor(ownPictures, idov),
           cardStyle: isKnownEdition(d.cardStyle) && d.cardStyle !== DEFAULT_CARD_EDITION ? d.cardStyle : null,
           cardAnim: d.cardAnim === "off" ? "off" : null,
           photoPos: card.photoPos,
