@@ -27,7 +27,7 @@ import { getSeriesById } from "./series.js";
 import { readRaceHeroes } from "./raceHero.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { readCardEdition, readCardAnim } from "./cardEditions.js";
-import { readCardPhotoPos, cardPictureFor } from "./cardPhoto.js";
+import { readCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "./cardPhoto.js";
 import { readDriverRoles } from "./driverRoles.js";
 import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
@@ -503,16 +503,15 @@ async function cardFor(prisma, race, rowId, ownRow) {
   const ownCardPhotoUrl = (
     await prisma.$queryRawUnsafe(`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ?`, rowId).catch(() => [])
   )[0]?.cardPhotoUrl || null;
-  // Same picture rule as the profile card: own picture first, then the one the
-  // person carries from their other league (lib/cardPhoto cardPictureFor).
-  const { cardPhotoUrl, photoPos } = cardPictureFor(
-    {
-      cardPhotoUrl: ownCardPhotoUrl,
-      photoUrl: driver.photoUrl || driver.discordAvatar || null,
-      photoPos: await readCardPhotoPos(prisma, rowId),
-    },
-    idov
-  );
+  // Same picture rule as the profile card: the row's own uploads first, then
+  // what the person carries from their other rows (lib/cardPhoto).
+  const ownPictures = {
+    cardPhotoUrl: ownCardPhotoUrl,
+    photoUrl: driver.photoUrl || null,
+    discordAvatar: driver.discordAvatar || null,
+    photoPos: await readCardPhotoPos(prisma, rowId),
+  };
+  const { cardPhotoUrl, photoPos } = cardPictureFor(ownPictures, idov);
   const team = ownRow?.effectiveTeam || ownRow?.team || driver.team;
   return {
     driver: {
@@ -520,8 +519,9 @@ async function cardFor(prisma, race, rowId, ownRow) {
       name: ownRow?.name || driver.name,
       number: driver.number ?? null,
       country: driver.country || idov?.country || null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
+      photoUrl: personPhotoFor(ownPictures, idov),
       cardPhotoUrl,
+      photoFallbacks: photoFallbacksFor(ownPictures, idov),
       photoPos,
       cardStyle: await readCardEdition(prisma, rowId),
       cardAnim: await readCardAnim(prisma, rowId),

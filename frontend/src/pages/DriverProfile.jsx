@@ -1316,7 +1316,7 @@ function ClassicHero({ driver, championship, color }) {
       <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 to-transparent" />
 
       <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8">
-        <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
+        <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
@@ -1478,7 +1478,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           {cardsEnabled && (rating || driver.role === "safety") ? (
             <RatingCard driver={driver} rating={rating} explain />
           ) : (
-            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
+            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={160} className="text-6xl" />
           )}
         </div>
 
@@ -1870,7 +1870,7 @@ export default function DriverProfile({ previewId, preview }) {
       <div className="content-in space-y-6">
         {ownControls}
         <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
-          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={72} />
+          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={72} />
           <div>
             <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
               {driver.name}
