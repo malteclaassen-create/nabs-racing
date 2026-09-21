@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   Activity,
   ChevronDown,
-  Coins,
   MessageSquare,
   Shield,
   SlidersHorizontal,
@@ -14,6 +13,7 @@ import {
 } from "lucide-react";
 import { Modal } from "./overlay.jsx";
 import AttentionDot from "./AttentionDot.jsx";
+import TokenIcon from "./TokenIcon.jsx";
 
 // ---------------------------------------------------------------------------
 // The profile page's navigation: a column beside the content on desktop, and
@@ -30,7 +30,6 @@ const ICONS = {
   profile: User,
   achievements: Trophy,
   rating: TrendingUp,
-  tokens: Coins,
   tools: Activity,
   settings: SlidersHorizontal,
   feedback: MessageSquare,
@@ -39,6 +38,10 @@ const ICONS = {
 };
 
 function Icon({ name, className = "h-[17px] w-[17px]" }) {
+  // The points wear the league's own mark rather than a generic coin: the same
+  // TokenIcon as the nav bar pill and the shop price tags, so it recolours with
+  // the series exactly as those do.
+  if (name === "tokens") return <TokenIcon className={className} />;
   const C = ICONS[name] || User;
   return <C className={`shrink-0 ${className}`} strokeWidth={2} aria-hidden="true" />;
 }
