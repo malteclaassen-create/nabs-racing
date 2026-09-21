@@ -69,18 +69,18 @@ function StatFrame({ tiles, cols = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }
   return (
     <div className={`grid overflow-hidden rounded-xl border border-border bg-card ${cols}`}>
       {defs.map((t) => (
-        <div key={t.label} className="-ml-px -mt-px border-l border-t border-border p-4">
+        <div key={t.label} className="-ml-px -mt-px border-l border-t border-border px-5 py-5 sm:py-6">
           <div className="flex items-center gap-2 text-light">
             {t.icon}
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wider">{t.label}</span>
           </div>
           <div
-            className="mt-2 font-display text-3xl font-black leading-none tabular-nums text-dark"
+            className="mt-3 font-display text-[40px] font-black leading-none tabular-nums text-dark sm:text-5xl"
             style={t.accent ? { color: t.accent } : undefined}
           >
             {typeof t.value === "number" ? <CountUp end={t.value} /> : t.value}
           </div>
-          {t.sub && <div className="mt-1.5 text-xs font-medium text-light">{t.sub}</div>}
+          {t.sub && <div className="mt-2 text-[13px] font-medium text-light">{t.sub}</div>}
         </div>
       ))}
     </div>
@@ -94,11 +94,11 @@ function StatList({ groups }) {
   const rows = groups.flatMap((g) => g.rows).filter((r) => r && r.value !== null && r.value !== undefined);
   if (!rows.length) return null;
   return (
-    <div className="grid gap-x-8 rounded-xl border border-border bg-card px-5 py-1.5 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
+    <div className="grid gap-x-10 rounded-xl border border-border bg-card px-5 py-2 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
       {rows.map((r) => (
-        <div key={r.label} className="flex items-baseline justify-between gap-4 border-b border-border/70 py-2.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:[&:nth-last-child(-n+3)]:border-b-0">
-          <span className="text-sm text-light">{r.label}</span>
-          <span className="font-display text-base font-extrabold tabular-nums text-dark" style={r.accent ? { color: r.accent } : undefined}>
+        <div key={r.label} className="flex items-baseline justify-between gap-4 border-b border-border py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:[&:nth-last-child(-n+3)]:border-b-0">
+          <span className="text-[15px] text-medium">{r.label}</span>
+          <span className="font-display text-lg font-extrabold tabular-nums text-dark" style={r.accent ? { color: r.accent } : undefined}>
             {r.value}
           </span>
         </div>
@@ -207,12 +207,9 @@ function ShelfRow({ titles }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {titles.map((t, i) => {
-        const tint = MEDAL[t.position - 1];
         return (
-          <div key={i} className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
-            <div className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{ background: `radial-gradient(100% 140% at 100% 0%, ${tint}, transparent 60%)` }} />
-            <div className="relative flex items-center gap-4">
+          <div key={i} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center gap-4">
               {t.position === 1 ? (
                 <Crown className="h-8 w-8" style={{ color: MEDAL_TEXT[0] }} />
               ) : (
@@ -303,14 +300,17 @@ function roundTone(r) {
 function FormStrip({ rounds }) {
   if (!rounds.length) return null;
   return (
-    <div className="flex flex-wrap gap-[3px]">
+    // The squares share out whatever width the row gives them, within reason:
+    // a season of three races gets three chunky blocks rather than three
+    // slivers marooned in the middle of an empty row.
+    <div className="flex w-full max-w-[26rem] gap-[3px]">
       {rounds.map((r, i) => (
         <span
           key={`${r.raceId}-${r.sprint ? "s" : "f"}-${i}`}
           title={`${r.round != null ? `Round ${r.round}` : "Round"}${r.sprint ? " sprint" : ""} · ${r.track} · ${
             r.status === "FINISHED" && r.position != null ? `P${r.position}` : r.status
           }${(r.points ?? 0) > 0 ? ` · ${r.points} pts` : ""}`}
-          className="h-4 w-2.5 rounded-[2px] sm:h-5 sm:w-3"
+          className="h-6 min-w-[8px] max-w-[26px] flex-1 rounded-[3px] sm:h-7"
           style={
             roundTone(r)
               ? { background: roundTone(r) }
@@ -334,54 +334,54 @@ function SeasonRow({ season: s, league, rounds }) {
       {/* the team's colour as the line's own edge */}
       <span className="absolute inset-y-0 left-0 w-1" style={{ background: colour }} />
 
-      <div className="min-w-[9rem] flex-1">
+      <div className="w-full sm:w-[13.5rem] sm:shrink-0">
         <Link
           to={`/s/${league.slug}/drivers/${s.handle || s.driverId}?season=${s.seasonNumber}`}
-          className="font-display text-lg font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
+          className="font-display text-xl font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
         >
           Season {s.seasonNumber}
         </Link>
         {s.isActive && (
           <span className="ml-2 align-middle font-mono text-[10px] font-bold uppercase tracking-wider text-brand">running</span>
         )}
-        <div className="mt-1 flex items-center gap-2 text-sm">
-          <TeamLogo id={s.teamId} name={s.teamName} color={s.teamColor} logoUrl={s.teamLogoUrl} size={18} />
+        <div className="mt-1.5 flex items-center gap-2 text-[15px]">
+          <TeamLogo id={s.teamId} name={s.teamName} color={s.teamColor} logoUrl={s.teamLogoUrl} size={20} />
           <span className="truncate font-semibold text-medium">{s.teamName || NO_VALUE}</span>
         </div>
-        {s.game && <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-light">{s.game}</div>}
+        {s.game && <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-light">{s.game}</div>}
       </div>
 
       {/* the year round by round */}
-      <div className="order-last w-full sm:order-none sm:w-auto sm:flex-[2]">
+      <div className="order-last w-full sm:order-none sm:flex-1">
         <FormStrip rounds={rounds} />
-        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-light">
+        <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-light">
           {plural(s.starts, "start")}
           {counts.length ? ` · ${counts.join(" · ")}` : ""}
         </div>
       </div>
 
       {/* where it ended, and what it paid */}
-      <div className="flex items-center gap-5 text-right">
-        <div className="w-16">
+      <div className="flex items-center gap-6 text-right">
+        <div className="w-[4.5rem]">
           {s.position ? (
             <>
               <div
-                className="font-display text-2xl font-black leading-none tabular-nums"
+                className="font-display text-3xl font-black leading-none tabular-nums"
                 style={s.position <= 3 ? { color: MEDAL_TEXT[s.position - 1] } : undefined}
               >
                 P{s.position}
               </div>
               {s.fieldSize > 0 && (
-                <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">of {s.fieldSize}</div>
+                <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">of {s.fieldSize}</div>
               )}
             </>
           ) : (
             <NoData label="no start" />
           )}
         </div>
-        <div className="w-16">
-          <div className="font-display text-2xl font-black leading-none tabular-nums text-dark">{s.points}</div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">points</div>
+        <div className="w-[4.5rem]">
+          <div className="font-display text-3xl font-black leading-none tabular-nums text-dark">{s.points}</div>
+          <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">points</div>
         </div>
       </div>
     </div>
@@ -412,7 +412,7 @@ function LeagueBlock({ league, races }) {
           <SeasonRow key={`${s.seasonNumber}-${s.driverId}`} season={s} league={league} rounds={roundsOf(s.seasonNumber)} />
         ))}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface2/40 px-5 py-2.5 sm:px-6">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface2 px-5 py-2.5 sm:px-6">
         <span className="font-mono text-[10px] uppercase tracking-wider text-light">Each square is a race</span>
         {[
           ["Win", MEDAL[0]],
@@ -567,35 +567,35 @@ function CircuitTable({ tracks }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm sm:text-[15px]">
           <thead>
-            <tr className="border-b border-border text-left font-mono text-[10px] uppercase tracking-wider text-eyebrow">
-              <th className="px-3 py-2.5 sm:px-5">Circuit</th>
-              <th className="px-2 py-2.5 text-center sm:px-3">Starts</th>
-              <th className="px-2 py-2.5 text-center sm:px-3">Wins</th>
-              <th className="hidden px-3 py-2.5 text-center sm:table-cell">Podiums</th>
-              <th className="px-2 py-2.5 text-center sm:px-3">Best</th>
-              <th className="hidden px-3 py-2.5 text-center sm:table-cell">Average</th>
-              <th className="px-3 py-2.5 text-right sm:px-5">Best lap</th>
+            <tr className="border-b border-border text-left font-mono text-[11px] uppercase tracking-wider text-eyebrow">
+              <th className="px-2.5 py-3 sm:px-6">Circuit</th>
+              <th className="px-2 py-3 text-center sm:px-3">Starts</th>
+              <th className="px-2 py-3 text-center sm:px-3">Wins</th>
+              <th className="hidden px-3 py-3 text-center sm:table-cell">Podiums</th>
+              <th className="px-2 py-3 text-center sm:px-3">Best</th>
+              <th className="hidden px-3 py-3 text-center sm:table-cell">Average</th>
+              <th className="px-2.5 py-3 text-right sm:px-6">Best lap</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {shown.map((t) => (
               <tr key={t.track} className="transition hover:bg-surface2">
-                <td className="px-3 py-3 sm:px-5">
-                  <span className="inline-flex items-center gap-2">
+                <td className="px-2.5 py-3.5 sm:px-6">
+                  <span className="inline-flex items-center gap-2 sm:gap-2.5">
                     <Flag code={t.country} />
                     <span className="font-semibold text-dark">{t.track}</span>
                   </span>
                 </td>
-                <td className="px-2 py-3 text-center tabular-nums text-medium sm:px-3">{t.starts}</td>
-                <td className="px-2 py-3 text-center tabular-nums font-semibold sm:px-3" style={t.wins ? { color: MEDAL_TEXT[0] } : undefined}>
+                <td className="px-2 py-3.5 text-center tabular-nums text-medium sm:px-3">{t.starts}</td>
+                <td className="px-2 py-3.5 text-center font-semibold tabular-nums sm:px-3" style={t.wins ? { color: MEDAL_TEXT[0] } : undefined}>
                   {t.wins || NO_VALUE}
                 </td>
-                <td className="hidden px-3 py-3 text-center tabular-nums text-medium sm:table-cell">{t.podiums || NO_VALUE}</td>
-                <td className="px-2 py-3 text-center tabular-nums text-dark sm:px-3">{pos(t.best)}</td>
-                <td className="hidden px-3 py-3 text-center tabular-nums text-medium sm:table-cell">{t.avgFinish != null ? pos(t.avgFinish) : NO_VALUE}</td>
-                <td className="px-3 py-3 text-right font-mono text-xs tabular-nums text-medium sm:px-5">
+                <td className="hidden px-3 py-3.5 text-center tabular-nums text-medium sm:table-cell">{t.podiums || NO_VALUE}</td>
+                <td className="px-2 py-3.5 text-center font-semibold tabular-nums text-dark sm:px-3">{pos(t.best)}</td>
+                <td className="hidden px-3 py-3.5 text-center tabular-nums text-medium sm:table-cell">{t.avgFinish != null ? pos(t.avgFinish) : NO_VALUE}</td>
+                <td className="px-2.5 py-3.5 text-right font-mono text-xs tabular-nums text-medium sm:px-6 sm:text-[13px]">
                   {t.bestLapMs ? fmtLap(t.bestLapMs) : NO_VALUE}
                 </td>
               </tr>
@@ -619,7 +619,7 @@ function CircuitTable({ tracks }) {
 
 // --- team-mate duels --------------------------------------------------------
 
-function DuelList({ teammates }) {
+function DuelList({ teammates, me }) {
   const [all, setAll] = useState(false);
   const shown = all ? teammates : teammates.slice(0, 6);
   return (
@@ -628,27 +628,49 @@ function DuelList({ teammates }) {
         {shown.map((d) => {
           const decided = d.me + d.them;
           const mine = decided ? (d.me / decided) * 100 : 50;
+          const lead = d.me === d.them ? null : d.me > d.them ? me : d.name;
           return (
-            <div key={d.driverId} className="px-5 py-4">
+            <div key={d.driverId} className="px-5 py-5 sm:px-6">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <span className="font-semibold text-dark">{d.name}</span>
+                <span className="text-base font-semibold text-dark">
+                  {me} <span className="font-normal text-light">against</span> {d.name}
+                </span>
                 <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-                  {d.races} races together
+                  {plural(d.races, "race")} together
                   {d.seasons.length ? ` · S${d.seasons.join(", S")}` : ""}
                 </span>
               </div>
-              <div className="mt-2.5 flex items-center gap-3">
-                <span className="w-10 text-right font-display text-lg font-black tabular-nums text-dark">{d.me}</span>
-                <span className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface2">
+
+              {/* Who came home in front, and how often. The two names sit on
+                  their own side of the bar, so there is no working out which
+                  number belongs to whom. */}
+              <div className="mt-3 flex items-center gap-3">
+                <span className="w-24 shrink-0 text-right sm:w-32">
+                  <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-light">{me}</span>
+                  <span className="font-display text-xl font-black tabular-nums text-dark">{d.me}</span>
+                </span>
+                <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-surface2">
                   <span className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${mine}%` }} />
                 </span>
-                <span className="w-10 font-display text-lg font-black tabular-nums text-light">{d.them}</span>
+                <span className="w-24 shrink-0 sm:w-32">
+                  <span className="block truncate font-mono text-[10px] uppercase tracking-wider text-light">{d.name}</span>
+                  <span className="font-display text-xl font-black tabular-nums text-light">{d.them}</span>
+                </span>
               </div>
-              <div className="mt-1.5 flex items-center justify-between text-[11px] font-medium text-light">
-                <span>finished ahead</span>
+
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[13px] text-light">
+                <span>
+                  {lead ? (
+                    <>
+                      <span className="font-semibold text-medium">{lead}</span> finished ahead more often
+                    </>
+                  ) : (
+                    "Dead even on race finishes"
+                  )}
+                </span>
                 {d.qualiMe + d.qualiThem > 0 && (
-                  <span className="font-mono uppercase tracking-wider">
-                    qualifying {d.qualiMe}:{d.qualiThem}
+                  <span className="font-mono text-[11px] uppercase tracking-wider">
+                    Qualifying {d.qualiMe} : {d.qualiThem}
                   </span>
                 )}
               </div>
@@ -951,7 +973,7 @@ function ChapterBar({ chapters }) {
         items={chapters.map(([id, label]) => ({ key: id, label }))}
         value={here}
         onChange={go}
-        wrapClassName="inline-flex rounded-full border border-border bg-card/95 p-1 shadow-sm backdrop-blur"
+        wrapClassName="inline-flex rounded-full border border-border bg-card p-1 shadow-sm"
         btnClassName="whitespace-nowrap px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:text-[11.5px]"
         pillClassName="rounded-full bg-surface2 ring-1 ring-border"
         activeClassName="text-dark"
@@ -1092,11 +1114,11 @@ export default function DriverCareer() {
         <Section id="teams" eyebrow="Who they drove for" title="Teams">
           <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border">
             {teams.map((t) => (
-              <div key={t.name} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
-                <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={32} />
-                <span className="font-semibold text-dark">{t.name}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
-                <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+              <div key={t.name} className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-5 sm:px-6">
+                <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={36} />
+                <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
+                <span className="font-mono text-[12px] uppercase tracking-wider text-light">
                   {plural(t.starts, "start")} · {plural(t.wins, "win")} · {plural(t.podiums, "podium")} · {t.points} pts
                 </span>
               </div>
@@ -1113,7 +1135,7 @@ export default function DriverCareer() {
 
       {teammates.length > 0 && (
         <Section id="duels" eyebrow="Same car, same day" title="Team-mate duels">
-          <DuelList teammates={teammates} />
+          <DuelList teammates={teammates} me={person.name} />
         </Section>
       )}
 

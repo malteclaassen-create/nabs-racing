@@ -171,7 +171,24 @@ async function computeCareer(prisma, key, includePrivate) {
   const counts = results.filter((r) => r.race?.isCompleted && publicSeasonIds.has(r.race.seasonId));
   const featureRows = counts.filter((r) => !r.race.isSpecialEvent);
   const sprintParents = await readParentIds(prisma, counts.filter((r) => r.race.isSpecialEvent).map((r) => r.raceId));
-  const sprintRows = counts.filter((r) => sprintParents.has(r.raceId));
+  // The round a sprint belongs to, for its number, its circuit and its date.
+  const parentRaces = new Map(
+    (
+      await prisma.race.findMany({
+        where: { id: { in: [...new Set([...sprintParents.values()])] } },
+        select: { id: true, number: true, track: true, country: true, date: true, isCompleted: true, isSpecialEvent: true, seasonId: true },
+      })
+    ).map((r) => [r.id, r])
+  );
+  // A sprint counts only where its ROUND does. Two ways it does not: the
+  // feature race has not been saved yet (the standings count a round once it
+  // is complete), or the parent is a practice night, which runs the same
+  // sprint format but scores nothing. Both used to put a square on the season
+  // strip that no start ever matched.
+  const sprintRows = counts.filter((r) => {
+    const parent = parentRaces.get(sprintParents.get(r.raceId));
+    return parent && parent.isCompleted && !parent.isSpecialEvent && publicSeasonIds.has(parent.seasonId);
+  });
   const raced = [...featureRows, ...sprintRows];
 
   // Poles: the qualifying holder of every round the person entered.
@@ -458,14 +475,6 @@ async function computeCareer(prisma, key, includePrivate) {
     .sort((a, b) => b.races - a.races);
 
   // --- every race, newest first ---------------------------------------------
-  const parentRaces = new Map(
-    (
-      await prisma.race.findMany({
-        where: { id: { in: [...new Set([...sprintParents.values()])] } },
-        select: { id: true, number: true, track: true, country: true, date: true },
-      })
-    ).map((r) => [r.id, r])
-  );
   // Who set the best lap of each round the person was in: the recorded holder
   // where there is one, the quickest lap of the field otherwise.
   const flByRace = new Map();
