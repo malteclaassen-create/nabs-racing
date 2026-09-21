@@ -31,6 +31,10 @@ export async function ensureTuning(prisma) {
   return current;
 }
 
+// Long enough for "from" or "ab", short enough that it cannot push the price
+// off the tile.
+export const PREFIX_MAX = 12;
+
 const int = (v) => {
   if (v === "" || v == null) return null;
   const n = Number(v);
@@ -55,6 +59,12 @@ export function cleanTuning(body, allowed) {
         if (!(f in row)) continue;
         if (f === "active") {
           clean.active = !!row.active;
+        } else if (f === "prefix") {
+          // The word in front of a price ("from 1,200"). Typed by hand, so it
+          // is tidied and kept short; empty means the code's own word again.
+          const word = String(row.prefix ?? "").replace(/\s+/g, " ").trim();
+          if (word.length > PREFIX_MAX) return bad(`${name}.${key}.prefix: ${PREFIX_MAX} characters at most`);
+          if (word) clean.prefix = word;
         } else {
           const n = int(row[f]);
           if (Number.isNaN(n)) return bad(`${name}.${key}.${f}: whole number, 0 or more`);
@@ -70,7 +80,7 @@ export function cleanTuning(body, allowed) {
   // not have one simply never send it.
   let r = section("rules", ["points", "active", "laps"]);
   if (r?.error) return r;
-  r = section("shop", ["cost", "active"]);
+  r = section("shop", ["cost", "active", "prefix"]);
   if (r?.error) return r;
   r = section("cards", ["cost"]);
   if (r?.error) return r;

@@ -313,6 +313,21 @@ function NumberField({ value, placeholder, onChange, className = "" }) {
   );
 }
 
+// The word in front of a price, "from 1,200". Twelve characters, because the
+// entry's tile has room for a word and not for a sentence.
+function WordField({ value, placeholder, onChange }) {
+  return (
+    <input
+      type="text"
+      maxLength={12}
+      className="input w-20 text-right"
+      value={value ?? ""}
+      placeholder={placeholder || "none"}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 function OnOff({ checked, onChange, label = "on" }) {
   return (
     <label className="flex cursor-pointer items-center gap-1.5 text-xs text-light">
@@ -471,6 +486,9 @@ function TuningPanel({ d, busy, onSave, onReset }) {
 
         <div className="card p-5">
           <Head>What they buy</Head>
+          <div className="mt-1 text-xs text-light">
+            The small box is the word in front of the price, like "from 1,200". Empty means the number on its own.
+          </div>
           <ul className="mt-1 divide-y divide-border">
             {(defaults.shop || []).filter((i) => !i.link).map((i) => {
               const on = get("shop", i.key, "active") ?? true;
@@ -482,6 +500,11 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <OnOff label="for sale" checked={!!on} onChange={(v) => set("shop", i.key, "active", v ? "" : false)} />
+                    <WordField
+                      value={get("shop", i.key, "prefix")}
+                      placeholder={i.pricePrefix}
+                      onChange={(v) => set("shop", i.key, "prefix", v)}
+                    />
                     <NumberField value={get("shop", i.key, "cost")} placeholder={i.cost} onChange={(v) => set("shop", i.key, "cost", v)} />
                   </div>
                 </li>

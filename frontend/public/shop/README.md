@@ -12,7 +12,8 @@ The keys are the ones in `backend/src/lib/tokens.js`:
 | --------------------------- | -------------------------------- |
 | `card_background.jpg`       | the card design                  |
 | `helmet.jpg`                | the custom helmet                |
-| `car_skin.jpg`              | the custom car skin              |
+| `special_livery.jpg`        | the special livery               |
+| `car_skin.jpg`              | the custom team skin             |
 | `profile_flair.jpg`         | the profile flair                |
 | `discord_role.jpg`          | the Discord role                 |
 | `hall_of_fame.jpg`          | the hall of fame entry           |

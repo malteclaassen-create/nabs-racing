@@ -39,6 +39,15 @@ describe("cleanTuning", () => {
     expect(out.tuning).toEqual({ rules: { race_finish: { points: 60, active: true } }, shop: { helmet: { cost: 1000 } } });
   });
 
+  it("takes the word that goes in front of a price", () => {
+    const out = cleanTuning({ shop: { helmet: { prefix: "  from " } } }, ALLOWED);
+    expect(out.tuning).toEqual({ shop: { helmet: { prefix: "from" } } });
+    // Empty is the league saying "just the number", and a default the code
+    // moves later reaches them again.
+    expect(cleanTuning({ shop: { helmet: { prefix: "   " } } }, ALLOWED).tuning).toEqual({});
+    expect(cleanTuning({ shop: { helmet: { prefix: "starting from about" } } }, ALLOWED).error).toMatch(/characters/);
+  });
+
   it("drops empty fields so the default takes over again", () => {
     const out = cleanTuning({ rules: { race_finish: { points: "" } }, referralRaceLimit: "" }, ALLOWED);
     expect(out.tuning).toEqual({});

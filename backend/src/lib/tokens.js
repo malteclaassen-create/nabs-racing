@@ -173,6 +173,10 @@ export const SHOP_ITEMS = [
     description: "A design for your driver card, and you pick which one.",
     blurb: "Four collector series to pick from. Yours the moment you buy it, no draw and no luck.",
     catalogue: true,
+    // The tile can only show one number, and this entry has four. The word in
+    // front says so: "from 1,200". Any entry may have one, and the league can
+    // change or remove it in Admin -> Tokens -> Rules and prices.
+    pricePrefix: "from",
   },
   {
     key: "helmet",
@@ -184,13 +188,25 @@ export const SHOP_ITEMS = [
       "Send the league office your design (or a picture of what you want) and it goes into the skin pack everyone downloads, so the field sees it on track.",
   },
   {
-    key: "car_skin",
-    name: "Custom car skin",
+    key: "special_livery",
+    name: "Special livery",
     cost: 2000,
     category: "In the car",
-    description: "Your own livery on the car, added to the league's skin pack.",
+    description: "One of the league's own designs, on both cars of your team.",
     blurb:
-      "Send the league office your livery (or a picture of what you are after) and it goes into the skin pack everyone downloads, so you run it on track.",
+      "The league keeps a few special liveries ready. Pick the one you want and it goes into the skin pack everyone downloads, on your car and your team mate's. Nobody has to draw anything for it, which is why it is the cheaper of the two. Ask your team mate first, one of the two cars is theirs.",
+  },
+  {
+    // The key stays `car_skin` from the days this was one driver's own livery:
+    // the orders already filed under it and the picture in public/shop both
+    // hang off the key, and neither cares what the entry is called now.
+    key: "car_skin",
+    name: "Custom team skin",
+    cost: 2500,
+    category: "In the car",
+    description: "A livery drawn for your team, on both of its cars.",
+    blurb:
+      "Say what you are after and the design gets drawn for your team, then it goes into the skin pack everyone downloads, on your car and your team mate's. Ask your team mate first, one of the two cars is theirs.",
   },
   {
     key: "profile_flair",
@@ -220,6 +236,7 @@ export const SHOP_ITEMS = [
     blurb: "Fifty-odd designs, bought one at a time. Try them on your own page before you buy.",
     link: "/profile/style",
     catalogue: true,
+    pricePrefix: "from",
   },
   {
     key: "hall_of_fame",
@@ -320,7 +337,14 @@ const ruleOn = (key) => tunedRule(key)?.active !== false;
 
 export function tunedShop() {
   const o = overrides().shop || {};
-  return SHOP_ITEMS.map((i) => ({ ...i, cost: o[i.key]?.cost ?? i.cost, active: o[i.key]?.active ?? true }));
+  return SHOP_ITEMS.map((i) => ({
+    ...i,
+    cost: o[i.key]?.cost ?? i.cost,
+    active: o[i.key]?.active ?? true,
+    // The word in front of the price ("from 1,200"), empty for the entries
+    // that cost exactly what they say.
+    pricePrefix: o[i.key]?.prefix ?? i.pricePrefix ?? "",
+  }));
 }
 const tunedItem = (key) => tunedShop().find((i) => i.key === key);
 export const tunedReferralLimit = () => overrides().referralRaceLimit ?? REFERRAL_RACE_LIMIT;

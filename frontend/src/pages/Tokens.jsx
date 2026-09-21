@@ -527,6 +527,11 @@ function ShopArt({ item, className = "", children }) {
   );
 }
 
+// The price as it is written on an entry. An entry that holds a catalogue costs
+// what its cheapest thing costs, so the league puts a word in front of the
+// number ("from 1,200"); the word is theirs, set per entry in the admin.
+const withPrefix = (item) => (item.pricePrefix ? `${item.pricePrefix} ${fmt(item.cost)}` : fmt(item.cost));
+
 // What the button on an entry says, in one place: the price, or how far off it
 // is.
 function buyLabel(item, balance) {
@@ -570,7 +575,7 @@ function ShopTile({ item, balance, onOpen }) {
             }`}
           >
             <TokenIcon className="h-3.5 w-3.5" />
-            {item.link ? `from ${fmt(item.cost)}` : fmt(item.cost)}
+            {withPrefix(item)}
           </span>
         </div>
       </button>
@@ -719,7 +724,7 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
           <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tabular-nums text-medium">
             <TokenIcon className="h-4 w-4 text-brand" />
-            {fmt(live.cost)}
+            {withPrefix(live)}
             <span className="ml-2 font-sans text-xs font-normal text-light">you have {fmt(balance)}</span>
           </span>
           <div className="flex items-center gap-2">
