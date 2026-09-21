@@ -692,7 +692,7 @@ function writeCardPicture(driverId, buffer, ext) {
 // Written to THIS ROW alone: the card the member set keeps its picture, and
 // every card they never touched follows the person's newest one on read
 // (lib/cardPhoto cardPictureFor). `driverId` (a form field) says which row
-// the editor had open.
+// the editor had open. The row's framing is cleared with it — see below.
 router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -705,8 +705,12 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
 
     const cardPhotoUrl = writeCardPicture(driverId, req.file.buffer, ext);
     if (!cardPhotoUrl) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
-    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
-    res.json({ ok: true, cardPhotoUrl });
+    // The framing goes with the old picture. A zoom and a crop are tuned to one
+    // photo — kept, they land somewhere arbitrary on the next one (a face half
+    // out of frame, a crop into nothing), and the member has to undo a setting
+    // they never made for this picture. Back to the default, ready to frame.
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl}, "cardPhotoPos" = ${null} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardPhotoUrl, photoPos: null });
   } catch (e) {
     next(e);
   }

@@ -357,8 +357,10 @@ function CardEditor({ me, reload }) {
                 <p className="text-xs leading-relaxed text-light">
                   {isMe ? (
                     <>
-                      This is your current card. Its picture and framing also show on every season you have
-                      never set by hand; seasons you did set keep what you gave them.
+                      This is your current card. The <strong className="font-semibold text-medium">picture</strong>{" "}
+                      also shows on every season you never gave one of its own; how it{" "}
+                      <strong className="font-semibold text-medium">sits</strong> is this season&rsquo;s alone, so
+                      framing here changes nothing anywhere else.
                     </>
                   ) : (
                     <>
@@ -368,8 +370,9 @@ function CardEditor({ me, reload }) {
                           ? `${rowMeta.seriesName} Season ${rowSeasonNumber ?? ""}`.trim()
                           : `Season ${rowSeasonNumber ?? ""}`.trim()}
                       </strong>{" "}
-                      card on its own. A picture or framing you set here stays on it, even when you change your
-                      current card later — reset it to let this season follow along again.
+                      card. How the picture sits is this season&rsquo;s alone. A picture you set here stays on it
+                      too, even when you change your current card later — remove it to let this season show your
+                      current one again.
                     </>
                   )}
                 </p>
