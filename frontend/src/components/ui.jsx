@@ -234,9 +234,12 @@ export function readableInkOn(bgHex) {
 }
 
 // Driver avatar: shows the photo if present, else the initials on the team
-// colour. `size` is the pixel diameter.
-export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, className = "" }) {
-  const [photoFailed, setPhotoFailed] = useState(false);
+// colour. `size` is the pixel diameter. `fallbacks` are further pictures to
+// try, best first, when the one above turns out to be a dead link — a Discord
+// avatar 404s as soon as the member changes their picture there, and only the
+// browser can tell. Callers without a chain pass nothing and nothing changes.
+export function DriverAvatar({ name, photoUrl, fallbacks, color = "#888", size = 44, className = "" }) {
+  const [brokenPhotos, setBrokenPhotos] = useState([]);
   const initials = (name || "?")
     .split(/\s+/)
     .map((p) => p[0])
@@ -244,7 +247,7 @@ export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, classN
     .slice(0, 2)
     .join("")
     .toUpperCase();
-  const showPhoto = photoUrl && !photoFailed;
+  const shownPhoto = [photoUrl, ...(fallbacks || [])].filter(Boolean).find((url) => !brokenPhotos.includes(url));
   return (
     <span
       className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-display font-black ring-2 ring-black/5 ${className}`}
@@ -256,15 +259,18 @@ export function DriverAvatar({ name, photoUrl, color = "#888", size = 44, classN
         color: readableInkOn(color),
       }}
     >
-      {showPhoto ? (
+      {shownPhoto ? (
         <img
-          src={photoUrl}
+          src={shownPhoto}
           alt={name}
           className="h-full w-full object-cover"
           loading="lazy"
-          // A dead picture link falls back to the initials instead of leaving an
-          // empty coloured disc (hiding the <img> used to show nothing at all).
-          onError={() => setPhotoFailed(true)}
+          // A dead picture link moves on to the next candidate, and once they
+          // are all spent to the initials — rather than leaving an empty
+          // coloured disc (hiding the <img> used to show nothing at all).
+          onError={() =>
+            setBrokenPhotos((seen) => (seen.includes(shownPhoto) ? seen : [...seen, shownPhoto]))
+          }
         />
       ) : (
         initials

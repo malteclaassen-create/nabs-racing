@@ -27,7 +27,7 @@ import { getSeriesById } from "./series.js";
 import { readRaceHeroes } from "./raceHero.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { readCardEdition, readCardAnim } from "./cardEditions.js";
-import { readCardPhotoPos, cardPictureFor, personPhotoFor } from "./cardPhoto.js";
+import { readCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "./cardPhoto.js";
 import { readDriverRoles } from "./driverRoles.js";
 import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
@@ -521,6 +521,7 @@ async function cardFor(prisma, race, rowId, ownRow) {
       country: driver.country || idov?.country || null,
       photoUrl: personPhotoFor(ownPictures, idov),
       cardPhotoUrl,
+      photoFallbacks: photoFallbacksFor(ownPictures, idov),
       photoPos,
       cardStyle: await readCardEdition(prisma, rowId),
       cardAnim: await readCardAnim(prisma, rowId),

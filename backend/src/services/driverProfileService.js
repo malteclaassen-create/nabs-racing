@@ -20,7 +20,7 @@ import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readDriverStudio } from "../lib/profileStudio.js";
 import { tokensPublic } from "../lib/tokens.js";
-import { readCardPhotoPos, cardPictureFor, personPhotoFor } from "../lib/cardPhoto.js";
+import { readCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
@@ -950,6 +950,9 @@ export async function getDriverProfile(prisma, driverId) {
       cardAnim: await readCardAnim(prisma, driverId),
       // Optional card-only picture (null = the card uses photoUrl above).
       cardPhotoUrl,
+      // What to try when the picture above turns out to be a dead link (a
+      // changed Discord avatar). The browser walks these in order.
+      photoFallbacks: photoFallbacksFor(ownPictures, idov),
       socials: parseSocials(driver.socials),
       // Self-written "about me" line and the driver's pick of headline stat
       // tiles (null = show all) — both self-service on /profile.

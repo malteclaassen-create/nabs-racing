@@ -83,6 +83,32 @@ function rankedPictures(own, idov, { card }) {
   return out;
 }
 
+// Every picture this row could show, best first and without repeats.
+//
+// The ranking is a guess about which URL still resolves, and a guess can be
+// wrong: a Discord avatar dies silently, and the row that LOOKS newest (the
+// highest season number) is not always the one that logged in last — a season
+// that has not started yet ranks last on purpose, and season numbers of two
+// different leagues are not really comparable at all. So the browser gets the
+// whole chain instead of one URL and walks it as pictures fail to load, which
+// is the only test that actually settles the question.
+export function pictureChainFor(own, idov, { card = true } = {}) {
+  const seen = new Set();
+  const out = [];
+  for (const { url } of rankedPictures(own, idov, { card })) {
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
+// The pictures after the one being shown — what an <img> should try next when
+// its src turns out to be dead. Empty when there is nothing left to try.
+export function photoFallbacksFor(own, idov, opts) {
+  return pictureChainFor(own, idov, opts).slice(1);
+}
+
 // The round profile picture for one row: the best non-card picture, or null.
 // Takes and returns exactly what the old `row.photoUrl || row.discordAvatar ||
 // idov?.photoUrl` did, minus the stale-avatar trap.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveIdentityOverrides } from "./persons.js";
-import { cardPictureFor, personPhotoFor } from "./cardPhoto.js";
+import { cardPictureFor, personPhotoFor, pictureChainFor, photoFallbacksFor } from "./cardPhoto.js";
 
 // One person, two leagues: the Friday row (season 8) carries a card picture,
 // the Sunday row (season 6) carries nothing. Linking them in the admin area is
@@ -149,5 +149,63 @@ describe("resolveIdentityOverrides keeps uploads and avatars apart", () => {
     const out = resolveIdentityOverrides(rows);
     expect(out.get("new").photoUrl).toBe("/uploads/old.jpg");
     expect(out.get("new").avatarUrl).toBe("/live.png");
+  });
+});
+
+// The ranking is a guess about which URL still resolves, and it can be wrong:
+// a season that has not started yet ranks last on purpose, and season numbers
+// of two leagues are not really comparable. So the browser gets the whole
+// chain and walks it as pictures fail — that test settles what a guess cannot.
+describe("the picture chain the browser walks", () => {
+  const own = { cardPhotoUrl: "/cards/own.jpg", photoUrl: "/uploads/own.jpg", discordAvatar: "/avatars/own.png", photoPos: null };
+  const idov = { photoUrl: "/uploads/person.jpg", photoPos: null, avatarUrl: "/avatars/person.png", avatarPos: null, cardPhotoUrl: "/cards/person.jpg", cardPhotoPos: null };
+
+  it("offers every candidate, best first", () => {
+    expect(pictureChainFor(own, idov)).toEqual([
+      "/cards/own.jpg",
+      "/uploads/own.jpg",
+      "/cards/person.jpg",
+      "/uploads/person.jpg",
+      "/avatars/person.png",
+      "/avatars/own.png",
+    ]);
+  });
+
+  it("leaves the card-only pictures out of the round avatar's chain", () => {
+    expect(pictureChainFor(own, idov, { card: false })).toEqual([
+      "/uploads/own.jpg",
+      "/uploads/person.jpg",
+      "/avatars/person.png",
+      "/avatars/own.png",
+    ]);
+  });
+
+  it("never repeats a picture two rows share", () => {
+    const shared = "https://cdn.discordapp.com/avatars/1/same.png";
+    const chain = pictureChainFor(
+      { cardPhotoUrl: null, photoUrl: null, discordAvatar: shared, photoPos: null },
+      { photoUrl: null, avatarUrl: shared, cardPhotoUrl: null }
+    );
+    expect(chain).toEqual([shared]);
+  });
+
+  it("the fallbacks are the chain minus the picture already on show", () => {
+    expect(photoFallbacksFor(own, idov)).toEqual(pictureChainFor(own, idov).slice(1));
+    expect(photoFallbacksFor(own, idov)[0]).toBe("/uploads/own.jpg");
+  });
+
+  it("a row with a dead avatar and a linked person still has somewhere to go", () => {
+    // Foniok's case with the ranking reversed by a pre-season draft: even when
+    // the guess picks the dead URL first, the live one is next in line.
+    const sunday = { cardPhotoUrl: null, photoUrl: null, discordAvatar: "/dead.png", photoPos: null };
+    const stale = { photoUrl: null, avatarUrl: "/dead.png", cardPhotoUrl: null };
+    expect(pictureChainFor(sunday, stale)).toEqual(["/dead.png"]);
+    const withLive = { photoUrl: null, avatarUrl: "/live.png", cardPhotoUrl: null };
+    expect(pictureChainFor(sunday, withLive)).toEqual(["/live.png", "/dead.png"]);
+  });
+
+  it("an unlinked row's chain is just its own picture", () => {
+    expect(pictureChainFor({ cardPhotoUrl: null, photoUrl: null, discordAvatar: "/a.png" }, undefined)).toEqual(["/a.png"]);
+    expect(photoFallbacksFor({ cardPhotoUrl: null, photoUrl: null, discordAvatar: "/a.png" }, undefined)).toEqual([]);
   });
 });

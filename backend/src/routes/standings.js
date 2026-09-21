@@ -9,7 +9,7 @@ import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { getCardRatings } from "../services/cardRatingService.js";
-import { parseCardPhotoPos, cardPictureFor, personPhotoFor } from "../lib/cardPhoto.js";
+import { parseCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "../lib/cardPhoto.js";
 import { isKnownEdition, DEFAULT_CARD_EDITION } from "../lib/cardEditions.js";
 import { getIdentityOverrides } from "../lib/persons.js";
 import { isAdminRequest } from "../middleware/auth.js";
@@ -95,6 +95,7 @@ router.get("/ratings", async (req, res, next) => {
           cardAnim: d.cardAnim === "off" ? "off" : null,
           photoPos: card.photoPos,
           cardPhotoUrl: card.cardPhotoUrl,
+          photoFallbacks: photoFallbacksFor(ownPictures, idov),
         };
       }),
     });
