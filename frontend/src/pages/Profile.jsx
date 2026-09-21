@@ -837,18 +837,12 @@ function MyProfile() {
           (name, flag, team, bio, socials) is editable right below and visible
           in the page preview — it only made the page longer. Its quick links
           live up here in the header now. */}
-      <PageHeader
-        eyebrow="Your profile"
-        title="My Profile"
-        keepTitle
-        right={
-          /* The public page opens separately; every section of THIS page is in
-             the nav beside the content below. */
-          <Link to={`/drivers/${d.driverId}`} className="btn-secondary whitespace-nowrap">
-            Public profile →
-          </Link>
-        }
-      />
+      {/* No "Public profile" button: the identity chip in the nav bar — the one
+          carrying your own picture, in the burger menu on a phone — already
+          links straight to /drivers/<you>, from every page and every section
+          here. A second door beside it only cost header room. The editor keeps
+          its own way through, on the preview below ("Open the real page"). */}
+      <PageHeader eyebrow="Your profile" title="My Profile" />
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">

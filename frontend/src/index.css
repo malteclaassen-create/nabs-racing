@@ -228,6 +228,36 @@ body::before {
   .input {
     @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
   }
+
+  /* Every dropdown on the site wore the operating system's own arrow: a
+     different shape, weight and colour on every phone and every desktop,
+     sitting inside a field the site had otherwise styled to the pixel. This
+     takes that arrow away and draws the same chevron the menus and the season
+     picker use, so a closed dropdown finally looks like it belongs here.
+
+     The LIST that opens when you press it is still the platform's and cannot
+     be styled by a page — this is the closed state, which is what people look
+     at for all but a second at a time.
+
+     Element-qualified on purpose, so all 88 dropdowns already wearing .input
+     get it without a single one being touched. That also beats a utility class
+     on specificity, which is safe only because exactly one <select> on the
+     site carries a padding utility and it does not use .input.
+
+     Two rules because a data URI cannot read a CSS variable: one arrow per
+     theme, each in that theme's own --c-text3. */
+  select.input {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586676' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.7rem center;
+    background-size: 1rem 1rem;
+  }
+  .dark select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa8be' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
   .pill {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide;
   }
