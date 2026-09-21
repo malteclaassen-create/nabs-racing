@@ -973,7 +973,7 @@ function ChapterBar({ chapters }) {
         items={chapters.map(([id, label]) => ({ key: id, label }))}
         value={here}
         onChange={go}
-        wrapClassName="inline-flex rounded-full border border-border bg-card p-1 shadow-sm"
+        wrapClassName="glass-bar inline-flex rounded-full border border-border p-1 shadow-sm"
         btnClassName="whitespace-nowrap px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:text-[11.5px]"
         pillClassName="rounded-full bg-surface2 ring-1 ring-border"
         activeClassName="text-dark"

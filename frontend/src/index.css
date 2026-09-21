@@ -1286,6 +1286,30 @@ body::before {
   .tabs-pop { animation: none !important; }
 }
 
+/* --- Frosted bar ---------------------------------------------------------- */
+/* A sticky bar the page scrolls under: what passes behind it arrives as a
+   blur, not as readable text.
+
+   The obvious `bg-card/95 backdrop-blur` does NOT do this. The neutral colour
+   tokens (card, surface2, border, …) are plain css variables rather than the
+   raw rgb triples Tailwind needs for `<alpha-value>`, so the alpha modifier
+   builds an invalid colour and the element paints no background at all —
+   leaving the blur to work on its own, which reads as text showing through.
+   color-mix tints the real variable instead, and the plain line above it is
+   the fallback for anything that cannot mix. */
+.glass-bar {
+  background-color: var(--c-card);
+  background-color: color-mix(in srgb, var(--c-card) 78%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* No blur, no see-through: lite mode strips backdrop-filter everywhere, and a
+   tinted bar without it is just a window onto the text underneath. */
+.fx-lite .glass-bar {
+  background-color: var(--c-card);
+}
+
 /* --- Lite graphics mode (Settings panel) --------------------------------- */
 /* Drops the GPU-heavy effects so the site stays smooth on weak machines or when
    the browser's hardware acceleration is off. Removes blur (backdrop-filter) —
