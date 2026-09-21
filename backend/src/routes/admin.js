@@ -105,6 +105,7 @@ import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
   sendAttendancePing, dbCreateNotification, withdrawAnswersNoLongerOffered,
+  notifyWaitlistPromoted, notifyWaitlistDemoted,
 } from "../lib/notifications.js";
 import {
   readFeedConfig, writeFeedConfig, readPosts, writePosts,
@@ -141,7 +142,7 @@ import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId, publicDriverId } from "../services/liveTiming.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
-import { WAITLIST, promoteFromWaitlist } from "../lib/waitlist.js";
+import { WAITLIST, promoteFromWaitlist, moveToWaitlist, queuePlace, overCapacity } from "../lib/waitlist.js";
 import { clearOtherAnswers } from "./events.js";
 
 const router = Router();
@@ -1317,26 +1318,62 @@ router.get("/market/history", async (req, res, next) => {
   }
 });
 
-// DELETE /api/admin/market/:offerId -> remove any offer entirely.
 // ---------------------------------------------------------------------------
-// ATTENDANCE OVERRIDE (the sign-up card's admin view)
+// ATTENDANCE OVERRIDE (Admin -> Attendance -> "Grid & waiting list")
 //
 // The grid builds itself: members answer, the cap holds the number, and the
 // waiting list moves up on its own. This is the hand on the wheel for when it
 // doesn't work out. An admin can take somebody's answer away entirely, park an
-// accepted driver on the waiting list, or pull ONE named person out of the
-// queue and onto the grid.
+// accepted driver on the waiting list, pull ONE named person out of the queue
+// and onto the grid, swap those two moves into a single click, or trim a grid
+// that is over its number back onto it.
 //
-// Two rules, both deliberate:
+// It used to sit on the sign-up card itself, behind the Steam IDs button —
+// three icons per row, on a page members read, 43 rows of them on a phone. That
+// button shows Steam ids now and nothing else, and everything that WRITES has
+// moved in here, where the admin already goes to set the grid size.
 //
-// The capacity does not apply here. An admin who puts a 43rd car on the grid
-// has decided to, and the page says so rather than refusing.
+// Two rules hold across all of it, both deliberate:
+//
+// The capacity does not apply. An admin who puts a 43rd car on the grid has
+// decided to, and the panel says so rather than refusing.
 //
 // And nothing is promoted automatically behind an admin's back. Freeing a seat
 // as a member does hands it to the front of the queue; freeing one from here
-// leaves it open, because the whole point of the button is usually to give that
-// seat to somebody specific in the next click.
+// leaves it open, because the point is usually to give that seat to somebody
+// specific in the next click — and for the trim, auto-promotion would undo the
+// very thing that was asked for.
 // ---------------------------------------------------------------------------
+
+// The one check every route below shares. A race that has RUN is not editable:
+// who actually drove is in the result, and moving people around the sign-up
+// behind it would only make the two disagree.
+async function editableRace(raceId) {
+  const race = await prisma.race.findUnique({ where: { id: raceId } });
+  if (!race) return { error: 404, message: "Race not found" };
+  if (race.isCompleted) {
+    return { error: 400, message: "Race already completed. Its entry list is the record now" };
+  }
+  return { race };
+}
+
+// Told, not moved quietly. Being taken off a grid you are down for is exactly
+// the kind of thing somebody needs to hear about before Sunday, so both
+// directions of the move carry their notification. Best-effort, like every
+// other trigger: the edit must not fail because the bell did.
+async function tellThemTheyMoved(race, row, direction) {
+  if (!row?.driver) return;
+  try {
+    if (direction === "down") {
+      const place = await queuePlace(prisma, race.id, row.driverId);
+      await notifyWaitlistDemoted(prisma, { race, driver: row.driver, place });
+    } else {
+      await notifyWaitlistPromoted(prisma, { race, driver: row.driver });
+    }
+  } catch {
+    /* best-effort */
+  }
+}
 
 // POST /api/admin/attendance/:raceId/answer  { driverId, status }
 // status null / "" removes the answer entirely.
@@ -1348,27 +1385,44 @@ router.post("/attendance/:raceId/answer", async (req, res, next) => {
     const want = status ? String(status).toUpperCase() : null;
     if (want && !allowed.includes(want)) return res.status(400).json({ error: "Unknown answer" });
 
-    const race = await prisma.race.findUnique({ where: { id: req.params.raceId } });
-    if (!race) return res.status(404).json({ error: "Race not found" });
-    // A run race's entry list is history. Who actually drove is in the result,
-    // and editing the sign-up behind it would only make the two disagree.
-    if (race.isCompleted) {
-      return res.status(400).json({ error: "Race already completed. Its entry list is the record now" });
-    }
+    const { race, error, message } = await editableRace(req.params.raceId);
+    if (error) return res.status(error).json({ error: message });
     const driver = await prisma.driver.findUnique({ where: { id: driverId } });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
 
-    if (want) {
+    const before = await prisma.raceRsvp.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId } },
+      include: { driver: { select: { id: true, name: true, discordUserId: true } } },
+    });
+
+    if (want === WAITLIST && before?.status === "ACCEPTED") {
+      // Down the one route that keeps their place in the queue — see
+      // lib/waitlist.js. An upsert here would stamp updatedAt with now and send
+      // somebody who has held a seat since Tuesday to the back of the line.
+      await moveToWaitlist(prisma, race.id, driverId);
+    } else if (want) {
       await prisma.raceRsvp.upsert({
         where: { raceId_driverId: { raceId: race.id, driverId } },
         update: { status: want },
         create: { raceId: race.id, driverId, status: want },
       });
+    } else {
+      await prisma.raceRsvp.deleteMany({ where: { raceId: race.id, driverId } });
+    }
+    if (want) {
       // Same tidy-up the member's own route does: one person, one answer, even
       // when they have two roster rows in this season.
       await clearOtherAnswers(race.id, driverId).catch(() => {});
-    } else {
-      await prisma.raceRsvp.deleteMany({ where: { raceId: race.id, driverId } });
+    }
+
+    // Only the two moves between the grid and the queue are announced. Taking
+    // an answer away is usually an admin cleaning up a duplicate or a name that
+    // should never have been in the list, and a bell for that reads as an
+    // accusation; the panel says as much next to the button.
+    if (before?.status === "ACCEPTED" && want === WAITLIST) {
+      await tellThemTheyMoved(race, before, "down");
+    } else if (before?.status === WAITLIST && want === "ACCEPTED") {
+      await tellThemTheyMoved(race, before, "up");
     }
 
     const discord = await syncRaceToDiscord(prisma, race.id);
@@ -1378,6 +1432,89 @@ router.post("/attendance/:raceId/answer", async (req, res, next) => {
   }
 });
 
+// POST /api/admin/attendance/:raceId/swap  { outDriverId, inDriverId }
+//
+// One click for the pair of moves an admin was doing as two: the accepted
+// driver goes to the waiting list, the waiting one takes the seat. Net zero
+// against the grid size, which is why this is the safe way to do it — the
+// two-step version leaves the round a seat short in between, and if the second
+// click never lands (a closed tab, a refused request) it stays that way.
+router.post("/attendance/:raceId/swap", async (req, res, next) => {
+  try {
+    const { outDriverId, inDriverId } = req.body || {};
+    if (!outDriverId || !inDriverId) return res.status(400).json({ error: "Pick both drivers" });
+    if (outDriverId === inDriverId) return res.status(400).json({ error: "That is the same driver twice" });
+
+    const { race, error, message } = await editableRace(req.params.raceId);
+    if (error) return res.status(error).json({ error: message });
+
+    const rows = await prisma.raceRsvp.findMany({
+      where: { raceId: race.id, driverId: { in: [outDriverId, inDriverId] } },
+      include: { driver: { select: { id: true, name: true, discordUserId: true } } },
+    });
+    const out = rows.find((r) => r.driverId === outDriverId);
+    const inc = rows.find((r) => r.driverId === inDriverId);
+    // Checked against what is in the table rather than what the page believed.
+    // An admin panel left open while somebody answered for themselves would
+    // otherwise swap a seat that is not there any more.
+    if (out?.status !== "ACCEPTED") {
+      return res.status(409).json({ error: `${out?.driver?.name || "That driver"} is not on the grid any more. Reload and try again` });
+    }
+    if (inc?.status !== WAITLIST) {
+      return res.status(409).json({ error: `${inc?.driver?.name || "That driver"} is not on the waiting list any more. Reload and try again` });
+    }
+
+    await moveToWaitlist(prisma, race.id, outDriverId);
+    await prisma.raceRsvp.update({ where: { id: inc.id }, data: { status: "ACCEPTED" } });
+
+    await tellThemTheyMoved(race, out, "down");
+    await tellThemTheyMoved(race, inc, "up");
+
+    const discord = await syncRaceToDiscord(prisma, race.id);
+    res.json({ ok: true, out: out.driver.name, in: inc.driver.name, discord });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/attendance/:raceId/trim
+//
+// The grid is over its number and the last people in are the ones who put it
+// there. Moves them to the waiting list, newest answer first, until the count
+// is back on the line — which is the "43 accepted for 42 seats" this whole
+// feature was built for, now that the cap only ever catches the NEXT person
+// through the door and rounds that filled up before it existed are still over.
+//
+// They keep their own answer time, so the driver who was accepted at 17:31 sits
+// in the queue ahead of anybody who joined it at 17:40. Nobody is promoted
+// behind the trim: that would hand the seat straight back and put a different
+// name over the line instead.
+router.post("/attendance/:raceId/trim", async (req, res, next) => {
+  try {
+    const { race, error, message } = await editableRace(req.params.raceId);
+    if (error) return res.status(error).json({ error: message });
+
+    const state = await overCapacity(prisma, race);
+    if (!state.over) {
+      return res.json({ ok: true, moved: [], ...state, tail: undefined });
+    }
+    const moved = [];
+    for (const row of state.tail) {
+      await moveToWaitlist(prisma, race.id, row.driverId);
+      moved.push({ driverId: row.driverId, name: row.driver?.name || "", answeredAt: row.updatedAt });
+    }
+    for (const row of state.tail) {
+      await tellThemTheyMoved(race, row, "down");
+    }
+
+    const discord = await syncRaceToDiscord(prisma, race.id);
+    res.json({ ok: true, moved, capacity: state.capacity, discord });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/market/:offerId -> remove any offer entirely.
 router.delete("/market/:offerId", async (req, res, next) => {
   try {
     const offer = await prisma.seatOffer.findUnique({ where: { id: req.params.offerId } });

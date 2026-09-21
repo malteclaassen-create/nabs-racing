@@ -267,6 +267,11 @@ router.get("/", async (req, res, next) => {
         // out for itself, so the button and the answer to pressing it agree.
         gridFull:
           grouped.ACCEPTED.length + (openOffers.get(race.id) || 0) >= (race.capacity || 40),
+        // Cars mid-handover: declined by their owner, not going spare. Carried
+        // as its own number so the admin's grid panel counts the round the same
+        // way the server does — "43 of 42" there and the trim it offers have to
+        // agree, and accepted alone is one short whenever an offer stands.
+        reserved: openOffers.get(race.id) || 0,
         counts: {
           ACCEPTED: grouped.ACCEPTED.length,
           DECLINED: grouped.DECLINED.length,

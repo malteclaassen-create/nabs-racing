@@ -5,15 +5,17 @@ import { ErrorBox, Notice, CardHead, HelpNote, Field } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
+import AdminAttendanceGrid from "./AdminAttendanceGrid.jsx";
 import AdminAttendanceActivity from "./AdminAttendanceActivity.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
-// Admin "Attendance" tab, in four views: who may answer which race, who has
-// not answered the next one yet, what people answered for the races already
-// run, and who is still turning up across the season at all. Panels stacked in
-// one column had grown into a page you scrolled past rather than read.
+// Admin "Attendance" tab, in five views: who may answer which race, who is in
+// the next one and who is queuing for it, who has not answered it yet, what
+// people answered for the races already run, and who is still turning up across
+// the season at all. Panels stacked in one column had grown into a page you
+// scrolled past rather than read.
 //
-// The first three all answer a question about ONE race. Activity is the same
+// The first four all answer a question about ONE race. Activity is the same
 // data read down the season instead — one row per driver, one column per round
 // — because "is this person still racing" is the question a grid is planned
 // from, and it cannot be seen in any single round's lists.
@@ -148,6 +150,7 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       <SlidingTabs
         items={[
           { key: "signups", label: "Who can sign up" },
+          { key: "grid", label: "Grid & waiting list" },
           { key: "missing", label: "Still to answer" },
           { key: "history", label: "Past sign-ups" },
           { key: "activity", label: "Activity" },
@@ -168,6 +171,13 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
 
       {view === "missing" && (
         <AdminAttendanceMissing races={upcoming} racesError={events.error} onReloadRaces={events.reload} />
+      )}
+
+      {/* The entry list itself, and the only place it can be edited by hand.
+          Fed the same `upcoming` the other views use, and handed events.reload
+          so its own writes show up without a second copy of the list. */}
+      {view === "grid" && (
+        <AdminAttendanceGrid races={upcoming} racesError={events.error} onReloadRaces={events.reload} />
       )}
 
       {/* Who may answer which race. The general rule ("opens N days before")

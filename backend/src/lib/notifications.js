@@ -480,6 +480,36 @@ export async function notifyWaitlistPromoted(prisma, { race, driver }) {
   }
 }
 
+// The other direction, and only ever an admin's doing: somebody who was on the
+// grid is back in the queue. Not muteable for the same reason as the promotion
+// above — a driver who does not hear this turns up to a race they are no longer
+// in, which is the one outcome the waiting list exists to prevent.
+//
+// `place` is where in the queue they landed (1 = next in line), because "you
+// are off the grid" without it is the start of a Discord message rather than
+// the end of one.
+export async function notifyWaitlistDemoted(prisma, { race, driver, place = null }) {
+  try {
+    if (!driver?.discordUserId || !race?.id) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    const where =
+      place === 1
+        ? "You are next in line, so a single drop-out puts you back in."
+        : place
+          ? `You are no. ${place} on the waiting list and move up as seats come free.`
+          : "You are on the waiting list and move up as seats come free.";
+    await dbCreateNotification(prisma, {
+      type: "ATTENDANCE",
+      title: `You're on the waiting list for ${roundName(race)}`,
+      body: `${race.track} is full, so an admin moved you from the grid to the waiting list. ${where}`,
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId: driver.discordUserId,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // --- admin alerts -------------------------------------------------------------
 // The two things in the Members tab that need a HUMAN: somebody signed in and no
 // driver row claims them, and somebody asked for a seat. Both sit in the admin

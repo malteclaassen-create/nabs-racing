@@ -436,7 +436,6 @@ export default function Attendance() {
               // from their own admin-only request, so this only decides whether
               // the button is there to press.
               isAdmin={!!user?.isAdmin}
-              onAnswersChanged={events.reload}
               // Takes the height the video leaves over in the split layout; no
               // effect in the single-column one, where nothing is flexing.
               className="lg:grow"

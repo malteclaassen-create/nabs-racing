@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { seatsFor, promoteFromWaitlist, WAITLIST } from "./waitlist.js";
+import { seatsFor, promoteFromWaitlist, moveToWaitlist, overCapacity, queuePlace, WAITLIST } from "./waitlist.js";
 
 // A prisma stand-in with just the four calls the waiting list makes. The
 // person-grouping and the bell notification both look things up through the
@@ -18,8 +18,17 @@ function fakePrisma({ capacity = 3, isCompleted = false, answers = [], offers = 
     race: { findUnique: async () => ({ id: "race1", capacity, isCompleted, seasonId: "s1", track: "Baku" }) },
     raceRsvp: {
       findMany: async () => rows,
+      findUnique: async ({ where }) =>
+        rows.find((r) => r.driverId === where.raceId_driverId?.driverId) || null,
       update: async ({ where, data }) => {
-        rows.find((r) => r.id === where.id).status = data.status;
+        const row = rows.find((r) => r.id === where.id);
+        row.status = data.status;
+        // Prisma honours an explicit value for an @updatedAt field and stamps
+        // "now" when there isn't one. The queue order rides on this, so the
+        // fake has to behave the same way.
+        row.updatedAt = data.updatedAt
+          ? new Date(data.updatedAt).toISOString()
+          : new Date().toISOString();
       },
     },
     seatOffer: { count: async () => offers },
@@ -122,5 +131,98 @@ describe("promoteFromWaitlist", () => {
   it("does nothing once the race has run", async () => {
     const p = fakePrisma({ isCompleted: true, answers: [{ driverId: "a", status: WAITLIST }] });
     expect(await promoteFromWaitlist(p, "race1")).toEqual([]);
+  });
+});
+
+// --- the admin's overrides ---------------------------------------------------
+
+describe("moveToWaitlist", () => {
+  it("keeps the answer's own time, so a demoted driver keeps their place in line", async () => {
+    // The 43rd accepted driver got in at 09:00; everybody queuing joined after.
+    // Stamping the move with "now" would put them behind all of them.
+    const p = fakePrisma({
+      answers: [
+        { driverId: "seat", status: "ACCEPTED", at: "2026-09-20T09:00:00Z" },
+        { driverId: "queued", status: WAITLIST, at: "2026-09-20T11:00:00Z" },
+      ],
+    });
+    await moveToWaitlist(p, "race1", "seat");
+    const row = p.rows.find((r) => r.driverId === "seat");
+    expect(row.status).toBe(WAITLIST);
+    expect(row.updatedAt).toBe(new Date("2026-09-20T09:00:00Z").toISOString());
+    expect(await queuePlace(p, "race1", "seat")).toBe(1);
+    expect(await queuePlace(p, "race1", "queued")).toBe(2);
+  });
+
+  it("does not reshuffle somebody who is already waiting", async () => {
+    const p = fakePrisma({ answers: [{ driverId: "a", status: WAITLIST, at: "2026-09-20T09:00:00Z" }] });
+    await moveToWaitlist(p, "race1", "a");
+    expect(p.rows[0].updatedAt).toBe(new Date("2026-09-20T09:00:00Z").toISOString());
+  });
+
+  it("is a no-op for a driver who never answered", async () => {
+    const p = fakePrisma({ answers: [] });
+    expect(await moveToWaitlist(p, "race1", "nobody")).toBe(null);
+  });
+});
+
+describe("overCapacity", () => {
+  const race = { id: "race1", capacity: 3 };
+
+  it("names the newest answers as the ones over the line", async () => {
+    const p = fakePrisma({
+      answers: [
+        { driverId: "first", status: "ACCEPTED", at: "2026-09-20T09:00:00Z" },
+        { driverId: "second", status: "ACCEPTED", at: "2026-09-20T10:00:00Z" },
+        { driverId: "third", status: "ACCEPTED", at: "2026-09-20T11:00:00Z" },
+        { driverId: "last", status: "ACCEPTED", at: "2026-09-20T12:00:00Z" },
+      ],
+    });
+    const state = await overCapacity(p, race);
+    expect(state.over).toBe(1);
+    expect(state.tail.map((r) => r.driverId)).toEqual(["last"]);
+  });
+
+  it("counts a car mid-handover as taken", async () => {
+    // Three accepted plus one open Driver Market offer is four cars for three
+    // seats, the same sum that refuses the next Accept.
+    const p = fakePrisma({
+      answers: [
+        { driverId: "a", status: "ACCEPTED", at: "2026-09-20T09:00:00Z" },
+        { driverId: "b", status: "ACCEPTED", at: "2026-09-20T10:00:00Z" },
+        { driverId: "c", status: "ACCEPTED", at: "2026-09-20T11:00:00Z" },
+      ],
+      offers: 1,
+    });
+    const state = await overCapacity(p, race);
+    expect(state.over).toBe(1);
+    expect(state.tail.map((r) => r.driverId)).toEqual(["c"]);
+  });
+
+  it("has nothing to say about a grid that fits", async () => {
+    const p = fakePrisma({
+      answers: [
+        { driverId: "a", status: "ACCEPTED" },
+        { driverId: "b", status: WAITLIST },
+      ],
+    });
+    const state = await overCapacity(p, race);
+    expect(state.over).toBe(0);
+    expect(state.tail).toEqual([]);
+  });
+});
+
+describe("queuePlace", () => {
+  it("numbers the queue in join order and ignores everybody else", async () => {
+    const p = fakePrisma({
+      answers: [
+        { driverId: "driving", status: "ACCEPTED", at: "2026-09-20T08:00:00Z" },
+        { driverId: "late", status: WAITLIST, at: "2026-09-20T12:00:00Z" },
+        { driverId: "early", status: WAITLIST, at: "2026-09-20T09:00:00Z" },
+      ],
+    });
+    expect(await queuePlace(p, "race1", "early")).toBe(1);
+    expect(await queuePlace(p, "race1", "late")).toBe(2);
+    expect(await queuePlace(p, "race1", "driving")).toBe(null);
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Hourglass, Fingerprint, Copy, Check, X } from "lucide-react";
+import { Hourglass, Fingerprint, Copy, Check } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
@@ -149,57 +149,6 @@ function SteamTag({ steamId }) {
   );
 }
 
-// The admin's hand on the wheel, one row at a time: move an accepted driver to
-// the waiting list, pull a named one out of the queue and onto the grid, or take
-// an answer away entirely.
-//
-// Icons rather than words because there are 43 of these rows and each one is
-// half a column wide. The server does not apply the grid size to any of it and
-// does not move anybody up by itself afterwards, so "take that one out, put
-// this one in" is two clicks that do exactly what they say.
-function RowActions({ status, name, busy, onSet }) {
-  const actions = [];
-  if (status !== WAITLIST) {
-    actions.push({
-      key: WAITLIST,
-      Icon: Hourglass,
-      title: `Move ${name} to the waiting list`,
-      className: "hover:border-sky-500/60 hover:text-link",
-    });
-  }
-  if (status !== "ACCEPTED") {
-    actions.push({
-      key: "ACCEPTED",
-      Icon: Check,
-      title: `Put ${name} on the grid`,
-      className: "hover:border-green-600/60 hover:text-ok",
-    });
-  }
-  actions.push({
-    key: null,
-    Icon: X,
-    title: `Remove ${name}'s answer`,
-    className: "hover:border-red-600/60 hover:text-bad",
-  });
-  return (
-    <span className="flex shrink-0 items-center gap-0.5">
-      {actions.map((a) => (
-        <button
-          key={a.key || "clear"}
-          type="button"
-          title={a.title}
-          aria-label={a.title}
-          disabled={busy}
-          onClick={() => onSet(a.key)}
-          className={`rounded border border-transparent p-0.5 text-faint transition disabled:opacity-40 ${a.className}`}
-        >
-          <a.Icon className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
-      ))}
-    </span>
-  );
-}
-
 // One upcoming race: attendance buttons (when signed in) + the three status
 // columns + the embedded Driver Market. State/actions are owned by the parent.
 export default function RaceSignupCard({
@@ -225,9 +174,6 @@ export default function RaceSignupCard({
   // Unlocks the Steam-id view in the header. The ids themselves are fetched
   // separately and only when asked for — see the header strip below.
   isAdmin = false,
-  // Refetch the entry list after an admin has moved somebody. Separate from
-  // reloadMarket on purpose: this one has nothing to do with the Driver Market.
-  onAnswersChanged,
 }) {
   // The market context of the RACE's season — see the note further down at
   // SeatMarket for why it is read this way even when null.
@@ -281,6 +227,37 @@ export default function RaceSignupCard({
   const gridFull = !!ev.gridFull;
   const myWaitingPlace = waiting.findIndex((r) => myIds.has(r.driverId)) + 1;
 
+  // Giving up a seat on a full grid is a one-way door, and it did not used to
+  // look like one. The moment the answer changes, the front of the queue is
+  // moved onto the grid and the seat is gone — so the Accept button that was
+  // there a second ago is a waiting-list button by the time anybody realises
+  // they meant to press something else. One question before that happens.
+  //
+  // Only ever asked of somebody who actually HAS a seat to lose, and only when
+  // losing it costs something: a round with an empty queue and a seat spare
+  // takes them straight back, and a dialog for that is noise.
+  const seatIsPrecious = myStatus === "ACCEPTED" && (waiting.length > 0 || gridFull);
+  async function confirmLeavingTheGrid(how) {
+    if (!seatIsPrecious) return true;
+    const next = waiting[0];
+    return ask({
+      title: how === "clear" ? "Take your answer back?" : "Give up your seat?",
+      body: waiting.length
+        ? `The grid is full and ${waiting.length} ${waiting.length === 1 ? "driver is" : "drivers are"} waiting, so your seat goes to ${next?.name || "the first of them"} straight away. You can't take it back — the most you can do is join the waiting list behind everyone in it.`
+        : "The grid is full, so the seat you give up is open to the next person who answers. If somebody takes it, the most you can do is join the waiting list.",
+      confirmLabel: how === "clear" ? "Yes, take it back" : "Yes, I'm out",
+      danger: true,
+    });
+  }
+  async function answer(status) {
+    if (status !== "ACCEPTED" && !(await confirmLeavingTheGrid(status))) return;
+    onSetStatus(ev.id, status);
+  }
+  async function clearAnswer() {
+    if (!(await confirmLeavingTheGrid("clear"))) return;
+    onClear(ev.id);
+  }
+
   // Admin view: Steam ids + answer times beside the names. Fetched on the first
   // ask and kept for as long as the card stays on this race, so flicking it on
   // and off does not hit the server every time. Reset when the race changes —
@@ -320,21 +297,6 @@ export default function RaceSignupCard({
     () => ev.rsvps.ACCEPTED.map((r) => steamIds?.[r.driverId]).filter(Boolean),
     [ev.rsvps.ACCEPTED, steamIds]
   );
-  // One row's answer, set or taken away. Errors land in the same line the copy
-  // note uses, so a refused edit says so where the admin is already looking.
-  const [rowBusy, setRowBusy] = useState(null);
-  async function setAnswerFor(driver, status) {
-    setRowBusy(driver.driverId);
-    setSteamError(null);
-    try {
-      await api.adminSetAnswer(ev.id, driver.driverId, status);
-      await onAnswersChanged?.();
-    } catch (e) {
-      setSteamError(e.message);
-    } finally {
-      setRowBusy(null);
-    }
-  }
   async function copyAllSteamIds() {
     const ok = await copyText(acceptedSteamIds.join("\n"));
     setCopyNote(ok ? `${acceptedSteamIds.length} Steam IDs copied` : "This browser blocked the clipboard");
@@ -419,7 +381,7 @@ export default function RaceSignupCard({
               return (
                 <button
                   key={status}
-                  onClick={() => onSetStatus(ev.id, status)}
+                  onClick={() => answer(status)}
                   disabled={!!myOffer || busy === `${ev.id}:${status}`}
                   aria-pressed={active}
                   // The one it is stuck on keeps its colour, so the card still
@@ -446,7 +408,7 @@ export default function RaceSignupCard({
                 the server says the same. */}
             {myStatus && !myOffer && (
               <button
-                onClick={() => onClear(ev.id)}
+                onClick={clearAnswer}
                 disabled={busy === `${ev.id}:clear`}
                 className="btn-secondary"
               >
@@ -532,7 +494,7 @@ export default function RaceSignupCard({
                 Copy accepted ({acceptedSteamIds.length})
               </button>
               <span className="text-xs text-light">
-                {copyNote || steamError || "Steam IDs beside every name, click to copy. The icons move people between the grid and the queue."}
+                {copyNote || steamError || "Steam IDs beside every name, click one to copy it. Admins only."}
               </span>
             </>
           )}
@@ -610,14 +572,8 @@ export default function RaceSignupCard({
                   <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                   {adminView && (
-                    <span className="ml-auto flex items-center gap-1.5">
+                    <span className="ml-auto">
                       <SteamTag steamId={steamIds?.[r.driverId]} />
-                      <RowActions
-                        status={status}
-                        name={r.name}
-                        busy={rowBusy === r.driverId}
-                        onSet={(next) => setAnswerFor(r, next)}
-                      />
                     </span>
                   )}
                   </div>
@@ -666,14 +622,8 @@ export default function RaceSignupCard({
                   </span>
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
                   {adminView && (
-                    <span className="ml-auto flex items-center gap-1.5">
+                    <span className="ml-auto">
                       <SteamTag steamId={steamIds?.[r.driverId]} />
-                      <RowActions
-                        status={WAITLIST}
-                        name={r.name}
-                        busy={rowBusy === r.driverId}
-                        onSet={(next) => setAnswerFor(r, next)}
-                      />
                     </span>
                   )}
                 </div>
