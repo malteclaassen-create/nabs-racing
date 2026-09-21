@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
+import SettingsSections from "../components/SettingsSections.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import { profileNav, sectionKeys } from "./profileNav.mjs";
 import ProfileNav from "../components/ProfileNav.jsx";
@@ -820,8 +821,8 @@ function MyProfile() {
   const tab = sectionKeys(COCKPIT_TABS).includes(params.get("tab")) ? params.get("tab") : "profile";
   const setTab = (key) => {
     if (key === "feedback") return openFeedback(); // the panel, not a section
-    // Settings, My reports and Admin are pages of their own: the nav draws
-    // them as links and navigates by itself, so nothing lands here for them.
+    // My reports and Admin are pages of their own: the nav draws them as links
+    // and navigates by itself, so nothing lands here for them.
     setParams(key === "profile" ? {} : { tab: key }, { replace: true });
   };
 
@@ -923,7 +924,9 @@ function MyProfile() {
           hard-swapped, which read as two different components rather than one
           control moving between views. */}
       <div key={tab} className="content-in min-w-0 flex-1">
-      {tab === "tools" ? (
+      {tab === "settings" ? (
+        <SettingsSections />
+      ) : tab === "tools" ? (
         <Tools embedded />
       ) : tab === "tokens" ? (
         <Tokens />

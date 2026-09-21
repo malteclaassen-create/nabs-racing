@@ -70,9 +70,9 @@ const InstallApp = lazy(() => import("./pages/InstallApp.jsx"));
 // (an app store listing cannot be published without one), so it lives in its
 // own chunk rather than in everybody's first download.
 const Privacy = lazy(() => import("./pages/Privacy.jsx"));
-// The site's own preferences (theme, Lite mode, where your name in the bar
-// leads). Opened from the bell and from the profile's navigation, a handful of
-// times per member ever — nothing that belongs in the first download.
+// The settings for a visitor (theme, Lite mode). Opened from the bell a
+// handful of times per reader ever, and for a member it only redirects into
+// the profile — nothing that belongs in the first download.
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 // The race recap: a member lands here once after each saved round, and can
 // come back from the race page. Never on a first page view of a visitor.
@@ -292,9 +292,10 @@ function AppRoutes() {
             upcoming-race panel and the private profile. */}
         <Route path="/tools" element={<Tools />} />
         {/* Theme, performance and where your own name in the bar takes you.
-            A page rather than the drawer it used to be: an address that can be
-            linked to and bookmarked, open to visitors as well as members (the
-            theme is not a members-only concern). */}
+            For a member these are a panel of the personal area; this address
+            exists for a VISITOR, who has no personal area but still wants the
+            light theme or the Lite mode, and it sends a signed-in member on to
+            /profile?tab=settings. */}
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/style" element={<ProfileStyle />} />

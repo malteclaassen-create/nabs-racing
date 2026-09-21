@@ -4,9 +4,9 @@
 // It used to be nine entries in one sliding tab bar. On a phone that meant a
 // sideways scroll showing four of them with nothing to say the rest were there
 // — and the bar told the same lie to everyone, because those nine entries did
-// three different things behind one identical pill: five swap the panel in
-// place, Feedback opens a panel, and Settings, My reports and Admin leave the
-// page altogether.
+// three different things behind one identical pill: some swap the panel in
+// place, Feedback opens a panel, and My reports and Admin leave the page
+// altogether.
 //
 // So the list is grouped and every entry says what KIND of thing it is. The
 // sections are the page; everything else is elsewhere, and says so. ProfileNav
@@ -30,12 +30,16 @@ export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false
       ...(tokens === null ? [] : [{ kind: "section", key: "tokens", label: "NABS Points", icon: "tokens", count: tokens }]),
       // The key stays "tools": ?tab=tools is in bell links and bookmarks.
       { kind: "section", key: "tools", label: "Telemetry", icon: "tools" },
+      // Theme, performance, where your own name in the bar leads, and the way
+      // out of the account. A panel like the ones above it rather than a
+      // drawer over them or a page away from them: everything about you is in
+      // this one place, and the settings are about you too. /settings still
+      // exists for a visitor, who has no personal area to hold a panel — it
+      // sends a signed-in member here. Last, because it is the entry you open
+      // once and the ones above are the ones you come back to.
+      { kind: "section", key: "settings", label: "Settings", icon: "settings" },
     ],
     elsewhere: [
-      // Settings used to be a drawer opened from here. It is a page of its own
-      // now (/settings), so this row leaves the profile like the two below it
-      // rather than sliding something over the top of it.
-      { kind: "page", key: "settings", label: "Settings", icon: "settings", to: "/settings" },
       // Feedback used to be a floating button in the bottom right corner. That
       // corner is the Report widget's now, and this is where the things you do
       // ABOUT the site rather than in it belong anyway.

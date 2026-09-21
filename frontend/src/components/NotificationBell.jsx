@@ -11,11 +11,12 @@ import { GearIcon } from "./SettingsPanel.jsx";
 // (results, race day, downloads, driver market); the unread count polls once
 // a minute, opening the panel loads the list and marks everything seen.
 // Logged-out visitors still get the bell — it explains the feature. It also
-// carries the Settings row at the bottom of the panel: the way to /settings
-// otherwise runs through the profile's own navigation, which needs a Discord
-// login and a linked driver row behind it, so a plain visitor could not reach
-// the theme or the Lite mode at all. The bell is in the bar for everyone, which
-// makes it the one place the settings are always available from.
+// carries the Settings row at the bottom of the panel: the settings live in
+// the personal area, which needs a Discord login behind it, so a plain visitor
+// could not reach the theme or the Lite mode at all. The bell is in the bar for
+// everyone, which makes it the one place the settings are always available
+// from. The row points at /settings either way, and that address sends a
+// signed-in member on to their own area — see pages/Settings.jsx.
 
 // `ringing` swings the bell on a slow loop (see .bell-ring in index.css) — set
 // while there is something unread and the panel is shut. The badge on its own
@@ -285,13 +286,14 @@ export default function NotificationBell({ className = "" }) {
             </div>
 
             {/* Settings live down here, and that is the whole point: theme and
-                the Lite performance mode are otherwise reachable only through
-                the profile's own navigation, which needs a Discord login AND a
-                driver row behind it. A visitor who just wants the light theme,
-                or someone on a slow machine who wants the animations off, could
-                not get to either. The bell is in the bar for everyone, signed in
-                or not, so it is the one place that always works. A link, not a
-                button opening a drawer: /settings is a page like any other. */}
+                the Lite performance mode are otherwise a panel of the personal
+                area, which needs a Discord login behind it. A visitor who just
+                wants the light theme, or someone on a slow machine who wants
+                the animations off, could not get to either. The bell is in the
+                bar for everyone, signed in or not, so it is the one place that
+                always works. A link rather than a button opening a drawer:
+                /settings is an address, and for a member it leads on to the
+                same panel their profile shows. */}
             <Link
               to="/settings"
               onClick={close}

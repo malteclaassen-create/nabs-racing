@@ -8,9 +8,18 @@ test("sections are the panels the page swaps in place", () => {
   const { sections } = profileNav({ cockpitTabs: COCKPIT });
   assert.deepEqual(
     sections.map((s) => s.key),
-    ["profile", "achievements", "rating", "tools"]
+    ["profile", "achievements", "rating", "tools", "settings"]
   );
   assert.ok(sections.every((s) => s.kind === "section"));
+});
+
+test("Settings is a panel of the page, not a drawer over it or a page away", () => {
+  const { sections, elsewhere } = profileNav({});
+  const settings = sections.find((s) => s.key === "settings");
+  assert.equal(settings.kind, "section");
+  // A section swaps in place, so it has no address to leave for.
+  assert.equal(settings.to, undefined);
+  assert.ok(!elsewhere.some((i) => i.key === "settings"));
 });
 
 test("NABS Points appears only while the trial is on, and carries the balance", () => {
@@ -31,21 +40,18 @@ test("everything that is not a section says what it really does", () => {
   assert.deepEqual(
     elsewhere.map((i) => [i.key, i.kind]),
     [
-      ["settings", "page"],
       ["feedback", "panel"],
       ["reports", "page"],
       ["admin", "page"],
     ]
   );
-  // Settings is a page of its own now, not a drawer over this one.
-  assert.equal(elsewhere.find((i) => i.key === "settings").to, "/settings");
   // Every entry that leaves the page carries a destination, so it can be a link.
   for (const item of elsewhere.filter((i) => i.kind === "page")) assert.ok(item.to);
 });
 
 test("Admin and My reports are hidden from those who cannot use them", () => {
   const { elsewhere } = profileNav({ isAdmin: false, reportsOpen: false });
-  assert.deepEqual(elsewhere.map((i) => i.key), ["settings", "feedback"]);
+  assert.deepEqual(elsewhere.map((i) => i.key), ["feedback"]);
 });
 
 test("no two entries share a key", () => {
@@ -59,5 +65,5 @@ test("?tab= stays valid while the token balance is still loading", () => {
   // a bell link to ?tab=tokens does not flash the editor on the way in.
   assert.ok(!profileNav({ tokens: null }).sections.some((s) => s.key === "tokens"));
   assert.ok(sectionKeys(COCKPIT).includes("tokens"));
-  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "tokens", "tools"]);
+  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "tokens", "tools", "settings"]);
 });
