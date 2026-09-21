@@ -20,7 +20,7 @@ import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readDriverStudio } from "../lib/profileStudio.js";
 import { tokensPublic } from "../lib/tokens.js";
-import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
+import { readCardPhotoPos, cardPictureFor } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
@@ -558,12 +558,17 @@ export async function getDriverProfile(prisma, driverId) {
   const idov = identityOverrides.get(driverId);
   const ownPhoto = driver.photoUrl || driver.discordAvatar || null;
   const effPhotoUrl = ownPhoto || idov?.photoUrl || null;
-  const effPhotoPos = ownPhoto ? photoPos : parseCardPhotoPos(idov?.photoPos) || photoPos;
   // Optional card-only picture for THIS row (raw column). null -> the card
-  // falls back to the profile photo (RatingCard handles the fallback).
-  const cardPhotoUrl = (
+  // falls back to the profile photo (RatingCard handles the fallback), or,
+  // for a row with no picture at all, to the person's card picture from
+  // another league — cardPictureFor decides, framing included.
+  const ownCardPhotoUrl = (
     await prisma.$queryRaw`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ${driverId}`.catch(() => [])
   )[0]?.cardPhotoUrl || null;
+  const { cardPhotoUrl, photoPos: effPhotoPos } = cardPictureFor(
+    { cardPhotoUrl: ownCardPhotoUrl, photoUrl: ownPhoto, photoPos },
+    idov
+  );
 
   // Achievements the driver pinned in their Cockpit (validated at save time,
   // so showing them is just a key -> catalogue lookup). Raw column; [].
