@@ -1,5 +1,8 @@
 // ---------------------------------------------------------------------------
-// Which league the My Rating panel is about.
+// Which league a Personal Area panel is about.
+//
+// Used by both panels that show one league's things: My Rating (the numbers)
+// and the profile editor (the driver card and the public-page preview).
 //
 // A rating is a LEAGUE's rating. It ranks you against that league's field over
 // that series' seasons, so a person racing in two of them carries two ratings
@@ -12,7 +15,7 @@
 // site is viewing: switch the series in the header and the card changes while
 // the rating panel did not, which reads as the numbers simply being wrong.
 //
-// So the panel names the row it wants: the league matching the viewed series by
+// So a panel names the row it wants: the league matching the viewed series by
 // default, or whichever league the reader picks by hand. Kept free of React so
 // the choice itself can be tested.
 // ---------------------------------------------------------------------------
@@ -37,4 +40,20 @@ export function leagueRowFor(leagues, slug) {
 // than blanking the panel.
 export function pickedLeague(leagues, slug, pick) {
   return (pick && (leagues || []).find((l) => l.driverId === pick)) || leagueRowFor(leagues, slug);
+}
+
+// Which card the /profile/card editor opens on, out of api.myCardSeasons()
+// rows ([{ driverId, seasonNumber, seriesSlug, … }]). The same question one
+// level down: those chips carry every season of every league, and the page
+// started on the login's own row whatever the header said — so the button
+// that says "Edit driver card" under a Sunday card opened the Friday one.
+//
+// `fallbackId` is the acting row (api.me), for when the viewed series has no
+// row here — including while the chips are still loading.
+export function cardRowFor(seasons, slug, fallbackId) {
+  const rows = (seasons || []).filter((s) => slug && s.seriesSlug === slug);
+  if (!rows.length) return fallbackId;
+  // The newest season of that league is the card the person wears today; the
+  // older ones stay one chip away.
+  return rows.reduce((best, s) => ((s.seasonNumber ?? -1) > (best.seasonNumber ?? -1) ? s : best)).driverId;
 }

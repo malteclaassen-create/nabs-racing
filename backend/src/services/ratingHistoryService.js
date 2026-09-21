@@ -17,6 +17,7 @@
 import { getDriverRatings } from "./driverRatingsService.js";
 import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
+import { withSprintClassifications } from "../lib/sprintRaces.js";
 
 const CACHE_MS = 5 * 60 * 1000;
 // Both caches hold the in-flight PROMISE, not the finished value, so that
@@ -201,8 +202,20 @@ async function computeDriverRatingHistory(prisma, driverId) {
     telemetryBySeason(prisma, driver.seasonId),
   ]);
 
+  // The list below stays ONE POINT PER ROUND — a sprint weekend is one night on
+  // the calendar and one dot on the curve. But the sprint is raced, the rating
+  // counts it (driverRatingsService), and a round whose numbers moved on the
+  // back of the sprint has to be able to say so. So the sprint's own facts ride
+  // along inside its round's point, and the page tells the weekend as the two
+  // races it was.
+  const sprintOfRound = new Map(); // roundId -> sprint child id
+  for (const r of (await withSprintClassifications(prisma, races)).races) {
+    if (r.sprintOf) sprintOfRound.set(r.sprintOf, r.id);
+  }
+
   // This driver's own result rows plus per-race contacts (raw-SQL column).
-  const raceIds = races.map((r) => r.id);
+  // Both halves of a sprint weekend, so the facts below can be built for each.
+  const raceIds = [...races.map((r) => r.id), ...sprintOfRound.values()];
   const myResults = raceIds.length
     ? await prisma.raceResult.findMany({ where: { driverId, raceId: { in: raceIds } } })
     : [];
@@ -231,6 +244,37 @@ async function computeDriverRatingHistory(prisma, driverId) {
     if (cur == null || r.bestLapMs < cur) fastestByRace.set(r.raceId, r.bestLapMs);
   }
 
+  // What this driver did in ONE classification, in the shape the page reads.
+  // The feature race and the sprint are the same kind of thing here, so they
+  // are built by the same function rather than by two drifting copies.
+  const factsFor = (raceId) => {
+    const res = resultByRace.get(raceId) || null;
+    const tel = telemetry.get(`${raceId}|${driverId}`) || null;
+    const fastest = fastestByRace.get(raceId) || null;
+    const started = !!res && res.status !== "DNS";
+    const finished = started && res.status === "FINISHED" && res.position != null;
+    return {
+      raced: started,
+      status: res ? res.status : null,
+      position: finished ? res.position : null,
+      grid: started && res.grid != null ? res.grid : null,
+      gained: finished && res.grid != null ? res.grid - res.position : null,
+      podium: finished && res.position <= 3,
+      win: finished && res.position === 1,
+      bestLapGapPct:
+        started && res.bestLapMs != null && fastest
+          ? Math.round((res.bestLapMs / fastest - 1) * 1000) / 10
+          : null,
+      contacts: started ? (contactByRace.has(raceId) ? contactByRace.get(raceId) : null) : null,
+      overtakes: started && tel?.overtakes != null ? tel.overtakes : null,
+      envContacts: started && tel?.envContacts != null ? tel.envContacts : null,
+      gamePenalties: started && tel?.gamePenalties != null ? tel.gamePenalties : null,
+      // Steward-issued time penalty (seconds) — the signal the AWA
+      // "penalties" ingredient actually runs on.
+      penaltySeconds: started ? Number(res.penaltySeconds) || 0 : null,
+    };
+  };
+
   // Replay: the full field rating "as of" each completed round; the driver's
   // row (with components on the final point) becomes one history point. The
   // rounds run sequentially on purpose — each replay is itself a bundle of
@@ -246,11 +290,8 @@ async function computeDriverRatingHistory(prisma, driverId) {
     const row = idx >= 0 ? rows[idx] : null;
     if (row) lastRow = row;
 
-    const res = resultByRace.get(race.id) || null;
-    const tel = telemetry.get(`${race.id}|${driverId}`) || null;
-    const started = !!res && res.status !== "DNS";
-    const finished = started && res.status === "FINISHED" && res.position != null;
-    const fastest = fastestByRace.get(race.id) || null;
+    const sprintId = sprintOfRound.get(race.id) || null;
+    const sprint = sprintId ? factsFor(sprintId) : null;
 
     points.push({
       raceId: race.id,
@@ -263,26 +304,13 @@ async function computeDriverRatingHistory(prisma, driverId) {
       provisional: row ? row.provisional : null,
       rank: row ? idx + 1 : null,
       fieldSize: rows.length,
-      // what this driver actually did in THIS race
+      // what this driver actually did in THIS race — the feature race of the
+      // round, with the sprint (when the weekend ran one they drove) hanging
+      // off it in the same shape. `raced` stays the FEATURE's, because that is
+      // what "sat out" means on a race night.
       race: {
-        raced: started,
-        status: res ? res.status : null,
-        position: finished ? res.position : null,
-        grid: started && res.grid != null ? res.grid : null,
-        gained: finished && res.grid != null ? res.grid - res.position : null,
-        podium: finished && res.position <= 3,
-        win: finished && res.position === 1,
-        bestLapGapPct:
-          started && res.bestLapMs != null && fastest
-            ? Math.round((res.bestLapMs / fastest - 1) * 1000) / 10
-            : null,
-        contacts: started ? (contactByRace.has(race.id) ? contactByRace.get(race.id) : null) : null,
-        overtakes: started && tel?.overtakes != null ? tel.overtakes : null,
-        envContacts: started && tel?.envContacts != null ? tel.envContacts : null,
-        gamePenalties: started && tel?.gamePenalties != null ? tel.gamePenalties : null,
-        // Steward-issued time penalty (seconds) — the signal the AWA
-        // "penalties" ingredient actually runs on.
-        penaltySeconds: started ? Number(res.penaltySeconds) || 0 : null,
+        ...factsFor(race.id),
+        sprint: sprint?.raced ? sprint : null,
       },
     });
   }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf, withSprintRounds } from "./sprintRaces.js";
+import {
+  ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf,
+  withSprintClassifications, withSprintRounds,
+} from "./sprintRaces.js";
 
 // A minimal in-memory Race table speaking just enough prisma for the lib: the
 // raw reads/writes it does are pinned here, because the sprint child is the one
@@ -125,5 +128,47 @@ describe("withSprintRounds", () => {
       [6, false],
       [5, false],
     ]);
+  });
+});
+
+describe("withSprintClassifications", () => {
+  // The ratings read this: a sprint is a race that was driven, so it counts —
+  // but it has no round number of its own and must not become an extra round.
+  it("adds each round's sprint under that round's number", async () => {
+    const prisma = fakePrisma();
+    const r5 = await prisma.race.create({ data: { number: 5, track: "Barcelona", seasonId: "s8", isCompleted: true } });
+    const r6 = await prisma.race.create({ data: { number: 6, track: "Monza", seasonId: "s8", isCompleted: true } });
+    const child = await ensureSprintChild(prisma, r5);
+    child.isCompleted = true;
+
+    const { races, sprintIds, roundOf } = await withSprintClassifications(prisma, [r5, r6]);
+    expect(races).toHaveLength(3);
+    const sprint = races.find((r) => r.id === child.id);
+    // The parent's number, so an "as of round N" cut keeps the two together.
+    expect(sprint).toMatchObject({ number: 5, sprintOf: r5.id });
+    expect(sprintIds.has(child.id)).toBe(true);
+    expect(sprintIds.has(r5.id)).toBe(false);
+    // Both halves of the weekend map back to the one round.
+    expect(roundOf.get(child.id)).toBe(r5.id);
+    expect(roundOf.get(r5.id)).toBe(r5.id);
+    expect(roundOf.get(r6.id)).toBe(r6.id);
+  });
+
+  it("leaves a season with no sprints exactly as it was", async () => {
+    const prisma = fakePrisma();
+    const r1 = await prisma.race.create({ data: { number: 1, track: "Spa", seasonId: "s8", isCompleted: true } });
+    const { races, sprintIds } = await withSprintClassifications(prisma, [r1]);
+    expect(races).toEqual([r1]);
+    expect(sprintIds.size).toBe(0);
+  });
+
+  it("ignores a sprint whose result is not imported yet", async () => {
+    const prisma = fakePrisma();
+    const r5 = await prisma.race.create({ data: { number: 5, track: "Barcelona", seasonId: "s8", isCompleted: true } });
+    // The feature can be on file before its sprint half is.
+    await ensureSprintChild(prisma, r5);
+    const { races, sprintIds } = await withSprintClassifications(prisma, [r5]);
+    expect(races).toEqual([r5]);
+    expect(sprintIds.size).toBe(0);
   });
 });

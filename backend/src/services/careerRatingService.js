@@ -32,6 +32,7 @@ import {
   getT2ConstructorStandings,
 } from "./standingsService.js";
 import { getPersonGroups } from "../lib/persons.js";
+import { withSprintClassifications } from "../lib/sprintRaces.js";
 
 // --- position-value curves ----------------------------------------------------
 
@@ -126,7 +127,7 @@ export function invalidateCareerStandingsCache() {
 // constructors { preTier, tier1, tier2 } } — resolved by driverRatingsService.
 //
 // Returns Map<ratedDriverId, {
-//   starts, finishes, finishRate, activeSeasons, windowSize, champPct,
+//   starts, roundStarts, finishes, finishRate, activeSeasons, windowSize, champPct,
 //   pace: { avgGridNorm, nGrid, avgLapGap, nLap, avgConsistency, nCons },
 // }>
 export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
@@ -134,6 +135,7 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
   const windowIds = window.map((s) => s.id);
   const empty = () => ({
     starts: 0,
+    roundStarts: 0,
     finishes: 0,
     finishRate: null,
     activeSeasons: 0,
@@ -159,6 +161,21 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
   const allLinkedIds = new Set();
   for (const d of ratedDrivers) for (const id of linkedOf(d.id)) allLinkedIds.add(id);
 
+  // The classifications of the window: every completed round of those seasons
+  // plus the sprint half of each sprint weekend (lib/sprintRaces.js). Results
+  // are then asked for BY RACE ID rather than by the isSpecialEvent flag — the
+  // flag is set on a sprint child too, so the flag version silently dropped
+  // every sprint anyone ever drove out of the career window.
+  //
+  // `roundOf` maps each classification back to its round: EXP's mileage counts
+  // race WEEKENDS (see acc.roundStarts below), everything else counts races.
+  const windowRounds = await prisma.race.findMany({
+    where: { seasonId: { in: windowIds }, isSpecialEvent: false, isCompleted: true },
+    select: { id: true, number: true, seasonId: true, isCompleted: true },
+  });
+  const { races: windowRaces, sprintIds, roundOf } = await withSprintClassifications(prisma, windowRounds);
+  const windowRaceIds = windowRaces.map((r) => r.id);
+
   // Every driver row of the window seasons (for team/tier + season mapping),
   // and every result of our linked ids inside the window.
   const [windowDrivers, results] = await Promise.all([
@@ -169,7 +186,7 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
     prisma.raceResult.findMany({
       where: {
         driverId: { in: [...allLinkedIds] },
-        race: { seasonId: { in: windowIds }, isSpecialEvent: false, isCompleted: true },
+        raceId: { in: windowRaceIds },
       },
       select: {
         driverId: true,
@@ -207,16 +224,16 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
   // Consistency % is a raw-SQL telemetry column -> read it raw in one go.
   let consRows = [];
   try {
-    const placeholders = windowIds.map(() => "?").join(",");
-    consRows = await prisma.$queryRawUnsafe(
-      `SELECT rr."driverId" AS "driverId", rr."consistencyPct" AS "pct"
-         FROM "RaceResult" rr
-         JOIN "Race" r ON r."id" = rr."raceId"
-        WHERE r."seasonId" IN (${placeholders})
-          AND r."isSpecialEvent" = 0 AND r."isCompleted" = 1
-          AND rr."consistencyPct" IS NOT NULL`,
-      ...windowIds
-    );
+    const placeholders = windowRaceIds.map(() => "?").join(",");
+    consRows = windowRaceIds.length
+      ? await prisma.$queryRawUnsafe(
+          `SELECT rr."driverId" AS "driverId", rr."consistencyPct" AS "pct"
+             FROM "RaceResult" rr
+            WHERE rr."raceId" IN (${placeholders})
+              AND rr."consistencyPct" IS NOT NULL`,
+          ...windowRaceIds
+        )
+      : [];
   } catch {
     consRows = []; // column missing on a fresh checkout: no consistency signal
   }
@@ -229,6 +246,10 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
   // Qualifying times (raw-SQL column, not populated yet): pole = the race's
   // fastest quali lap, gap = qualiTimeMs / pole - 1. Missing column or no
   // rows -> no pole-gap signal (the PAC component degrades to neutral).
+  //
+  // Feature races only, unlike the consistency above: a sprint has no
+  // qualifying session of its own, so nothing on that row is a qualifying
+  // result (lib/standingsRow.js).
   let qualiRows = [];
   try {
     const placeholders = windowIds.map(() => "?").join(",");
@@ -290,6 +311,15 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
     acc.finishes = finished.length;
     acc.finishRate = acc.starts ? acc.finishes / acc.starts : null;
 
+    // EXP's mileage block counts race WEEKENDS, not classifications. Its scale
+    // ("60 starts = full") was set when a season's rounds and its races were
+    // the same number; letting a sprint weekend pay two starts would fill that
+    // block twice as fast for the seasons that run sprints and leave the
+    // earlier ones looking thin by comparison, which says something about the
+    // calendar rather than about the driver. The rates above stay on
+    // classifications, where both sides of the ratio agree.
+    acc.roundStarts = new Set(started.map((r) => roundOf.get(r.raceId) ?? r.raceId)).size;
+
     const seasonsWithStart = new Set(started.map((r) => r.race.seasonId));
     acc.activeSeasons = seasonsWithStart.size;
 
@@ -323,7 +353,11 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
     for (const r of started) {
       const m = raceMeta.get(r.raceId);
       if (!m) continue;
-      if (r.grid != null && m.gridSize > 1) gridNorms.push((r.grid - 1) / (m.gridSize - 1));
+      // The grid skips the sprints (reversed or inherited, not a qualifying
+      // result — lib/standingsRow.js); the best lap counts every race driven.
+      if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId)) {
+        gridNorms.push((r.grid - 1) / (m.gridSize - 1));
+      }
       if (r.bestLapMs != null && m.fastestLap) lapGaps.push(r.bestLapMs / m.fastestLap - 1);
     }
     const cons = linked.flatMap((id) => consByDriver.get(id) || []).filter((x) => Number.isFinite(x));

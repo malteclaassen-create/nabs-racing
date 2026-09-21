@@ -30,6 +30,7 @@
 import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { readRatingWeights } from "../lib/ratingWeights.js";
 import { getCareerInputs } from "./careerRatingService.js";
+import { withSprintClassifications } from "../lib/sprintRaces.js";
 
 // --- tunables (kept together so the curve is easy to adjust) ----------------
 const BAND_LOW = 58; // worst-in-field maps here
@@ -297,7 +298,13 @@ function clampRating(pct, band) {
 // Per-driver raw metrics, straight from the result rows. Everything here is an
 // honest measurement; the relative scaling happens afterwards.
 // ---------------------------------------------------------------------------
-function rawMetrics(driver, results, raceMeta) {
+// `sprintIds` = the classifications that are the sprint half of a weekend. They
+// count for everything here EXCEPT the grid: a sprint usually starts from a
+// reversed or inherited grid, so its slot is not a qualifying result and would
+// drag an average grid somewhere meaningless. That is the site's standing rule
+// (lib/standingsRow.js, driverProfileService), and PAC's "grid slots" is
+// exactly the average it warns about.
+function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
   // "started" = took part (anything that isn't an explicit DNS).
   const started = results.filter((r) => r.status !== "DNS");
   const finishes = started.filter((r) => r.status === "FINISHED" && r.position != null);
@@ -319,11 +326,20 @@ function rawMetrics(driver, results, raceMeta) {
     const m = raceMeta.get(r.raceId);
     if (!m) continue;
     if (r.bestLapMs != null && m.fastestLap) lapGaps.push(r.bestLapMs / m.fastestLap - 1);
-    if (r.grid != null && m.gridSize > 1) gridNorms.push((r.grid - 1) / (m.gridSize - 1));
+    if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId)) {
+      gridNorms.push((r.grid - 1) / (m.gridSize - 1));
+    }
   }
 
   // RACECRAFT — finishing position normalised to the race field (0 = win), and
   // places gained from grid to flag (start → finish).
+  //
+  // Places gained DOES read the sprints, unlike the grid average above: the
+  // site counts a sprint's gains as gains everywhere else (driverProfileService
+  // builds its `gained` off the same combined list), and on an inherited grid
+  // it is an ordinary race. If the league's sprints turn out to run reversed
+  // often enough for this to flatter the fast, adding `sprintIds` to the filter
+  // below is the whole change.
   const finishNorms = [];
   const gained = [];
   for (const r of finishes) {
@@ -379,6 +395,16 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   ]);
   if (!season) return [];
 
+  // A sprint weekend is two classifications and the sprint is raced for real,
+  // so it feeds the rating like any other race: its own field, its own fastest
+  // lap, its own contacts and penalties. Its row is a hidden child of the
+  // round (lib/sprintRaces.js) and carries no round number, so it joins here
+  // wearing its parent's — the "as of round N" cut below is made on that
+  // number and a sprint belongs to the round it was run on. `sprintIds` marks
+  // them, because ONE signal must not read them: see rawMetrics' grid.
+  let sprintIds = new Set();
+  ({ races, sprintIds } = await withSprintClassifications(prisma, races));
+
   // "As of round N": the rating-history service replays the season round by
   // round by cutting the race list here. Everything downstream (results,
   // telemetry sums, reference field, percentiles) follows the shorter list,
@@ -396,17 +422,22 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // from the `contacts` column via SQL so it works regardless of whether the
   // generated client knows the column yet, and degrades to "no contact signal"
   // for a season that hasn't been backfilled (rated = 0 -> neutral).
-  const contactRows = await prisma.$queryRawUnsafe(
-    `SELECT rr."driverId" AS "driverId",
-            SUM(COALESCE(rr."contacts", 0)) AS "total",
-            COUNT(rr."contacts") AS "rated"
-       FROM "RaceResult" rr
-       JOIN "Race" r ON r.id = rr."raceId"
-      WHERE r."seasonId" = ? AND r."isSpecialEvent" = 0 AND r."isCompleted" = 1
-        ${Number.isFinite(upTo) ? `AND r."number" <= ${Math.round(upTo)}` : ""}
-      GROUP BY rr."driverId"`,
-    seasonId
-  );
+  //
+  // Asked for by race id rather than by season + flags: the race list above is
+  // already exactly the classifications that count (sprints included, the
+  // "as of round N" cut applied), and re-deriving it in SQL is how the two
+  // drifted apart — the flag version could not see a sprint at all.
+  const contactRows = completedRaceIds.size
+    ? await prisma.$queryRawUnsafe(
+        `SELECT rr."driverId" AS "driverId",
+                SUM(COALESCE(rr."contacts", 0)) AS "total",
+                COUNT(rr."contacts") AS "rated"
+           FROM "RaceResult" rr
+          WHERE rr."raceId" IN (${[...completedRaceIds].map(() => "?").join(",")})
+          GROUP BY rr."driverId"`,
+        ...completedRaceIds
+      )
+    : [];
   const contactsById = new Map(
     contactRows.map((x) => [x.driverId, { total: Number(x.total) || 0, rated: Number(x.rated) || 0 }])
   );
@@ -474,7 +505,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
 
   // Raw metrics for everyone who has at least one outing this season.
   const raw = drivers
-    .map((d) => ({ driver: d, m: rawMetrics(d, resultsByDriver.get(d.id) || [], raceMeta) }))
+    .map((d) => ({ driver: d, m: rawMetrics(d, resultsByDriver.get(d.id) || [], raceMeta, sprintIds) }))
     .filter((x) => x.m.starts >= 1);
 
   // Attach per-start telemetry rates (null when this driver has no backfilled
@@ -593,7 +624,11 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
     // finishing block, and share of window seasons raced. The 35..99 scale
     // comes from bands.exp via clampRating below.
     const cw = career.get(driver.id);
-    const startsPct = cw ? Math.min(1, cw.starts / cfg.exp.fullStarts) : 0;
+    // Race WEEKENDS, not classifications: a sprint weekend is one outing's
+    // worth of mileage however many times it is classified (careerRatingService).
+    // (?? starts: a career-input shape without the weekend count degrades to
+    // the old behaviour rather than to NaN, which would poison the whole RTG.)
+    const startsPct = cw ? Math.min(1, (cw.roundStarts ?? cw.starts) / cfg.exp.fullStarts) : 0;
     const champPct = cw ? cw.champPct : 0;
     const finishingPct = cw && cw.finishRate != null ? (cw.finishRate * 100 >= cfg.exp.finishThreshold ? 1 : 0) : 0;
     const activityPct = cw && cw.windowSize ? cw.activeSeasons / cw.windowSize : 0;
@@ -650,6 +685,8 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       career: cw
         ? {
             starts: cw.starts,
+            // What the mileage block above actually reads (weekends).
+            roundStarts: cw.roundStarts,
             finishes: cw.finishes,
             finishRate: cw.finishRate,
             activeSeasons: cw.activeSeasons,

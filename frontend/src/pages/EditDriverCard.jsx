@@ -6,7 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox, PageHeader, Skeleton } from "../components/ui.jsx";
 import { CardPhotoEditor, CardEditionPicker } from "../components/CardEditor.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { cardRowFor } from "./profileScope.mjs";
+import { cardRowFor } from "./viewedLeague.mjs";
 
 // ---------------------------------------------------------------------------
 // /profile/card — a focused page to edit ONLY the driver's rating card: pick an
@@ -31,7 +31,10 @@ function BackLink() {
 // the series the site is viewing — see the auto-pick effect below.
 function CardEditor({ me, reload, startId = null }) {
   const [error, setError] = useState(null);
-  const { slug } = useSeries();
+  // `current` rather than `slug`: this page sits outside the /s/<slug> URLs
+  // too, so on a cold load there is no slug while the header still names a
+  // series (the same reason the Personal Area reads it this way).
+  const { current: viewedSeries } = useSeries();
 
   // Rating (for the numbers on the preview). Safety-car drivers get a card even
   // without a rating payload; everyone else needs to have raced.
@@ -64,8 +67,8 @@ function CardEditor({ me, reload, startId = null }) {
   useEffect(() => {
     if (startId || autoPicked.current || !cardSeasons.length) return;
     autoPicked.current = true;
-    setPickerDriverId(cardRowFor(cardSeasons, slug, me.driverId));
-  }, [cardSeasons, slug, startId, me.driverId]);
+    setPickerDriverId(cardRowFor(cardSeasons, viewedSeries?.slug || null, me.driverId));
+  }, [cardSeasons, viewedSeries, startId, me.driverId]);
 
   useEffect(() => {
     if (editionsByDriver[pickerDriverId]) { setEditionsLoading(false); return; }
@@ -457,8 +460,8 @@ function CardEditor({ me, reload, startId = null }) {
 
 function EditDriverCardInner() {
   const me = useApi(useCallback(() => api.me(), []));
-  // The Personal Area links here with the league it was scoped to, so the two
-  // pages agree on which card is being edited.
+  // The Personal Area links here with the row it was showing, so the two pages
+  // agree on which card is being edited.
   const [params] = useSearchParams();
   const startId = params.get("driver") || null;
   // Only the FIRST load takes the page: a picture write reloads this to read

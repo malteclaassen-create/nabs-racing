@@ -74,6 +74,53 @@ export async function readSprintChildrenOf(prisma, races) {
   return out;
 }
 
+// The classifications a RATING reads for these rounds: the rounds themselves
+// plus, for a sprint weekend, its sprint child. The child comes back carrying
+// its parent's `number` (it has none of its own, and every "as of round N" cut
+// is made on that number) and `sprintOf` naming the round it belongs to.
+//
+// The counterpart of withSprintRounds below: that one takes rows that may BE
+// children and tells you which round they belong to; this one takes rounds and
+// adds the children hanging off them. Rounds without a sprint, and a season
+// that runs none, come back exactly as they went in — a league with no sprint
+// weekend sees no change from any of this.
+//
+// Only COMPLETED children join: a sprint whose result is not imported yet is
+// not a classification anyone drove as far as the ratings are concerned, and
+// the weekend's feature race can well be on file before it.
+//
+// `rounds` are championship rounds (isSpecialEvent = false). Returns
+// { races, sprintIds, roundOf } — `roundOf` maps every race id back to its
+// round's id, which is how a caller counts race WEEKENDS rather than
+// classifications (see careerRatingService's EXP mileage).
+export async function withSprintClassifications(prisma, rounds) {
+  const list = (rounds || []).filter((r) => r?.id);
+  const roundOf = new Map(list.map((r) => [r.id, r.id]));
+  const empty = { races: list, sprintIds: new Set(), roundOf };
+  let parentOfChild;
+  try {
+    parentOfChild = await readSprintChildrenOf(prisma, list); // childId -> parent row
+  } catch {
+    return empty; // no parentRaceId column (fresh checkout): no sprints exist
+  }
+  if (!parentOfChild.size) return empty;
+
+  const children = await prisma.race
+    .findMany({ where: { id: { in: [...parentOfChild.keys()] } } })
+    .catch(() => []);
+  const races = [...list];
+  const sprintIds = new Set();
+  for (const child of children) {
+    if (!child.isCompleted) continue;
+    const parent = parentOfChild.get(child.id);
+    if (!parent) continue;
+    sprintIds.add(child.id);
+    roundOf.set(child.id, parent.id);
+    races.push({ ...child, number: parent.number, sprintOf: parent.id });
+  }
+  return { races, sprintIds, roundOf };
+}
+
 // Race rows as the ARCHIVE knows them. A sprint child carries no round number
 // of its own, but its result file is filed under its event's number with the
 // sprint flag (lib/cockpitArchive.js). So every reader that goes from a race
