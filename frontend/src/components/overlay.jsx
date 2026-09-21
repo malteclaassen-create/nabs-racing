@@ -252,7 +252,15 @@ export function Modal({
     center: `relative m-auto w-full ${sizes[size] || sizes.md} rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base ${
       show ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.98] opacity-0"
     }`,
-    sheet: `relative mt-auto w-full rounded-t-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base sm:m-auto sm:max-w-md sm:rounded-2xl ${
+    // Rounded on all four corners, not just the top. The sheet does not sit on
+    // the bottom edge — the overlay's p-4 floats it 16px above it — so a
+    // squared-off bottom left two hard corners hanging over a strip of scrim,
+    // with a rounded top above them.
+    //
+    // max-h-full + a column so a sheet holding more than the screen has room
+    // for scrolls its body instead of running off the bottom. The profile's
+    // section list is nine rows and was losing its last one on a short phone.
+    sheet: `relative mt-auto flex max-h-full w-full flex-col rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base sm:m-auto sm:max-w-md ${
       show ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
     }`,
     drawer: `relative ml-auto flex h-full w-80 max-w-[85vw] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-base ${
@@ -317,7 +325,12 @@ export function Modal({
             className={
               variant === "drawer"
                 ? "min-h-0 flex-1 overflow-y-auto"
-                : variant === "bare"
+                : // A sheet keeps the padding it always had and gains the
+                  // scroll, for the case where its content is taller than the
+                  // screen.
+                  variant === "sheet"
+                  ? "min-h-0 flex-1 overflow-y-auto px-5 py-4"
+                  : variant === "bare"
                   // min-h-0 matters: without it this flex child takes its
                   // CONTENT height and a tall photo pushes itself off the
                   // bottom of the screen instead of scaling down into what is
