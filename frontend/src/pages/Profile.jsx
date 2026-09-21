@@ -5,12 +5,13 @@ import { openFeedback } from "../components/FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { SettingsDrawer } from "../components/SettingsPanel.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
+import { profileNav, sectionKeys } from "./profileNav.mjs";
+import ProfileNav from "../components/ProfileNav.jsx";
 import Tools from "./Tools.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
-import AttentionDot from "../components/AttentionDot.jsx";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
@@ -776,50 +777,6 @@ function CopyProfileLink({ driverId }) {
   );
 }
 
-// The member bar top right: the two real tabs of this page (Edit Profile,
-// Achievements) plus jump-offs (telemetry, settings drawer, admin). The
-// public page gets its own separate button next to the bar. Synced to ?tab=
-// so bell links and bookmarks land on the right section.
-// `attention` is how much is waiting in the admin area, or 0. It rides on the
-// Admin tab so the chain from the nav bar is unbroken: a dot on your profile
-// chip, then a dot on the one tab that leads to the work.
-function memberTabs(isAdmin, attention = 0, tokens = null, attentionSummary = "") {
-  return [
-    { key: "profile", label: "Edit Profile" },
-    ...COCKPIT_TABS,
-    { key: "rating", label: "My Rating", dataTour: "tab-rating" },
-    // Only while the token trial is switched on. The hook answers null when it
-    // is off, which is the same answer it gives the nav bar, so the tab and the
-    // count up there appear and disappear together.
-    ...(tokens === null ? [] : [{ key: "tokens", label: "NABS Points" }]),
-    // The key stays "tools": ?tab=tools is in bell links and bookmarks.
-    { key: "tools", label: "Telemetry" },
-    // Feedback used to be a floating button in the bottom right corner. That
-    // corner is the Report widget's now, and this is where the things you do
-    // ABOUT the site rather than in it belong anyway. It opens the same panel
-    // the burger menu opens, hence an action rather than a section.
-    { key: "feedback", label: "Feedback" },
-    // Stewarding threads. A page rather than a panel, because it is where a
-    // notification lands and a notification has to have somewhere to land.
-    ...(REPORTS_OPEN_TO_MEMBERS ? [{ key: "reports", label: "My reports" }] : []),
-    { key: "settings", label: "Settings" },
-    ...(isAdmin
-      ? [
-          {
-            key: "admin",
-            label: (
-              <span className="relative inline-flex items-center">
-                Admin
-                <AttentionDot total={attention} summary={attentionSummary} className="absolute -right-2.5 -top-0.5" />
-              </span>
-            ),
-            title: attentionSummary ? `Waiting in the admin area: ${attentionSummary}` : "Admin area",
-          },
-        ]
-      : []),
-  ];
-}
-
 function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
@@ -832,9 +789,7 @@ function MyProfile() {
   const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const tab = ["profile", "rating", "tools", "tokens", ...COCKPIT_TABS.map((t) => t.key)].includes(params.get("tab"))
-    ? params.get("tab")
-    : "profile";
+  const tab = sectionKeys(COCKPIT_TABS).includes(params.get("tab")) ? params.get("tab") : "profile";
   const setTab = (key) => {
     if (key === "settings") return setSettingsOpen(true); // drawer, not a page section
     if (key === "feedback") return openFeedback(); // the panel, not a section
@@ -887,32 +842,34 @@ function MyProfile() {
         title="My Profile"
         keepTitle
         right={
-          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-            {/* the public page opens separately, everything else lives in the bar */}
-            <Link to={`/drivers/${d.driverId}`} className="btn-secondary whitespace-nowrap">
-              Public profile →
-            </Link>
-            <div className="scrollbar-slim max-w-full overflow-x-auto pb-0.5">
-              <SlidingTabs
-                items={memberTabs(!!user?.isAdmin, adminAttention, tokenBalance, adminSummary)}
-                // While the settings drawer is open the pill sits on Settings,
-                // and glides back to the section underneath when it closes.
-                value={settingsOpen ? "settings" : tab}
-                onChange={setTab}
-                wrapClassName="inline-flex flex-nowrap rounded-xl border border-border bg-card p-1"
-                btnClassName="whitespace-nowrap px-3 py-1.5 text-[13px]"
-              />
-            </div>
-          </div>
+          /* The public page opens separately; every section of THIS page is in
+             the nav beside the content below. */
+          <Link to={`/drivers/${d.driverId}`} className="btn-secondary whitespace-nowrap">
+            Public profile →
+          </Link>
         }
       />
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* Keyed on the tab so the panel behind the bar fades in on every switch.
-          Until now only the SlidingTabs pill moved and the content underneath
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
+      <ProfileNav
+        nav={profileNav({
+          isAdmin: !!user?.isAdmin,
+          tokens: tokenBalance,
+          reportsOpen: REPORTS_OPEN_TO_MEMBERS,
+          cockpitTabs: COCKPIT_TABS,
+        })}
+        value={tab}
+        onSelect={setTab}
+        attention={adminAttention}
+        attentionSummary={adminSummary}
+      />
+
+      {/* Keyed on the tab so the panel beside the nav fades in on every
+          switch. Until now only the tab pill moved and the content underneath
           hard-swapped, which read as two different components rather than one
           control moving between views. */}
-      <div key={tab} className="content-in">
+      <div key={tab} className="content-in min-w-0 flex-1">
       {tab === "tools" ? (
         <Tools embedded />
       ) : tab === "tokens" ? (
@@ -989,6 +946,7 @@ function MyProfile() {
       </section>
         </>
       )}
+      </div>
       </div>
     </div>
   );
