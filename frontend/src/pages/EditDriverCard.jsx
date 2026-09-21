@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox, PageHeader, Skeleton } from "../components/ui.jsx";
 import { CardPhotoEditor, CardEditionPicker } from "../components/CardEditor.jsx";
+import { useSeries } from "../context/SeriesContext.jsx";
+import { cardRowFor } from "./viewedLeague.mjs";
 
 // ---------------------------------------------------------------------------
 // /profile/card — a focused page to edit ONLY the driver's rating card: pick an
@@ -24,8 +26,15 @@ function BackLink() {
   );
 }
 
-function CardEditor({ me, reload }) {
+// `startId` is the row the page was sent to (?driver= from the Personal Area's
+// "Edit driver card" button). Without one the page picks the row itself, from
+// the series the site is viewing — see the auto-pick effect below.
+function CardEditor({ me, reload, startId = null }) {
   const [error, setError] = useState(null);
+  // `current` rather than `slug`: this page sits outside the /s/<slug> URLs
+  // too, so on a cold load there is no slug while the header still names a
+  // series (the same reason the Personal Area reads it this way).
+  const { current: viewedSeries } = useSeries();
 
   // Rating (for the numbers on the preview). Safety-car drivers get a card even
   // without a rating payload; everyone else needs to have raced.
@@ -34,7 +43,7 @@ function CardEditor({ me, reload }) {
   // Edition picker: per-season-row, self-saving on pick.
   const [meCardStyle, setMeCardStyle] = useState(me.cardStyle || "classic");
   const [cardSeasons, setCardSeasons] = useState([]);
-  const [pickerDriverId, setPickerDriverId] = useState(me.driverId);
+  const [pickerDriverId, setPickerDriverId] = useState(startId || me.driverId);
   const [editionsByDriver, setEditionsByDriver] = useState({});
   const [editionsLoading, setEditionsLoading] = useState(true);
   const [savedByDriver, setSavedByDriver] = useState({});
@@ -48,6 +57,18 @@ function CardEditor({ me, reload }) {
   useEffect(() => {
     loadSeasons();
   }, [loadSeasons]);
+
+  // Open on the card of the league the site is VIEWING, not on the row the
+  // Discord login happens to sit on: somebody on the Sunday pages who comes
+  // here to restyle "their card" means their Sunday one. Once only — the chips
+  // are re-read after every picture write, and a later run would drag the
+  // member back off the chip they picked by hand.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (startId || autoPicked.current || !cardSeasons.length) return;
+    autoPicked.current = true;
+    setPickerDriverId(cardRowFor(cardSeasons, viewedSeries?.slug || null, me.driverId));
+  }, [cardSeasons, viewedSeries, startId, me.driverId]);
 
   useEffect(() => {
     if (editionsByDriver[pickerDriverId]) { setEditionsLoading(false); return; }
@@ -439,6 +460,10 @@ function CardEditor({ me, reload }) {
 
 function EditDriverCardInner() {
   const me = useApi(useCallback(() => api.me(), []));
+  // The Personal Area links here with the row it was showing, so the two pages
+  // agree on which card is being edited.
+  const [params] = useSearchParams();
+  const startId = params.get("driver") || null;
   // Only the FIRST load takes the page: a picture write reloads this to read
   // back what the card really shows now, and tearing the editor down to a
   // spinner on every upload would make a self-saving page flicker.
@@ -458,7 +483,7 @@ function EditDriverCardInner() {
       </div>
     );
   }
-  return <CardEditor me={me.data} reload={me.reload} />;
+  return <CardEditor me={me.data} reload={me.reload} startId={startId} />;
 }
 
 export default function EditDriverCard() {

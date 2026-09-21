@@ -680,9 +680,13 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
               />
               {/* THE call to action of this column — bright brand button (with
                   the site's shine sweep) so nobody misses that the card itself
-                  is editable, plus a one-line teaser of what's in there. */}
+                  is editable, plus a one-line teaser of what's in there. It
+                  carries THIS row through: the column shows the league the
+                  site is on, so the button under it has to open that card. It
+                  opened the login's own row — the same bug one page further
+                  on. */}
               <Link
-                to="/profile/card"
+                to={`/profile/card?driver=${encodeURIComponent(me.driverId)}`}
                 className="shine group flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/25 transition hover:brightness-105"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

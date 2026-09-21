@@ -41,3 +41,19 @@ export function leagueRowFor(leagues, slug) {
 export function pickedLeague(leagues, slug, pick) {
   return (pick && (leagues || []).find((l) => l.driverId === pick)) || leagueRowFor(leagues, slug);
 }
+
+// Which card the /profile/card editor opens on, out of api.myCardSeasons()
+// rows ([{ driverId, seasonNumber, seriesSlug, … }]). The same question one
+// level down: those chips carry every season of every league, and the page
+// started on the login's own row whatever the header said — so the button
+// that says "Edit driver card" under a Sunday card opened the Friday one.
+//
+// `fallbackId` is the acting row (api.me), for when the viewed series has no
+// row here — including while the chips are still loading.
+export function cardRowFor(seasons, slug, fallbackId) {
+  const rows = (seasons || []).filter((s) => slug && s.seriesSlug === slug);
+  if (!rows.length) return fallbackId;
+  // The newest season of that league is the card the person wears today; the
+  // older ones stay one chip away.
+  return rows.reduce((best, s) => ((s.seasonNumber ?? -1) > (best.seasonNumber ?? -1) ? s : best)).driverId;
+}
