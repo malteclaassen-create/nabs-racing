@@ -10,11 +10,12 @@
 // top to bottom with no second wait. Sections with nothing in them (a rookie
 // with no titles, an archive season with no telemetry) simply drop out.
 // ---------------------------------------------------------------------------
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
+import { motionOff } from "../hooks/motion.js";
 import {
   CountUp, DriverAvatar, ErrorBox, PageHeaderSkeleton, TableSkeleton, MEDAL, MEDAL_TEXT, NoData,
 } from "../components/ui.jsx";
@@ -86,12 +87,36 @@ function StatFrame({ tiles, cols = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" }
   );
 }
 
+// The numbers that are worth having but not worth shouting: label on the left,
+// value on the right, hairline between them. Six big tiles say what a career
+// is; another ten big tiles say nothing at all.
+function StatList({ groups }) {
+  const rows = groups.flatMap((g) => g.rows).filter((r) => r && r.value !== null && r.value !== undefined);
+  if (!rows.length) return null;
+  return (
+    <div className="grid gap-x-8 rounded-xl border border-border bg-card px-5 py-1.5 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-baseline justify-between gap-4 border-b border-border/70 py-2.5 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:[&:nth-last-child(-n+3)]:border-b-0">
+          <span className="text-sm text-light">{r.label}</span>
+          <span className="font-display text-base font-extrabold tabular-nums text-dark" style={r.accent ? { color: r.accent } : undefined}>
+            {r.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const ICON = "h-4 w-4";
 
 // --- hero -------------------------------------------------------------------
 
-function Hero({ person, span, totals }) {
+function Hero({ person, span }) {
   const seats = person.current || [];
+  // A real hex, not a css variable: the avatar works out its own readable ink
+  // from this value, and it cannot do that with var(...). The current team's
+  // colour if there is one, a neutral slate otherwise.
+  const accent = seats[0]?.teamColor || "#64748b";
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
       <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
@@ -101,7 +126,7 @@ function Hero({ person, span, totals }) {
           name={person.name}
           photoUrl={person.photoUrl}
           fallbacks={person.photoFallbacks}
-          color="rgb(var(--c-brand))"
+          color={accent}
           size={88}
           className="text-4xl"
         />
@@ -121,6 +146,7 @@ function Hero({ person, span, totals }) {
           {person.formerName && (
             <div className="mt-1 text-xs font-medium text-light">raced as {person.formerName}</div>
           )}
+          {/* The span, and nothing the numbers underneath already say. */}
           <div className="mt-3 text-sm text-medium">
             {span.firstSeason != null && (
               <>
@@ -128,8 +154,8 @@ function Hero({ person, span, totals }) {
                 {span.lastSeason !== span.firstSeason ? ` to ${span.lastSeason}` : ""} ·{" "}
               </>
             )}
-            {span.seasonsRaced} {span.seasonsRaced === 1 ? "season" : "seasons"} raced ·{" "}
-            {span.leagues} {span.leagues === 1 ? "league" : "leagues"} · {totals.starts} starts
+            {plural(span.seasonsRaced, "season")} raced
+            {span.leagues > 1 ? ` · ${plural(span.leagues, "league")}` : ""}
           </div>
           {seats.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -860,6 +886,81 @@ function FinishSpreadSection({ races, leagues }) {
   );
 }
 
+// The page is long on purpose, so it carries a map that follows you: the pill
+// sits on whichever chapter is under the header right now. Only the big
+// chapters are listed — a link per section turned it into a wall of words.
+function ChapterBar({ chapters }) {
+  const ids = chapters.map(([id]) => id);
+  const key = ids.join("|");
+  const [here, setHere] = useState(ids[0]);
+  const barRef = useRef(null);
+
+  // Which chapter is under the header right now: the last one whose heading has
+  // passed it. An IntersectionObserver was the obvious tool and the wrong one —
+  // a tall chapter keeps intersecting long after you have scrolled past its
+  // heading, so the pill stayed on whatever came first.
+  useEffect(() => {
+    const pick = () => {
+      let current = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top <= 170) current = id;
+      }
+      setHere(current);
+    };
+    pick();
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        pick();
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [key]);
+
+  // On a phone the bar is wider than the screen, so the chapter you are in has
+  // to be brought into it — sideways only, never by moving the page.
+  useEffect(() => {
+    const bar = barRef.current;
+    const btn = bar?.querySelector('button[aria-pressed="true"]');
+    if (!bar || !btn) return;
+    const want = btn.offsetLeft - (bar.clientWidth - btn.offsetWidth) / 2;
+    bar.scrollTo({ left: Math.max(0, want), behavior: motionOff() ? "auto" : "smooth" });
+  }, [here]);
+
+  const go = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: motionOff() ? "auto" : "smooth", block: "start" });
+  };
+
+  return (
+    <nav
+      ref={barRef}
+      aria-label="On this page"
+      className="sticky top-[84px] z-20 -mx-1 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <SlidingTabs
+        items={chapters.map(([id, label]) => ({ key: id, label }))}
+        value={here}
+        onChange={go}
+        wrapClassName="inline-flex rounded-full border border-border bg-card/95 p-1 shadow-sm backdrop-blur"
+        btnClassName="whitespace-nowrap px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:text-[11.5px]"
+        pillClassName="rounded-full bg-surface2 ring-1 ring-border"
+        activeClassName="text-dark"
+        idleClassName="text-light hover:text-medium"
+      />
+    </nav>
+  );
+}
+
 // --- the page ---------------------------------------------------------------
 
 export default function DriverCareer() {
@@ -882,38 +983,23 @@ export default function DriverCareer() {
   const { person, span, totals, titles, ratings = [], leagues, teams, tracks, teammates, milestones, rankings, races } = data;
   const hasTelemetry = totals.overtakes != null || totals.lapsLed != null || totals.contacts != null;
 
+  // The chapters, not every section: the smaller blocks (rating, teams,
+  // firsts, lists) are found by reading on, which is what they are for.
   const nav = [
     ["record", "Record"],
     races.length >= MIN_RACES && ["spread", "Spread"],
     titles.length && ["honours", "Honours"],
-    ratings.length && ["rating", "Rating"],
     ["seasons", "Seasons"],
-    teams.length && ["teams", "Teams"],
     tracks.length && ["circuits", "Circuits"],
     teammates.length && ["duels", "Duels"],
-    milestones.length && ["firsts", "Firsts"],
-    rankings.length && ["lists", "Lists"],
     races.length && ["races", "Races"],
   ].filter(Boolean);
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      <Hero person={person} span={span} totals={totals} />
+      <Hero person={person} span={span} />
 
-      {/* Jump links: the page is long on purpose, so it carries its own map. */}
-      <nav className="sticky top-[84px] z-20 overflow-x-auto rounded-xl border border-border bg-card/95 px-2 py-1.5 backdrop-blur">
-        <div className="flex gap-1.5">
-          {nav.map(([id, label]) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              className="whitespace-nowrap rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark"
-            >
-              {label}
-            </a>
-          ))}
-        </div>
-      </nav>
+      <ChapterBar chapters={nav} />
 
       <Section id="record" eyebrow="Everything added up" title="The record">
         <StatFrame
@@ -926,44 +1012,44 @@ export default function DriverCareer() {
             { icon: <Star className={ICON} />, label: "Points", value: totals.points, sub: "across every season" },
           ]}
         />
+        {/* Everything else, kept quiet on purpose. */}
         <div className="mt-3">
-          <StatFrame
-            tiles={[
-              { icon: <Crown className={ICON} />, label: "Best finish", value: pos(totals.bestFinish), sub: plural(totals.top5, "top five", "top fives") },
-              { icon: <TrendingUp className={ICON} />, label: "Average finish", value: pos(totals.avgFinish), sub: `${plural(totals.pointsFinishes, "time")} in the points` },
-              { icon: <ListOrdered className={ICON} />, label: "Average grid", value: pos(totals.avgGrid), sub: plural(totals.top10, "top ten", "top tens") },
+          <StatList
+            groups={[
               {
-                icon: <ArrowLeftRight className={ICON} />, label: "Places gained",
-                value: totals.positionsGained > 0 ? `+${totals.positionsGained}` : totals.positionsGained,
-                sub: "start to finish",
-                accent: totals.positionsGained > 0 ? "#16a34a" : totals.positionsGained < 0 ? "#dc2626" : undefined,
-              },
-              { icon: <ShieldAlert className={ICON} />, label: "Retirements", value: totals.dnf, sub: totals.dsq ? `plus ${totals.dsq} disqualified` : "did not finish" },
-              {
-                icon: <Timer className={ICON} />, label: "Penalty time",
-                value: `${Math.round((totals.stewardPenaltySeconds || 0) + (totals.gamePenaltySeconds || 0))}s`,
-                sub: "stewards and in game",
+                rows: [
+                  { label: "Best finish", value: pos(totals.bestFinish) },
+                  { label: "Average finish", value: pos(totals.avgFinish) },
+                  { label: "Average grid", value: pos(totals.avgGrid) },
+                  { label: "Top fives", value: totals.top5 },
+                  { label: "Top tens", value: totals.top10 },
+                  { label: "In the points", value: totals.pointsFinishes },
+                  {
+                    label: "Places gained",
+                    value: totals.positionsGained > 0 ? `+${totals.positionsGained}` : totals.positionsGained,
+                    accent: totals.positionsGained > 0 ? "#16a34a" : totals.positionsGained < 0 ? "#dc2626" : undefined,
+                  },
+                  { label: "Retirements", value: totals.dsq ? `${totals.dnf} + ${totals.dsq} DSQ` : totals.dnf },
+                  {
+                    label: "Penalty time",
+                    value: `${Math.round((totals.stewardPenaltySeconds || 0) + (totals.gamePenaltySeconds || 0))}s`,
+                  },
+                  ...(hasTelemetry
+                    ? [
+                        { label: "Overtakes", value: totals.overtakes },
+                        { label: "Laps led", value: totals.lapsLed },
+                        { label: "Contacts", value: totals.contacts },
+                        {
+                          label: "Consistency",
+                          value: totals.avgConsistencyMs != null ? `±${(totals.avgConsistencyMs / 1000).toFixed(2)}s` : null,
+                        },
+                      ]
+                    : []),
+                ],
               },
             ]}
           />
         </div>
-        {hasTelemetry && (
-          <div className="mt-3">
-            <StatFrame
-              cols="grid-cols-2 sm:grid-cols-4"
-              tiles={[
-                { icon: <ArrowLeftRight className={ICON} />, label: "Overtakes", value: totals.overtakes, sub: "on track passes" },
-                { icon: <RouteIcon className={ICON} />, label: "Laps led", value: totals.lapsLed, sub: "laps out front" },
-                { icon: <Activity className={ICON} />, label: "Contacts", value: totals.contacts, sub: "car to car", accent: totals.contacts === 0 ? "#16a34a" : undefined },
-                {
-                  icon: <Timer className={ICON} />, label: "Consistency",
-                  value: totals.avgConsistencyMs != null ? `±${(totals.avgConsistencyMs / 1000).toFixed(2)}s` : null,
-                  sub: "clean lap spread",
-                },
-              ]}
-            />
-          </div>
-        )}
         {totals.sprint && (
           <p className="mt-3 text-xs text-light">
             Sprint races are counted in the numbers above. On their own they add up to {totals.sprint.starts} starts,{" "}
