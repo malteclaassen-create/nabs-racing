@@ -7,7 +7,7 @@ import { buildRaceCalendar } from "../lib/ics.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
-import { readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
+import { readParentIds, readSprintChildren, withSprintRounds } from "../lib/sprintRaces.js";
 import { readRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHeroes } from "../lib/raceHero.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
@@ -314,8 +314,11 @@ router.get("/:id/laps", async (req, res, next) => {
     }
 
     // A file that is not from this race night is not this race's chart
-    // (findArchiveForRace checks the date).
-    const json = findArchiveForRace(race);
+    // (findArchiveForRace checks the date). A sprint classification is a child
+    // row with no round number of its own: withSprintRounds hands it back
+    // under its event's number and flagged, which is how its file is filed.
+    const [filed] = await withSprintRounds(prisma, [race]);
+    const json = findArchiveForRace({ ...race, number: filed.number }, { sprint: filed.sprint });
     const chart = json ? lapChartFrom(json) : null;
     if (!chart) return res.json({ available: false, maxLap: 0, drivers: [] });
 

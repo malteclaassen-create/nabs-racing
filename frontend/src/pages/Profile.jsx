@@ -651,10 +651,15 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
                   role: me.role ?? null,
                   team: me.team,
                   // The card's SAVED look (edition/framing/picture/animation),
-                  // edited on /profile/card, not here.
+                  // edited on /profile/card, not here. The picture and framing
+                  // are the EFFECTIVE ones: a row that set none of its own
+                  // follows what the person carries (lib/cardPhoto), so reading
+                  // the own values here showed a card without the picture that
+                  // the public profile — and every other card on the site —
+                  // does show.
                   cardStyle: me.cardStyle,
-                  cardPhotoUrl: me.cardPhotoUrl,
-                  photoPos: me.photoPos,
+                  cardPhotoUrl: me.cardShows?.cardPhotoUrl ?? me.cardPhotoUrl,
+                  photoPos: me.cardShows?.photoPos ?? me.photoPos,
                   cardAnim: me.cardAnim,
                   seasonNumber: me.seasonNumber ?? null,
                 }}

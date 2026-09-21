@@ -4,6 +4,15 @@
 // they finished, what it did to the championship, how the live rating moved,
 // what it paid in NABS Points, and the round's facts for everyone.
 //
+// A SPRINT WEEKEND is one round with two races (lib/sprintRaces.js), and the
+// recap tells it as two. The feature race is the recap's own subject as ever;
+// the sprint comes back beside it under `sprint`, built to the same shape from
+// the hidden child row, so the page can show either half without knowing which
+// one it is looking at. What the two share — the championship, the rating, the
+// season, the NABS Points — is told once, over the whole weekend, and its
+// points are shown as the two races that paid them rather than as one sum:
+// `weekend` carries the feature's share, the sprint's, and the total.
+//
 // Nothing here is stored. Every number is derived on request from the same
 // services the site's pages use (the classification, the standings frozen at
 // a round, the rating replay, the token ledger), so the recap can never
@@ -32,7 +41,9 @@ import { readDriverRoles } from "./driverRoles.js";
 import { getIdentityOverrides } from "./persons.js";
 import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from "./tokens.js";
 import { raceWasClean, stewardingClosed, withMultiplier } from "./tokenRules.js";
-import { findArchiveForRace, analyzeRaceFor, raceInsightsFor, fieldPaceTable } from "./cockpitArchive.js";
+import { findArchiveForRace, analyzeRaceFor, raceInsightsFor, fieldPaceTable, hasArchiveFor } from "./cockpitArchive.js";
+import { readParentIds, readSprintChildren } from "./sprintRaces.js";
+import { readRaceFormat } from "./raceFormat.js";
 import { contactsForDriver } from "./raceContacts.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
@@ -45,6 +56,12 @@ export const RECAP_MODES = ["off", "admins", "all"];
 // site three weeks later has moved on, and a recap of a round that old would
 // only look like a bug.
 const FRESH_DAYS = 10;
+
+// How long a sprint weekend waits for its second result file before the recap
+// gives up and tells the round with what is on file. See weekendStillArriving.
+// Well inside FRESH_DAYS, so a round that waits the whole time still has days
+// left in which to be offered.
+const HOLD_DAYS = 7;
 
 // --- the switch -------------------------------------------------------------
 
@@ -112,8 +129,41 @@ async function personRows(prisma, driverId) {
   });
 }
 
+// Is half of this round's night still to be imported? A sprint weekend is
+// saved as TWO files, one after the other — the feature race, then the sprint
+// (routes/admin.js) — and the "results are in" notification goes out with the
+// FIRST of them. So between the two saves the round is finished as far as the
+// database can tell while half the evening is still missing, and that is
+// precisely the minute a member is most likely to open the site. A recap handed
+// over then would tell a driver about one of the two races they drove, and
+// arriving on it counts as seen for good: the sprint would never reach them.
+//
+// So a round whose format says it runs a sprint waits for its sprint. The wait
+// is bounded, because a weekend scheduled as a sprint and then run as a single
+// race — or one whose sprint file never arrives — must not cost the driver the
+// recap altogether: after HOLD_DAYS the round is told with what is on file.
+// (The admin's own way out is the race format, which is what says a round runs
+// a sprint in the first place: clearing it back to a single race releases the
+// recap at once.)
+//
+// This holds only the recap that is PUSHED to a member. Opening a round's recap
+// from its race page reads whatever is saved, which is right — and never marks
+// anything as seen.
+async function weekendStillArriving(prisma, race) {
+  const format = (await readRaceFormat(prisma, [race.id])).get(race.id);
+  if (format?.raceFormat !== "SPRINT_FEATURE") return false;
+  const ran = race.date ? new Date(race.date).getTime() : null;
+  if (ran != null && Date.now() - ran > HOLD_DAYS * 86_400_000) return false;
+  const childId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+  // No child row at all: the sprint file has not been imported yet.
+  if (!childId) return true;
+  const saved = await prisma.raceResult.count({ where: { raceId: childId } }).catch(() => 0);
+  return saved === 0;
+}
+
 // The newest finished round of any PUBLIC season this person is in, if it is
-// recent enough and they have not been shown it yet. null = nothing to show.
+// recent enough, finished arriving, and they have not been shown it yet.
+// null = nothing to show.
 export async function pendingRecapRace(prisma, driverId, discordId) {
   const rows = await personRows(prisma, driverId);
   const priv = await getPrivateSeasonIds(prisma);
@@ -129,9 +179,10 @@ export async function pendingRecapRace(prisma, driverId, discordId) {
       results: { some: {} },
     },
     orderBy: { date: "desc" },
-    select: { id: true },
+    select: { id: true, date: true },
   });
   if (!race) return null;
+  if (await weekendStillArriving(prisma, race)) return null;
   if ((await seenRecapRaceId(prisma, discordId)) === race.id) return null;
   return race.id;
 }
@@ -173,11 +224,14 @@ async function standingsAround(prisma, seasonId, number) {
 // classification does not: pace against the field, the best place they held
 // and for how long, the lap the best lap came on, the time lost off their
 // own pace, the stints. null without a file, or a driver without a Steam id.
-async function storyFor(prisma, race, rowId, ownRow, rows = []) {
+// `sprint` reads the sprint half's file of a sprint weekend; `race` then has
+// to be the archive's view of the child row (archiveView below), which
+// carries its event's round number.
+async function storyFor(prisma, race, rowId, ownRow, rows = [], sprint = false) {
   if (!rowId || !ownRow || ownRow.status === "DNS") return null;
   const d = await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null);
   if (!d?.steamId) return null;
-  const json = findArchiveForRace(race);
+  const json = findArchiveForRace(race, { sprint });
   if (!json) return null;
   const a = analyzeRaceFor(json, d.steamId);
   if (!a) return null;
@@ -250,11 +304,11 @@ async function paceTableFor(prisma, race, json, ownGuid, rows) {
 // who with. Read from the same archived file the stewards' reports use, so
 // only when that file is really this race's. The other car is named by the
 // league's own name where the Steam id is known, else by the game's.
-async function incidentsFor(prisma, race, rowId, ownRow, steamId) {
-  if (!rowId || !steamId || !findArchiveForRace(race)) return null;
+async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false) {
+  if (!rowId || !steamId || !findArchiveForRace(race, { sprint })) return null;
   let list = [];
   try {
-    list = contactsForDriver(race.season, race.number, steamId);
+    list = contactsForDriver(race.season, race.number, steamId, sprint);
   } catch {
     return null;
   }
@@ -355,8 +409,47 @@ async function careerFor(prisma, race, rowId, ownRow, season) {
   };
 }
 
-// The driver's own line of the round: the classification row plus what it
-// paid, phrased from the standings cell (which folds a sprint in).
+// --- one race of the weekend -------------------------------------------------
+
+// The round's points told as the races that paid them. The championship adds
+// both halves of a sprint weekend under the one round number, and the cell it
+// keeps carries the total with the sprint's own share beside it
+// (services/standingsService.js buildDriverPerRace) — so the feature's share
+// is what is left when the sprint's is taken back out, and the recap can show
+// the sum AND what made it instead of a number nobody can account for.
+// `row` is the driver's feature classification, used when the standings have
+// no cell for the round (a special event, or a season without a table yet).
+export function weekendPoints(cell, row = null) {
+  const total = cell?.points ?? row?.points ?? 0;
+  const sprint = cell?.sprint ? cell.sprint.points ?? 0 : null;
+  return {
+    isSprintWeekend: !!cell?.sprint,
+    feature: total - (sprint || 0),
+    featureFastestLap: cell?.fastestLap ?? row?.fastestLap ?? 0,
+    sprint,
+    sprintFastestLap: cell?.sprint?.fastestLap ?? 0,
+    total,
+  };
+}
+
+// Whole teams the driver finished ahead of: every classified car of that team
+// behind them, and only teams that got two or more cars home, so "both
+// Williams cars" is true as written.
+function beatWholeTeams(finished, own, ownTeamId) {
+  const byTeam = new Map();
+  for (const r of finished) {
+    const t = r.effectiveTeam || r.team;
+    if (!t || t.id === ownTeamId) continue;
+    if (!byTeam.has(t.id)) byTeam.set(t.id, { name: t.name, positions: [] });
+    byTeam.get(t.id).positions.push(r.position);
+  }
+  return [...byTeam.values()].filter((t) => t.positions.length >= 2 && t.positions.every((p) => p > own.position)).map((t) => t.name);
+}
+
+// The driver's own line of ONE race — the feature race of the round, or the
+// sprint of a sprint weekend. `cell` is that race's share of the standings
+// cell, so `points` is always what THIS race paid; the round's total is
+// `weekend` on the recap.
 function ownRace(row, cell, fastestLapMs, fieldSize) {
   if (!row) return null;
   const finished = row.status === "FINISHED" && row.position != null;
@@ -375,11 +468,13 @@ function ownRace(row, cell, fastestLapMs, fieldSize) {
     fieldSize,
     points: cell?.points ?? row.points ?? 0,
     fastestLapBonus: cell?.fastestLap ?? row.fastestLap ?? 0,
-    sprint: cell?.sprint || null,
     bestLapMs: raced ? row.bestLapMs ?? null : null,
     fastestLapMs: fastestLapMs ?? null,
     lapGapMs: raced && row.bestLapMs != null && fastestLapMs != null ? Math.max(0, row.bestLapMs - fastestLapMs) : null,
     laps: raced ? row.laps ?? null : null,
+    // Laps the telemetry saw no contact on. Straight off the classification
+    // row, where the site's own race facts read it.
+    cleanLaps: raced ? row.cleanLaps ?? null : null,
     penaltySeconds: raced ? Number(row.penaltySeconds) || 0 : null,
     gamePenalties: raced ? row.gamePenalties ?? null : null,
     contacts: raced ? row.contacts ?? null : null,
@@ -416,50 +511,72 @@ async function ratingMove(prisma, rowId, raceId) {
 // The NABS Points this round paid the member, read straight off the ledger,
 // plus a clean-race bonus that is still waiting for the stewards. null when
 // the feature is not on for this request.
+//
+// A sprint weekend pays TWICE: the sprint is saved as its own race, so the
+// payout wrote its own ledger rows under the child's id (lib/tokens.js
+// payRace). `halves` is therefore a list — the feature race, and the sprint
+// where there is one — and every entry says which race it came from, so two
+// "Finished a race" rows read as the two races they are.
+//
 // `demo` (the admin preview) fills in what the round WOULD pay when the
 // ledger has nothing for it yet (counting paused, or a round before the
 // start day), so the chapter can be looked at before the first real payout.
-async function pointsFor(prisma, req, discordId, race, rowId, own, demo = false) {
+async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = false) {
   if (!discordId || !(await tokensVisibleTo(prisma, req))) return null;
   const earning = await isEarningOn(prisma);
   if (earning) await syncEarned(prisma, discordId).catch(() => {});
-  const keys = [`race:${race.id}:${rowId}`, `clean:${race.id}:${rowId}`];
-  const rows = await prisma
-    .$queryRawUnsafe(
-      `SELECT "rule", "title", "delta" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (?, ?) ORDER BY "rowid" ASC`,
-      discordId,
-      ...keys
-    )
-    .catch(() => []);
-  const entries = rows.map((r) => ({ rule: r.rule, title: r.title, delta: Number(r.delta) || 0 }));
+  const races = halves.filter((h) => h.raceId && h.own);
+  const keys = races.flatMap((h) => [`race:${h.raceId}:${rowId}`, `clean:${h.raceId}:${rowId}`]);
+  const halfOfKey = new Map(races.flatMap((h) => [[`race:${h.raceId}:${rowId}`, h], [`clean:${h.raceId}:${rowId}`, h]]));
+  const rows = keys.length
+    ? await prisma
+        .$queryRawUnsafe(
+          `SELECT "rule", "title", "delta", "refKey" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (${keys
+            .map(() => "?")
+            .join(",")}) ORDER BY "rowid" ASC`,
+          discordId,
+          ...keys
+        )
+        .catch(() => [])
+    : [];
+  // Only a weekend of two races needs its entries labelled; a plain round's
+  // chips would only be made noisier by a word that says nothing.
+  const twoRaces = races.length > 1;
+  const label = (h) => (twoRaces ? h.label : null);
+  const entries = rows.map((r) => ({
+    rule: r.rule,
+    title: r.title,
+    delta: Number(r.delta) || 0,
+    race: label(halfOfKey.get(r.refKey)) ?? null,
+  }));
   const rateRow = await prisma
     .$queryRawUnsafe(`SELECT "rate" FROM "TokenRaceRate" WHERE "raceId" = ? AND "driverId" = ?`, race.id, rowId)
     .catch(() => []);
   const rate = Number(rateRow[0]?.rate) || null;
-  // The bonus the round will still pay once the stewards are done with it,
+  // The bonuses the weekend will still pay once the stewards are done with it,
   // priced the way the payout will price it (the league's own numbers, at
-  // the rate stamped for this round).
-  let pending = null;
+  // the rate stamped for this round) — one per clean race still open.
+  const pending = [];
   const cleanRule = tunedRules().find((r) => r.key === "clean_race");
-  if (
-    earning &&
-    own?.finished &&
-    own.cleanRace &&
-    cleanRule &&
-    cleanRule.active !== false &&
-    !entries.some((e) => e.rule === "clean_race") &&
-    !stewardingClosed(race.date)
-  ) {
-    pending = { rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1) };
+  const cleanOn = !!cleanRule && cleanRule.active !== false;
+  const paidClean = (h) => rows.some((r) => r.refKey === `clean:${h.raceId}:${rowId}`);
+  if (earning && cleanOn && !stewardingClosed(race.date)) {
+    for (const h of races) {
+      if (!h.own.finished || !h.own.cleanRace || paidClean(h)) continue;
+      pending.push({ rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1), race: label(h) });
+    }
   }
   let hypothetical = false;
-  if (demo && !entries.length && !pending && own?.finished) {
+  if (demo && !entries.length && !pending.length && races.some((h) => h.own.finished)) {
     const finishRule = tunedRules().find((r) => r.key === "race_finish");
-    if (finishRule && finishRule.active !== false) {
-      entries.push({ rule: "race_finish", title: "Finished a race", delta: withMultiplier(finishRule.points, rate || 1) });
-    }
-    if (own.cleanRace && cleanRule && cleanRule.active !== false) {
-      pending = { rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1) };
+    for (const h of races) {
+      if (!h.own.finished) continue;
+      if (finishRule && finishRule.active !== false) {
+        entries.push({ rule: "race_finish", title: "Finished a race", delta: withMultiplier(finishRule.points, rate || 1), race: label(h) });
+      }
+      if (h.own.cleanRace && cleanOn) {
+        pending.push({ rule: "clean_race", title: "Clean race, no penalties", delta: withMultiplier(cleanRule.points, rate || 1), race: label(h) });
+      }
     }
     hypothetical = entries.length > 0;
   }
@@ -534,13 +651,71 @@ async function cardFor(prisma, race, rowId, ownRow) {
   };
 }
 
+// The race row as the ARCHIVE knows a sprint classification: the child row
+// carries no round number and no season of its own, so it borrows its event's
+// (lib/cockpitArchive.js files the sprint under the round number, flagged).
+const archiveView = (child, parent) => ({ ...child, number: parent.number, season: parent.season, seasonId: parent.seasonId });
+
+// The sprint half of a sprint weekend, built to the same shape as the feature
+// race so the page can show either without knowing which it has: the
+// classification, the driver's line of it, what the archived sprint file knows
+// and the contacts it recorded. null when the round ran one race, or when the
+// sprint has no result on file yet.
+//
+// `cell` is the driver's round cell from the standings; its `sprint` share is
+// what this race paid, so the half never has to price a result itself.
+async function sprintHalf(prisma, parent, childId, rowId, cell, steamId) {
+  const child = await prisma.race
+    .findUnique({ where: { id: childId }, include: { season: { select: { id: true, number: true, name: true, seriesId: true } } } })
+    .catch(() => null);
+  if (!child) return null;
+  const detail = await raceDetailPayload(prisma, child);
+  const rows = detail.results || [];
+  if (!rows.length) return null;
+  const ownRow = rowId ? rows.find((r) => r.driverId === rowId) || null : null;
+  const finished = rows.filter((r) => r.status === "FINISHED" && r.position != null);
+  const fastestLapMs = rows.reduce((b, r) => (r.bestLapMs != null && (b == null || r.bestLapMs < b) ? r.bestLapMs : b), null);
+  const own = ownRace(ownRow, cell?.sprint ? { points: cell.sprint.points ?? 0, fastestLap: cell.sprint.fastestLap ?? 0 } : null, fastestLapMs, finished.length);
+  if (own?.finished) own.beatTeams = beatWholeTeams(finished, own, (ownRow.effectiveTeam || ownRow.team)?.id || null);
+  const filed = archiveView(child, parent);
+  const [story, incidents] = await Promise.all([
+    storyFor(prisma, filed, rowId, ownRow, rows, true).catch(() => null),
+    incidentsFor(prisma, filed, rowId, ownRow, steamId, true).catch(() => null),
+  ]);
+  return {
+    race: {
+      ...detail.race,
+      seasonNumber: parent.season.number,
+      // The sprint is not a round of its own, and saying "Round 1" over it
+      // twice would read as two rounds. It is the round's sprint, and the
+      // page names it that way.
+      number: parent.number,
+      isSprint: true,
+      fieldSize: rows.length,
+      starters: rows.filter((r) => r.status !== "DNS").length,
+      finishers: finished.length,
+      hasLapChart: hasArchiveFor(parent.season, parent.number, { sprint: true }),
+    },
+    results: rows,
+    quali: detail.quali,
+    you: own,
+    story,
+    incidents,
+  };
+}
+
 // Build the recap of `raceId` for the person behind `driverId` (any of their
 // rows; the one in the race's season is used). `discordId` is the member the
 // points belong to; `req` decides what they may see. driverId null = a
 // spectator's recap: the round's story without a "you" in it.
+//
+// Asked for the sprint half of a sprint weekend, this builds the WEEKEND: the
+// sprint is not a round of its own and its recap is the round's, with both
+// races in it.
 export async function buildRaceRecap(prisma, { raceId, driverId = null, discordId = null, req = null, demo = false }) {
+  const parentId = (await readParentIds(prisma, [raceId])).get(raceId) || null;
   const race = await prisma.race.findUnique({
-    where: { id: raceId },
+    where: { id: parentId || raceId },
     include: { season: { select: { id: true, number: true, name: true, seriesId: true } } },
   });
   if (!race || !race.seasonId) return null;
@@ -712,24 +887,28 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     }
   }
 
-  const own = ownRace(ownRow, cell, fastestLapMs, finished.length);
-  if (own?.finished) {
-    // Whole teams the driver finished ahead of: every classified car of that
-    // team behind them (only teams that got two or more cars home, so "both
-    // Williams cars" is true as written).
-    const byTeam = new Map();
-    for (const r of finished) {
-      const t = r.effectiveTeam || r.team;
-      if (!t || t.id === (ownRow.effectiveTeam || ownRow.team)?.id) continue;
-      if (!byTeam.has(t.id)) byTeam.set(t.id, { name: t.name, positions: [] });
-      byTeam.get(t.id).positions.push(r.position);
-    }
-    own.beatTeams = [...byTeam.values()].filter((t) => t.positions.length >= 2 && t.positions.every((p) => p > own.position)).map((t) => t.name);
-  }
+  // The feature race's own share of the round, so the big number on the card
+  // is what THIS race paid rather than the weekend's total.
+  const weekend = weekendPoints(cell, ownRow);
+  const own = ownRace(ownRow, cell ? { ...cell, points: weekend.feature } : null, fastestLapMs, finished.length);
+  if (own?.finished) own.beatTeams = beatWholeTeams(finished, own, (ownRow.effectiveTeam || ownRow.team)?.id || null);
   const steamRow = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null) : null;
+  // The sprint of a sprint weekend, told the same way as the race above. It
+  // is built before the NABS Points so the ledger can be asked about both
+  // races at once.
+  const sprintId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+  const sprint = sprintId ? await sprintHalf(prisma, race, sprintId, rowId, cell, steamRow?.steamId).catch(() => null) : null;
+  // The ROUND ran a sprint whether or not this driver scored in it (a DNS
+  // leaves no sprint share on their cell), and the page is telling them about
+  // the weekend, not about their cell.
+  if (sprint) weekend.isSprintWeekend = true;
+  const halves = [
+    { raceId: race.id, label: sprint ? "Feature race" : "Race", own },
+    ...(sprint ? [{ raceId: sprintId, label: "Sprint", own: sprint.you }] : []),
+  ];
   const [rating, points, series, card, heroes, seasonHero, story, incidents, career] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
-    rowId ? pointsFor(prisma, req, discordId, race, rowId, own, demo) : null,
+    rowId ? pointsFor(prisma, req, discordId, race, rowId, halves, demo) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
     cardFor(prisma, race, rowId, ownRow),
     readRaceHeroes(prisma, [race.id]).catch(() => new Map()),
@@ -762,6 +941,12 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     you: own,
     story,
     incidents,
+    // The other race of a sprint weekend, in the same shape as the five
+    // fields above it (race / results / quali / you / story / incidents), so
+    // the page can swap one for the other. null on a one-race round.
+    sprint,
+    // What the round paid, as the races that paid it: never only the sum.
+    weekend,
     career,
     season,
     teammates,

@@ -10,9 +10,15 @@ import RatingCard, { cardPhotoFraming } from "./RatingCard.jsx";
 // Card photo editor: the driver's OWN rating card as a live preview, with the
 // picture draggable right on the card and zoom / colour / tint sliders. Writes
 // Driver.cardPhotoPos ({x,y,z,s,t}), which every card render site-wide uses.
+// `cardPhotoUrl` is what the card SHOWS; `canResetPhoto` / `canResetFraming`
+// say whether this row set that itself. A row that is only following the
+// person's newest card has nothing of its own to reset, and offering the reset
+// there was a button that could not do anything: it cleared a column that was
+// already empty, and the picture came back on the next load.
 export function CardPhotoEditor({
   driver, rating, pos, setPos, onReset, resetting,
   cardPhotoUrl, onPickCardPhoto, onResetCardPhoto, cardUploading,
+  canResetPhoto = false, canResetFraming = false,
 }) {
   const boxRef = useRef(null);
   const dragRef = useRef(null);
@@ -77,9 +83,9 @@ export function CardPhotoEditor({
         >
           {cardUploading ? "Uploading…" : cardPhotoUrl ? "Change card picture" : "Use a different picture on the card"}
         </button>
-        {cardPhotoUrl && (
+        {canResetPhoto && (
           <button type="button" onClick={onResetCardPhoto} disabled={cardUploading} className="font-semibold text-light transition hover:text-dark">
-            Use profile picture
+            Remove this picture
           </button>
         )}
       </div>
@@ -119,9 +125,11 @@ export function CardPhotoEditor({
       </label>
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="text-light">Drag to position · let the photo take the card colour so it blends in.</span>
-        <button type="button" onClick={onReset} disabled={resetting} className="shrink-0 font-semibold text-light transition hover:text-dark">
-          Reset framing
-        </button>
+        {canResetFraming && (
+          <button type="button" onClick={onReset} disabled={resetting} className="shrink-0 font-semibold text-light transition hover:text-dark">
+            Reset framing
+          </button>
+        )}
       </div>
     </div>
   );

@@ -123,19 +123,21 @@ export function personPhotoFor(own, idov) {
 // { cardPhotoUrl, photoPos }. RatingCard renders `cardPhotoUrl || photoUrl`,
 // so the winning picture is handed over as cardPhotoUrl whatever it came from.
 //
-// Both halves follow the same rule, and it is the one the league asked for: a
-// card the member has actually SET keeps what they set, for good. A card they
-// never touched follows the person's newest — so changing this season's card
-// carries through to every season still on the default, and leaves every
-// season somebody deliberately dressed alone. Clearing a row's own picture or
-// framing (the editor's reset buttons) hands it back to that inheritance.
+// THE PICTURE is the person's: one face, on every card they have, in every
+// series and season. A row that was given its own keeps it; a row that never
+// was follows the person's newest, which is what stops a linked member showing
+// a photo in one league and a bare letter in the other.
 //
-// Picture and framing are tracked apart, because a member can pin one without
-// the other: framing this season's card must not freeze its picture too.
+// THE FRAMING is the row's alone. It used to be inherited the same way, and
+// that was wrong in a way nobody could see coming: a zoom and a crop are tuned
+// to one picture on one card, and a season that had never been framed followed
+// whatever was set last — so adjusting one season quietly re-cropped every
+// other season that had been left alone. Each season is framed on its own now,
+// and a row with no framing of its own simply uses the default one.
 export function cardPictureFor(own, idov) {
   const chain = rankedPictures(own, idov, { card: true });
   return {
     cardPhotoUrl: chain[0] || null,
-    photoPos: own?.photoPos || parseCardPhotoPos(idov?.framingPos) || null,
+    photoPos: own?.photoPos || null,
   };
 }

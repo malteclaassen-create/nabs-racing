@@ -10,11 +10,11 @@ import { join } from "path";
 import prisma from "../lib/prisma.js";
 import { optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
-import { getLinkedDriverIds, ownCurrentRowIds, ownLeagueRows, ownAllRowIds } from "../lib/persons.js";
+import { getLinkedDriverIds, ownCurrentRowIds, ownLeagueRows, ownAllRowIds, getIdentityOverrides } from "../lib/persons.js";
 import { dbListSeries, seasonSeriesMap } from "../lib/series.js";
 import { parseSocials, serializeSocials } from "../lib/socials.js";
 import { DEFAULT_PROFILE_TILES, PROFILE_TILE_KEYS, readProfileTiles } from "../lib/profileTiles.js";
-import { parseCardPhotoPos, readCardPhotoPos } from "../lib/cardPhoto.js";
+import { parseCardPhotoPos, readCardPhotoPos, cardPictureFor } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import {
   unlockStateFor, isKnownEdition, readCardEdition, readCardAnim, DEFAULT_CARD_EDITION,
@@ -136,6 +136,10 @@ router.get("/", async (req, res, next) => {
       include: { team: true, season: { select: { number: true } } },
     });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+    // What this row SET for its card, read once and used twice below: as the
+    // own values, and as the input to what the card actually shows.
+    const ownCardPhotoUrl = await readCardPhotoUrl(prisma, driver.id);
+    const ownPhotoPos = await readCardPhotoPos(prisma, driver.id);
     res.json({
       isLinked: true,
       steam,
@@ -157,16 +161,33 @@ router.get("/", async (req, res, next) => {
       // "reset to Discord picture" button on the profile page.
       photoUrl: driver.photoUrl || driver.discordAvatar || null,
       hasCustomPhoto: !!driver.photoUrl,
-      // Optional card-only picture (null = the card uses the profile photo).
-      cardPhotoUrl: await readCardPhotoUrl(prisma, driver.id),
+      // Optional card-only picture this row SET (null = it has none of its
+      // own; `cardShows` below says what it then falls back to).
+      cardPhotoUrl: ownCardPhotoUrl,
       // Which public-profile stat tiles are shown; null = all (the default).
       profileTiles: await readProfileTiles(prisma, driver.id),
-      // How the picture sits on the rating card; null = default framing.
-      photoPos: await readCardPhotoPos(prisma, driver.id),
+      // How the picture this row SET sits on the card; null = none of its own.
+      photoPos: ownPhotoPos,
       // The chosen unlockable card edition for this row; null = classic.
       cardStyle: await readCardEdition(prisma, driver.id),
       // Card animation switch; "off" = a still card, null = baseline motion.
       cardAnim: await readCardAnim(prisma, driver.id),
+      // What the card ACTUALLY shows, which is not the same question as the
+      // two own values above. Those are what this row has SET; a row that has
+      // set nothing follows the picture and framing the person carries from
+      // their other rows (lib/cardPhoto cardPictureFor). The card editor needs
+      // both: the own values say whether its reset buttons have anything to
+      // reset, the effective ones say what to draw — and with only the own
+      // ones it drew the profile photo over a card that inherits a picture.
+      cardShows: cardPictureFor(
+        {
+          cardPhotoUrl: ownCardPhotoUrl,
+          photoUrl: driver.photoUrl || null,
+          discordAvatar: driver.discordAvatar || null,
+          photoPos: ownPhotoPos,
+        },
+        (await getIdentityOverrides(prisma)).get(driver.id)
+      ),
       team: {
         id: driver.team.id,
         name: driver.team.name,
@@ -437,11 +458,22 @@ router.get("/card-seasons", async (req, res, next) => {
       prisma.$queryRawUnsafe(`SELECT "id" FROM "Season" WHERE "isPublic" = 0`).catch(() => []),
     ]);
     const privateSeasonIds = new Set(privateRows.map((r) => r.id));
-    // cardStyle lives in a raw-SQL column -> one raw read for all linked rows.
+    // cardStyle, and the picture and framing each row has SET, live in raw-SQL
+    // columns -> one raw read for all linked rows.
+    //
+    // These are the OWN values, not what the row shows: a row that has set
+    // nothing follows the person's newest picture (lib/cardPhoto). The card
+    // editor needs the difference — the reset buttons only have something to
+    // reset where a row set something of its own, and they were being offered
+    // on every row that merely inherited one.
     const placeholders = linkedIds.map(() => "?").join(",");
     const styleRows = linkedIds.length
-      ? await prisma.$queryRawUnsafe(`SELECT "id","cardStyle" FROM "Driver" WHERE "id" IN (${placeholders})`, ...linkedIds)
+      ? await prisma.$queryRawUnsafe(
+          `SELECT "id","cardStyle","cardPhotoUrl","cardPhotoPos" FROM "Driver" WHERE "id" IN (${placeholders})`,
+          ...linkedIds
+        )
       : [];
+    const ownById = new Map(styleRows.map((r) => [r.id, r]));
     const styleById = new Map(
       styleRows.map((r) => [r.id, isKnownEdition(r.cardStyle) && r.cardStyle !== DEFAULT_CARD_EDITION ? r.cardStyle : null])
     );
@@ -464,6 +496,9 @@ router.get("/card-seasons", async (req, res, next) => {
           seriesName: s?.name || null,
           seriesSlug: s?.slug || null,
           cardStyle: styleById.get(r.id) ?? null,
+          // What this row set for itself; null = it follows the person's.
+          ownCardPhotoUrl: ownById.get(r.id)?.cardPhotoUrl || null,
+          ownPhotoPos: parseCardPhotoPos(ownById.get(r.id)?.cardPhotoPos),
         };
       })
       // The member's own league first, then the others by name; newest season
@@ -657,7 +692,7 @@ function writeCardPicture(driverId, buffer, ext) {
 // Written to THIS ROW alone: the card the member set keeps its picture, and
 // every card they never touched follows the person's newest one on read
 // (lib/cardPhoto cardPictureFor). `driverId` (a form field) says which row
-// the editor had open.
+// the editor had open. The row's framing is cleared with it — see below.
 router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -670,8 +705,12 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
 
     const cardPhotoUrl = writeCardPicture(driverId, req.file.buffer, ext);
     if (!cardPhotoUrl) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
-    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
-    res.json({ ok: true, cardPhotoUrl });
+    // The framing goes with the old picture. A zoom and a crop are tuned to one
+    // photo — kept, they land somewhere arbitrary on the next one (a face half
+    // out of frame, a crop into nothing), and the member has to undo a setting
+    // they never made for this picture. Back to the default, ready to frame.
+    await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl}, "cardPhotoPos" = ${null} WHERE "id" = ${driverId}`;
+    res.json({ ok: true, cardPhotoUrl, photoPos: null });
   } catch (e) {
     next(e);
   }

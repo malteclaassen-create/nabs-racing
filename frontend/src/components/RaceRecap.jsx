@@ -77,7 +77,11 @@ export default function RaceRecapHost() {
 // The Recap button on a race page: the same page, read again. Only for a
 // member with a seat, only when the feature is on for them, only once the
 // round has a result.
-export function RaceRecapButton({ raceId, ready }) {
+//
+// `session` is the tab it was pressed from. A sprint weekend's recap holds
+// both races, so pressing Recap on the Sprint tab should open it on the
+// sprint rather than make the reader find it again.
+export function RaceRecapButton({ raceId, ready, session = null }) {
   const { user } = useAuth();
   const enabled = useRaceRecapEnabled();
   const location = useLocation();
@@ -85,7 +89,7 @@ export function RaceRecapButton({ raceId, ready }) {
   const prefix = location.pathname.match(/^\/s\/[^/]+/)?.[0] || "";
   return (
     <Link
-      to={`${prefix}/recap/${raceId}`}
+      to={`${prefix}/recap/${raceId}${session === "sprint" ? "?session=sprint" : ""}`}
       title="Your recap of this round"
       className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
     >

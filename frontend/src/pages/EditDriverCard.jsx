@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -24,7 +24,7 @@ function BackLink() {
   );
 }
 
-function CardEditor({ me }) {
+function CardEditor({ me, reload }) {
   const [error, setError] = useState(null);
 
   // Rating (for the numbers on the preview). Safety-car drivers get a card even
@@ -39,11 +39,15 @@ function CardEditor({ me }) {
   const [editionsLoading, setEditionsLoading] = useState(true);
   const [savedByDriver, setSavedByDriver] = useState({});
 
+  // The season chips AND what each row has set for itself. Re-read after a
+  // picture write, because that is exactly what it changes.
+  const loadSeasons = useCallback(
+    () => api.myCardSeasons().then((d) => setCardSeasons(d?.seasons || [])).catch(() => {}),
+    []
+  );
   useEffect(() => {
-    let alive = true;
-    api.myCardSeasons().then((d) => alive && setCardSeasons(d?.seasons || [])).catch(() => {});
-    return () => { alive = false; };
-  }, []);
+    loadSeasons();
+  }, [loadSeasons]);
 
   useEffect(() => {
     if (editionsByDriver[pickerDriverId]) { setEditionsLoading(false); return; }
@@ -61,9 +65,18 @@ function CardEditor({ me }) {
   // Preview data for an OLD season row (a picker chip other than the current
   // one): that row's public profile + rating, fetched once and cached, so the
   // card on the left shows THAT season's card while you restyle it.
+  //
+  // The cache entry is a DEPENDENCY, not something read past the deps list: a
+  // picture write drops what is cached (it can change what every other row
+  // shows), and the row on screen has to come back on its own. Depending only
+  // on the chip id left the dropped row with nothing to render and nothing to
+  // fetch it — the editor fell to a skeleton and stayed there until you clicked
+  // another chip and back.
+  const isMe = pickerDriverId === me.driverId;
   const [previewByDriver, setPreviewByDriver] = useState({});
+  const rowPreview = previewByDriver[pickerDriverId];
   useEffect(() => {
-    if (pickerDriverId === me.driverId || previewByDriver[pickerDriverId]) return;
+    if (isMe || rowPreview) return;
     let alive = true;
     Promise.all([
       api.driverProfile(pickerDriverId),
@@ -74,8 +87,7 @@ function CardEditor({ me }) {
       })
       .catch((err) => alive && setError(err.message));
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickerDriverId]);
+  }, [pickerDriverId, isMe, rowPreview]);
 
   const styleOf = (id) => {
     if (id === me.driverId) return meCardStyle;
@@ -87,11 +99,27 @@ function CardEditor({ me }) {
   // EVERY season row is fully editable, not just the current one: the stored
   // values come from `me` (current row) or the fetched preview (old rows), and
   // local overlays keyed by row id carry edits until they self-save.
-  const isMe = pickerDriverId === me.driverId;
-  const rowPreview = previewByDriver[pickerDriverId];
-  // Stored (server) values for the selected row.
+  //
+  // Two different questions, and the page needs both answers:
+  //
+  //   `stored` — what the card SHOWS. A row that has dressed itself shows its
+  //     own picture and framing; a row that never has follows the person's
+  //     newest (lib/cardPhoto cardPictureFor). This is what the preview draws.
+  //   `own`    — what this row has SET, null where it is only following along.
+  //     This is what the reset buttons act on, so it is what decides whether
+  //     they are offered at all.
+  //
+  // They were treated as one value, from whichever endpoint happened to answer
+  // — the current row got its OWN values and old rows got their EFFECTIVE ones
+  // — so each was wrong in the other's direction: an old row offered "Use
+  // profile picture" for a picture it had never set, and the current row drew
+  // the profile photo over a card that goes on inheriting one.
   const stored = isMe
-    ? { photoPos: me.photoPos || null, cardPhotoUrl: me.cardPhotoUrl || null, cardAnim: me.cardAnim ?? null }
+    ? {
+        photoPos: me.cardShows?.photoPos ?? me.photoPos ?? null,
+        cardPhotoUrl: me.cardShows?.cardPhotoUrl ?? me.cardPhotoUrl ?? null,
+        cardAnim: me.cardAnim ?? null,
+      }
     : rowPreview
     ? {
         photoPos: rowPreview.driver.photoPos || null,
@@ -99,17 +127,24 @@ function CardEditor({ me }) {
         cardAnim: rowPreview.driver.cardAnim ?? null,
       }
     : null;
+  // The row's own, from the one endpoint that reads the columns raw.
+  const ownRow = cardSeasons.find((s) => s.driverId === pickerDriverId) || null;
+  // A row missing from the chips (a private season has none) falls back to
+  // what is on screen, which is how the page behaved before it knew better.
+  const ownPhoto = ownRow ? ownRow.ownCardPhotoUrl : stored?.cardPhotoUrl ?? null;
+  const ownPos = ownRow ? ownRow.ownPhotoPos : stored?.photoPos ?? null;
 
   const [posByRow, setPosByRow] = useState({}); // row id -> framing overlay
   const [photoByRow, setPhotoByRow] = useState({}); // row id -> card picture overlay
   const [animByRow, setAnimByRow] = useState({}); // row id -> "off" | null overlay
   const [posEdit, setPosEdit] = useState(null); // { id, pos } debounced save
+  // The newest framing change, by identity. A save that is already in flight
+  // when the member moves the picture again must not put its own values back
+  // on screen when it lands.
+  const latestPos = useRef(null);
   const [posState, setPosState] = useState("idle"); // idle | saving | saved
   const [cardUploading, setCardUploading] = useState(false);
-  // Picture and framing are the person's, not the season's: one picture, on
-  // every card they have, in every series and season. There is nothing to
-  // choose, so the page only says so.
-  const rowMeta = cardSeasons.find((s) => s.driverId === pickerDriverId) || null;
+  const rowMeta = ownRow;
 
   const photoPos = posByRow[pickerDriverId] !== undefined ? posByRow[pickerDriverId] : stored?.photoPos ?? null;
   const cardPhotoUrl =
@@ -118,6 +153,10 @@ function CardEditor({ me }) {
     (animByRow[pickerDriverId] !== undefined ? animByRow[pickerDriverId] : stored?.cardAnim) === "off"
       ? "off"
       : null;
+  // Has this row anything of ITS OWN to reset? An unsaved overlay is the truth
+  // until the refetch lands, the stored own value after that.
+  const hasOwnPhoto = photoByRow[pickerDriverId] !== undefined ? !!photoByRow[pickerDriverId] : !!ownPhoto;
+  const hasOwnPos = posByRow[pickerDriverId] !== undefined ? !!posByRow[pickerDriverId] : !!ownPos;
 
   // Framing auto-saves shortly after the last change. The pending edit carries
   // its OWN row id, so switching season chips mid-debounce still saves to the
@@ -128,7 +167,13 @@ function CardEditor({ me }) {
       setPosState("saving");
       try {
         const res = await api.setMyCardPhoto(posEdit.pos, posEdit.id === me.driverId ? undefined : posEdit.id);
+        // Only the save that is still the newest may write back. The timer is
+        // cancelled on every change, but one already past it cannot be: it
+        // would land a moment later and drag the zoom back to where it was
+        // before the member carried on adjusting.
+        if (latestPos.current !== posEdit) return;
         setPosByRow((m) => ({ ...m, [posEdit.id]: res.photoPos }));
+        latestPos.current = null;
         setPosEdit(null);
         setPosState("saved");
       } catch (err) {
@@ -140,19 +185,44 @@ function CardEditor({ me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posEdit]);
 
-  // A picture change reaches every row, which leaves this page's caches
-  // describing the old state of the others: they are dropped and refetched on
-  // the next chip click rather than showing a picture that is no longer there.
-  function forgetOtherRows(keepId) {
+  // "Framing saved" is a confirmation, not a state the page sits in: without
+  // this it was set once and never cleared, so the note stayed under the card
+  // for the rest of the visit.
+  useEffect(() => {
+    if (posState !== "saved") return;
+    const t = setTimeout(() => setPosState("idle"), 2500);
+    return () => clearTimeout(t);
+  }, [posState]);
+
+  // A picture or framing write lands on ONE row, but it changes what the OTHERS
+  // show: a card nobody ever dressed follows the person's newest picture, and a
+  // card just cleared falls back to whatever they carry (lib/cardPhoto
+  // cardPictureFor). Which picture that turns out to be is the server's answer,
+  // not one this page can work out, so every cached picture is dropped and the
+  // row on screen is fetched again.
+  //
+  // `keepPhoto` is the one thing a write already knows for certain: the URL an
+  // upload just returned, shown at once rather than after the round trip.
+  // CLEARING passes nothing on purpose — drawing the profile photo there would
+  // claim the card has no picture, when what it really does is go back to the
+  // one the person carries.
+  function forgetPictures(id, keepPhoto = undefined) {
     setPreviewByDriver({});
-    setPhotoByRow((m) => (keepId in m ? { [keepId]: m[keepId] } : {}));
-    setPosByRow((m) => (keepId in m ? { [keepId]: m[keepId] } : {}));
+    setPosByRow({});
+    setPhotoByRow(keepPhoto === undefined ? {} : { [id]: keepPhoto });
+    latestPos.current = null;
+    setPosEdit(null);
+    setPosState("idle");
+    reload(); // what the current row's card now shows rides on `me`
+    loadSeasons(); // what each row has set of its own
   }
 
   function editPos(p) {
     const id = pickerDriverId;
+    const edit = { id, pos: p };
+    latestPos.current = edit;
     setPosByRow((m) => ({ ...m, [id]: p }));
-    setPosEdit({ id, pos: p });
+    setPosEdit(edit);
   }
 
   async function resetCardPhoto() {
@@ -160,10 +230,9 @@ function CardEditor({ me }) {
     setError(null);
     try {
       await api.setMyCardPhoto(null, isMe ? undefined : id);
-      forgetOtherRows(id);
-      setPosByRow((m) => ({ ...m, [id]: null }));
-      setPosEdit(null);
-      setPosState("idle");
+      // The row holds no framing of its own now, so what it shows is what it
+      // inherits — fetched, not assumed to be the default.
+      forgetPictures(id);
     } catch (err) {
       setError(err.message);
     }
@@ -178,8 +247,7 @@ function CardEditor({ me }) {
     setCardUploading(true);
     try {
       const res = await api.uploadMyCardPhoto(file, isMe ? undefined : id);
-      forgetOtherRows(id);
-      setPhotoByRow((m) => ({ ...m, [id]: res.cardPhotoUrl }));
+      forgetPictures(id, res.cardPhotoUrl);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -193,8 +261,7 @@ function CardEditor({ me }) {
     setCardUploading(true);
     try {
       await api.clearMyCardPhoto(isMe ? undefined : id);
-      forgetOtherRows(id);
-      setPhotoByRow((m) => ({ ...m, [id]: null }));
+      forgetPictures(id);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -282,14 +349,18 @@ function CardEditor({ me }) {
                 cardPhotoUrl={cardPhotoUrl}
                 onPickCardPhoto={onPickCardPhoto}
                 onResetCardPhoto={resetCardPhotoImage}
+                canResetPhoto={hasOwnPhoto}
+                canResetFraming={hasOwnPos}
                 cardUploading={cardUploading}
               />
               {cardSeasons.length > 1 && (
                 <p className="text-xs leading-relaxed text-light">
                   {isMe ? (
                     <>
-                      This is your current card. Its picture and framing also show on every season you have
-                      never set by hand; seasons you did set keep what you gave them.
+                      This is your current card. The <strong className="font-semibold text-medium">picture</strong>{" "}
+                      also shows on every season you never gave one of its own; how it{" "}
+                      <strong className="font-semibold text-medium">sits</strong> is this season&rsquo;s alone, so
+                      framing here changes nothing anywhere else.
                     </>
                   ) : (
                     <>
@@ -299,8 +370,9 @@ function CardEditor({ me }) {
                           ? `${rowMeta.seriesName} Season ${rowSeasonNumber ?? ""}`.trim()
                           : `Season ${rowSeasonNumber ?? ""}`.trim()}
                       </strong>{" "}
-                      card on its own. A picture or framing you set here stays on it, even when you change your
-                      current card later — reset it to let this season follow along again.
+                      card. How the picture sits is this season&rsquo;s alone. A picture you set here stays on it
+                      too, even when you change your current card later — remove it to let this season show your
+                      current one again.
                     </>
                   )}
                 </p>
@@ -365,8 +437,11 @@ function CardEditor({ me }) {
 
 function EditDriverCardInner() {
   const me = useApi(useCallback(() => api.me(), []));
-  if (me.loading) return <Spinner label="Loading your card…" />;
-  if (me.error) return <ErrorBox message={me.error} />;
+  // Only the FIRST load takes the page: a picture write reloads this to read
+  // back what the card really shows now, and tearing the editor down to a
+  // spinner on every upload would make a self-saving page flicker.
+  if (me.loading && !me.data) return <Spinner label="Loading your card…" />;
+  if (me.error && !me.data) return <ErrorBox message={me.error} />;
   // Signed in but not linked to a roster driver yet — nothing to edit.
   if (me.data && me.data.isLinked === false) {
     return (
@@ -381,7 +456,7 @@ function EditDriverCardInner() {
       </div>
     );
   }
-  return <CardEditor me={me.data} />;
+  return <CardEditor me={me.data} reload={me.reload} />;
 }
 
 export default function EditDriverCard() {

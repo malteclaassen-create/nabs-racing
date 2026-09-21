@@ -18,14 +18,26 @@ vi.mock("./tokens.js", () => ({}));
 vi.mock("./tokenRules.js", () => ({}));
 vi.mock("./standingsRow.js", () => ({ isIdleReserve: () => false }));
 
-const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId } = await import("./raceRecap.js");
+const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId, weekendPoints } = await import("./raceRecap.js");
 
-function fakePrisma({ setting = null, drivers = [], race = null, seen = null } = {}) {
+// `format` is the round's race-day shape, `sprintChild` the id of its sprint
+// classification (null = not imported yet) and `sprintResults` how many rows
+// that classification holds — the three things that say whether a sprint
+// weekend has finished arriving.
+function fakePrisma({ setting = null, drivers = [], race = null, seen = null, format = null, sprintChild = null, sprintResults = 0 } = {}) {
   return {
     setting: { findUnique: vi.fn(async () => (setting == null ? null : { value: setting })) },
     driver: { findMany: vi.fn(async () => drivers) },
     race: { findFirst: vi.fn(async () => race) },
-    $queryRawUnsafe: vi.fn(async () => (seen == null ? [{ recapSeenRaceId: null }] : [{ recapSeenRaceId: seen }])),
+    raceResult: { count: vi.fn(async () => sprintResults) },
+    $queryRawUnsafe: vi.fn(async (sql) => {
+      if (sql.includes('"raceFormat"')) return format && race ? [{ id: race.id, raceFormat: format }] : [];
+      // readSprintChildren; readParentIds is the one with IS NOT NULL.
+      if (sql.includes('"parentRaceId"')) {
+        return sql.includes("IS NOT NULL") || !sprintChild || !race ? [] : [{ id: sprintChild, parentRaceId: race.id }];
+      }
+      return [{ recapSeenRaceId: seen }];
+    }),
     $executeRawUnsafe: vi.fn(async () => 1),
   };
 }
@@ -96,5 +108,86 @@ describe("which round is owed", () => {
       throw new Error("no such column");
     });
     expect(await seenRecapRaceId(prisma, "discord-1")).toBeNull();
+  });
+});
+
+// The two results of a sprint weekend are imported one after the other, and
+// the round looks finished the moment the first of them is saved. The recap a
+// member is SENT is shown once and never again, so it must not be sent into
+// that gap.
+describe("a sprint weekend that is still being imported", () => {
+  const drivers = [{ id: "d1", seasonId: "season-8" }];
+  const race = { id: "race-5", date: new Date() };
+  const ask = (opts) => pendingRecapRace(fakePrisma({ drivers, race, ...opts }), "d1", "discord-1");
+
+  it("waits while the sprint file is not in yet", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE" })).toBeNull();
+  });
+
+  it("waits while the sprint classification exists but holds nothing", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", sprintChild: "race-5-sprint", sprintResults: 0 })).toBeNull();
+  });
+
+  it("offers the round once both races are on file", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", sprintChild: "race-5-sprint", sprintResults: 38 })).toBe("race-5");
+  });
+
+  it("never waits on a round that ran a single race", async () => {
+    expect(await ask({ format: "SINGLE" })).toBe("race-5");
+    expect(await ask({})).toBe("race-5");
+  });
+
+  it("gives up waiting for a sprint that never comes, and tells the round anyway", async () => {
+    const old = { id: "race-5", date: new Date(Date.now() - 8 * 86_400_000) };
+    const prisma = fakePrisma({ drivers, race: old, format: "SPRINT_FEATURE" });
+    expect(await pendingRecapRace(prisma, "d1", "discord-1")).toBe("race-5");
+    // The wait has to end inside the window the recap is offered in at all,
+    // or giving up would never be reached.
+    expect(prisma.raceResult.count).not.toHaveBeenCalled();
+  });
+});
+
+// A sprint weekend is one round with two races, and the championship keeps the
+// round's cell as the total with the sprint's own share beside it. The recap
+// has to be able to say which race paid what: a driver handed "+47" and one
+// classification cannot check the number against anything.
+describe("what the round paid, race by race", () => {
+  it("leaves a plain round as the one race it was", () => {
+    expect(weekendPoints({ points: 25, fastestLap: 0, status: "FINISHED", position: 1 })).toEqual({
+      isSprintWeekend: false,
+      feature: 25,
+      featureFastestLap: 0,
+      sprint: null,
+      sprintFastestLap: 0,
+      total: 25,
+    });
+  });
+
+  it("splits a sprint weekend into the two races that paid it", () => {
+    const cell = { points: 47, fastestLap: 0, status: "FINISHED", position: 4, sprint: { points: 22, status: "FINISHED", position: 3 } };
+    expect(weekendPoints(cell)).toEqual({
+      isSprintWeekend: true,
+      feature: 25,
+      featureFastestLap: 0,
+      sprint: 22,
+      sprintFastestLap: 0,
+      total: 47,
+    });
+  });
+
+  it("keeps each race's fastest-lap bonus with that race", () => {
+    const cell = { points: 31, fastestLap: 1, status: "FINISHED", position: 2, sprint: { points: 12, fastestLap: 1, status: "FINISHED", position: 5 } };
+    const w = weekendPoints(cell);
+    expect(w).toMatchObject({ feature: 19, featureFastestLap: 1, sprint: 12, sprintFastestLap: 1, total: 31 });
+  });
+
+  it("counts a weekend where only the sprint scored", () => {
+    const cell = { points: 10, status: "DNF", position: null, sprint: { points: 10, status: "FINISHED", position: 6 } };
+    expect(weekendPoints(cell)).toMatchObject({ isSprintWeekend: true, feature: 0, sprint: 10, total: 10 });
+  });
+
+  it("falls back to the classification when the standings have no cell for the round", () => {
+    expect(weekendPoints(null, { points: 18, fastestLap: 1 })).toMatchObject({ isSprintWeekend: false, feature: 18, featureFastestLap: 1, total: 18 });
+    expect(weekendPoints(null, null)).toMatchObject({ feature: 0, sprint: null, total: 0 });
   });
 });

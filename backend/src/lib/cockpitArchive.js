@@ -176,9 +176,14 @@ export function archiveFilesFor(season, raceNumber) {
 // (another Watkins Glen, months apart), which would draw somebody a race they
 // never drove. So the file's own date has to sit within two days of the race:
 // a race past midnight, a file stamped in another zone, nothing wider.
-export function findArchiveForRace(race) {
+//
+// `sprint` picks the sprint half of a sprint weekend, the same way
+// findArchiveFor does. A sprint child row carries no round number of its own,
+// so a caller asking for one passes the event's number (lib/sprintRaces.js
+// withSprintRounds hands back exactly that row).
+export function findArchiveForRace(race, { sprint = false } = {}) {
   const season = race?.season?.number != null ? race.season : { id: race?.seasonId ?? null, number: race?.seasonNumber };
-  const json = findArchiveFor(season, race?.number);
+  const json = findArchiveFor(season, race?.number, { sprint });
   if (!json) return null;
   const fileDay = json.Date ? Date.parse(json.Date) : NaN;
   const raceDay = race?.date ? new Date(race.date).getTime() : NaN;

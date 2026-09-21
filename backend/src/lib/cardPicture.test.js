@@ -61,13 +61,14 @@ describe("cardPictureFor", () => {
     photoPos: '{"x":10,"y":10,"z":1}',
     cardPhotoUrl: "/cards/p.jpg",
     cardPhotoPos: '{"x":40,"y":30,"z":1.2}',
-    framingPos: '{"x":40,"y":30,"z":1.2}',
   };
 
   it("borrows the person's card picture when the row has none of its own", () => {
     const got = cardPictureFor({ cardPhotoUrl: null, photoUrl: null, photoPos: null }, idov);
     expect(got.cardPhotoUrl).toBe("/cards/p.jpg");
-    expect(got.photoPos).toEqual({ x: 40, y: 30, z: 1.2, s: 1, t: 0 });
+    // The FRAMING is not borrowed with it: this row has none of its own, so it
+    // gets the default one rather than the crop of another season's card.
+    expect(got.photoPos).toBeNull();
   });
 
   it("a row's own card picture always wins, with its own framing", () => {
@@ -107,10 +108,13 @@ describe("cardPictureFor", () => {
   });
 });
 
-// The rule the league asked for: every season's card can be dressed on its
-// own, what you set there stays, and the seasons you never touched follow
-// whatever your current card is wearing.
-describe("a card somebody set keeps it; a card nobody set follows", () => {
+// The rule the league asked for: one face on every card, but every season
+// framed on its own. The PICTURE is carried — a season you never dressed wears
+// what your current card wears, which is what stops a linked member showing a
+// photo in one league and a bare letter in the other. The FRAMING is not: a
+// zoom and a crop belong to one picture on one card, and carrying them meant
+// adjusting one season silently re-cropped every season left alone.
+describe("the picture is carried between seasons; the framing is not", () => {
   // The person's newest card: a picture and a framing they chose this season.
   const idov = {
     photoUrl: null,
@@ -119,15 +123,22 @@ describe("a card somebody set keeps it; a card nobody set follows", () => {
     avatarPos: null,
     cardPhotoUrl: "/cards/current.jpg",
     cardPhotoPos: '{"x":40,"y":30,"z":1.2}',
-    framingPos: '{"x":40,"y":30,"z":1.2}',
   };
   const untouched = { cardPhotoUrl: null, photoUrl: null, discordAvatar: null, photoPos: null };
 
-  it("an untouched season takes the current card's picture AND framing", () => {
+  it("an untouched season takes the current card's picture, and frames it itself", () => {
     expect(cardPictureFor(untouched, idov)).toEqual({
       cardPhotoUrl: "/cards/current.jpg",
-      photoPos: { x: 40, y: 30, z: 1.2, s: 1, t: 0 },
+      photoPos: null,
     });
+  });
+
+  it("framing one season leaves every other season's crop alone", () => {
+    // The fault this rule exists for: S8 is framed, S7 was never touched, and
+    // S7 must not be re-cropped by it.
+    const framedSeason = { ...untouched, photoPos: { x: 20, y: 80, z: 2.4, s: 0.3, t: 0.9 } };
+    expect(cardPictureFor(framedSeason, idov).photoPos).toEqual({ x: 20, y: 80, z: 2.4, s: 0.3, t: 0.9 });
+    expect(cardPictureFor(untouched, idov).photoPos).toBeNull();
   });
 
   it("a season carrying only the fanned-out profile photo still follows", () => {
@@ -152,23 +163,23 @@ describe("a card somebody set keeps it; a card nobody set follows", () => {
     });
   });
 
-  it("picture and framing pin apart: setting one leaves the other following", () => {
+  it("picture and framing pin apart: its own picture, its own framing or none", () => {
     const ownPicture = { ...untouched, cardPhotoUrl: "/cards/s3.jpg" };
-    // Its picture is its own, its framing still the current card's.
     expect(cardPictureFor(ownPicture, idov)).toEqual({
       cardPhotoUrl: "/cards/s3.jpg",
-      photoPos: { x: 40, y: 30, z: 1.2, s: 1, t: 0 },
+      photoPos: null,
     });
   });
 
-  it("clearing a row's own values hands it back to the inheritance", () => {
-    // What the editor's reset buttons leave behind is exactly `untouched`.
+  it("clearing a row's own picture hands THAT back to the person's", () => {
+    // What the editor's reset button leaves behind is exactly `untouched`: the
+    // picture follows again, the framing goes to the default.
     expect(cardPictureFor(untouched, idov).cardPhotoUrl).toBe("/cards/current.jpg");
-    expect(cardPictureFor(untouched, idov).photoPos).toEqual({ x: 40, y: 30, z: 1.2, s: 1, t: 0 });
+    expect(cardPictureFor(untouched, idov).photoPos).toBeNull();
   });
 
-  it("with nothing set anywhere there is nothing to inherit", () => {
-    expect(cardPictureFor(untouched, { ...idov, cardPhotoUrl: null, framingPos: null })).toEqual({
+  it("with no picture set anywhere there is nothing to inherit", () => {
+    expect(cardPictureFor(untouched, { ...idov, cardPhotoUrl: null })).toEqual({
       cardPhotoUrl: null,
       photoPos: null,
     });
