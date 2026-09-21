@@ -4,6 +4,8 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
+import { useProfileHome } from "../hooks/useProfileHome.js";
+import { landsOnPublicPage } from "../hooks/profileHome.mjs";
 import AttentionDot from "../components/AttentionDot.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
@@ -1639,6 +1641,7 @@ export default function DriverProfile({ previewId, preview }) {
   const navigate = useNavigate();
   const { user: authedUser } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
+  const { mode: profileHome } = useProfileHome();
   const location = useLocation();
 
   // Honour a ?season=N deep link (search results / career-table links): steer
@@ -1816,11 +1819,11 @@ export default function DriverProfile({ previewId, preview }) {
   const droppedRounds = new Set(meRow?.droppedRounds || []);
   const dropWorst = standingsData.dropWorst ?? 3;
   const totalRounds = standingsData.raceNumbers?.length || 0;
-  // The nav chip leads HERE (the public page) — so the page returns the
-  // favour: the owner gets a button through to the private editor. Hidden in
-  // the /profile live preview, which would otherwise show it to no purpose.
-  // "Own" means ANY of the person's linked season rows, so the buttons stay
-  // put while browsing one's own archive seasons too.
+  // Is this the signed-in person's own page? Used for the way back to the
+  // private area below (and hidden in the /profile live preview, which would
+  // otherwise show it to no purpose). "Own" means ANY of the person's linked
+  // season rows, so the buttons stay put while browsing one's own archive
+  // seasons too.
   const isOwnProfile =
     !previewId &&
     !!authedUser?.driverId &&
@@ -1830,12 +1833,22 @@ export default function DriverProfile({ previewId, preview }) {
       // their own Sunday profile): still this person, still their page.
       (p.otherSeries || []).some((o) => (o.rows || []).some((r) => r.driverId === authedUser.driverId)));
 
-  const ownControls = isOwnProfile && (
+  // The way through to the private area — but only when this page is where the
+  // identity chip in the bar actually lands.
+  //
+  // By default it does not: the chip opens My Profile, and the button up there
+  // is the one that comes HERE. Two buttons pointing at each other from both
+  // ends of the same pair of pages is one button too many, so this end only
+  // appears for somebody who has asked (in Settings) to be dropped on their
+  // public page instead — for whom it is the only way on.
+  //
+  // The dot rides along with it for the same reason: the nav chip wears one,
+  // and wherever the chip lands has to carry the trail onward to the admin
+  // area, or an admin following it hits a dead end. When the chip lands on
+  // My Profile, that trail runs through the Admin row in its navigation
+  // instead. `relative` is for the dot's sake.
+  const ownControls = isOwnProfile && landsOnPublicPage(profileHome, authedUser?.driverId) && (
     <div className="-mb-2 flex justify-end gap-2">
-      {/* The dot has to be on this button too, or the trail an admin follows
-          has a hole in the middle: the nav chip wears one, it leads HERE, and
-          the way on to the admin area is this button. `relative` is for the
-          dot's sake. */}
       <Link
         to="/profile"
         data-tour="personal-area"
@@ -1847,7 +1860,7 @@ export default function DriverProfile({ previewId, preview }) {
         Personal Area
         <AttentionDot total={adminAttention} summary={adminSummary} className="absolute -right-1 -top-1" />
       </Link>
-      {/* Site settings moved into the /profile member bar — no gear here. */}
+      {/* Site settings are a page of their own (/settings) — no gear here. */}
     </div>
   );
 

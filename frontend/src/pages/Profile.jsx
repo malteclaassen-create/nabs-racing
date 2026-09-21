@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
-import { SettingsDrawer } from "../components/SettingsPanel.jsx";
 import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import { profileNav, sectionKeys } from "./profileNav.mjs";
 import ProfileNav from "../components/ProfileNav.jsx";
@@ -807,7 +806,6 @@ function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const tokenBalance = useTokenBalance();
-  const navigate = useNavigate();
   // `current` rather than `slug`: the Personal Area sits outside the /s/<slug>
   // URLs, so on a cold load here there is no slug at all — while the header
   // still names a series (the active one). Following the header is the rule,
@@ -819,13 +817,11 @@ function MyProfile() {
   const leagues = useApi(useCallback(() => api.myLeagues().catch(() => ({ leagues: [] })), []));
   const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const tab = sectionKeys(COCKPIT_TABS).includes(params.get("tab")) ? params.get("tab") : "profile";
   const setTab = (key) => {
-    if (key === "settings") return setSettingsOpen(true); // drawer, not a page section
     if (key === "feedback") return openFeedback(); // the panel, not a section
-    if (key === "reports") return navigate("/reports"); // its own page, see above
-    if (key === "admin") return navigate("/admin");
+    // Settings, My reports and Admin are pages of their own: the nav draws
+    // them as links and navigates by itself, so nothing lands here for them.
     setParams(key === "profile" ? {} : { tab: key }, { replace: true });
   };
 
@@ -882,13 +878,31 @@ function MyProfile() {
           (name, flag, team, bio, socials) is editable right below and visible
           in the page preview — it only made the page longer. Its quick links
           live up here in the header now. */}
-      {/* No "Public profile" button: the identity chip in the nav bar — the one
-          carrying your own picture, in the burger menu on a phone — already
-          links straight to /drivers/<you>, from every page and every section
-          here. A second door beside it only cost header room. The editor keeps
-          its own way through, on the preview below ("Open the real page"). */}
-      <PageHeader eyebrow="Your profile" title="My Profile" />
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {/* The way through to the page everyone else sees. It is up here because
+          the identity chip in the nav bar no longer goes there: the chip opens
+          THIS page now, so the public one needs a door of its own, and the
+          header is where the other end of the pair used to keep one. (Whoever
+          switches the chip back to the public page in Settings gets the
+          opposite button there instead — never both.) It opens the row the
+          page is showing, the same one the preview at the bottom links to, so
+          in a two-league account it lands on the page you were just editing
+          rather than on whichever row the Discord login happens to sit on. */}
+      <PageHeader
+        eyebrow="Your profile"
+        title="My Profile"
+        right={
+          previewId ? (
+            <Link to={`/drivers/${previewId}`} className="btn-secondary inline-flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+              </svg>
+              Public profile
+              <span aria-hidden="true" className="text-xs text-faint">↗</span>
+            </Link>
+          ) : null
+        }
+      />
 
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
       <ProfileNav

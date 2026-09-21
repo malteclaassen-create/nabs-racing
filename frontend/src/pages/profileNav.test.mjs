@@ -31,13 +31,15 @@ test("everything that is not a section says what it really does", () => {
   assert.deepEqual(
     elsewhere.map((i) => [i.key, i.kind]),
     [
-      ["settings", "drawer"],
+      ["settings", "page"],
       ["feedback", "panel"],
       ["reports", "page"],
       ["admin", "page"],
     ]
   );
-  // The two that leave the page carry a destination, so they can be links.
+  // Settings is a page of its own now, not a drawer over this one.
+  assert.equal(elsewhere.find((i) => i.key === "settings").to, "/settings");
+  // Every entry that leaves the page carries a destination, so it can be a link.
   for (const item of elsewhere.filter((i) => i.kind === "page")) assert.ok(item.to);
 });
 

@@ -4,9 +4,9 @@
 // It used to be nine entries in one sliding tab bar. On a phone that meant a
 // sideways scroll showing four of them with nothing to say the rest were there
 // — and the bar told the same lie to everyone, because those nine entries did
-// four different things behind one identical pill: five swap the panel in
-// place, Settings opens a drawer, Feedback opens a panel, and My reports and
-// Admin leave the page altogether.
+// three different things behind one identical pill: five swap the panel in
+// place, Feedback opens a panel, and Settings, My reports and Admin leave the
+// page altogether.
 //
 // So the list is grouped and every entry says what KIND of thing it is. The
 // sections are the page; everything else is elsewhere, and says so. ProfileNav
@@ -15,8 +15,8 @@
 // ---------------------------------------------------------------------------
 
 // `kind` drives the renderer: "section" swaps the panel and owns ?tab=,
-// "drawer"/"panel" open an overlay, "page" is a real navigation and is drawn
-// as a link (middle-click, open-in-new-tab, and the right announcement).
+// "panel" opens an overlay, "page" is a real navigation and is drawn as a link
+// (middle-click, open-in-new-tab, and the right announcement).
 export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false, cockpitTabs = [] } = {}) {
   return {
     sections: [
@@ -32,7 +32,10 @@ export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false
       { kind: "section", key: "tools", label: "Telemetry", icon: "tools" },
     ],
     elsewhere: [
-      { kind: "drawer", key: "settings", label: "Settings", icon: "settings" },
+      // Settings used to be a drawer opened from here. It is a page of its own
+      // now (/settings), so this row leaves the profile like the two below it
+      // rather than sliding something over the top of it.
+      { kind: "page", key: "settings", label: "Settings", icon: "settings", to: "/settings" },
       // Feedback used to be a floating button in the bottom right corner. That
       // corner is the Report widget's now, and this is where the things you do
       // ABOUT the site rather than in it belong anyway.

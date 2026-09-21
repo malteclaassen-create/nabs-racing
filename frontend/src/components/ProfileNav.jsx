@@ -80,7 +80,9 @@ function NavRow({ item, active, onPick, attention, attentionSummary }) {
 
   if (item.kind === "page") {
     return (
-      <Link to={item.to} className={className} onClick={onPick}>
+      // No argument: `onPick` expects a key, and handing it a click event made
+      // the profile page write the event object into ?tab= on the way out.
+      <Link to={item.to} className={className} onClick={() => onPick()}>
         {inner}
       </Link>
     );
@@ -120,10 +122,15 @@ export default function ProfileNav({ nav, value, onSelect, attention = 0, attent
   const [sheetOpen, setSheetOpen] = useState(false);
   const here = nav.sections.find((s) => s.key === value);
 
+  // A choice anywhere: the links call this with nothing (they navigate by
+  // themselves), so a missing key means "leave the panel where it is".
+  const choose = (key) => {
+    if (key) onSelect(key);
+  };
   // The sheet closes on any choice — including a link, which is leaving anyway.
   const pick = (key) => {
     setSheetOpen(false);
-    if (key) onSelect(key);
+    choose(key);
   };
 
   const groups = (onPick) => (
@@ -161,12 +168,19 @@ export default function ProfileNav({ nav, value, onSelect, attention = 0, attent
       </Modal>
 
       {/* Desktop: the same list, open. Sticky clears the 80px nav bar, the way
-          the races rail does. */}
+          the races rail does.
+
+          It sits in a card of its own rather than loose against the page
+          background: beside a column made of cards, an unframed list read as
+          leftover text rather than as the thing steering the page. The frame
+          says where the navigation ends and the panel begins — and it is the
+          same border, background and radius every other panel on the site
+          wears, so it joins them instead of inventing a third look. */}
       <nav
         aria-label="Profile sections"
-        className="hidden lg:sticky lg:top-28 lg:block lg:w-[236px] lg:flex-none lg:self-start"
+        className="hidden lg:sticky lg:top-28 lg:block lg:w-[252px] lg:flex-none lg:self-start lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:p-2.5 lg:shadow-sm"
       >
-        {groups(onSelect)}
+        {groups(choose)}
       </nav>
     </>
   );

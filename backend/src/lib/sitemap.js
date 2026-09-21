@@ -52,6 +52,7 @@ import { TRACK_EDITOR_ENABLED } from "./features.js";
 const DISALLOW = [
   "/admin", // league office
   "/profile", // a member's own area
+  "/settings", // this browser's own theme/performance choices
   "/feedback", // a member's own messages to the admins
   "/cockpit",
   "/cards",
