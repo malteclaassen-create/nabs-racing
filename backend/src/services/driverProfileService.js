@@ -27,7 +27,7 @@ import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
 import { achievementMeta } from "../lib/achievements.js";
 import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { withClassifiedPositions } from "./penalisedResults.js";
-import { readSprintChildrenOf, readParentIds, readSprintChildren } from "../lib/sprintRaces.js";
+import { readSprintChildrenOf, readParentIds, readSprintChildren, readScoringSprintParents } from "../lib/sprintRaces.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -116,8 +116,11 @@ export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, sea
   // The sprint halves of sprint weekends: their rows sit on hidden child
   // races (flagged special, lib/sprintRaces.js), so they are told apart from
   // real special events by the parent link.
+  // Only the sprints of a ROUND that counts: a practice night in the sprint
+  // format has a child row like any weekend, and used to be counted as a race
+  // here — one extra start, sometimes an extra win (lib/sprintRaces.js).
   const specialIds = results.filter((r) => eligible(r) && r.race.isSpecialEvent).map((r) => r.raceId);
-  const sprintIds = await readParentIds(prisma, specialIds);
+  const sprintIds = await readScoringSprintParents(prisma, specialIds);
   const sprintRows = results.filter((r) => sprintIds.has(r.raceId));
 
   // EVERY race counts as a race: the feature races and the sprints of sprint

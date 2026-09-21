@@ -1094,7 +1094,11 @@ export default function DriverCareer({ careerKey = null, embedded = false }) {
                     value: totals.positionsGained > 0 ? `+${totals.positionsGained}` : totals.positionsGained,
                     accent: totals.positionsGained > 0 ? "#16a34a" : totals.positionsGained < 0 ? "#dc2626" : undefined,
                   },
-                  { label: "Retirements", value: totals.dsq ? `${totals.dnf} + ${totals.dsq} DSQ` : totals.dnf },
+                  // Two different things, so two lines: a retirement is a
+                  // race that ended early, a disqualification is one taken
+                  // away afterwards. "1 + 1 DSQ" in one cell read like a sum.
+                  { label: "Retirements", value: totals.dnf },
+                  ...(totals.dsq ? [{ label: "Disqualified", value: totals.dsq }] : []),
                   {
                     label: "Penalty time",
                     value: `${Math.round((totals.stewardPenaltySeconds || 0) + (totals.gamePenaltySeconds || 0))}s`,

@@ -42,6 +42,35 @@ export async function readParentIds(prisma, raceIds) {
   }
 }
 
+// The sprint children among `raceIds` whose ROUND actually counts, mapped to
+// their parent race row (number, track, country, date, seasonId).
+//
+// A sprint is only half a race night, and readParentIds alone cannot tell which
+// nights are real: a PRACTICE evening run in the sprint format puts its sprint
+// on a child row exactly like a championship weekend does, and a weekend whose
+// feature race has not been saved yet has a child with nothing to belong to.
+// Counting either as a race is how the career page once drew three squares
+// against two starts. Anything counting sprint results off a driver's OWN rows
+// (rather than walking a season's rounds) needs this.
+export async function readScoringSprintParents(prisma, raceIds) {
+  const parents = await readParentIds(prisma, raceIds);
+  if (!parents.size) return new Map();
+  const rows = await prisma.race.findMany({
+    where: { id: { in: [...new Set(parents.values())] } },
+    select: {
+      id: true, number: true, track: true, country: true, date: true,
+      isCompleted: true, isSpecialEvent: true, seasonId: true,
+    },
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = new Map();
+  for (const [childId, parentId] of parents) {
+    const parent = byId.get(parentId);
+    if (parent && parent.isCompleted && !parent.isSpecialEvent) out.set(childId, parent);
+  }
+  return out;
+}
+
 // Map parentRaceId -> childRaceId (the sprint row) for the given parent ids.
 export async function readSprintChildren(prisma, raceIds) {
   const ids = [...new Set(raceIds)].filter(Boolean);

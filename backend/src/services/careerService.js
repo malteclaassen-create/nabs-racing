@@ -20,7 +20,7 @@ import { withClassifiedPositions } from "./penalisedResults.js";
 import { getLinkedDriverIds, getPersonGroups, getNameOverrides, getIdentityOverrides, discordIdsForDrivers } from "../lib/persons.js";
 import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
 import { driverHandle } from "../lib/driverHandles.js";
-import { readParentIds } from "../lib/sprintRaces.js";
+import { readScoringSprintParents } from "../lib/sprintRaces.js";
 import { readPoleHolders, readManualFastestLaps } from "../lib/raceHonours.js";
 import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
@@ -170,25 +170,13 @@ async function computeCareer(prisma, key, includePrivate) {
   );
   const counts = results.filter((r) => r.race?.isCompleted && publicSeasonIds.has(r.race.seasonId));
   const featureRows = counts.filter((r) => !r.race.isSpecialEvent);
-  const sprintParents = await readParentIds(prisma, counts.filter((r) => r.race.isSpecialEvent).map((r) => r.raceId));
-  // The round a sprint belongs to, for its number, its circuit and its date.
-  const parentRaces = new Map(
-    (
-      await prisma.race.findMany({
-        where: { id: { in: [...new Set([...sprintParents.values()])] } },
-        select: { id: true, number: true, track: true, country: true, date: true, isCompleted: true, isSpecialEvent: true, seasonId: true },
-      })
-    ).map((r) => [r.id, r])
+  // childId -> the round it belongs to, for the sprints that count at all
+  // (lib/sprintRaces.js decides; a practice night's sprint is not a race).
+  const sprintParents = await readScoringSprintParents(
+    prisma,
+    counts.filter((r) => r.race.isSpecialEvent).map((r) => r.raceId)
   );
-  // A sprint counts only where its ROUND does. Two ways it does not: the
-  // feature race has not been saved yet (the standings count a round once it
-  // is complete), or the parent is a practice night, which runs the same
-  // sprint format but scores nothing. Both used to put a square on the season
-  // strip that no start ever matched.
-  const sprintRows = counts.filter((r) => {
-    const parent = parentRaces.get(sprintParents.get(r.raceId));
-    return parent && parent.isCompleted && !parent.isSpecialEvent && publicSeasonIds.has(parent.seasonId);
-  });
+  const sprintRows = counts.filter((r) => publicSeasonIds.has(sprintParents.get(r.raceId)?.seasonId));
   const raced = [...featureRows, ...sprintRows];
 
   // Poles: the qualifying holder of every round the person entered.
@@ -503,6 +491,14 @@ async function computeCareer(prisma, key, includePrivate) {
     rows.map((r) => [r.id, standingsBySeason.get(r.seasonId)?.standings?.find((x) => x.driverId === r.id) || null])
   );
   const isSprint = (r) => sprintParents.has(r.raceId);
+  // One pole per ROUND, never one per classification. The qualifying session
+  // belongs to the weekend: marking the sprint row as well counted a pole
+  // twice, which is why the career total and this list disagreed. Where the
+  // feature race has no holder on file, the sprint's grid-1 row is the round's
+  // pole (a hand-recorded weekend that starts its sprint from the qualifying
+  // order) — the same rule the driver page uses.
+  const childOfRound = new Map([...sprintParents].map(([childId, parent]) => [parent.id, childId]));
+  const poleOfRound = (raceId) => poleByRace.get(raceId) ?? poleByRace.get(childOfRound.get(raceId)) ?? null;
   const orderOf = (r, date) => {
     const t = date ? new Date(date).getTime() : 0;
     return t || (seasonById.get(r.race.seasonId)?.number ?? 0) * 1000 + (r.race.number ?? 0);
@@ -511,7 +507,7 @@ async function computeCareer(prisma, key, includePrivate) {
     .map((r) => {
       const season = seasonById.get(r.race.seasonId);
       const series = visibleSeries(r.race.seasonId);
-      const parent = isSprint(r) ? parentRaces.get(sprintParents.get(r.raceId)) || null : null;
+      const parent = isSprint(r) ? sprintParents.get(r.raceId) || null : null;
       const round = parent ? parent.number : r.race.number;
       const date = parent?.date || r.race.date || null;
       const row = rows.find((x) => x.id === r.driverId);
@@ -535,7 +531,7 @@ async function computeCareer(prisma, key, includePrivate) {
         points,
         bestLapMs: r.bestLapMs ?? null,
         fastestLap: flByRace.get(r.raceId)?.driverId === r.driverId,
-        pole: poleByRace.get(r.raceId) === r.driverId,
+        pole: !isSprint(r) && poleOfRound(r.raceId) === r.driverId,
         teamName: row?.team?.name || null,
         teamColor: row?.team?.color || null,
         _order: orderOf(r, date),
