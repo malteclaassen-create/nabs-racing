@@ -96,13 +96,6 @@ async function applyToAllOwnRows(actingId, discordId, write) {
   }
 }
 
-// Did this request ask for the change to apply to every league? The card
-// editor always names the row it is editing, so unlike the profile editor
-// (editTarget, where leaving driverId out MEANS "all leagues") the wish has to
-// be said out loud. Absent = this row alone, which is how the page behaved
-// before the option existed.
-const wantsAllLeagues = (v) => v === true || v === "true" || v === "1";
-
 // Which row(s) a self-service edit targets. By default the edit is the
 // PERSON's: it lands on the acting row and fans out to their row in every
 // other league (applyToOwnRows). A member who wants one league's profile to
@@ -343,12 +336,18 @@ router.put("/tiles", async (req, res, next) => {
   }
 });
 
-// PUT /api/me/card-photo { pos: {x,y,z} | null, driverId?, allLeagues? } -> how
-// the picture sits on the driver rating card (focal point % + zoom). null =
-// back to the default framing. Values are clamped server-side, so a broken
-// client can never park the photo off the card. `driverId` targets one of the
-// person's OWN linked season rows (each season's card frames independently);
-// `allLeagues` carries the same framing to their current row in every league.
+// PUT /api/me/card-photo { pos: {x,y,z} | null, driverId? } -> how the picture
+// sits on the driver rating card (focal point % + zoom). null = back to the
+// default framing. Values are clamped server-side, so a broken client can
+// never park the photo off the card.
+//
+// It is written to THIS ROW alone, and that is what makes it stick: a card
+// the member has framed keeps that framing for good, while every card they
+// never touched follows the person's newest one on read (lib/cardPhoto
+// cardPictureFor). So framing the current card carries through to the seasons
+// still on the default, and leaves a season somebody dressed on purpose
+// alone. `pos: null` clears this row's own framing and hands it back to that
+// inheritance.
 router.put("/card-photo", async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -363,11 +362,6 @@ router.put("/card-photo", async (req, res, next) => {
       value = JSON.stringify(pos);
     }
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${driverId}`;
-    if (wantsAllLeagues(req.body?.allLeagues)) {
-      await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
-        for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${id}`;
-      });
-    }
     res.json({ ok: true, photoPos: value ? JSON.parse(value) : null });
   } catch (e) {
     next(e);
@@ -423,8 +417,8 @@ router.get("/card-editions", async (req, res, next) => {
 
 // GET /api/me/card-seasons -> the person's linked rows for the picker's season
 // chips: [{ driverId, seasonNumber, seasonName, seriesId, seriesName,
-// seriesSlug, isCurrent, cardStyle }], the acting row's league first and each
-// league's seasons newest first. Private seasons are excluded (a hidden season
+// seriesSlug, cardStyle }], the acting row's league first and each league's
+// seasons newest first. Private seasons are excluded (a hidden season
 // has no public card).
 //
 // The league belongs on the chip: somebody racing in two of them has a row per
@@ -454,13 +448,8 @@ router.get("/card-seasons", async (req, res, next) => {
     // Public series only, like GET /leagues: a row in a private series keeps
     // its chip (it did before) but is not named, so nothing unreleased is
     // spelled out on the page.
-    const [series, currentIds, seriesOfSeason] = await Promise.all([
-      dbListSeries(prisma),
-      ownCurrentRowIds(prisma, actingId, req.user?.discordId).catch(() => [actingId]),
-      seasonSeriesMap(prisma),
-    ]);
+    const [series, seriesOfSeason] = await Promise.all([dbListSeries(prisma), seasonSeriesMap(prisma)]);
     const seriesById = new Map(series.map((x) => [x.id, x]));
-    const current = new Set(currentIds);
     const actingSeriesId = seriesOfSeason.get(rows.find((r) => r.id === actingId)?.seasonId) || null;
     const seasons = rows
       .filter((r) => r.season?.number != null && !privateSeasonIds.has(r.seasonId))
@@ -474,9 +463,6 @@ router.get("/card-seasons", async (req, res, next) => {
           seriesId,
           seriesName: s?.name || null,
           seriesSlug: s?.slug || null,
-          // Only a current row can carry a change into the other leagues, so
-          // the page knows where to offer that.
-          isCurrent: current.has(r.id),
           cardStyle: styleById.get(r.id) ?? null,
         };
       })
@@ -650,12 +636,10 @@ router.delete("/photo", async (req, res, next) => {
 });
 
 // Write one uploaded card picture to ONE row: its own file, named after that
-// row, and the row's column pointing at it. Every row keeps a file of its own
-// even when the same picture goes to several — sharing one file would mean a
-// later upload in one league silently repainting the others, and would leave
-// pictures behind when an account is deleted (accountDeletionService removes
-// them by row id). Returns the stored URL, or null when the id can't be a file
-// name.
+// row, and the row's column pointing at it. A file per row is what lets an
+// account deletion remove them, which it does by row id
+// (accountDeletionService). Returns the stored URL, or null when the id can't
+// be a file name.
 function writeCardPicture(driverId, buffer, ext) {
   mkdirSync(CARD_DIR, { recursive: true });
   const filename = `${driverId}${ext}`;
@@ -666,12 +650,14 @@ function writeCardPicture(driverId, buffer, ext) {
   return `/api/uploads/cards/${filename}?v=${Date.now()}`;
 }
 
-// POST /api/me/card-photo-image (multipart: file=<image>, driverId?,
-// allLeagues?) -> a card-ONLY picture, separate from the profile avatar. null
-// column = the card uses the profile photo. Written via raw SQL (cardPhotoUrl
-// is a raw column). `driverId` (a form field) targets one of the person's own
-// season rows; `allLeagues` puts the same picture on their current row in
-// every league they race in.
+// POST /api/me/card-photo-image (multipart: file=<image>, driverId?) -> a
+// card-ONLY picture, separate from the profile avatar. null column = the card
+// uses the profile photo. Written via raw SQL (cardPhotoUrl is a raw column).
+//
+// Written to THIS ROW alone: the card the member set keeps its picture, and
+// every card they never touched follows the person's newest one on read
+// (lib/cardPhoto cardPictureFor). `driverId` (a form field) says which row
+// the editor had open.
 router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -685,23 +671,15 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
     const cardPhotoUrl = writeCardPicture(driverId, req.file.buffer, ext);
     if (!cardPhotoUrl) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
-    if (wantsAllLeagues(req.body?.allLeagues)) {
-      await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
-        for (const id of ids) {
-          const url = writeCardPicture(id, req.file.buffer, ext);
-          if (url) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${url} WHERE "id" = ${id}`;
-        }
-      });
-    }
     res.json({ ok: true, cardPhotoUrl });
   } catch (e) {
     next(e);
   }
 });
 
-// DELETE /api/me/card-photo-image?driverId=&allLeagues= -> drop the card-only
-// picture, so the card falls back to the profile photo again. `driverId` and
-// `allLeagues` as above.
+// DELETE /api/me/card-photo-image?driverId= -> drop this row's own card
+// picture, which hands the card back to the inheritance: it follows the
+// person's newest picture again, or their profile photo when there is none.
 router.delete("/card-photo-image", async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -709,11 +687,6 @@ router.delete("/card-photo-image", async (req, res, next) => {
     const driverId = await resolveOwnRow(req, res, actingId, req.query?.driverId);
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
-    if (wantsAllLeagues(req.query?.allLeagues)) {
-      await applyToOwnRows(driverId, req.user?.discordId, async (ids) => {
-        for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${id}`;
-      });
-    }
     res.json({ ok: true, cardPhotoUrl: null });
   } catch (e) {
     next(e);

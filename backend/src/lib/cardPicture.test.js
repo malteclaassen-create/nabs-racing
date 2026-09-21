@@ -56,7 +56,13 @@ describe("resolveIdentityOverrides: the card picture travels with the person", (
 });
 
 describe("cardPictureFor", () => {
-  const idov = { photoUrl: "/avatars/p.jpg", photoPos: '{"x":10,"y":10,"z":1}', cardPhotoUrl: "/cards/p.jpg", cardPhotoPos: '{"x":40,"y":30,"z":1.2}' };
+  const idov = {
+    photoUrl: "/avatars/p.jpg",
+    photoPos: '{"x":10,"y":10,"z":1}',
+    cardPhotoUrl: "/cards/p.jpg",
+    cardPhotoPos: '{"x":40,"y":30,"z":1.2}',
+    framingPos: '{"x":40,"y":30,"z":1.2}',
+  };
 
   it("borrows the person's card picture when the row has none of its own", () => {
     const got = cardPictureFor({ cardPhotoUrl: null, photoUrl: null, photoPos: null }, idov);
@@ -70,19 +76,99 @@ describe("cardPictureFor", () => {
     expect(got).toEqual({ cardPhotoUrl: "/cards/own.jpg", photoPos: own });
   });
 
-  it("a row's own uploaded photo keeps the card: the person's does not overrule it", () => {
+  it("a row's own profile photo does NOT hold the current card's picture off", () => {
+    // A profile photo is not a card choice — it is only what a card falls
+    // back to. The picture set on the person's card still wins here.
     const got = cardPictureFor({ cardPhotoUrl: null, photoUrl: "/uploads/own.jpg", photoPos: null }, idov);
-    expect(got).toEqual({ cardPhotoUrl: "/uploads/own.jpg", photoPos: null });
+    expect(got.cardPhotoUrl).toBe("/cards/p.jpg");
+  });
+
+  it("...but it does win once nobody has a card picture anywhere", () => {
+    const got = cardPictureFor(
+      { cardPhotoUrl: null, photoUrl: "/uploads/own.jpg", photoPos: null },
+      { ...idov, cardPhotoUrl: null }
+    );
+    expect(got.cardPhotoUrl).toBe("/uploads/own.jpg");
   });
 
   it("falls back to the person's photo when they have no card picture", () => {
-    const got = cardPictureFor({ cardPhotoUrl: null, photoUrl: null, photoPos: null }, { ...idov, cardPhotoUrl: null });
+    const got = cardPictureFor(
+      { cardPhotoUrl: null, photoUrl: null, photoPos: null },
+      { ...idov, cardPhotoUrl: null }
+    );
     expect(got.cardPhotoUrl).toBe("/avatars/p.jpg");
-    expect(got.photoPos).toEqual({ x: 10, y: 10, z: 1, s: 1, t: 0 });
   });
 
   it("an unlinked row is left exactly as it is", () => {
     expect(cardPictureFor({ cardPhotoUrl: null, photoUrl: null, photoPos: null }, undefined)).toEqual({
+      cardPhotoUrl: null,
+      photoPos: null,
+    });
+  });
+});
+
+// The rule the league asked for: every season's card can be dressed on its
+// own, what you set there stays, and the seasons you never touched follow
+// whatever your current card is wearing.
+describe("a card somebody set keeps it; a card nobody set follows", () => {
+  // The person's newest card: a picture and a framing they chose this season.
+  const idov = {
+    photoUrl: null,
+    photoPos: null,
+    avatarUrl: null,
+    avatarPos: null,
+    cardPhotoUrl: "/cards/current.jpg",
+    cardPhotoPos: '{"x":40,"y":30,"z":1.2}',
+    framingPos: '{"x":40,"y":30,"z":1.2}',
+  };
+  const untouched = { cardPhotoUrl: null, photoUrl: null, discordAvatar: null, photoPos: null };
+
+  it("an untouched season takes the current card's picture AND framing", () => {
+    expect(cardPictureFor(untouched, idov)).toEqual({
+      cardPhotoUrl: "/cards/current.jpg",
+      photoPos: { x: 40, y: 30, z: 1.2, s: 1, t: 0 },
+    });
+  });
+
+  it("a season carrying only the fanned-out profile photo still follows", () => {
+    // /me/photo writes the same avatar onto the person's current rows; that is
+    // not somebody dressing that season's card, so it must not pin it.
+    expect(cardPictureFor({ ...untouched, photoUrl: "/uploads/avatar.jpg" }, idov).cardPhotoUrl).toBe(
+      "/cards/current.jpg"
+    );
+  });
+
+  it("a season given its own picture keeps it when the current card changes", () => {
+    const pinned = { ...untouched, cardPhotoUrl: "/cards/s3.jpg" };
+    expect(cardPictureFor(pinned, idov).cardPhotoUrl).toBe("/cards/s3.jpg");
+  });
+
+  it("a season framed by hand keeps that framing, picture or no picture", () => {
+    const own = { x: 50, y: 50, z: 2, s: 0.5, t: 0 };
+    // Framed but never given a picture: it still follows the current picture.
+    expect(cardPictureFor({ ...untouched, photoPos: own }, idov)).toEqual({
+      cardPhotoUrl: "/cards/current.jpg",
+      photoPos: own,
+    });
+  });
+
+  it("picture and framing pin apart: setting one leaves the other following", () => {
+    const ownPicture = { ...untouched, cardPhotoUrl: "/cards/s3.jpg" };
+    // Its picture is its own, its framing still the current card's.
+    expect(cardPictureFor(ownPicture, idov)).toEqual({
+      cardPhotoUrl: "/cards/s3.jpg",
+      photoPos: { x: 40, y: 30, z: 1.2, s: 1, t: 0 },
+    });
+  });
+
+  it("clearing a row's own values hands it back to the inheritance", () => {
+    // What the editor's reset buttons leave behind is exactly `untouched`.
+    expect(cardPictureFor(untouched, idov).cardPhotoUrl).toBe("/cards/current.jpg");
+    expect(cardPictureFor(untouched, idov).photoPos).toEqual({ x: 40, y: 30, z: 1.2, s: 1, t: 0 });
+  });
+
+  it("with nothing set anywhere there is nothing to inherit", () => {
+    expect(cardPictureFor(untouched, { ...idov, cardPhotoUrl: null, framingPos: null })).toEqual({
       cardPhotoUrl: null,
       photoPos: null,
     });
@@ -161,10 +247,12 @@ describe("the picture chain the browser walks", () => {
   const idov = { photoUrl: "/uploads/person.jpg", photoPos: null, avatarUrl: "/avatars/person.png", avatarPos: null, cardPhotoUrl: "/cards/person.jpg", cardPhotoPos: null };
 
   it("offers every candidate, best first", () => {
+    // Card pictures first (this row's, then the current card's), then the
+    // profile photos, then the avatars — see rankedPictures.
     expect(pictureChainFor(own, idov)).toEqual([
       "/cards/own.jpg",
-      "/uploads/own.jpg",
       "/cards/person.jpg",
+      "/uploads/own.jpg",
       "/uploads/person.jpg",
       "/avatars/person.png",
       "/avatars/own.png",
@@ -191,7 +279,7 @@ describe("the picture chain the browser walks", () => {
 
   it("the fallbacks are the chain minus the picture already on show", () => {
     expect(photoFallbacksFor(own, idov)).toEqual(pictureChainFor(own, idov).slice(1));
-    expect(photoFallbacksFor(own, idov)[0]).toBe("/uploads/own.jpg");
+    expect(photoFallbacksFor(own, idov)[0]).toBe("/cards/person.jpg");
   });
 
   it("a row with a dead avatar and a linked person still has somewhere to go", () => {
