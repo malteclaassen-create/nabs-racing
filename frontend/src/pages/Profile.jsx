@@ -879,7 +879,16 @@ function MyProfile() {
         <Tokens />
       ) : tab === "rating" ? (
         <div data-tour="my-rating-panel">
-          <MyRating me={d} />
+          {/* The leagues ride along: a rating belongs to ONE of them, and the
+              panel defaults to the league the site is viewing rather than to
+              whichever row the Discord login happens to sit on. Mounted only
+              once that read has settled — starting without it would fetch the
+              login's own league first and flash the wrong numbers. */}
+          {leagues.loading && !leagues.data ? (
+            <Spinner label="Loading your rating…" />
+          ) : (
+            <MyRating me={d} leagues={leagueList} />
+          )}
         </div>
       ) : tab !== "profile" ? (
         <CockpitPanels tab={tab} onTab={setTab} />

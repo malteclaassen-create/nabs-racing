@@ -791,13 +791,20 @@ router.post("/race-recap/seen", async (req, res, next) => {
   }
 });
 
-// GET /api/me/rating/history -> the logged-in driver's own rating, replayed
-// round by round (curve points + per-race facts + component breakdown). Own
-// eyes only on purpose — the full what-goes-into-it view is private, the
-// public profile card just shows the four numbers.
+// GET /api/me/rating/history?driverId= -> the logged-in driver's own rating,
+// replayed round by round (curve points + per-race facts + component
+// breakdown). Own eyes only on purpose — the full what-goes-into-it view is
+// private, the public profile card just shows the four numbers.
+//
+// `driverId` names WHICH of the person's league rows the numbers are for (see
+// resolveOwnRow). A rating is a league's rating: it ranks you against that
+// field, in that series' seasons, and the row the Discord link happens to sit
+// on is only one of them. Without it the acting row answers, as before.
 router.get("/rating/history", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.query.driverId);
     if (!driverId) return;
     const history = await getDriverRatingHistory(prisma, driverId);
     if (!history) return res.status(404).json({ error: "No rating yet" });
@@ -822,12 +829,16 @@ router.get("/rating/history", async (req, res, next) => {
   }
 });
 
-// GET /api/me/rating/career -> every RACE of every season, replayed. The
-// expensive view, so it is its own request: the page only asks for it when the
-// reader switches the all-time chart to per-race detail.
+// GET /api/me/rating/career?driverId= -> every RACE of every season, replayed.
+// The expensive view, so it is its own request: the page only asks for it when
+// the reader switches the all-time chart to per-race detail. `driverId` picks
+// the league row, exactly as on /rating/history above — the career window
+// never crosses series either, so the two must be asked for the same row.
 router.get("/rating/career", async (req, res, next) => {
   try {
-    const driverId = await requireDriver(req, res);
+    const actingId = await requireDriver(req, res);
+    if (!actingId) return;
+    const driverId = await resolveOwnRow(req, res, actingId, req.query.driverId);
     if (!driverId) return;
     const career = await getDriverCareerRatings(prisma, driverId, { perRace: true });
     res.json({ points: career?.points || [] });

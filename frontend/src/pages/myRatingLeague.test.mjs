@@ -1,0 +1,41 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { leagueRowFor, pickedLeague } from "./myRatingLeague.mjs";
+
+// The shape api.myLeagues() answers with: the login's own row first, one per
+// series. This person's Discord link sits on their Friday row.
+const LEAGUES = [
+  { driverId: "d-fri", isActing: true, seriesSlug: "friday-cup", seriesName: "Friday Cup" },
+  { driverId: "d-sun", isActing: false, seriesSlug: "sunday-championship", seriesName: "Sunday Championship" },
+];
+
+test("one league needs no choosing — the backend's own row is already right", () => {
+  assert.equal(leagueRowFor([{ driverId: "d-fri", isActing: true, seriesSlug: "friday-cup" }], "friday-cup"), null);
+  assert.equal(leagueRowFor([], "friday-cup"), null);
+  assert.equal(leagueRowFor(null, "friday-cup"), null);
+});
+
+test("the viewed series decides, not the row the login sits on", () => {
+  // The bug this exists for: viewing Sunday while the login is Friday's used
+  // to show the Friday rating next to the Sunday card.
+  assert.equal(leagueRowFor(LEAGUES, "sunday-championship").driverId, "d-sun");
+  assert.equal(leagueRowFor(LEAGUES, "friday-cup").driverId, "d-fri");
+});
+
+test("a league the person doesn't race in falls back to their own row", () => {
+  assert.equal(leagueRowFor(LEAGUES, "gt-masters").driverId, "d-fri");
+  assert.equal(leagueRowFor(LEAGUES, null).driverId, "d-fri");
+  // No acting flag anywhere: the first row still answers rather than nothing.
+  const noActing = LEAGUES.map((l) => ({ ...l, isActing: false }));
+  assert.equal(leagueRowFor(noActing, "gt-masters").driverId, "d-fri");
+});
+
+test("a pick by hand outranks the viewed series", () => {
+  assert.equal(pickedLeague(LEAGUES, "sunday-championship", "d-fri").driverId, "d-fri");
+  assert.equal(pickedLeague(LEAGUES, "friday-cup", "d-sun").driverId, "d-sun");
+});
+
+test("a pick that no longer exists falls back instead of blanking the panel", () => {
+  assert.equal(pickedLeague(LEAGUES, "sunday-championship", "d-gone").driverId, "d-sun");
+  assert.equal(pickedLeague(LEAGUES, "sunday-championship", null).driverId, "d-sun");
+});

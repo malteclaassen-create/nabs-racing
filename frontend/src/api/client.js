@@ -432,9 +432,19 @@ export const api = {
   driverProfileAt: (id, season) => request(`/drivers/${id}/profile${seasonParam(season)}`, { auth: true }),
   driverRatingAt: (id, season) => request(`/drivers/${id}/rating${seasonParam(season)}`, { auth: true }),
   // Own round-by-round rating history + component breakdown (My Rating tab).
-  myRatingHistory: () => request("/me/rating/history", { userAuth: true }),
-  // Per-race career curve — heavier, so it loads only on demand.
-  myRatingCareer: () => request("/me/rating/career", { userAuth: true }),
+  // `driverId` is one of the person's OWN league rows (api.myLeagues): a rating
+  // belongs to a league — it ranks you against that field, over that series'
+  // seasons — so the page names the row it means instead of letting the backend
+  // fall back to whichever row the Discord link sits on. Left out, that
+  // fallback still applies, which is right for a member racing in one league.
+  // Not seriesQ(): the id is the person's row IN that series, and the backend
+  // checks it is theirs.
+  myRatingHistory: (driverId = null) =>
+    request(`/me/rating/history${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, { userAuth: true }),
+  // Per-race career curve — heavier, so it loads only on demand. Same row as
+  // the history above, or the curve would be another league's.
+  myRatingCareer: (driverId = null) =>
+    request(`/me/rating/career${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, { userAuth: true }),
   // `upTo` freezes the table after that round, for the constructors poster.
   t1Standings: (season, upTo = null) =>
     request(`/standings/constructors/t1${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
