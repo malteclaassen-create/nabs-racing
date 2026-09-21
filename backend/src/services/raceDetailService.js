@@ -278,6 +278,13 @@ export async function raceDetailPayload(prisma, race) {
   // own endpoint so the page opens complete, the same way the replay link and
   // the session format already do.
   const photos = withUrls(await readRacePhotos(prisma, race.id));
+  // A sprint classification's archived file is filed under its EVENT's round
+  // number with the sprint flag (lib/cockpitArchive.js), because the child row
+  // carries no number of its own. Look for the lap-by-lap view there, or the
+  // Sprint tab would never be offered one.
+  const filedNumber = sprintOf
+    ? (await prisma.race.findUnique({ where: { id: sprintOf }, select: { number: true } }).catch(() => null))?.number ?? null
+    : race.number;
   return {
     photos,
     race: {
@@ -308,7 +315,7 @@ export async function raceDetailPayload(prisma, race) {
       // lap-by-lap view to switch the classification over to. A directory
       // listing, not a parse (lib/cockpitArchive.js) — the chart itself is
       // fetched only if somebody asks for it.
-      hasLapChart: hasArchiveFor(race.season, race.number),
+      hasLapChart: hasArchiveFor(race.season, filedNumber, { sprint: !!sprintOf }),
       // Championship round, training session or special event. The list
       // endpoint has always sent this; the detail one did not, so the results
       // table had no way to tell them apart and showed a points column for

@@ -18,7 +18,7 @@ vi.mock("./tokens.js", () => ({}));
 vi.mock("./tokenRules.js", () => ({}));
 vi.mock("./standingsRow.js", () => ({ isIdleReserve: () => false }));
 
-const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId } = await import("./raceRecap.js");
+const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId, weekendPoints } = await import("./raceRecap.js");
 
 function fakePrisma({ setting = null, drivers = [], race = null, seen = null } = {}) {
   return {
@@ -96,5 +96,50 @@ describe("which round is owed", () => {
       throw new Error("no such column");
     });
     expect(await seenRecapRaceId(prisma, "discord-1")).toBeNull();
+  });
+});
+
+// A sprint weekend is one round with two races, and the championship keeps the
+// round's cell as the total with the sprint's own share beside it. The recap
+// has to be able to say which race paid what: a driver handed "+47" and one
+// classification cannot check the number against anything.
+describe("what the round paid, race by race", () => {
+  it("leaves a plain round as the one race it was", () => {
+    expect(weekendPoints({ points: 25, fastestLap: 0, status: "FINISHED", position: 1 })).toEqual({
+      isSprintWeekend: false,
+      feature: 25,
+      featureFastestLap: 0,
+      sprint: null,
+      sprintFastestLap: 0,
+      total: 25,
+    });
+  });
+
+  it("splits a sprint weekend into the two races that paid it", () => {
+    const cell = { points: 47, fastestLap: 0, status: "FINISHED", position: 4, sprint: { points: 22, status: "FINISHED", position: 3 } };
+    expect(weekendPoints(cell)).toEqual({
+      isSprintWeekend: true,
+      feature: 25,
+      featureFastestLap: 0,
+      sprint: 22,
+      sprintFastestLap: 0,
+      total: 47,
+    });
+  });
+
+  it("keeps each race's fastest-lap bonus with that race", () => {
+    const cell = { points: 31, fastestLap: 1, status: "FINISHED", position: 2, sprint: { points: 12, fastestLap: 1, status: "FINISHED", position: 5 } };
+    const w = weekendPoints(cell);
+    expect(w).toMatchObject({ feature: 19, featureFastestLap: 1, sprint: 12, sprintFastestLap: 1, total: 31 });
+  });
+
+  it("counts a weekend where only the sprint scored", () => {
+    const cell = { points: 10, status: "DNF", position: null, sprint: { points: 10, status: "FINISHED", position: 6 } };
+    expect(weekendPoints(cell)).toMatchObject({ isSprintWeekend: true, feature: 0, sprint: 10, total: 10 });
+  });
+
+  it("falls back to the classification when the standings have no cell for the round", () => {
+    expect(weekendPoints(null, { points: 18, fastestLap: 1 })).toMatchObject({ isSprintWeekend: false, feature: 18, featureFastestLap: 1, total: 18 });
+    expect(weekendPoints(null, null)).toMatchObject({ feature: 0, sprint: null, total: 0 });
   });
 });

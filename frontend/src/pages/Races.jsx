@@ -992,6 +992,7 @@ export default function Races() {
                                 decides for itself whether it is for you. */}
                             <RaceRecapButton
                               raceId={selectedId}
+                              session={shownSession}
                               ready={!detailIsStale && !!detail?.race?.isCompleted && (detail?.results?.length || 0) > 0}
                             />
                             {/* The night's highlights, pasted in the admin's

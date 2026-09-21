@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let dataDir;
-let findArchiveFor, archiveFilesFor;
+let findArchiveFor, archiveFilesFor, findArchiveForRace;
 
 const A = "76561198000000001";
 const B = "76561198000000002";
@@ -29,7 +29,7 @@ const write = (dir, name, json, ageMs) => {
 beforeAll(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "cockpit-files-"));
   process.env.DATA_DIR = dataDir;
-  ({ findArchiveFor, archiveFilesFor } = await import("./cockpitArchive.js"));
+  ({ findArchiveFor, archiveFilesFor, findArchiveForRace } = await import("./cockpitArchive.js"));
 });
 
 afterAll(() => {
@@ -63,5 +63,24 @@ describe("a round with more than one file of a kind", () => {
   it("answers an empty list for a round with nothing on file", () => {
     expect(archiveFilesFor(8, 4)).toEqual([]);
     expect(findArchiveFor(8, 4)).toBe(null);
+  });
+});
+
+// A sprint weekend runs two races on one night and files two results under the
+// one round number. A reader that starts from a RACE ROW has to be able to ask
+// for either, or the sprint half of the weekend is invisible to it — which is
+// what the race recap asks for when it tells the sprint beside the feature.
+describe("a race row asking for its own file", () => {
+  const round = { season: { id: "s8", number: 8 }, number: 3, date: "2026-09-20T18:00:00Z" };
+
+  it("reads the feature race by default and the sprint when asked", () => {
+    expect(findArchiveForRace(round).Laps.length).toBe(24);
+    expect(findArchiveForRace(round, { sprint: true }).Laps.length).toBe(16);
+  });
+
+  it("still refuses a file from another night, sprint or not", () => {
+    const wrongNight = { ...round, date: "2026-10-20T18:00:00Z" };
+    expect(findArchiveForRace(wrongNight)).toBe(null);
+    expect(findArchiveForRace(wrongNight, { sprint: true })).toBe(null);
   });
 });
