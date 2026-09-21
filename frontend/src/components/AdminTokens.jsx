@@ -194,9 +194,16 @@ function MemberRow({ m, onAdjust, busy }) {
     <li className="space-y-2 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-dark">{m.name}</div>
+          {/* Somebody who was invited into the Discord and has never opened the
+              site has no name here until the bot tells us one. An eighteen-digit
+              id in the place a name goes reads like a bug, so it says what it
+              is and the id moves down to the line that holds the code. */}
+          <div className={`truncate text-sm font-semibold ${m.nameKnown === false ? "text-light" : "text-dark"}`}>
+            {m.nameKnown === false ? "Not on the site yet" : m.name}
+          </div>
           <div className="truncate text-xs text-light">
             Code <span className="font-mono font-bold text-medium">{m.code}</span>
+            {m.nameKnown === false ? <span className="font-mono">. {m.discordId}</span> : ""}
             {m.invitedBy ? `. Invited by ${m.invitedBy}` : ""}
             {m.invitedCount ? `. Brought in ${m.invitedCount}` : ""}
           </div>

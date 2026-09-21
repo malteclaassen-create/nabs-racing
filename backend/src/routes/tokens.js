@@ -69,6 +69,7 @@ import {
   setRedemptionStatus,
   adminAdjust,
   adminOverview,
+  rememberNames,
   tokenStats,
 } from "../lib/tokens.js";
 
@@ -373,6 +374,25 @@ adminRouter.get("/", async (req, res, next) => {
   }
 });
 
+// POST /api/tokens/names — the bot saying what the people on the server are
+// called. Names only, nothing is created here: an account that does not exist
+// is a person the site has no reason to know about.
+//
+//   { key, entries: [{ discordId, name }, ...] }
+router.post("/names", async (req, res, next) => {
+  try {
+    if (!(await activityKeyValid(prisma, req.body?.key))) {
+      return res.status(401).json({ error: "Bad key" });
+    }
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+    if (entries.length > 500) return res.status(400).json({ error: "Too many entries at once" });
+    const written = await rememberNames(prisma, entries);
+    res.json({ ok: true, written, skipped: entries.length - written });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /api/tokens/referral — the league's Discord bot reporting who brought
 // somebody into the server. Discord itself knows this: every invite link on a
 // server counts its uses and names the member who made it, so a bot that takes
@@ -397,6 +417,13 @@ router.post("/referral", async (req, res, next) => {
     for (const e of entries) {
       if (await attachReferralById(prisma, e?.discordId, e?.inviterDiscordId)) linked++;
     }
+    // Both names come along for the ride when the bot knows them: whoever just
+    // joined has no account on the site yet, and the admin list would have
+    // nothing to call them.
+    await rememberNames(prisma, [
+      ...entries.map((e) => ({ discordId: e?.discordId, name: e?.name })),
+      ...entries.map((e) => ({ discordId: e?.inviterDiscordId, name: e?.inviterName })),
+    ]);
     // "skipped" is the normal case, not an error: most of what the bot sends is
     // something the site already knew.
     res.json({ ok: true, linked, skipped: entries.length - linked });

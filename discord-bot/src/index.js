@@ -2,7 +2,7 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, missingSettings } from "./config.js";
 import { leagueDay } from "./day.js";
 import { inviteUsed, snapshotFrom } from "./invites.js";
-import { sendActivity, sendReferrals, ping } from "./site.js";
+import { sendActivity, sendNames, sendReferrals, ping } from "./site.js";
 import { bumpMessages, bumpMinutes, forgetOldDays, load, markSent, pendingActivity, save } from "./store.js";
 
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
@@ -124,7 +124,14 @@ client.on(Events.GuildMemberAdd, async (member) => {
     return;
   }
   if (inviterId === member.id) return;
-  state.referrals.push({ discordId: member.id, inviterDiscordId: inviterId });
+  state.referrals.push({
+    discordId: member.id,
+    inviterDiscordId: inviterId,
+    // Whoever just joined has no account on the website yet, so the site would
+    // have nothing to call them but their id.
+    name: memberName(member),
+    inviterName: memberName(guildMember(inviterId)),
+  });
   log(`+ ${member.user.tag} joined through ${inviterId}`);
   await flush();
 });
@@ -152,6 +159,34 @@ client.on(Events.InviteDelete, async (invite) => {
   if (invite?.code) recentlyDeleted.push({ code: invite.code, inviterId, at: Date.now() });
   await rememberInvites();
 });
+
+// What to call somebody: their name on this server if they set one, else their
+// Discord name. Not the tag, that is a handle with a number on it.
+const memberName = (member) =>
+  member?.displayName || member?.nickname || member?.user?.globalName || member?.user?.username || null;
+const guildMember = (id) => client.guilds.cache.get(config.guildId)?.members?.cache?.get(id) || null;
+
+// Everybody on the server, so the website can put a name on the rows it only
+// has an id for. Cheap enough to repeat: the site keeps the ones it can use and
+// drops the rest, and nothing is created from this.
+async function pushRoster() {
+  const guild = client.guilds.cache.get(config.guildId);
+  if (!guild) return;
+  try {
+    const members = await guild.members.fetch();
+    const entries = [];
+    for (const member of members.values()) {
+      if (member.user?.bot) continue;
+      const name = memberName(member);
+      if (name) entries.push({ discordId: member.id, name });
+    }
+    if (!entries.length) return;
+    const res = await sendNames(entries);
+    log(`-> ${res.length} names sent`);
+  } catch (e) {
+    log(`! could not send the names (${e.message}), will try again later`);
+  }
+}
 
 const MAX_REFERRALS = 2000;
 let sending = false;
@@ -220,6 +255,9 @@ async function startCounting(guild) {
 
   timers.push(setInterval(countVoiceMinute, 60 * 1000));
   timers.push(setInterval(flush, config.pushEveryMs));
+  // People rename themselves, and somebody who joined while the bot was down
+  // is not in any join we reported. Six hours is often enough for a label.
+  timers.push(setInterval(pushRoster, 6 * 3600 * 1000));
   timers.push(
     setInterval(() => {
       if (forgetOldDays(state)) {
@@ -229,6 +267,7 @@ async function startCounting(guild) {
     }, 6 * 3600 * 1000)
   );
   await flush();
+  await pushRoster();
 }
 
 client.once(Events.ClientReady, async (c) => {

@@ -790,6 +790,11 @@ model TokenAccount {
   // bar celebrates once, and then records as seen. null = nothing shown yet.
   seenBalance Int?
   seenRowId   Int?
+  // The name Discord knows them by, sent by the league's bot. Only ever a
+  // fallback for the admin list: somebody who was invited into the Discord and
+  // has never opened the website has no MemberAccount and no driver row, and
+  // an eighteen-digit id is not a person.
+  discordName String?
   createdAt  DateTime  @default(now())
 
   @@index([referredBy])

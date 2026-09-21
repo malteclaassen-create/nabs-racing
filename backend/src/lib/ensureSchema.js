@@ -667,6 +667,10 @@ export async function ensureAppSchema(prisma) {
   // celebrates nothing.
   await addColumn(prisma, "TokenAccount", "seenBalance", "INTEGER");
   await addColumn(prisma, "TokenAccount", "seenRowId", "INTEGER");
+  // The name Discord knows them by (migration token_discord_name), sent by the
+  // bot. A member who was invited into the server and never opened the site has
+  // nothing else to be called in the admin list but their id.
+  await addColumn(prisma, "TokenAccount", "discordName", "TEXT");
   // How active a member is on Discord, ONE ROW PER DAY (migration
   // token_activity). The multiplier looks at the last thirty of them, so what
   // is stored has to be able to shrink again — which a running total cannot.

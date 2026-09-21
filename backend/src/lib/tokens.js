@@ -1431,10 +1431,47 @@ export async function adminAdjust(prisma, discordId, delta, note) {
 
 // Everyone who has an account, with their balance and who invited them — the
 // admin's table. One query for the balances rather than one per member.
+// What to call somebody, best first. The site login is what they call
+// themselves, the driver row is what the league calls them, and the Discord
+// name is what the bot saw; a member who was invited into the server and never
+// opened the website has only that last one, and before the bot existed not
+// even that. null = nothing to go on, and then the admin says so rather than
+// printing eighteen digits as if they were a name.
+export function pickName({ displayName, username, driverName, discordName } = {}) {
+  for (const candidate of [displayName, username, driverName, discordName]) {
+    const name = String(candidate ?? "").trim();
+    if (name) return name;
+  }
+  return null;
+}
+
+// The name Discord knows a member by, as the bot sees it. Only written onto
+// accounts that already exist: this is a label for the admin list, not a way
+// to make an account for everybody on the server.
+export async function rememberNames(prisma, entries) {
+  let written = 0;
+  for (const e of Array.isArray(entries) ? entries : []) {
+    const discordId = String(e?.discordId || "").trim();
+    const name = String(e?.name || "").trim().slice(0, 60);
+    if (!discordId || !name) continue;
+    const n = await prisma
+      .$executeRawUnsafe(
+        `UPDATE "TokenAccount" SET "discordName" = ? WHERE "discordId" = ? AND ("discordName" IS NULL OR "discordName" <> ?)`,
+        name,
+        discordId,
+        name
+      )
+      .catch(() => 0);
+    if (n) written++;
+  }
+  return written;
+}
+
 export async function adminOverview(prisma) {
   const accounts = await prisma.$queryRawUnsafe(
-    `SELECT a."discordId", a."code", a."referredBy", a."createdAt",
-            m."username", m."displayName", m."avatarUrl"
+    `SELECT a."discordId", a."code", a."referredBy", a."createdAt", a."discordName",
+            m."username", m."displayName", m."avatarUrl",
+            (SELECT d."name" FROM "Driver" d WHERE d."discordUserId" = a."discordId" LIMIT 1) AS "driverName"
        FROM "TokenAccount" a
        LEFT JOIN "MemberAccount" m ON m."discordId" = a."discordId"
       ORDER BY a."createdAt" ASC`
@@ -1443,10 +1480,12 @@ export async function adminOverview(prisma) {
     `SELECT "discordId", COALESCE(SUM("delta"),0) AS bal FROM "TokenLedger" GROUP BY "discordId"`
   );
   const byId = new Map(balances.map((b) => [b.discordId, Number(b.bal)]));
-  const names = new Map(accounts.map((a) => [a.discordId, a.displayName || a.username || a.discordId]));
+  const names = new Map(accounts.map((a) => [a.discordId, pickName(a) || a.discordId]));
   return accounts.map((a) => ({
     discordId: a.discordId,
-    name: a.displayName || a.username || a.discordId,
+    name: pickName(a) || a.discordId,
+    // Whether that name is a name at all, or the id standing in for one.
+    nameKnown: !!pickName(a),
     avatarUrl: a.avatarUrl || null,
     code: a.code,
     balance: byId.get(a.discordId) || 0,

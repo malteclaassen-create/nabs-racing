@@ -35,6 +35,7 @@ async function sendChunked(path, entries) {
 
 export const sendActivity = (entries) => sendChunked("/api/tokens/activity", entries);
 export const sendReferrals = (entries) => sendChunked("/api/tokens/referral", entries);
+export const sendNames = (entries) => sendChunked("/api/tokens/names", entries);
 
 // empty list = writes nothing, still checks the key
 export const ping = () => post("/api/tokens/activity", { entries: [] });

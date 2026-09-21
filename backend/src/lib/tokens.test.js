@@ -4,6 +4,7 @@ import {
   attachReferralById,
   gainFromSeen,
   SHOP_ITEMS,
+  pickName,
   EARN_RULES,
   SHOP_BY_KEY,
   REDEMPTION_STATUSES,
@@ -200,5 +201,24 @@ describe("a referral the Discord bot reports", () => {
   it("ignores an invite code that belongs to nobody", async () => {
     const db = fakeDb({ accounts: [{ discordId: "new" }] });
     expect(await attachReferral(db, "new", "ZZZZ99")).toBe(null);
+  });
+});
+
+
+// A member the site has never seen is the normal case for anybody who was
+// invited into the Discord: no login, maybe no driver row, and the admin list
+// used to print their id where the name goes.
+describe("what to call somebody", () => {
+  it("takes the best name there is", () => {
+    expect(pickName({ displayName: "Takoda", username: "takoda_", driverName: "T. Claassen" })).toBe("Takoda");
+    expect(pickName({ username: "takoda_", driverName: "T. Claassen" })).toBe("takoda_");
+    expect(pickName({ driverName: "T. Claassen", discordName: "tak" })).toBe("T. Claassen");
+    expect(pickName({ discordName: "tak" })).toBe("tak");
+  });
+
+  it("says nothing rather than something blank", () => {
+    expect(pickName({ displayName: "  ", username: null })).toBe(null);
+    expect(pickName({})).toBe(null);
+    expect(pickName()).toBe(null);
   });
 });
