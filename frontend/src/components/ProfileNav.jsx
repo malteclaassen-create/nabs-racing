@@ -37,11 +37,20 @@ const ICONS = {
   admin: Shield,
 };
 
+// The points wear the league's own mark rather than a generic coin: the same
+// TokenIcon as the nav bar pill and the shop price tags, so it recolours with
+// the series exactly as those do.
+//
+// The asset is the pale league pink, drawn for the dark theme. On a light card
+// — and especially sitting on the active row's own pink tint — it all but
+// vanishes, so light mode deepens it to about the rose the label beside it
+// already uses. Dark mode gets the file untouched. A pixel larger than the line
+// icons, because a filled mark reads smaller than an outline at the same box.
+const TOKEN_MARK =
+  "h-[18px] w-[18px] brightness-[0.72] saturate-[1.6] dark:brightness-100 dark:saturate-100";
+
 function Icon({ name, className = "h-[17px] w-[17px]" }) {
-  // The points wear the league's own mark rather than a generic coin: the same
-  // TokenIcon as the nav bar pill and the shop price tags, so it recolours with
-  // the series exactly as those do.
-  if (name === "tokens") return <TokenIcon className={className} />;
+  if (name === "tokens") return <TokenIcon className={TOKEN_MARK} />;
   const C = ICONS[name] || User;
   return <C className={`shrink-0 ${className}`} strokeWidth={2} aria-hidden="true" />;
 }
