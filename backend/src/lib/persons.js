@@ -277,7 +277,8 @@ export function resolveNameOverrides(rows, activeSeasonNumber = null) {
 // Pure core of the identity resolution (exported for testing). `rows` =
 // [{ personId, driverId, seasonNumber, photoUrl, discordAvatar, country,
 // cardPhotoUrl, cardPhotoPos, draft? }]. Returns Map<driverId, { photoUrl,
-// photoPos, avatarUrl, avatarPos, cardPhotoUrl, cardPhotoPos, country }> with
+// photoPos, avatarUrl, avatarPos, cardPhotoUrl, cardPhotoPos, framingPos,
+// country }> with
 // the person's CURRENT identity: the uploaded photo (and its card framing)
 // from their newest row that has one, their newest Discord avatar, the
 // card-only picture from their newest row that has one, the country likewise
@@ -315,8 +316,15 @@ export function resolveIdentityOverrides(rows, activeSeasonNumber = null) {
     // face to lend their other rows (that is the usual case — the card is
     // where people put a picture).
     const cardRow = sorted.find((m) => m.cardPhotoUrl);
+    // The FRAMING is looked up on its own too, and that is the point of it:
+    // a row nobody ever framed follows the person's newest framing, while a
+    // row somebody did frame keeps theirs (lib/cardPhoto cardPictureFor). It
+    // must not be tied to whichever row supplied the picture — a member can
+    // frame this season's card without touching its picture, and the other
+    // way round.
+    const framingRow = sorted.find((m) => m.cardPhotoPos);
     const countryRow = sorted.find((m) => m.country);
-    if (!photoRow && !avatarRow && !cardRow && !countryRow) continue;
+    if (!photoRow && !avatarRow && !cardRow && !framingRow && !countryRow) continue;
     const identity = {
       photoUrl: photoRow ? photoRow.photoUrl : null,
       // raw JSON string; consumers parse via lib/cardPhoto parseCardPhotoPos
@@ -326,6 +334,8 @@ export function resolveIdentityOverrides(rows, activeSeasonNumber = null) {
       cardPhotoUrl: cardRow ? cardRow.cardPhotoUrl : null,
       // framing of the row the card picture came from (raw JSON string too)
       cardPhotoPos: cardRow ? cardRow.cardPhotoPos || null : null,
+      // the person's newest framing, whichever row it sits on (raw JSON too)
+      framingPos: framingRow ? framingRow.cardPhotoPos : null,
       country: countryRow ? countryRow.country : null,
     };
     for (const m of members) out.set(m.driverId, identity);

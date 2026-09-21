@@ -341,10 +341,13 @@ router.put("/tiles", async (req, res, next) => {
 // default framing. Values are clamped server-side, so a broken client can
 // never park the photo off the card.
 //
-// The framing belongs to the PICTURE, and the picture is the person's, so it
-// lands on every card they have — every series, every season, archive rows
-// included (lib/persons.js ownAllRowIds). `driverId` only says which row the
-// editor had open; the result is the same either way.
+// It is written to THIS ROW alone, and that is what makes it stick: a card
+// the member has framed keeps that framing for good, while every card they
+// never touched follows the person's newest one on read (lib/cardPhoto
+// cardPictureFor). So framing the current card carries through to the seasons
+// still on the default, and leaves a season somebody dressed on purpose
+// alone. `pos: null` clears this row's own framing and hands it back to that
+// inheritance.
 router.put("/card-photo", async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -359,10 +362,7 @@ router.put("/card-photo", async (req, res, next) => {
       value = JSON.stringify(pos);
     }
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${driverId}`;
-    await applyToAllOwnRows(driverId, req.user?.discordId, async (ids) => {
-      for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoPos" = ${value} WHERE "id" = ${id}`;
-    });
-    res.json({ ok: true, photoPos: value ? JSON.parse(value) : null, appliesToEveryCard: true });
+    res.json({ ok: true, photoPos: value ? JSON.parse(value) : null });
   } catch (e) {
     next(e);
   }
@@ -636,11 +636,10 @@ router.delete("/photo", async (req, res, next) => {
 });
 
 // Write one uploaded card picture to ONE row: its own file, named after that
-// row, and the row's column pointing at it. The same picture goes to every row
-// of the person, and each keeps a file of its own: sharing one file would
-// leave pictures behind when an account is deleted, which removes them by row
-// id (accountDeletionService). Returns the stored URL, or null when the id
-// can't be a file name.
+// row, and the row's column pointing at it. A file per row is what lets an
+// account deletion remove them, which it does by row id
+// (accountDeletionService). Returns the stored URL, or null when the id can't
+// be a file name.
 function writeCardPicture(driverId, buffer, ext) {
   mkdirSync(CARD_DIR, { recursive: true });
   const filename = `${driverId}${ext}`;
@@ -655,9 +654,10 @@ function writeCardPicture(driverId, buffer, ext) {
 // card-ONLY picture, separate from the profile avatar. null column = the card
 // uses the profile photo. Written via raw SQL (cardPhotoUrl is a raw column).
 //
-// One picture per person: it goes on every card they have — every series,
-// every season, archive rows included. `driverId` (a form field) only says
-// which row the editor had open.
+// Written to THIS ROW alone: the card the member set keeps its picture, and
+// every card they never touched follows the person's newest one on read
+// (lib/cardPhoto cardPictureFor). `driverId` (a form field) says which row
+// the editor had open.
 router.post("/card-photo-image", upload.single("file"), async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -671,20 +671,15 @@ router.post("/card-photo-image", upload.single("file"), async (req, res, next) =
     const cardPhotoUrl = writeCardPicture(driverId, req.file.buffer, ext);
     if (!cardPhotoUrl) return res.status(400).json({ error: "Your driver id can't be used as a file name" });
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${cardPhotoUrl} WHERE "id" = ${driverId}`;
-    await applyToAllOwnRows(driverId, req.user?.discordId, async (ids) => {
-      for (const id of ids) {
-        const url = writeCardPicture(id, req.file.buffer, ext);
-        if (url) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${url} WHERE "id" = ${id}`;
-      }
-    });
-    res.json({ ok: true, cardPhotoUrl, appliesToEveryCard: true });
+    res.json({ ok: true, cardPhotoUrl });
   } catch (e) {
     next(e);
   }
 });
 
-// DELETE /api/me/card-photo-image?driverId= -> drop the card-only picture on
-// every card of the person, so they fall back to the profile photo again.
+// DELETE /api/me/card-photo-image?driverId= -> drop this row's own card
+// picture, which hands the card back to the inheritance: it follows the
+// person's newest picture again, or their profile photo when there is none.
 router.delete("/card-photo-image", async (req, res, next) => {
   try {
     const actingId = await requireDriver(req, res);
@@ -692,10 +687,7 @@ router.delete("/card-photo-image", async (req, res, next) => {
     const driverId = await resolveOwnRow(req, res, actingId, req.query?.driverId);
     if (!driverId) return;
     await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${driverId}`;
-    await applyToAllOwnRows(driverId, req.user?.discordId, async (ids) => {
-      for (const id of ids) await prisma.$executeRaw`UPDATE "Driver" SET "cardPhotoUrl" = ${null} WHERE "id" = ${id}`;
-    });
-    res.json({ ok: true, cardPhotoUrl: null, appliesToEveryCard: true });
+    res.json({ ok: true, cardPhotoUrl: null });
   } catch (e) {
     next(e);
   }

@@ -286,15 +286,23 @@ function CardEditor({ me }) {
               />
               {cardSeasons.length > 1 && (
                 <p className="text-xs leading-relaxed text-light">
-                  The picture and its framing go on <strong className="font-semibold text-medium">all your cards</strong>,
-                  in every league and season. The card edition below is the one thing you pick per season.
-                </p>
-              )}
-              {!isMe && rowSeasonNumber != null && (
-                <p className="text-xs leading-relaxed text-light">
-                  You&rsquo;re editing your{" "}
-                  {rowMeta?.seriesName ? `${rowMeta.seriesName} Season ${rowSeasonNumber}` : `Season ${rowSeasonNumber}`}{" "}
-                  card: its edition applies to that card only.
+                  {isMe ? (
+                    <>
+                      This is your current card. Its picture and framing also show on every season you have
+                      never set by hand; seasons you did set keep what you gave them.
+                    </>
+                  ) : (
+                    <>
+                      You&rsquo;re dressing your{" "}
+                      <strong className="font-semibold text-medium">
+                        {rowMeta?.seriesName
+                          ? `${rowMeta.seriesName} Season ${rowSeasonNumber ?? ""}`.trim()
+                          : `Season ${rowSeasonNumber ?? ""}`.trim()}
+                      </strong>{" "}
+                      card on its own. A picture or framing you set here stays on it, even when you change your
+                      current card later — reset it to let this season follow along again.
+                    </>
+                  )}
                 </p>
               )}
             </>
