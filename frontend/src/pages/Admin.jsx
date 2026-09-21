@@ -59,16 +59,15 @@ import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 // never off-screen and never ambiguous, not that it is large.
 //
 // Switching either one remounts the whole page (App keys on the season and the
-// series), so the current tab is stashed first — the admin stays where they
-// were instead of being dropped back on Seasons.
-function AdminScope({ tab }) {
+// series). The tab survives that on its own (see `lastTab` below), so this row
+// only has to point the selection somewhere else.
+function AdminScope() {
   const { seasons, season, setSeason, current } = useSeason();
   const { seriesList, current: series, setSlug } = useSeries();
   if (!seasons?.length && seriesList.length <= 1) return null;
   const isActive = current?.isActive;
   const isPrivate = current?.isPublic === false;
   const ordered = [...(seasons || [])].sort((a, b) => b.number - a.number);
-  const stash = () => sessionStorage.setItem("nabs_admin_tab", tab); // survive the remount
   return (
     // A row of its own on phones, where the two switches then split the width
     // between them rather than stepping down one per line. The word "Editing"
@@ -84,10 +83,7 @@ function AdminScope({ tab }) {
           aria-label="Series being edited"
           className="input w-auto min-w-0 flex-1 py-1.5 font-semibold sm:flex-none"
           value={series?.slug ?? ""}
-          onChange={(e) => {
-            stash();
-            setSlug(e.target.value);
-          }}
+          onChange={(e) => setSlug(e.target.value)}
         >
           {seriesList.map((s) => (
             <option key={s.id} value={s.slug}>
@@ -101,10 +97,7 @@ function AdminScope({ tab }) {
         aria-label="Season being edited"
         className="input w-auto min-w-0 flex-1 py-1.5 font-semibold sm:flex-none"
         value={season ?? ""}
-        onChange={(e) => {
-          stash();
-          setSeason(Number(e.target.value));
-        }}
+        onChange={(e) => setSeason(Number(e.target.value))}
       >
         {ordered.map((s) => (
           <option key={s.id} value={s.number}>
@@ -126,6 +119,15 @@ function AdminScope({ tab }) {
   );
 }
 
+// The tab the admin was last on. It lives outside the component because the
+// page is REMOUNTED whenever the series or the season changes (App keys the
+// page area on both) — from the row below, from the switcher in the nav bar,
+// from a link — and a remount throws the tab away. Being dropped back on
+// Seasons every time you point the admin at the other series is exactly what
+// this avoids. A plain variable rather than storage on purpose: it belongs to
+// this page load and must not still be there after a reload.
+let lastTab = null;
+
 export default function Admin() {
   // Two ways in: the PIN admin token, or a designated Discord admin (their user
   // login already carries admin rights, so no PIN screen). A 401 from any admin
@@ -136,21 +138,23 @@ export default function Admin() {
   const [unauthorized, setUnauthorized] = useState(false);
   const authed = !unauthorized && (pinAuthed || isDiscordAdmin);
   const [expired, setExpired] = useState(false);
-  // Changing the season remounts the whole page (App keys on it), which would
-  // reset the tab — so a deliberate tab hand-off (e.g. "Schedule races" jumping
-  // to Races & Events) survives via sessionStorage.
+  // Three ways the opening tab is decided, in this order: ?tab=<id> from a link
+  // (the "new feedback" notification points straight at a tab), a one-shot
+  // hand-off some panel left behind before it triggered a remount ("Schedule
+  // races" jumping to Races & Events), and otherwise wherever the admin was.
   // (Read-only initializer: React may run it twice in dev StrictMode, so the
   // clean-up happens in the effect below, not here.)
-  // ?tab=<id> wins over the stash, so a link can point straight at a tab (the
-  // "new feedback" notification does exactly that).
   const [tab, setTab] = useState(() => {
     const wanted = new URLSearchParams(window.location.search).get("tab");
     const known = TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === wanted));
-    return (known && wanted) || sessionStorage.getItem("nabs_admin_tab") || "seasons";
+    return (known && wanted) || sessionStorage.getItem("nabs_admin_tab") || lastTab || "seasons";
   });
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
+  useEffect(() => {
+    lastTab = tab;
+  }, [tab]);
   // ?series=<slug> points the admin area at one series, the way ?tab= points it
   // at one section. The league runs a series per race server, so a link from a
   // notification has to say WHICH board it is about: the training card shows
@@ -208,7 +212,7 @@ export default function Admin() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <PageHeader eyebrow="League Office" title="Admin" />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <AdminScope tab={tab} />
+          <AdminScope />
           {/* Same twenty-two tabs either way; this only says where they are. */}
           <AdminNavToggle mode={navMode} onChange={setNavMode} />
           <button

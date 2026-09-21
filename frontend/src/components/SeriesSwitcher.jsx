@@ -3,14 +3,17 @@ import { useDismiss } from "./overlay.jsx";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { seriesThemeColor } from "../utils/seriesColor.js";
+import { seriesSwitchTarget } from "./seriesSwitchTarget.mjs";
 
 // The series switcher. Lives on the line under the NavBar wordmark (where the
 // season name used to sit) and at the top of the mobile burger menu. With one
 // series it renders NOTHING — the league looks exactly like the single-series
 // site it used to be; the control only appears once a second series exists.
-// Switching stays on the same section (Drivers -> Drivers), deep pages
-// (/drivers/<id>) fall back to that section's list, everything else lands on
-// the series home.
+// Switching keeps you where you are: the same section (Drivers -> Drivers), and
+// on the pages without a /s/<slug> in the address (the admin, your profile,
+// Race Info, …) the very same page — only the series behind it changes. Deep
+// pages (/drivers/<id>) are the exception: that id belongs to the old series,
+// so those fall back to the section's list.
 
 // Padlock marking a private (unpublished) series — only admins get those in
 // their list, so whoever sees this is previewing hidden data.
@@ -24,7 +27,7 @@ function LockIcon({ className = "h-3 w-3" }) {
 }
 
 export default function SeriesSwitcher({ mobile = false, onPick }) {
-  const { seriesList, current } = useSeries();
+  const { seriesList, current, setSlug } = useSeries();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const navigate = useNavigate();
@@ -39,13 +42,6 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   // Hidden entirely while there is nothing to switch between.
   if (seriesList.length <= 1) return null;
 
-  // The section of the page being viewed ("/drivers", "/races", ... or "" for
-  // home) — switching series stays on the same section. Only the FIRST path
-  // segment carries over: /drivers/<id> is a driver of the OLD series, so the
-  // switch lands on the new series' drivers list instead.
-  const m = /^\/s\/[^/]+(\/[^/]+)?/.exec(location.pathname);
-  const section = m && m[1] ? m[1] : "";
-
   // Whether the site is running as the installed app rather than in a browser
   // tab: a Trusted Web Activity reports the manifest's display mode, a tab
   // reports "browser".
@@ -54,7 +50,16 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
 
   const pick = (s) => {
     setOpen(false);
-    const to = `/s/${s.slug}${section}`;
+    const to = seriesSwitchTarget(location.pathname, s.slug);
+    if (!to) {
+      // A page with no series in its address (admin, profile, Race Info, …):
+      // stay put and only point the sticky selection at the new series. App
+      // remounts the page area on it, which is what makes the page refetch,
+      // and the query string survives — so ?tab=rating stays on My Rating.
+      setSlug(s.slug);
+      onPick?.(s);
+      return;
+    }
     // In the installed app the phone's status bar takes its colour from the
     // document that was loaded and does not follow the theme-color tag as the
     // page changes it (SeriesContext does that, which is enough for a browser).
