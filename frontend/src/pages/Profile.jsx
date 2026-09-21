@@ -657,9 +657,14 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
                   // the own values here showed a card without the picture that
                   // the public profile — and every other card on the site —
                   // does show.
+                  // `cardShows` is the row's EFFECTIVE picture and framing,
+                  // and where it exists it is the whole answer — including a
+                  // null picture. Falling through on null would reach for the
+                  // login row's own picture, which is not this row's at all
+                  // when the page is scoped to another league.
                   cardStyle: me.cardStyle,
-                  cardPhotoUrl: me.cardShows?.cardPhotoUrl ?? me.cardPhotoUrl,
-                  photoPos: me.cardShows?.photoPos ?? me.photoPos,
+                  cardPhotoUrl: me.cardShows ? me.cardShows.cardPhotoUrl : me.cardPhotoUrl,
+                  photoPos: me.cardShows ? me.cardShows.photoPos : me.photoPos,
                   cardAnim: me.cardAnim,
                   seasonNumber: me.seasonNumber ?? null,
                 }}
@@ -935,12 +940,18 @@ function MyProfile() {
                     socials: normalizeSocials(previewDraft.socials || {}),
                     profileTiles: previewDraft.tiles,
                     photoUrl: previewDraft.photoUrl,
-                    // Card look isn't edited here anymore (see /profile/card) —
-                    // preview it from the saved profile so it still renders right.
-                    photoPos: d.photoPos,
-                    cardStyle: d.cardStyle,
-                    cardPhotoUrl: d.cardPhotoUrl,
-                    cardAnim: d.cardAnim,
+                    // The card look is NOT overlaid. It is not edited here
+                    // (that is /profile/card), and the page being previewed
+                    // already fetched it — for the right row, and as the card
+                    // really shows it.
+                    //
+                    // It used to be stamped on from `me`, which is the login's
+                    // own row: scoped to another league the preview then wore
+                    // a different row's edition, picture and framing, so
+                    // reframing the card you were looking at moved nothing
+                    // here. And `me` carries the row's OWN picture, where the
+                    // page shows the one the person carries, so even unscoped
+                    // the preview could drop a picture the real page has.
                   }
                 : {}
             }
