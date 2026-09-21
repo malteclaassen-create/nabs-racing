@@ -484,7 +484,11 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
               ]}
               value={scope}
               onChange={(key) => onScope?.(key)}
-              wrapClassName="inline-flex flex-nowrap rounded-xl border border-border bg-card p-1"
+              // The scroll belongs ON the bar, not around it: SlidingTabs
+              // centres the active pill only when its own wrapper scrolls, and
+              // this one had no scroller at all — inside a card that clips, a
+              // third league was simply unreachable.
+              wrapClassName="scrollbar-slim flex min-w-0 max-w-full flex-nowrap overflow-x-auto rounded-xl border border-border bg-card p-1"
               btnClassName="whitespace-nowrap px-3 py-1.5 text-[13px]"
             />
             <span className="basis-full text-xs text-light sm:basis-auto sm:flex-1">

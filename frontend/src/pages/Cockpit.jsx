@@ -800,9 +800,13 @@ function AchievementCard({ a, color, pinned, onPin, pinFull, index = 0 }) {
             <div className="mt-2 flex items-center gap-2">
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
                 {/* bar-fill grows the bar from zero once the card is revealed.
-                    The utility already existed; this was the one progress bar
-                    on the site that snapped straight to its width. */}
-                <div className="bar-fill h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
+                    Its width rides on --w, NOT on an inline width: the keyframe
+                    ends at `var(--w, 100%)` and holds it (fill mode `both`), so
+                    an unset --w made every bar animate to full and stay there —
+                    1/5 and 20/100 both looked all but complete. The same --w is
+                    what the reduced-motion and lite-graphics rules read, where
+                    an unset one collapsed the bar to nothing instead. */}
+                <div className="bar-fill h-full rounded-full" style={{ "--w": `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
               </div>
               <span className="font-mono text-[10px] font-bold tabular-nums text-faint">{a.value}/{a.target}</span>
             </div>
