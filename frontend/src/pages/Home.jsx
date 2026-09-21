@@ -666,6 +666,13 @@ export default function Home() {
       alive = false;
     };
   }, [lastRace?.sprintRaceId]);
+  // Which race of a sprint weekend the hero has open. Feature first, because
+  // that is the one the championship is decided on. `heroTabbed` remembers
+  // whether the driver has pressed the switcher yet: the first paint keeps the
+  // hero's staggered entrance, a switch after that snaps in without making
+  // somebody wait half a second for a result they just asked for.
+  const [openRaceTab, setOpenRaceTab] = useState("feature");
+  const [heroTabbed, setHeroTabbed] = useState(false);
 
   // End-of-season honours — for the live finale AND archived seasons (the API
   // reads the selected season; awards without data simply stay away, so old
@@ -765,7 +772,7 @@ export default function Home() {
           cls: "bg-brand/20 text-brand",
         },
       ].filter(Boolean);
-    return { podium, scores, honoursFor, anyHonours: podium.some((p) => honoursFor(p).length > 0) };
+    return { podium, scores, honoursFor };
   };
   const latestRace = latest?.race || null;
   const feature = podiumBlock(latest);
@@ -806,20 +813,19 @@ export default function Home() {
   // announced with is the page it keeps until it produces its first result —
   // it used to jump to a champions-of-last-season hero on activation, which
   // read as if something had happened when nothing had.
-  // The hero's podium strip for one race. A sprint weekend renders it twice,
-  // feature first with a label over each, so the two races of the evening
-  // read as two and not as one podium with the wrong names on it.
-  const podiumStrip = (block, { label = null, first = true, delay = 0 } = {}) =>
+  // The hero's podium strip for ONE race. A sprint weekend doesn't stack two
+  // of them any more: the switcher above picks the race and this renders the
+  // one that is open, so the evening's two results never read as one podium
+  // with the wrong names on it.
+  //
+  // The card is the one the site has always had — big rank, name over team, one
+  // line — with what the round paid out added on the right: the points, and the
+  // honours won that day (FL, DOTD) next to them. Those were phone-only before,
+  // where the card has the page to itself. They fit here because the block is
+  // narrow: the number with a small PTS under it, not beside it.
+  const podiumStrip = (block, { animKey = "race", first = true, delay = 0, stagger = 0.14 } = {}) =>
     block.podium.length > 0 && (
-      <div key={label || "race"} className={first ? "mt-8 max-w-2xl" : "mt-3 max-w-2xl"}>
-        {label && (
-          <div
-            className="hero-anim mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow"
-            style={{ animationDelay: `${0.22 + delay}s` }}
-          >
-            {label}
-          </div>
-        )}
+      <div key={animKey} className={first ? "mt-8 max-w-4xl" : "mt-3 max-w-4xl"}>
         <div className="grid gap-2 sm:grid-cols-3">
                 {block.podium.map((p, i) => (
 
@@ -828,8 +834,8 @@ export default function Home() {
                     to={`/drivers/${p.driverId}`}
                     // Each card rises on its own beat (P1 first), instead of the
                     // whole strip fading in as one block.
-                    style={{ animationDelay: `${0.26 + delay + i * 0.14}s` }}
-                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                    style={{ animationDelay: `${delay + i * stagger}s` }}
+                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-2.5 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
                   >
                     <span
                       className="absolute left-0 top-0 h-full w-1"
@@ -842,12 +848,12 @@ export default function Home() {
                       style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
                     />
                     <span
-                      className="font-display text-2xl font-black tabular-nums"
+                      className="relative font-display text-2xl font-black tabular-nums"
                       style={{ color: MEDAL[i] }}
                     >
                       P{p.position}
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <span className="relative min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
                         <span className="truncate">{p.name}</span>
                         <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
@@ -876,37 +882,24 @@ export default function Home() {
                         />
                       )}
                     </span>
-                    {/* What the round paid the driver: the points, with the
-                        honours won that day above them. PHONES ONLY. There the
-                        card runs the full width of the page and the right half
-                        sits empty; from sm up the same three cards share one
-                        row, which leaves each about 220px, and anything added
-                        on the right cut the driver's name down to an ellipsis.
-                        The round page carries all of it in full either way. */}
-                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1 pl-1 text-right sm:hidden">
-                      {/* The row is reserved for all three as soon as ONE of
-                          them earned something, so the cards keep a common
-                          height and the points sit on one line down the strip
-                          instead of stepping up and down. */}
-                      {block.anyHonours && (
-                        <span className="flex min-h-[1rem] items-center gap-1">
-                          {block.honoursFor(p).map((h) => (
-                            <span
-                              key={h.key}
-                              title={h.title}
-                              className={`rounded-full px-1 py-px font-mono text-[10px] font-bold uppercase leading-[1.4] ${h.cls}`}
-                            >
-                              {h.label}
-                            </span>
-                          ))}
+                    {/* What the round paid the driver, on the right: the honours
+                        first (they are the rarer thing), then the points. */}
+                    <span className="relative ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+                      {block.honoursFor(p).map((h) => (
+                        <span
+                          key={h.key}
+                          title={h.title}
+                          className={`rounded-full px-1 py-px font-mono text-[9px] font-bold uppercase leading-[1.5] ${h.cls}`}
+                        >
+                          {h.label}
                         </span>
-                      )}
+                      ))}
                       {block.scores && p.points != null && (
-                        <span className="flex items-baseline gap-1">
-                          <span className="font-display text-xl font-black tabular-nums text-ink dark:text-white">
+                        <span className="text-right leading-none">
+                          <span className="block font-display text-lg font-black leading-none tabular-nums text-ink dark:text-white">
                             {p.points}
                           </span>
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
+                          <span className="mt-0.5 block font-mono text-[8px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
                             pts
                           </span>
                         </span>
@@ -917,6 +910,17 @@ export default function Home() {
         </div>
       </div>
     );
+
+  // The two races of a sprint weekend, for the hero's switcher. Each tab
+  // carries its own winner, so both names are readable without pressing
+  // anything and the switch is only for the rest of the podium.
+  const heroRaces = sprint
+    ? [
+        { key: "feature", label: "Feature", block: feature },
+        { key: "sprint", label: "Sprint", block: sprint },
+      ].filter((r) => r.block.podium.length > 0)
+    : [];
+  const openHeroRace = heroRaces.find((r) => r.key === openRaceTab) || heroRaces[0] || null;
 
   const showComingSoonHero = isUpcomingSeason || awaitingOpener;
   // The running season's own opener panel (right half of that hero): the same
@@ -1252,11 +1256,62 @@ export default function Home() {
               {`${lastCircuit?.circuit && lastCircuit.circuit.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>
 
-            {/* podium strip — the latest race's top 3, or on a sprint weekend
-                both races' (the feature above, as it is run first) */}
-            {sprint
-              ? [podiumStrip(feature, { label: "Feature" }), podiumStrip(sprint, { label: "Sprint", first: false, delay: 0.3 })]
-              : podiumStrip({ ...feature, podium: heroPodium })}
+            {/* podium strip — the latest race's top 3. A sprint weekend puts a
+                switcher over it (feature open first, the sprint one press
+                away) instead of stacking both podiums: six cards under one
+                another pushed the buttons off a phone screen and read as one
+                long list, and the labels over them were the only thing saying
+                which race was which. Each tab now names its own winner, so
+                both results are readable without pressing anything. */}
+            {openHeroRace ? (
+              <>
+                <div className="hero-anim mt-7" style={{ animationDelay: "0.22s" }}>
+                  <SlidingTabs
+                    wrapClassName="inline-flex rounded-lg border border-black/10 bg-white/70 p-0.5 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.07]"
+                    btnClassName="px-3 py-1.5 text-left"
+                    pillClassName="rounded-md bg-brand shadow"
+                    activeClassName="text-onbrand"
+                    idleClassName="text-ink/60 hover:text-ink dark:text-white/60 dark:hover:text-white"
+                    items={heroRaces.map((r) => ({
+                      key: r.key,
+                      title: `${r.label} result`,
+                      // Race and winner on ONE line: two lines made the switcher
+                      // taller than the cards under it, which looked top-heavy.
+                      label: (
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em]">
+                            {r.label}
+                          </span>
+                          {/* the winner, so the closed tab still says something */}
+                          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-bold">
+                            <span
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: MEDAL[0] }}
+                            />
+                            <span className="max-w-[7.5rem] truncate">{r.block.podium[0].name}</span>
+                          </span>
+                        </span>
+                      ),
+                    }))}
+                    value={openHeroRace.key}
+                    onChange={(k) => {
+                      setOpenRaceTab(k);
+                      setHeroTabbed(true);
+                    }}
+                  />
+                </div>
+                {podiumStrip(openHeroRace.block, {
+                  animKey: openHeroRace.key,
+                  first: false,
+                  // First paint keeps the hero's staggered entrance; a switch
+                  // afterwards answers straight away.
+                  delay: heroTabbed ? 0 : 0.26,
+                  stagger: heroTabbed ? 0.05 : 0.14,
+                })}
+              </>
+            ) : (
+              podiumStrip({ ...feature, podium: heroPodium }, { delay: 0.26 })
+            )}
 
             <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
               {/* The two of them share the first line on a phone (flex-1, and
