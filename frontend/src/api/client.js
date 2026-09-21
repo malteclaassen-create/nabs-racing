@@ -619,21 +619,25 @@ export const api = {
   setMyTiles: (tiles, driverId) =>
     request("/me/tiles", { method: "PUT", body: { tiles, driverId }, userAuth: true }),
   // How the picture sits on the rating card ({x,y,z,s} or null = default).
-  // driverId targets one of the person's own season rows (default: current).
-  setMyCardPhoto: (pos, driverId) =>
-    request("/me/card-photo", { method: "PUT", body: { pos, driverId }, userAuth: true }),
+  // driverId targets one of the person's own season rows (default: current);
+  // allLeagues carries the same setting to their row in every league.
+  setMyCardPhoto: (pos, driverId, allLeagues) =>
+    request("/me/card-photo", { method: "PUT", body: { pos, driverId, allLeagues }, userAuth: true }),
   // A separate card-only picture (falls back to the profile photo when unset).
-  uploadMyCardPhoto: (file, driverId) => {
+  uploadMyCardPhoto: (file, driverId, allLeagues) => {
     const fd = new FormData();
     fd.append("file", file);
     if (driverId) fd.append("driverId", driverId);
+    if (allLeagues) fd.append("allLeagues", "1");
     return request("/me/card-photo-image", { method: "POST", body: fd, userAuth: true, form: true });
   },
-  clearMyCardPhoto: (driverId) =>
-    request(`/me/card-photo-image${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, {
-      method: "DELETE",
-      userAuth: true,
-    }),
+  clearMyCardPhoto: (driverId, allLeagues) => {
+    const q = new URLSearchParams();
+    if (driverId) q.set("driverId", driverId);
+    if (allLeagues) q.set("allLeagues", "1");
+    const qs = q.toString();
+    return request(`/me/card-photo-image${qs ? `?${qs}` : ""}`, { method: "DELETE", userAuth: true });
+  },
   // Unlockable rating-card editions: the catalogue + unlock state for a row, the
   // person's season chips, and picking an edition (driverId = which season row).
   myCardEditions: (driverId) =>

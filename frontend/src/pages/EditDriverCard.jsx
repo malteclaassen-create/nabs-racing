@@ -106,6 +106,19 @@ function CardEditor({ me }) {
   const [posEdit, setPosEdit] = useState(null); // { id, pos } debounced save
   const [posState, setPosState] = useState("idle"); // idle | saving | saved
   const [cardUploading, setCardUploading] = useState(false);
+  // Picture + framing: this row alone (as this page always worked), or the
+  // same on the person's current row in every league. Only a CURRENT row can
+  // carry a change across — an archive season is history, and editing it is
+  // local by nature — so the choice is offered only there, and picking another
+  // chip drops back to the safe default.
+  const [allLeagues, setAllLeagues] = useState(false);
+  const rowMeta = cardSeasons.find((s) => s.driverId === pickerDriverId) || null;
+  const leagueCount = new Set(cardSeasons.map((s) => s.seriesId || "")).size;
+  const canSpanLeagues = leagueCount > 1 && (isMe || rowMeta?.isCurrent === true);
+  const spanLeagues = canSpanLeagues && allLeagues;
+  useEffect(() => {
+    if (!canSpanLeagues) setAllLeagues(false);
+  }, [canSpanLeagues, pickerDriverId]);
 
   const photoPos = posByRow[pickerDriverId] !== undefined ? posByRow[pickerDriverId] : stored?.photoPos ?? null;
   const cardPhotoUrl =
@@ -123,7 +136,11 @@ function CardEditor({ me }) {
     const t = setTimeout(async () => {
       setPosState("saving");
       try {
-        const res = await api.setMyCardPhoto(posEdit.pos, posEdit.id === me.driverId ? undefined : posEdit.id);
+        const res = await api.setMyCardPhoto(
+          posEdit.pos,
+          posEdit.id === me.driverId ? undefined : posEdit.id,
+          posEdit.allLeagues
+        );
         setPosByRow((m) => ({ ...m, [posEdit.id]: res.photoPos }));
         setPosEdit(null);
         setPosState("saved");
@@ -136,17 +153,29 @@ function CardEditor({ me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [posEdit]);
 
+  // A change that went to every league leaves this page's caches describing the
+  // old state of the OTHER rows, so they are dropped and refetched on the next
+  // chip click rather than showing a picture that is no longer there.
+  function forgetOtherRows(keepId) {
+    setPreviewByDriver({});
+    setPhotoByRow((m) => (keepId in m ? { [keepId]: m[keepId] } : {}));
+    setPosByRow((m) => (keepId in m ? { [keepId]: m[keepId] } : {}));
+  }
+
   function editPos(p) {
     const id = pickerDriverId;
     setPosByRow((m) => ({ ...m, [id]: p }));
-    setPosEdit({ id, pos: p });
+    // The pending edit carries the scope that was chosen when it was made, for
+    // the same reason it carries its row id: the debounce outlives a chip click.
+    setPosEdit({ id, pos: p, allLeagues: spanLeagues });
   }
 
   async function resetCardPhoto() {
     const id = pickerDriverId;
     setError(null);
     try {
-      await api.setMyCardPhoto(null, isMe ? undefined : id);
+      await api.setMyCardPhoto(null, isMe ? undefined : id, spanLeagues);
+      if (spanLeagues) forgetOtherRows(id);
       setPosByRow((m) => ({ ...m, [id]: null }));
       setPosEdit(null);
       setPosState("idle");
@@ -163,7 +192,8 @@ function CardEditor({ me }) {
     setError(null);
     setCardUploading(true);
     try {
-      const res = await api.uploadMyCardPhoto(file, isMe ? undefined : id);
+      const res = await api.uploadMyCardPhoto(file, isMe ? undefined : id, spanLeagues);
+      if (spanLeagues) forgetOtherRows(id);
       setPhotoByRow((m) => ({ ...m, [id]: res.cardPhotoUrl }));
     } catch (err) {
       setError(err.message);
@@ -177,7 +207,8 @@ function CardEditor({ me }) {
     setError(null);
     setCardUploading(true);
     try {
-      await api.clearMyCardPhoto(isMe ? undefined : id);
+      await api.clearMyCardPhoto(isMe ? undefined : id, spanLeagues);
+      if (spanLeagues) forgetOtherRows(id);
       setPhotoByRow((m) => ({ ...m, [id]: null }));
     } catch (err) {
       setError(err.message);
@@ -191,13 +222,17 @@ function CardEditor({ me }) {
     const id = pickerDriverId;
     const prev = cardAnim;
     const next = prev === "off" ? null : "off";
-    setAnimByRow((m) => ({ ...m, [id]: next }));
+    // The switch is the person's, not the season's: every one of their cards
+    // follows, so the overlay covers all of them at once. On a failure the
+    // overlays are dropped entirely rather than guessed back — nothing was
+    // written, so each row's stored value is the truth again.
+    setAnimByRow(Object.fromEntries([...cardSeasons.map((s) => [s.driverId, next]), [id, next]]));
     setError(null);
     try {
       await api.setMyCardAnim(id, next);
     } catch (err) {
       setError(err.message);
-      setAnimByRow((m) => ({ ...m, [id]: prev }));
+      setAnimByRow({});
     }
   }
 
@@ -264,10 +299,41 @@ function CardEditor({ me }) {
                 onResetCardPhoto={resetCardPhotoImage}
                 cardUploading={cardUploading}
               />
+              {canSpanLeagues && (
+                <div className="rounded-xl border border-border bg-card p-3">
+                  <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                    Picture and framing apply to
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[
+                      { key: false, label: rowMeta?.seriesName || "This league" },
+                      { key: true, label: "All my leagues" },
+                    ].map((o) => (
+                      <button
+                        key={String(o.key)}
+                        type="button"
+                        aria-pressed={allLeagues === o.key}
+                        onClick={() => setAllLeagues(o.key)}
+                        className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+                          allLeagues === o.key ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-light">
+                    {allLeagues
+                      ? "The picture and its framing go to your current card in every league you race in. Older seasons keep what they have."
+                      : "Only this card changes; your other leagues keep what they have."}
+                  </p>
+                </div>
+              )}
               {!isMe && rowSeasonNumber != null && (
                 <p className="text-xs leading-relaxed text-light">
-                  You&rsquo;re editing your Season {rowSeasonNumber} card: edition, picture, framing and
-                  animation apply to this season only.
+                  You&rsquo;re editing your{" "}
+                  {rowMeta?.seriesName ? `${rowMeta.seriesName} Season ${rowSeasonNumber}` : `Season ${rowSeasonNumber}`}{" "}
+                  card: edition, picture and framing apply to that card only.
                 </p>
               )}
             </>
@@ -280,7 +346,8 @@ function CardEditor({ me }) {
           )}
 
           {/* Animation switch: keep the edition's baseline motion, or freeze it.
-              Per season row, like everything else on this page. */}
+              Unlike everything else on this page it is NOT per row — a still
+              card is a preference about the person, so every card follows. */}
           {rowHasCard && (
           <>
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
@@ -288,6 +355,7 @@ function CardEditor({ me }) {
               <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Card animation</div>
               <div className="mt-0.5 text-xs text-light">
                 {cardAnim === "off" ? "Off, a still card." : "On, with the edition's glow, sparkle and shimmer."}
+                {cardSeasons.length > 1 && " Applies to all your cards."}
               </div>
             </div>
             <button

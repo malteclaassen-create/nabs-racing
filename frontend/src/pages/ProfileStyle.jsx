@@ -213,7 +213,7 @@ export default function ProfileStyle() {
 
   return <div className={`profile-shop ${pageOnly ? "profile-shop--page" : "space-y-6"}`} style={{ "--profile-team": driver?.team?.color || "#638daf" }}>
     {pageOnly ? <button className="shop-return btn-primary" onClick={() => setPageOnly(false)}>← Back to customization</button> : <>
-      <PageHeader title="Profile Studio" right={<div className="flex flex-wrap items-center gap-3"><Link to="/profile?tab=tokens" className="btn-secondary">NABS Points</Link><Link to="/profile" className="btn-secondary">My profile</Link><button className="btn-primary" disabled={!driverId} onClick={() => setPageOnly(true)}>View full page ↗</button></div>} />
+      <PageHeader title="Profile Studio" subtitle="Your look belongs to you, not to one season: what you wear here shows on your profile in every league you race in, and on every season you have raced." right={<div className="flex flex-wrap items-center gap-3"><Link to="/profile?tab=tokens" className="btn-secondary">NABS Points</Link><Link to="/profile" className="btn-secondary">My profile</Link><button className="btn-primary" disabled={!driverId} onClick={() => setPageOnly(true)}>View full page ↗</button></div>} />
       <div className="shop-toolbar"><div className="shop-tabs" role="group" aria-label="Design category">{CATEGORIES.map(s => {
         const status = categoryStatus(s.id, draft, content, baseline, baselineContent);
         const description = `${status.label}${status.changed ? " · Unsaved changes" : status.active ? " · Saved" : ""}`;

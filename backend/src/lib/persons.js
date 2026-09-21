@@ -436,6 +436,43 @@ export async function ownCurrentRowIds(prisma, actingId, discordId = null) {
   }
 }
 
+// Every row of the person that their own login may write to — archive rows
+// included, minus any row claimed by a DIFFERENT Discord account. Pure core,
+// exported for the test. `rows` = [{ id, discordUserId }] of the linked rows;
+// the acting row is always included.
+//
+// Deliberately wider than selectOwnCurrentRows, and only for settings that
+// carry no season meaning at all. The card ANIMATION switch is the one: "show
+// me a still card" is a preference about the person's eyes, not a thing a
+// season can own, so leaving it set on this year's row and animated on every
+// older one would just be a chore nobody asked for.
+export function selectOwnRows(rows, actingId, discordId = null) {
+  const out = new Set([actingId]);
+  for (const r of rows || []) {
+    if (!r || r.id === actingId) continue;
+    if (r.discordUserId && r.discordUserId !== discordId) continue;
+    out.add(r.id);
+  }
+  return [...out];
+}
+
+// The ids a person-wide preference writes to (see above). Never throws: with
+// the person tables missing it is just the acting row.
+export async function ownAllRowIds(prisma, actingId, discordId = null) {
+  try {
+    const linked = await getLinkedDriverIds(prisma, actingId);
+    if (linked.length <= 1) return [actingId];
+    const ph = linked.map(() => "?").join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT d."id" AS "id", d."discordUserId" AS "discordUserId" FROM "Driver" d WHERE d."id" IN (${ph})`,
+      ...linked
+    );
+    return selectOwnRows(rows, actingId, discordId);
+  } catch {
+    return [actingId];
+  }
+}
+
 // One row per series out of a person's CURRENT rows (selectOwnCurrentRows):
 // the row in the series' active season, i.e. the lowest season number at or
 // above the series' cap (a draft only stands in where there is no active-season
