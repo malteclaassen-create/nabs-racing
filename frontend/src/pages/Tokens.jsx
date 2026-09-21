@@ -1052,6 +1052,25 @@ function CardDesignWindow({ data, onClose, onChanged }) {
   );
 }
 
+// How many columns the tiles stand in on a wide screen. It follows the NUMBER
+// of entries, because the league switches entries on and off: eight tiles in
+// five columns is a row of five and a row of three, which reads like something
+// fell off the end. Of 5, 4 and 3 columns the one that leaves the last row
+// fullest wins, the widest one on a tie, so eight tiles stand 4 and 4.
+const WIDE_COLS = { 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5" };
+function wideCols(n) {
+  let best = 5;
+  let smallestGap = Infinity;
+  for (const cols of [5, 4, 3]) {
+    const gap = (cols - (n % cols)) % cols; // empty places in the last row
+    if (gap < smallestGap) {
+      smallestGap = gap;
+      best = cols;
+    }
+  }
+  return WIDE_COLS[best];
+}
+
 function Shop({ data, onChanged, goal, onGoal }) {
   const [open, setOpen] = useState(null);
   const navigate = useNavigate();
@@ -1063,7 +1082,7 @@ function Shop({ data, onChanged, goal, onGoal }) {
   return (
     <div className="card space-y-3 p-5">
       <Heading>The shop</Heading>
-      <ul className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <ul className={`grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 ${wideCols(data.shop.length)}`}>
         {data.shop.map((item) => (
           <ShopTile key={item.key} item={item} balance={data.balance} onOpen={(i) => (i.link ? navigate(i.link) : setOpen(i))} />
         ))}

@@ -188,13 +188,18 @@ export const SHOP_ITEMS = [
       "Send the league office your design (or a picture of what you want) and it goes into the skin pack everyone downloads, so the field sees it on track.",
   },
   {
+    // The league's own livery, finished and waiting: nothing to draw and
+    // nothing to send in, which is why it is the cheaper of the two team
+    // skins. There is exactly ONE of them today and the wording says so. The
+    // day a second one exists, this is where it becomes "pick the one you
+    // want".
     key: "special_livery",
     name: "Special livery",
     cost: 2000,
     category: "In the car",
-    description: "One of the league's own designs, on both cars of your team.",
+    description: "The league's own special design, on both cars of your team.",
     blurb:
-      "The league keeps a few special liveries ready. Pick the one you want and it goes into the skin pack everyone downloads, on your car and your team mate's. Nobody has to draw anything for it, which is why it is the cheaper of the two. Ask your team mate first, one of the two cars is theirs.",
+      "The livery the league made and keeps ready. Buy it and it goes into the skin pack everyone downloads, on your car and your team mate's. Nobody has to draw anything for it, which is why it is the cheaper of the two. Ask your team mate first, one of the two cars is theirs.",
   },
   {
     // The key stays `car_skin` from the days this was one driver's own livery:
