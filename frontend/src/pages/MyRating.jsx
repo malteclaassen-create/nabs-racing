@@ -117,28 +117,32 @@ function Cause({ tone, children }) {
 
 // The plain-words cause chips for one race, derived from the same facts the
 // formula reads. Kept honest: only signals that actually feed a rating.
-function causesFor(r) {
+//
+// `label` prefixes every chip on a sprint weekend, where one round carries two
+// races and "Podium" alone would not say which of them it was.
+function causesFor(r, label = null) {
   const out = [];
   if (!r.raced) return out;
+  const tag = (text) => (label ? `${label}: ${text}` : text);
   if (r.status === "DNF" || r.status === "DSQ") {
-    out.push({ tone: "bad", text: r.status === "DSQ" ? "Disqualified" : "Retired", hits: "AWA · RAC" });
+    out.push({ tone: "bad", text: tag(r.status === "DSQ" ? "Disqualified" : "Retired"), hits: "AWA · RAC" });
   }
-  if (r.win) out.push({ tone: "good", text: "Race win", hits: "RAC" });
-  else if (r.podium) out.push({ tone: "good", text: "Podium", hits: "RAC" });
-  if (r.gained != null && r.gained > 0) out.push({ tone: "good", text: `Gained ${r.gained} place${r.gained === 1 ? "" : "s"}`, hits: "RAC" });
-  if (r.gained != null && r.gained < 0) out.push({ tone: "bad", text: `Lost ${-r.gained} place${r.gained === -1 ? "" : "s"}`, hits: "RAC" });
-  if (r.overtakes != null && r.overtakes > 0) out.push({ tone: "good", text: `${r.overtakes} overtake${r.overtakes === 1 ? "" : "s"}`, hits: "RAC" });
-  if (r.contacts != null && r.contacts > 0) out.push({ tone: "bad", text: `${r.contacts} contact${r.contacts === 1 ? "" : "s"}`, hits: "AWA" });
-  if (r.contacts === 0) out.push({ tone: "good", text: "Contact-free", hits: "AWA" });
-  if (r.envContacts != null && r.envContacts > 2) out.push({ tone: "bad", text: `${r.envContacts} off-track hits`, hits: "AWA" });
+  if (r.win) out.push({ tone: "good", text: tag("Race win"), hits: "RAC" });
+  else if (r.podium) out.push({ tone: "good", text: tag("Podium"), hits: "RAC" });
+  if (r.gained != null && r.gained > 0) out.push({ tone: "good", text: tag(`Gained ${r.gained} place${r.gained === 1 ? "" : "s"}`), hits: "RAC" });
+  if (r.gained != null && r.gained < 0) out.push({ tone: "bad", text: tag(`Lost ${-r.gained} place${r.gained === -1 ? "" : "s"}`), hits: "RAC" });
+  if (r.overtakes != null && r.overtakes > 0) out.push({ tone: "good", text: tag(`${r.overtakes} overtake${r.overtakes === 1 ? "" : "s"}`), hits: "RAC" });
+  if (r.contacts != null && r.contacts > 0) out.push({ tone: "bad", text: tag(`${r.contacts} contact${r.contacts === 1 ? "" : "s"}`), hits: "AWA" });
+  if (r.contacts === 0) out.push({ tone: "good", text: tag("Contact-free"), hits: "AWA" });
+  if (r.envContacts != null && r.envContacts > 2) out.push({ tone: "bad", text: tag(`${r.envContacts} off-track hits`), hits: "AWA" });
   // Steward penalties feed the rating; the game's own cut warnings don't, so
   // they get no chip here.
-  if (r.penaltySeconds != null && r.penaltySeconds > 0) out.push({ tone: "bad", text: `+${r.penaltySeconds}s steward penalty`, hits: "AWA" });
+  if (r.penaltySeconds != null && r.penaltySeconds > 0) out.push({ tone: "bad", text: tag(`+${r.penaltySeconds}s steward penalty`), hits: "AWA" });
   // 0% gap to the race's best lap means it WAS the race's best lap.
   if (r.bestLapGapPct != null && r.bestLapGapPct <= 1)
     out.push({
       tone: "good",
-      text: r.bestLapGapPct === 0 ? "Fastest lap of the race" : `Best lap within ${r.bestLapGapPct}%`,
+      text: tag(r.bestLapGapPct === 0 ? "Fastest lap of the race" : `Best lap within ${r.bestLapGapPct}%`),
       hits: "PAC",
     });
   return out;
@@ -1091,7 +1095,13 @@ export default function MyRating({ me, leagues = [] }) {
                 </div>
               );
             }
-            const causes = causesFor(p.race || {});
+            // A sprint weekend is one round and two races. Both feed the
+            // rating, so both get their say here — labelled, or a reader sees
+            // two "Podium" chips on one night and no way to tell them apart.
+            const sprint = p.race?.sprint || null;
+            const causes = sprint
+              ? [...causesFor(p.race || {}, "Feature"), ...causesFor(sprint, "Sprint")]
+              : causesFor(p.race || {});
             const goodCauses = causes.filter((c) => c.tone === "good");
             const badCauses = causes.filter((c) => c.tone !== "good");
             // Roomier on the phone (py-5, wider row gaps): each race needs to
@@ -1105,9 +1115,20 @@ export default function MyRating({ me, leagues = [] }) {
                   <span className="min-w-0 flex-1 truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark">
                     {p.track}
                   </span>
+                  {/* The feature race first, then the sprint — the order the
+                      weekend is spelled out in everywhere else on the site
+                      (StandingsTable, the profile, the recap). */}
                   <span className="shrink-0 text-sm font-bold text-dark">
                     {p.race.position != null ? `P${p.race.position}` : p.race.status}
                     {p.race.grid != null && <span className="font-semibold text-light"> from P{p.race.grid}</span>}
+                    {sprint && (
+                      <span className="font-semibold text-light">
+                        {" · sprint "}
+                        <span className="font-bold text-dark">
+                          {sprint.position != null ? `P${sprint.position}` : sprint.status}
+                        </span>
+                      </span>
+                    )}
                   </span>
                   {/* Per-value deltas. On a phone they drop to their own full
                       width line and spread out evenly (so they never wrap into a
