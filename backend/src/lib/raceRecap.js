@@ -43,6 +43,7 @@ import { tokensVisibleTo, isEarningOn, syncEarned, dbBalance, tunedRules } from 
 import { raceWasClean, stewardingClosed, withMultiplier } from "./tokenRules.js";
 import { findArchiveForRace, analyzeRaceFor, raceInsightsFor, fieldPaceTable, hasArchiveFor } from "./cockpitArchive.js";
 import { readParentIds, readSprintChildren } from "./sprintRaces.js";
+import { readRaceFormat } from "./raceFormat.js";
 import { contactsForDriver } from "./raceContacts.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
@@ -55,6 +56,12 @@ export const RECAP_MODES = ["off", "admins", "all"];
 // site three weeks later has moved on, and a recap of a round that old would
 // only look like a bug.
 const FRESH_DAYS = 10;
+
+// How long a sprint weekend waits for its second result file before the recap
+// gives up and tells the round with what is on file. See weekendStillArriving.
+// Well inside FRESH_DAYS, so a round that waits the whole time still has days
+// left in which to be offered.
+const HOLD_DAYS = 7;
 
 // --- the switch -------------------------------------------------------------
 
@@ -122,8 +129,41 @@ async function personRows(prisma, driverId) {
   });
 }
 
+// Is half of this round's night still to be imported? A sprint weekend is
+// saved as TWO files, one after the other — the feature race, then the sprint
+// (routes/admin.js) — and the "results are in" notification goes out with the
+// FIRST of them. So between the two saves the round is finished as far as the
+// database can tell while half the evening is still missing, and that is
+// precisely the minute a member is most likely to open the site. A recap handed
+// over then would tell a driver about one of the two races they drove, and
+// arriving on it counts as seen for good: the sprint would never reach them.
+//
+// So a round whose format says it runs a sprint waits for its sprint. The wait
+// is bounded, because a weekend scheduled as a sprint and then run as a single
+// race — or one whose sprint file never arrives — must not cost the driver the
+// recap altogether: after HOLD_DAYS the round is told with what is on file.
+// (The admin's own way out is the race format, which is what says a round runs
+// a sprint in the first place: clearing it back to a single race releases the
+// recap at once.)
+//
+// This holds only the recap that is PUSHED to a member. Opening a round's recap
+// from its race page reads whatever is saved, which is right — and never marks
+// anything as seen.
+async function weekendStillArriving(prisma, race) {
+  const format = (await readRaceFormat(prisma, [race.id])).get(race.id);
+  if (format?.raceFormat !== "SPRINT_FEATURE") return false;
+  const ran = race.date ? new Date(race.date).getTime() : null;
+  if (ran != null && Date.now() - ran > HOLD_DAYS * 86_400_000) return false;
+  const childId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+  // No child row at all: the sprint file has not been imported yet.
+  if (!childId) return true;
+  const saved = await prisma.raceResult.count({ where: { raceId: childId } }).catch(() => 0);
+  return saved === 0;
+}
+
 // The newest finished round of any PUBLIC season this person is in, if it is
-// recent enough and they have not been shown it yet. null = nothing to show.
+// recent enough, finished arriving, and they have not been shown it yet.
+// null = nothing to show.
 export async function pendingRecapRace(prisma, driverId, discordId) {
   const rows = await personRows(prisma, driverId);
   const priv = await getPrivateSeasonIds(prisma);
@@ -139,9 +179,10 @@ export async function pendingRecapRace(prisma, driverId, discordId) {
       results: { some: {} },
     },
     orderBy: { date: "desc" },
-    select: { id: true },
+    select: { id: true, date: true },
   });
   if (!race) return null;
+  if (await weekendStillArriving(prisma, race)) return null;
   if ((await seenRecapRaceId(prisma, discordId)) === race.id) return null;
   return race.id;
 }

@@ -20,12 +20,24 @@ vi.mock("./standingsRow.js", () => ({ isIdleReserve: () => false }));
 
 const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId, weekendPoints } = await import("./raceRecap.js");
 
-function fakePrisma({ setting = null, drivers = [], race = null, seen = null } = {}) {
+// `format` is the round's race-day shape, `sprintChild` the id of its sprint
+// classification (null = not imported yet) and `sprintResults` how many rows
+// that classification holds — the three things that say whether a sprint
+// weekend has finished arriving.
+function fakePrisma({ setting = null, drivers = [], race = null, seen = null, format = null, sprintChild = null, sprintResults = 0 } = {}) {
   return {
     setting: { findUnique: vi.fn(async () => (setting == null ? null : { value: setting })) },
     driver: { findMany: vi.fn(async () => drivers) },
     race: { findFirst: vi.fn(async () => race) },
-    $queryRawUnsafe: vi.fn(async () => (seen == null ? [{ recapSeenRaceId: null }] : [{ recapSeenRaceId: seen }])),
+    raceResult: { count: vi.fn(async () => sprintResults) },
+    $queryRawUnsafe: vi.fn(async (sql) => {
+      if (sql.includes('"raceFormat"')) return format && race ? [{ id: race.id, raceFormat: format }] : [];
+      // readSprintChildren; readParentIds is the one with IS NOT NULL.
+      if (sql.includes('"parentRaceId"')) {
+        return sql.includes("IS NOT NULL") || !sprintChild || !race ? [] : [{ id: sprintChild, parentRaceId: race.id }];
+      }
+      return [{ recapSeenRaceId: seen }];
+    }),
     $executeRawUnsafe: vi.fn(async () => 1),
   };
 }
@@ -96,6 +108,42 @@ describe("which round is owed", () => {
       throw new Error("no such column");
     });
     expect(await seenRecapRaceId(prisma, "discord-1")).toBeNull();
+  });
+});
+
+// The two results of a sprint weekend are imported one after the other, and
+// the round looks finished the moment the first of them is saved. The recap a
+// member is SENT is shown once and never again, so it must not be sent into
+// that gap.
+describe("a sprint weekend that is still being imported", () => {
+  const drivers = [{ id: "d1", seasonId: "season-8" }];
+  const race = { id: "race-5", date: new Date() };
+  const ask = (opts) => pendingRecapRace(fakePrisma({ drivers, race, ...opts }), "d1", "discord-1");
+
+  it("waits while the sprint file is not in yet", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE" })).toBeNull();
+  });
+
+  it("waits while the sprint classification exists but holds nothing", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", sprintChild: "race-5-sprint", sprintResults: 0 })).toBeNull();
+  });
+
+  it("offers the round once both races are on file", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", sprintChild: "race-5-sprint", sprintResults: 38 })).toBe("race-5");
+  });
+
+  it("never waits on a round that ran a single race", async () => {
+    expect(await ask({ format: "SINGLE" })).toBe("race-5");
+    expect(await ask({})).toBe("race-5");
+  });
+
+  it("gives up waiting for a sprint that never comes, and tells the round anyway", async () => {
+    const old = { id: "race-5", date: new Date(Date.now() - 8 * 86_400_000) };
+    const prisma = fakePrisma({ drivers, race: old, format: "SPRINT_FEATURE" });
+    expect(await pendingRecapRace(prisma, "d1", "discord-1")).toBe("race-5");
+    // The wait has to end inside the window the recap is offered in at all,
+    // or giving up would never be reached.
+    expect(prisma.raceResult.count).not.toHaveBeenCalled();
   });
 });
 
