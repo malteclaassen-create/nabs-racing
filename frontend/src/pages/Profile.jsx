@@ -21,6 +21,7 @@ import { SocialIcon, SOCIAL_META, useSocial } from "../components/SocialLinks.js
 import RatingCard from "../components/RatingCard.jsx";
 import DriverProfile from "./DriverProfile.jsx";
 import MyRating from "./MyRating.jsx";
+import DriverCareer from "./DriverCareer.jsx";
 import Tokens from "./Tokens.jsx";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { NO_VALUE } from "../utils/format.js";
@@ -912,7 +913,6 @@ function MyProfile() {
           tokens: tokenBalance,
           reportsOpen: REPORTS_OPEN_TO_MEMBERS,
           cockpitTabs: COCKPIT_TABS,
-          careerTo: previewId ? `/career/${previewId}` : null,
         })}
         value={tab}
         onSelect={setTab}
@@ -931,6 +931,10 @@ function MyProfile() {
         <Tools embedded />
       ) : tab === "tokens" ? (
         <Tokens />
+      ) : tab === "career" ? (
+        // The same view the public page shows, minus the hero: this page
+        // already knows whose career it is.
+        <DriverCareer careerKey={previewId} embedded />
       ) : tab === "rating" ? (
         <div data-tour="my-rating-panel">
           {/* The leagues ride along: a rating belongs to ONE of them, and the

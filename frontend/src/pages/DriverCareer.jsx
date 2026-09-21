@@ -999,11 +999,16 @@ function ChapterBar({ chapters }) {
 
 // --- the page ---------------------------------------------------------------
 
-export default function DriverCareer() {
-  const { key } = useParams();
+// `careerKey` + `embedded` render the same thing inside the personal area
+// (/profile?tab=career), where the page already says whose it is: the hero
+// drops out and a line of its own sits in its place. Without them this is the
+// public page at /career/<handle>.
+export default function DriverCareer({ careerKey = null, embedded = false }) {
+  const params = useParams();
+  const key = careerKey || params.key;
   const load = useCallback(() => api.career(key), [key]);
   const { data, loading, error, reload } = useApi(load);
-  useSpecificTitle(data ? `${data.person.name} · Career` : "Career");
+  useSpecificTitle(embedded ? null : data ? `${data.person.name} · Career` : "Career");
 
   if (loading && !data) {
     return (
@@ -1033,7 +1038,31 @@ export default function DriverCareer() {
 
   return (
     <div className="space-y-10 sm:space-y-12">
-      <Hero person={person} span={span} />
+      {embedded ? (
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+          <div>
+            <div className="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">Career record</div>
+            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">
+              Everything you have raced
+            </h2>
+          </div>
+          <span className="text-xs text-light">
+            {span.firstSeason != null && (
+              <>
+                Season {span.firstSeason}
+                {span.lastSeason !== span.firstSeason ? ` to ${span.lastSeason}` : ""} ·{" "}
+              </>
+            )}
+            {plural(span.seasonsRaced, "season")} raced
+            {span.leagues > 1 ? ` · ${plural(span.leagues, "league")}` : ""} ·{" "}
+            <Link to={`/career/${person.key || key}`} className="transition font-semibold text-link hover:underline">
+              Open the public page →
+            </Link>
+          </span>
+        </div>
+      ) : (
+        <Hero person={person} span={span} />
+      )}
 
       <ChapterBar chapters={nav} />
 

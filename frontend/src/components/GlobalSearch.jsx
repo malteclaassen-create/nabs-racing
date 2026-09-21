@@ -4,10 +4,31 @@ import { api } from "../api/client.js";
 import { DriverAvatar } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import { flagFor } from "../data/circuits.js";
+import { matchPages } from "./searchPages.mjs";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useAuth } from "../hooks/useAuth.js";
+import { useTokenBalance } from "../hooks/useTokenBalance.js";
+import {
+  Home, Trophy, Users, Flag as FlagMark, CalendarDays, Activity, Crown, ArrowLeftRight, BookOpen,
+  Gauge, IdCard, Smartphone, ShieldCheck, User, History, Medal, TrendingUp, Coins, SlidersHorizontal,
+  MessageSquare, TriangleAlert, ArrowRight,
+} from "lucide-react";
+
+// The catalogue's icon names, drawn the same size and weight as each other.
+const PAGE_ICONS = {
+  home: Home, trophy: Trophy, users: Users, flag: FlagMark, calendar: CalendarDays, activity: Activity,
+  crown: Crown, arrows: ArrowLeftRight, book: BookOpen, gauge: Gauge, cards: IdCard, phone: Smartphone,
+  shield: ShieldCheck, user: User, history: History, medal: Medal, trending: TrendingUp, coin: Coins,
+  sliders: SlidersHorizontal, message: MessageSquare, alert: TriangleAlert,
+};
 
 // The left-hand icon/mark for a result: a driver's avatar, a team logo/colour,
 // a race's circuit flag, or a small type glyph for seasons/series.
 function ResultMark({ item }) {
+  if (item.type === "page") {
+    const Icon = PAGE_ICONS[item.icon] || ArrowRight;
+    return <Icon className="h-4 w-4 text-medium" aria-hidden="true" />;
+  }
   if (item.type === "driver") {
     return <DriverAvatar name={item.label} photoUrl={item.photoUrl} color="#4251a8" size={26} />;
   }
@@ -58,6 +79,24 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
   const navigate = useNavigate();
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
+  // Pages are matched here rather than on the server: the catalogue is tiny,
+  // it never changes between requests, and this way "tele" offers Telemetry
+  // the moment it is typed instead of after the debounce and a round trip.
+  const { seriesPath } = useSeriesPath();
+  const { user } = useAuth();
+  const tokens = useTokenBalance();
+  const pages = useMemo(
+    () =>
+      matchPages(q, {
+        seriesPath,
+        isMember: !!user,
+        isAdmin: !!user?.isAdmin,
+        pointsOn: tokens != null,
+      }),
+    // seriesPath is rebuilt on every render; the slug inside it is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [q, user, tokens]
+  );
 
   // On roomy desktops the collapsed field is wide enough to spell out "Search"
   // next to the icon; on tighter ones it stays an icon-only pill so the packed
@@ -124,8 +163,16 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
     return () => { alive = false; clearTimeout(t); };
   }, [q]);
 
+  // Pages sit above the league's own records: somebody typing "attendance"
+  // wants the page, and somebody typing a driver's name gets no page hit at
+  // all, so the two never fight over the top spot.
+  const groups = useMemo(() => {
+    const found = data?.groups || [];
+    return pages.length ? [{ type: "page", label: "Go to", items: pages }, ...found] : found;
+  }, [data, pages]);
+
   // Flat list of items across all groups, for arrow-key navigation.
-  const flat = useMemo(() => (data?.groups || []).flatMap((g) => g.items), [data]);
+  const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -215,7 +262,7 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           onFocus={() => { setOpen(true); setFocused(true); }}
           onBlur={() => setFocused(false)}
           onKeyDown={onKeyDown}
-          placeholder={expanded ? "Search drivers, teams, races…" : wide ? "Search" : ""}
+          placeholder={expanded ? "Search drivers, races, pages…" : wide ? "Search" : ""}
           aria-label="Search"
           autoComplete="off"
           role="combobox"
@@ -235,18 +282,18 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
           style={mobile ? undefined : { width: expandedW ? `${expandedW}px` : "15rem", maxWidth: "calc(100vw - 1.5rem)" }}
         >
           <div id="global-search-results" role="listbox" aria-label="Search results" className="max-h-[min(28rem,70vh)] overflow-y-auto py-1">
-            {loading && !data ? (
+            {loading && !data && !pages.length ? (
               <p className="px-4 py-6 text-center text-sm text-light">Searching…</p>
-            ) : searchError ? (
+            ) : searchError && !pages.length ? (
               <p role="alert" className="px-4 py-6 text-center text-sm font-medium text-bad">
                 Search is not answering right now. Try again in a moment.
               </p>
-            ) : !data || data.groups.length === 0 ? (
+            ) : groups.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-light">
                 No matches for “{q.trim()}”.
               </p>
             ) : (
-              data.groups.map((g) => (
+              groups.map((g) => (
                 <div key={g.type} role="group" aria-label={g.label} className="py-1">
                   <div aria-hidden className="px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">{g.label}</div>
                   {g.items.map((item) => {
@@ -254,7 +301,7 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
                     const i = idx;
                     return (
                       <button
-                        key={`${item.type}-${item.id}`}
+                        key={`${item.type}-${item.id ?? item.key}`}
                         type="button"
                         id={`global-search-option-${i}`}
                         role="option"
@@ -270,7 +317,9 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-dark">{item.label}</span>
-                          {item.sublabel && <span className="block truncate text-xs text-light">{item.sublabel}</span>}
+                          {(item.sublabel || item.sub) && (
+                            <span className="block truncate text-xs text-light">{item.sublabel || item.sub}</span>
+                          )}
                         </span>
                       </button>
                     );

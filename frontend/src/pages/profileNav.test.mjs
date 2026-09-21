@@ -8,7 +8,7 @@ test("sections are the panels the page swaps in place", () => {
   const { sections } = profileNav({ cockpitTabs: COCKPIT });
   assert.deepEqual(
     sections.map((s) => s.key),
-    ["profile", "achievements", "rating", "tools", "settings"]
+    ["profile", "achievements", "rating", "career", "tools", "settings"]
   );
   assert.ok(sections.every((s) => s.kind === "section"));
 });
@@ -65,5 +65,5 @@ test("?tab= stays valid while the token balance is still loading", () => {
   // a bell link to ?tab=tokens does not flash the editor on the way in.
   assert.ok(!profileNav({ tokens: null }).sections.some((s) => s.key === "tokens"));
   assert.ok(sectionKeys(COCKPIT).includes("tokens"));
-  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "tokens", "tools", "settings"]);
+  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "career", "tokens", "tools", "settings"]);
 });
