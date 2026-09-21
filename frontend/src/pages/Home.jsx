@@ -809,18 +809,39 @@ export default function Home() {
   // The hero's podium strip for one race. A sprint weekend renders it twice,
   // feature first with a label over each, so the two races of the evening
   // read as two and not as one podium with the wrong names on it.
-  const podiumStrip = (block, { label = null, first = true, delay = 0 } = {}) =>
+  //
+  // `compact` is what a sprint weekend turns on. Two full-size strips is six
+  // cards, and on a phone — where each card owns the whole width — that pushed
+  // the Full Results button and everything under it clean off the screen. The
+  // denser card keeps the pair of podiums to roughly the height one used to
+  // take, so the hero still ends where it ended. A normal weekend renders
+  // exactly as before.
+  //
+  // `tone` marks which session is which. The two blocks are otherwise
+  // identical, so with nothing but a mono label over each they read as one
+  // six-card list: the feature takes the accent pill, the sprint a quiet grey
+  // one, and the rule beside them draws the line between the two sessions.
+  const podiumStrip = (block, { label = null, tone = "primary", first = true, delay = 0, compact = false } = {}) =>
     block.podium.length > 0 && (
-      <div key={label || "race"} className={first ? "mt-8 max-w-2xl" : "mt-3 max-w-2xl"}>
+      <div key={label || "race"} className={`max-w-2xl ${first ? "mt-8" : "mt-5"}`}>
         {label && (
           <div
-            className="hero-anim mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow"
+            className="hero-anim mb-2.5 flex items-center gap-3"
             style={{ animationDelay: `${0.22 + delay}s` }}
           >
-            {label}
+            <span
+              className={`rounded-md border px-2 py-1 font-mono text-[10px] font-bold uppercase leading-none tracking-[0.18em] ${
+                tone === "primary"
+                  ? "border-accent/40 bg-accent/10 text-eyebrow"
+                  : "border-ink/15 bg-ink/[0.04] text-ink/55 dark:border-white/15 dark:bg-white/[0.06] dark:text-white/55"
+              }`}
+            >
+              {label}
+            </span>
+            <span className="h-px flex-1 bg-gradient-to-r from-ink/15 to-transparent dark:from-white/15" />
           </div>
         )}
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className={`grid sm:grid-cols-3 ${compact ? "gap-1.5" : "gap-2"}`}>
                 {block.podium.map((p, i) => (
 
                   <Link
@@ -829,7 +850,9 @@ export default function Home() {
                     // Each card rises on its own beat (P1 first), instead of the
                     // whole strip fading in as one block.
                     style={{ animationDelay: `${0.26 + delay + i * 0.14}s` }}
-                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                    className={`hero-anim shine group relative flex items-center overflow-hidden rounded-xl border border-black/10 bg-white/70 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12] ${
+                      compact ? "gap-2.5 px-3 py-2" : "gap-3 px-4 py-3"
+                    }`}
                   >
                     <span
                       className="absolute left-0 top-0 h-full w-1"
@@ -841,14 +864,34 @@ export default function Home() {
                       className="pointer-events-none absolute inset-0"
                       style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
                     />
+                    {/* The position, as a results graphic writes it: the P a
+                        small prefix and the NUMBER the thing you read. Set at
+                        one size the two competed, and "P" — the part that is
+                        the same on all three cards — was as loud as the part
+                        that differs. Baseline-aligned so the lockup sits on
+                        one line however the two sizes are tuned. */}
                     <span
-                      className="font-display text-2xl font-black tabular-nums"
+                      className="flex shrink-0 items-baseline font-display font-black tabular-nums"
                       style={{ color: MEDAL[i] }}
                     >
-                      P{p.position}
+                      <span className={compact ? "text-[11px]" : "text-[13px]"} style={{ opacity: 0.7 }}>
+                        P
+                      </span>
+                      <span className={compact ? "text-[26px] leading-none" : "text-[30px] leading-none"}>
+                        {p.position}
+                      </span>
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
+                      {/* Archivo, not Inter: the rank and the points beside it
+                          are already set in the display face, and the name
+                          between them was the one part of the card still in
+                          body text. Tighter tracking buys back the width the
+                          heavier face costs, so nothing new truncates. */}
+                      <span
+                        className={`flex items-center gap-1.5 font-display font-extrabold leading-tight tracking-tight text-ink transition group-hover:text-brand dark:text-white ${
+                          compact ? "text-[15px]" : "text-base"
+                        }`}
+                      >
                         <span className="truncate">{p.name}</span>
                         <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
                       </span>
@@ -859,6 +902,7 @@ export default function Home() {
                           color={p.subForTeam.color}
                           logoUrl={p.subForTeam.logoUrl}
                           size={16}
+                          boxWidth={36}
                           showName
                           className="mt-0.5"
                           nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
@@ -870,6 +914,12 @@ export default function Home() {
                           color={p.team.color}
                           logoUrl={p.team.logoUrl}
                           size={16}
+                          // A wider slot for the mark: a square badge still
+                          // draws at 16x16, while a wide wordmark (DAMS,
+                          // Jaguar) gets the room it needs instead of being
+                          // squeezed into a square and vanishing. Fixed width,
+                          // so the team names still line up down the strip.
+                          boxWidth={36}
                           showName
                           className="mt-0.5"
                           nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
@@ -877,20 +927,30 @@ export default function Home() {
                       )}
                     </span>
                     {/* What the round paid the driver: the points, with the
-                        honours won that day above them. PHONES ONLY. There the
-                        card runs the full width of the page and the right half
-                        sits empty; from sm up the same three cards share one
-                        row, which leaves each about 220px, and anything added
-                        on the right cut the driver's name down to an ellipsis.
-                        The round page carries all of it in full either way. */}
-                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1 pl-1 text-right sm:hidden">
-                      {/* The row is reserved for all three as soon as ONE of
-                          them earned something, so the cards keep a common
-                          height and the points sit on one line down the strip
-                          instead of stepping up and down. */}
-                      {block.anyHonours && (
-                        <span className="flex min-h-[1rem] items-center gap-1">
-                          {block.honoursFor(p).map((h) => (
+                        honours won that day beside or above them. PHONES ONLY.
+                        There the card runs the full width of the page and the
+                        right half sits empty; from sm up the same three cards
+                        share one row, which leaves each about 220px, and
+                        anything added on the right cut the driver's name down
+                        to an ellipsis. The round page carries all of it in
+                        full either way. */}
+                    <span
+                      className={`ml-auto flex shrink-0 pl-1 text-right sm:hidden ${
+                        compact ? "items-center gap-1.5" : "flex-col items-end gap-1"
+                      }`}
+                    >
+                      {/* A sprint weekend puts the honours on the SAME line as
+                          the points instead of on a reserved row above them.
+                          That row costs every card in the block a line's
+                          height whether or not the driver won anything, which
+                          on the screen showing both races left the sprint's
+                          three cards visibly taller than the feature's above
+                          them and the points of the two podiums out of line
+                          with each other. Inline, one FL on one driver no
+                          longer changes the height of anything, and the two
+                          sessions read as the matched pair they are. */}
+                      {compact
+                        ? block.honoursFor(p).map((h) => (
                             <span
                               key={h.key}
                               title={h.title}
@@ -898,12 +958,28 @@ export default function Home() {
                             >
                               {h.label}
                             </span>
-                          ))}
-                        </span>
-                      )}
+                          ))
+                        : // A single race keeps the stacked row, reserved for
+                          // all three as soon as ONE of them earned something,
+                          // so the cards keep a common height and the points
+                          // sit on one line down the strip instead of stepping
+                          // up and down.
+                          block.anyHonours && (
+                            <span className="flex min-h-[1rem] items-center gap-1">
+                              {block.honoursFor(p).map((h) => (
+                                <span
+                                  key={h.key}
+                                  title={h.title}
+                                  className={`rounded-full px-1 py-px font-mono text-[10px] font-bold uppercase leading-[1.4] ${h.cls}`}
+                                >
+                                  {h.label}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                       {block.scores && p.points != null && (
                         <span className="flex items-baseline gap-1">
-                          <span className="font-display text-xl font-black tabular-nums text-ink dark:text-white">
+                          <span className={`font-display font-black tabular-nums text-ink dark:text-white ${compact ? "text-lg" : "text-xl"}`}>
                             {p.points}
                           </span>
                           <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
@@ -1255,7 +1331,13 @@ export default function Home() {
             {/* podium strip — the latest race's top 3, or on a sprint weekend
                 both races' (the feature above, as it is run first) */}
             {sprint
-              ? [podiumStrip(feature, { label: "Feature" }), podiumStrip(sprint, { label: "Sprint", first: false, delay: 0.3 })]
+              ? [
+                  podiumStrip(feature, { label: "Feature", tone: "primary", compact: true }),
+                  // 0.22s behind the feature, not 0.3: the sprint's cards are
+                  // the last thing on the strip to arrive, and the longer beat
+                  // read as the page still loading rather than as a sequence.
+                  podiumStrip(sprint, { label: "Sprint", tone: "muted", first: false, delay: 0.22, compact: true }),
+                ]
               : podiumStrip({ ...feature, podium: heroPodium })}
 
             <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
