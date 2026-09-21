@@ -221,6 +221,7 @@ async function computeCareer(prisma, key, includePrivate) {
       seasonName: season.name,
       game: season.game || null,
       isActive: !!season.isActive,
+      teamId: row.team?.id || null,
       teamName: row.team?.name || null,
       teamColor: row.team?.color || null,
       teamLogoUrl: row.team?.logoUrl || null,

@@ -252,13 +252,123 @@ function RatingRow({ rating, showLeague }) {
   );
 }
 
-// --- season table per league ------------------------------------------------
+// --- one row per season -----------------------------------------------------
 
-function LeagueTable({ league }) {
-  const best = Math.max(1, ...league.seasons.map((s) => s.points));
+// A season as one line you can read at a glance: where it ended, what it paid,
+// who it was driven for, and the round-by-round form of that year as a strip
+// of squares. It replaced a seven-column table that made you count across
+// headers to work out what a row was saying.
+
+// What a single round is worth to the eye: the podium in its own colours,
+// anything that scored in the accent, a finish outside the points quiet, and
+// a night that ended early greyed out.
+function roundTone(r) {
+  // A round the person was entered for but did not take: an empty slot, so the
+  // strip still shows the gap in the season rather than hiding it.
+  if (r.status === "DNS") return null;
+  if (r.status !== "FINISHED" || r.position == null) return "var(--c-faint)";
+  if (r.position <= 3) return MEDAL[r.position - 1];
+  // One colour, two strengths: a scoring finish reads solid, a finish that
+  // paid nothing is the same square gone pale.
+  if ((r.points ?? 0) > 0) return "rgb(var(--c-accent) / 0.7)";
+  return "rgb(var(--c-accent) / 0.22)";
+}
+
+function FormStrip({ rounds }) {
+  if (!rounds.length) return null;
+  return (
+    <div className="flex flex-wrap gap-[3px]">
+      {rounds.map((r, i) => (
+        <span
+          key={`${r.raceId}-${r.sprint ? "s" : "f"}-${i}`}
+          title={`${r.round != null ? `Round ${r.round}` : "Round"}${r.sprint ? " sprint" : ""} · ${r.track} · ${
+            r.status === "FINISHED" && r.position != null ? `P${r.position}` : r.status
+          }${(r.points ?? 0) > 0 ? ` · ${r.points} pts` : ""}`}
+          className="h-4 w-2.5 rounded-[2px] sm:h-5 sm:w-3"
+          style={
+            roundTone(r)
+              ? { background: roundTone(r) }
+              : { background: "transparent", boxShadow: "inset 0 0 0 1px var(--c-border)" }
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function SeasonRow({ season: s, league, rounds }) {
+  const colour = s.teamColor || "rgb(var(--c-brand))";
+  const counts = [
+    s.wins && plural(s.wins, "win"),
+    s.podiums && plural(s.podiums, "podium"),
+    s.poles && plural(s.poles, "pole"),
+  ].filter(Boolean);
+  return (
+    <div className="relative flex flex-wrap items-center gap-x-5 gap-y-3 py-4 pl-5 pr-5 transition hover:bg-surface2 sm:pl-6">
+      {/* the team's colour as the line's own edge */}
+      <span className="absolute inset-y-0 left-0 w-1" style={{ background: colour }} />
+
+      <div className="min-w-[9rem] flex-1">
+        <Link
+          to={`/s/${league.slug}/drivers/${s.handle || s.driverId}?season=${s.seasonNumber}`}
+          className="font-display text-lg font-extrabold uppercase tracking-tight text-dark transition hover:text-brand"
+        >
+          Season {s.seasonNumber}
+        </Link>
+        {s.isActive && (
+          <span className="ml-2 align-middle font-mono text-[10px] font-bold uppercase tracking-wider text-brand">running</span>
+        )}
+        <div className="mt-1 flex items-center gap-2 text-sm">
+          <TeamLogo id={s.teamId} name={s.teamName} color={s.teamColor} logoUrl={s.teamLogoUrl} size={18} />
+          <span className="truncate font-semibold text-medium">{s.teamName || NO_VALUE}</span>
+        </div>
+        {s.game && <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-light">{s.game}</div>}
+      </div>
+
+      {/* the year round by round */}
+      <div className="order-last w-full sm:order-none sm:w-auto sm:flex-[2]">
+        <FormStrip rounds={rounds} />
+        <div className="mt-1.5 font-mono text-[10px] uppercase tracking-wider text-light">
+          {plural(s.starts, "start")}
+          {counts.length ? ` · ${counts.join(" · ")}` : ""}
+        </div>
+      </div>
+
+      {/* where it ended, and what it paid */}
+      <div className="flex items-center gap-5 text-right">
+        <div className="w-16">
+          {s.position ? (
+            <>
+              <div
+                className="font-display text-2xl font-black leading-none tabular-nums"
+                style={s.position <= 3 ? { color: MEDAL_TEXT[s.position - 1] } : undefined}
+              >
+                P{s.position}
+              </div>
+              {s.fieldSize > 0 && (
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">of {s.fieldSize}</div>
+              )}
+            </>
+          ) : (
+            <NoData label="no start" />
+          )}
+        </div>
+        <div className="w-16">
+          <div className="font-display text-2xl font-black leading-none tabular-nums text-dark">{s.points}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">points</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeagueBlock({ league, races }) {
+  // The rounds of one season, oldest first, so the strip reads left to right.
+  const roundsOf = (seasonNumber) =>
+    races.filter((r) => r.seriesSlug === league.slug && r.seasonNumber === seasonNumber).slice().reverse();
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
         <div className="flex items-center gap-2.5">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: league.accentColor || "rgb(var(--c-brand))" }} />
           <Link to={`/s/${league.slug}`} className="font-display text-base font-extrabold uppercase tracking-tight text-dark transition hover:text-brand">
@@ -271,73 +381,29 @@ function LeagueTable({ league }) {
           {league.totals.best ? ` · best ${pos(league.totals.best)}` : ""}
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left font-mono text-[10px] uppercase tracking-wider text-eyebrow">
-              <th className="px-4 py-2.5 sm:px-5">Season</th>
-              <th className="hidden px-3 py-2.5 sm:table-cell">Team</th>
-              <th className="px-2 py-2.5 text-center sm:px-3">Pos</th>
-              <th className="px-2 py-2.5 text-right sm:px-3">Points</th>
-              <th className="hidden px-3 py-2.5 text-center sm:table-cell">Starts</th>
-              <th className="px-2 py-2.5 text-center sm:px-3">Wins</th>
-              <th className="hidden px-3 py-2.5 text-center sm:table-cell">Podiums</th>
-              <th className="hidden px-5 py-2.5 text-center sm:table-cell">Poles</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {league.seasons.map((s) => (
-              <tr key={`${s.seasonNumber}-${s.driverId}`} className="transition hover:bg-surface2">
-                <td className="px-4 py-3 sm:px-5">
-                  <Link
-                    to={`/s/${league.slug}/drivers/${s.handle || s.driverId}?season=${s.seasonNumber}`}
-                    className="font-semibold text-dark transition hover:text-brand"
-                  >
-                    <span className="sm:hidden">S{s.seasonNumber}</span>
-                    <span className="hidden sm:inline">{s.seasonName || `Season ${s.seasonNumber}`}</span>
-                  </Link>
-                  {s.isActive && <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-brand">live</span>}
-                  {s.game && <div className="mt-0.5 hidden text-[11px] text-light sm:block">{s.game}</div>}
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-light sm:hidden">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: s.teamColor || "var(--c-border)" }} />
-                    <span className="truncate">{s.teamName || NO_VALUE}</span>
-                  </div>
-                </td>
-                <td className="hidden px-3 py-3 sm:table-cell">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.teamColor || "var(--c-border)" }} />
-                    <span className="truncate text-medium">{s.teamName || NO_VALUE}</span>
-                  </span>
-                </td>
-                <td className="px-2 py-3 text-center sm:px-3">
-                  {s.position ? (
-                    <span
-                      className="font-display text-base font-black tabular-nums"
-                      style={s.position <= 3 ? { color: MEDAL_TEXT[s.position - 1] } : undefined}
-                    >
-                      {s.position}
-                    </span>
-                  ) : (
-                    <NoData label="no start" />
-                  )}
-                  {s.position != null && s.fieldSize > 0 && (
-                    <span className="ml-1 text-[11px] text-light">/{s.fieldSize}</span>
-                  )}
-                </td>
-                <td className="px-2 py-3 text-right sm:px-3">
-                  <div className="font-semibold tabular-nums text-dark">{s.points}</div>
-                  <div className="mt-1 h-1 w-full overflow-hidden rounded bg-surface2">
-                    <div className="h-full rounded" style={{ width: `${(s.points / best) * 100}%`, background: s.teamColor || "rgb(var(--c-brand))" }} />
-                  </div>
-                </td>
-                <td className="hidden px-3 py-3 text-center tabular-nums text-medium sm:table-cell">{s.starts}</td>
-                <td className="px-2 py-3 text-center tabular-nums font-semibold text-dark sm:px-3">{s.wins || NO_VALUE}</td>
-                <td className="hidden px-3 py-3 text-center tabular-nums text-medium sm:table-cell">{s.podiums || NO_VALUE}</td>
-                <td className="hidden px-5 py-3 text-center tabular-nums text-medium sm:table-cell">{s.poles || NO_VALUE}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="divide-y divide-border">
+        {league.seasons.map((s) => (
+          <SeasonRow key={`${s.seasonNumber}-${s.driverId}`} season={s} league={league} rounds={roundsOf(s.seasonNumber)} />
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface2/40 px-5 py-2.5 sm:px-6">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-light">Each square is a race</span>
+        {[
+          ["Win", MEDAL[0]],
+          ["Podium", MEDAL[2]],
+          ["In the points", "rgb(var(--c-accent) / 0.7)"],
+          ["No points", "rgb(var(--c-accent) / 0.22)"],
+          ["Out", "var(--c-faint)"],
+          ["Missed", null],
+        ].map(([label, colour]) => (
+          <span key={label} className="inline-flex items-center gap-1.5 text-[11px] text-light">
+            <span
+              className="h-3 w-2 rounded-[2px]"
+              style={colour ? { background: colour } : { boxShadow: "inset 0 0 0 1px var(--c-border)" }}
+            />
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -463,86 +529,6 @@ function FinishSpread({ races, leagues }) {
           {plural(data.finishes, "finish", "finishes")} out of {plural(data.starts, "start")}.
         </p>
       </div>
-    </div>
-  );
-}
-
-// --- the curve --------------------------------------------------------------
-
-// Championship finish per season, one line per league. P1 sits at the top, so
-// a career that climbs reads as a line going up.
-function CareerCurve({ leagues }) {
-  const series = leagues
-    .map((l) => ({
-      name: l.name,
-      color: l.accentColor || "rgb(var(--c-brand))",
-      points: l.seasons.filter((s) => s.position != null).map((s) => ({ x: s.seasonNumber, y: s.position, pts: s.points, team: s.teamName })),
-    }))
-    .filter((s) => s.points.length > 1);
-  if (!series.length) return null;
-
-  const xs = series.flatMap((s) => s.points.map((p) => p.x));
-  const ys = series.flatMap((s) => s.points.map((p) => p.y));
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const maxY = Math.max(...ys, 5);
-  const W = 720;
-  const H = 260;
-  const padL = 44;
-  const padR = 18;
-  const padT = 18;
-  const padB = 32;
-  const px = (x) => padL + ((x - minX) / Math.max(1, maxX - minX)) * (W - padL - padR);
-  const py = (y) => padT + ((y - 1) / Math.max(1, maxY - 1)) * (H - padT - padB);
-  const ticks = [1, Math.round((maxY + 1) / 2), maxY].filter((v, i, a) => a.indexOf(v) === i);
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Championship finish per season">
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={padL} x2={W - padR} y1={py(t)} y2={py(t)} stroke="var(--c-border)" strokeWidth="1" />
-            <text x={padL - 10} y={py(t) + 4} textAnchor="end" className="fill-light" fontSize="11" fontFamily="ui-monospace, monospace">
-              P{t}
-            </text>
-          </g>
-        ))}
-        {Array.from({ length: maxX - minX + 1 }, (_, i) => minX + i).map((x) => (
-          <text key={x} x={px(x)} y={H - 10} textAnchor="middle" className="fill-light" fontSize="11" fontFamily="ui-monospace, monospace">
-            S{x}
-          </text>
-        ))}
-        {series.map((s) => (
-          <g key={s.name}>
-            <path
-              d={s.points.map((p, i) => `${i ? "L" : "M"}${px(p.x)},${py(p.y)}`).join(" ")}
-              fill="none"
-              stroke={s.color}
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-            {s.points.map((p) => (
-              <circle key={p.x} cx={px(p.x)} cy={py(p.y)} r="4" fill="var(--c-card)" stroke={s.color} strokeWidth="2.5">
-                <title>{`Season ${p.x}: P${p.y}${p.team ? ` · ${p.team}` : ""} · ${p.pts} pts`}</title>
-              </circle>
-            ))}
-          </g>
-        ))}
-      </svg>
-      <div className="mt-3 border-t border-border pt-3 text-xs text-light">
-        Where each season ended in the championship. Higher is better.
-      </div>
-      {series.length > 1 && (
-        <div className="mt-3 flex flex-wrap gap-4">
-          {series.map((s) => (
-            <span key={s.name} className="inline-flex items-center gap-2 text-xs font-medium text-medium">
-              <span className="h-2 w-5 rounded" style={{ background: s.color }} />
-              {s.name}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1011,11 +997,8 @@ export default function DriverCareer() {
       >
         <div className="space-y-4">
           {leagues.map((l) => (
-            <LeagueTable key={l.slug} league={l} />
+            <LeagueBlock key={l.slug} league={l} races={races} />
           ))}
-        </div>
-        <div className="mt-4">
-          <CareerCurve leagues={leagues} />
         </div>
       </Section>
 
