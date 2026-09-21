@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -138,6 +138,10 @@ function CardEditor({ me, reload }) {
   const [photoByRow, setPhotoByRow] = useState({}); // row id -> card picture overlay
   const [animByRow, setAnimByRow] = useState({}); // row id -> "off" | null overlay
   const [posEdit, setPosEdit] = useState(null); // { id, pos } debounced save
+  // The newest framing change, by identity. A save that is already in flight
+  // when the member moves the picture again must not put its own values back
+  // on screen when it lands.
+  const latestPos = useRef(null);
   const [posState, setPosState] = useState("idle"); // idle | saving | saved
   const [cardUploading, setCardUploading] = useState(false);
   const rowMeta = ownRow;
@@ -163,7 +167,13 @@ function CardEditor({ me, reload }) {
       setPosState("saving");
       try {
         const res = await api.setMyCardPhoto(posEdit.pos, posEdit.id === me.driverId ? undefined : posEdit.id);
+        // Only the save that is still the newest may write back. The timer is
+        // cancelled on every change, but one already past it cannot be: it
+        // would land a moment later and drag the zoom back to where it was
+        // before the member carried on adjusting.
+        if (latestPos.current !== posEdit) return;
         setPosByRow((m) => ({ ...m, [posEdit.id]: res.photoPos }));
+        latestPos.current = null;
         setPosEdit(null);
         setPosState("saved");
       } catch (err) {
@@ -200,6 +210,7 @@ function CardEditor({ me, reload }) {
     setPreviewByDriver({});
     setPosByRow({});
     setPhotoByRow(keepPhoto === undefined ? {} : { [id]: keepPhoto });
+    latestPos.current = null;
     setPosEdit(null);
     setPosState("idle");
     reload(); // what the current row's card now shows rides on `me`
@@ -208,8 +219,10 @@ function CardEditor({ me, reload }) {
 
   function editPos(p) {
     const id = pickerDriverId;
+    const edit = { id, pos: p };
+    latestPos.current = edit;
     setPosByRow((m) => ({ ...m, [id]: p }));
-    setPosEdit({ id, pos: p });
+    setPosEdit(edit);
   }
 
   async function resetCardPhoto() {
