@@ -24,6 +24,8 @@ import MyRating from "./MyRating.jsx";
 import Tokens from "./Tokens.jsx";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { NO_VALUE } from "../utils/format.js";
+import { useSeries } from "../context/SeriesContext.jsx";
+import { pickedLeague } from "./viewedLeague.mjs";
 
 // The public profile shows at most this many stat tiles.
 const MAX_TILES = 9;
@@ -370,7 +372,7 @@ function DiscordLogin() {
 // there). The parent keys this component on the scope, so the form starts
 // again from the chosen row's saved values. `target` is the row id the API
 // calls carry, null for "all".
-function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope, onSaved }) {
+function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope, onSaved, leagueName = null }) {
   const fileRef = useRef(null);
   const target = scope === "all" ? null : scope;
   const multiLeague = leagues.length > 1;
@@ -493,7 +495,7 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
             />
             <span className="basis-full text-xs text-light sm:basis-auto sm:flex-1">
               {scope === "all"
-                ? "Saves go to your profile in every league you race in."
+                ? `Saves go to your profile in every league you race in${leagueName ? `, starting from what ${leagueName} has` : ""}.`
                 : `Only your ${leagues.find((l) => l.driverId === scope)?.seriesName || "selected league"} profile changes; the other leagues keep what they have.`}
             </span>
           </div>
@@ -639,7 +641,13 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
               even without ratings. */}
           {(ratingRes.data?.ratings || me.role === "safety") && (
             <div className="mx-auto w-full max-w-[332px] space-y-3 lg:mx-0">
-              <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Your driver card</div>
+              {/* A card belongs to ONE league and one season of it. With two
+                  in play the label says which, or the card sitting under
+                  "Applies to: Every league" reads as if it were all of them. */}
+              <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+                Your driver card
+                {leagueName && <span className="text-light"> · {leagueName}</span>}
+              </div>
               <RatingCard
                 driver={{
                   id: me.driverId,
@@ -796,6 +804,11 @@ function MyProfile() {
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const tokenBalance = useTokenBalance();
   const navigate = useNavigate();
+  // `current` rather than `slug`: the Personal Area sits outside the /s/<slug>
+  // URLs, so on a cold load here there is no slug at all — while the header
+  // still names a series (the active one). Following the header is the rule,
+  // and where a slug IS set the two are the same series anyway.
+  const { current: viewedSeries } = useSeries();
   const me = useApi(useCallback(() => api.me(), []));
   // The person's row per league, for editing one league on its own. A failed
   // read just means no picker (the editor then behaves as for one league).
@@ -825,7 +838,12 @@ function MyProfile() {
   // Only the FIRST load blanks the page. A refetch (e.g. after connecting a
   // Steam account) used to unmount the screen mid-render, which threw away the
   // message that was the whole point of coming back here.
-  if (me.loading && !me.data) return <Spinner label="Loading your profile…" />;
+  // The leagues read decides WHICH row this page shows (see shownRow below), so
+  // it is waited for too — rendering without it draws the login's own league
+  // first and swaps a moment later, which is the bug this page had.
+  if ((me.loading && !me.data) || (leagues.loading && !leagues.data)) {
+    return <Spinner label="Loading your profile…" />;
+  }
   if (me.error) return <ErrorBox message={me.error} />;
 
   // Logged in with Discord but not yet matched to a roster driver. This used to
@@ -839,11 +857,20 @@ function MyProfile() {
 
   const d = me.data;
   const leagueList = leagues.data?.leagues || [];
-  // The row being edited: the login's own row for "all", else the chosen
-  // league's row — its own fields fill the form and its page is previewed.
+  // The row being SHOWN. "Applies to" says where a save lands, which is a
+  // different question from which league you are looking at: on "Every league"
+  // the edit is the person's, but the card, the form's values and the public
+  // preview still have to belong to ONE row — and the honest one is the league
+  // the site is on, not whichever row the Discord login happens to sit on.
+  // That was the whole bug: browsing Sunday and being shown the Friday card.
+  //
+  // Picking a league by hand overrides it, as before. With one league there is
+  // nothing to choose and `d` is that row.
   const scoped = scope === "all" ? null : leagueList.find((l) => l.driverId === scope) || null;
-  const editing = scoped ? { ...d, ...scoped } : d;
-  const previewId = scoped ? scoped.driverId : d.driverId;
+  const shownRow = scoped || pickedLeague(leagueList, viewedSeries?.slug || null, null);
+  const editing = shownRow ? { ...d, ...shownRow } : d;
+  const previewId = shownRow ? shownRow.driverId : d.driverId;
+  const shownLeagueName = leagueList.length > 1 ? shownRow?.seriesName || shownRow?.seasonName || null : null;
 
   return (
     <div className="content-in space-y-6">
@@ -886,24 +913,22 @@ function MyProfile() {
         <div data-tour="my-rating-panel">
           {/* The leagues ride along: a rating belongs to ONE of them, and the
               panel defaults to the league the site is viewing rather than to
-              whichever row the Discord login happens to sit on. Mounted only
-              once that read has settled — starting without it would fetch the
-              login's own league first and flash the wrong numbers. */}
-          {leagues.loading && !leagues.data ? (
-            <Spinner label="Loading your rating…" />
-          ) : (
-            <MyRating me={d} leagues={leagueList} />
-          )}
+              whichever row the Discord login happens to sit on. The page does
+              not render at all until that read has settled (above). */}
+          <MyRating me={d} leagues={leagueList} />
         </div>
       ) : tab !== "profile" ? (
         <CockpitPanels tab={tab} onTab={setTab} />
       ) : (
         <>
       <ProfileEditor
-        // Keyed on the scope: switching leagues restarts the form from that
-        // row's saved values (and clears any unsaved typing on purpose).
-        key={scope}
+        // Keyed on the row being shown, not just the scope pill: switching
+        // league — by the pill OR by the series switcher in the header —
+        // restarts the form from that row's saved values (and clears any
+        // unsaved typing on purpose).
+        key={`${scope}:${previewId}`}
         me={editing}
+        leagueName={shownLeagueName}
         leagues={leagueList}
         scope={scope}
         onScope={(key) => { setScope(key); setDraft(null); }}
