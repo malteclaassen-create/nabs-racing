@@ -354,13 +354,18 @@ function SeasonRow({ season: s, league, rounds }) {
       {/* the year round by round */}
       <div className="order-last w-full sm:order-none sm:flex-1">
         <FormStrip rounds={rounds} />
-        <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-light">
-          {plural(s.starts, "start")}
-          {counts.length ? ` · ${counts.join(" · ")}` : ""}
-        </div>
+        {s.starts > 0 && (
+          <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-light">
+            {plural(s.starts, "start")}
+            {counts.length ? ` · ${counts.join(" · ")}` : ""}
+          </div>
+        )}
       </div>
 
       {/* where it ended, and what it paid */}
+      {s.starts === 0 ? (
+        <div className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">No start yet</div>
+      ) : (
       <div className="flex items-center gap-6 text-right">
         <div className="w-[4.5rem]">
           {s.position ? (
@@ -384,6 +389,7 @@ function SeasonRow({ season: s, league, rounds }) {
           <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">points</div>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -402,9 +408,15 @@ function LeagueBlock({ league, races }) {
           </Link>
         </div>
         <div className="font-mono text-[11px] uppercase tracking-wider text-light">
-          {plural(league.totals.seasons, "season")} · {plural(league.totals.starts, "start")} ·{" "}
-          {plural(league.totals.wins, "win")} · {league.totals.points} pts
-          {league.totals.best ? ` · best ${pos(league.totals.best)}` : ""}
+          {league.totals.starts > 0 ? (
+            <>
+              {plural(league.totals.seasons, "season")} · {plural(league.totals.starts, "start")} ·{" "}
+              {plural(league.totals.wins, "win")} · {league.totals.points} pts
+              {league.totals.best ? ` · best ${pos(league.totals.best)}` : ""}
+            </>
+          ) : (
+            "On the roster, no start yet"
+          )}
         </div>
       </div>
       <div className="divide-y divide-border">
@@ -412,6 +424,7 @@ function LeagueBlock({ league, races }) {
           <SeasonRow key={`${s.seasonNumber}-${s.driverId}`} season={s} league={league} rounds={roundsOf(s.seasonNumber)} />
         ))}
       </div>
+      {league.totals.starts > 0 && (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border bg-surface2 px-5 py-2.5 sm:px-6">
         <span className="font-mono text-[10px] uppercase tracking-wider text-light">Each square is a race</span>
         {[
@@ -431,6 +444,7 @@ function LeagueBlock({ league, races }) {
           </span>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -668,7 +682,7 @@ function DuelList({ teammates, me }) {
                     "Dead even on race finishes"
                   )}
                 </span>
-                {d.qualiMe + d.qualiThem > 0 && (
+                {d.qualiMe + d.qualiThem >= 3 && (
                   <span className="font-mono text-[11px] uppercase tracking-wider">
                     Qualifying {d.qualiMe} : {d.qualiThem}
                   </span>
@@ -1119,7 +1133,9 @@ export default function DriverCareer() {
                 <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
                 <span className="min-w-0 flex-1 truncate text-[13px] text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
                 <span className="font-mono text-[12px] uppercase tracking-wider text-light">
-                  {plural(t.starts, "start")} · {plural(t.wins, "win")} · {plural(t.podiums, "podium")} · {t.points} pts
+                  {t.starts > 0
+                    ? `${plural(t.starts, "start")} · ${plural(t.wins, "win")} · ${plural(t.podiums, "podium")} · ${t.points} pts`
+                    : "No start yet"}
                 </span>
               </div>
             ))}

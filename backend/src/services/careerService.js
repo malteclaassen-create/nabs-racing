@@ -322,7 +322,13 @@ async function computeCareer(prisma, key, includePrivate) {
         position: [prev, s].filter((r) => r.position).map((r) => r.position).sort((a, b) => a - b)[0] ?? null,
       });
     }
-    lg.seasons = [...bySeason.values()].sort((a, b) => b.seasonNumber - a.seasonNumber);
+    // A roster line with no start is not a season somebody raced: a reserve on
+    // the sign-up list of six seasons would otherwise fill a league block with
+    // six empty rows. The season that is RUNNING stays, because sitting in a
+    // car right now is worth saying even before the first round.
+    lg.seasons = [...bySeason.values()]
+      .filter((x) => x.starts > 0 || x.isActive)
+      .sort((a, b) => b.seasonNumber - a.seasonNumber);
     lg.totals = lg.seasons.reduce(
       (t, s) => ({
         seasons: t.seasons + (s.starts > 0 ? 1 : 0),
@@ -336,7 +342,9 @@ async function computeCareer(prisma, key, includePrivate) {
       { seasons: 0, points: 0, starts: 0, wins: 0, podiums: 0, poles: 0, best: null }
     );
   }
-  const leagueList = [...leagues.values()].sort((a, b) => b.totals.starts - a.totals.starts);
+  const leagueList = [...leagues.values()]
+    .filter((lg) => lg.seasons.length > 0)
+    .sort((a, b) => b.totals.starts - a.totals.starts);
   titles.sort((a, b) => a.position - b.position || b.seasonNumber - a.seasonNumber || (a.kind === "driver" ? -1 : 1));
 
   // --- career totals --------------------------------------------------------
@@ -390,11 +398,12 @@ async function computeCareer(prisma, key, includePrivate) {
     const k = normName(row.team.name);
     let t = teamMap.get(k);
     if (!t) {
-      t = { name: row.team.name, color: row.team.color, logoUrl: row.team.logoUrl, teamId: row.team.id, seasons: [], starts: 0, wins: 0, podiums: 0, points: 0 };
+      t = { name: row.team.name, color: row.team.color, logoUrl: row.team.logoUrl, teamId: row.team.id, seasons: [], starts: 0, wins: 0, podiums: 0, points: 0, current: false };
       teamMap.set(k, t);
     }
     const season = seasonById.get(row.seasonId);
     const series = visibleSeries(row.seasonId);
+    if (season?.isActive) t.current = true;
     // Two rows of one season (a handle change) are still one season here.
     if (season && series && !t.seasons.some((x) => x.seriesSlug === series.slug && x.seasonNumber === season.number)) {
       t.seasons.push({ seriesSlug: series.slug, seriesName: series.name, seasonNumber: season.number });
@@ -406,7 +415,9 @@ async function computeCareer(prisma, key, includePrivate) {
     const line = standingsBySeason.get(row.seasonId)?.standings?.find((x) => x.driverId === row.id);
     t.points += line?.total ?? 0;
   }
-  const teams = [...teamMap.values()].sort((a, b) => b.starts - a.starts || b.wins - a.wins);
+  const teams = [...teamMap.values()]
+    .filter((t) => t.starts > 0 || t.current)
+    .sort((a, b) => b.starts - a.starts || b.wins - a.wins);
 
   // --- team-mate duels, every season, both sides person-resolved -------------
   const { byDriver, byPerson } = await getPersonGroups(prisma);
