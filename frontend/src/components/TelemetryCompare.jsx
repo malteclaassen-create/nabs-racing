@@ -41,8 +41,10 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
 // the site should not be two different controls.
 const ZOOM_BTN =
   "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
+// The header's actions, all four at one weight. They used to be three bare
+// text links plus one button — four things of equal rank drawn three different
+// ways, with the link style reading as prose rather than as a toolbar.
 const SMALL_BTN = "btn-secondary px-2.5 py-1 text-xs";
-const LINK_BTN = "text-link hover:underline disabled:text-faint";
 const ICON_BTN = "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-medium transition hover:bg-surface2 disabled:opacity-30";
 
 // The transport's glyphs: the shapes every player uses, drawn rather than
@@ -601,29 +603,52 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const downloadCsv = () => downloadText(comparisonCsv({ lapA, lapB, dist, n, gA, gB }), `${fileStem}.csv`, "text/csv");
   const saveMap = () => exportSvgPng(mapSvg.current, { fileName: `${fileStem}-map.png`, background: getComputedStyle(document.documentElement).getPropertyValue("--c-card").trim() || "#fff" }).catch(() => {});
 
+  // The series picker, when there is more than one league to choose from.
+  const picksSeries = !fixedSeries && seriesList.length > 1;
+  // Its label says the league out loud, so the subtitle beside it stops saying
+  // the same thing a second time. Without the picker the subtitle is the only
+  // place that carries it, and keeps it.
+  const said = [picksSeries ? null : seriesName, season ? `Season ${season}` : null].filter(Boolean);
+  const subtitle = [...said, `${said.length ? "b" : "B"}oth laps aligned by track position`].join(" · ");
+
   return (
-    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={[seriesName, season ? `Season ${season}` : null, seriesName || season ? "both laps aligned by track position" : "Both laps aligned by track position"].filter(Boolean).join(" · ")}
-      actions={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
+    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={subtitle}
+      actions={<div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs font-semibold">
         {/* The league, when there is more than one to choose from. Up here
             rather than beside the track dropdown so it is there when the list
             is empty — which is exactly when somebody wants to look at the
             other league's laps instead. */}
-        {!fixedSeries && seriesList.length > 1 && (
-          <select aria-label="Series" className="input w-auto py-1 text-xs font-semibold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
-            {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
-          </select>
+        {picksSeries && (
+          // It was a bare <select> in the plain input style: the same neutral
+          // box as the track dropdown below it, unlabelled, in a row of
+          // "Copy link" and "Export" — nothing said this one picked the
+          // LEAGUE, the choice that decides which laps exist at all. The
+          // eyebrow says it, and the accent border (the series' own colour)
+          // tells the two dropdowns apart at a glance.
+          //
+          // A real <label> rather than the aria-label it had: the visible
+          // word is now the accessible name too, instead of a hidden one
+          // that only a screen reader ever got.
+          <label className="inline-flex items-center gap-1.5">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
+            <select className="input w-auto border-accent/60 py-1 text-xs font-bold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
+              {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
+            </select>
+          </label>
         )}
-        {lapA && <button type="button" className={LINK_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "Link copied" : "Copy link"}</button>}
+        {/* Which laps you are looking at, then what you can do with them. */}
+        {picksSeries && <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />}
+        {lapA && <button type="button" className={SMALL_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "Link copied" : "Copy link"}</button>}
         {lapA && <details className="relative">
-          <summary className={`${LINK_BTN} cursor-pointer list-none`}>{copied === "summary" ? "Summary copied" : "Export"}</summary>
+          <summary className={`${SMALL_BTN} cursor-pointer list-none`}>{copied === "summary" ? "Summary copied" : "Export"}</summary>
           <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 font-normal shadow-lift">
             <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={copySummary}>Copy summary as text</button>
             <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={downloadCsv}>Download CSV</button>
             {hasMap && <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={saveMap}>Save map as PNG</button>}
           </div>
         </details>}
-        {lapA && <button type="button" className={LINK_BTN} onClick={toggleFull} aria-pressed={full} title="Full screen (F)">{full ? "Exit full screen" : "Full screen"}</button>}
-        <button type="button" className="btn-secondary px-2.5 py-1 text-xs" onClick={refresh} disabled={tracks.loading}>Refresh laps</button>
+        {lapA && <button type="button" className={SMALL_BTN} onClick={toggleFull} aria-pressed={full} title="Full screen (F)">{full ? "Exit full screen" : "Full screen"}</button>}
+        <button type="button" className={SMALL_BTN} onClick={refresh} disabled={tracks.loading}>Refresh laps</button>
       </div>}>
       {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad">{error} <button type="button" className="ml-2 underline" onClick={refresh}>Try again</button></div>}
       {tracks.loading && !tracks.data ? <p role="status" className="py-6 text-sm text-light">Loading recorded tracks…</p>
