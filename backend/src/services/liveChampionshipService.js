@@ -30,6 +30,7 @@ import {
 } from "./standingsService.js";
 import { getActiveSeason, getSeasonScoring } from "./seasonService.js";
 import { getIdentityOverrides } from "../lib/persons.js";
+import { personPhotoFor } from "../lib/cardPhoto.js";
 import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 import { similarity } from "./acJsonParser.js";
 import { realGuidForPublicId } from "./liveTiming.js";
@@ -289,7 +290,7 @@ export async function buildLiveChampionship(prisma, board, { simulate = false } 
         driverId,
         name: d?.name || "?",
         country: d?.country || idov?.country || null,
-        photoUrl: d?.photoUrl || d?.discordAvatar || idov?.photoUrl || null,
+        photoUrl: personPhotoFor(d || {}, idov),
         team: d?.team
           ? { id: d.team.id, name: d.team.name, color: d.team.color, logoUrl: d.team.logoUrl || null }
           : { id: null, name: "", color: "#888", logoUrl: null },

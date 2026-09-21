@@ -1316,7 +1316,7 @@ function ClassicHero({ driver, championship, color }) {
       <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/85 to-transparent" />
 
       <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-8">
-        <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
+        <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={112} className="text-4xl ring-4 ring-white/10" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">{driver.name}</h1>
@@ -1478,7 +1478,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
           {cardsEnabled && (rating || driver.role === "safety") ? (
             <RatingCard driver={driver} rating={rating} explain />
           ) : (
-            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={160} className="text-6xl" />
+            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={160} className="text-6xl" />
           )}
         </div>
 
@@ -1870,7 +1870,7 @@ export default function DriverProfile({ previewId, preview }) {
       <div className="content-in space-y-6">
         {ownControls}
         <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
-          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={color} size={72} />
+          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={72} />
           <div>
             <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
               {driver.name}
@@ -2027,12 +2027,12 @@ export default function DriverProfile({ previewId, preview }) {
                   <th className="px-5 py-2.5">Rnd</th>
                   <th className="px-2 py-2.5">Circuit</th>
                   <th className="px-2 py-2.5 text-center">Grid</th>
+                  <th className="px-2 py-2.5 text-center">{hasSprint ? "Feature" : "Race"}</th>
                   {hasSprint && (
                     <th className="px-2 py-2.5 text-center" title="The sprint race of a sprint weekend (scores like the feature race, added to the round)">
                       Sprint
                     </th>
                   )}
-                  <th className="px-2 py-2.5 text-center">{hasSprint ? "Feature" : "Race"}</th>
                   <th className="px-2 py-2.5 text-right">Pts</th>
                   <th className="hidden px-5 py-2.5 text-right sm:table-cell">+/−</th>
                 </tr>
@@ -2066,6 +2066,15 @@ export default function DriverProfile({ previewId, preview }) {
                         </div>
                       </td>
                       <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{r.grid ? `P${r.grid}` : "–"}</td>
+                      <td className="px-2 py-3 text-center">
+                        {finished ? (
+                          <span className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
+                            medal ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"}`}
+                            style={medal ? { backgroundColor: medal } : undefined}>
+                            P{r.position}
+                          </span>
+                        ) : <StatusPill status={r.status} />}
+                      </td>
                       {hasSprint && (
                         <td className="px-2 py-3 text-center">
                           {r.sprint ? (
@@ -2086,18 +2095,9 @@ export default function DriverProfile({ previewId, preview }) {
                           )}
                         </td>
                       )}
-                      <td className="px-2 py-3 text-center">
-                        {finished ? (
-                          <span className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
-                            medal ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"}`}
-                            style={medal ? { backgroundColor: medal } : undefined}>
-                            P{r.position}
-                          </span>
-                        ) : <StatusPill status={r.status} />}
-                      </td>
                       <td
                         className="px-2 py-3 text-right font-display text-base font-black tabular-nums"
-                        title={r.sprint ? `Sprint ${r.sprint.points} + feature ${r.points - r.sprint.points} = ${r.points}` : undefined}
+                        title={r.sprint ? `Feature ${r.points - r.sprint.points} + sprint ${r.sprint.points} = ${r.points}` : undefined}
                       >
                         {dropped ? (
                           <span className="text-faint line-through decoration-2">{r.points}</span>
@@ -2108,7 +2108,7 @@ export default function DriverProfile({ previewId, preview }) {
                             under the number, so a 60 next to a P3 adds up. */}
                         {r.sprint && (
                           <span className="block font-mono text-[10px] font-semibold tabular-nums text-light">
-                            {r.sprint.points} + {r.points - r.sprint.points}
+                            {r.points - r.sprint.points} + {r.sprint.points}
                           </span>
                         )}
                       </td>

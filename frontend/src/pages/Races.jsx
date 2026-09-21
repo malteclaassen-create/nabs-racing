@@ -1032,10 +1032,16 @@ export default function Races() {
                                 looking at. It opens the same panel as the
                                 button in the corner, with this race already
                                 chosen — the one thing a driver would otherwise
-                                have to pick out of a list of forty. */}
+                                have to pick out of a list of forty. On the
+                                Sprint tab that is the sprint: it is a race of
+                                its own with its own contacts, and a report
+                                filed from its table is about it. */}
                             {REPORTS_OPEN_TO_MEMBERS && (
                             <Link
-                              to={reportsPath({ nw: true, raceId: head.id })}
+                              to={reportsPath({
+                                nw: true,
+                                raceId: shownSession === "sprint" && sprintRaceId ? sprintRaceId : head.id,
+                              })}
                               title="Report an incident from this round to the stewards"
                               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
                             >
@@ -1099,7 +1105,8 @@ export default function Races() {
                                 pillClassName="rounded-md bg-brand shadow"
                                 items={[
                                   // With a sprint on file the evening has two
-                                  // races — name the main one what it is.
+                                  // races, in the order the league runs them:
+                                  // the feature first, then the sprint.
                                   { key: "race", label: sprintRaceId ? "Feature" : "Race" },
                                   ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
                                   ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),

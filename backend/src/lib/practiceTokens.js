@@ -42,6 +42,7 @@ import {
 import { leagueDay } from "./tokenRules.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { LIVE_SERVERS } from "./liveServers.js";
+import { boardScopes } from "./liveBestLaps.js";
 
 const STEAM_RE = /^\d{10,20}$/;
 
@@ -164,6 +165,16 @@ async function seriesOfDriver(prisma, steamId) {
     )
     .catch(() => []);
   return rows.map((r) => String(r.slug)).filter(Boolean);
+}
+
+// Which series a SERVER is being used for, with no lap and no driver to go
+// on: what the league assigned it, else the first active series. Only used to
+// give a server nobody has driven on yet an empty bar with a week behind it.
+export async function seriesForServer(prisma, serverKey) {
+  const assigned = [...new Set(boardScopes(serverKey).map((s) => String(s?.series || "")).filter(Boolean))];
+  if (assigned.length === 1) return assigned[0];
+  const active = await activeSeriesSlugs(prisma);
+  return assigned.find((slug) => active.includes(slug)) || active[0] || null;
 }
 
 export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackKey = "", steamId = "" } = {}) {
@@ -352,34 +363,6 @@ async function steamIdsFor(prisma, discordId) {
   return rows.map((r) => String(r.steamId)).filter((v) => STEAM_RE.test(v));
 }
 
-// This member's laps in one week, per server: `{ nabs1: { laps, car }, … }`.
-// The week is never added up across servers — each one is its own milestone.
-async function lapsByServer(prisma, steamIds, series, periodKey) {
-  if (!steamIds.length) return new Map();
-  const ph = steamIds.map(() => "?").join(",");
-  const rows = await prisma
-    .$queryRawUnsafe(
-      `SELECT "server" AS "server", COALESCE(SUM("laps"), 0) AS "laps",
-              MAX("trackKey") AS "trackKey", MAX("car") AS "car"
-         FROM "TokenPractice"
-        WHERE "steamId" IN (${ph}) AND "series" = ? AND "period" = ?
-        GROUP BY "server"`,
-      ...steamIds,
-      String(series || ""),
-      String(periodKey || "")
-    )
-    .catch(() => []);
-  const out = new Map();
-  for (const r of rows) {
-    out.set(String(r.server || ""), {
-      laps: Number(r.laps || 0),
-      trackKey: r.trackKey || null,
-      car: r.car || null,
-    });
-  }
-  return out;
-}
-
 // ---- Paying ------------------------------------------------------------------
 
 // What the league calls a race server.
@@ -439,13 +422,17 @@ export async function payPractice(prisma, discordId, { series, period, server = 
 // the way past, so opening the page settles a week the relay could not pay
 // for.
 //
-// EVERY series and EVERY server, not one. NABS Points are the site's, not a
-// series' — racing anywhere pays, and so does practising for anywhere. And
-// each race server carries its own milestones, so what comes back is one
-// entry per series and server: `weeks`. The top level is the one a page
-// should lead with, which is the series it is showing (`prefer`) and
-// otherwise the fullest one. A page that cares which SERVER it is showing
-// (the live one does) picks that entry out of `weeks` itself.
+// ONE ENTRY PER RACE SERVER, because that is what a week is here: each server
+// carries its own milestones, and a server is only ever being used for one
+// thing at a time. The series still decides WHEN the week turns over (its next
+// round), but it is not a second dimension of the list — listing a server once
+// per series put the same machine on the page twice, with two different
+// numbers, which is a week nobody can read.
+//
+// Which series a server's week belongs to is answered by the laps themselves:
+// whatever the counting decided while they were being driven. A server nobody
+// has turned a lap on yet falls back to its assignment, and then to the first
+// active series, so it still has an empty bar to fill.
 export async function practiceProgress(prisma, discordId, { prefer = null } = {}) {
   const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
   if (!tiers.length || !discordId) return null;
@@ -466,63 +453,88 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
   const publicPages = await tokensPublic(prisma);
   const target = tiers[tiers.length - 1].laps;
   const servers = countingServers();
-  if (!servers.length) return null;
+  if (!servers.length || !seriesRows.length) return null;
 
-  const weeks = [];
+  // Every series' week that is running right now.
+  const periods = [];
   for (const row of seriesRows) {
     const period = await currentPeriod(prisma, row.slug);
-    if (!period) continue;
-    const byServer = await lapsByServer(prisma, steamIds, row.slug, period.key);
+    if (period) periods.push({ slug: row.slug, name: row.name, period });
+  }
+  if (!periods.length) return null;
 
-    // All of this week's milestone payments in one read, for every server.
-    const keys = [];
-    for (const srv of servers) for (const t of tiers) keys.push(refKeyFor(t.key, row.slug, period.key, srv.key));
-    const ph = keys.map(() => "?").join(",");
+  // This member's laps inside those weeks, per server and series, in one read.
+  const ph = steamIds.map(() => "?").join(",");
+  const periodPh = periods.map(() => "?").join(",");
+  const lapRows = await prisma
+    .$queryRawUnsafe(
+      `SELECT "server" AS "server", "series" AS "series", "period" AS "period",
+              COALESCE(SUM("laps"), 0) AS "laps", MAX("car") AS "car"
+         FROM "TokenPractice"
+        WHERE "steamId" IN (${ph}) AND "period" IN (${periodPh})
+        GROUP BY "server", "series", "period"`,
+      ...steamIds,
+      ...periods.map((p) => p.period.key)
+    )
+    .catch(() => []);
+
+  const weeks = [];
+  for (const srv of servers) {
+    // What this server has been used for this week: the series its laps were
+    // filed under. Ties go to the bigger number, which is the one being driven.
+    const mine = lapRows
+      .filter((r) => String(r.server || "") === srv.key)
+      .map((r) => ({ ...r, laps: Number(r.laps || 0) }))
+      .sort((a, b) => b.laps - a.laps);
+    let on = mine[0]
+      ? periods.find((p) => p.slug === mine[0].series && p.period.key === mine[0].period)
+      : null;
+    if (!on) {
+      const slug = await seriesForServer(prisma, srv.key);
+      on = periods.find((p) => p.slug === slug) || periods[0];
+    }
+    const laps = mine[0]?.laps || 0;
+    if (laps) await payPractice(prisma, discordId, { series: on.slug, period: on.period, server: srv.key, laps });
+
+    const keys = tiers.map((t) => refKeyFor(t.key, on.slug, on.period.key, srv.key));
+    const keyPh = keys.map(() => "?").join(",");
     const paidRows = await prisma
       .$queryRawUnsafe(
-        `SELECT "refKey","createdAt" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (${ph})`,
+        `SELECT "refKey","createdAt" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" IN (${keyPh})`,
         discordId,
         ...keys
       )
       .catch(() => []);
     const paidAt = new Map(paidRows.map((r) => [r.refKey, r.createdAt]));
 
-    for (const srv of servers) {
-      const mine = byServer.get(srv.key) || { laps: 0, car: null };
-      const laps = mine.laps;
-      if (laps) await payPractice(prisma, discordId, { series: row.slug, period, server: srv.key, laps });
-      const next = tiers.find((t) => laps < t.laps) || null;
-      weeks.push({
-        series: row.slug,
-        seriesName: row.name,
-        server: srv.key,
-        serverName: srv.name,
-        laps,
-        target,
-        label: period.label,
-        period: period.key,
-        car: mine.car || null,
-        earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
-        next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
-        tiers: tiers.map((t) => ({
-          key: t.key,
-          laps: t.laps,
-          points: t.points,
-          done: laps >= t.laps,
-          paidAt: paidAt.get(refKeyFor(t.key, row.slug, period.key, srv.key)) || null,
-        })),
-      });
-    }
+    const next = tiers.find((t) => laps < t.laps) || null;
+    weeks.push({
+      series: on.slug,
+      seriesName: on.name,
+      server: srv.key,
+      serverName: srv.name,
+      laps,
+      target,
+      label: on.period.label,
+      period: on.period.key,
+      car: mine[0]?.car || null,
+      earned: tiers.filter((t) => laps >= t.laps).reduce((sum, t) => sum + t.points, 0),
+      next: next ? { laps: next.laps, points: next.points, toGo: next.laps - laps } : null,
+      tiers: tiers.map((t) => ({
+        key: t.key,
+        laps: t.laps,
+        points: t.points,
+        done: laps >= t.laps,
+        paidAt: paidAt.get(refKeyFor(t.key, on.slug, on.period.key, srv.key)) || null,
+      })),
+    });
   }
-  if (!weeks.length) return null;
 
-  const mine = prefer ? weeks.filter((w) => w.series === prefer) : [];
-  const pool = mine.length ? mine : weeks;
+  // The one a page should lead with: the server showing the series it asked
+  // for, else the fullest bar.
+  const mineFirst = prefer ? weeks.filter((w) => w.series === prefer) : [];
+  const pool = mineFirst.length ? mineFirst : weeks;
   const lead = pool.reduce((a, b) => (b.laps > a.laps ? b : a), pool[0]);
-  // A series this member has not turned a lap in is not their week. The
-  // series the page is showing keeps ALL its servers either way, so somebody
-  // who has not started yet sees the empty bars they could fill.
-  const shown = weeks.filter((w) => w.laps > 0 || w.series === lead.series);
 
   return {
     // Whether a milestone would actually pay right now. The bar says so rather
@@ -530,12 +542,11 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
     paying,
     // Whether the feature is out in the open (everyone-mode) rather than shown
     // to admins only. The live page is a public page and waits for this, the
-    // same rule the flair and the wall follow; the member's own points page
-    // does not, which is what lets an admin try the whole thing first.
+    // same rule the flair and the hall of fame wall follow; the member's own
+    // points page does not, which lets an admin try the whole thing first.
     publicPages,
     ...lead,
-    // Every series and server they could be earning on, so a page can show
-    // the lot rather than hide one.
-    weeks: shown,
+    // One per race server, in the league's own order.
+    weeks,
   };
 }

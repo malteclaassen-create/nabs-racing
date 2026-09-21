@@ -145,10 +145,13 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
   const [info, setInfo] = useState(null); // "exp" | "rac" | "aha" | "pac" | null
   // A Discord avatar dies the moment the member changes their picture: the
   // stored URL 404s until they sign in again, and the card was left with an
-  // empty hole where the photo should be. Falling back to no photo at all
-  // gives the design's own surface back, which every edition is built to
-  // stand on.
-  const [photoBroken, setPhotoBroken] = useState(null);
+  // empty hole where the photo should be. So a picture that fails to load is
+  // remembered and the next candidate is tried — the server ranks them
+  // (photoFallbacks), but only the browser can tell a dead link from a live
+  // one. Once every candidate has failed we fall back to no photo at all,
+  // which gives the design's own surface back: every edition is built to
+  // stand on it.
+  const [brokenPhotos, setBrokenPhotos] = useState([]);
   // Card footer brand line, e.g. "NABS RACING · SEASON 4" — the DRIVER's own
   // season when known (the ratings are per-season, so an archive driver's card
   // must not claim the season currently being viewed), else the viewed one.
@@ -169,9 +172,10 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
   const initial = (driver.name || "?").trim().charAt(0).toUpperCase();
   const logo = driver.team?.logoUrl;
   // The card can carry its OWN picture, separate from the profile avatar; it
-  // falls back to the profile photo when none is set.
-  const wantedPhoto = driver.cardPhotoUrl || driver.photoUrl;
-  const cardPhoto = wantedPhoto && wantedPhoto !== photoBroken ? wantedPhoto : null;
+  // falls back to the profile photo when none is set, and then to whatever the
+  // person carries on their other rows.
+  const photoChain = [driver.cardPhotoUrl, driver.photoUrl, ...(driver.photoFallbacks || [])].filter(Boolean);
+  const cardPhoto = photoChain.find((url) => !brokenPhotos.includes(url)) || null;
   // The chosen card edition. Safety-car drivers always keep their marshalling
   // amber edition; otherwise the driver's pick (null = classic). The design
   // lives in CSS keyed on data-edition — editions with a fixed palette define
@@ -237,7 +241,9 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
                     src={cardPhoto}
                     alt=""
                     draggable={false}
-                    onError={() => setPhotoBroken(cardPhoto)}
+                    onError={() =>
+                      setBrokenPhotos((seen) => (seen.includes(cardPhoto) ? seen : [...seen, cardPhoto]))
+                    }
                     style={{
                       objectPosition: `${x}% ${y}%`,
                       // zoom around the chosen focal point, so zooming keeps it in view

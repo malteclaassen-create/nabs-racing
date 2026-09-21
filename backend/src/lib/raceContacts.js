@@ -109,12 +109,16 @@ const ROUND_CACHE_MAX = 8;
 const roundCache = new Map();
 
 // `season` is the season row ({ id, number }); the id is what tells two
-// leagues' "season 8, round 2" apart. A bare number still works.
-const roundKey = (season, raceNumber) =>
-  season && typeof season === "object" ? `${season.id ?? ""}|${season.number}|${raceNumber}` : `|${season}|${raceNumber}`;
+// leagues' "season 8, round 2" apart. A bare number still works. `sprint`
+// asks for the weekend's sprint file rather than the feature race's: the
+// sprint is a race of its own with its own contacts, filed under the same
+// round number (lib/cockpitArchive.js).
+const roundKey = (season, raceNumber, sprint) =>
+  (season && typeof season === "object" ? `${season.id ?? ""}|${season.number}|${raceNumber}` : `|${season}|${raceNumber}`) +
+  (sprint ? "|sprint" : "");
 
-export function contactsForRound(season, raceNumber) {
-  const cacheKey = roundKey(season, raceNumber);
+export function contactsForRound(season, raceNumber, sprint = false) {
+  const cacheKey = roundKey(season, raceNumber, sprint);
   const hit = roundCache.get(cacheKey);
   if (hit) {
     // Re-insert so the most recently used round is the last to be evicted.
@@ -122,7 +126,7 @@ export function contactsForRound(season, raceNumber) {
     roundCache.set(cacheKey, hit);
     return hit;
   }
-  const built = buildRound(season, raceNumber);
+  const built = buildRound(season, raceNumber, sprint);
   if (!built.archived) return built;
   roundCache.set(cacheKey, built);
   if (roundCache.size > ROUND_CACHE_MAX) roundCache.delete(roundCache.keys().next().value);
@@ -132,20 +136,20 @@ export function contactsForRound(season, raceNumber) {
 // Drop what is cached for one round (or, with no arguments, for every round):
 // the round's file has just been written or replaced, and the next reader must
 // see the new one.
-export function forgetRound(season = null, raceNumber = null) {
+export function forgetRound(season = null, raceNumber = null, sprint = false) {
   if (season == null && raceNumber == null) {
     roundCache.clear();
     return;
   }
-  roundCache.delete(roundKey(season, raceNumber));
+  roundCache.delete(roundKey(season, raceNumber, sprint));
 }
 
 // When the round's session started, as unix seconds, or null when the round has
 // no archived result file. The anchor that turns an absolute moment into
 // "N seconds into the race", which is the one figure a replay can be scrubbed
 // to without knowing anybody's timezone.
-export function sessionStartForRound(season, raceNumber) {
-  return contactsForRound(season, raceNumber).start;
+export function sessionStartForRound(season, raceNumber, sprint = false) {
+  return contactsForRound(season, raceNumber, sprint).start;
 }
 
 // Every participant's name in the file -> their Steam GUID, exactly as the
@@ -191,14 +195,14 @@ function nameGuids(data) {
 
 // The round's name -> GUID map, or an empty one when the round has no archived
 // file. Cached with the round's contacts, so asking costs nothing extra.
-export function guidsByNameForRound(season, raceNumber) {
-  return contactsForRound(season, raceNumber).names || new Map();
+export function guidsByNameForRound(season, raceNumber, sprint = false) {
+  return contactsForRound(season, raceNumber, sprint).names || new Map();
 }
 
-function buildRound(season, raceNumber) {
+function buildRound(season, raceNumber, sprint) {
   let data;
   try {
-    data = findArchiveFor(season, raceNumber);
+    data = findArchiveFor(season, raceNumber, { sprint });
   } catch {
     return { archived: false, start: null, contacts: [], names: new Map() };
   }
@@ -281,18 +285,18 @@ function buildRound(season, raceNumber) {
 // two completely different things — "the race has not been imported yet, come
 // back tomorrow" and "Assetto Corsa recorded nothing for you in it" — and a
 // driver told the wrong one goes looking for a bug that isn't there.
-export function roundHasArchive(season, raceNumber) {
-  return contactsForRound(season, raceNumber).archived === true;
+export function roundHasArchive(season, raceNumber, sprint = false) {
+  return contactsForRound(season, raceNumber, sprint).archived === true;
 }
 
 // The contacts one driver was in, from their side, oldest first. `guid` is
 // their Steam id, which the site already stores on Driver.steamId from the
 // import, so a person and an AC event can be matched without going through a
 // name.
-export function contactsForDriver(season, raceNumber, guid) {
+export function contactsForDriver(season, raceNumber, guid, sprint = false) {
   if (!guid) return [];
   const me = String(guid);
-  const { contacts } = contactsForRound(season, raceNumber);
+  const { contacts } = contactsForRound(season, raceNumber, sprint);
   return contacts
     .filter((c) => c.a.guid === me || c.b.guid === me)
     .map((c) => {

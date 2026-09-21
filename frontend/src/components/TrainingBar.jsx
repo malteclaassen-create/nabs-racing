@@ -69,7 +69,9 @@ export default function TrainingBar({ week, variant = "card", label = "Your trai
   if (variant === "row") {
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="min-w-[6.5rem] font-mono text-[10px] font-bold uppercase tracking-wider text-light">{label}</span>
+        <span className="min-w-[6.5rem] max-w-[16rem] truncate font-mono text-[10px] font-bold uppercase tracking-wider text-light" title={label}>
+          {label}
+        </span>
         <div className="relative h-1.5 min-w-[6rem] flex-1 overflow-hidden rounded-full bg-surface2">
           <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${fill * 100}%` }} />
           {notches}

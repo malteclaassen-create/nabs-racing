@@ -20,7 +20,7 @@ import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { readProfileTiles } from "../lib/profileTiles.js";
 import { readDriverStudio } from "../lib/profileStudio.js";
 import { tokensPublic } from "../lib/tokens.js";
-import { readCardPhotoPos, parseCardPhotoPos } from "../lib/cardPhoto.js";
+import { readCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "../lib/cardPhoto.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readCardEdition, readCardAnim } from "../lib/cardEditions.js";
@@ -556,14 +556,21 @@ export async function getDriverProfile(prisma, driverId) {
   // the person's CURRENT ones (and the matching card framing), so a driver
   // looks the same in every season they raced. Own values always win.
   const idov = identityOverrides.get(driverId);
-  const ownPhoto = driver.photoUrl || driver.discordAvatar || null;
-  const effPhotoUrl = ownPhoto || idov?.photoUrl || null;
-  const effPhotoPos = ownPhoto ? photoPos : parseCardPhotoPos(idov?.photoPos) || photoPos;
   // Optional card-only picture for THIS row (raw column). null -> the card
-  // falls back to the profile photo (RatingCard handles the fallback).
-  const cardPhotoUrl = (
+  // falls back to the profile photo (RatingCard handles the fallback), or to
+  // whatever the person carries from their other rows — the ranking in
+  // lib/cardPhoto decides, framing included.
+  const ownCardPhotoUrl = (
     await prisma.$queryRaw`SELECT "cardPhotoUrl" FROM "Driver" WHERE "id" = ${driverId}`.catch(() => [])
   )[0]?.cardPhotoUrl || null;
+  const ownPictures = {
+    cardPhotoUrl: ownCardPhotoUrl,
+    photoUrl: driver.photoUrl || null,
+    discordAvatar: driver.discordAvatar || null,
+    photoPos,
+  };
+  const effPhotoUrl = personPhotoFor(ownPictures, idov);
+  const { cardPhotoUrl, photoPos: effPhotoPos } = cardPictureFor(ownPictures, idov);
 
   // Achievements the driver pinned in their Cockpit (validated at save time,
   // so showing them is just a key -> catalogue lookup). Raw column; [].
@@ -943,6 +950,9 @@ export async function getDriverProfile(prisma, driverId) {
       cardAnim: await readCardAnim(prisma, driverId),
       // Optional card-only picture (null = the card uses photoUrl above).
       cardPhotoUrl,
+      // What to try when the picture above turns out to be a dead link (a
+      // changed Discord avatar). The browser walks these in order.
+      photoFallbacks: photoFallbacksFor(ownPictures, idov),
       socials: parseSocials(driver.socials),
       // Self-written "about me" line and the driver's pick of headline stat
       // tiles (null = show all) — both self-service on /profile.

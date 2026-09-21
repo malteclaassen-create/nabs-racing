@@ -239,7 +239,7 @@ export async function readTeamHistory(prisma, seasonId) {
     const idov = identity.get(d.id);
     if (idov) {
       if (!d.country && idov.country) d.country = idov.country;
-      if (!d.photoUrl && idov.photoUrl) d.photoUrl = idov.photoUrl;
+      if (!d.photoUrl) d.photoUrl = idov.photoUrl || idov.avatarUrl || null;
     }
   }
 

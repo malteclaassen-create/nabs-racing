@@ -113,7 +113,11 @@ router.get("/", async (req, res, next) => {
     // sprintOf link so the picker can say whose sprint each one is.
     const parentOf = await readParentIds(prisma, allRaces.map((r) => r.id));
     const includeSprints = req.query.includeSprints === "1" || req.query.includeSprints === "true";
-    const races = includeSprints ? allRaces : allRaces.filter((r) => !parentOf.has(r.id));
+    // With the sprints in: each one right AFTER its event. The rows come
+    // ordered by round number and a sprint child has none, which the
+    // database sorts first — so the list opened with "R1 Baku Sprint" above
+    // "R1 Baku", the second race of the evening before the first.
+    const races = includeSprints ? sprintsAfterTheirEvents(allRaces, parentOf) : allRaces.filter((r) => !parentOf.has(r.id));
     const sprintChildren = await readSprintChildren(prisma, races.map((r) => r.id));
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
@@ -180,6 +184,27 @@ router.get("/", async (req, res, next) => {
     next(e);
   }
 });
+
+// The season's rows with every sprint child placed directly after its event,
+// in the events' own order. A child whose event is not in the list (should not
+// happen; a deleted parent) goes to the end rather than vanishing.
+function sprintsAfterTheirEvents(rows, parentOf) {
+  const childrenOf = new Map();
+  for (const r of rows) {
+    const parent = parentOf.get(r.id);
+    if (!parent) continue;
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent).push(r);
+  }
+  const out = [];
+  for (const r of rows) {
+    if (parentOf.has(r.id)) continue;
+    out.push(r, ...(childrenOf.get(r.id) || []));
+    childrenOf.delete(r.id);
+  }
+  for (const orphans of childrenOf.values()) out.push(...orphans);
+  return out;
+}
 
 // GET /api/races/calendar.ics -> the season's rounds as a calendar feed.
 //

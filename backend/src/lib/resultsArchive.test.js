@@ -67,6 +67,52 @@ describe("with the index", () => {
     expect(existsSync(f1) && existsSync(gt)).toBe(true);
   });
 
+  // The weekend's two files. The reader (lib/cockpitArchive.js) tells them
+  // apart by the "-sprint" suffix alone, so the suffix has to survive whatever
+  // the file name does to the track — which, for a long circuit name, is cut
+  // it to 40 characters. Before this the sprint of "Autodromo Internazionale
+  // Enzo e Dino Ferrari" lost its suffix and overwrote the feature's file.
+  it("files a weekend's sprint beside its feature race, whatever the circuit is called", () => {
+    const season = { id: "s8-gt", number: 8 };
+    const dir = join(dataDir, "results-archive", "sunday-gt", "season8");
+    const feature = saveDirect({ Type: "RACE" }, { season, raceNumber: 5, track: "Spa" });
+    const sprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 5, track: "Spa", sprint: true });
+    expect(feature).toBe(join(dir, "r05-spa.json"));
+    expect(sprint).toBe(join(dir, "r05-spa-sprint.json"));
+
+    const long = "Autodromo Internazionale Enzo e Dino Ferrari";
+    const longFeature = saveDirect({ Type: "RACE" }, { season, raceNumber: 6, track: long });
+    const longSprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 6, track: long, sprint: true });
+    expect(longFeature).not.toBe(longSprint);
+    expect(longSprint.endsWith("-sprint.json")).toBe(true);
+    expect(longFeature.endsWith("-sprint.json")).toBe(false);
+    expect(existsSync(longFeature) && existsSync(longSprint)).toBe(true);
+
+    // A circuit whose own name ends in "Sprint" is still not the weekend's
+    // second race.
+    const odd = saveDirect({ Type: "RACE" }, { season, raceNumber: 7, track: "Silverstone Sprint" });
+    expect(odd.endsWith("-sprint.json")).toBe(false);
+    expect(saveDirect({ Type: "RACE" }, { season, raceNumber: 7, track: "Silverstone Sprint", sprint: true })).toBe(
+      join(dir, "r07-silverstone-sprint-sprint.json")
+    );
+  });
+
+  // A re-import under another spelling of the circuit replaces the round's
+  // file rather than joining it: the round has one result, the newest.
+  it("sweeps the round's older file of the same kind when a re-import lands under a new name", () => {
+    const season = { id: "s8-gt", number: 8 };
+    const dir = join(dataDir, "results-archive", "sunday-gt", "season8");
+    const old = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "NABS Baku 2024" });
+    const oldSprint = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "NABS Baku 2024", sprint: true });
+    const fresh = saveDirect({ Type: "RACE" }, { season, raceNumber: 9, track: "Baku" });
+    expect(old).toBe(join(dir, "r09-nabs-baku-2024.json"));
+    expect(fresh).toBe(join(dir, "r09-baku.json"));
+    expect(existsSync(old)).toBe(false); // gone: same round, same kind
+    expect(existsSync(oldSprint)).toBe(true); // the sprint is not the feature's business
+    // Another round's file is never touched.
+    expect(readdirSync(dir).filter((n) => n.startsWith("r02-")).length).toBe(1);
+  });
+
   it("moves the pre-series folders under the first series, once, without clobbering", () => {
     const root = join(dataDir, "results-archive");
     mkdirSync(join(root, "season7"), { recursive: true });

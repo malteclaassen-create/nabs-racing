@@ -102,7 +102,7 @@ function RaceCell({ cell, dropped, droppedPts = 0 }) {
   const half = (label, pos, st, pts, fl) =>
     `${label} ${st && st !== "FINISHED" ? st : pos != null ? `P${pos}` : "no result"} (${withFl(pts, fl)})`;
   const title = sprint
-    ? `${half("Sprint", sprint.position, sprint.status, sprint.points, sprint.fastestLap)} + ${half("Feature", position, status, points - sprint.points, fastestLap)} = ${points}`
+    ? `${half("Feature", position, status, points - sprint.points, fastestLap)} + ${half("Sprint", sprint.position, sprint.status, sprint.points, sprint.fastestLap)} = ${points}`
     : fastestLap
       ? `P${position}: ${withFl(points, fastestLap)}`
       : undefined;
@@ -257,7 +257,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   className="px-2.5 py-3 text-center tabular-nums"
                   title={
                     [
-                      sprintSet.has(n) ? "Sprint weekend: the sprint and the feature race both score, added together under this round" : null,
+                      sprintSet.has(n) ? "Sprint weekend: the feature race and the sprint both score, added together under this round" : null,
                       customOf(n) ? `Own points table for this round: ${customOf(n).join(", ")}` : null,
                     ].filter(Boolean).join(". ") || undefined
                   }
@@ -450,7 +450,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           )}
           {showSprintNote && (
             <p>
-              <span className="font-bold text-brand">S</span> marks a sprint weekend: the sprint and the feature race both
+              <span className="font-bold text-brand">S</span> marks a sprint weekend: the feature race and the sprint both
               score the full points table, added together under that round
               {isDriver && <> (hover a cell for the two halves)</>}.
             </p>

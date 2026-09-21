@@ -40,7 +40,7 @@ function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champi
           >
             {row.position}
           </span>
-          <DriverAvatar name={row.name} photoUrl={row.photoUrl} color={row.team.color} size={40} />
+          <DriverAvatar name={row.name} photoUrl={row.photoUrl} fallbacks={row.photoFallbacks} color={row.team.color} size={40} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
@@ -495,6 +495,7 @@ export default function DriverStandings() {
                             cardAnim: r.cardAnim,
                             photoPos: r.photoPos,
                             cardPhotoUrl: r.cardPhotoUrl,
+                            photoFallbacks: r.photoFallbacks || d.photoFallbacks,
                             seasonNumber: cardData.seasonNumber,
                           }}
                           rating={r}

@@ -38,6 +38,9 @@ const STATUS = [
 const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
+// "R5 Spa", "R5 Spa Sprint". The desk's races already carry their event's
+// round number and the sprint flag (routes/admin.js, withSprintRounds).
+const raceLabel = (r) => `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.sprint ? " Sprint" : ""}`;
 
 // Where the file's own guess at the accused came from, in the two words a
 // steward needs to weigh it. "Matched" is the contact an in-game press was
@@ -835,7 +838,7 @@ function ContactSuggestions({ report }) {
           <CardBar
             title={
               openRace
-                ? `${openRace.number != null ? `R${openRace.number} ` : ""}${openRace.track}`
+                ? raceLabel(openRace)
                 : "No round given"
             }
             right={
@@ -919,7 +922,7 @@ function ContactSuggestions({ report }) {
       {groups.map((g) => (
         <div key={g.race?.id || "none"} className="card overflow-hidden">
           <CardBar
-            title={g.race ? `${g.race.number != null ? `R${g.race.number} ` : ""}${g.race.track}` : "No round given"}
+            title={g.race ? raceLabel(g.race) : "No round given"}
             right={
               <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
                 {g.reports.length} report{g.reports.length === 1 ? "" : "s"}

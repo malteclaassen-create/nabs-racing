@@ -72,7 +72,7 @@ router.get("/", async (req, res, next) => {
         const idov = identity.get(d.id);
         if (idov) {
           if (!d.country && idov.country) d.country = idov.country;
-          if (!d.photoUrl && idov.photoUrl) d.photoUrl = idov.photoUrl;
+          if (!d.photoUrl) d.photoUrl = idov.photoUrl || idov.avatarUrl || null;
         }
         d.role = roles.get(d.id) || null;
         d.hideFromStandings = hiddenSet.has(d.id);

@@ -652,6 +652,20 @@ export default function Home() {
       alive = false;
     };
   }, [lastRace?.id]);
+  // The sprint of a sprint+feature weekend has its own classification on a
+  // hidden row (sprintRaceId). Fetched beside the feature so the hero can show
+  // both podiums of the evening instead of only the second race's.
+  const [latestSprint, setLatestSprint] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setLatestSprint(null);
+    if (lastRace?.sprintRaceId) {
+      api.raceResults(lastRace.sprintRaceId).then((d) => alive && setLatestSprint(d)).catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, [lastRace?.sprintRaceId]);
 
   // End-of-season honours — for the live finale AND archived seasons (the API
   // reads the selected season; awards without data simply stay away, so old
@@ -710,48 +724,56 @@ export default function Home() {
     );
 
   const leader = drivers.data?.standings?.[0];
-  const podium = (latest?.results || [])
-    .filter((r) => r.position != null)
-    .sort((a, b) => a.position - b.position)
-    .slice(0, 3);
-  // What the round actually paid the top three, for the hero strip: the points
-  // and the honours that go with them. Same rules the results table applies, so
-  // the hero and the round page can never disagree — the admin-recorded fastest
-  // lap wins over the one derived from the stored lap times, and a session that
-  // scores nothing (training, special event) shows no points column at all.
+  // One race's top three for the hero strip, with what the race actually paid
+  // them: the points and the honours that go with them. Same rules the results
+  // table applies, so the hero and the round page can never disagree — the
+  // admin-recorded fastest lap wins over the one derived from the stored lap
+  // times, and a session that scores nothing (training, special event) shows
+  // no points column at all. Built once for the feature and, on a sprint
+  // weekend, once more for the sprint.
+  const podiumBlock = (payload) => {
+    const race = payload?.race || null;
+    const rows = payload?.results || [];
+    const podium = rows
+      .filter((r) => r.position != null)
+      .sort((a, b) => a.position - b.position)
+      .slice(0, 3);
+    const scores = race?.scores ?? (race?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
+    const lapRows = rows.filter((r) => isLapTime(r.bestLapMs));
+    const fastestMs = lapRows.length ? Math.min(...lapRows.map((r) => r.bestLapMs)) : null;
+    const flDriverId =
+      race?.fastestLapDriverId ||
+      (fastestMs != null ? lapRows.find((r) => r.bestLapMs === fastestMs)?.driverId : null) ||
+      null;
+    const dotdDriverId = race?.driverOfTheDay?.driverId || null;
+    // The race's honours, in the wording and colours the results table already
+    // uses. Only these two: a third marker (pole) pushed the driver's name into
+    // an ellipsis on a narrow phone, and these are the ones actually won in
+    // the race.
+    const honoursFor = (p) =>
+      [
+        p.driverId === flDriverId && {
+          key: "fl",
+          label: "FL",
+          title: "Fastest lap of the race",
+          cls: "bg-fl/15 text-fl",
+        },
+        p.driverId === dotdDriverId && {
+          key: "dotd",
+          label: "DOTD",
+          title: "Driver of the Day",
+          cls: "bg-brand/20 text-brand",
+        },
+      ].filter(Boolean);
+    return { podium, scores, honoursFor, anyHonours: podium.some((p) => honoursFor(p).length > 0) };
+  };
   const latestRace = latest?.race || null;
-  const latestScores = latestRace?.scores ?? (latestRace?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
-  const latestLapRows = (latest?.results || []).filter((r) => isLapTime(r.bestLapMs));
-  const latestFastestMs = latestLapRows.length
-    ? Math.min(...latestLapRows.map((r) => r.bestLapMs))
-    : null;
-  const flDriverId =
-    latestRace?.fastestLapDriverId ||
-    (latestFastestMs != null
-      ? latestLapRows.find((r) => r.bestLapMs === latestFastestMs)?.driverId
-      : null) ||
-    null;
-  const dotdDriverId = latestRace?.driverOfTheDay?.driverId || null;
-  // The round's honours, in the wording and colours the results table already
-  // uses. Only these two: a third marker (pole) pushed the driver's name into
-  // an ellipsis on a narrow phone, and these are the ones actually won in the
-  // race.
-  const podiumHonours = (p) =>
-    [
-      p.driverId === flDriverId && {
-        key: "fl",
-        label: "FL",
-        title: "Fastest lap of the race",
-        cls: "bg-fl/15 text-fl",
-      },
-      p.driverId === dotdDriverId && {
-        key: "dotd",
-        label: "DOTD",
-        title: "Driver of the Day",
-        cls: "bg-brand/20 text-brand",
-      },
-    ].filter(Boolean);
-  const anyPodiumHonours = podium.some((p) => podiumHonours(p).length > 0);
+  const feature = podiumBlock(latest);
+  const podium = feature.podium;
+  // The sprint's podium, only on a weekend that ran one and once its result
+  // is in. It goes UNDER the feature's in the hero: the league runs the
+  // feature first and the sprint after it.
+  const sprint = lastRace?.sprintRaceId && latestSprint ? podiumBlock(latestSprint) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
@@ -784,6 +806,118 @@ export default function Home() {
   // announced with is the page it keeps until it produces its first result —
   // it used to jump to a champions-of-last-season hero on activation, which
   // read as if something had happened when nothing had.
+  // The hero's podium strip for one race. A sprint weekend renders it twice,
+  // feature first with a label over each, so the two races of the evening
+  // read as two and not as one podium with the wrong names on it.
+  const podiumStrip = (block, { label = null, first = true, delay = 0 } = {}) =>
+    block.podium.length > 0 && (
+      <div key={label || "race"} className={first ? "mt-8 max-w-2xl" : "mt-3 max-w-2xl"}>
+        {label && (
+          <div
+            className="hero-anim mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow"
+            style={{ animationDelay: `${0.22 + delay}s` }}
+          >
+            {label}
+          </div>
+        )}
+        <div className="grid gap-2 sm:grid-cols-3">
+                {block.podium.map((p, i) => (
+
+                  <Link
+                    key={p.driverId}
+                    to={`/drivers/${p.driverId}`}
+                    // Each card rises on its own beat (P1 first), instead of the
+                    // whole strip fading in as one block.
+                    style={{ animationDelay: `${0.26 + delay + i * 0.14}s` }}
+                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
+                  >
+                    <span
+                      className="absolute left-0 top-0 h-full w-1"
+                      style={{ backgroundColor: MEDAL[i] }}
+                    />
+                    {/* faint medal tint bleeding in from the rank bar */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0"
+                      style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
+                    />
+                    <span
+                      className="font-display text-2xl font-black tabular-nums"
+                      style={{ color: MEDAL[i] }}
+                    >
+                      P{p.position}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
+                        <span className="truncate">{p.name}</span>
+                        <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
+                      </span>
+                      {p.isSub && p.subForTeam ? (
+                        <TeamLogo
+                          id={p.subForTeam.id}
+                          name={`${p.subForTeam.name} (sub)`}
+                          color={p.subForTeam.color}
+                          logoUrl={p.subForTeam.logoUrl}
+                          size={16}
+                          showName
+                          className="mt-0.5"
+                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
+                        />
+                      ) : (
+                        <TeamLogo
+                          id={p.team.id}
+                          name={p.team.name}
+                          color={p.team.color}
+                          logoUrl={p.team.logoUrl}
+                          size={16}
+                          showName
+                          className="mt-0.5"
+                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
+                        />
+                      )}
+                    </span>
+                    {/* What the round paid the driver: the points, with the
+                        honours won that day above them. PHONES ONLY. There the
+                        card runs the full width of the page and the right half
+                        sits empty; from sm up the same three cards share one
+                        row, which leaves each about 220px, and anything added
+                        on the right cut the driver's name down to an ellipsis.
+                        The round page carries all of it in full either way. */}
+                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1 pl-1 text-right sm:hidden">
+                      {/* The row is reserved for all three as soon as ONE of
+                          them earned something, so the cards keep a common
+                          height and the points sit on one line down the strip
+                          instead of stepping up and down. */}
+                      {block.anyHonours && (
+                        <span className="flex min-h-[1rem] items-center gap-1">
+                          {block.honoursFor(p).map((h) => (
+                            <span
+                              key={h.key}
+                              title={h.title}
+                              className={`rounded-full px-1 py-px font-mono text-[10px] font-bold uppercase leading-[1.4] ${h.cls}`}
+                            >
+                              {h.label}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {block.scores && p.points != null && (
+                        <span className="flex items-baseline gap-1">
+                          <span className="font-display text-xl font-black tabular-nums text-ink dark:text-white">
+                            {p.points}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
+                            pts
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+                ))}
+        </div>
+      </div>
+    );
+
   const showComingSoonHero = isUpcomingSeason || awaitingOpener;
   // The running season's own opener panel (right half of that hero): the same
   // card the off-season teaser uses, fed from the season itself — the teaser
@@ -1115,106 +1249,14 @@ export default function Home() {
               {lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
-              {`${lastCircuit && lastCircuit.circuit?.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
+              {`${lastCircuit?.circuit && lastCircuit.circuit.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
             </p>
 
-            {/* podium strip — latest-race top 3 */}
-            {heroPodium.length > 0 && (
-              <div className="mt-8 grid max-w-2xl gap-2 sm:grid-cols-3">
-                {heroPodium.map((p, i) => (
-                  <Link
-                    key={p.driverId}
-                    to={`/drivers/${p.driverId}`}
-                    // Each card rises on its own beat (P1 first), instead of the
-                    // whole strip fading in as one block.
-                    style={{ animationDelay: `${0.26 + i * 0.14}s` }}
-                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-3 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
-                  >
-                    <span
-                      className="absolute left-0 top-0 h-full w-1"
-                      style={{ backgroundColor: MEDAL[i] }}
-                    />
-                    {/* faint medal tint bleeding in from the rank bar */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0"
-                      style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
-                    />
-                    <span
-                      className="font-display text-2xl font-black tabular-nums"
-                      style={{ color: MEDAL[i] }}
-                    >
-                      P{p.position}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
-                        <span className="truncate">{p.name}</span>
-                        <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
-                      </span>
-                      {p.isSub && p.subForTeam ? (
-                        <TeamLogo
-                          id={p.subForTeam.id}
-                          name={`${p.subForTeam.name} (sub)`}
-                          color={p.subForTeam.color}
-                          logoUrl={p.subForTeam.logoUrl}
-                          size={16}
-                          showName
-                          className="mt-0.5"
-                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                        />
-                      ) : (
-                        <TeamLogo
-                          id={p.team.id}
-                          name={p.team.name}
-                          color={p.team.color}
-                          logoUrl={p.team.logoUrl}
-                          size={16}
-                          showName
-                          className="mt-0.5"
-                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                        />
-                      )}
-                    </span>
-                    {/* What the round paid the driver: the points, with the
-                        honours won that day above them. PHONES ONLY. There the
-                        card runs the full width of the page and the right half
-                        sits empty; from sm up the same three cards share one
-                        row, which leaves each about 220px, and anything added
-                        on the right cut the driver's name down to an ellipsis.
-                        The round page carries all of it in full either way. */}
-                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1 pl-1 text-right sm:hidden">
-                      {/* The row is reserved for all three as soon as ONE of
-                          them earned something, so the cards keep a common
-                          height and the points sit on one line down the strip
-                          instead of stepping up and down. */}
-                      {anyPodiumHonours && (
-                        <span className="flex min-h-[1rem] items-center gap-1">
-                          {podiumHonours(p).map((h) => (
-                            <span
-                              key={h.key}
-                              title={h.title}
-                              className={`rounded-full px-1 py-px font-mono text-[10px] font-bold uppercase leading-[1.4] ${h.cls}`}
-                            >
-                              {h.label}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                      {latestScores && p.points != null && (
-                        <span className="flex items-baseline gap-1">
-                          <span className="font-display text-xl font-black tabular-nums text-ink dark:text-white">
-                            {p.points}
-                          </span>
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
-                            pts
-                          </span>
-                        </span>
-                      )}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            )}
+            {/* podium strip — the latest race's top 3, or on a sprint weekend
+                both races' (the feature above, as it is run first) */}
+            {sprint
+              ? [podiumStrip(feature, { label: "Feature" }), podiumStrip(sprint, { label: "Sprint", first: false, delay: 0.3 })]
+              : podiumStrip({ ...feature, podium: heroPodium })}
 
             <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
               {/* The two of them share the first line on a phone (flex-1, and

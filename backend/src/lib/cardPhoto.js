@@ -54,3 +54,74 @@ export async function readCardPhotoPos(prisma, driverId) {
     return null;
   }
 }
+
+// The pictures one driver row can show, best first.
+//
+// `own` = { cardPhotoUrl, photoUrl, discordAvatar, photoPos } of the row
+// itself; `idov` = the person's identity override (lib/persons.js), or
+// undefined when the row isn't linked to anybody. `card` includes the
+// card-only pictures, which belong on a rating card but never on the round
+// profile avatar.
+//
+// The order says what a picture is worth. An UPLOAD is a choice somebody made
+// for that row, so the row's own uploads come first, then the person's from
+// their other rows. A DISCORD AVATAR is neither: it is copied from Discord at
+// login and its URL dies as soon as the member changes their picture there,
+// leaving whichever rows logged in earlier pointing at nothing. So an avatar
+// ranks last on both sides, and the PERSON's newest one — the row that logged
+// in most recently, the only one still resolving — beats the row's own.
+// The framing always travels with the picture it was set for.
+function rankedPictures(own, idov, { card }) {
+  const { cardPhotoUrl = null, photoUrl = null, discordAvatar = null, photoPos = null } = own || {};
+  const out = [];
+  if (card && cardPhotoUrl) out.push({ url: cardPhotoUrl, pos: photoPos, own: true });
+  if (photoUrl) out.push({ url: photoUrl, pos: photoPos, own: true });
+  if (card && idov?.cardPhotoUrl) out.push({ url: idov.cardPhotoUrl, pos: parseCardPhotoPos(idov.cardPhotoPos) });
+  if (idov?.photoUrl) out.push({ url: idov.photoUrl, pos: parseCardPhotoPos(idov.photoPos) });
+  if (idov?.avatarUrl) out.push({ url: idov.avatarUrl, pos: parseCardPhotoPos(idov.avatarPos) });
+  if (discordAvatar) out.push({ url: discordAvatar, pos: photoPos, own: true });
+  return out;
+}
+
+// Every picture this row could show, best first and without repeats.
+//
+// The ranking is a guess about which URL still resolves, and a guess can be
+// wrong: a Discord avatar dies silently, and the row that LOOKS newest (the
+// highest season number) is not always the one that logged in last — a season
+// that has not started yet ranks last on purpose, and season numbers of two
+// different leagues are not really comparable at all. So the browser gets the
+// whole chain instead of one URL and walks it as pictures fail to load, which
+// is the only test that actually settles the question.
+export function pictureChainFor(own, idov, { card = true } = {}) {
+  const seen = new Set();
+  const out = [];
+  for (const { url } of rankedPictures(own, idov, { card })) {
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
+// The pictures after the one being shown — what an <img> should try next when
+// its src turns out to be dead. Empty when there is nothing left to try.
+export function photoFallbacksFor(own, idov, opts) {
+  return pictureChainFor(own, idov, opts).slice(1);
+}
+
+// The round profile picture for one row: the best non-card picture, or null.
+// Takes and returns exactly what the old `row.photoUrl || row.discordAvatar ||
+// idov?.photoUrl` did, minus the stale-avatar trap.
+export function personPhotoFor(own, idov) {
+  return rankedPictures(own, idov, { card: false })[0]?.url || null;
+}
+
+// Which picture a rating card shows for one driver row, and how it sits:
+// { cardPhotoUrl, photoPos }. RatingCard renders `cardPhotoUrl || photoUrl`,
+// so the winner is handed over as cardPhotoUrl whatever it came from, and the
+// framing belongs to the row that picture was set on.
+export function cardPictureFor(own, idov) {
+  const best = rankedPictures(own, idov, { card: true })[0];
+  if (!best) return { cardPhotoUrl: null, photoPos: own?.photoPos ?? null };
+  return { cardPhotoUrl: best.url, photoPos: best.pos ?? null };
+}

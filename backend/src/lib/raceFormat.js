@@ -93,15 +93,15 @@ export function parseRaceFormat(raw) {
 }
 
 // The session line as it is announced, e.g.
-// ["15 min qualifying", "12 lap sprint", "20 lap feature race"]. Only the parts
+// ["15 min qualifying", "20 lap feature race", "12 lap sprint"]. Only the parts
 // that are actually set, except on a sprint weekend: there both races are named
 // even without a distance, because "there is a sprint" is the announcement.
 export function sessionLines(format = {}) {
   const out = [];
   if (format.qualiMinutes) out.push(`${format.qualiMinutes} min qualifying`);
   if (format.raceFormat === "SPRINT_FEATURE") {
-    out.push(format.sprintLaps ? `${format.sprintLaps} lap sprint` : "sprint race");
     out.push(format.raceLaps ? `${format.raceLaps} lap feature race` : "feature race");
+    out.push(format.sprintLaps ? `${format.sprintLaps} lap sprint` : "sprint race");
   } else if (format.raceLaps) {
     out.push(`${format.raceLaps} lap race`);
   }

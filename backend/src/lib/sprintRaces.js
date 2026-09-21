@@ -74,6 +74,30 @@ export async function readSprintChildrenOf(prisma, races) {
   return out;
 }
 
+// Race rows as the ARCHIVE knows them. A sprint child carries no round number
+// of its own, but its result file is filed under its event's number with the
+// sprint flag (lib/cockpitArchive.js). So every reader that goes from a race
+// row to a file (the reports, their anchors and contact lists) runs the rows
+// through here first: a child comes back with its event's `number` and
+// `sprint: true`, everything else with `sprint: false`. Rows carry at least
+// `id` and `number`.
+export async function withSprintRounds(prisma, races) {
+  const rows = (races || []).filter(Boolean);
+  const parentOf = await readParentIds(prisma, rows.map((r) => r.id));
+  if (!parentOf.size) return rows.map((r) => ({ ...r, sprint: false }));
+  const known = new Map(rows.map((r) => [r.id, r.number]));
+  const missing = [...new Set([...parentOf.values()])].filter((id) => !known.has(id));
+  if (missing.length) {
+    const parents = await prisma.race
+      .findMany({ where: { id: { in: missing } }, select: { id: true, number: true } })
+      .catch(() => []);
+    for (const p of parents) known.set(p.id, p.number);
+  }
+  return rows.map((r) =>
+    parentOf.has(r.id) ? { ...r, number: known.get(parentOf.get(r.id)) ?? null, sprint: true } : { ...r, sprint: false }
+  );
+}
+
 // Find or create the sprint child of an event. `parent` is the full race row.
 // Refuses to nest (a child cannot have children) — the import route turns that
 // into a 400. Returns the child race row.

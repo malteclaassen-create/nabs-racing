@@ -8,8 +8,8 @@ export function sessionSummary(race = {}) {
   const out = [];
   if (race.qualiMinutes) out.push(`Qualifying ${race.qualiMinutes} min`);
   if (race.raceFormat === "SPRINT_FEATURE") {
-    out.push(race.sprintLaps ? `Sprint ${race.sprintLaps} laps` : "Sprint race");
     out.push(race.raceLaps ? `Feature ${race.raceLaps} laps` : "Feature race");
+    out.push(race.sprintLaps ? `Sprint ${race.sprintLaps} laps` : "Sprint race");
   } else if (race.raceLaps) {
     out.push(`Race ${race.raceLaps} laps`);
   }

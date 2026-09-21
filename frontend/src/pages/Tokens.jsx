@@ -315,6 +315,9 @@ function MultiplierBar({ a }) {
 // server, because each server carries its own milestones (nineteen laps on
 // each of them is nothing). The rule itself is written once, underneath,
 // rather than repeated beside every bar.
+//
+// The series a server is counting for only gets named when the servers are
+// counting for DIFFERENT ones, which is the only time it tells you anything.
 function PracticeCard({ week }) {
   if (!week) return null;
   const weeks = week.weeks?.length ? week.weeks : [week];
@@ -324,19 +327,16 @@ function PracticeCard({ week }) {
     <div className="card px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>Training</Heading>
-        {/* Not the round: the two race servers run different cars on
-            different circuits in the same week, so naming one round over a
-            pair of bars would be wrong for one of them. */}
         <div className="text-xs text-light">This week</div>
       </div>
       <div className="mt-3 space-y-2">
         {weeks.map((w) => (
           <TrainingBar
-            key={`${w.series}:${w.server}`}
+            key={w.server}
             week={{ ...w, paying: week.paying }}
             variant="row"
             showTiers={false}
-            label={manySeries ? `${w.seriesName} · ${w.serverName}` : w.serverName}
+            label={manySeries ? `${w.serverName} · ${w.seriesName}` : w.serverName}
           />
         ))}
       </div>

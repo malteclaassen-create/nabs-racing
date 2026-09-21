@@ -9,7 +9,7 @@ import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
-import { listRemoteResults, fetchRemoteResult } from "../services/emperorResults.js";
+import { listRemoteResults, fetchRemoteResult, RESULT_REF_RE } from "../services/emperorResults.js";
 import { saveRaceResults } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
@@ -26,7 +26,7 @@ import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
-import { ensureSprintChild, readSprintChildren, readParentIds } from "../lib/sprintRaces.js";
+import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -46,6 +46,7 @@ import {
   deleteStoredFile, listOrphanFiles,
 } from "../lib/downloads.js";
 import { stashIncoming, archiveCommitted, refreshArchiveIndex } from "../lib/resultsArchive.js";
+import { archiveFilesFor } from "../lib/cockpitArchive.js";
 import { forgetRound } from "../lib/raceContacts.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
@@ -571,7 +572,7 @@ router.get("/results/remote", async (req, res, next) => {
 router.post("/results/remote/import", async (req, res, next) => {
   try {
     const { id, season, series } = req.body || {};
-    if (!id || !/^[A-Za-z0-9_]+$/.test(id)) return res.status(400).json({ error: "Valid result id required" });
+    if (!id || !RESULT_REF_RE.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
     const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series });
     const drivers = await attachSteamIds(await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } }));
@@ -688,15 +689,23 @@ router.post("/races/commit", async (req, res, next) => {
       // index that knows the series is refreshed first, in case this season is
       // newer than the last boot.
       await refreshArchiveIndex(prisma);
+      // A sprint is filed under its EVENT's round number (the child has none)
+      // with a "-sprint" suffix, which is how the archive readers tell the
+      // weekend's two files apart (lib/cockpitArchive.js). The suffix is the
+      // archive's own doing (lib/resultsArchive.js), not a word tacked onto
+      // the track name: that word was cut off long circuit names and the
+      // sprint then overwrote the feature's file.
+      const roundNumber = isSprint ? sprintOf.number : race.number;
       archiveCommitted(archiveKey, {
         season,
-        raceNumber: race.number,
-        track: isSprint ? `${race.track} Sprint` : race.track,
+        raceNumber: roundNumber,
+        track: race.track,
+        sprint: isSprint,
       });
       // The reports of this round anchor themselves to that file
       // (lib/reportAnchor.js); whatever the contact reader cached for the round
       // before the file existed, or for the file this one replaces, is stale now.
-      forgetRound(season, race.number);
+      forgetRound(season, roundNumber, isSprint);
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
     // changed an already-stored steamId (mis-map or shared account) is reported
@@ -734,7 +743,7 @@ router.post("/races/:id/quali", upload.single("file"), async (req, res, next) =>
     } else if (req.body && req.body.remoteId) {
       // Pull the QUALIFY session straight from the AC Server Manager (same
       // source as the remote race import).
-      if (!/^[A-Za-z0-9_]+$/.test(String(req.body.remoteId))) {
+      if (!RESULT_REF_RE.test(String(req.body.remoteId))) {
         return res.status(400).json({ error: "Valid result id required" });
       }
       json = await fetchRemoteResult(String(req.body.remoteId));
@@ -832,6 +841,28 @@ router.delete("/races/:id/quali", async (req, res, next) => {
       .$executeRawUnsafe(`UPDATE "RaceResult" SET "qualiTimeMs" = NULL WHERE "raceId" = ?`, race.id)
       .catch(() => {});
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/races/:id/archive -> { files } — the raw result files on
+// record for this round: the feature race's and, on a sprint weekend, the
+// sprint's, each with what it holds and whether the reports and the Cockpit
+// read it (lib/cockpitArchive.js archiveFilesFor). For an admin who is being
+// told "no contact in this race" by a file they cannot otherwise see.
+router.get("/races/:id/archive", async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, number: true, season: { select: { id: true, number: true } } },
+    });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    // A sprint child has no number of its own; its files are its event's.
+    const [row] = await withSprintRounds(prisma, [race]);
+    if (row.number == null || !row.season) return res.json({ files: [] });
+    await refreshArchiveIndex(prisma);
+    res.json({ files: archiveFilesFor(row.season, row.number) });
   } catch (e) {
     next(e);
   }
@@ -6498,11 +6529,16 @@ router.get("/reports", async (req, res, next) => {
     // The races they belong to, so the tab can group by round without the
     // browser fetching the calendar and joining it by hand.
     const ids = [...new Set(reports.map((r) => r.raceId).filter(Boolean))];
+    // Through withSprintRounds, so a sprint's reports read the sprint's own
+    // file and the tab can label the group "R5 Spa Sprint".
     const races = ids.length
-      ? await prisma.race.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
-        })
+      ? await withSprintRounds(
+          prisma,
+          await prisma.race.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, number: true, track: true, date: true, season: { select: { id: true, number: true } } },
+          })
+        )
       : [];
     res.json({
       // Who filed what, once: the anchor needs it to pin an in-game press to a

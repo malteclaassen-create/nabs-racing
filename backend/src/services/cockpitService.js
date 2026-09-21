@@ -11,6 +11,7 @@ import { applyDropScores } from "./standingsService.js";
 import { getSeasonScoring, getActiveSeason } from "./seasonService.js";
 import { getDriverRatings } from "./driverRatingsService.js";
 import { getLinkedDriverIds, getNameOverrides, getPersonGroups, getIdentityOverrides } from "../lib/persons.js";
+import { personPhotoFor } from "../lib/cardPhoto.js";
 import { seasonSeriesMap } from "../lib/series.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { telemetryForDriver, telemetryForRace } from "../lib/telemetryRead.js";
@@ -188,7 +189,7 @@ export async function getCockpitOverview(prisma, driverId) {
       name: driver.name,
       number: driver.number ?? null,
       country: driver.country || idov?.country || null,
-      photoUrl: driver.photoUrl || driver.discordAvatar || idov?.photoUrl || null,
+      photoUrl: personPhotoFor(driver, idov),
       seasonNumber: driver.season?.number ?? null,
       seasonName: driver.season?.name ?? null,
       team: driver.team

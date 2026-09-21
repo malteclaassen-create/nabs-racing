@@ -1242,6 +1242,9 @@ export const api = {
   // Hotlap videos of ONE event (admin). The circuit keeps its own list in
   // adminTrackInfo below; an event with its own laps shows those instead.
   adminRaceHotlaps: (id) => request(`/admin/races/${id}/hotlaps`, { auth: true }),
+  // The raw result files on record for a round (feature and sprint), with
+  // what each holds and which one the reports read.
+  adminRaceArchive: (id) => request(`/admin/races/${id}/archive`, { auth: true }),
   saveRaceHotlaps: (id, videos) => request(`/admin/races/${id}/hotlaps`, { method: "PUT", body: { videos }, auth: true }),
 
   // Track info (admin): fun facts + custom map image per circuit
