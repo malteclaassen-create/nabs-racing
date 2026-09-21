@@ -202,6 +202,48 @@ function readSeen(driverId) {
   }
 }
 
+// The season chips. Somebody who races in two leagues has a row per league per
+// season, so a flat strip of "S8 S7 S6 S6 S5" could not say which S6 was about
+// to be restyled. The chips are grouped under their league's name instead, the
+// member's own league first (the server orders them). With one league there is
+// nothing to tell apart and the heading stays away.
+function SeasonChips({ seasons, activeDriverId, onPick }) {
+  const groups = [];
+  for (const s of seasons) {
+    const key = s.seriesId || "";
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.rows.push(s);
+    else groups.push({ key, name: s.seriesName, rows: [s] });
+  }
+  const showNames = groups.length > 1;
+  return (
+    <div className="mb-3 space-y-2">
+      {groups.map((g) => (
+        <div key={g.key || "none"} className="flex flex-wrap items-center gap-1.5">
+          {showNames && g.name && (
+            <span className="mr-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+              {g.name}
+            </span>
+          )}
+          {g.rows.map((s) => (
+            <button
+              key={s.driverId}
+              type="button"
+              onClick={() => onPick(s.driverId)}
+              title={s.seriesName ? `${s.seriesName} — ${s.seasonName || `Season ${s.seasonNumber}`}` : undefined}
+              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+                s.driverId === activeDriverId ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
+              }`}
+            >
+              S{s.seasonNumber}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // The card-edition picker: season chips + a swatch grid. Locked editions stay
 // visible (dimmed, padlocked, with their progress / requirement) so the goal is
 // in sight; unlocked ones are pickable and marked with a check. Newly-earned
@@ -251,22 +293,7 @@ export function CardEditionPicker({ seasons, activeDriverId, onPickSeason, editi
         </span>
       </div>
 
-      {seasons.length > 1 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {seasons.map((s) => (
-            <button
-              key={s.driverId}
-              type="button"
-              onClick={() => onPickSeason(s.driverId)}
-              className={`rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
-                s.driverId === activeDriverId ? "bg-brand text-ink" : "bg-surface2 text-light hover:text-dark"
-              }`}
-            >
-              S{s.seasonNumber}
-            </button>
-          ))}
-        </div>
-      )}
+      {seasons.length > 1 && <SeasonChips seasons={seasons} activeDriverId={activeDriverId} onPick={onPickSeason} />}
 
       {loading ? (
         <p className="text-sm text-light">Loading editions…</p>

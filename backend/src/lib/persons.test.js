@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { selectOwnCurrentRows, ownCurrentRowIds, currentRowPerSeries } from "./persons.js";
+import { selectOwnCurrentRows, ownCurrentRowIds, currentRowPerSeries, selectOwnRows } from "./persons.js";
 
 // A member's own profile edits land on their row in EVERY league they race
 // in, not just the one row their login points at. Archive rows and rows that
@@ -91,5 +91,37 @@ describe("ownCurrentRowIds", () => {
       season: { findFirst: async () => ({ id: "season-7", number: 7 }) },
     };
     expect((await ownCurrentRowIds(prisma, "f7", "me")).sort()).toEqual(["f7", "s1"]);
+  });
+});
+
+// A preference with nothing seasonal about it — the card animation switch —
+// reaches every card of the person, archive rows included. Only somebody
+// else's claim keeps a row out.
+describe("selectOwnRows", () => {
+  const rows = [
+    { id: "f8", discordUserId: "me" },
+    { id: "f5", discordUserId: null },
+    { id: "s1", discordUserId: null },
+    { id: "old", discordUserId: null },
+  ];
+
+  it("takes every linked row, however old", () => {
+    expect(selectOwnRows(rows, "f8", "me").sort()).toEqual(["f5", "f8", "old", "s1"]);
+  });
+
+  it("leaves out a row claimed by another Discord account", () => {
+    const taken = rows.map((r) => (r.id === "s1" ? { ...r, discordUserId: "someone-else" } : r));
+    expect(selectOwnRows(taken, "f8", "me").sort()).toEqual(["f5", "f8", "old"]);
+  });
+
+  it("always includes the acting row, even alone or unknown", () => {
+    expect(selectOwnRows([], "f8", "me")).toEqual(["f8"]);
+    expect(selectOwnRows(null, "f8", "me")).toEqual(["f8"]);
+  });
+
+  it("does not drop the acting row when somebody else's id sits on it", () => {
+    // The acting row is where the login already is; the filter is about the
+    // OTHER rows a change would reach.
+    expect(selectOwnRows([{ id: "f8", discordUserId: "someone-else" }], "f8", "me")).toEqual(["f8"]);
   });
 });
