@@ -220,6 +220,12 @@ router.get("/leagues", async (req, res, next) => {
       include: { team: true, season: { select: { number: true, name: true } } },
     });
     const byId = new Map(drivers.map((d) => [d.id, d]));
+    // The card look travels with each row too. The profile page previews the
+    // scoped row's card, and without these it fell back to the LOGIN row's:
+    // scoped to another league you saw that league's name, number and rating
+    // wearing a different row's edition, picture and framing — and reframing
+    // the card you were looking at moved nothing here.
+    const [roles, identity] = await Promise.all([readDriverRoles(prisma, ids), getIdentityOverrides(prisma)]);
     const leagues = [];
     for (const r of leagueRows) {
       const d = byId.get(r.id);
@@ -245,6 +251,21 @@ router.get("/leagues", async (req, res, next) => {
         team: d.team
           ? { id: d.team.id, name: d.team.name, color: d.team.color, logoUrl: d.team.logoUrl, tier: d.team.tier }
           : null,
+        tier: d.tier,
+        role: roles.get(d.id) || null,
+        cardStyle: await readCardEdition(prisma, d.id),
+        cardAnim: await readCardAnim(prisma, d.id),
+        // What this row's card SHOWS — the same pair /me carries for the
+        // acting row, so a scoped preview draws the card the page really has.
+        cardShows: cardPictureFor(
+          {
+            cardPhotoUrl: await readCardPhotoUrl(prisma, d.id),
+            photoUrl: d.photoUrl || null,
+            discordAvatar: d.discordAvatar || null,
+            photoPos: await readCardPhotoPos(prisma, d.id),
+          },
+          identity.get(d.id)
+        ),
       });
     }
     res.json({ leagues });

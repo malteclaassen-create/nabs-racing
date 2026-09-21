@@ -116,8 +116,10 @@ function CardEditor({ me, reload }) {
   // the profile photo over a card that goes on inheriting one.
   const stored = isMe
     ? {
-        photoPos: me.cardShows?.photoPos ?? me.photoPos ?? null,
-        cardPhotoUrl: me.cardShows?.cardPhotoUrl ?? me.cardPhotoUrl ?? null,
+        // Where `cardShows` exists it is the whole answer, a null picture
+        // included; falling through on null would show one this row has not.
+        photoPos: (me.cardShows ? me.cardShows.photoPos : me.photoPos) ?? null,
+        cardPhotoUrl: (me.cardShows ? me.cardShows.cardPhotoUrl : me.cardPhotoUrl) ?? null,
         cardAnim: me.cardAnim ?? null,
       }
     : rowPreview
