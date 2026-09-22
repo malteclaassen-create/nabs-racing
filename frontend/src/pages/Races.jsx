@@ -1158,7 +1158,7 @@ export default function Races() {
                           still image until it is clicked (VideoEmbed), so a
                           visitor who never presses play never meets YouTube. */}
                       {showHighlights && highlightsVideoId && (
-                        <div className="mb-4 overflow-hidden rounded-xl border border-border">
+                        <div className="pop-in mb-4 overflow-hidden rounded-xl border border-border">
                           <VideoEmbed videoId={highlightsVideoId} title={`${head.track} highlights`} />
                         </div>
                       )}

@@ -150,7 +150,7 @@ function TransferCentre({ data, teamById, driverById }) {
       </div>
 
       {help && (
-        <div className="card grid gap-4 p-4 text-sm sm:grid-cols-3">
+        <div className="card pop-in grid gap-4 p-4 text-sm sm:grid-cols-3">
           <div className="flex gap-3">
             <KindMark kind="transfer" />
             <p className="text-medium">
@@ -172,6 +172,8 @@ function TransferCentre({ data, teamById, driverById }) {
         </div>
       )}
 
+      {/* keyed on the tab so the list fades over when it changes */}
+      <div key={kind} className="content-in">
       {rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint={kind === "sub" ? "No reserve has filled in for a team this season." : "Nobody has changed team this season."} />
       ) : (
@@ -256,6 +258,7 @@ function TransferCentre({ data, teamById, driverById }) {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

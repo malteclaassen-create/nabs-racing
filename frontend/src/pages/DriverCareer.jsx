@@ -47,7 +47,8 @@ function seasonSpell(seasons, named) {
 
 function Section({ id, eyebrow, title, right, children }) {
   return (
-    <section id={id} className="scroll-mt-[9rem]">
+    // reveal: rises in on scroll like the sections of every other page
+    <section id={id} className="reveal scroll-mt-[9rem]">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:text-[11px] sm:tracking-[0.2em]">

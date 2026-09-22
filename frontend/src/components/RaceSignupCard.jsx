@@ -477,7 +477,7 @@ export default function RaceSignupCard({
           moves to another race: it puts Steam ids on screen, which is not
           something to leave lying around on a page with a league in it. */}
       {isAdmin && !notYetOpen && (adminView || !gridRow) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-5 py-2.5">
+        <div className="pop-in flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-5 py-2.5">
           <button
             type="button"
             onClick={toggleAdminView}

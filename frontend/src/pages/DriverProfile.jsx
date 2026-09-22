@@ -1029,14 +1029,14 @@ function HeadToHead({ me, meRow, standings }) {
             their numbers count up to the new values (CountUp re-counts). */}
         <div className="grid">
           <div
-            className={`col-start-1 row-start-1 ${mode === "race" ? "" : "invisible pointer-events-none"}`}
+            className={`col-start-1 row-start-1 transition-[opacity,visibility] duration-base ${mode === "race" ? "" : "invisible pointer-events-none opacity-0"}`}
             aria-hidden={mode !== "race"}
           >
             <DuelRows rows={raceRows} meColor={meColor} oppColor={oppColor} />
           </div>
           {hasSprint && (
             <div
-              className={`col-start-1 row-start-1 ${mode === "sprint" ? "" : "invisible pointer-events-none"}`}
+              className={`col-start-1 row-start-1 transition-[opacity,visibility] duration-base ${mode === "sprint" ? "" : "invisible pointer-events-none opacity-0"}`}
               aria-hidden={mode !== "sprint"}
             >
               <DuelRows rows={sprintRows} meColor={meColor} oppColor={oppColor} />
@@ -1044,7 +1044,7 @@ function HeadToHead({ me, meRow, standings }) {
           )}
           {hasQuali && (
             <div
-              className={`col-start-1 row-start-1 ${mode === "quali" ? "" : "invisible pointer-events-none"}`}
+              className={`col-start-1 row-start-1 transition-[opacity,visibility] duration-base ${mode === "quali" ? "" : "invisible pointer-events-none opacity-0"}`}
               aria-hidden={mode !== "quali"}
             >
               <DuelRows rows={qualiRows} meColor={meColor} oppColor={oppColor} />
@@ -1648,7 +1648,10 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 />
               </div>
             )}
-            <StatTiles stats={shown} visible={driver.profileTiles} className="grid-cols-2 sm:grid-cols-3" />
+            {/* keyed on the scope: the numbers fade over instead of jumping */}
+            <div key={showAll ? "all" : "season"} className="content-in">
+              <StatTiles stats={shown} visible={driver.profileTiles} className="grid-cols-2 sm:grid-cols-3" />
+            </div>
           </div>
         </div>
       </div>

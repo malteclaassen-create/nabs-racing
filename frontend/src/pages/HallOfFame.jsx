@@ -244,7 +244,7 @@ function TopListPanel({ lists }) {
   const [leader, ...chasers] = list.rows;
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card content-in overflow-hidden">
       {/* the record holder of the picked category, celebrated big */}
       <Link
         to={`/drivers/${leader.driverId}${leader.seasonNumber != null ? `?season=${leader.seasonNumber}` : ""}`}
