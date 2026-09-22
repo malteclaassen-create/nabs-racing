@@ -227,7 +227,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
           with the content instead of staying put, which is exactly what they
           are there to avoid. */}
       <div ref={scrollRef} className="overflow-x-auto overscroll-x-none">
-        <table className="w-full min-w-[720px] border-collapse">
+        {/* Separate borders on the cells, not collapsed ones on the rows: the
+            frozen columns paint an opaque background over a row's collapsed
+            border, so the line vanished under Pos, Team and Pts. */}
+        <table className="w-full min-w-[720px] border-separate border-spacing-0 [&_th]:border-b [&_th]:border-border [&>tbody>tr:not(:last-child)>td]:border-b [&>tbody>tr:not(:last-child)>td]:border-border">
           {/* scope="col" on every header: 92 header cells across the site
               carried none, and this is the table where a screen reader most
               needs to say which round a number belongs to.
@@ -239,7 +242,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
               Making it work needs the table to scroll vertically inside a
               fixed-height box, which is a different page layout, not a tweak. */}
           <thead>
-            <tr className="border-b border-border text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+            <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
               <th scope="col" className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
               {/* The cap must match the body cell below or the column resolves
                   between two different maxima; the driver column is the wider
@@ -290,7 +293,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   key={row.driverId || row.teamId}
                   data-replay-prev={showMovement ? row.prevPosition ?? "" : ""}
                   style={{ "--i": Math.min(i, 16) }}
-                  className={`group border-b border-border last:border-0 transition ${
+                  className={`group transition ${
                     row.position === 1 && row.total > 0
                       ? decided
                         ? "row-gold"
