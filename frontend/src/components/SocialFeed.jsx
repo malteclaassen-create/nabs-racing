@@ -34,7 +34,7 @@ function caption(title) {
   return s.replace(/(\s+#[\p{L}\p{N}_]+)+$/u, "").trim() || s;
 }
 
-function PostCard({ post, channel }) {
+function PostCard({ post, channel, layout = "row" }) {
   const meta = PLATFORM[post.platform] || { label: post.platform, accent: "#64748b" };
   const aspect = post.aspect || 16 / 9;
   // The heading doubles as the way to the channel itself — same address the
@@ -51,12 +51,18 @@ function PostCard({ post, channel }) {
     // — width divided by its shape — comes out identical, whatever mix of
     // upright and wide clips the row happens to hold.
     //
-    // On a phone the posts are a row you swipe through: 20rem tall, or 80% of
-    // the screen wide for a landscape clip. Stacked full width, four upright
-    // clips made the home page 2,400px longer.
+    // Phones: a landscape clip gets the full width ("full"), the upright ones
+    // share a swipe row ("swipe"). Mixed in one row, the landscape one sat
+    // half as tall as its neighbours with a hole underneath.
     <article
       style={{ "--ar": aspect }}
-      className="w-[min(calc(var(--ar)*20rem),80vw)] shrink-0 snap-start sm:w-auto sm:shrink sm:[flex-basis:calc(var(--ar)*var(--row-h))] sm:[flex-grow:var(--ar)] sm:[max-width:calc(var(--ar)*var(--cap-h))]"
+      className={
+        layout === "full"
+          ? "w-full"
+          : layout === "swipe"
+            ? "w-[min(calc(var(--ar)*20rem),80vw)] shrink-0 snap-start"
+            : "[flex-basis:calc(var(--ar)*var(--row-h))] [flex-grow:var(--ar)] [max-width:calc(var(--ar)*var(--cap-h))]"
+      }
     >
       {/* Which channel, then what the post says, both in fixed room so every
           window in a row starts at the same height, on a phone's swipe row too. */}
@@ -146,6 +152,8 @@ export default function SocialFeed({ header }) {
   // Nothing configured yet, the switch is off, or every platform stayed quiet:
   // the section simply isn't there. No empty state on the page.
   if (!data?.enabled || !posts.length) return null;
+  const wide = posts.filter((p) => (p.aspect || 16 / 9) > 1);
+  const tall = posts.filter((p) => (p.aspect || 16 / 9) <= 1);
 
   return (
     <section className="reveal space-y-5">
@@ -155,9 +163,22 @@ export default function SocialFeed({ header }) {
           fill the width exactly. --cap-h stops a lone wide clip from growing
           into a billboard on a big screen — the only case where the row can't
           fill, which is why it stays centred. */}
-      {/* Phones: one swipe row that runs to the screen edges (-mx-4 undoes the
-          page gutter, scroll-px-4 puts it back for the snap points). */}
-      <div className="cascade scrollbar-slim -mx-4 flex snap-x snap-mandatory scroll-px-4 items-start gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 [--cap-h:32rem] [--row-h:15rem] sm:mx-0 sm:snap-none sm:flex-wrap sm:justify-center sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:[--row-h:17rem]">
+      {/* Phones: landscape clips full width, upright ones in a swipe row that
+          runs to the screen edges (-mx-4 undoes the page gutter, scroll-px-4
+          puts it back for the snap points). */}
+      <div className="space-y-6 sm:hidden">
+        {wide.map((p) => (
+          <PostCard key={p.id} post={p} layout="full" channel={social.data?.[p.platform] || null} />
+        ))}
+        {tall.length > 0 && (
+          <div className="scrollbar-slim -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2">
+            {tall.map((p) => (
+              <PostCard key={p.id} post={p} layout="swipe" channel={social.data?.[p.platform] || null} />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="cascade hidden flex-wrap justify-center gap-4 [--cap-h:32rem] [--row-h:15rem] sm:flex lg:[--row-h:17rem]">
         {posts.map((p) => (
           <PostCard key={p.id} post={p} channel={social.data?.[p.platform] || null} />
         ))}

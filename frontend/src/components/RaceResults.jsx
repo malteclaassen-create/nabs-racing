@@ -281,9 +281,10 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   style={{ "--i": Math.min(i, 16) }}
                   onClick={hasStints ? () => toggleStints(r.driverId) : undefined}
                   title={hasStints ? "Show tyre strategy" : undefined}
-                  className={`border-b border-border transition odd:bg-surface2/30 last:border-0 hover:bg-surface2 ${
-                    hasStints ? "cursor-pointer" : ""
-                  }`}
+                  // the drawer row after it means last: never matches any more
+                  className={`transition hover:bg-surface2 ${i % 2 ? "" : "bg-surface2/30"} ${
+                    i === results.length - 1 ? "" : "border-b border-border"
+                  } ${hasStints ? "cursor-pointer" : ""}`}
                 >
                   {detailed && (
                     <td className="px-3 py-3.5 text-center">
@@ -460,10 +461,17 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                     ) : null}
                   </td>
                 </tr>
-                {stintsOpen && (
-                  <tr className="border-b border-border bg-surface2/40 last:border-0">
-                    <td colSpan={colCount} className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:pl-4">
+                {/* Always there, folded to zero height when closed, so opening it
+                    slides down instead of popping in. w-0 min-w-full keeps the
+                    strip out of the table's width sums: sized normally, a long
+                    strategy widened its column and shoved the driver column
+                    narrower, which wrapped badges in rows further up. */}
+                {hasStints && (
+                  <tr aria-hidden={!stintsOpen}>
+                    <td colSpan={colCount} className="p-0">
+                      <div className={`stint-drawer grid w-0 min-w-full transition-[grid-template-rows] duration-base ease-out-soft ${stintsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                      <div className="min-h-0 overflow-hidden">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-4 py-3 sm:pl-8">
                         <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-light">
                           Tyre strategy
                         </span>
@@ -486,6 +494,8 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         <span className="font-mono text-[10px] uppercase tracking-wider text-light">
                           · {r.stints.length - 1} {r.stints.length - 1 === 1 ? "stop" : "stops"}
                         </span>
+                      </div>
+                      </div>
                       </div>
                     </td>
                   </tr>

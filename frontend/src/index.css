@@ -2211,3 +2211,8 @@ body::before {
 /* Archivo in caps with tight tracking has a very narrow space: on a phone
    "No hotlap yet" read as "NO HOTLAPYET". A touch more room between words. */
 .font-display.uppercase { word-spacing: 0.08em; }
+
+/* Tyre strategy drawer in the race results: slides open. Still in lite mode
+   and for reduced motion. */
+.fx-lite .stint-drawer { transition: none; }
+@media (prefers-reduced-motion: reduce) { .stint-drawer { transition: none; } }

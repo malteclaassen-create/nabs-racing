@@ -471,8 +471,9 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
 
   return (
     <div className="card overflow-hidden">
-      <CardBar title="Edit your profile" />
-      <div className="space-y-6 p-5 sm:p-6">
+      {/* On a phone the section menu right above already says "Edit Profile" */}
+      <CardBar title="Edit your profile" className="hidden sm:block" />
+      <div className="space-y-6 p-4 sm:p-6">
         {error && <ErrorBox message={error} />}
 
         {/* Which league the edit is for. Hidden for a person who races in one
@@ -892,9 +893,11 @@ function MyProfile() {
       <PageHeader
         eyebrow="Your profile"
         title="My Profile"
+        // beside the title on a phone too, as a small button
+        rightInline
         right={
           previewId ? (
-            <Link to={`/drivers/${previewId}`} className="btn-secondary inline-flex items-center gap-1.5">
+            <Link to={`/drivers/${previewId}`} className="btn-secondary inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />

@@ -40,7 +40,7 @@ function useScrollEdges() {
 // `droppedPts` (constructor rows) = the share of the round's points scored in
 // one of a driver's own dropped rounds; it doesn't count for the team.
 function RaceCell({ cell, dropped, droppedPts = 0 }) {
-  const base = "px-2.5 py-3 text-center font-mono";
+  const base = "px-2 py-3 text-center font-mono sm:px-2.5";
   if (cell == null) return <td className={`${base} text-sm text-faint`}>·</td>;
 
   // A fully dropped round renders the same way whatever its content: struck +
@@ -229,8 +229,11 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
       <div ref={scrollRef} className="overflow-x-auto overscroll-x-none">
         {/* Separate borders on the cells, not collapsed ones on the rows: the
             frozen columns paint an opaque background over a row's collapsed
-            border, so the line vanished under Pos, Team and Pts. */}
-        <table className="w-full min-w-[720px] border-separate border-spacing-0 [&_th]:border-b [&_th]:border-border [&>tbody>tr:not(:last-child)>td]:border-b [&>tbody>tr:not(:last-child)>td]:border-border">
+            border, so the line vanished under Pos, Team and Pts.
+            No 720px floor on a phone: the table spread the spare width over
+            every column, the frozen team column included, and with six rounds
+            that left 13px of rounds on screen. */}
+        <table className="w-full border-separate sm:min-w-[720px] border-spacing-0 [&_th]:border-b [&_th]:border-border [&>tbody>tr:not(:last-child)>td]:border-b [&>tbody>tr:not(:last-child)>td]:border-border">
           {/* scope="col" on every header: 92 header cells across the site
               carried none, and this is the table where a screen reader most
               needs to say which round a number belongs to.
@@ -243,11 +246,11 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
               fixed-height box, which is a different page layout, not a tweak. */}
           <thead>
             <tr className="text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              <th scope="col" className="sticky left-0 z-20 w-14 bg-card px-3 py-3 text-center">Pos</th>
+              <th scope="col" className="sticky left-0 z-20 w-11 bg-card px-1.5 py-3 text-center sm:w-14 sm:px-3">Pos</th>
               {/* The cap must match the body cell below or the column resolves
                   between two different maxima; the driver column is the wider
                   of the two because it also carries a photo. */}
-              <th scope="col" className={`sticky left-14 z-20 ${isDriver ? "max-w-[44vw]" : "max-w-[42vw]"} sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
+              <th scope="col" className={`sticky left-11 z-20 sm:left-14 ${isDriver ? "max-w-[40vw] sm:max-w-none" : ""} bg-card px-2 py-3 transition-shadow sm:px-3 ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
               {isDriver && <th scope="col" className="hidden px-3 py-3 lg:table-cell">Discord</th>}
@@ -257,7 +260,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                 <th
                   scope="col"
                   key={n}
-                  className="px-2.5 py-3 text-center tabular-nums"
+                  className="px-2 py-3 text-center tabular-nums sm:px-2.5"
                   title={
                     [
                       sprintSet.has(n) ? "Sprint weekend: the feature race and the sprint both score, added together under this round" : null,
@@ -278,7 +281,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   )}
                 </th>
               ))}
-              <th scope="col" className={`sticky right-0 z-20 border-l border-border bg-card px-4 py-3 text-right transition-shadow ${rightShadow}`}>
+              <th scope="col" className={`sticky right-0 z-20 border-l border-border bg-card px-3 py-3 text-right transition-shadow sm:px-4 ${rightShadow}`}>
                 Pts
               </th>
             </tr>
@@ -301,7 +304,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                       : "hover:bg-surface2"
                   }`}
                 >
-                  <td className="sticky left-0 z-10 px-3 py-3 text-center transition sticky-cell">
+                  <td className="sticky left-0 z-10 px-1.5 py-3 text-center transition sticky-cell sm:px-3">
                     <span className="inline-flex flex-col items-center gap-0.5">
                       <Rank position={row.position} />
                       {showMovement && row.prevPosition != null && <PosDelta delta={row.prevPosition - row.position} />}
@@ -309,7 +312,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   </td>
 
                   {isDriver ? (
-                    <td className={`sticky left-14 z-10 max-w-[44vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
+                    <td className={`sticky left-11 z-10 max-w-[40vw] px-2 py-3 transition sticky-cell sm:left-14 sm:max-w-none sm:px-3 ${leftShadow}`}>
                       {/* Same driver line as the standings LIST: colour bar,
                           photo, name, flag. The two views are the same table
                           read two ways, and only one of them used to put a face
@@ -342,10 +345,13 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                       </Link>
                     </td>
                   ) : (
-                    <td className={`sticky left-14 z-10 max-w-[42vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
-                      <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-3">
+                    <td className={`sticky left-11 z-10 px-2 py-3 transition sticky-cell sm:left-14 sm:px-3 ${leftShadow}`}>
+                      {/* Phones: a narrow column and the name over two lines, so
+                          the rounds get room to be read (with twenty teams the
+                          frozen columns left space for about one round). */}
+                      <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-2 sm:gap-3">
                         <TeamLogo id={row.teamId} name={row.name} color={row.color} logoUrl={row.logoUrl} size={28} />
-                        <span className="min-w-0 truncate font-display text-sm font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
+                        <span className="line-clamp-2 min-w-0 font-display text-[13px] font-bold uppercase leading-tight tracking-tight text-dark transition group-hover/name:text-brand sm:line-clamp-none sm:truncate sm:text-lg">
                           {row.name}
                         </span>
                       </Link>
@@ -383,7 +389,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                     />
                   ))}
 
-                  <td className={`sticky right-0 z-10 border-l border-border px-4 py-3 text-right font-mono text-lg font-bold tabular-nums text-dark transition sticky-cell sm:text-xl ${rightShadow}`}>
+                  <td className={`sticky right-0 z-10 border-l border-border px-3 py-3 text-right font-mono sm:px-4 text-lg font-bold tabular-nums text-dark transition sticky-cell sm:text-xl ${rightShadow}`}>
                     {/* reserve: the total counts up from 0, and this column is
                         auto-sized — without it every gained digit re-measured
                         the whole table and the header twitched (see CountUp). */}
