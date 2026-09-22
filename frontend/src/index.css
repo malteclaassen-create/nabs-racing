@@ -1454,7 +1454,14 @@ body::before {
 .rcard-sheen { position: absolute; top: -40%; left: -100%; width: 55%; height: 180%; z-index: 3; pointer-events: none;
   background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.16), transparent);
   transform: skewX(-18deg); animation: rcard-sweep 7s ease-in-out infinite; }
-@keyframes rcard-sweep { 0%, 55% { left: -100%; } 100% { left: 145%; } }
+/* Moves by transform, not `left`: animating left re-laid-out and repainted the
+   whole card (drop shadow and blurred photo included) on every frame. The
+   travel is the old -100% to 145% of the card, in units of the band's own
+   width (55% of the card: 245 / 55 = 445%). */
+@keyframes rcard-sweep {
+  0%, 55% { transform: translateX(0) skewX(-18deg); }
+  100% { transform: translateX(var(--sweep, 445%)) skewX(-18deg); }
+}
 .rcard-innerline { position: absolute; inset: 0; z-index: 3; pointer-events: none; clip-path: var(--chamfer-in);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 0 30px rgba(0, 0, 0, 0.4); }
 
@@ -1679,7 +1686,7 @@ body::before {
   background: linear-gradient(105deg, transparent, rgba(255,255,255,0.18), transparent); transform: skewX(-18deg);
   animation: rcard-sweep 6s ease-in-out infinite; }
 /* flash — the same glide, faster and brighter. */
-.rcard-frame[data-anim="flash"] .rcard-fx { inset: -40% auto auto -100%; width: 45%; height: 180%;
+.rcard-frame[data-anim="flash"] .rcard-fx { --sweep: 544%; inset: -40% auto auto -100%; width: 45%; height: 180%;
   background: linear-gradient(105deg, transparent, rgba(255,255,255,0.30), transparent); transform: skewX(-18deg);
   animation: rcard-sweep 3s ease-in-out infinite; }
 /* glow — a breathing halo from the top, tinted with the edition colour. */
@@ -2216,3 +2223,13 @@ body::before {
    and for reduced motion. */
 .fx-lite .stint-drawer { transition: none; }
 @media (prefers-reduced-motion: reduce) { .stint-drawer { transition: none; } }
+
+/* Phones and tablets: the two card effects the GPU cannot just move around.
+   The 50px drop shadow is redrawn at the new scale on every pinch-zoom step,
+   and the holo/gold foil drifts by background-position, which repaints the
+   card every frame. Cards stay the same otherwise. */
+@media (pointer: coarse) {
+  .rcard-frame, .cardflip { filter: none; }
+  .rcard-frame[data-edition="holo"] .rcard-innerline::before,
+  .rcard-frame[data-edition="gold"] .rcard-innerline::before { animation: none; }
+}
