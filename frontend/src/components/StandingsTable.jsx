@@ -250,7 +250,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
               {/* The cap must match the body cell below or the column resolves
                   between two different maxima; the driver column is the wider
                   of the two because it also carries a photo. */}
-              <th scope="col" className={`sticky left-11 z-20 sm:left-14 ${isDriver ? "max-w-[40vw] sm:max-w-none" : ""} bg-card px-2 py-3 transition-shadow sm:px-3 ${leftShadow}`}>
+              <th scope="col" className={`sticky left-11 z-20 sm:left-14 ${isDriver ? "max-w-[40vw] sm:max-w-none" : "w-32 min-w-[8rem] sm:w-auto sm:min-w-0"} bg-card px-2 py-3 transition-shadow sm:px-3 ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
               {isDriver && <th scope="col" className="hidden px-3 py-3 lg:table-cell">Discord</th>}
@@ -307,7 +307,16 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                   <td className="sticky left-0 z-10 px-1.5 py-3 text-center transition sticky-cell sm:px-3">
                     <span className="inline-flex flex-col items-center gap-0.5">
                       <Rank position={row.position} />
-                      {showMovement && row.prevPosition != null && <PosDelta delta={row.prevPosition - row.position} />}
+                      {/* The slot stays while arrows are on, even for a row with no
+                          previous round (a season after round 1, a debut): without
+                          it those tables came out a line shorter per row than the
+                          others and looked like a different, smaller table. */}
+                      {showMovement &&
+                        (row.prevPosition != null ? (
+                          <PosDelta delta={row.prevPosition - row.position} />
+                        ) : (
+                          <span className="invisible font-mono text-[10px] sm:text-[11px]" aria-hidden="true">–</span>
+                        ))}
                     </span>
                   </td>
 
@@ -345,7 +354,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                       </Link>
                     </td>
                   ) : (
-                    <td className={`sticky left-11 z-10 px-2 py-3 transition sticky-cell sm:left-14 sm:px-3 ${leftShadow}`}>
+                    <td className={`sticky left-11 z-10 w-32 min-w-[8rem] px-2 py-3 transition sticky-cell sm:left-14 sm:w-auto sm:min-w-0 sm:px-3 ${leftShadow}`}>
                       {/* Phones: a narrow column and the name over two lines, so
                           the rounds get room to be read (with twenty teams the
                           frozen columns left space for about one round). */}
