@@ -120,27 +120,32 @@ function TransferCentre({ data, teamById, driverById }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-2 sm:flex-wrap sm:gap-3">
         <SlidingTabs
           items={[
             { key: "all", label: `All (${all.length})` },
             { key: "transfer", label: `Transfers (${counts.transfer})`, title: "A driver's own seat changed" },
-            { key: "sub", label: `Substitutes (${counts.sub})`, title: "A reserve raced for a team that night" },
+            // "Subs" on a phone so the three tabs and the "?" fit one row
+            { key: "sub", label: <>Sub<span className="hidden sm:inline">stitute</span>s ({counts.sub})</>, title: "A reserve raced for a team that night" },
           ]}
           value={kind}
           onChange={setKind}
-          btnClassName="px-3 py-1.5 text-xs"
+          wrapClassName="inline-flex min-w-0 flex-nowrap rounded-xl border border-border bg-card p-1 sm:flex-wrap"
+          btnClassName="whitespace-nowrap px-2.5 py-1.5 text-xs sm:px-3"
         />
         <button
           type="button"
           onClick={() => setHelp((h) => !h)}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
+          // just the "?" on a phone, so it shares the row with the tabs
+          className="ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-card font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark sm:h-auto sm:w-auto sm:px-2.5 sm:py-1.5"
           aria-expanded={help}
+          aria-label="How to read this"
+          title="How to read this"
         >
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5" /><path d="M12 17h.01" />
           </svg>
-          How to read this
+          <span className="hidden sm:inline">How to read this</span>
         </button>
       </div>
 
@@ -288,11 +293,14 @@ function TransfersPage() {
       <PageHeader
         eyebrow="Transfer market"
         title={heading}
-        subtitle="Who drives for whom, round by round — and the moves already announced for the rounds ahead."
+        subtitle={<span className="hidden sm:inline">Who drives for whom, round by round, and the moves already announced for the rounds ahead.</span>}
       />
 
       <section className="reveal space-y-4">
-        <SectionHeading eyebrow="Transfer centre" title="Team changes this season" />
+        {/* On a phone the page title already says it; the tabs start right away */}
+        <div className="hidden sm:block">
+          <SectionHeading eyebrow="Transfer centre" title="Team changes this season" />
+        </div>
         <TransferCentre data={data} teamById={teamById} driverById={driverById} />
       </section>
 

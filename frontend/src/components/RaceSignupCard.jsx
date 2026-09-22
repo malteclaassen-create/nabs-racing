@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Hourglass, Fingerprint, Copy, Check } from "lucide-react";
+import { Hourglass, Fingerprint, Copy, Check, Undo2 } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
@@ -342,6 +342,8 @@ export default function RaceSignupCard({
       timeZoneName: "short",
     }));
 
+  const gridRow = !notYetOpen && visible.includes("ACCEPTED");
+
   return (
     <div data-tour="signup-card" className={`card reveal flex flex-col overflow-hidden ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-border px-5 py-4">
@@ -389,7 +391,7 @@ export default function RaceSignupCard({
                   // says what the answer IS. The other two go flat: greying the
                   // lot would leave the question looking unanswered.
                   title={myOffer ? "Your seat is offered in the Driver Market" : undefined}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition sm:flex-none ${
                     active ? ui.active : ui.idle
                   } ${myOffer ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
                 >
@@ -408,12 +410,16 @@ export default function RaceSignupCard({
                 offer stands: that DECLINED is not the member's to withdraw, and
                 the server says the same. */}
             {myStatus && !myOffer && (
+              // Just the icon on a phone, so it fits on the row with the answers
               <button
                 onClick={clearAnswer}
                 disabled={busy === `${ev.id}:clear`}
-                className="btn-secondary"
+                className="btn-secondary px-3"
+                title="Clear my answer"
+                aria-label="Clear my answer"
               >
-                Clear my answer
+                <Undo2 className="h-4 w-4 sm:hidden" aria-hidden="true" />
+                <span className="hidden sm:inline">Clear my answer</span>
               </button>
             )}
             {myOffer && (
@@ -470,7 +476,7 @@ export default function RaceSignupCard({
       {/* The admin's own row. Off by default and off again as soon as the card
           moves to another race: it puts Steam ids on screen, which is not
           something to leave lying around on a page with a league in it. */}
-      {isAdmin && !notYetOpen && (
+      {isAdmin && !notYetOpen && (adminView || !gridRow) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-5 py-2.5">
           <button
             type="button"
@@ -503,12 +509,27 @@ export default function RaceSignupCard({
       )}
 
       {/* grid fill: how many of the available seats are taken */}
-      {!notYetOpen && visible.includes("ACCEPTED") && (
+      {gridRow && (
       <div className="border-b border-border px-5 py-3">
-        <div className="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+        <div className="flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
           <span>Grid</span>
-          <span className={`tabular-nums ${gridFull ? "text-warn" : "text-medium"}`}>
-            {gridFull ? `Full · ${accepted}/${capacity} seats taken` : `${accepted}/${capacity} seats taken`}
+          <span className="flex items-center gap-2">
+            <span className={`tabular-nums ${gridFull ? "text-warn" : "text-medium"}`}>
+              {gridFull ? `Full · ${accepted}/${capacity} seats taken` : `${accepted}/${capacity} seats taken`}
+            </span>
+            {/* Admins: the Steam ID switch lives here instead of a row of its own */}
+            {isAdmin && !adminView && (
+              <button
+                type="button"
+                onClick={toggleAdminView}
+                aria-pressed={false}
+                title="Show Steam IDs beside every name (admins only)"
+                aria-label="Show Steam IDs"
+                className="-my-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-medium transition hover:text-dark"
+              >
+                <Fingerprint className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
           </span>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">

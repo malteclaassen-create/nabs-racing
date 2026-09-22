@@ -425,8 +425,10 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
             its own line below that. The fold control rides with them, because
             this is the corner of the card that is about the card rather than
             about the session. */}
+        {/* Not on phones: there the two links ride in the toggle row below, and
+            joining a server from a phone isn't a thing anyway. */}
         <div
-          className={`flex flex-wrap items-center gap-2 sm:col-span-2 lg:justify-end lg:self-center ${
+          className={`hidden flex-wrap items-center gap-2 sm:col-span-2 sm:flex lg:justify-end lg:self-center ${
             open ? "lg:col-span-2 lg:col-start-3 lg:row-start-1" : "lg:col-span-1"
           }`}
         >
@@ -445,18 +447,22 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
         </div>
       </div>
 
-      {/* Mobile-only expand toggle. */}
-      <button
-        type="button"
-        onClick={toggleMore}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-border py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
-        aria-expanded={showMore}
-      >
-        {showMore ? "Show less" : "Session details"}
-        <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
+      {/* Mobile-only: the expand toggle, with the timing and Patreon links on
+          the same line instead of two rows of big buttons above it. */}
+      <div className="flex items-center border-t border-border sm:hidden">
+        <button
+          type="button"
+          onClick={toggleMore}
+          className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wide text-light transition hover:bg-surface2"
+          aria-expanded={showMore}
+        >
+          {showMore ? "Show less" : "Session details"}
+          <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        <MobileLinks links={links} patreonUrl={patreonUrl} />
+      </div>
     </div>
   );
 }
@@ -1873,6 +1879,29 @@ function ExternalIcon() {
 // can read a row like that. The header now keeps only the view controls, and
 // these three moved to the card that describes the session they act on — the
 // server you would be joining is named two lines above the button that joins it.
+// Phones: the server's own timing page and Patreon as two small links.
+function MobileLinks({ links, patreonUrl }) {
+  const timing = links?.liveTimingUrl;
+  if (!timing && !patreonUrl) return null;
+  const cls = "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider transition";
+  return (
+    <div className="flex items-center gap-1 pr-2">
+      {timing && (
+        <a href={timing} target="_blank" rel="noreferrer noopener" title="The race server's own full live timing page" className={`${cls} text-medium hover:bg-surface2 hover:text-dark`}>
+          <ExternalIcon />
+          Timing
+        </a>
+      )}
+      {patreonUrl && (
+        <a href={patreonUrl} target="_blank" rel="noreferrer noopener" title="Support the league on Patreon" className={`${cls} text-[#FF424D] hover:bg-[#FF424D]/10`}>
+          <SocialIcon name="patreon" className="h-3.5 w-3.5" />
+          Patreon
+        </a>
+      )}
+    </div>
+  );
+}
+
 function ExternalButtons({ links, patreonUrl }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
@@ -1896,9 +1925,7 @@ function ExternalButtons({ links, patreonUrl }) {
           target="_blank"
           rel="noreferrer noopener"
           title="Join this race server in Content Manager"
-          // phones: the main action gets its own full row, the other two share
-          // the next one (three in a row wrapped every label onto two lines)
-          className={`transition ${base} basis-full sm:basis-auto bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
+          className={`transition ${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
           Join the server
@@ -3448,7 +3475,7 @@ export default function Live() {
           // Same table, different question. In a race it arrives in running
           // order and the gap column reads as distance up the road, so calling
           // it a list of best times would be describing the wrong column.
-          title={session?.type === "Race" ? "Race Order" : "Session Best Times"}
+          title={session?.type === "Race" ? "Race Order" : <><span className="hidden sm:inline">Session </span>Best Times</>}
           // Sorting and the column picker sit on the heading's own row, right
           // above the table they change: two buttons, one question each.
           right={

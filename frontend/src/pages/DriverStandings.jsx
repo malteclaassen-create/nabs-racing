@@ -560,6 +560,7 @@ export default function DriverStandings() {
               champion={championIds.has(d.driverId)}
               decided={seasonDecided}
               delta={deltaById.has(d.driverId) ? deltaById.get(d.driverId) : null}
+              deltaSlot={deltaById.size > 0}
             />
           ))}
         </div>

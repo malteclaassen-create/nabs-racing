@@ -19,7 +19,7 @@ export function standingCaption(position, gap, { decided = false, unit = "", low
   return `−${gap}${unit}`;
 }
 
-export default function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false, delta = null }) {
+export default function DriverRow({ d, leaderTotal, index = 0, showTier = true, champion = false, decided = false, delta = null, deltaSlot = false }) {
   const gap = leaderTotal - d.total;
   const pct = d.total > 0 && leaderTotal > 0 ? Math.max(4, (d.total / leaderTotal) * 100) : 0;
   return (
@@ -33,7 +33,8 @@ export default function DriverRow({ d, leaderTotal, index = 0, showTier = true, 
       }`}
     >
       <Rank position={d.position} />
-      <PosDelta delta={delta} />
+      {/* A debut has no arrow; keep its slot so the colour bars stay in one line */}
+      {delta != null ? <PosDelta delta={delta} /> : deltaSlot && <span className="w-5 shrink-0 sm:w-7" aria-hidden="true" />}
       <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
       <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team.color} size={36} />
 

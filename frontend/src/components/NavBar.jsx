@@ -1040,7 +1040,7 @@ export default function NavBar() {
           />
           <div
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
-            className={`nav-drop absolute inset-x-0 top-full z-30 max-h-[calc(100dvh-96px)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
+            className={`nav-drop absolute inset-x-0 top-full z-30 h-[calc(100dvh-100%)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
           >
             <div className="container-page flex flex-col py-3">
               {/* You-stuff first, on ONE row: profile chip left, search right.
@@ -1114,26 +1114,16 @@ export default function NavBar() {
               )}
               {/* Stewarding, on a phone. The corner button is desktop-only, and
                   a race night is the one evening the whole grid is on phones. */}
+              {/* One row, not two: both led to /reports and lit up together.
+                  With reports of your own it opens the list (which has its own
+                  "Report an incident"), without it goes straight to the form. */}
               {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
-                <>
-                  <MobileRow
-                    to={reportsPath({ nw: true })}
-                    icon={NAV_ICONS.incident}
-                    label="Report an incident"
-                    sub="To the stewards, privately"
-                  />
-                  {/* Only once there is something in it. Until somebody is in
-                      an argument, this is a row that leads to an empty page —
-                      the same rule "Your messages" already follows. */}
-                  {hasReports && (
-                    <MobileRow
-                      to="/reports"
-                      icon={NAV_ICONS.myReports}
-                      label="My reports"
-                      sub="And what was decided"
-                    />
-                  )}
-                </>
+                <MobileRow
+                  to={hasReports ? "/reports" : reportsPath({ nw: true })}
+                  icon={NAV_ICONS.incident}
+                  label="Stewarding"
+                  sub={hasReports ? "Report an incident, or see yours" : "Report an incident, privately"}
+                />
               )}
             </div>
           </div>
