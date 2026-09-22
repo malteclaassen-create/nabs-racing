@@ -89,7 +89,9 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
             ? `flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 open ? "border-brand/60 bg-brand/10 text-dark" : "border-border text-medium hover:bg-surface2"
               }`
-            : "group flex items-center gap-1 text-left"
+            // padding + matching negative margin: a finger-sized target
+            // without moving the label (it was 16px tall on a phone)
+            : "group -mx-1 -my-1.5 flex items-center gap-1 px-1 py-1.5 text-left"
         }
       >
         {mobile ? (

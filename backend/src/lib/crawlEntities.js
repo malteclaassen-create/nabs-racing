@@ -30,7 +30,7 @@ import { roundPointsTables } from "../services/standingsService.js";
 import { getNameOverrides } from "./persons.js";
 import { readParentIds } from "./sprintRaces.js";
 import { seasonStandings, seasonRounds, constructorStandings } from "./crawlTables.js";
-import { seasonLabel } from "./seo.js";
+import { seasonLabel, disciplineOf } from "./seo.js";
 
 // How many finishers of a round are worth listing. The results table shows the
 // whole field, so listing the whole field is the honest mirror; the cap is only
@@ -327,7 +327,8 @@ function leagueStrapline(game) {
   // "Formula 1 sim racing league on Assetto Corsa" — the same opening the meta
   // description has always used (lib/pageMeta.js, seasonDescription), so the
   // snippet and the page's own subtitle say one thing rather than two.
-  const discipline = /\bf1\b|formula/i.test(era || "") ? "Formula 1 sim" : "Sim";
+  const d = disciplineOf(era);
+  const discipline = d ? `${d} sim` : "Sim";
   // A season whose game names only the sim collapses era and platform onto the
   // same word, and "Assetto Corsa cars on Assetto Corsa" reads badly — the same
   // guard the page itself applies (Welcome.jsx, showPlatform).

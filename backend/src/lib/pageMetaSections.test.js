@@ -117,8 +117,12 @@ describe("listing page meta", () => {
 
   it("has nothing to say about the member-only areas", async () => {
     expect(await meta("/s/friday-f1/nonsense")).toBe(null);
-    expect(await meta("/downloads")).toBe(null);
     expect(await meta("/profile")).toBe(null);
+  });
+
+  it("names the Race Info page, which is public even though its files are not", async () => {
+    const m = await meta("/downloads");
+    expect(m.title).toBe("Race info, rules and downloads · NABS Racing League");
   });
 
   it("describes /join exactly as it describes the root", async () => {

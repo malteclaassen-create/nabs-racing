@@ -64,11 +64,14 @@ export function fmtLapDelta(ms) {
 // raw printed the day BEFORE for every viewer west of UTC, right next to a
 // kickoff time that had been resolved properly. Seven places did that.
 const LOCALE = "en-GB";
+// en-GB writes September as "Sept" and every other month in three letters, so
+// "25 SEP" on one card sat next to "18 SEPT" on the next. Three letters everywhere.
+export const threeLetterMonths = (s) => String(s).replace(/\bSept\b/g, "Sep");
 
 const fmt = (date, opts) => {
   const d = raceKickoff(date) ?? (date ? new Date(date) : null);
   if (!d || isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(LOCALE, opts);
+  return threeLetterMonths(d.toLocaleDateString(LOCALE, opts));
 };
 
 // "Fri 14 Aug" — a race in a list, a card, a countdown header. The workhorse.
@@ -96,11 +99,21 @@ export const fmtStamp = (d) => fmt(d, { day: "2-digit", month: "short", year: "n
 export function fmtStampTime(date) {
   const d = date ? new Date(date) : null;
   if (!d || isNaN(d.getTime())) return "";
-  return d.toLocaleString(LOCALE, {
+  return threeLetterMonths(d.toLocaleString(LOCALE, {
     day: "2-digit",
     month: "short",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }));
+}
+
+// Admin texts say "{drop} lowest-scoring rounds are dropped", which reads
+// "1 lowest-scoring rounds are dropped" in a league that drops one. Fix the
+// noun (and the verb right after it) when the number in front is a 1.
+export function singularOne(s) {
+  return String(s ?? "").replace(
+    /\b1 ((?:[\w-]+ ){0,3}?)(round|result|race)s\b( are\b)?/g,
+    (m, mid, noun, are) => `1 ${mid}${noun}${are ? " is" : ""}`
+  );
 }

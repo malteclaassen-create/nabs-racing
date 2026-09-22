@@ -19,7 +19,7 @@ import { applyPenalties } from "../services/pointsCalculator.js";
 import { resolveSeries } from "../lib/series.js";
 import { getNameOverrides } from "./persons.js";
 import { readSocialLinks } from "./leagueSocials.js";
-import { primarySlug, seasonLabel } from "./seo.js";
+import { primarySlug, seasonLabel, disciplineOf } from "./seo.js";
 import { raceKickoff } from "./raceKickoff.js";
 
 const esc = (s) =>
@@ -209,15 +209,6 @@ function championshipRounds(prisma, seasonId) {
     .catch(() => []);
 }
 
-// What is being raced, in the words people search for. The league runs a
-// different era's F1 mod every season (F1 2007, F1 2010, F1 2013 …), so the
-// season's own `game` is the reliable source; the series name ("F1 Friday") is
-// the fallback for a season with no game set. Null for anything that is not
-// recognisably Formula 1, because a GT series must not be advertised as one.
-function disciplineOf(game, seriesName) {
-  return /\bf1\b|formula/i.test(`${game || ""} ${seriesName || ""}`) ? "Formula 1" : null;
-}
-
 // The snippet itself, kept free of the database so it can be tested.
 //
 // Two sentences. The first says what this is, the second what the site holds,
@@ -237,7 +228,9 @@ export function seasonDescription({ discipline = null, night = null }) {
 
   // The second sentence, in as much detail as the width allows. Longest first,
   // and the last one holds up even if everything before it had to go.
-  const champ = `Online ${discipline === "Formula 1" ? "F1 " : ""}championship with `;
+  // "Formula 3" -> "F3 championship"
+  const short = discipline ? discipline.replace(/^Formula (\d)$/, "F$1") : "";
+  const champ = `Online ${short && short !== discipline ? `${short} ` : ""}championship with `;
   const races = night ? `${night} races, ` : "";
   const rest = [
     `${champ}${races}driver and team standings, results, live timing and sign-ups.`,
@@ -477,6 +470,14 @@ export async function buildPageMeta(prisma, pathname, query = {}) {
     // or the page argues with its own canonical tag.
     if (!parts.length || (parts.length === 1 && parts[0] === "join")) {
       return await cachedSeasonMeta(prisma, "/", undefined);
+    }
+    // The Race Info page (the frontend's RACE_INFO_TITLE says the same).
+    if (parts.length === 1 && parts[0] === "downloads") {
+      return {
+        title: `Race info, rules and downloads · ${SITE}`,
+        description:
+          "How the NABS championship works: format, points, sporting regulations and the files you need to race on Assetto Corsa.",
+      };
     }
     // /career/<handle>: a person, not a season.
     if (parts[0] === "career" && parts[1]) return await careerMeta(prisma, decodeURIComponent(parts[1]));

@@ -235,6 +235,20 @@ export default function DriverStandings() {
   const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
   if (hideScoreless) rows = rows.filter((r) => r.total > 0);
   rows = rows.map((d, i) => ({ ...d, position: i + 1 }));
+  // The server ranks the previous round against the WHOLE pool (155 rows with
+  // every idle reserve), so a debut read "▲83" in a table of 69. Re-rank it
+  // inside this view, and nobody who hadn't started before the last round
+  // gets an arrow at all: there was no place for them to move from.
+  const scoredRounds = data.raceNumbers.filter((n) => all.some((r) => r.perRace[n] != null));
+  const lastRound = scoredRounds[scoredRounds.length - 1];
+  const startedBefore = (r) => scoredRounds.some((n) => n < lastRound && r.perRace[n] != null);
+  const prevInView = new Map(
+    rows
+      .filter((r) => r.prevPosition != null && startedBefore(r))
+      .sort((a, b) => a.prevPosition - b.prevPosition)
+      .map((r, i) => [r.driverId, i + 1])
+  );
+  rows = rows.map((r) => ({ ...r, prevPosition: prevInView.get(r.driverId) ?? null }));
 
   const leaderTotal = rows[0]?.total ?? 0;
   const top3 = rows.slice(0, 3);

@@ -358,3 +358,14 @@ export function applyCanonical(html, url) {
   }
   return out.replace(/<\/head>/i, `  ${tag}\n  </head>`);
 }
+
+// Which formula a season races ("F1 2010 · Assetto Corsa" -> "Formula 1",
+// "Formula 3 / Assetto Corsa" -> "Formula 3"). Series name only if the game is
+// empty. Null for GT and co, so nothing gets sold as F1 that isn't.
+export function disciplineOf(game, seriesName) {
+  const read = (s) => {
+    const m = String(s || "").match(/\bf(\d)\b|\bformula\s*(\d)\b/i);
+    return m ? `Formula ${m[1] || m[2]}` : null;
+  };
+  return read(game) || (String(game || "").trim() ? null : read(seriesName));
+}

@@ -1660,6 +1660,11 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
 // private /profile editor: the id comes from the prop instead of the route,
 // and `preview` (unsaved edits: name, bio, tiles, photo framing, …) overlays
 // the fetched driver, so the page shows what the edits WOULD look like.
+// Links from the standings and results carry the row id, and the page then
+// swaps it for the person's handle. The profile it already loaded waits here
+// so the handle page doesn't fetch the same thing again.
+const handoff = new Map();
+
 export default function DriverProfile({ previewId, preview }) {
   const { id: routeId } = useParams();
   const id = previewId || routeId;
@@ -1683,13 +1688,12 @@ export default function DriverProfile({ previewId, preview }) {
   // edits ONE row and keeps the exact-id read.
   const wantSeason = pendingSeasonParam ? Number(searchParams.get("season")) : null;
   const { data, loading, error } = useApi(
-    useCallback(
-      () =>
-        previewId
-          ? Promise.all([api.driverProfile(id), api.driverRating(id)])
-          : Promise.all([api.driverProfileAt(id, wantSeason), api.driverRatingAt(id, wantSeason)]),
-      [id, previewId, wantSeason]
-    )
+    useCallback(() => {
+      if (previewId) return Promise.all([api.driverProfile(id), api.driverRating(id)]);
+      const handed = handoff.get(id);
+      if (handed && !wantSeason) return Promise.resolve(handed);
+      return Promise.all([api.driverProfileAt(id, wantSeason), api.driverRatingAt(id, wantSeason)]);
+    }, [id, previewId, wantSeason])
   );
   // Season-form view: race result or qualifying. Up here with the other hooks,
   // above the loading/error returns below.
@@ -1768,6 +1772,11 @@ export default function DriverProfile({ previewId, preview }) {
   // the person's handle. The season switcher then works on this one address
   // for every season the person raced, with no row ids passing through it.
   if (toHandle) {
+    // Same row, same season: hand it over instead of loading it twice.
+    if (season == null || p.driver.seasonNumber === season) {
+      handoff.set(rowHandle, data);
+      setTimeout(() => handoff.delete(rowHandle), 3000);
+    }
     return <Navigate to={`/s/${viewedSlug}/drivers/${rowHandle}${location.search}`} replace />;
   }
 

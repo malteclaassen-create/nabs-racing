@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -4163,8 +4164,34 @@ function SeasonHero({ season, onSaved, onError }) {
     if (!file) return;
     setBusy(true);
     try {
-      await api.uploadSeasonHero(season.id, file);
+      // A 7680px export went up untouched once and cost the home page 3.6 MB.
+      await api.uploadSeasonHero(season.id, await shrinkImage(file, { maxSide: 1920 }));
       onSaved(`Main-card photo updated for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  // Photos uploaded before the shrink above: offer to redo them in one click.
+  const [heavyBytes, setHeavyBytes] = useState(0);
+  useEffect(() => {
+    let off = false;
+    setHeavyBytes(0);
+    if (!season.heroImageUrl) return;
+    fetch(season.heroImageUrl, { method: "HEAD" })
+      .then((r) => Number(r.headers.get("content-length")) || 0)
+      .then((n) => { if (!off) setHeavyBytes(n > 700 * 1024 ? n : 0); })
+      .catch(() => {});
+    return () => { off = true; };
+  }, [season.heroImageUrl]);
+
+  async function shrinkExisting() {
+    setBusy(true);
+    try {
+      const blob = await (await fetch(season.heroImageUrl)).blob();
+      const file = new File([blob], "hero" + (blob.type === "image/png" ? ".png" : ".jpg"), { type: blob.type });
+      const small = await shrinkImage(file, { maxSide: 1920 });
+      if (small === file) throw new Error("This photo couldn't be made smaller in this browser.");
+      await api.uploadSeasonHero(season.id, small);
+      onSaved(`${season.name}'s photo went from ${(file.size / 1048576).toFixed(1)} MB to ${Math.round(small.size / 1024)} KB.`);
     } catch (err) { onError(err.message); } finally { setBusy(false); }
   }
 
@@ -4209,6 +4236,13 @@ function SeasonHero({ season, onSaved, onError }) {
       <span className="text-light" title="Shown on the Home/Welcome hero card, cropped to fill the panel">
         Recommended: wide landscape, at least 1920×800px
       </span>
+      {heavyBytes > 0 && (
+        <button type="button" className="font-semibold text-warn transition hover:text-dark" disabled={busy}
+          onClick={shrinkExisting}
+          title="Scales it down to 1920px wide. Looks the same on the site, loads a lot faster.">
+          {(heavyBytes / 1048576).toFixed(1)} MB, make it smaller
+        </button>
+      )}
     </div>
   );
 }
@@ -4227,7 +4261,7 @@ function SeasonCar({ season, onSaved, onError }) {
     if (!file) return;
     setBusy(true);
     try {
-      await api.uploadSeasonCar(season.id, file);
+      await api.uploadSeasonCar(season.id, await shrinkImage(file, { maxSide: 1600, keepAlpha: true }));
       onSaved(`Car image updated for ${season.name}.`);
     } catch (err) { onError(err.message); } finally { setBusy(false); }
   }

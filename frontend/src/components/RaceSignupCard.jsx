@@ -9,6 +9,7 @@ import { countryFor } from "../data/driverCountries.js";
 import { api } from "../api/client.js";
 import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
+import { threeLetterMonths } from "../utils/format.js";
 
 // Quiet by default, colour only where it means something: the three answer
 // buttons are neutral outlines with a tinted icon, and fill with their status
@@ -111,7 +112,7 @@ function answerTime(iso) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return threeLetterMonths(d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }));
 }
 
 // The Steam id, on the same line as the name and pushed to the right of it.
@@ -336,10 +337,10 @@ export default function RaceSignupCard({
   // matching how the site presents kickoff times everywhere else.
   const opensLabel =
     opensAt &&
-    opensAt.toLocaleString("en-GB", {
+    threeLetterMonths(opensAt.toLocaleString("en-GB", {
       weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
       timeZoneName: "short",
-    });
+    }));
 
   return (
     <div data-tour="signup-card" className={`card reveal flex flex-col overflow-hidden ${className}`}>

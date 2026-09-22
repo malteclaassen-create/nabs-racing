@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import { StatusPill, Rank, TierBadge, SafetyCarBadge, NoData } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
@@ -262,7 +263,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
             {results.map((r, i) => {
               const tier = r.tier ?? r.team?.tier;
               const isFastest = r.driverId === fastestDriverId;
-              const gridDelta = r.grid != null && r.position != null ? r.grid - r.position : null;
+              const gridDelta = r.grid != null && r.position != null && isFin(r) ? r.grid - r.position : null;
               const hasStints = Array.isArray(r.stints) && r.stints.length > 0;
               const stintsOpen = hasStints && openStints.has(r.driverId);
               // Total column count for the expander row's colSpan.
@@ -286,7 +287,9 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                 >
                   {detailed && (
                     <td className="px-3 py-3.5 text-center">
-                      {r.position != null ? (
+                      {/* DNF/DSQ hold no classified place (the table has no gaps),
+                          so their old raw number (19, 21 after P32) stays out. */}
+                      {r.position != null && isFin(r) ? (
                         <Rank position={r.position} />
                       ) : (
                         <NoData className="font-mono" />
@@ -316,6 +319,10 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   )}
 
                   <td className="px-3 py-3.5">
+                    {/* The chevron sits outside the wrapping row, or on a phone it
+                        wrapped onto a line of its own under the name. */}
+                    <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       {/* bar + name + flag wrap as one unit, so a long name never
                           leaves the colour bar stranded on its own line */}
@@ -363,20 +370,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                           +{r.penaltySeconds}s pen
                         </span>
                       )}
-                      {hasStints && (
-                        <svg
-                          viewBox="0 0 24 24"
-                          className={`h-3.5 w-3.5 shrink-0 text-light transition-transform ${stintsOpen ? "rotate-90" : ""}`}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M9 6l6 6-6 6" />
-                        </svg>
-                      )}
                     </div>
                     {/* phones: race time as a sub-line, since the Time column
                         doesn't fit next to the points there */}
@@ -385,6 +378,15 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         {timeCell(r)}
                       </div>
                     )}
+                    </div>
+                    {hasStints && (
+                      <ChevronRight
+                        className={`h-3.5 w-3.5 shrink-0 text-light transition-transform ${stintsOpen ? "rotate-90" : ""}`}
+                        strokeWidth={2.5}
+                        aria-hidden="true"
+                      />
+                    )}
+                    </div>
                   </td>
 
                   <td className="hidden px-3 py-3.5 sm:table-cell">

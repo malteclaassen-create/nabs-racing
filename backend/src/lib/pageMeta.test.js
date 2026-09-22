@@ -16,6 +16,7 @@ import {
   pageThemeColor,
   DEFAULT_THEME_COLOR,
 } from "./pageMeta.js";
+import { disciplineOf } from "./seo.js";
 
 // Real Fridays and Sundays in league time, stored the way the app stores them.
 const FRIDAYS = ["2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29"];
@@ -85,6 +86,13 @@ describe("seasonDescription", () => {
     expect(text).not.toContain("F1");
     expect(text).not.toContain("Formula");
     expect(text.length).toBeLessThanOrEqual(160);
+  });
+
+  it("names the Sunday F3 league as F3, not F1", () => {
+    const text = seasonDescription({ discipline: "Formula 3", night: "Sunday night" });
+    expect(text.startsWith("Formula 3 sim racing league on Assetto Corsa.")).toBe(true);
+    expect(text).toContain("F3 championship");
+    expect(text).not.toContain("F1");
   });
 
   it("says nothing that would date the snippet", () => {
@@ -159,5 +167,22 @@ describe("theme colour (the phone's status bar)", () => {
       },
     };
     expect(await pageThemeColor(prisma, "/s/sunday-championship")).toBe(DEFAULT_THEME_COLOR);
+  });
+});
+
+describe("disciplineOf", () => {
+  it("reads the formula class off the game", () => {
+    expect(disciplineOf("F1 2010 · Assetto Corsa")).toBe("Formula 1");
+    expect(disciplineOf("Formula 3 / Assetto Corsa")).toBe("Formula 3");
+    expect(disciplineOf("F2 2024")).toBe("Formula 2");
+  });
+  it("sells nothing else as a formula", () => {
+    expect(disciplineOf("GT3 · Assetto Corsa")).toBe(null);
+    expect(disciplineOf("LMP2")).toBe(null);
+    expect(disciplineOf("IndyCar")).toBe(null);
+  });
+  it("only falls back to the series name when the game is empty", () => {
+    expect(disciplineOf("", "F1 Friday")).toBe("Formula 1");
+    expect(disciplineOf("Formula 3 / Assetto Corsa", "F1 Friday")).toBe("Formula 3");
   });
 });

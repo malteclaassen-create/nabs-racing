@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
+import { useSpecificTitle } from "../utils/pageTitle.js";
 
 // 404 page in the site's racing voice: big "404" wordmark, a one-liner, and
 // the two places a lost visitor most likely wants to go.
 export default function NotFound() {
+  useSpecificTitle("Page not found · NABS Racing League");
   return (
     <section className="card content-in relative overflow-hidden p-8 text-center sm:p-16">
       {/* faint oversized chequers-style backdrop, same corner-flourish idea as the number tiles */}

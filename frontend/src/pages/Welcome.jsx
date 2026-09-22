@@ -19,7 +19,7 @@ import { seasonGameParts, seasonGameLabel } from "../utils/seasonGame.js";
 import { disciplineOf } from "../utils/pageTitle.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useTour } from "../components/Tour.jsx";
-import { fmtDateShort } from "../utils/format.js";
+import { fmtDateShort, singularOne } from "../utils/format.js";
 
 // League default points per finishing position — only the fallback: seasons
 // can override the table (Season.pointsTable), which /api/seasons delivers and
@@ -51,7 +51,7 @@ function raceCadence(races) {
 // them into JSX: fill() resolves {placeholders} from the season, rich() turns
 // **spans** into a bold highlight (same convention as the Race Info page).
 function fillFaq(s, tokens) {
-  return String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : m));
+  return singularOne(String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : m)));
 }
 function richFaq(s) {
   const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
@@ -117,7 +117,7 @@ function LastRaceCard({ race }) {
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Last time out</h3>
-        <Link to="/races" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
+        <Link to="/races" className="-my-2 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
           All results →
         </Link>
       </div>
@@ -351,7 +351,8 @@ export default function Welcome() {
   // Read off the season's own game rather than written here: the era changes
   // every season, and a season that is not recognisably Formula 1 must not
   // advertise itself as one.
-  const strapline = `${disciplineOf(era) ? "Formula 1 sim" : "Sim"} racing league on ${platform}`;
+  const discipline = disciplineOf(era);
+  const strapline = `${discipline ? `${discipline} sim` : "Sim"} racing league on ${platform}`;
   // League-wide facts. Seasons are numbered from 1, so the highest PUBLIC
   // season number is how many seasons NABS spans — once the next season is
   // published (visible in the switcher, races scheduled), the landing page
@@ -630,7 +631,7 @@ export default function Welcome() {
             {dropWorst > 0
               ? counted
                 ? `Your best ${counted} results count toward the title, so one bad night never ends your championship.`
-                : `Your ${dropWorst} weakest rounds are dropped, so one bad night never ends your championship.`
+                : `Your ${dropWorst === 1 ? "weakest round is" : `${dropWorst} weakest rounds are`} dropped, so one bad night never ends your championship.`
               : "Every round counts, so consistency is everything."}
           </FeatureCard>
           <FeatureCard index={3} icon="community" title="Built on Discord">
@@ -773,9 +774,9 @@ export default function Welcome() {
                     <span className="font-bold text-dark">
                       {counted ? `Best ${counted} of ${totalRounds}.` : `Your worst ${dropWorst} don't count.`}
                     </span>{" "}
-                    Every driver&rsquo;s {dropWorst} lowest-scoring rounds are dropped.{" "}
+                    Every driver&rsquo;s {dropWorst === 1 ? "lowest-scoring round is" : `${dropWorst} lowest-scoring rounds are`} dropped.{" "}
                     {teamDrop != null && teamDrop > 0
-                      ? `Teams drop their own ${teamDrop} weakest single-driver rounds too.`
+                      ? `Teams drop their own ${teamDrop === 1 ? "weakest single-driver round" : `${teamDrop} weakest single-driver rounds`} too.`
                       : "The team standings inherit those drops too."}{" "}
                     Consistency wins titles, not luck.
                   </>
@@ -825,7 +826,7 @@ export default function Welcome() {
               <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand to-primary" />
               <div className="flex items-center justify-between gap-3">
                 <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Next race in</div>
-                <Link to="/races" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
+                <Link to="/races" className="-my-2 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
                   Calendar →
                 </Link>
               </div>
@@ -848,7 +849,7 @@ export default function Welcome() {
                 <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
                   {nextRace ? "Title race right now" : "How the season finished"}
                 </h3>
-                <Link to="/drivers" className="font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
+                <Link to="/drivers" className="-my-2 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:text-dark">
                   Full table →
                 </Link>
               </div>
@@ -918,7 +919,7 @@ export default function Welcome() {
             {dropWorst > 0
               ? counted
                 ? `Your best ${counted} results of ${totalRounds} count toward the championship.`
-                : `Your ${dropWorst} lowest-scoring rounds are dropped, so only your best races count.`
+                : `Your ${dropWorst === 1 ? "lowest-scoring round is" : `${dropWorst} lowest-scoring rounds are`} dropped, so only your best races count.`
               : "Every round counts toward the championship."}{" "}
             It&rsquo;s all calculated automatically and shown live on this site.
           </FaqItem>

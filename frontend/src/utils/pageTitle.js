@@ -23,6 +23,7 @@ import { useEffect } from "react";
 // last.
 // ---------------------------------------------------------------------------
 const BRAND = "NABS Racing League";
+export const RACE_INFO_TITLE = "Race info, rules and downloads";
 
 let fallback = BRAND;
 let specific = null;
@@ -66,10 +67,14 @@ export function prettyTrack(name) {
   return raw;
 }
 
-// Formula 1 or not, from the season's game ("F1 2007 · Assetto Corsa") with the
-// series name as the fallback. Same test as the server's disciplineOf().
+// "Formula 1", "Formula 3" ... from the season's game, series name only if the
+// game is empty. Same as the server's disciplineOf() in lib/seo.js.
 export function disciplineOf(game, seriesName) {
-  return /\bf1\b|formula/i.test(`${game || ""} ${seriesName || ""}`) ? "Formula 1" : null;
+  const read = (s) => {
+    const m = String(s || "").match(/\bf(\d)\b|\bformula\s*(\d)\b/i);
+    return m ? `Formula ${m[1] || m[2]}` : null;
+  };
+  return read(game) || (String(game || "").trim() ? null : read(seriesName));
 }
 
 // What to call a season in a heading or a title.
@@ -131,6 +136,9 @@ export function titleFor(pathname, { season, series, multi } = {}) {
     const discipline = disciplineOf(season?.game, series?.name) || "Sim";
     return `${BRAND} · ${discipline} Racing on Assetto Corsa`;
   }
+
+  // Race Info (the nav's "Race Info" lives at /downloads). Same as the server.
+  if (parts.length === 1 && parts[0] === "downloads") return `${RACE_INFO_TITLE} · ${BRAND}`;
 
   const wording = section ? SECTIONS[section] : null;
   if (wording && (label || SEASONLESS.has(section))) return `${wording(label)} · ${tail}`;

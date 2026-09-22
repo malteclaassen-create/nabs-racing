@@ -9,6 +9,7 @@ import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Icon from "../components/InfoIcon.jsx";
+import { singularOne } from "../utils/format.js";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 
 // League default points. Fallback only; seasons can override via pointsTable.
@@ -25,10 +26,10 @@ const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3
 // removal creates, and tidy a token that was the whole value ("{rounds} rounds"
 // with no number is not worth a line).
 function fill(s, tokens) {
-  return String(s ?? "")
+  return singularOne(String(s ?? "")
     .replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : ""))
     .replace(/\s{2,}/g, " ")
-    .trim();
+    .trim());
 }
 function rich(s) {
   const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
