@@ -504,7 +504,7 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
 
         {/* Identity & fields (left) beside the driver card (right, lg+): one
             compact block instead of the old stacked photo row + card + form. */}
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_332px]">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_332px]">
           <div className="min-w-0 space-y-5">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               {/* avatar with the upload button riding on it */}

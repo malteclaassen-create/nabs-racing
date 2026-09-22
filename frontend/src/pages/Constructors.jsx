@@ -90,7 +90,7 @@ function TeamCard({ team, index = 0, champion = false }) {
       className={`transition card shine tilt group relative h-full overflow-hidden hover:shadow-xl ${champion ? "champion-gold" : ""}`}
     >
       <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
-      <div className="p-5">
+      <div className="p-4 sm:p-5">
         <Link to={`/teams/${team.id}`} className="flex items-center gap-3">
           <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
           <h4 className="font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand sm:text-lg">

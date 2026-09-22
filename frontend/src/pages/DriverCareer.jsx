@@ -163,10 +163,11 @@ function Hero({ person, span }) {
                 <Link
                   key={s.seriesSlug}
                   to={`/s/${s.seriesSlug}/drivers/${s.handle || s.driverId}`}
-                  className="group inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:border-brand hover:text-dark"
+                  className="group inline-block max-w-full rounded-2xl border border-border bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:border-brand hover:text-dark sm:inline-flex sm:items-center sm:gap-2 sm:whitespace-nowrap sm:rounded-full"
                 >
-                  <span className="h-2 w-2 rounded-full" style={{ background: s.teamColor || "rgb(var(--c-brand))" }} />
-                  {s.seriesName}
+                  {/* inline on a phone, so a long league name wraps like a sentence */}
+                  <span className="mr-2 inline-block h-2 w-2 shrink-0 rounded-full align-middle sm:mr-0" style={{ background: s.teamColor || "rgb(var(--c-brand))" }} />
+                  {s.seriesName}{" "}
                   <span className="text-light group-hover:text-medium">
                     · {s.teamName || "Reserve"} · S{s.seasonNumber}
                   </span>

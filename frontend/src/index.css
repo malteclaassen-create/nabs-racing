@@ -1493,6 +1493,14 @@ body::before {
    via aspect-ratio instead of the fixed pixel height. */
 .rcard-fit .rcard-frame { width: 100%; }
 .rcard-fit .rcard { height: auto; aspect-ratio: 332 / 470; }
+/* Profile header on a phone: the 332px card is wider than the space inside
+   the header card (301px at 375), which pushed the whole column, stats and all,
+   out past the right edge. Same trick as the Cards view: fill, keep the ratio. */
+@media (max-width: 639px) {
+  .profile-driver-header .rcard-frame { width: 100%; }
+  .profile-driver-header :has(> .rcard-frame) { width: 100%; }
+  .profile-driver-header .rcard { height: auto; aspect-ratio: 332 / 470; }
+}
 /* Only cards in (or near) the viewport are painted/animated: with 70+ cards on
    the page, layers like the sheen sweep and glow otherwise all animate at
    once and scrolling stutters. contain-intrinsic-size reserves each card's
@@ -2189,3 +2197,17 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .settings-anim { transition: none !important; }
 }
+
+/* iPhones zoom the whole page in when a field under 16px gets focus, and
+   leave it zoomed after. Only there: other browsers keep the smaller size. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Archivo in caps with tight tracking has a very narrow space: on a phone
+   "No hotlap yet" read as "NO HOTLAPYET". A touch more room between words. */
+.font-display.uppercase { word-spacing: 0.08em; }

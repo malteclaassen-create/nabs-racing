@@ -408,10 +408,12 @@ function Footer() {
         {/* quick links */}
         <nav className="space-y-3">
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Explore</h3>
-          <ul className="space-y-2 text-sm">
+          {/* py-1 instead of the list gap: same 28px rhythm, but the whole
+              row is the target, not just the 17px of text */}
+          <ul className="text-sm">
             {footerLinks(seriesPath).map((l) => (
               <li key={l.to}>
-                <Link to={l.to} className="text-medium transition hover:text-dark">
+                <Link to={l.to} className="inline-block py-1 text-medium transition hover:text-dark">
                   {l.label}
                 </Link>
               </li>

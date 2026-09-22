@@ -247,12 +247,12 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
               {/* The cap must match the body cell below or the column resolves
                   between two different maxima; the driver column is the wider
                   of the two because it also carries a photo. */}
-              <th scope="col" className={`sticky left-14 z-20 ${isDriver ? "max-w-[44vw]" : "max-w-[34vw]"} sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
+              <th scope="col" className={`sticky left-14 z-20 ${isDriver ? "max-w-[44vw]" : "max-w-[42vw]"} sm:max-w-none bg-card px-3 py-3 transition-shadow ${leftShadow}`}>
                 {isDriver ? "Driver" : "Team"}
               </th>
               {isDriver && <th scope="col" className="hidden px-3 py-3 lg:table-cell">Discord</th>}
               {isDriver && <th scope="col" className="hidden px-3 py-3 md:table-cell">Team</th>}
-              {isDriver && <th scope="col" className="px-3 py-3 text-center">Tier</th>}
+              {isDriver && <th scope="col" className="hidden px-3 py-3 text-center sm:table-cell">Tier</th>}
               {raceNumbers.map((n) => (
                 <th
                   scope="col"
@@ -322,7 +322,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                         <DriverAvatar name={row.name} photoUrl={row.photoUrl} color={row.team.color} size={30} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-2">
-                            <DriverName driver={row} className="truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg" />
+                            <DriverName driver={row} className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg" />
                             {/* The photo already costs this frozen column
                                 ~40px; on a 375px screen the flag on top of it
                                 would eat the name itself. */}
@@ -342,10 +342,10 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                       </Link>
                     </td>
                   ) : (
-                    <td className={`sticky left-14 z-10 max-w-[34vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
+                    <td className={`sticky left-14 z-10 max-w-[42vw] sm:max-w-none px-3 py-3 transition sticky-cell ${leftShadow}`}>
                       <Link to={`/teams/${row.teamId}`} className="group/name flex items-center gap-3">
                         <TeamLogo id={row.teamId} name={row.name} color={row.color} logoUrl={row.logoUrl} size={28} />
-                        <span className="min-w-0 truncate font-display text-base font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
+                        <span className="min-w-0 truncate font-display text-sm font-bold uppercase tracking-tight text-dark transition group-hover/name:text-brand sm:text-lg">
                           {row.name}
                         </span>
                       </Link>
@@ -369,7 +369,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                     </td>
                   )}
                   {isDriver && (
-                    <td className="px-3 py-3 text-center">
+                    <td className="hidden px-3 py-3 text-center sm:table-cell">
                       <TierBadge tier={row.tier} />
                     </td>
                   )}

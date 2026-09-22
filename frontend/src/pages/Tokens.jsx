@@ -892,7 +892,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
           entirely; on a phone, where there is only one column, the whole thing
           scrolls and the card gets room above it instead. */}
       <div className="flex max-h-[74vh] flex-col">
-        <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto scrollbar-slim pr-1 lg:grid-cols-[300px_1fr] lg:overflow-visible lg:pr-0">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto scrollbar-slim pr-1 lg:grid-cols-[300px_1fr] lg:overflow-visible lg:pr-0">
             {/* `card-preview-fit` shrinks the whole preview on a short screen
                 (see index.css). A rating card has a fixed height, so making it
                 narrower does not make it shorter — without this it simply hung

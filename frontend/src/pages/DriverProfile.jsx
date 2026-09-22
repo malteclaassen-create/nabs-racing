@@ -1481,7 +1481,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
       <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{ background: `radial-gradient(130% 120% at 6% 0%, ${color}, transparent 55%)` }} />
 
-      <div className="relative grid gap-6 lg:grid-cols-[auto_1fr] lg:items-stretch">
+      <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-[auto_1fr] lg:items-stretch">
         {/* rating card — vertically CENTRED, never stretched: when the info
             column grows taller than the card (all-time toggle, many tiles),
             the card keeps its own height and floats mid-row with equal space
@@ -2064,14 +2064,14 @@ export default function DriverProfile({ previewId, preview }) {
       </div>
 
       {/* Race by race + Team */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="reveal card overflow-hidden lg:col-span-2">
           <CardBar title="Race by Race" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                  <th className="px-5 py-2.5">Rnd</th>
+                  <th className="px-3 py-2.5 sm:px-5">Rnd</th>
                   <th className="px-2 py-2.5">Circuit</th>
                   <th className="px-2 py-2.5 text-center">Grid</th>
                   <th className="px-2 py-2.5 text-center">{hasSprint ? "Feature" : "Race"}</th>
@@ -2105,7 +2105,7 @@ export default function DriverProfile({ previewId, preview }) {
                       role={raceHref ? "link" : undefined}
                       className={`group transition hover:bg-surface2 ${raceHref ? "cursor-pointer" : ""}`}
                     >
-                      <td className="px-5 py-3 font-mono font-bold tabular-nums text-light">{r.number}</td>
+                      <td className="px-3 py-3 font-mono font-bold tabular-nums text-light sm:px-5">{r.number}</td>
                       <td className="px-2 py-3">
                         <div className="flex items-center gap-2.5">
                           <Flag code={flagFor(r.track)?.country} w={22} h={16} />

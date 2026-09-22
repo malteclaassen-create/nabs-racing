@@ -353,7 +353,7 @@ function CardEditor({ me, reload, startId = null }) {
   return (
     <div className="space-y-6">
       {error && <ErrorBox message={error} />}
-      <div className="grid gap-8 lg:grid-cols-[332px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[332px_minmax(0,1fr)]">
         {/* Left: the live card + framing + animation switch for WHICHEVER
             season chip is picked on the right — every season's card is fully
             editable on its own (edition, picture, framing, animation). */}

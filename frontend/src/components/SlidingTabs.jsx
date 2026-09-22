@@ -75,7 +75,9 @@ export default function SlidingTabs({
           onClick={() => onChange(it.key)}
           aria-pressed={value === it.key}
           style={value === it.key ? activeStyle : undefined}
-          className={`relative z-10 rounded-lg font-bold transition-colors ${btnClassName} ${
+          // max-sm:min-h: the small variants came out 25px tall on a phone,
+          // too thin for a thumb. With the bar's padding that's 44px to hit.
+          className={`relative z-10 rounded-lg font-bold transition-colors max-sm:min-h-[36px] ${btnClassName} ${
             value === it.key ? activeClassName : idleClassName
           }`}
         >

@@ -1883,7 +1883,7 @@ function ExternalButtons({ links, patreonUrl }) {
   // "Join the server" says everything "Join in Content Manager" says; the long
   // wording moved to the hover title, which is where a sentence belongs.
   const base =
-    "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-bold uppercase tracking-wide transition sm:flex-none sm:gap-2 sm:px-3.5";
+    "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2.5 text-xs font-bold uppercase tracking-wide transition sm:flex-none sm:gap-2 sm:px-3.5 sm:py-2";
   // No border, no padding of its own: this is a group of buttons that the card
   // places, not a strip. It used to bring its own bordered row, which is
   // precisely the row that made the card taller than the board underneath it
@@ -1896,7 +1896,9 @@ function ExternalButtons({ links, patreonUrl }) {
           target="_blank"
           rel="noreferrer noopener"
           title="Join this race server in Content Manager"
-          className={`transition ${base} bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
+          // phones: the main action gets its own full row, the other two share
+          // the next one (three in a row wrapped every label onto two lines)
+          className={`transition ${base} basis-full sm:basis-auto bg-brand text-ink shadow-lg shadow-brand/25 hover:brightness-105`}
         >
           <ExternalIcon />
           Join the server

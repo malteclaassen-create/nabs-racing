@@ -81,7 +81,8 @@ export default function SocialLinks({ links, className = "", baseClass = "text-l
           rel="noopener noreferrer"
           aria-label={m.label}
           title={m.label}
-          className={`${baseClass} transition ${m.hover}`}
+          // -m/p: a 32px target around the 20px icon, same look
+          className={`-m-1.5 inline-flex p-1.5 ${baseClass} transition ${m.hover}`}
         >
           <SocialIcon name={m.key} />
         </a>

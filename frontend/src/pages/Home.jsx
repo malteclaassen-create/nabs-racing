@@ -1233,11 +1233,13 @@ export default function Home() {
           {/* LEFT — the latest race. Before the opener the hero is the
               coming-soon variant above, so this side always has a result. */}
           <div className="flex flex-1 flex-col justify-end">
-            <div className="hero-anim flex items-center gap-3 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow" style={{ animationDelay: "0.05s" }}>
+            {/* nowrap + a notch smaller on phones: at 13px with the wide
+                tracking "Latest Race" and "Round 6" each broke onto two lines. */}
+            <div className="hero-anim flex items-center gap-2.5 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-eyebrow sm:gap-3 sm:text-[13px] sm:tracking-[0.2em]" style={{ animationDelay: "0.05s" }}>
               {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
               <span>Latest Race</span>
-              <span className="h-px w-10 bg-accent/50" />
-              <span className="text-ink/40 dark:text-white/50">Round {roundNo}</span>
+              <span className="h-px w-6 shrink bg-accent/50 sm:w-10" />
+              <span className="text-ink/55 dark:text-white/70">Round {roundNo}</span>
             </div>
 
             {/* The size follows the width on phones instead of sitting at a
