@@ -34,7 +34,7 @@ export default function DriverRow({ d, leaderTotal, index = 0, showTier = true, 
     >
       <Rank position={d.position} />
       {/* A debut has no arrow; keep its slot so the colour bars stay in one line */}
-      {delta != null ? <PosDelta delta={delta} /> : deltaSlot && <span className="w-5 shrink-0 sm:w-7" aria-hidden="true" />}
+      {delta != null ? <PosDelta delta={delta} /> : deltaSlot && <PosDelta none />}
       <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
       <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team.color} size={36} />
 

@@ -232,8 +232,13 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
             border, so the line vanished under Pos, Team and Pts.
             No 720px floor on a phone: the table spread the spare width over
             every column, the frozen team column included, and with six rounds
-            that left 13px of rounds on screen. */}
-        <table className="w-full border-separate sm:min-w-[720px] border-spacing-0 [&_th]:border-b [&_th]:border-border [&>tbody>tr:not(:last-child)>td]:border-b [&>tbody>tr:not(:last-child)>td]:border-border">
+            that left 13px of rounds on screen.
+            Each line sits on TOP of the row below it, not under the row above:
+            at a browser zoom like 110% rows land on half pixels, and the next
+            row's opaque frozen cells painted over a bottom border, so the lines
+            vanished under Pos/Team/Pts and on every other row. A top border is
+            painted by the cell that comes later, so nothing covers it. */}
+        <table className="w-full border-separate border-spacing-0 sm:min-w-[720px] [&>tbody>tr>td]:border-t [&>tbody>tr>td]:border-border">
           {/* scope="col" on every header: 92 header cells across the site
               carried none, and this is the table where a screen reader most
               needs to say which round a number belongs to.
@@ -315,7 +320,7 @@ export default function StandingsTable({ variant, raceNumbers, rows, dropWorst =
                         (row.prevPosition != null ? (
                           <PosDelta delta={row.prevPosition - row.position} />
                         ) : (
-                          <span className="invisible font-mono text-[10px] sm:text-[11px]" aria-hidden="true">–</span>
+                          <PosDelta none />
                         ))}
                     </span>
                   </td>

@@ -570,7 +570,10 @@ export function CheckField({ checked, onChange, label, hint, disabled = false, c
 // all-or-nothing: prevPosition is attached to every row or to none (there is no
 // previous table until round two — see attachPrevPositions in the backend's
 // standingsService), so a table never mixes null rows with numbered ones.
-export function PosDelta({ delta }) {
+// `none`: no earlier round to compare with (a debut, or round one). Shows the
+// same dash as "no change" so every row in a table carries the same mark.
+export function PosDelta({ delta, none = false }) {
+  if (none) delta = 0;
   if (delta == null) return null;
   const moved = delta !== 0;
   const up = delta > 0;
@@ -579,7 +582,7 @@ export function PosDelta({ delta }) {
       className={`flex w-5 shrink-0 items-center justify-center gap-0.5 font-mono text-[10px] font-bold tabular-nums sm:w-7 sm:text-[11px] ${
         moved ? (up ? "text-ok" : "text-bad") : "text-light/60"
       }`}
-      title={moved ? `${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round` : "Same position as the last round"}
+      title={none ? "No earlier round to compare with" : moved ? `${up ? "Up" : "Down"} ${Math.abs(delta)} since the last round` : "Same position as the last round"}
     >
       {moved ? (
         <>
