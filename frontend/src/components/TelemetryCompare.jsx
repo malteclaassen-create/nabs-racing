@@ -398,15 +398,17 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // The circuit's named corners (admin Tracks tab), so a tip can say "T4
   // Roggia" rather than "section 3". Asked by the AC folder name the laps
   // carry; the backend resolves it to the circuit. None is a normal answer.
+  // The layout goes along: the default names only fit the Grand Prix one.
   const rawTrack = list.find((t) => t.trackKey === trackKey)?.track || "";
+  const rawLayout = list.find((t) => t.trackKey === trackKey)?.layout || "";
   const [namedCorners, setNamedCorners] = useState([]);
   useEffect(() => {
     setNamedCorners([]);
     if (!rawTrack) return undefined;
     let alive = true;
-    api.trackProfile(rawTrack).then((d) => alive && setNamedCorners(d?.corners || [])).catch(() => {});
+    api.trackProfile(rawTrack, rawLayout).then((d) => alive && setNamedCorners(d?.corners || [])).catch(() => {});
     return () => { alive = false; };
-  }, [rawTrack]);
+  }, [rawTrack, rawLayout]);
   const tips = useMemo(
     () => (both && insights.length ? buildTips(insights, lapA, lapB, { corners: namedCorners, dist, n }) : null),
     [both, insights, lapA, lapB, namedCorners, dist, n]

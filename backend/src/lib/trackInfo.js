@@ -32,9 +32,9 @@ const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 
 // The shape every reader gets, including for an unknown or unsaved track.
 // `types` and `corners` are the circuit's kind and its corner names
-// (lib/trackProfile.js); types stays null until an admin picks, which is
-// what lets the circuit's default reading apply.
-const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [], types: null, corners: [] });
+// (lib/trackProfile.js); both stay null until an admin sets them, which is
+// what lets the circuit's defaults apply.
+const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [], types: null, corners: null });
 
 // A series slug as lib/series.js makes them: lowercase letters, digits and
 // hyphens. Anything else in the map is not a series and is dropped.

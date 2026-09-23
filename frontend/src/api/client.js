@@ -476,7 +476,9 @@ export const api = {
   trackCountries: () => request(`/tracks/countries`),
   // A circuit's types and named corners, for any spelling of it (a calendar
   // name or an AC folder id off a telemetry lap). Backend lib/trackProfile.js.
-  trackProfile: (track) => request(`/tracks/profile?track=${encodeURIComponent(track)}`),
+  // The layout (AC's own id) decides whether default corner names apply.
+  trackProfile: (track, layout = "") =>
+    request(`/tracks/profile?track=${encodeURIComponent(track)}${layout ? `&layout=${encodeURIComponent(layout)}` : ""}`),
   // Track history across the series' seasons (userAuth so a member gets their own record).
   trackHistory: (track) =>
     request(

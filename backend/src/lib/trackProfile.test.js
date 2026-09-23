@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeTypes, effectiveTypes, sanitizeCorners, DEFAULT_TYPES, TRACK_TYPES, MAX_TYPES } from "./trackProfile.js";
+import {
+  sanitizeTypes, effectiveTypes, sanitizeCorners, effectiveCorners, layoutHasDefaults,
+  DEFAULT_TYPES, DEFAULT_CORNERS, TRACK_TYPES, MAX_TYPES,
+} from "./trackProfile.js";
+import { trackKeyFor } from "./trackKeys.js";
 import { sanitizeTrackInfo } from "./trackInfo.js";
 
 describe("track types", () => {
@@ -51,12 +55,34 @@ describe("corner names", () => {
 
   it("drops a second corner at the same spot and anything that is not a list", () => {
     expect(sanitizeCorners([{ at: 10, name: "A" }, { at: 10, name: "B" }])).toEqual([{ at: 10, turn: null, name: "A" }]);
-    expect(sanitizeCorners(null)).toEqual([]);
+    expect(sanitizeCorners(null)).toBeNull();
   });
 
   it("rides along in the track info blob", () => {
     const out = sanitizeTrackInfo({ types: ["power"], corners: [{ at: 5, turn: 1, name: "T1" }] });
     expect(out.types).toEqual(["power"]);
     expect(out.corners).toEqual([{ at: 5, turn: 1, name: "T1" }]);
+  });
+});
+
+describe("default corner names", () => {
+  it("every list is already clean: in lap order, inside the lap, one per spot", () => {
+    for (const [key, list] of Object.entries(DEFAULT_CORNERS)) {
+      expect(trackKeyFor(key), key).toBe(key);
+      expect(sanitizeCorners(list), key).toEqual(list);
+    }
+  });
+
+  it("uses the admin's list, else the default on the main layout, else none", () => {
+    expect(effectiveCorners({ corners: [{ at: 5, turn: 1, name: "X" }] }, "Monza").source).toBe("admin");
+    expect(effectiveCorners({ corners: [] }, "Monza")).toEqual({ corners: [], source: "admin" });
+    expect(effectiveCorners({ corners: null }, "Monza")).toEqual({ corners: DEFAULT_CORNERS.Monza, source: "default" });
+    expect(effectiveCorners(null, "Monza", "junior")).toEqual({ corners: [], source: null });
+    expect(effectiveCorners(null, "Monaco")).toEqual({ corners: [], source: null });
+  });
+
+  it("only the Grand Prix layouts take the defaults", () => {
+    for (const l of ["", "gp", "layout_gp", "layout_gp_a", "full", "f1_2023"]) expect(layoutHasDefaults(l), l).toBe(true);
+    for (const l of ["national", "layout_national", "moto", "short", "junior", "international", "oval", "1966"]) expect(layoutHasDefaults(l), l).toBe(false);
   });
 });

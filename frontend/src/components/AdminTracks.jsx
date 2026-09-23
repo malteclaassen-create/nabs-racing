@@ -19,6 +19,9 @@ function MapRow({ label, url, onRemove, busy }) {
   );
 }
 
+// A stored corner as the editor's row (every field a string while typed).
+const toRows = (list) => (list || []).map((c) => ({ turn: c.turn ?? "", name: c.name || "", at: String(c.at) }));
+
 // Admin "Tracks" tab: per-circuit fun facts and an optional custom map image,
 // layered on top of the computed track history shown on the upcoming-race panel
 // and the attendance page. The map image has two layers: the shared one every
@@ -48,8 +51,12 @@ export default function AdminTracks() {
   // a pick someone actually made is saved, so the default can still improve.
   const [types, setTypes] = useState(null);
   const [typeInfo, setTypeInfo] = useState({ defs: [], defaults: [] });
-  // Named corners, each at a percent of the lap.
+  // Named corners, each at a percent of the lap. `cornersOwn` is whether the
+  // list on screen is the admin's own (saved as it is) or the circuit's
+  // default names (saved as "not set", so the defaults can still improve).
   const [corners, setCorners] = useState([]);
+  const [cornersOwn, setCornersOwn] = useState(false);
+  const [defaultCorners, setDefaultCorners] = useState([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -88,7 +95,9 @@ export default function AdminTracks() {
         setMapRotation(d.mapRotation || 0);
         setTypes(Array.isArray(d.types) ? d.types : null);
         setTypeInfo({ defs: d.typeDefs || [], defaults: d.defaultTypes || [] });
-        setCorners((d.corners || []).map((c) => ({ turn: c.turn ?? "", name: c.name || "", at: String(c.at) })));
+        setDefaultCorners(d.defaultCorners || []);
+        setCornersOwn(Array.isArray(d.corners));
+        setCorners(toRows(Array.isArray(d.corners) ? d.corners : d.defaultCorners || []));
         setCountry(d.country || "");
         setLoadedKey(key);
       })
@@ -97,6 +106,12 @@ export default function AdminTracks() {
       alive = false;
     };
   }, [key]);
+
+  // Any edit makes the list the admin's own.
+  function editCorners(fn) {
+    setCornersOwn(true);
+    setCorners(fn);
+  }
 
   function setFact(i, patch) {
     setFacts((fs) => fs.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
@@ -117,13 +132,15 @@ export default function AdminTracks() {
         mapImages,
         mapRotation,
         types,
-        corners: corners
-          .filter((c) => String(c.at).trim() !== "" && (String(c.name).trim() || String(c.turn).trim()))
-          .map((c) => ({ at: Number(String(c.at).replace(",", ".")), turn: c.turn === "" ? null : Number(c.turn), name: c.name })),
+        corners: cornersOwn
+          ? corners
+              .filter((c) => String(c.at).trim() !== "" && (String(c.name).trim() || String(c.turn).trim()))
+              .map((c) => ({ at: Number(String(c.at).replace(",", ".")), turn: c.turn === "" ? null : Number(c.turn), name: c.name }))
+          : null,
       };
       const res = await api.saveTrackInfo(key, content);
       setKeepVideos(res?.content?.videos || []);
-      setCorners((res?.content?.corners || []).map((c) => ({ turn: c.turn ?? "", name: c.name || "", at: String(c.at) })));
+      if (Array.isArray(res?.content?.corners)) setCorners(toRows(res.content.corners));
       // Flag country lives on the races themselves (all seasons of this
       // circuit), not in the info blob.
       await api.saveTrackCountry(key, country || null);
@@ -256,26 +273,32 @@ export default function AdminTracks() {
           </div>
 
           <div>
-            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Corner names</div>
+            <div className="mb-2 flex flex-wrap items-baseline gap-2">
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Corner names</span>
+              {!cornersOwn && defaultCorners.length > 0 && <span className="pill bg-surface2 text-light">default</span>}
+            </div>
             <p className="mb-2 text-sm text-light">
               Names the driving tips use instead of &ldquo;section 3&rdquo;. The position is how far into the lap the corner&rsquo;s
               slowest point is, in percent &mdash; the lap comparison on the Tools page shows it for every slow section.
+              {defaultCorners.length > 0
+                ? " The site ships names for this circuit's Grand Prix layout; edit them to replace them. Other layouts get none."
+                : ""}
             </p>
             <div className="space-y-2">
               {corners.map((c, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
                   <input aria-label={`Corner ${i + 1} turn number`} className="input w-20 py-1.5 text-sm" placeholder="Turn" inputMode="numeric"
-                    value={c.turn} onChange={(e) => setCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, turn: e.target.value.replace(/[^0-9]/g, "").slice(0, 2) } : x)))} />
+                    value={c.turn} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, turn: e.target.value.replace(/[^0-9]/g, "").slice(0, 2) } : x)))} />
                   <input aria-label={`Corner ${i + 1} name`} className="input min-w-40 flex-1 py-1.5 text-sm" placeholder="Name (e.g. Parabolica)" maxLength={40}
-                    value={c.name} onChange={(e) => setCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))} />
+                    value={c.name} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))} />
                   <label className="flex items-center gap-1.5 text-xs text-light">
                     at
                     <input aria-label={`Corner ${i + 1} position in percent of the lap`} className="input w-20 py-1.5 text-center text-sm" placeholder="31.5" inputMode="decimal"
-                      value={c.at} onChange={(e) => setCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, at: e.target.value } : x)))} />
+                      value={c.at} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, at: e.target.value } : x)))} />
                     % of lap
                   </label>
                   <button type="button" aria-label="Remove this corner" title="Remove this corner" className="transition text-light hover:text-bad"
-                    onClick={() => setCorners((cs) => cs.filter((_, idx) => idx !== i))}>
+                    onClick={() => editCorners((cs) => cs.filter((_, idx) => idx !== i))}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                       <path d="M6 6l12 12M18 6L6 18" />
                     </svg>
@@ -283,12 +306,20 @@ export default function AdminTracks() {
                 </div>
               ))}
             </div>
-            {corners.length < 30 && (
-              <button className="transition mt-2 text-sm font-semibold text-link hover:underline"
-                onClick={() => setCorners((cs) => [...cs, { turn: "", name: "", at: "" }])}>
-                + Add corner
-              </button>
-            )}
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              {corners.length < 30 && (
+                <button className="transition text-sm font-semibold text-link hover:underline"
+                  onClick={() => editCorners((cs) => [...cs, { turn: "", name: "", at: "" }])}>
+                  + Add corner
+                </button>
+              )}
+              {cornersOwn && defaultCorners.length > 0 && (
+                <button type="button" className="text-sm font-semibold text-link hover:underline"
+                  onClick={() => { setCornersOwn(false); setCorners(toRows(defaultCorners)); }}>
+                  Back to default
+                </button>
+              )}
+            </div>
           </div>
 
           <div>

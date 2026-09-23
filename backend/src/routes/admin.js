@@ -58,7 +58,7 @@ import { invalidateTrackStrengthCache } from "../services/trackStrengthService.j
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
-import { effectiveTypes, TRACK_TYPES } from "../lib/trackProfile.js";
+import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
@@ -5906,6 +5906,9 @@ router.get("/tracks/:key/info", async (req, res, next) => {
       typesSource: eff.source,
       defaultTypes: effectiveTypes(null, key).types,
       typeDefs: TRACK_TYPES,
+      // The same for the corner names: stored list, or the circuit's default.
+      cornersSource: effectiveCorners(info, key).source,
+      defaultCorners: effectiveCorners(null, key).corners,
     });
   } catch (e) {
     next(e);
