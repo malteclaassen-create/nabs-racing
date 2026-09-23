@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { WELCOME_FAQ_DEFAULTS } from "../data/welcomeFaqDefaults.js";
+import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
 // Editor for the public Welcome-page FAQ (the "Frequently asked" section shown
 // to logged-out visitors). Stored as one blob in the backend; while nothing is
@@ -49,12 +50,20 @@ export default function AdminWelcomeFaq() {
   const ask = useAsk();
   const { data, loading, error } = useApi(useCallback(() => api.adminWelcomeFaq(), []));
   const [form, setForm] = useState(null);
+  // The list as it was loaded or last saved (see utils/unsavedGuard.js).
+  const [savedForm, setSavedForm] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && !error && !form) setForm(toForm(data?.content));
+    if (!loading && !error && !form) {
+      const f = toForm(data?.content);
+      setForm(f);
+      setSavedForm(f);
+    }
   }, [loading, error, data, form]);
+  const dirty = !!form && !!savedForm && JSON.stringify(form) !== JSON.stringify(savedForm);
+  useUnsavedGuard(dirty, "Home FAQ");
 
   if (error) return <ErrorBox message={error} />;
   if (loading || !form) return <p className="text-sm text-light">Loading…</p>;
@@ -64,8 +73,10 @@ export default function AdminWelcomeFaq() {
   async function save() {
     setBusy(true);
     setMsg(null);
+    const sent = form;
     try {
-      await api.saveWelcomeFaq(fromForm(form));
+      await api.saveWelcomeFaq(fromForm(sent));
+      setSavedForm(sent);
       setMsg({ ok: true, text: "Saved. The home page shows the new FAQ right away." });
     } catch (e) {
       setMsg({ ok: false, text: e.message });
@@ -146,6 +157,7 @@ export default function AdminWelcomeFaq() {
         <button onClick={resetToDefaults} className="rounded-lg bg-surface2 px-4 py-2.5 text-sm font-semibold text-medium transition hover:bg-border">
           Reset to standard FAQ
         </button>
+        <UnsavedHint dirty={dirty} />
         {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
       </div>
     </div>

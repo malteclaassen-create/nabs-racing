@@ -11,6 +11,8 @@ import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarB
 import { useAsk, Modal } from "../components/overlay.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
+import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
+import { confirmLeave } from "../utils/unsavedGuard.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
@@ -140,6 +142,8 @@ function RatingsTab({ jumpView, jumpKey }) {
 // the old "Social & Live" before.
 function SiteTexts({ jumpView, jumpKey }) {
   const [view, setView] = useJumpView(jumpView, jumpKey, "tracks");
+  // Another view unmounts the form on screen, unsaved edits and all.
+  const ask = useAsk();
   return (
     <div className="space-y-5">
       <ViewSwitch
@@ -151,7 +155,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "privacy", label: "Privacy & app" },
         ]}
         value={view}
-        onChange={setView}
+        onChange={(v) => confirmLeave(ask).then((ok) => ok && setView(v))}
       />
       {view === "tracks" && <AdminTracks />}
       {view === "raceinfo" && <AdminRaceInfo />}
@@ -327,9 +331,24 @@ export default function Admin() {
   const [jump, setJump] = useState(() => (opening.view ? { tab: opening.tab, view: opening.view, n: 1 } : null));
   // Bumped by the To do card to send the training card back to its question.
   const [trainingFocus, setTrainingFocus] = useState(0);
+  // Every way off the open panel goes through here: the menu, a search hit, a
+  // To do line, a link between tabs. A form with unsaved edits (Edit Results,
+  // the site texts) has registered itself with utils/unsavedGuard.js, and the
+  // admin is asked before the panel and its edits are thrown away.
+  const ask = useAsk();
+  function leaveThen(go) {
+    confirmLeave(ask).then((ok) => ok && go());
+  }
   function goTo(hit) {
-    setTab(hit.tab);
-    setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+    // Staying on the same tab without naming a view leaves the panel mounted,
+    // so there is nothing to lose and nothing to ask.
+    const stays = hit.tab === tab && !hit.view;
+    const go = () => {
+      setTab(hit.tab);
+      setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+    };
+    if (stays) go();
+    else leaveThen(go);
   }
   // Jump from an all-time search hit to the tab that edits it. A hit in another
   // season switches the global season first (which remounts the page, so the
@@ -337,8 +356,10 @@ export default function Admin() {
   // edited just changes the tab.
   function gotoInSeason(t, seasonNumber) {
     if (seasonNumber != null && seasonNumber !== season) {
-      sessionStorage.setItem("nabs_admin_tab", t);
-      setSeason(seasonNumber);
+      leaveThen(() => {
+        sessionStorage.setItem("nabs_admin_tab", t);
+        setSeason(seasonNumber);
+      });
     } else {
       openTab(t);
     }
@@ -433,7 +454,7 @@ export default function Admin() {
 
       <TodoCard
         onPick={openTab}
-        onReset={(slug) => {
+        onReset={(slug) => leaveThen(() => {
           // The question belongs to one series' board: point the admin area at
           // it, open the tab, and let the training card scroll itself into view
           // (it looks for ?focus=training when it mounts; the key remounts it
@@ -446,7 +467,7 @@ export default function Admin() {
           if (slug && editingSeries?.slug !== slug) setEditingSeries(slug);
           setTab("live");
           setTrainingFocus((n) => n + 1);
-        }}
+        })}
       />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
@@ -462,7 +483,7 @@ export default function Admin() {
             : ""
         }
       >
-        <AdminNav mode={navMode} tab={tab} onPick={setTab} />
+        <AdminNav mode={navMode} tab={tab} onPick={(t) => (t === tab ? setTab(t) : leaveThen(() => setTab(t)))} />
 
         {/* Keyed on the tab: all 21 panels fade in on switch instead of snapping.
             One wrapper rather than 22 edits, and it means any tab added later is
@@ -916,10 +937,17 @@ function SocialAdmin() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState(null);
+  // The links as loaded or last stored (see utils/unsavedGuard.js).
+  const [stored, setStored] = useState(null);
 
   useEffect(() => {
-    if (data) setForm(data);
+    if (data) {
+      setForm(data);
+      setStored(data);
+    }
   }, [data]);
+  const dirty = !!form && !!stored && JSON.stringify(form) !== JSON.stringify(stored);
+  useUnsavedGuard(dirty, "Social links");
 
   // Error first. `form` is derived from `data`, so a failed read leaves it null
   // forever — with the loading guard on top, the panel sat on "Loading…" for
@@ -934,6 +962,7 @@ function SocialAdmin() {
     try {
       const res = await api.setSocial(form);
       setForm(res);
+      setStored(res);
       setSaved(true);
     } catch (e) {
       setErr(e.message);
@@ -985,9 +1014,12 @@ function SocialAdmin() {
         />
       </Field>
 
-      <button className="btn-primary" onClick={save} disabled={busy}>
-        {busy ? "Saving…" : "Save links"}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save links"}
+        </button>
+        <UnsavedHint dirty={dirty} />
+      </div>
     </div>
   );
 }

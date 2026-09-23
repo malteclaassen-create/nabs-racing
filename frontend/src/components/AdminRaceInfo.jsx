@@ -5,6 +5,7 @@ import { ErrorBox, Field } from "./ui.jsx";
 import Icon, { PICKABLE_ICONS } from "./InfoIcon.jsx";
 import { useAsk } from "./overlay.jsx";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
+import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
 // Editor for the public Race Info page: the intro line, the "how the
 // championship works" cards, the Sporting Regulations and both footnotes.
@@ -88,12 +89,21 @@ export default function AdminRaceInfo() {
   const ask = useAsk();
   const { data, loading, error } = useApi(useCallback(() => api.adminRaceInfo(), []));
   const [form, setForm] = useState(null);
+  // The form as it was loaded or last saved, to tell an edit from the stored
+  // text (utils/unsavedGuard.js asks before a tab switch throws edits away).
+  const [savedForm, setSavedForm] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && !error && !form) setForm(toForm(data?.content));
+    if (!loading && !error && !form) {
+      const f = toForm(data?.content);
+      setForm(f);
+      setSavedForm(f);
+    }
   }, [loading, error, data, form]);
+  const dirty = !!form && !!savedForm && JSON.stringify(form) !== JSON.stringify(savedForm);
+  useUnsavedGuard(dirty, "Race Info");
 
   if (error) return <ErrorBox message={error} />;
   if (loading || !form) return <p className="text-sm text-light">Loading…</p>;
@@ -105,8 +115,10 @@ export default function AdminRaceInfo() {
   async function save() {
     setBusy(true);
     setMsg(null);
+    const sent = form;
     try {
-      await api.saveRaceInfo(fromForm(form));
+      await api.saveRaceInfo(fromForm(sent));
+      setSavedForm(sent);
       setMsg({ ok: true, text: "Saved. The Race Info page shows the new text right away." });
     } catch (e) {
       setMsg({ ok: false, text: e.message });
@@ -246,6 +258,7 @@ export default function AdminRaceInfo() {
         <button onClick={resetToDefaults} className="rounded-lg bg-surface2 px-4 py-2.5 text-sm font-semibold text-medium transition hover:bg-border">
           Reset to standard text
         </button>
+        <UnsavedHint dirty={dirty} />
         {msg && <span className={`text-sm font-medium ${msg.ok ? "text-ok" : "text-bad"}`}>{msg.text}</span>}
       </div>
     </div>
