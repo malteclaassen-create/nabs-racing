@@ -9,7 +9,7 @@ import { FEEDBACK_CHANGED_EVENT, MEMBERS_CHANGED_EVENT } from "../data/adminEven
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
 // ---------------------------------------------------------------------------
-// The admin's navigation, in two shapes that show the SAME twenty-two tabs.
+// The admin's navigation, in two shapes that show the SAME twenty-one tabs.
 //
 //  * "tabs" — the strip that has always been at the top of the page: five
 //    little groups of buttons, everything visible at once, and about two lines
@@ -64,9 +64,9 @@ function useAdminBadges() {
     feedback: feedback.data?.newCount || 0,
     members: members.data?.unlinked || 0,
     market: attention.data?.market || 0,
-    // A server reset waiting to be answered lives on the "Social & Live" tab,
-    // in the training best times card.
-    social: attention.data?.resets || 0,
+    // A server reset waiting to be answered lives on the Live tab, in the
+    // training best times card.
+    live: attention.data?.resets || 0,
     // Open incident reports. NOT a badge: this one is a quiet number (see
     // Count), and it is deliberately no part of the dot's sum either.
     reports: attention.data?.reports || 0,
@@ -182,7 +182,7 @@ function TabStrip({ tab, onPick, badges }) {
                 {t.id === "feedback" && <Badge n={badges.feedback} />}
                 {t.id === "members" && <Badge n={badges.members} />}
                 {t.id === "market" && <Badge n={badges.market} />}
-                {t.id === "social" && <Badge n={badges.social} />}
+                {t.id === "live" && <Badge n={badges.live} />}
                 {t.id === "reports" && <Count n={badges.reports} />}
               </button>
             ))}
@@ -259,7 +259,7 @@ function SideRail({ tab, onPick, badges }) {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-light">
-          <Badge n={badges.feedback + badges.members + badges.market + badges.social} />
+          <Badge n={badges.feedback + badges.members + badges.market + badges.live} />
           <Chevron open={drawer} className="h-5 w-5" shut="rotate-90" turned="-rotate-90" />
         </span>
       </button>

@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
+import { useJumpView } from "../hooks/useJumpView.js";
 import TokenIcon from "./TokenIcon.jsx";
 
 // ---------------------------------------------------------------------------
@@ -602,9 +603,9 @@ function TuningPanel({ d, busy, onSave, onReset }) {
   );
 }
 
-export default function AdminTokens() {
+export default function AdminTokens({ jumpView = null, jumpKey = null }) {
   const data = useApi(useCallback(() => api.adminTokens(), []));
-  const [view, setView] = useState("orders");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "orders");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);

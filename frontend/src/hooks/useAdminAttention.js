@@ -104,7 +104,7 @@ export function useAdminAttention() {
     { key: "market", tab: "market", n: counts?.market || 0, one: "seat waiting", many: "seats waiting" },
     // A server reset whose practice times are waiting to be kept or dropped
     // (the Live Timing tab, "Training best times").
-    { key: "resets", tab: "social", n: counts?.resets || 0, one: "server reset", many: "server resets" },
+    { key: "resets", tab: "live", n: counts?.resets || 0, one: "server reset", many: "server resets" },
   ].filter((p) => p.n > 0);
 
   return {

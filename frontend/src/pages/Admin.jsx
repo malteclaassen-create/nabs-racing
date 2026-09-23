@@ -9,19 +9,22 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton } from "../components/ui.jsx";
 import { useAsk, Modal } from "../components/overlay.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
+import { useJumpView } from "../hooks/useJumpView.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
-// The navigation itself: the same twenty-two tabs as either the strip across
+// The navigation itself: the same twenty-one tabs as either the strip across
 // the top or a folding list down the left, plus the switch between the two.
 import AdminNav, { AdminNavToggle } from "../components/AdminNav.jsx";
 import { NAV_RAIL, useAdminNavMode } from "../hooks/useAdminNavMode.js";
 import RacePreview from "../components/RacePreview.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
+import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
-import { TAB_GROUPS } from "../data/adminIndex.js";
+import { resolveTab } from "../data/adminIndex.js";
 import { formatLapTime } from "../utils/telemetryAnalysis.js";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
@@ -48,11 +51,10 @@ const TAB_CHUNKS = {
   AdminHealth: () => import("../components/AdminHealth.jsx"),
   AdminMembers: () => import("../components/AdminMembers.jsx"),
   AdminNotifications: () => import("../components/AdminNotifications.jsx"),
-  AdminAllTime: () => import("../components/AdminAllTime.jsx"),
   AdminFeedback: () => import("../components/AdminFeedback.jsx"),
   AdminTokens: () => import("../components/AdminTokens.jsx"),
   AdminReports: () => import("../components/AdminReports.jsx"),
-  AdminRaceRecap: () => import("../components/AdminRaceRecap.jsx"),
+  AdminDiscordConnections: () => import("../components/AdminDiscordConnections.jsx"),
   AdminTransfers: () => import("../components/AdminTransfers.jsx"),
 };
 const AdminImport = lazy(TAB_CHUNKS.AdminImport);
@@ -70,11 +72,10 @@ const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
 const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
 const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
 const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
-const AdminAllTime = lazy(TAB_CHUNKS.AdminAllTime);
 const AdminFeedback = lazy(TAB_CHUNKS.AdminFeedback);
 const AdminTokens = lazy(TAB_CHUNKS.AdminTokens);
 const AdminReports = lazy(TAB_CHUNKS.AdminReports);
-const AdminRaceRecap = lazy(TAB_CHUNKS.AdminRaceRecap);
+const AdminDiscordConnections = lazy(TAB_CHUNKS.AdminDiscordConnections);
 const AdminTransfers = lazy(TAB_CHUNKS.AdminTransfers);
 
 // Warm the tab chunks one after another while the browser is idle. The import
@@ -101,6 +102,89 @@ function TabSkeleton() {
     <div className="space-y-4" aria-busy="true">
       <Skeleton className="h-16 w-full rounded-xl" />
       <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
+  );
+}
+
+// The view switch of a tab that holds several small ones. Same control the
+// other split tabs use (Photos & Videos, Attendance).
+function ViewSwitch({ items, value, onChange }) {
+  return <SlidingTabs items={items} value={value} onChange={onChange} />;
+}
+
+// Ratings & Telemetry: the rating formula and the lap telemetry it is built
+// from. Two tabs of one card each before.
+function RatingsTab({ jumpView, jumpKey }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "ratings");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "ratings", label: "Ratings" },
+          { key: "telemetry", label: "Telemetry" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "ratings" && <AdminRatings />}
+      {view === "telemetry" && <AdminTelemetry />}
+    </div>
+  );
+}
+
+// Site texts: the public pages' own words and pictures, one view per page.
+// Four tabs (Tracks, Race Info, Home FAQ, Privacy & app) and the social half of
+// the old "Social & Live" before.
+function SiteTexts({ jumpView, jumpKey }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "tracks");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "tracks", label: "Tracks" },
+          { key: "raceinfo", label: "Race Info" },
+          { key: "faq", label: "Home FAQ" },
+          { key: "social", label: "Social" },
+          { key: "privacy", label: "Privacy & app" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "tracks" && <AdminTracks />}
+      {view === "raceinfo" && <AdminRaceInfo />}
+      {view === "faq" && <AdminWelcomeFaq />}
+      {view === "social" && (
+        <div className="space-y-4">
+          <SocialAdmin />
+          <AdminSocialFeed />
+        </div>
+      )}
+      {view === "privacy" && <AdminPrivacy />}
+    </div>
+  );
+}
+
+// System: how the site itself is doing, and what connects it to the outside.
+// Health, Traffic and Change PIN were three tabs; the Discord connections were
+// spread over three others (components/AdminDiscordConnections.jsx).
+function SystemTab({ jumpView, jumpKey, onJump }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "health");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "health", label: "Health & backups" },
+          { key: "traffic", label: "Traffic" },
+          { key: "discord", label: "Discord" },
+          { key: "access", label: "Admin PIN" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "health" && <AdminHealth />}
+      {view === "traffic" && <TrafficAdmin />}
+      {view === "discord" && <AdminDiscordConnections onJump={onJump} />}
+      {view === "access" && <ChangePin />}
     </div>
   );
 }
@@ -194,17 +278,26 @@ export default function Admin() {
   const [unauthorized, setUnauthorized] = useState(false);
   const authed = !unauthorized && (pinAuthed || isDiscordAdmin);
   const [expired, setExpired] = useState(false);
-  // Three ways the opening tab is decided, in this order: ?tab=<id> from a link
-  // (the "new feedback" notification points straight at a tab), a one-shot
-  // hand-off some panel left behind before it triggered a remount ("Schedule
-  // races" jumping to Races & Events), and otherwise wherever the admin was.
+  // Three ways the opening tab is decided, in this order: a one-shot hand-off
+  // some panel left behind before it triggered a remount ("Schedule races"
+  // jumping to Races & Events after switching the season; it goes first
+  // because the address may still name the tab it was launched from, e.g.
+  // ?tab=seasons), then ?tab=<id> from a link (the "new feedback" notification
+  // points straight at a tab), and otherwise wherever the admin was.
   // (Read-only initializer: React may run it twice in dev StrictMode, so the
   // clean-up happens in the effect below, not here.)
-  const [tab, setTab] = useState(() => {
-    const wanted = new URLSearchParams(window.location.search).get("tab");
-    const known = TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === wanted));
-    return (known && wanted) || sessionStorage.getItem("nabs_admin_tab") || lastTab || "seasons";
-  });
+  // Old tab names (from a notification sent before the tabs were merged, or a
+  // tab remembered in this browser) resolve to the tab that took the job over,
+  // at the right view — see TAB_ALIASES.
+  const [opening] = useState(
+    () =>
+      resolveTab(sessionStorage.getItem("nabs_admin_tab")) ||
+      resolveTab(new URLSearchParams(window.location.search).get("tab")) ||
+      resolveTab(lastTab) ||
+      // Races & Events: the calendar is what a race week starts from.
+      { tab: "discord" }
+  );
+  const [tab, setTab] = useState(opening.tab);
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
@@ -228,12 +321,29 @@ export default function Admin() {
   // a hit can name one; `n` counts the jumps, because searching the SAME hit
   // twice has to land twice — a plain view string would be unchanged the second
   // time and the tab would sit wherever the admin had left it.
-  const [jump, setJump] = useState(null);
+  const [jump, setJump] = useState(() => (opening.view ? { tab: opening.tab, view: opening.view, n: 1 } : null));
   // Bumped by the To do card to send the training card back to its question.
   const [trainingFocus, setTrainingFocus] = useState(0);
   function goTo(hit) {
     setTab(hit.tab);
     setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+  }
+  // Jump from an all-time search hit to the tab that edits it. A hit in another
+  // season switches the global season first (which remounts the page, so the
+  // target tab is stashed to survive it); a hit in the season already being
+  // edited just changes the tab.
+  function gotoInSeason(t, seasonNumber) {
+    if (seasonNumber != null && seasonNumber !== season) {
+      sessionStorage.setItem("nabs_admin_tab", t);
+      setSeason(seasonNumber);
+    } else {
+      openTab(t);
+    }
+  }
+  // Open a tab by any name it has had, optionally at one of its views.
+  function openTab(id, view = null) {
+    const r = resolveTab(id);
+    if (r) goTo({ tab: r.tab, view: view || r.view || null });
   }
   const viewFor = (tabId) => (jump?.tab === tabId ? jump.view : null);
   const { season, setSeason } = useSeason();
@@ -275,7 +385,7 @@ export default function Admin() {
         <PageHeader eyebrow="League Office" title="Admin" />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <AdminScope />
-          {/* Same twenty-two tabs either way; this only says where they are. */}
+          {/* Same twenty-one tabs either way; this only says where they are. */}
           <AdminNavToggle mode={navMode} onChange={setNavMode} />
           <button
             className="btn-secondary"
@@ -294,29 +404,29 @@ export default function Admin() {
       {/* Above the tabs on purpose: it is the way in for anyone who does not
           already know which of the five menus below holds the thing they came
           for. */}
-      <AdminSearch onGo={goTo} />
+      <AdminSearch onGo={goTo} onGoData={gotoInSeason} />
 
       <TodoCard
-        onPick={setTab}
+        onPick={openTab}
         onReset={(slug) => {
           // The question belongs to one series' board: point the admin area at
           // it, open the tab, and let the training card scroll itself into view
           // (it looks for ?focus=training when it mounts; the key remounts it
           // if the tab was already open).
           const url = new URL(window.location.href);
-          url.searchParams.set("tab", "social");
+          url.searchParams.set("tab", "live");
           url.searchParams.set("focus", "training");
           if (slug) url.searchParams.set("series", slug);
           window.history.replaceState(window.history.state, "", url);
           if (slug && editingSeries?.slug !== slug) setEditingSeries(slug);
-          setTab("social");
+          setTab("live");
           setTrainingFocus((n) => n + 1);
         }}
       />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
           the panel below is the same element in either layout, so switching the
-          navigation does not remount twenty-two panels (and refetch everything
+          navigation does not remount twenty-one panels (and refetch everything
           they hold) just to move a menu. The rail column is 15rem from lg up;
           below that the grid is a single column and the rail sits on top of the
           panel as its own folded-away line. */}
@@ -329,7 +439,7 @@ export default function Admin() {
       >
         <AdminNav mode={navMode} tab={tab} onPick={setTab} />
 
-        {/* Keyed on the tab: all 22 panels fade in on switch instead of snapping.
+        {/* Keyed on the tab: all 21 panels fade in on switch instead of snapping.
             One wrapper rather than 22 edits, and it means any tab added later is
             animated by default. */}
         <div key={tab} className="content-in min-h-[70vh] min-w-0">
@@ -342,59 +452,35 @@ export default function Admin() {
                 sessionStorage.setItem("nabs_admin_tab", "discord");
                 setSeason(s.number); // remounts the page; the tab survives above
               }}
+              gotoInSeason={gotoInSeason}
             />
           )}
           {tab === "teams" && <Teams />}
-          {tab === "alltime" && (
-            <AdminAllTime
-              // Jump from a search hit to the tab that edits it. A hit in another
-              // season switches the global season first (which remounts the page,
-              // so the target tab is stashed to survive it); a hit in the season
-              // already being edited just changes the tab.
-              gotoTab={(t, seasonNumber) => {
-                if (seasonNumber != null && seasonNumber !== season) {
-                  sessionStorage.setItem("nabs_admin_tab", t);
-                  setSeason(seasonNumber);
-                } else {
-                  setTab(t);
-                }
-              }}
-            />
-          )}
           {tab === "import" && <AdminImport />}
           {tab === "edit" && <EditResults />}
-          {tab === "content" && <AdminContent />}
+          {tab === "content" && <AdminContent jumpView={viewFor("content")} jumpKey={jump?.n} />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
-          {tab === "recap" && <AdminRaceRecap />}
-          {tab === "ratings" && <AdminRatings />}
-          {tab === "telemetry" && <AdminTelemetry />}
-          {tab === "discord" && <DiscordEvents />}
+          {tab === "ratings" && <RatingsTab jumpView={viewFor("ratings")} jumpKey={jump?.n} />}
+          {tab === "discord" && <DiscordEvents onJump={openTab} />}
           {tab === "market" && <MarketAdmin />}
           {tab === "drivers" && <Drivers />}
           {tab === "transfers" && <AdminTransfers />}
           {tab === "members" && <AdminMembers />}
           {tab === "reports" && <AdminReports />}
           {tab === "feedback" && <AdminFeedback />}
-          {tab === "tokens" && <AdminTokens />}
+          {tab === "tokens" && <AdminTokens jumpView={viewFor("tokens")} jumpKey={jump?.n} />}
           {tab === "notify" && <AdminNotifications />}
-          {tab === "social" && (
+          {tab === "live" && (
             <div className="space-y-4">
-              <SocialAdmin />
-              <AdminSocialFeed />
               <LiveLinksAdmin />
               <LiveServersAdmin />
               <TrainingBestLapsAdmin key={trainingFocus} />
             </div>
           )}
           {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
-          {tab === "tracks" && <AdminTracks />}
-          {tab === "raceinfo" && <AdminRaceInfo />}
-          {tab === "faq" && <AdminWelcomeFaq />}
-          {tab === "privacy" && <AdminPrivacy />}
+          {tab === "site" && <SiteTexts jumpView={viewFor("site")} jumpKey={jump?.n} />}
           {tab === "downloads" && <AdminDownloads />}
-          {tab === "traffic" && <TrafficAdmin />}
-          {tab === "health" && <AdminHealth />}
-          {tab === "pin" && <ChangePin />}
+          {tab === "system" && <SystemTab jumpView={viewFor("system")} jumpKey={jump?.n} onJump={openTab} />}
           </Suspense>
         </div>
       </div>
@@ -3907,12 +3993,13 @@ function RaceHero({ race, onSaved, onError, onChanged }) {
 }
 
 // --- DISCORD & EVENTS ------------------------------------------------------
-function DiscordEvents() {
+function DiscordEvents({ onJump }) {
   const ask = useAsk();
   const { current } = useSeason();
-  const { data: hook, reload } = useApi(useCallback(() => api.getWebhook(), []));
+  // Only whether announcements can go out: the webhook itself is set up with
+  // the other Discord connections, under System → Discord.
+  const { data: hook } = useApi(useCallback(() => api.getWebhook(), []));
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
-  const [url, setUrl] = useState("");
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -3920,45 +4007,6 @@ function DiscordEvents() {
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
     qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
   });
-
-  async function saveWebhook(e) {
-    e.preventDefault();
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.setWebhook(url);
-      setMsg("Webhook saved.");
-      setUrl("");
-      reload();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-
-  async function test() {
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.testWebhook();
-      setMsg("Test message sent. Check your Discord channel!");
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-
-  // Clearing the webhook stops all event posts/updates; the URL itself keeps
-  // working in Discord until it's deleted there too, hence the hint.
-  async function removeWebhook() {
-    if (
-      !(await ask({
-        title: "Remove the saved webhook?",
-        body: "Event posts and RSVP updates to Discord stop until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)",
-        danger: true,
-        confirmLabel: "Remove webhook",
-      }))
-    )
-      return;
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.setWebhook("");
-      setMsg("Webhook removed.");
-      reload();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
 
   async function createEvent(e) {
     e.preventDefault();
@@ -4065,47 +4113,25 @@ function DiscordEvents() {
   }
 
   return (
-    <div>
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* Webhook (second on purpose: scheduling races is the everyday task) */}
-      <form onSubmit={saveWebhook} className="card space-y-4 p-5 order-2">
-        <CardHead eyebrow="Integration" title="Discord Webhook" />
-        <p className="text-sm text-light">
-          Discord channel → Edit Channel → Integrations → Webhooks → "New Webhook" →
-          "Copy Webhook URL" and paste it here.
-        </p>
-        <div className="rounded-lg bg-surface2 p-3 text-sm">
-          Status:{" "}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface2 px-4 py-2.5 text-sm">
+        <span>
+          Discord announcements:{" "}
           {hook?.configured ? (
-            <span className="font-semibold text-ok">connected ({hook.preview})</span>
+            <span className="font-semibold text-ok">connected</span>
           ) : (
-            <span className="font-semibold text-light">not connected</span>
+            <span className="font-semibold text-bad">not connected, nothing is posted</span>
           )}
-        </div>
-        <input
-          aria-label="Discord webhook URL"
-          className="input"
-          placeholder="https://discord.com/api/webhooks/…"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" disabled={busy || !url.trim()}>Save</button>
-          <button type="button" className="btn-secondary" disabled={busy || !hook?.configured} onClick={test}>
-            Send test
-          </button>
-          {hook?.configured && (
-            <button type="button" className="btn-secondary" disabled={busy} onClick={removeWebhook}>
-              Remove
-            </button>
-          )}
-        </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
-      </form>
-
+        </span>
+        <button type="button" className="btn-secondary py-1 text-xs" onClick={() => onJump?.("system", "discord")}>
+          {hook?.configured ? "Change in System → Discord" : "Connect in System → Discord"}
+        </button>
+      </div>
+      {error && <Notice kind="error">{error}</Notice>}
+      {msg && <Notice kind="success">{msg}</Notice>}
+    <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Create event + announce */}
-      <div className="space-y-6 order-1">
+      <div className="contents">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
           <Field label="Type" tone="plain">
@@ -4814,7 +4840,7 @@ function SeasonIdentity({ season, onSaved, onError }) {
   );
 }
 
-function Seasons({ gotoRaces }) {
+function Seasons({ gotoRaces, gotoInSeason }) {
   const ask = useAsk();
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
   const { season: editingSeason } = useSeason();
@@ -4972,6 +4998,7 @@ function Seasons({ gotoRaces }) {
 
   return (
     <div className="space-y-6">
+    {seasons && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
     <SeriesPanel />
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">

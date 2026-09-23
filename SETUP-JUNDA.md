@@ -93,7 +93,7 @@ will add it in the Discord developer portal. After that the login works.
 ## 8. Last two things
 
 1. Log in to the admin area (link in the footer, PIN is `nabs2026`) and
-   change the PIN right away under "Change PIN".
+   change the PIN right away under "System" → "Admin PIN".
 2. The big AC files (tracks, cars and so on) are not in the zip, they are
    too large. Either upload them in the admin under "Downloads", or put
    them in `nabs-racing/backend/downloads/` via the File Manager, or

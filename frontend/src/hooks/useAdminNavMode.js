@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 // Which shape the admin's navigation takes: the folding list down the left side
 // ("rail"), or the strip of tabs across the top ("tabs"). Both show the same
-// twenty-two tabs and the same panels; the choice is only where the menu lives,
+// twenty-one tabs and the same panels; the choice is only where the menu lives,
 // so it is remembered per browser rather than per account.
 //
 // It sits in its own file rather than next to the navigation it belongs to

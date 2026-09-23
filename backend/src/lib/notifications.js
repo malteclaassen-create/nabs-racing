@@ -619,8 +619,8 @@ export async function notifyAdminsServerReset(prisma, { id, drivers, before, aft
     // landing on the right tab of the right series still left the question
     // twenty screens down from where the admin was put.
     const link = slug
-      ? `/admin?tab=social&series=${encodeURIComponent(slug)}&focus=training`
-      : "/admin?tab=social&focus=training";
+      ? `/admin?tab=live&series=${encodeURIComponent(slug)}&focus=training`
+      : "/admin?tab=live&focus=training";
     await notifyAdmins(prisma, {
       title: trackChanged
         ? `${board}new track version, keep the times from ${where}?`
@@ -628,8 +628,8 @@ export async function notifyAdminsServerReset(prisma, { id, drivers, before, aft
       body: trackChanged
         ? `The practice session held ${count} with a time, and the server came back on ${
             after?.layout || after?.track || "another version"
-          }. If the track limits were fixed, those times may be out of reach now. Answer it under Social & Live.`
-        : `The practice session held ${count} with a time. They are off the board until you keep them, under Social & Live.`,
+          }. If the track limits were fixed, those times may be out of reach now. Answer it under Live in the admin area.`
+        : `The practice session held ${count} with a time. They are off the board until you keep them, under Live in the admin area.`,
       link,
       dedupeSuffix: `admin-server-reset:${id}`,
     });

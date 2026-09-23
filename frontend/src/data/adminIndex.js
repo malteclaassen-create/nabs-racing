@@ -2,7 +2,7 @@
 // The admin's own map of itself: the tab strip, and a searchable list of what
 // can actually be done in each tab.
 //
-// Twenty-two tabs is more than anyone keeps in their head, and the person who
+// Twenty-odd tabs is more than anyone keeps in their head, and the person who
 // needs "where do I ban somebody" is exactly the person who did not build the
 // site. So the search does not look at the tab names (which are the part you
 // can already read) but at the JOBS: one entry per thing an admin goes looking
@@ -21,10 +21,10 @@ export const TAB_GROUPS = [
       { id: "attendance", label: "Attendance" },
       { id: "import", label: "Import Race" },
       { id: "edit", label: "Edit Results" },
+      // Poster, standings poster, Discord post and the members' race recap:
+      // everything a finished round is turned into.
       { id: "content", label: "Content" },
       { id: "photos", label: "Photos & Videos" },
-      // The recap members see after a round, and its switch.
-      { id: "recap", label: "Race recap" },
     ],
   },
   {
@@ -35,11 +35,10 @@ export const TAB_GROUPS = [
       { id: "drivers", label: "Drivers" },
       { id: "transfers", label: "Transfers" },
       { id: "market", label: "Driver Market" },
-      { id: "ratings", label: "Ratings" },
-      // Held back from the members' side on purpose while the league decides
-      // whether a driver's inputs are public. See routes/telemetryLaps.js.
-      { id: "telemetry", label: "Telemetry" },
-      { id: "alltime", label: "All-time" },
+      // The telemetry view is held back from the members' side on purpose
+      // while the league decides whether a driver's inputs are public. See
+      // routes/telemetryLaps.js.
+      { id: "ratings", label: "Ratings & Telemetry" },
     ],
   },
   {
@@ -49,30 +48,51 @@ export const TAB_GROUPS = [
       { id: "reports", label: "Reports" },
       { id: "feedback", label: "Feedback" },
       { id: "notify", label: "Notifications" },
-      { id: "downloads", label: "Downloads" },
-      { id: "social", label: "Social & Live" },
+      // What the race nights need on the Live page: its buttons and stream,
+      // which server each series follows, the training board.
+      { id: "live", label: "Live" },
       // Trial feature, and the tab carries its own on/off switch.
       { id: "tokens", label: "NABS Points" },
     ],
   },
   {
-    label: "Site content",
+    label: "Site & system",
     tabs: [
-      { id: "tracks", label: "Tracks" },
-      { id: "raceinfo", label: "Race Info" },
-      { id: "faq", label: "Home FAQ" },
-      { id: "privacy", label: "Privacy & app" },
-    ],
-  },
-  {
-    label: "System",
-    tabs: [
-      { id: "traffic", label: "Traffic" },
-      { id: "health", label: "Health" },
-      { id: "pin", label: "Change PIN" },
+      // The public pages' own words and pictures, one view per page.
+      { id: "site", label: "Site texts" },
+      { id: "downloads", label: "Downloads" },
+      { id: "system", label: "System" },
     ],
   },
 ];
+
+const KNOWN_TABS = new Set(TAB_GROUPS.flatMap((g) => g.tabs.map((t) => t.id)));
+
+// Tabs that were folded into another one, and where each now lives. Links in
+// notifications already sent (/admin?tab=social), a tab remembered in the
+// browser and the admin search all still say the old names; they land on the
+// tab that took the job over, at the right view.
+export const TAB_ALIASES = {
+  tracks: { tab: "site", view: "tracks" },
+  raceinfo: { tab: "site", view: "raceinfo" },
+  faq: { tab: "site", view: "faq" },
+  privacy: { tab: "site", view: "privacy" },
+  social: { tab: "live" },
+  traffic: { tab: "system", view: "traffic" },
+  health: { tab: "system", view: "health" },
+  pin: { tab: "system", view: "access" },
+  telemetry: { tab: "ratings", view: "telemetry" },
+  recap: { tab: "content", view: "recap" },
+  // All-time search is the admin search's second half now (AdminSearch).
+  alltime: { tab: "discord" },
+};
+
+// The tab and view an id stands for today, or null for one nobody knows.
+export function resolveTab(id) {
+  if (!id) return null;
+  if (TAB_ALIASES[id]) return TAB_ALIASES[id];
+  return KNOWN_TABS.has(id) ? { tab: id } : null;
+}
 
 // Tabs that are themselves split into views, so a hit can land on the right
 // one instead of on whatever the tab happens to open with.
@@ -91,6 +111,35 @@ export const TAB_VIEWS = {
     highlights: "Race highlights",
     hotlaps: "Hotlap videos",
   },
+  content: {
+    graphic: "Result",
+    standings: "Standings",
+    post: "Discord post",
+    recap: "Race recap",
+  },
+  ratings: {
+    ratings: "Ratings",
+    telemetry: "Telemetry",
+  },
+  site: {
+    tracks: "Tracks",
+    raceinfo: "Race Info",
+    faq: "Home FAQ",
+    social: "Social",
+    privacy: "Privacy & app",
+  },
+  system: {
+    health: "Health & backups",
+    traffic: "Traffic",
+    discord: "Discord",
+    access: "Admin PIN",
+  },
+  tokens: {
+    orders: "Orders",
+    members: "Balances",
+    rules: "Rules and prices",
+    bot: "Discord bot",
+  },
 };
 
 const TAB_BY_ID = new Map();
@@ -107,13 +156,15 @@ export function tabInfo(id) {
 export const ADMIN_INDEX = [
   // --- Race weekend: the race recap -----------------------------------------
   {
-    tab: "recap",
+    tab: "content",
+    view: "recap",
     title: "Switch the race recap on or off",
     hint: "Off, admins only (to look at it first), or everyone. Members then see their recap once after each saved round.",
     keywords: "race recap summary after race popup overlay wrapped story switch on off enable disable admins only everyone members see once",
   },
   {
-    tab: "recap",
+    tab: "content",
+    view: "recap",
     title: "Preview a round's recap as any driver",
     hint: "Pick a finished round and a driver and open the pages exactly as that driver would see them.",
     keywords: "recap preview test look try round driver see what members see pages rating points championship",
@@ -163,7 +214,8 @@ export const ADMIN_INDEX = [
     keywords: "season races edit rename move date time country flag round number delete reorder calendar",
   },
   {
-    tab: "discord",
+    tab: "system",
+    view: "discord",
     title: "Discord webhook for announcements",
     hint: "The channel the site posts a new race and its sign-up list to.",
     keywords: "discord webhook url channel announce post integration bot",
@@ -253,30 +305,35 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "content",
+    view: "graphic",
     title: "The result poster for a round",
     hint: "The picture for Discord, built from the round's own result. Pick a round, download the PNG.",
     keywords: "graphic poster image png share discord post podium top ten social instagram photoshop template",
   },
   {
     tab: "content",
+    view: "post",
     title: "Post a result to Discord",
     hint: "The message for the results channel, with the drivers mentioned and the poster attached.",
     keywords: "results post discord webhook announce mention ping publish message content channel",
   },
   {
     tab: "content",
+    view: "post",
     title: "Short or full results message",
     hint: "Short is the round, the podium and a link, for when the poster says the rest. Full lists everyone.",
     keywords: "short long full length message version podium link brief summary results post",
   },
   {
     tab: "content",
+    view: "post",
     title: "Which poster goes with the post",
     hint: "Black, pink, or no image at all, with a preview of the message as the channel will see it.",
     keywords: "image graphic attach poster black pink white design preview discord post picture none",
   },
   {
     tab: "content",
+    view: "post",
     title: "Results channel webhook",
     hint: "Where the results message is posted. Separate from the events webhook.",
     keywords: "webhook results channel discord url connect integration",
@@ -387,15 +444,10 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "ratings",
+    view: "ratings",
     title: "Rating formula tuning",
     hint: "The weights behind the RTG / EXP / RAC / AWA / PAC numbers on the driver cards.",
     keywords: "ratings rtg exp rac awa aha pac formula weights tuning driver cards numbers",
-  },
-  {
-    tab: "alltime",
-    title: "Find anything across all seasons",
-    hint: "Search every season for a driver, team or race and jump straight to it.",
-    keywords: "all time search find lookup any season driver team race jump",
   },
 
   // --- Community ------------------------------------------------------------
@@ -493,31 +545,33 @@ export const ADMIN_INDEX = [
     keywords: "downloads files upload folder mod track car link drive replay zip external",
   },
   {
-    tab: "social",
+    tab: "site",
+    view: "social",
     title: "League social links",
     hint: "The Discord invite, YouTube, Twitch and the rest, shown site-wide.",
     keywords: "social links discord invite youtube twitch instagram tiktok patreon footer",
   },
   {
-    tab: "social",
+    tab: "site",
+    view: "social",
     title: "Social wall on the home page",
     hint: "The posts shown on the front page. YouTube fills itself; the others are added by hand.",
     keywords: "social wall feed posts home page instagram tiktok youtube videos",
   },
   {
-    tab: "social",
+    tab: "live",
     title: "Live page buttons and stream",
     hint: "The stream embedded on the live page, plus the Content Manager join and full-timing buttons.",
     keywords: "live timing stream youtube twitch embed buttons content manager join link",
   },
   {
-    tab: "social",
+    tab: "live",
     title: "Which race server a series follows",
     hint: "The server the live timing page reads for each series.",
     keywords: "live server race server acserver series which server timing",
   },
   {
-    tab: "social",
+    tab: "live",
     title: "Training best times on the live board",
     hint: "Carry the week's fastest practice laps onto the Live page from the server manager's session JSON files, sectors included — the race server wipes them on every session restart.",
     keywords:
@@ -526,38 +580,44 @@ export const ADMIN_INDEX = [
 
   // --- Site content ---------------------------------------------------------
   {
-    tab: "tracks",
+    tab: "site",
+    view: "tracks",
     title: "Track facts and map image",
     hint: "The per-circuit fun facts and the track map picture, including its rotation.",
     keywords: "track info facts map image picture rotation circuit layout",
   },
   {
-    tab: "raceinfo",
+    tab: "site",
+    view: "raceinfo",
     title: "Race Info page text",
     hint: "The rules cards, the sporting regulations and the footnotes on the Race Info page.",
     keywords: "race info rules regulations sporting page intro championship cards points footnote text",
   },
   {
-    tab: "faq",
+    tab: "site",
+    view: "faq",
     title: "Home page FAQ",
     hint: "The questions and answers newcomers see on the front page.",
     keywords: "faq questions answers welcome home newcomer help",
   },
   {
-    tab: "privacy",
+    tab: "site",
+    view: "privacy",
     title: "Privacy contact",
     hint: "Who is legally responsible for the site, and the email privacy requests go to.",
     keywords:
       "privacy policy data protection gdpr dsgvo datenschutz contact responsible controller imprint legal email address who is responsible",
   },
   {
-    tab: "privacy",
+    tab: "site",
+    view: "privacy",
     title: "App name in the privacy policy",
     hint: "Google Play requires the policy to name the app. Set the store name here.",
     keywords: "app name google play store android privacy policy listing publish twa",
   },
   {
-    tab: "privacy",
+    tab: "site",
+    view: "privacy",
     title: "Link the Android app to this domain",
     hint: "Package name and signing fingerprints, which produce the assetlinks.json the app is verified against.",
     keywords:
@@ -566,19 +626,22 @@ export const ADMIN_INDEX = [
 
   // --- System ---------------------------------------------------------------
   {
-    tab: "traffic",
+    tab: "system",
+    view: "traffic",
     title: "Visitor numbers",
     hint: "Who is visiting, the last 14 days, and the most visited pages.",
     keywords: "traffic visitors analytics stats page views popular",
   },
   {
-    tab: "health",
+    tab: "system",
+    view: "health",
     title: "Data check",
     hint: "Warnings about the league data: missing results, odd points, drivers without a team.",
     keywords: "health data check integrity problems warnings errors validation",
   },
   {
-    tab: "health",
+    tab: "system",
+    view: "health",
     // Was the red banner across the top of every tab until 2026-08-12; it is a
     // card in Health now, which means it has to be findable.
     title: "Default PIN and JWT secret",
@@ -586,19 +649,36 @@ export const ADMIN_INDEX = [
     keywords: "security secure default pin jwt secret warning red banner launch checklist before going public",
   },
   {
-    tab: "health",
+    tab: "system",
+    view: "health",
     title: "Backups",
     hint: "Automatic database backups and the full download as a zip.",
     keywords: "backup backups database download zip restore save copy",
   },
   {
-    tab: "health",
+    tab: "system",
+    view: "health",
     title: "Disk, memory and the admin log",
     hint: "Server disk usage, memory, unused uploaded files and a log of recent admin changes.",
     keywords: "disk space storage memory heap server activity log recent changes unused files clean up",
   },
   {
-    tab: "pin",
+    tab: "system",
+    view: "discord",
+    title: "Everything connected to Discord",
+    hint: "The events webhook, the results webhook and the bot, with whether each is connected.",
+    keywords: "discord connections integration webhook bot channel connected not arriving nothing posted setup overview",
+  },
+  {
+    tab: "ratings",
+    view: "telemetry",
+    title: "Lap comparison and who may see it",
+    hint: "Compare two drivers' laps input by input, and decide whether members get to see the telemetry.",
+    keywords: "telemetry laps compare inputs throttle brake steering trace visible public members who can see",
+  },
+  {
+    tab: "system",
+    view: "access",
     title: "Change the admin PIN",
     hint: "The password for this office.",
     keywords: "pin password security change login secret",

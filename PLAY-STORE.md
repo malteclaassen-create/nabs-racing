@@ -45,7 +45,7 @@ settled. Google will not publish an app whose privacy policy has no
 responsible person on it.
 
 1. Sign in to the website, open the **league office** (Admin).
-2. Go to **Site content -> Privacy & app**.
+2. Go to **Site & system -> Site texts -> Privacy & app**.
 3. Fill in **Name** and **Email for privacy requests**. A postal address is
    optional.
 4. Press **Save**, then open <https://nabsracing.com/privacy> and check that
@@ -96,7 +96,7 @@ be until you deliberately publish it in Step 8.
 
 ## Step 3 - Tell the website what the app is called
 
-1. Back in the league office: **Site content -> Privacy & app**.
+1. Back in the league office: **Site & system -> Site texts -> Privacy & app**.
 2. Fill in **App name** with exactly the name you just chose.
 3. **Save.**
 
@@ -148,7 +148,7 @@ downloaded.
    that looks like `AB:CD:EF:12:...`, 32 pairs long. If the zip has no such
    file, the same fingerprint is in `signing-key-info.txt`, and the readme
    in the zip points at it too.
-2. In the league office: **Site content -> Privacy & app**.
+2. In the league office: **Site & system -> Site texts -> Privacy & app**.
 3. Put the package name in **Package name**.
 4. Put the fingerprints in **SHA-256 signing fingerprints**, one per line.
    Pasting them with or without the colons both work.
@@ -344,6 +344,6 @@ and make sure Google's own fingerprint from Step 5 is in there.
 | Privacy policy URL          | `https://nabsracing.com/privacy`                          |
 | Account deletion URL        | `https://nabsracing.com/delete-account`                   |
 | Domain verification file    | `https://nabsracing.com/.well-known/assetlinks.json`      |
-| Where you enter app details | League office -> Site content -> Privacy & app            |
+| Where you enter app details | League office -> Site texts -> Privacy & app               |
 | Where the app is built      | <https://www.pwabuilder.com>                              |
 | Play Console                | <https://play.google.com/console>                         |

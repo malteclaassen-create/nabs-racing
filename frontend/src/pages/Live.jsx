@@ -1994,7 +1994,7 @@ function ViewSwitch({ view, setView, hasStandings }) {
 }
 
 // The race stream, when someone is broadcasting it: a YouTube or Twitch player
-// sitting above the track map, from a single link in the admin's Social & Live
+// sitting above the track map, from a single link in the admin's Live tab
 // tab. Nothing renders when no link is set (the normal state) or when the link
 // isn't a platform we can embed, so a typo costs an empty card, not a broken
 // one. The frame itself is only created once a visitor presses play — see
