@@ -78,7 +78,18 @@ describe("default corner names", () => {
     expect(effectiveCorners({ corners: [] }, "Monza")).toEqual({ corners: [], source: "admin" });
     expect(effectiveCorners({ corners: null }, "Monza")).toEqual({ corners: DEFAULT_CORNERS.Monza, source: "default" });
     expect(effectiveCorners(null, "Monza", "junior")).toEqual({ corners: [], source: null });
-    expect(effectiveCorners(null, "Monaco")).toEqual({ corners: [], source: null });
+    // A circuit without official data carries no defaults at all.
+    expect(effectiveCorners(null, "Mugello")).toEqual({ corners: [], source: null });
+  });
+
+  it("puts every official corner where F1's data has it (Silverstone, the one that was wrong)", () => {
+    const at = (name) => DEFAULT_CORNERS.Silverstone.find((c) => c.name === name).at;
+    expect(DEFAULT_CORNERS.Silverstone.map((c) => c.turn)).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
+    expect(at("Abbey")).toBeLessThan(at("Village"));
+    expect(at("Brooklands")).toBeCloseTo(33.6, 0);
+    expect(at("Copse")).toBeCloseTo(52.3, 0);
+    expect(at("Stowe")).toBeCloseTo(85.5, 0);
+    expect(at("Vale")).toBeCloseTo(93.2, 0);
   });
 
   it("only the Grand Prix layouts take the defaults", () => {

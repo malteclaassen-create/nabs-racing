@@ -79,9 +79,10 @@ Telemetry tips
   the numbers behind it, a small speed trace, and what the quicker lap did
   there as a suggestion. When one habit (say, early braking) is behind most of
   the lost time it says so once. Corners carry their real names (T4 Roggia):
-  34 circuits come with names for their Grand Prix layout, measured on the
-  circuit outlines, and the admin Tracks tab can add or replace them. Other
-  circuits and other layouts (national, short, moto) are numbered instead.
+  30 circuits come with every official corner, numbered and placed from
+  Formula 1's own timing data, with the name where it is certain; the admin
+  Tracks tab can add or replace them. Other circuits and other layouts
+  (national, short, moto) are numbered by section instead.
 
 Sign up
   This is our replacement for Apollo. People log in with their Discord account
