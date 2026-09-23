@@ -539,8 +539,8 @@ export async function ensureAppSchema(prisma) {
   // and shown and applied by hand. A NULL kind on a decided penalty is one from
   // before this column, and every one of those was seconds, so it reads as TIME.
   //
-  // The points add up per PERSON across one season (lib/reports.js
-  // licenceTable), which is what the "race ban due" flag is worked out from.
+  // The points are no longer read or written (the league dropped licence
+  // points); the column stays so old databases and new ones agree.
   await addColumn(prisma, "Report", "penaltyKind", "TEXT");
   await addColumn(prisma, "Report", "licencePoints", "INTEGER");
   // Reports already filed by the in-game app carry a line quoting the app's own

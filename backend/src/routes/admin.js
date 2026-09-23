@@ -69,7 +69,7 @@ import {
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
   dbSetAccused, dbRepointAccused, dbCreateReport, dbLinkedReports, dbEnsureIncidentGroup,
   dbPenaltiesForRace, dbMarkPenaltiesApplied,
-  dbDriverRecord, dbLicenceTable, writeLicenceThreshold,
+  dbDriverRecord,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -7181,12 +7181,11 @@ router.get("/reports/:id", async (req, res, next) => {
         verdict: l.verdict,
         penaltySeconds: l.penaltySeconds,
         penaltyKind: l.penaltyKind,
-        licencePoints: l.licencePoints,
       })),
-      // The named driver's season so far — their other reports, the decisions
-      // and the points adding up towards a ban — so a third incident is never
-      // decided without the first two in view. Admin-only: the member API
-      // never carries it, a driver's record being nobody else's business.
+      // The named driver's season so far — their other reports and how each was
+      // decided — so a third incident is never decided without the first two
+      // in view. Admin-only: the member API never carries it, a driver's
+      // record being nobody else's business.
       record: await dbDriverRecord(prisma, report).catch(() => null),
     });
   } catch (e) {
@@ -7194,39 +7193,7 @@ router.get("/reports/:id", async (req, res, next) => {
   }
 });
 
-// GET /api/admin/licence-points?series=&season=N -> the season's licence table:
-// who has had penalties, how many points they add up to, and who has reached
-// the threshold and is due a race ban.
-//
-// The season is the edited series' active one unless ?season= names another,
-// and the series' other seasons come back with it so the card can switch
-// between them. Counted per person (lib/reports.js licenceTable).
-router.get("/licence-points", async (req, res, next) => {
-  try {
-    const scope = await adminSeriesScope(req.query.series);
-    const slug = scope?.series?.slug;
-    const season = await resolveSeason(prisma, req.query.season, { includePrivate: true, series: slug });
-    const seasons = scope ? await seasonIdsOfSeries(prisma, scope.series.id) : [];
-    if (!season) return res.json({ season: null, seasons, threshold: null, drivers: [] });
-    const table = await dbLicenceTable(prisma, season.id);
-    res.json({ season: { id: season.id, number: season.number }, seasons, ...table });
-  } catch (e) {
-    next(e);
-  }
-});
-
-// PUT /api/admin/licence-points/threshold { threshold } — the points at which a
-// driver is due a race ban. League-wide, 12 until somebody decides otherwise.
-router.put("/licence-points/threshold", async (req, res, next) => {
-  try {
-    res.json({ ok: true, threshold: await writeLicenceThreshold(prisma, req.body?.threshold) });
-  } catch (e) {
-    if (e.status) return res.status(e.status).json({ error: e.message });
-    next(e);
-  }
-});
-
-// PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds?, penaltyKind?, licencePoints? }
+// PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds?, penaltyKind? }
 // The whole decision in ONE call, deliberately: the drivers are told the moment
 // this lands, and a decision sent in three pieces means they are told the
 // outcome before the reasoning has been typed.

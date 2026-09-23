@@ -668,8 +668,7 @@ model Report {
   // Only TIME feeds the results editor; the others are recorded and shown.
   // NULL on a penalty decided before the column existed, which means TIME.
   penaltyKind       String?
-  // Licence points the decision carried, 0-12. Added up per person per season
-  // for the race-ban flag (lib/reports.js licenceTable).
+  // Unused since the league dropped licence points; old rows keep theirs.
   licencePoints     Int?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime?

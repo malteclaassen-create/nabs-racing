@@ -16,16 +16,12 @@ export const PENALTY_KINDS = [
   { key: "DSQ", label: "Disqualification" },
 ];
 
-export const MAX_LICENCE_POINTS = 12;
-
 const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 
 // A decision already read by the server has its kind filled in; one saved
 // before kinds existed and not yet re-read is seconds, which is what they all
 // were.
 const kindOf = (r) => r?.penaltyKind || (r?.status === "PENALTY" ? "TIME" : null);
-
-export const pointsLabel = (n) => `${n} licence point${n === 1 ? "" : "s"}`;
 
 // What a penalty decision amounts to, as short as a pill: "+5s", "Warning",
 // "Grid drop", "Disqualified". Null for anything that is not a penalty, and for
@@ -40,15 +36,12 @@ export function penaltyLabel(r) {
   return r.penaltySeconds > 0 ? `+${r.penaltySeconds}s` : null;
 }
 
-// The same in a sentence's worth, for the line under a verdict: "5s, 2 licence
-// points" or "warning". Null when the decision carried nothing to add.
+// The same in a sentence's worth, for the line under a verdict: "5s" or
+// "warning". Null when the decision carried nothing to add.
 export function penaltySummary(r) {
-  if (r?.status !== "PENALTY") return null;
   const label = penaltyLabel(r);
-  const parts = [];
-  if (label) parts.push(label.startsWith("+") ? label.slice(1) : label.toLowerCase());
-  if (r.licencePoints > 0) parts.push(pointsLabel(r.licencePoints));
-  return parts.length ? parts.join(", ") : null;
+  if (!label) return null;
+  return label.startsWith("+") ? label.slice(1) : label.toLowerCase();
 }
 
 // The gap between what the stewards decided and what the results editor has
