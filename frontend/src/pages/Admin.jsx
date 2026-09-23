@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Armchair, Bug, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
+import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -11,6 +11,14 @@ import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarB
 import { useAsk, Modal } from "../components/overlay.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
+import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { confirmLeave } from "../utils/unsavedGuard.js";
+import { latestPastRace, rememberRound } from "../utils/sharedRound.js";
+import { fmtDateShort } from "../utils/format.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
+import { BATCH_MAX, REPEAT_DAYS, TRACK_TBA, knownTrackNames, nextFreeRoundNumber, planProblem, planRounds } from "../utils/roundBatch.js";
+import { CIRCUITS } from "../data/circuits.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
@@ -140,6 +148,8 @@ function RatingsTab({ jumpView, jumpKey }) {
 // the old "Social & Live" before.
 function SiteTexts({ jumpView, jumpKey }) {
   const [view, setView] = useJumpView(jumpView, jumpKey, "tracks");
+  // Another view unmounts the form on screen, unsaved edits and all.
+  const ask = useAsk();
   return (
     <div className="space-y-5">
       <ViewSwitch
@@ -151,7 +161,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "privacy", label: "Privacy & app" },
         ]}
         value={view}
-        onChange={setView}
+        onChange={(v) => confirmLeave(ask).then((ok) => ok && setView(v))}
       />
       {view === "tracks" && <AdminTracks />}
       {view === "raceinfo" && <AdminRaceInfo />}
@@ -327,9 +337,24 @@ export default function Admin() {
   const [jump, setJump] = useState(() => (opening.view ? { tab: opening.tab, view: opening.view, n: 1 } : null));
   // Bumped by the To do card to send the training card back to its question.
   const [trainingFocus, setTrainingFocus] = useState(0);
+  // Every way off the open panel goes through here: the menu, a search hit, a
+  // To do line, a link between tabs. A form with unsaved edits (Edit Results,
+  // the site texts) has registered itself with utils/unsavedGuard.js, and the
+  // admin is asked before the panel and its edits are thrown away.
+  const ask = useAsk();
+  function leaveThen(go) {
+    confirmLeave(ask).then((ok) => ok && go());
+  }
   function goTo(hit) {
-    setTab(hit.tab);
-    setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+    // Staying on the same tab without naming a view leaves the panel mounted,
+    // so there is nothing to lose and nothing to ask.
+    const stays = hit.tab === tab && !hit.view;
+    const go = () => {
+      setTab(hit.tab);
+      setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
+    };
+    if (stays) go();
+    else leaveThen(go);
   }
   // Jump from an all-time search hit to the tab that edits it. A hit in another
   // season switches the global season first (which remounts the page, so the
@@ -337,11 +362,32 @@ export default function Admin() {
   // edited just changes the tab.
   function gotoInSeason(t, seasonNumber) {
     if (seasonNumber != null && seasonNumber !== season) {
-      sessionStorage.setItem("nabs_admin_tab", t);
-      setSeason(seasonNumber);
+      leaveThen(() => {
+        sessionStorage.setItem("nabs_admin_tab", t);
+        setSeason(seasonNumber);
+      });
     } else {
       openTab(t);
     }
+  }
+  // Open a race-weekend tab ON a round: the To do card's "Import" on a round
+  // that has no result. The round goes into the memory the round pickers share
+  // (utils/sharedRound.js), so the tab opens on it, and the panel is remounted
+  // even when it is the one already open, because a picker only reads that
+  // memory when it mounts. A round of another season switches the season
+  // first, which remounts the whole page anyway.
+  const [panelKey, setPanelKey] = useState(0);
+  function openRound(t, { raceId, seasonId, seasonNumber }) {
+    leaveThen(() => {
+      rememberRound(seasonId, raceId);
+      if (seasonNumber != null && seasonNumber !== season) {
+        sessionStorage.setItem("nabs_admin_tab", t);
+        setSeason(seasonNumber);
+        return;
+      }
+      setTab(t);
+      setPanelKey((k) => k + 1);
+    });
   }
   // Open a tab by any name it has had, optionally at one of its views.
   function openTab(id, view = null) {
@@ -433,7 +479,9 @@ export default function Admin() {
 
       <TodoCard
         onPick={openTab}
-        onReset={(slug) => {
+        onPickInSeason={gotoInSeason}
+        onOpenRound={openRound}
+        onReset={(slug) => leaveThen(() => {
           // The question belongs to one series' board: point the admin area at
           // it, open the tab, and let the training card scroll itself into view
           // (it looks for ?focus=training when it mounts; the key remounts it
@@ -446,7 +494,7 @@ export default function Admin() {
           if (slug && editingSeries?.slug !== slug) setEditingSeries(slug);
           setTab("live");
           setTrainingFocus((n) => n + 1);
-        }}
+        })}
       />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
@@ -462,12 +510,12 @@ export default function Admin() {
             : ""
         }
       >
-        <AdminNav mode={navMode} tab={tab} onPick={setTab} />
+        <AdminNav mode={navMode} tab={tab} onPick={(t) => (t === tab ? setTab(t) : leaveThen(() => setTab(t)))} />
 
         {/* Keyed on the tab: all 21 panels fade in on switch instead of snapping.
             One wrapper rather than 22 edits, and it means any tab added later is
             animated by default. */}
-        <div key={tab} className="content-in min-h-[70vh] min-w-0">
+        <div key={`${tab}:${panelKey}`} className="content-in min-h-[70vh] min-w-0">
           <Suspense fallback={<TabSkeleton />}>
           {tab === "seasons" && (
             <Seasons
@@ -481,7 +529,8 @@ export default function Admin() {
             />
           )}
           {tab === "teams" && <Teams />}
-          {tab === "import" && <AdminImport />}
+          {/* A committed import can settle an overdue round on the To do card. */}
+          {tab === "import" && <AdminImport onCommitted={() => window.dispatchEvent(new Event(TODO_CHANGED_EVENT))} />}
           {tab === "edit" && <EditResults />}
           {tab === "content" && <AdminContent jumpView={viewFor("content")} jumpKey={jump?.n} />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
@@ -916,10 +965,17 @@ function SocialAdmin() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState(null);
+  // The links as loaded or last stored (see utils/unsavedGuard.js).
+  const [stored, setStored] = useState(null);
 
   useEffect(() => {
-    if (data) setForm(data);
+    if (data) {
+      setForm(data);
+      setStored(data);
+    }
   }, [data]);
+  const dirty = !!form && !!stored && JSON.stringify(form) !== JSON.stringify(stored);
+  useUnsavedGuard(dirty, "Social links");
 
   // Error first. `form` is derived from `data`, so a failed read leaves it null
   // forever — with the loading guard on top, the panel sat on "Loading…" for
@@ -934,6 +990,7 @@ function SocialAdmin() {
     try {
       const res = await api.setSocial(form);
       setForm(res);
+      setStored(res);
       setSaved(true);
     } catch (e) {
       setErr(e.message);
@@ -985,9 +1042,12 @@ function SocialAdmin() {
         />
       </Field>
 
-      <button className="btn-primary" onClick={save} disabled={busy}>
-        {busy ? "Saving…" : "Save links"}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save links"}
+        </button>
+        <UnsavedHint dirty={dirty} />
+      </div>
     </div>
   );
 }
@@ -1227,7 +1287,8 @@ function ago(iso) {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-function TodoRow({ icon: Icon, title, detail, action, onAction }) {
+// `more` is a second, quieter way to deal with the line ({ label, onAction }).
+function TodoRow({ icon: Icon, title, detail, action, onAction, more }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium" aria-hidden="true"><Icon className="h-4 w-4" /></span>
@@ -1235,12 +1296,15 @@ function TodoRow({ icon: Icon, title, detail, action, onAction }) {
         <p className="text-sm font-semibold text-dark">{title}</p>
         {detail && <p className="mt-0.5 text-xs text-light">{detail}</p>}
       </div>
-      <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={onAction}>{action}</button>
+      <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
+        {more && <button type="button" className="px-2 py-1 text-xs font-semibold text-link hover:underline" onClick={more.onAction}>{more.label}</button>}
+        <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={onAction}>{action}</button>
+      </div>
     </li>
   );
 }
 
-function TodoCard({ onPick, onReset }) {
+function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
   const { parts } = useAdminAttention();
   const navigate = useNavigate();
   const todo = useApi(useCallback(() => api.adminTodo(), []));
@@ -1252,12 +1316,26 @@ function TodoCard({ onPick, onReset }) {
   const resets = todo.data?.resets || [];
   const requests = todo.data?.requests || [];
   const givenBack = todo.data?.givenBack || [];
+  const overdue = todo.data?.overdue || [];
   const count = (key) => parts.find((p) => p.key === key)?.n || 0;
   // Logins without a driver, less the ones already listed by name for having
   // asked to race: the same person should not be two lines.
   const quietLogins = Math.max(0, count("members") - requests.length);
 
   const rows = [];
+  // A round that was run and has no result: first, since until it is in the
+  // standings, the race recap and every poster of the week are waiting on it.
+  // Either it gets imported, or it did not happen that night and is moved.
+  for (const o of overdue) {
+    const when = fmtDateShort(o.date);
+    rows.push(
+      <TodoRow key={`overdue-${o.raceId}`} icon={CalendarClock} action="Import"
+        title={`${o.number != null ? `R${o.number}` : "Round"} ${o.track}${when ? ` · ${when}` : ""} has no result`}
+        detail="Its date is more than 12 hours past. Import the result, or move the round if it was not run that night."
+        onAction={() => onOpenRound("import", o)}
+        more={{ label: "Reschedule", onAction: () => onPickInSeason("discord", o.seasonNumber) }} />
+    );
+  }
   for (const r of resets) {
     const where = r.layout ? `${r.track} · ${r.layout}` : r.track || "the track";
     const why = r.raceNight ? "the server moved on to race night" : r.trackChanged ? "the server came back on a new track version" : "the server was reset";
@@ -1894,6 +1972,42 @@ function parseRaceTimeInput(text) {
   return { kind: gap ? "gap" : "abs", ms };
 }
 
+// What the results editor holds, one comparable string per part it saves on
+// its own (the classification, the race details, Driver of the Day, the
+// honours). The baseline is taken when a round is opened and moved on by each
+// successful save, and a part whose string differs is unsaved.
+//
+// The classification is compared on what the save sends, not on the row
+// objects: those also carry the baselines the overwrite guard asks from, and
+// a row added and removed again is no change at all.
+const EMPTY_META = { track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" };
+const EMPTY_HONOURS = { pole: "", poleTime: "", fl: "", flTime: "" };
+function resultsSnap(rs) {
+  return JSON.stringify(
+    rs.map((r) => [
+      r.driverId,
+      String(r.position).trim(),
+      r.status,
+      r.subForTeamId || "",
+      Number(r.penaltySeconds) || 0,
+      String(r.grid).trim(),
+      String(r.time).trim(),
+      String(r.contacts).trim(),
+      String(r.lapsLed).trim(),
+      !!r.isNew,
+    ])
+  );
+}
+const detailsSnap = (m) => JSON.stringify(m);
+const dotdSnap = (id, by) => JSON.stringify([id || "", id ? by.trim() : ""]);
+const honoursSnap = (h) => JSON.stringify(h);
+const EMPTY_BASELINE = {
+  results: resultsSnap([]),
+  details: detailsSnap(EMPTY_META),
+  dotd: dotdSnap("", ""),
+  honours: honoursSnap(EMPTY_HONOURS),
+};
+
 function EditResults() {
   const ask = useAsk();
   // Sprints included: a sprint classification is edited (penalties, driver
@@ -1901,12 +2015,60 @@ function EditResults() {
   // one place in the admin that has to reach it.
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
+
+  // How the picker and the delete dialogs name a row. A sprint row is named
+  // for the round it scores under; the event of a sprint weekend says
+  // "feature" so the two halves read apart.
+  function raceLabel(race) {
+    if (!race) return "this race";
+    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
+    const what = race.sprintOf
+      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
+      : kind === "TRAINING" ? "Training"
+      : kind === "SPECIAL" ? "Event"
+      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
+      : `Round ${race.number}`;
+    return `${what} · ${race.track}`;
+  }
+
+  // The picker, in calendar order: each round, then the sprint hanging off it
+  // — the stored one, or the entry that creates it on first save.
+  const pickerEntries = [];
+  {
+    const all = races || [];
+    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
+    for (const r of all) {
+      if (r.sprintOf) continue;
+      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+      // Championship rounds always; trainings/events join once they have
+      // stored results (that's what there is to edit or delete).
+      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
+      pickerEntries.push({ value: r.id, label: raceLabel(r) });
+      const child = childOf.get(r.id);
+      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
+      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
+        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
+    }
+  }
+
   // What the picker holds: a race id, or "sprint:<eventId>" for the SPRINT of
   // a sprint+feature weekend that has nothing on file yet. Such a sprint has
   // no row of its own until its first save (lib/sprintRaces.js creates the
   // hidden child then), so the editor addresses it through its event and the
   // session flag, exactly as the import does.
-  const [pick, setPick] = useState("");
+  //
+  // It opens on the round the other race-weekend tabs were last on, or else
+  // on the latest round that has been run (hooks/useSharedRound.js). A sprint
+  // is shared as its event, the only one of the two the other tabs know.
+  const [pick, pickRound, setPick] = useSharedRound(
+    races ? pickerEntries.map((e) => e.value) : null,
+    latestPastRace((races || []).filter((r) => !r.sprintOf), { completedOnly: true })?.id
+  );
+  const sharedIdOf = (value) => {
+    if (value.startsWith("sprint:")) return value.slice("sprint:".length);
+    return (races || []).find((r) => r.id === value)?.sprintOf || value;
+  };
   const pendingSprint = pick.startsWith("sprint:");
   const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
@@ -1954,6 +2116,8 @@ function EditResults() {
   // save of a sprint creates its row and the editor moves over to it, and
   // the reset below would otherwise wipe the "saved" line on the way.
   const msgAfterSwitch = useRef(null);
+  // What was last loaded or saved, per part (see resultsSnap above).
+  const [baseline, setBaseline] = useState(EMPTY_BASELINE);
 
   useEffect(() => {
     setError(null);
@@ -1966,12 +2130,13 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
+    setMeta(EMPTY_META);
     setDotd("");
     setDotdBy("");
-    setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
+    setHonours(EMPTY_HONOURS);
     setPenalties(null);
     setPrefilled([]);
+    setBaseline(EMPTY_BASELINE);
     if (!pick) return;
     // A sprint with nothing on file has no row to read: the table starts
     // empty and is filled in by hand below.
@@ -1998,7 +2163,7 @@ function EditResults() {
         );
         setPenalties(pen || { perDriver: [] });
         const filledIn = [];
-        setMeta({
+        const metaNow = {
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
           qualiMinutes: d.race?.qualiMinutes ?? "",
@@ -2007,9 +2172,13 @@ function EditResults() {
           raceLaps: d.race?.raceLaps ?? "",
           pointsTable: Array.isArray(d.race?.pointsTable) ? d.race.pointsTable.join(", ") : "",
           info: d.race?.info || "",
-        });
-        setDotd(d.race?.driverOfTheDay?.driverId || "");
-        setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
+        };
+        setMeta(metaNow);
+        const dotdNow = d.race?.driverOfTheDay?.driverId || "";
+        const dotdByNow = d.race?.driverOfTheDay?.pickedBy || "";
+        setDotd(dotdNow);
+        setDotdBy(dotdByNow);
+        let honoursNow;
         {
           // Current honours: pole = the imported qualifying session's fastest
           // driver where one is on file (read-only here), else the grid-1 row
@@ -2026,12 +2195,13 @@ function EditResults() {
             : null;
           setQualiPole(qPole ? { driverId: qPole.driverId || null, name: qPole.name, bestLapMs: qPole.bestLapMs } : null);
           const poleRow = d.results.find((r) => r.grid === 1);
-          setHonours({
+          honoursNow = {
             pole: qPole ? qPole.driverId || "" : poleRow?.driverId || "",
             poleTime: msToLapInput(qPole ? qPole.bestLapMs : poleRow?.qualiTimeMs),
             fl,
             flTime: msToLapInput(flRow?.bestLapMs),
-          });
+          };
+          setHonours(honoursNow);
         }
         // Stored race times prefill the Time / Gap inputs: the winner (and any
         // car with a smaller total, e.g. lapped ones) as a full time, the rest
@@ -2040,8 +2210,7 @@ function EditResults() {
           (x) => (x.rawPosition ?? x.position) === 1 && x.status === "FINISHED" && x.totalTimeMs > 0
         );
         const anchorMs = p1Row?.totalTimeMs ?? null;
-        setRows(
-          d.results.map((r) => {
+        const rowsNow = d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
             // What this driver's reports still owe the classification. Noted as
             // well as added, so the table can say out loud which cells it typed
@@ -2099,9 +2268,17 @@ function EditResults() {
               origContacts: String(r.contacts ?? ""),
               origLapsLed: String(r.lapsLed ?? ""),
             };
-          })
-        );
+          });
+        setRows(rowsNow);
         setPrefilled(filledIn);
+        // The baseline is what is STORED: a penalty the editor typed in from
+        // the stewards' decisions is not saved yet, and saying so is the point.
+        setBaseline({
+          results: resultsSnap(rowsNow.map((r) => ({ ...r, penaltySeconds: r.origPenalty }))),
+          details: detailsSnap(metaNow),
+          dotd: dotdSnap(dotdNow, dotdByNow),
+          honours: honoursSnap(honoursNow),
+        });
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -2363,6 +2540,8 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    // What is being sent, as the baseline it becomes once it is stored.
+    const sentSnap = resultsSnap(rows.map((r) => ({ ...r, isNew: false })));
     try {
       const saved = await api.editResults(raceId, toResults(rows), pendingSprint ? { session: "SPRINT" } : {});
       if (pendingSprint && saved?.raceId) {
@@ -2391,6 +2570,7 @@ function EditResults() {
           origLapsLed: String(r.lapsLed).trim(),
         }))
       );
+      setBaseline((b) => ({ ...b, results: sentSnap }));
       // The seconds are in the classification now, so the reports that decided
       // them can stop asking for them. AFTER the save and never before: what is
       // stored on a report has to follow what is stored on the race, or a save
@@ -2412,6 +2592,7 @@ function EditResults() {
         if (res?.perDriver) setPenalties((p) => ({ ...(p || {}), perDriver: res.perDriver }));
       }
       setPrefilled([]);
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setMsg(
         settle.length
           ? `Results saved and standings recalculated. ${settle.length} decided penalt${settle.length === 1 ? "y is" : "ies are"} now marked as entered.`
@@ -2432,6 +2613,7 @@ function EditResults() {
     try {
       const customPoints = parsePointsInput(meta.pointsTable);
       if (!customPoints.ok) throw new Error(customPoints.error);
+      const sentMeta = detailsSnap(meta);
       await api.updateEvent(raceId, {
         track: meta.track,
         date: fromLocalInput(meta.date),
@@ -2446,47 +2628,12 @@ function EditResults() {
         info: meta.info || null,
       });
       setMsg("Race details saved.");
+      setBaseline((b) => ({ ...b, details: sentMeta }));
       reloadRaces(); // the round selector shows the new name
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
-    }
-  }
-
-  // How the picker and the delete dialogs name a row. A sprint row is named
-  // for the round it scores under; the event of a sprint weekend says
-  // "feature" so the two halves read apart.
-  function raceLabel(race) {
-    if (!race) return "this race";
-    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
-    const what = race.sprintOf
-      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
-      : kind === "TRAINING" ? "Training"
-      : kind === "SPECIAL" ? "Event"
-      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
-      : `Round ${race.number}`;
-    return `${what} · ${race.track}`;
-  }
-
-  // The picker, in calendar order: each round, then the sprint hanging off it
-  // — the stored one, or the entry that creates it on first save.
-  const pickerEntries = [];
-  {
-    const all = races || [];
-    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
-    for (const r of all) {
-      if (r.sprintOf) continue;
-      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-      // Championship rounds always; trainings/events join once they have
-      // stored results (that's what there is to edit or delete).
-      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
-      pickerEntries.push({ value: r.id, label: raceLabel(r) });
-      const child = childOf.get(r.id);
-      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
-      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
-        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
     }
   }
 
@@ -2509,6 +2656,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.clearRaceResults(raceId);
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setPick("");
       setRows([]);
       setMsg(`Results of ${label} deleted. The race is back on the calendar as upcoming.`);
@@ -2539,6 +2687,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.deleteEvent(raceId, { force: true });
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setPick("");
       setRows([]);
       setMsg(`${label} deleted. Standings updated.`);
@@ -2567,6 +2716,7 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    const sentHonours = honoursSnap(honours);
     try {
       // With a qualifying session on file the pole is the session's and is
       // not sent at all: the server leaves the grid alone for a body without
@@ -2579,6 +2729,7 @@ function EditResults() {
         fastestLapMs: honours.fl ? flMs : null,
       });
       setMsg("Race honours saved.");
+      setBaseline((b) => ({ ...b, honours: sentHonours }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -2591,9 +2742,11 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    const sentDotd = dotdSnap(dotd, dotdBy);
     try {
       await api.setDriverOfTheDay(raceId, dotd || null, dotd ? dotdBy.trim() || null : null);
       setMsg(dotd ? "Driver of the Day saved." : "Driver of the Day cleared.");
+      setBaseline((b) => ({ ...b, dotd: sentDotd }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -2601,11 +2754,32 @@ function EditResults() {
     }
   }
 
+  // Which parts hold edits that are not stored. Nothing counts while a round
+  // is still loading: the table is being filled, not edited.
+  const unsaved = loadingRace
+    ? []
+    : [
+        resultsSnap(rows) !== baseline.results && "results",
+        detailsSnap(meta) !== baseline.details && "race details",
+        dotdSnap(dotd, dotdBy) !== baseline.dotd && "Driver of the Day",
+        honoursSnap(honours) !== baseline.honours && "honours",
+      ].filter(Boolean);
+  useUnsavedGuard(unsaved.length > 0, `Edit Results (${unsaved.join(", ")})`);
+  const resultsDirty = unsaved.includes("results");
+
+  // Another round in the picker replaces everything on screen, so it asks
+  // first like leaving the tab does.
+  async function changeRound(value) {
+    if (value === pick) return;
+    if (!(await confirmLeave(ask))) return;
+    pickRound(value, value ? sharedIdOf(value) : "");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-medium" htmlFor="admin-edit-race">Race</label>
-        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => setPick(e.target.value)}>
+        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => changeRound(e.target.value)}>
           <option value="">Select a round…</option>
           {pickerEntries.map((e) => (
             <option key={e.value} value={e.value}>
@@ -3015,12 +3189,42 @@ function EditResults() {
 
           <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
 
-          {/* Locked while the picked round is still loading: the table is empty
+          {/* The save, pinned to the bottom of the screen for as long as the
+              editor is. The table and the preview under it run to several
+              screens on a full grid, and the button used to sit at the very
+              end of them while its answer ("saved", or why not) appeared at
+              the very top: a save meant scrolling down to press it and back up
+              to find out whether it had worked. The answer is repeated here,
+              next to the button, and the notices up top stay for whoever is
+              up there.
+              Locked while the picked round is still loading: the table is empty
               or half-swapped at that moment, and saving it would write that
               state onto the race. */}
-          <button className="btn-primary" onClick={save} disabled={busy || loadingRace}>
-            {busy ? "Saving…" : loadingRace ? "Loading round…" : "Save results"}
-          </button>
+          <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card p-3 shadow-lg sm:p-4">
+            <button className="btn-primary" onClick={save} disabled={busy || loadingRace}>
+              {busy ? "Saving…" : loadingRace ? "Loading round…" : "Save results"}
+            </button>
+            <div className="min-w-0 flex-1 text-sm" aria-live="polite">
+              {error ? (
+                <span className="line-clamp-2 font-medium text-bad">{error}</span>
+              ) : unsaved.length ? (
+                <span className="line-clamp-2">
+                  <UnsavedHint dirty />
+                  <span className="ml-2 text-xs text-light">
+                    {resultsDirty
+                      ? unsaved.length > 1
+                        ? `Results, plus ${unsaved.filter((u) => u !== "results").join(", ")} (saved with their own buttons above).`
+                        : "Nothing is stored until you save."
+                      : `${unsaved.join(", ")}: saved with their own buttons above.`}
+                  </span>
+                </span>
+              ) : msg ? (
+                <span className="line-clamp-2 font-medium text-ok">{msg}</span>
+              ) : (
+                <span className="text-xs text-light">No unsaved changes.</span>
+              )}
+            </div>
+          </div>
         </>
       )}
 
@@ -4199,6 +4403,162 @@ function RaceHero({ race, onSaved, onError, onChanged }) {
   );
 }
 
+// --- ADD SEVERAL ROUNDS ------------------------------------------------------
+// A season's calendar in one go: N championship rounds a week apart, numbered
+// on from the first, tracks optional (utils/roundBatch.js works out the plan).
+// Created one after another through the same route as the single form, and a
+// round that fails (its number is taken, say) is reported on its own line
+// without stopping the ones after it.
+function AddSeveralRounds({ races, seasonId, onCreated }) {
+  const [count, setCount] = useState("4");
+  const [first, setFirst] = useState(""); // datetime-local value
+  const [firstNumber, setFirstNumber] = useState(""); // "" = the next free one
+  const [tracks, setTracks] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [outcome, setOutcome] = useState(null); // [{ number, track, ok, error }]
+
+  const nextFree = nextFreeRoundNumber(races);
+  const startNumber = firstNumber === "" ? nextFree : Number(firstNumber);
+  const plan = planRounds({ count, firstDate: first ? new Date(first) : null, firstNumber: startNumber, tracks });
+  const trackNames = knownTrackNames(races, Object.keys(CIRCUITS));
+
+  const setTrack = (i, value) =>
+    setTracks((t) => {
+      const next = [...t];
+      next[i] = value;
+      return next;
+    });
+  // A list pasted into one field (a calendar copied out of Discord) fills the
+  // fields below it, one line each, instead of landing as one long name.
+  function pasteTracks(i, e) {
+    const lines = e.clipboardData.getData("text").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) return;
+    e.preventDefault();
+    setTracks((t) => {
+      const next = [...t];
+      lines.forEach((l, k) => {
+        next[i + k] = l;
+      });
+      return next;
+    });
+    if (i + lines.length > Number(count || 0)) setCount(String(Math.min(BATCH_MAX, i + lines.length)));
+  }
+
+  async function createAll(e) {
+    e.preventDefault();
+    const bad = planProblem({ count, firstNumber: startNumber });
+    setProblem(bad);
+    if (bad) return;
+    setBusy(true);
+    setOutcome([]);
+    const done = [];
+    for (const r of plan) {
+      try {
+        await api.createEvent({
+          number: r.number,
+          track: r.track,
+          date: r.date,
+          type: "CHAMPIONSHIP",
+          seasonId,
+          raceFormat: "SINGLE",
+        });
+        done.push({ ...r, ok: true });
+      } catch (err) {
+        done.push({ ...r, ok: false, error: err.message });
+      }
+      setOutcome([...done]);
+    }
+    setBusy(false);
+    if (done.every((r) => r.ok)) {
+      setTracks([]);
+      setFirstNumber("");
+      setFirst("");
+    }
+    onCreated();
+  }
+
+  const failed = outcome?.filter((r) => !r.ok) || [];
+  return (
+    <form onSubmit={createAll} className="card space-y-3 p-5">
+      <CardHead eyebrow="Schedule" title="Add several rounds" />
+      <p className="text-sm text-light">
+        Championship rounds a week apart, from the first date on. Leave a track empty and the round is created as
+        “{TRACK_TBA}”, to rename in its editor once it is known.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`Rounds (1–${BATCH_MAX})`} tone="plain">
+          <input aria-label="How many rounds" className="input" type="number" min="1" max={BATCH_MAX} value={count}
+            onChange={(e) => setCount(e.target.value)} />
+        </Field>
+        <Field label="First round #" tone="plain">
+          <input aria-label="First round number" className="input" type="number" min="1" placeholder={String(nextFree)}
+            value={firstNumber} onChange={(e) => setFirstNumber(e.target.value)} />
+        </Field>
+        <Field className="col-span-2" label="First date & time" tone="plain">
+          <input aria-label="First date & time" className="input" type="datetime-local" value={first}
+            onChange={(e) => setFirst(e.target.value)} />
+        </Field>
+      </div>
+      <p className="text-xs text-light">
+        Repeats every {REPEAT_DAYS} days at the same time.{!first && " Without a first date the rounds are created undated."}
+      </p>
+
+      {plan.length > 0 && (
+        <div>
+          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+            What will be created
+          </div>
+          <datalist id="batch-round-tracks">
+            {trackNames.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+          <ol className="divide-y divide-border rounded-lg border border-border">
+            {plan.map((r, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-sm">
+                <span className="w-10 shrink-0 font-mono text-xs font-bold tabular-nums text-dark">R{r.number ?? "?"}</span>
+                <span className="flex-1 sm:w-44 sm:flex-none text-xs text-light">
+                  {r.date ? `${fmtRaceDate(r.date)} · ${fmtRaceTime(r.date)}` : "No date"}
+                </span>
+                <input
+                  aria-label={`Track of round ${r.number ?? i + 1}`}
+                  className="input w-full min-w-0 py-1 text-sm sm:w-auto sm:flex-1"
+                  list="batch-round-tracks"
+                  placeholder={TRACK_TBA}
+                  value={tracks[i] || ""}
+                  onChange={(e) => setTrack(i, e.target.value)}
+                  onPaste={(e) => pasteTracks(i, e)}
+                />
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {problem && <Notice kind="error">{problem}</Notice>}
+      {outcome && outcome.length > 0 && (
+        <div className="space-y-1">
+          {outcome.map((r) => (
+            <p key={`${r.number}-${r.date}`} className={`text-xs ${r.ok ? "text-ok" : "font-semibold text-bad"}`}>
+              R{r.number} · {r.track}: {r.ok ? "created" : r.error}
+            </p>
+          ))}
+          {!busy && failed.length > 0 && (
+            <p className="text-xs text-light">
+              {outcome.length - failed.length} of {outcome.length} created. The others were left out; fix their
+              numbers and add them again.
+            </p>
+          )}
+        </div>
+      )}
+      <button className="btn-primary w-full" disabled={busy || plan.length === 0}>
+        {busy ? `Creating ${Math.min(plan.length, (outcome?.length || 0) + 1)} of ${plan.length}…` : `Create ${plan.length} round${plan.length === 1 ? "" : "s"}`}
+      </button>
+    </form>
+  );
+}
+
 // --- DISCORD & EVENTS ------------------------------------------------------
 function DiscordEvents({ onJump }) {
   const ask = useAsk();
@@ -4250,6 +4610,27 @@ function DiscordEvents({ onJump }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // The calendar in date order, which is how a season is read: the special
+  // events used to sit on top of round 1 because they have no number, and a
+  // round moved to another week stayed where its number put it. Undated
+  // entries go last, in round order.
+  const calendar = [...(races || [])].sort((a, b) => {
+    const ta = a.date ? Date.parse(a.date) : NaN;
+    const tb = b.date ? Date.parse(b.date) : NaN;
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    if (Number.isFinite(ta) !== Number.isFinite(tb)) return Number.isFinite(ta) ? -1 : 1;
+    return (a.number ?? 999) - (b.number ?? 999);
+  });
+  // Posting needs the events webhook; without it the button would only answer
+  // with an error, so it says why up front instead.
+  const canPost = !!hook?.configured;
+  // Anything that changes the calendar can settle (or create) a To do line:
+  // a round moved to next week is no longer overdue.
+  const calendarChanged = () => {
+    reloadRaces();
+    window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
+  };
+
   async function deleteRace(id) {
     if (
       !(await ask({
@@ -4261,7 +4642,7 @@ function DiscordEvents({ onJump }) {
     )
       return;
     setBusy(true); setError(null); setMsg(null);
-    try { await api.deleteEvent(id); setMsg("Race deleted."); reloadRaces(); }
+    try { await api.deleteEvent(id); setMsg("Race deleted."); calendarChanged(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4307,7 +4688,7 @@ function DiscordEvents({ onJump }) {
       });
       setMsg("Race saved. An already-announced Discord post updates itself.");
       setEditingId(null);
-      reloadRaces();
+      calendarChanged();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4316,6 +4697,7 @@ function DiscordEvents({ onJump }) {
     try {
       await api.announceEvent(id);
       setMsg("Event posted/updated in Discord.");
+      reloadRaces(); // the "Announced" mark
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4339,6 +4721,9 @@ function DiscordEvents({ onJump }) {
     <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Create event + announce */}
       <div className="contents">
+        {/* The two ways to add to the calendar share the left column, so the
+            second does not start below the (long) calendar on the right. */}
+        <div className="space-y-6">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
           <Field label="Type" tone="plain">
@@ -4400,6 +4785,9 @@ function DiscordEvents({ onJump }) {
           <button className="btn-primary w-full" disabled={busy}>Create</button>
         </form>
 
+        <AddSeveralRounds races={races} seasonId={current?.id} onCreated={calendarChanged} />
+        </div>
+
         <div className="card p-5">
           <CardHead eyebrow="Schedule" title="Season races" />
           <p className="mb-2 text-sm text-light">
@@ -4407,26 +4795,44 @@ function DiscordEvents({ onJump }) {
             here, before and after a round ran. Saving updates an announced Discord post automatically.
           </p>
           <ul className="divide-y divide-border">
-            {(races || []).map((r) => (
+            {calendar.map((r) => (
               <li key={r.id} className="py-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate font-semibold text-dark">
-                    {r.type === "TRAINING" ? "Training" : r.type === "SPECIAL" || r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
-                    {r.isCompleted && (
-                      <span className="pill ml-2 bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
-                    )}
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <span className="min-w-[12rem] flex-1">
+                    <span className="block truncate font-semibold text-dark">
+                      {r.type === "TRAINING" ? "Training" : r.type === "SPECIAL" || r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
+                    </span>
+                    {/* When, and whether the RSVP post is up: the two things a
+                        race week is checked for. Specials are never posted, so
+                        they carry no mark either way. */}
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-light">
+                      <span>{r.date ? `${fmtRaceDate(r.date)} · ${fmtRaceTime(r.date)}` : "No date yet"}</span>
+                      {r.isCompleted ? (
+                        <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
+                      ) : r.type !== "SPECIAL" && r.announced ? (
+                        <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-ok">Announced</span>
+                      ) : r.type !== "SPECIAL" ? (
+                        <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-warn">Not announced yet</span>
+                      ) : null}
+                    </span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
+                  <span className="ml-auto flex shrink-0 items-center gap-3">
                     <button className="transition text-xs font-semibold text-link hover:underline"
                       disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
                       {editingId === r.id ? "Close" : "Edit"}
                     </button>
-                    {/* Rounds AND training sessions get the RSVP post; specials stay site-only. */}
+                    {/* Rounds AND training sessions get the RSVP post; specials stay site-only.
+                        The title sits on a wrapper too: a disabled button shows
+                        no tooltip of its own in most browsers. */}
                     {r.type !== "SPECIAL" && !r.isCompleted && (
-                      <button className="transition text-xs font-semibold text-link hover:underline"
-                        disabled={busy} onClick={() => announce(r.id)}>
-                        Post to Discord
-                      </button>
+                      <span title={canPost ? undefined : "Discord announcements are not connected. Connect the events webhook in System → Discord first."}>
+                        <button className="transition text-xs font-semibold text-link hover:underline disabled:cursor-not-allowed disabled:text-faint disabled:no-underline"
+                          disabled={busy || !canPost}
+                          title={canPost ? (r.announced ? "Posts the round again, or updates the post that is up" : "Posts the RSVP message to the events channel") : "Discord announcements are not connected"}
+                          onClick={() => announce(r.id)}>
+                          Post to Discord
+                        </button>
+                      </span>
                     )}
                     {r.resultCount === 0 && (
                       <button className="transition text-xs font-semibold text-rose-500 hover:underline"

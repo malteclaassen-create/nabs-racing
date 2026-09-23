@@ -5,6 +5,8 @@ import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { fmtStamp } from "../utils/format.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { latestPastRace } from "../utils/sharedRound.js";
 
 // The race recap's switch, and a way to look at it before anybody else does.
 //
@@ -51,13 +53,17 @@ export default function AdminRaceRecap() {
   const [done, setDone] = useState(null);
 
   // The preview: a finished round, and whose seat to tell it from.
-  const [raceId, setRaceId] = useState("");
-  const [driverId, setDriverId] = useState("");
-  const [drivers, setDrivers] = useState([]);
-
   const rounds = [...(races || [])]
     .filter((r) => r.isCompleted && r.number != null)
     .sort((a, b) => (b.number ?? 0) - (a.number ?? 0));
+  // Opens on the round the other race-weekend tabs were last on, or else the
+  // latest one that has been run (hooks/useSharedRound.js).
+  const [raceId, setRaceId] = useSharedRound(
+    races ? rounds.map((r) => r.id) : null,
+    latestPastRace(rounds, { completedOnly: true })?.id
+  );
+  const [driverId, setDriverId] = useState("");
+  const [drivers, setDrivers] = useState([]);
 
   useEffect(() => {
     setDrivers([]);

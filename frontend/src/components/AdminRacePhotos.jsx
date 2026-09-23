@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { latestPastRace } from "../utils/sharedRound.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
 import { shrinkImage, shrinkImages, REENCODE_OVER_BYTES } from "../utils/imageResize.js";
 import { fmtStamp } from "../utils/format.js";
@@ -44,7 +46,12 @@ function fmtSize(bytes) {
 
 export default function AdminRacePhotos() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
-  const [raceId, setRaceId] = useState("");
+  // Opens on the round the other race-weekend tabs were last on, or else the
+  // latest one that has been run (hooks/useSharedRound.js).
+  const [raceId, setRaceId] = useSharedRound(
+    races ? races.map((r) => r.id) : null,
+    latestPastRace(races, { completedOnly: true })?.id
+  );
   // The gallery as it will be saved: order, captions, and which rows survive.
   const [photos, setPhotos] = useState([]);
   const [loaded, setLoaded] = useState(null); // what the server last told us

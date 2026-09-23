@@ -35,6 +35,7 @@ import { readTelemetryActivity } from "../lib/telemetryIngestLog.js";
 import { telemetryScript } from "../lib/telemetryScript.js";
 import { readIngestConfig, setIngestPaused, ensureIngestKey } from "../lib/telemetryKeys.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
+import { overdueRounds } from "../lib/overdueRounds.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
@@ -3691,7 +3692,7 @@ async function adminSeriesScope(seriesSlug) {
   return { series, seasonIds, raceIds: new Set(races.map((r) => r.id)) };
 }
 
-// GET /api/admin/todo -> { resets, requests, givenBack }
+// GET /api/admin/todo -> { resets, requests, givenBack, overdue }
 // The To do card at the top of the admin area: the pieces of work that used to
 // arrive as bell notifications, listed where they are done and only for as
 // long as they are open. The counts beside them (bug reports, logins, seats)
@@ -3706,6 +3707,10 @@ async function adminSeriesScope(seriesSlug) {
 //             not been run. Nothing else in the database remembers that a seat
 //             was once filled, so these come from the admin rows written when
 //             it happened (lib/notifications.js, notifyAdminsSeatDropped).
+//   overdue   championship rounds of the ?series= series' ACTIVE season that
+//             were run more than twelve hours ago and still have no result
+//             (lib/overdueRounds.js). Only the series being edited: the import
+//             they point at works on that series' calendar.
 router.get("/todo", async (req, res, next) => {
   try {
     const series = await dbListSeries(prisma, { includePrivate: true }).catch(() => []);
@@ -3765,11 +3770,40 @@ router.get("/todo", async (req, res, next) => {
       return { offerId: id, title: r.title, body: r.body, link: r.link, at: r.createdAt };
     });
 
-    res.json({ resets, requests, givenBack });
+    // A failure here must not cost the admin the rest of the card.
+    const overdue = await overdueOfActiveSeason(req.query.series).catch(() => []);
+
+    res.json({ resets, requests, givenBack, overdue });
   } catch (e) {
     next(e);
   }
 });
+
+// The overdue rounds of a series' running season, for the To do card. The
+// season number and id ride along so the card can open the import on the right
+// season even while the admin is looking at an archive one.
+async function overdueOfActiveSeason(seriesSlug) {
+  const season = await resolveSeason(prisma, null, { includePrivate: true, series: seriesSlug || undefined });
+  if (!season?.isActive) return [];
+  const rows = await prisma.race.findMany({
+    where: { seasonId: season.id },
+    select: {
+      id: true,
+      number: true,
+      track: true,
+      date: true,
+      isCompleted: true,
+      isSpecialEvent: true,
+      _count: { select: { results: true } },
+    },
+  });
+  const ids = rows.map((r) => r.id);
+  const [typeOf, parentOf] = await Promise.all([readRaceTypes(prisma, ids), readParentIds(prisma, ids)]);
+  return overdueRounds(
+    rows.map((r) => ({ ...r, resultCount: r._count.results })),
+    { typeOf, sprintChildIds: new Set(parentOf.keys()) }
+  ).map((r) => ({ ...r, seasonId: season.id, seasonNumber: season.number }));
+}
 
 // GET /api/admin/attention -> { feedback, members, market, resets, reports, total }
 // Everything waiting on an admin, as numbers and their sum.

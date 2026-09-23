@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { latestPastRace } from "../utils/sharedRound.js";
 import { ErrorBox, Notice, CardHead, EmptyState } from "./ui.jsx";
 import VideoEmbed from "./VideoEmbed.jsx";
 import { youtubeId } from "../utils/videoLinks.js";
@@ -17,7 +19,12 @@ const fmtDate = (d) => (d ? fmtStamp(d) : "");
 
 export default function AdminRaceHighlights() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
-  const [raceId, setRaceId] = useState("");
+  // Opens on the round the other race-weekend tabs were last on, or else the
+  // latest one that has been run (hooks/useSharedRound.js).
+  const [raceId, setRaceId] = useSharedRound(
+    races ? races.map((r) => r.id) : null,
+    latestPastRace(races, { completedOnly: true })?.id
+  );
   const [url, setUrl] = useState("");
   const [saved, setSaved] = useState(""); // what the server last confirmed
   const [busy, setBusy] = useState(false);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
@@ -9,6 +9,8 @@ import AdminStandingsGraphic from "./AdminStandingsGraphic.jsx";
 import AdminDiscordPost from "./AdminDiscordPost.jsx";
 import AdminRaceRecap from "./AdminRaceRecap.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { latestPastRace } from "../utils/sharedRound.js";
 
 // ---------------------------------------------------------------------------
 // Admin → Content: everything a finished round gets published AS.
@@ -37,7 +39,6 @@ const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
 export default function AdminContent({ jumpView = null, jumpKey = null }) {
   const { data: races, error, reload } = useApi(useCallback(() => api.races(), []));
-  const [raceId, setRaceId] = useState("");
   const [view, setView] = useJumpView(jumpView, jumpKey, "graphic");
   // Bumped whenever the poster's ingredients change on the Graphic side (a car
   // uploaded, a flag filled in). The message half draws its own copy of the
@@ -65,9 +66,14 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
     return r.number != null ? `R${r.number}` : "Session";
   };
 
-  useEffect(() => {
-    if (!raceId && finished.length) setRaceId(finished[0].id);
-  }, [finished, raceId]);
+  // Opens on the round the other race-weekend tabs were last on, or else the
+  // latest one that has been run (hooks/useSharedRound.js).
+  const [raceId, setRaceId] = useSharedRound(
+    races ? finished.map((r) => r.id) : null,
+    // (A season whose rounds carry no dates, like the old archive ones, gets
+    // the first round of the list, as before.)
+    latestPastRace(finished, { completedOnly: true })?.id || finished[0]?.id
+  );
 
   const selectedRace = useMemo(() => finished.find((r) => r.id === raceId) || null, [finished, raceId]);
 

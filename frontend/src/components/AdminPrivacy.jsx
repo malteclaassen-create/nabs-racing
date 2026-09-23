@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Field, Notice } from "./ui.jsx";
+import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
 // The four fields on the public /privacy page that are a league decision, not a
 // description of the software: who is responsible, how to reach them, and what
@@ -27,19 +28,32 @@ export default function AdminPrivacy() {
   const [app, setApp] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Both halves as they were loaded or last stored, to tell an edit from what
+  // the page already shows (see utils/unsavedGuard.js).
+  const [saved, setSaved] = useState({ form: null, app: null });
 
   useEffect(() => {
-    if (!loading && !error && !form) setForm({ ...EMPTY, ...(data || {}) });
+    if (!loading && !error && !form) {
+      const f = { ...EMPTY, ...(data || {}) };
+      setForm(f);
+      setSaved((s) => ({ ...s, form: f }));
+    }
   }, [loading, error, data, form]);
 
   useEffect(() => {
     if (!android.loading && !android.error && !app) {
-      setApp({
+      const a = {
         packageName: android.data?.packageName || "",
         fingerprints: (android.data?.fingerprints || []).join("\n"),
-      });
+      };
+      setApp(a);
+      setSaved((s) => ({ ...s, app: a }));
     }
   }, [android.loading, android.error, android.data, app]);
+  const dirty =
+    (!!form && !!saved.form && JSON.stringify(form) !== JSON.stringify(saved.form)) ||
+    (!!app && !!saved.app && JSON.stringify(app) !== JSON.stringify(saved.app));
+  useUnsavedGuard(dirty, "Privacy & app");
 
   if (error) return <ErrorBox message={error} />;
   if (loading || !form || !app) return <p className="text-sm text-light">Loading…</p>;
@@ -56,12 +70,17 @@ export default function AdminPrivacy() {
   async function save() {
     setBusy(true);
     setMsg(null);
+    const sentForm = form;
+    const sentApp = app;
     try {
-      await api.savePrivacyInfo(form);
+      await api.savePrivacyInfo(sentForm);
+      // Stored even if the app half is rejected below.
+      setSaved((s) => ({ ...s, form: sentForm }));
       await api.saveAndroidApp({
-        packageName: app.packageName,
-        fingerprints: app.fingerprints,
+        packageName: sentApp.packageName,
+        fingerprints: sentApp.fingerprints,
       });
+      setSaved((s) => ({ ...s, app: sentApp }));
       android.reload?.();
       setMsg({ ok: true, text: "Saved. The privacy page shows it right away." });
     } catch (e) {
@@ -209,6 +228,7 @@ export default function AdminPrivacy() {
         >
           {busy ? "Saving…" : "Save"}
         </button>
+        <UnsavedHint dirty={dirty} />
         {msg && <Notice kind={msg.ok ? "success" : "error"}>{msg.text}</Notice>}
       </div>
     </div>

@@ -1220,7 +1220,9 @@ export const api = {
   adminAttention: () => request(`/admin/attention${seriesQ()}`, { auth: true }),
   // The To do card's detail: every series' waiting server resets, who asked
   // to race, seats given back (routes/admin.js GET /todo).
-  adminTodo: () => request("/admin/todo", { auth: true }),
+  // The series rides along for the overdue rounds, which belong to the running
+  // season of the series being edited.
+  adminTodo: () => request(`/admin/todo${seriesQ()}`, { auth: true }),
   // Just "is a seat free and have I already asked for it" — the market list
   // itself is far too big to pull for a dot in the nav bar.
   marketAlert: () => request(`/market/alert${seriesQ()}`, { userAuth: true }),
