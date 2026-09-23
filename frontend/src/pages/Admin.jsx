@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Armchair, Bug, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
+import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -15,6 +15,7 @@ import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
 import { useSharedRound } from "../hooks/useSharedRound.js";
 import { confirmLeave } from "../utils/unsavedGuard.js";
 import { latestPastRace, rememberRound } from "../utils/sharedRound.js";
+import { fmtDateShort } from "../utils/format.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { BATCH_MAX, REPEAT_DAYS, TRACK_TBA, knownTrackNames, nextFreeRoundNumber, planProblem, planRounds } from "../utils/roundBatch.js";
 import { CIRCUITS } from "../data/circuits.js";
@@ -369,6 +370,25 @@ export default function Admin() {
       openTab(t);
     }
   }
+  // Open a race-weekend tab ON a round: the To do card's "Import" on a round
+  // that has no result. The round goes into the memory the round pickers share
+  // (utils/sharedRound.js), so the tab opens on it, and the panel is remounted
+  // even when it is the one already open, because a picker only reads that
+  // memory when it mounts. A round of another season switches the season
+  // first, which remounts the whole page anyway.
+  const [panelKey, setPanelKey] = useState(0);
+  function openRound(t, { raceId, seasonId, seasonNumber }) {
+    leaveThen(() => {
+      rememberRound(seasonId, raceId);
+      if (seasonNumber != null && seasonNumber !== season) {
+        sessionStorage.setItem("nabs_admin_tab", t);
+        setSeason(seasonNumber);
+        return;
+      }
+      setTab(t);
+      setPanelKey((k) => k + 1);
+    });
+  }
   // Open a tab by any name it has had, optionally at one of its views.
   function openTab(id, view = null) {
     const r = resolveTab(id);
@@ -459,6 +479,8 @@ export default function Admin() {
 
       <TodoCard
         onPick={openTab}
+        onPickInSeason={gotoInSeason}
+        onOpenRound={openRound}
         onReset={(slug) => leaveThen(() => {
           // The question belongs to one series' board: point the admin area at
           // it, open the tab, and let the training card scroll itself into view
@@ -493,7 +515,7 @@ export default function Admin() {
         {/* Keyed on the tab: all 21 panels fade in on switch instead of snapping.
             One wrapper rather than 22 edits, and it means any tab added later is
             animated by default. */}
-        <div key={tab} className="content-in min-h-[70vh] min-w-0">
+        <div key={`${tab}:${panelKey}`} className="content-in min-h-[70vh] min-w-0">
           <Suspense fallback={<TabSkeleton />}>
           {tab === "seasons" && (
             <Seasons
@@ -507,7 +529,8 @@ export default function Admin() {
             />
           )}
           {tab === "teams" && <Teams />}
-          {tab === "import" && <AdminImport />}
+          {/* A committed import can settle an overdue round on the To do card. */}
+          {tab === "import" && <AdminImport onCommitted={() => window.dispatchEvent(new Event(TODO_CHANGED_EVENT))} />}
           {tab === "edit" && <EditResults />}
           {tab === "content" && <AdminContent jumpView={viewFor("content")} jumpKey={jump?.n} />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
@@ -1264,7 +1287,8 @@ function ago(iso) {
   return `${Math.round(s / 86400)} d ago`;
 }
 
-function TodoRow({ icon: Icon, title, detail, action, onAction }) {
+// `more` is a second, quieter way to deal with the line ({ label, onAction }).
+function TodoRow({ icon: Icon, title, detail, action, onAction, more }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium" aria-hidden="true"><Icon className="h-4 w-4" /></span>
@@ -1272,12 +1296,15 @@ function TodoRow({ icon: Icon, title, detail, action, onAction }) {
         <p className="text-sm font-semibold text-dark">{title}</p>
         {detail && <p className="mt-0.5 text-xs text-light">{detail}</p>}
       </div>
-      <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={onAction}>{action}</button>
+      <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
+        {more && <button type="button" className="px-2 py-1 text-xs font-semibold text-link hover:underline" onClick={more.onAction}>{more.label}</button>}
+        <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={onAction}>{action}</button>
+      </div>
     </li>
   );
 }
 
-function TodoCard({ onPick, onReset }) {
+function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
   const { parts } = useAdminAttention();
   const navigate = useNavigate();
   const todo = useApi(useCallback(() => api.adminTodo(), []));
@@ -1289,12 +1316,26 @@ function TodoCard({ onPick, onReset }) {
   const resets = todo.data?.resets || [];
   const requests = todo.data?.requests || [];
   const givenBack = todo.data?.givenBack || [];
+  const overdue = todo.data?.overdue || [];
   const count = (key) => parts.find((p) => p.key === key)?.n || 0;
   // Logins without a driver, less the ones already listed by name for having
   // asked to race: the same person should not be two lines.
   const quietLogins = Math.max(0, count("members") - requests.length);
 
   const rows = [];
+  // A round that was run and has no result: first, since until it is in the
+  // standings, the race recap and every poster of the week are waiting on it.
+  // Either it gets imported, or it did not happen that night and is moved.
+  for (const o of overdue) {
+    const when = fmtDateShort(o.date);
+    rows.push(
+      <TodoRow key={`overdue-${o.raceId}`} icon={CalendarClock} action="Import"
+        title={`${o.number != null ? `R${o.number}` : "Round"} ${o.track}${when ? ` · ${when}` : ""} has no result`}
+        detail="Its date is more than 12 hours past. Import the result, or move the round if it was not run that night."
+        onAction={() => onOpenRound("import", o)}
+        more={{ label: "Reschedule", onAction: () => onPickInSeason("discord", o.seasonNumber) }} />
+    );
+  }
   for (const r of resets) {
     const where = r.layout ? `${r.track} · ${r.layout}` : r.track || "the track";
     const why = r.raceNight ? "the server moved on to race night" : r.trackChanged ? "the server came back on a new track version" : "the server was reset";
@@ -2551,6 +2592,7 @@ function EditResults() {
         if (res?.perDriver) setPenalties((p) => ({ ...(p || {}), perDriver: res.perDriver }));
       }
       setPrefilled([]);
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setMsg(
         settle.length
           ? `Results saved and standings recalculated. ${settle.length} decided penalt${settle.length === 1 ? "y is" : "ies are"} now marked as entered.`
@@ -2614,6 +2656,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.clearRaceResults(raceId);
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setPick("");
       setRows([]);
       setMsg(`Results of ${label} deleted. The race is back on the calendar as upcoming.`);
@@ -2644,6 +2687,7 @@ function EditResults() {
     setMsg(null);
     try {
       await api.deleteEvent(raceId, { force: true });
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       setPick("");
       setRows([]);
       setMsg(`${label} deleted. Standings updated.`);
