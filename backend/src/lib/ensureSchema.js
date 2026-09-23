@@ -531,6 +531,18 @@ export async function ensureAppSchema(prisma) {
   // differing by five, which is exactly what the editor still has to add.
   await addColumn(prisma, "Report", "appliedSeconds", "INTEGER");
   await addColumn(prisma, "Report", "appliedAt", "DATETIME");
+  // What KIND of penalty a decision was, and the licence points it carried.
+  // Seconds were the only outcome the desk could record, so a warning, a grid
+  // drop for the next round or a disqualification lived in the verdict's prose
+  // and nowhere a season total could be added up from. Only TIME ever reaches
+  // the results editor (lib/reports.js penaltyTarget); the others are recorded
+  // and shown and applied by hand. A NULL kind on a decided penalty is one from
+  // before this column, and every one of those was seconds, so it reads as TIME.
+  //
+  // The points add up per PERSON across one season (lib/reports.js
+  // licenceTable), which is what the "race ban due" flag is worked out from.
+  await addColumn(prisma, "Report", "penaltyKind", "TEXT");
+  await addColumn(prisma, "Report", "licencePoints", "INTEGER");
   // Reports already filed by the in-game app carry a line quoting the app's own
   // wall clock, which was appended unconditionally. It is the same moment as
   // the report's timestamp seen from another timezone (the relaying machine
