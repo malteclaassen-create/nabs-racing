@@ -2223,6 +2223,9 @@ body::before {
    and for reduced motion. */
 .fx-lite .stint-drawer { transition: none; }
 @media (prefers-reduced-motion: reduce) { .stint-drawer { transition: none; } }
+/* The folds on the profile's Track Strengths card: same drawer, same rules. */
+.fx-lite .ts-drawer { transition: none; }
+@media (prefers-reduced-motion: reduce) { .ts-drawer { transition: none; } }
 
 /* Phones and tablets: the two card effects the GPU cannot just move around.
    The 50px drop shadow is redrawn at the new scale on every pinch-zoom step,
