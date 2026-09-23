@@ -7,10 +7,8 @@ import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
 import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
-import AdminLicencePoints from "./AdminLicencePoints.jsx";
-import {
-  PENALTY_KINDS, MAX_LICENCE_POINTS, filterReports, penaltyLabel, pointsLabel, resultsGap,
-} from "./reportDesk.mjs";
+import AdminIncidentWatch from "./AdminIncidentWatch.jsx";
+import { PENALTY_KINDS, filterReports, penaltyLabel, resultsGap } from "./reportDesk.mjs";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -54,7 +52,6 @@ const draftOf = (rep) => ({
   status: rep.status,
   penaltyKind: rep.penaltyKind || "TIME",
   penaltySeconds: rep.penaltySeconds ?? "",
-  licencePoints: rep.licencePoints ?? "",
   verdict: rep.verdict || "",
 });
 
@@ -62,7 +59,6 @@ const draftDirty = (draft, rep) =>
   draft.status !== rep.status ||
   (draft.status === "PENALTY" && draft.penaltyKind !== (rep.penaltyKind || "TIME")) ||
   String(draft.penaltySeconds) !== String(rep.penaltySeconds ?? "") ||
-  String(draft.licencePoints) !== String(rep.licencePoints ?? "") ||
   draft.verdict !== (rep.verdict || "");
 
 // What the server is sent. The kind only means something on a penalty, and the
@@ -72,7 +68,6 @@ const decisionBody = (draft) => ({
   status: draft.status,
   penaltyKind: draft.status === "PENALTY" ? draft.penaltyKind : null,
   penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
-  licencePoints: draft.licencePoints === "" ? null : Number(draft.licencePoints),
   verdict: draft.verdict,
 });
 
@@ -90,7 +85,7 @@ function decisionNote(draft, who = "the drivers") {
 }
 
 // The controls of one decision, shared by the open report's box and every
-// linked driver's. Kind and points only appear on a penalty, and seconds only
+// linked driver's. The kind only appears on a penalty, and seconds only
 // on a time penalty, so the form never offers a number that would be thrown
 // away.
 function DecisionFields({ draft, setDraft, busy }) {
@@ -135,67 +130,36 @@ function DecisionFields({ draft, setDraft, busy }) {
           />
         </Field>
       )}
-      {penalty && (
-        <Field label="Licence points" tone="plain">
-          <input
-            type="number"
-            min="0"
-            max={MAX_LICENCE_POINTS}
-            step="1"
-            placeholder="0"
-            className="input w-24 py-1.5 text-sm"
-            value={draft.licencePoints}
-            disabled={busy}
-            onChange={(e) => setDraft({ ...draft, licencePoints: e.target.value })}
-          />
-        </Field>
-      )}
     </div>
   );
 }
 
 // The named driver's season so far, beside the report being decided: their
-// other reports, what was decided each time, and the licence points adding up
-// towards the ban threshold. A third incident is decided with the first two in
-// view, rather than from whatever the steward happens to remember.
+// other reports and what was decided each time. A third incident is decided
+// with the first two in view, rather than from whatever the steward happens to
+// remember.
 //
 // Every report about them is listed, decided or not, in the order the rounds
-// were raced. Only the ones that stand as penalties move the total; the rest
-// are dimmed. The one open now is marked, and any other opens on a tap.
+// were raced. The ones that do not stand as penalties are dimmed. The one open
+// now is marked, and any other opens on a tap.
 function DriverRecord({ record, races, onOpen }) {
   const raceById = new Map((races || []).map((r) => [r.id, r]));
   const others = record.entries.filter((e) => !e.current);
-  const pct = Math.min(100, (record.total / (record.threshold || 12)) * 100);
   return (
     <div className="rounded-lg border border-border p-4">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">
           Driver record · {record.name || "the driver named"}
         </div>
-        {record.seasonNumber != null && (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Season {record.seasonNumber}</span>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface2" aria-hidden="true">
-          <span
-            className={`block h-full rounded-full ${record.flagged ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-brand"}`}
-            style={{ width: `${pct}%` }}
-          />
-        </span>
-        <span className={`whitespace-nowrap font-mono text-sm font-bold ${record.flagged ? "text-bad" : "text-dark"}`}>
-          {record.total} / {record.threshold} pts
+        <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
+          {record.seasonNumber != null ? `Season ${record.seasonNumber} · ` : ""}
+          {record.penalties} {record.penalties === 1 ? "penalty" : "penalties"}
         </span>
       </div>
-      {record.flagged && (
-        <p className="mt-2 text-xs font-semibold text-bad">
-          At or over the threshold: a race ban is due.
-        </p>
-      )}
       {others.length === 0 ? (
-        <p className="mt-3 text-xs text-light">No other reports about them this season.</p>
+        <p className="text-xs text-light">No other reports about them this season.</p>
       ) : (
-        <ol className="mt-3 space-y-1.5">
+        <ol className="space-y-1.5">
           {record.entries.map((e) => {
             const race = raceById.get(e.raceId);
             const s = uiOf(e.status);
@@ -203,19 +167,13 @@ function DriverRecord({ record, races, onOpen }) {
             const body = (
               <>
                 {/* The round on a line of its own on a phone, so the pills
-                    and the running total share the next one instead of
-                    wrapping into a column of fragments. */}
+                    share the next one instead of wrapping into a column of
+                    fragments. */}
                 <span className="w-full shrink-0 truncate font-mono text-[11px] uppercase tracking-wider text-light sm:w-24">
                   {race ? raceLabel(race) : "Round"}
                 </span>
                 <span className={`pill ${s.cls}`}>{s.label}</span>
                 {label && <span className="pill bg-red-500/15 text-bad">{label}</span>}
-                {e.licencePoints > 0 && (
-                  <span className={`text-xs font-semibold ${e.counts ? "text-medium" : "text-faint line-through"}`}>
-                    +{e.licencePoints} pt{e.licencePoints === 1 ? "" : "s"}
-                  </span>
-                )}
-                <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-light">= {e.runningTotal}</span>
               </>
             );
             const cls = `flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-left ${
@@ -408,7 +366,7 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
   const [draft, setDraft] = useState(() => draftOf(linked));
   useEffect(() => {
     setDraft(draftOf(linked));
-  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.licencePoints, linked.verdict]);
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.verdict]);
   const dirty = draftDirty(draft, linked);
 
   return (
@@ -1015,9 +973,6 @@ function ContactSuggestions({ report }) {
                 {penaltyLabel(openReportRow) && (
                   <span className="pill bg-red-500/15 text-bad">{penaltyLabel(openReportRow)}</span>
                 )}
-                {openReportRow.status === "PENALTY" && openReportRow.licencePoints > 0 && (
-                  <span className="pill bg-surface2 text-medium">{pointsLabel(openReportRow.licencePoints)}</span>
-                )}
                 {/* Everything a steward needs to find the moment, in one chip
                     that copies the timeline figure. */}
                 <ReplayAnchor
@@ -1181,11 +1136,6 @@ function ContactSuggestions({ report }) {
                       </span>
                     )}
                     {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
-                    {r.status === "PENALTY" && r.licencePoints > 0 && (
-                      <span className="pill bg-surface2 text-medium" title={pointsLabel(r.licencePoints)}>
-                        {r.licencePoints} pt{r.licencePoints === 1 ? "" : "s"}
-                      </span>
-                    )}
                     {/* Decided and not in the classification yet — the one
                         thing on a decided report still waiting for somebody. */}
                     {resultsGap(r) && <span className="pill bg-amber-500/15 text-warn">{resultsGap(r)}</span>}
@@ -1234,7 +1184,7 @@ function ContactSuggestions({ report }) {
         </div>
       ))}
 
-      {data && <AdminLicencePoints />}
+      {data && <AdminIncidentWatch />}
 
       {/* Housekeeping. The dropdown says what it does, so nothing here says it
           again: WHY it exists (storage cost, and that the conversation always

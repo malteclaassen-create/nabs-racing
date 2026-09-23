@@ -31,12 +31,13 @@ test("seconds written and then taken back are still in the results until the edi
   assert.equal(resultsGap(rep({ status: "PENALTY", penaltyKind: "WARNING", appliedSeconds: 5 })), "+5s still in results");
 });
 
-test("a penalty reads as its kind, with its points", () => {
+test("a penalty reads as its kind", () => {
   assert.equal(penaltyLabel(rep({ status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5 })), "+5s");
   assert.equal(penaltyLabel(rep({ status: "PENALTY", penaltyKind: "GRID" })), "Grid drop");
   assert.equal(penaltyLabel(rep({ status: "NO_PENALTY", penaltySeconds: 5 })), null);
-  assert.equal(penaltySummary(rep({ status: "PENALTY", penaltySeconds: 5, licencePoints: 2 })), "5s, 2 licence points");
-  assert.equal(penaltySummary(rep({ status: "PENALTY", penaltyKind: "WARNING", licencePoints: 1 })), "warning, 1 licence point");
+  assert.equal(penaltySummary(rep({ status: "PENALTY", penaltySeconds: 5 })), "5s");
+  assert.equal(penaltySummary(rep({ status: "PENALTY", penaltyKind: "WARNING" })), "warning");
+  assert.equal(penaltySummary(rep({ status: "NO_PENALTY", penaltyKind: "WARNING" })), null);
   assert.equal(penaltySummary(rep({ status: "PENALTY", penaltyKind: "TIME" })), null);
 });
 

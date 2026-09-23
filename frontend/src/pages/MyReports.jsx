@@ -169,8 +169,8 @@ function Thread({ id, races, onBack, onChanged }) {
         </div>
         {/* The decision, read-only: the verdict in the stewards' words and,
             after it, what the penalty was — seconds, a warning, a grid drop or
-            a disqualification — with the licence points it carried. Only THIS
-            report's; a driver's season total is the stewards' to see. */}
+            a disqualification. Only THIS report's; a driver's season record is
+            the stewards' to see. */}
         {(r.verdict || penaltySummary(r)) && (
           <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
             <span className="font-semibold text-dark">The stewards: </span>

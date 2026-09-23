@@ -36,8 +36,7 @@ const {
   dbLinkedReports, dbEnsureIncidentGroup,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
-  dbGetReport, dbLicenceTable, dbDriverRecord, licenceTable, penaltyOutcome,
-  readLicenceThreshold, writeLicenceThreshold, DEFAULT_LICENCE_THRESHOLD,
+  dbGetReport, dbDriverRecord, penaltyOutcome,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -88,10 +87,8 @@ function makePrisma({ races = [], settings = {} } = {}) {
       } else if (sql.startsWith('DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"')) {
         rows.ReportViewer = rows.ReportViewer.filter((v) => !(v.reportId === a[0] && v.discordId === a[1]));
       } else if (sql.startsWith('UPDATE "Report" SET "status"')) {
-        const r = rows.Report.find((x) => x.id === a[6]);
-        Object.assign(r, {
-          status: a[0], verdict: a[1], penaltySeconds: a[2], penaltyKind: a[3], licencePoints: a[4], updatedAt: a[5],
-        });
+        const r = rows.Report.find((x) => x.id === a[5]);
+        Object.assign(r, { status: a[0], verdict: a[1], penaltySeconds: a[2], penaltyKind: a[3], updatedAt: a[4] });
       } else if (sql.startsWith('UPDATE "Report" SET "accusedDriverId"')) {
         const r = rows.Report.find((x) => x.id === a[3]);
         Object.assign(r, { accusedDriverId: a[0], accusedName: a[1], updatedAt: a[2] });
@@ -688,10 +685,10 @@ describe("the kind of a penalty", () => {
   it("puts TIME penalties into the editor's figures exactly as before, and nothing else", async () => {
     const p = makePrisma();
     const time = await dbCreateReport(p, inRound);
-    await dbDecideReport(p, time, { status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 2 });
+    await dbDecideReport(p, time, { status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5 });
     for (const kind of ["WARNING", "GRID", "DSQ"]) {
       const r = await dbCreateReport(p, inRound);
-      await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: kind, penaltySeconds: 30, licencePoints: 3 });
+      await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: kind, penaltySeconds: 30 });
     }
     const [g] = await dbPenaltiesForRace(p, "r1");
     expect(g.decided).toBe(5);
@@ -710,20 +707,25 @@ describe("the kind of a penalty", () => {
     expect(g.outstanding).toBe(-5);
   });
 
-  it("tells the drivers what kind it was and the points it carried", async () => {
+  it("tells the drivers what kind it was", async () => {
     expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5 })).toBe("Penalty: 5 seconds.");
-    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 2 })).toBe(
-      "Penalty: 5 seconds, 2 licence points."
-    );
-    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "DSQ", licencePoints: 1 })).toBe(
-      "Penalty: disqualification, 1 licence point."
-    );
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "DSQ" })).toBe("Penalty: disqualification.");
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "WARNING" })).toBe("Penalty: a warning.");
     expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME" })).toBe("A penalty was given.");
-    expect(penaltyOutcome({ status: "NO_PENALTY", licencePoints: 4 })).toBe("No penalty was given.");
+    expect(penaltyOutcome({ status: "NO_PENALTY" })).toBe("No penalty was given.");
+  });
+
+  it("no longer writes anything but the decision", async () => {
+    // The league dropped licence points; one sent by an old client is ignored.
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    const d = await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "WARNING", licencePoints: 3 });
+    expect(d.penaltyKind).toBe("WARNING");
+    expect("licencePoints" in d).toBe(false);
   });
 });
 
-describe("licence points", () => {
+describe("driver record", () => {
   const S7 = [
     { id: "r1", seasonId: "s7", number: 1, track: "Spa", date: "2026-03-01" },
     { id: "r2", seasonId: "s7", number: 2, track: "Monza", date: "2026-03-08" },
@@ -731,93 +733,46 @@ describe("licence points", () => {
   ];
   const S6 = [{ id: "old", seasonId: "s6", number: 9, track: "Suzuka", date: "2025-11-01" }];
 
-  async function penalise(p, raceId, driverId, points, extra = {}) {
+  async function penalise(p, raceId, driverId, extra = {}) {
     const r = await dbCreateReport(p, { ...base, raceId, accusedDriverId: driverId, accusedName: driverId });
-    return dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "WARNING", licencePoints: points, ...extra });
+    return dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "WARNING", ...extra });
   }
 
-  it("refuses points outside 0 to 12, and fractions", async () => {
-    const p = makePrisma();
-    const r = await dbCreateReport(p, base);
-    for (const bad of [-1, 13, 2.5, "lots"]) {
-      await expect(dbDecideReport(p, r, { status: "PENALTY", licencePoints: bad })).rejects.toThrow(/0 to 12/);
-    }
-    expect((await dbDecideReport(p, r, { status: "PENALTY", licencePoints: "12" })).licencePoints).toBe(12);
-    expect((await dbDecideReport(p, r, { status: "PENALTY", licencePoints: "" })).licencePoints).toBe(null);
-  });
-
-  it("adds up per PERSON within the season of the report's race", async () => {
+  it("gives the named driver's season per PERSON, in race order", async () => {
     // d2 and d2b are the same human on two rows of one season (a team change
-    // mid-season); d9 is somebody else. The S6 points belong to last season.
-    personLinks = [["steve", ["d2", "d2b"]]];
-    const p = makePrisma({ races: [...S7, ...S6] });
-    await penalise(p, "r1", "d2", 3);
-    await penalise(p, "r2", "d2b", 4);
-    await penalise(p, "r2", "d9", 2);
-    await penalise(p, "old", "d2", 10);
-    const { drivers, threshold } = await dbLicenceTable(p, "s7");
-    expect(threshold).toBe(DEFAULT_LICENCE_THRESHOLD);
-    expect(drivers.map((d) => [d.key, d.points, d.decisions])).toEqual([
-      ["steve", 7, 2],
-      ["d9", 2, 1],
-    ]);
-    expect((await dbLicenceTable(p, "s6")).drivers.map((d) => [d.key, d.points])).toEqual([["steve", 10]]);
-  });
-
-  it("only counts decisions that stand as penalties", async () => {
-    const p = makePrisma({ races: S7 });
-    await penalise(p, "r1", "d2", 5);
-    // Reversed afterwards: the points stay in the column and count for nothing.
-    const reversed = await penalise(p, "r2", "d2", 6);
-    await dbDecideReport(p, reversed, { status: "NO_PENALTY", licencePoints: 6 });
-    // Not decided yet at all.
-    await dbCreateReport(p, { ...base, raceId: "r3", accusedDriverId: "d2" });
-    const [row] = (await dbLicenceTable(p, "s7")).drivers;
-    expect(row.points).toBe(5);
-    expect(row.decisions).toBe(1);
-  });
-
-  it("flags a driver as due a ban on REACHING the threshold, and the threshold is a setting", async () => {
-    const p = makePrisma({ races: S7 });
-    await penalise(p, "r1", "d2", 6);
-    await penalise(p, "r2", "d2", 5);
-    await penalise(p, "r3", "d2", 1);
-    await penalise(p, "r1", "d9", 11);
-    const flags = async () => Object.fromEntries((await dbLicenceTable(p, "s7")).drivers.map((d) => [d.key, d.flagged]));
-    expect(await flags()).toEqual({ d2: true, d9: false });
-    await writeLicenceThreshold(p, 10);
-    expect(await readLicenceThreshold(p)).toBe(10);
-    expect(await flags()).toEqual({ d2: true, d9: true });
-    await expect(writeLicenceThreshold(p, 0)).rejects.toThrow(/1 to 99/);
-    await expect(writeLicenceThreshold(p, "x")).rejects.toThrow(/1 to 99/);
-  });
-
-  it("sorts most points first", () => {
-    const rep = (id, d, pts) => ({ id, status: "PENALTY", accusedDriverId: d, accusedName: d, licencePoints: pts });
-    const t = licenceTable([rep("1", "a", 1), rep("2", "b", 5), rep("3", "c", 0), rep("4", "a", 1)]);
-    expect(t.map((x) => x.key)).toEqual(["b", "a", "c"]);
-  });
-
-  it("gives the named driver's season in race order with a running total", async () => {
+    // mid-season); d9 is somebody else, and "old" is last season.
     personLinks = [["steve", ["d2", "d2b"]]];
     const p = makePrisma({ races: [...S7, ...S6] });
     // Filed out of order on purpose: round 3 first, then round 1.
-    const third = await penalise(p, "r3", "d2", 2);
-    await penalise(p, "r1", "d2b", 4, { penaltyKind: "TIME", penaltySeconds: 5 });
-    await penalise(p, "old", "d2", 9);
-    await penalise(p, "r2", "d9", 3);
+    const third = await penalise(p, "r3", "d2");
+    await penalise(p, "r1", "d2b", { penaltyKind: "TIME", penaltySeconds: 5 });
+    await penalise(p, "old", "d2");
+    await penalise(p, "r2", "d9");
     const open = await dbCreateReport(p, { ...base, raceId: "r2", accusedDriverId: "d2", accusedName: "Steve" });
     const rec = await dbDriverRecord(p, open);
     expect(rec.seasonId).toBe("s7");
-    expect(rec.entries.map((e) => [e.raceId, e.runningTotal, e.current])).toEqual([
-      ["r1", 4, false],
-      ["r2", 4, true],
-      ["r3", 6, false],
+    expect(rec.entries.map((e) => [e.raceId, e.counts, e.current])).toEqual([
+      ["r1", true, false],
+      ["r2", false, true],
+      ["r3", true, false],
     ]);
-    expect(rec.entries[0]).toMatchObject({ penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 4, counts: true });
+    expect(rec.entries[0]).toMatchObject({ penaltyKind: "TIME", penaltySeconds: 5 });
     expect(rec.entries[2].id).toBe(third.id);
-    expect(rec.total).toBe(6);
-    expect(rec.flagged).toBe(false);
+    expect(rec.penalties).toBe(2);
+    for (const gone of ["total", "threshold", "flagged"]) expect(gone in rec).toBe(false);
+    expect("runningTotal" in rec.entries[0]).toBe(false);
+  });
+
+  it("only counts decisions that stand as penalties", async () => {
+    personLinks = [];
+    const p = makePrisma({ races: S7 });
+    await penalise(p, "r1", "d2");
+    const reversed = await penalise(p, "r2", "d2");
+    await dbDecideReport(p, reversed, { status: "NO_PENALTY" });
+    const open = await dbCreateReport(p, { ...base, raceId: "r3", accusedDriverId: "d2" });
+    const rec = await dbDriverRecord(p, open);
+    expect(rec.entries.map((e) => e.counts)).toEqual([true, false, false]);
+    expect(rec.penalties).toBe(1);
   });
 
   it("has no record for a report that names nobody or no round", async () => {

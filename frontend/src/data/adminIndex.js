@@ -489,6 +489,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "reports",
+    title: "Incident watch",
+    hint: "Who keeps crashing: contacts, wall hits, cuts and in-game penalties per race, with the reports that named them.",
+    keywords: "incident watch crash crashes contacts collisions walls cuts penalties dirty driver safety overview",
+  },
+  {
+    tab: "reports",
     title: "Let somebody else read one report",
     hint: "A witness or a team mate, picked by name, for that thread only. They get told.",
     keywords: "viewer witness access permission let in share report private team mate",

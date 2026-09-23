@@ -26,8 +26,7 @@
 // next grid) and DSQ are recorded, shown to the drivers and counted, and then
 // carried out by hand: none of them is a number a penalty column can hold, and
 // guessing what "disqualified" should do to a classification is exactly the
-// kind of second writer the paragraph above refuses. Each decision can also
-// carry licence points, which add up per person over a season (licenceTable).
+// kind of second writer the paragraph above refuses.
 //
 // `source` tells a report written on the site (SITE) from one the in-game
 // webPenalty app fired mid-race (INGAME). The in-game one carries a wall-clock
@@ -59,9 +58,6 @@ export const REPORT_DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "VIEWER", "STEWARD", "ADMIN"];
 // What a penalty IS. Only TIME feeds the results editor (penaltyTarget).
 export const PENALTY_KINDS = ["TIME", "WARNING", "GRID", "DSQ"];
-// Licence points one decision may carry. Twelve is a whole season's worth at
-// the default threshold, which is as much as one incident can sensibly cost.
-export const MAX_LICENCE_POINTS = 12;
 
 const MAX_BODY = 4000;
 const MIN_BODY = 5;
@@ -83,20 +79,6 @@ export function sanitizePenaltyKind(k) {
   const v = String(k).toUpperCase();
   if (!PENALTY_KINDS.includes(v)) throw Object.assign(new Error("Unknown penalty kind"), { status: 400 });
   return v;
-}
-
-// Licence points as sent, or null for "none given". Refused outside 0-12 rather
-// than clamped, unlike the seconds: points build towards a race ban, and a
-// steward who typed 21 for 2 should be told, not quietly given twelve.
-export function sanitizeLicencePoints(v) {
-  if (v === undefined || v === null || v === "") return null;
-  const n = Number(v);
-  if (!Number.isInteger(n) || n < 0 || n > MAX_LICENCE_POINTS) {
-    throw Object.assign(new Error(`Licence points are a whole number from 0 to ${MAX_LICENCE_POINTS}`), {
-      status: 400,
-    });
-  }
-  return n;
 }
 
 // The kind a report's decision reads as. A penalty decided before kinds existed
@@ -124,7 +106,6 @@ function shape(r) {
     verdict: r.verdict || null,
     penaltySeconds: r.penaltySeconds ?? null,
     penaltyKind: kindOf(r),
-    licencePoints: r.licencePoints ?? null,
     appliedSeconds: r.appliedSeconds ?? null,
     appliedAt: r.appliedAt || null,
     createdAt: r.createdAt,
@@ -550,20 +531,19 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
 }
 
 // What a decision says, in the words the drivers' bell reads: the seconds for
-// a time penalty, the kind for the rest, and the points after either.
-export function penaltyOutcome({ status, penaltyKind, penaltySeconds, licencePoints }) {
+// a time penalty, the kind for the rest.
+export function penaltyOutcome({ status, penaltyKind, penaltySeconds }) {
   if (status === "NO_PENALTY") return "No penalty was given.";
   if (status !== "PENALTY") return "The report was closed without a decision.";
   const kind = penaltyKind || "TIME";
-  const pts = licencePoints > 0 ? `, ${licencePoints} licence point${licencePoints === 1 ? "" : "s"}` : "";
-  if (kind === "TIME" && penaltySeconds == null && !pts) return "A penalty was given.";
+  if (kind === "TIME" && penaltySeconds == null) return "A penalty was given.";
   const what = {
     WARNING: "a warning",
     GRID: "a grid penalty",
     DSQ: "disqualification",
     TIME: penaltySeconds != null ? `${penaltySeconds} seconds` : "a penalty",
   }[kind];
-  return `Penalty: ${what}${pts}.`;
+  return `Penalty: ${what}.`;
 }
 
 // The admin's decision. Writes what was decided; it deliberately does not touch
@@ -573,25 +553,24 @@ export function penaltyOutcome({ status, penaltyKind, penaltySeconds, licencePoi
 // before kinds existed meant. Seconds only stay on a TIME penalty: a warning
 // with "5" left in the box from an earlier draft must not be worth five
 // seconds to the results editor, and storing nothing is what guarantees it.
-// Points are kept whatever the status, like the seconds always were, and only
-// ever COUNT while the decision stands as a penalty (licenceTable).
-export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds, penaltyKind, licencePoints }) {
+//
+// The "licencePoints" column is left alone: the league dropped licence points,
+// and old rows keep whatever they had without anything reading it.
+export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds, penaltyKind }) {
   const decidedAt = new Date().toISOString();
   const s = sanitizeStatus(status);
   if (!s) throw Object.assign(new Error("Unknown status"), { status: 400 });
   const kind = sanitizePenaltyKind(penaltyKind) || (s === "PENALTY" ? "TIME" : null);
-  const points = sanitizeLicencePoints(licencePoints);
   const secs =
     penaltySeconds === "" || penaltySeconds === null || penaltySeconds === undefined || (kind && kind !== "TIME")
       ? null
       : Math.max(0, Math.min(600, Math.round(Number(penaltySeconds) || 0)));
   await prisma.$executeRawUnsafe(
-    `UPDATE "Report" SET "status" = ?, "verdict" = ?, "penaltySeconds" = ?, "penaltyKind" = ?, "licencePoints" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    `UPDATE "Report" SET "status" = ?, "verdict" = ?, "penaltySeconds" = ?, "penaltyKind" = ?, "updatedAt" = ? WHERE "id" = ?`,
     s,
     clamp(verdict, MAX_BODY) || null,
     secs,
     kind,
-    points,
     decidedAt,
     report.id
   );
@@ -882,87 +861,28 @@ export async function dbMarkPenaltiesApplied(prisma, reportIds) {
   return n;
 }
 
-// --- licence points ---------------------------------------------------------
+// --- driver record ----------------------------------------------------------
 //
-// Points add up per PERSON, not per driver row. A driver row belongs to one
-// season, but a mid-season team change or a login handed over from an old row
-// can leave one person with two rows in the same season, and a ban that two
-// rows could split between them is not a ban. The person links (lib/persons.js)
-// are what say which rows are the same human; a row nobody has linked stands
-// for itself.
+// Per PERSON, not per driver row. A driver row belongs to one season, but a
+// mid-season team change or a login handed over from an old row can leave one
+// person with two rows in the same season, and a record split between them
+// would hide half of it. The person links (lib/persons.js) are what say which
+// rows are the same human; a row nobody has linked stands for itself.
 //
-// Per SEASON, because that is how long points last in this league: the count
-// starts again with the new roster. The season is the one the report's RACE
-// belongs to, never the date it was decided, so an incident from the last round
-// decided after the new season started still counts where it happened.
-//
-// Only a decision that STANDS as a penalty counts. One reversed to "no penalty"
-// keeps its points in the column (the desk may put it back) and adds nothing.
-
-const THRESHOLD_KEY = "licence_points_ban_threshold";
-export const DEFAULT_LICENCE_THRESHOLD = 12;
-
-export async function readLicenceThreshold(prisma) {
-  try {
-    const row = await prisma.setting.findUnique({ where: { key: THRESHOLD_KEY } });
-    const n = Number(row?.value);
-    return Number.isInteger(n) && n >= 1 && n <= 99 ? n : DEFAULT_LICENCE_THRESHOLD;
-  } catch {
-    return DEFAULT_LICENCE_THRESHOLD;
-  }
-}
-
-export async function writeLicenceThreshold(prisma, value) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 99) {
-    throw Object.assign(new Error("The threshold is a whole number from 1 to 99"), { status: 400 });
-  }
-  const v = String(n);
-  await prisma.setting.upsert({ where: { key: THRESHOLD_KEY }, create: { key: THRESHOLD_KEY, value: v }, update: { value: v } });
-  return n;
-}
-
-// A driver reaching the threshold is due a ban: twelve points IS the ban, the
-// way the FIA counts it, not thirteen.
-export const banDue = (points, threshold) => points >= threshold;
+// Per SEASON, the season the report's RACE belongs to, never the date it was
+// decided, so an incident from the last round decided after the new season
+// started still sits where it happened.
 
 const countsAsPenalty = (r) => r.status === "PENALTY" && !!r.accusedDriverId;
 
-// The table itself, from one season's reports. Pure, so the arithmetic is
-// tested without a database: `personOf` maps a driver row to the person it
-// belongs to, and whatever it cannot place stands for itself.
-//
-// Everybody with a penalty that stands is listed, points or not — a driver on
-// three warnings and no points is a thing the stewards want to see too. Most
-// points first; the flagged ones are at the top by construction.
-export function licenceTable(reports, { personOf = (id) => id, threshold = DEFAULT_LICENCE_THRESHOLD } = {}) {
-  const byPerson = new Map();
-  // Newest first, so the name a person is listed under is the one their latest
-  // decision was made against.
-  const sorted = [...reports].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  for (const r of sorted) {
-    if (!countsAsPenalty(r)) continue;
-    const key = personOf(r.accusedDriverId) || r.accusedDriverId;
-    const g = byPerson.get(key) || { key, driverId: r.accusedDriverId, name: r.accusedName || null, points: 0, decisions: 0 };
-    g.name = g.name || r.accusedName || null;
-    g.points += Math.max(0, r.licencePoints || 0);
-    g.decisions += 1;
-    byPerson.set(key, g);
-  }
-  return [...byPerson.values()]
-    .map((g) => ({ ...g, flagged: banDue(g.points, threshold) }))
-    .sort((a, b) => b.points - a.points || b.decisions - a.decisions || String(a.name).localeCompare(String(b.name)));
-}
-
-// One person's season, in the order it happened, with the total as it stood
-// after each decision. What the desk shows beside an open report: before
-// deciding a third incident, the steward sees the first two.
+// One person's season, in the order it happened. What the desk shows beside an
+// open report: before deciding a third incident, the steward sees the first two.
 //
 // `races` gives the order (by date, then round), because the order reports were
 // FILED in is not the order the incidents happened once a round is re-examined
-// a week later. Every report about the person is listed, decided or not; only
-// the ones that stand as penalties move the running total.
-export function driverRecord(reports, driverIds, { races = [], threshold = DEFAULT_LICENCE_THRESHOLD, currentId = null } = {}) {
+// a week later. Every report about the person is listed, decided or not;
+// `counts` marks the ones that stand as penalties.
+export function driverRecord(reports, driverIds, { races = [], currentId = null } = {}) {
   const ids = new Set((driverIds || []).map(String));
   const raceAt = new Map(races.map((r) => [r.id, r]));
   const when = (r) => {
@@ -976,26 +896,19 @@ export function driverRecord(reports, driverIds, { races = [], threshold = DEFAU
       const [db, nb, cb] = when(b);
       return da - db || na - nb || ca.localeCompare(cb);
     });
-  let total = 0;
-  const entries = mine.map((r) => {
-    const counts = countsAsPenalty(r);
-    if (counts) total += Math.max(0, r.licencePoints || 0);
-    return {
-      id: r.id,
-      raceId: r.raceId || null,
-      reporterName: r.reporterName || null,
-      status: r.status,
-      penaltyKind: r.penaltyKind,
-      penaltySeconds: r.penaltySeconds,
-      licencePoints: r.licencePoints,
-      verdict: r.verdict,
-      createdAt: r.createdAt,
-      counts,
-      runningTotal: total,
-      current: r.id === currentId,
-    };
-  });
-  return { entries, total, threshold, flagged: banDue(total, threshold) };
+  const entries = mine.map((r) => ({
+    id: r.id,
+    raceId: r.raceId || null,
+    reporterName: r.reporterName || null,
+    status: r.status,
+    penaltyKind: r.penaltyKind,
+    penaltySeconds: r.penaltySeconds,
+    verdict: r.verdict,
+    createdAt: r.createdAt,
+    counts: countsAsPenalty(r),
+    current: r.id === currentId,
+  }));
+  return { entries, penalties: entries.filter((e) => e.counts).length };
 }
 
 // Every report filed about a race of one season, with those races.
@@ -1024,13 +937,6 @@ async function personLookup(prisma) {
   };
 }
 
-export async function dbLicenceTable(prisma, seasonId) {
-  const threshold = await readLicenceThreshold(prisma);
-  const { reports } = await dbSeasonReports(prisma, seasonId);
-  const { personOf } = await personLookup(prisma);
-  return { threshold, drivers: licenceTable(reports, { personOf, threshold }) };
-}
-
 // The record of the driver ONE report names, in the season of that report's
 // round. Null when there is nobody named or no round to place it in: without a
 // season there is nothing to add it up against.
@@ -1040,8 +946,7 @@ export async function dbDriverRecord(prisma, report) {
     .findUnique({ where: { id: report.raceId }, select: { seasonId: true, season: { select: { number: true } } } })
     .catch(() => null);
   if (!race?.seasonId) return null;
-  const [threshold, { races, reports }, { rowsOf }] = await Promise.all([
-    readLicenceThreshold(prisma),
+  const [{ races, reports }, { rowsOf }] = await Promise.all([
     dbSeasonReports(prisma, race.seasonId),
     personLookup(prisma),
   ]);
@@ -1049,7 +954,7 @@ export async function dbDriverRecord(prisma, report) {
     seasonId: race.seasonId,
     seasonNumber: race.season?.number ?? null,
     name: report.accusedName || null,
-    ...driverRecord(reports, rowsOf(report.accusedDriverId), { races, threshold, currentId: report.id }),
+    ...driverRecord(reports, rowsOf(report.accusedDriverId), { races, currentId: report.id }),
   };
 }
 
