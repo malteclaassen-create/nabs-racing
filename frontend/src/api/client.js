@@ -1324,6 +1324,12 @@ export const api = {
   adminReports: () => request(`/admin/reports${seriesQ()}`, { auth: true }),
   adminReport: (id) => request(`/admin/reports/${id}`, { auth: true }),
   decideReport: (id, body) => request(`/admin/reports/${id}`, { method: "PUT", body, auth: true }),
+  // Licence points per driver for one season of the edited series (its active
+  // one unless a season number is given), and the ban threshold they count to.
+  licencePoints: (season = null) =>
+    request(`/admin/licence-points${andQ(seriesQ(), season != null ? `season=${season}` : "")}`, { auth: true }),
+  setLicenceThreshold: (threshold) =>
+    request("/admin/licence-points/threshold", { method: "PUT", body: { threshold }, auth: true }),
   // The stewards' own reply. NOT the member endpoint: a PIN admin has no
   // Discord login behind them, and that route works out who you are from your
   // account.
