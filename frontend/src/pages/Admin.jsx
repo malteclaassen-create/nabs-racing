@@ -924,15 +924,6 @@ function SocialAdmin() {
         Paste each profile or invite URL. Empty fields are simply hidden. The Discord link also
         powers the “Join Discord” button in the top bar.
       </p>
-      <p className="text-sm text-light">
-        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
-        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
-        not until the next upload: the session file it came in will not put it back, and while the race server is
-        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
-        than showing it again. They are back on the board the moment they{" "}
-        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
-        and can be put back.
-      </p>
 
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
@@ -1556,6 +1547,15 @@ function TrainingBestLapsAdmin() {
         <b className="text-dark">per season</b>: what is given now belongs to season {data.season}, and the day a new
         season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back with
         the calendar, and nobody has to delete it.
+      </p>
+      <p className="text-sm text-light">
+        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
+        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
+        not until the next upload: the session file it came in will not put it back, and while the race server is
+        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
+        than showing it again. They are back on the board the moment they{" "}
+        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
+        and can be put back.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}

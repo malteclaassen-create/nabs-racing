@@ -229,6 +229,9 @@ const ACTIVITY_LOG = join(LOGS_DIR, "admin-activity.log");
 
 router.use((req, res, next) => {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  // A preview (POST /races/preview, /ratings/preview) changes nothing; logged,
+  // it buried the real changes under a line per keystroke of tuning.
+  if (/\/preview$/.test(req.path)) return next();
   res.on("finish", () => {
     if (res.statusCode >= 300) return; // only log successful changes
     try {
