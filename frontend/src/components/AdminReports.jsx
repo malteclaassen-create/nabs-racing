@@ -7,6 +7,7 @@ import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
 import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
+import AdminIncidentWatch from "./AdminIncidentWatch.jsx";
 import { PENALTY_KINDS, filterReports, penaltyLabel, resultsGap } from "./reportDesk.mjs";
 
 // ---------------------------------------------------------------------------
@@ -1182,6 +1183,8 @@ function ContactSuggestions({ report }) {
           </ul>
         </div>
       ))}
+
+      {data && <AdminIncidentWatch />}
 
       {/* Housekeeping. The dropdown says what it does, so nothing here says it
           again: WHY it exists (storage cost, and that the conversation always

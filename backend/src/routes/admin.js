@@ -72,6 +72,8 @@ import {
   dbDriverRecord,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
+import { incidentWatch, WINDOW_CHOICES } from "../lib/incidentWatch.js";
+import { scoringRaces } from "../services/standingsService.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
@@ -7188,6 +7190,97 @@ router.get("/reports/:id", async (req, res, next) => {
       // record being nobody else's business.
       record: await dbDriverRecord(prisma, report).catch(() => null),
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/incident-watch?series=&season=N&last=N -> per person, the
+// contacts, wall hits, cuts and in-game penalties the result files counted in
+// the season's championship rounds, and the steward reports that named them.
+// The arithmetic and the reasons it has no threshold are in
+// lib/incidentWatch.js.
+//
+// The season is the edited series' active one unless ?season= names another,
+// and the series' seasons come back with it for the card's switcher. `last`
+// narrows it to the latest 3 or 5 rounds that have been run; anything else is
+// the whole season.
+router.get("/incident-watch", async (req, res, next) => {
+  try {
+    const scope = await adminSeriesScope(req.query.series);
+    const slug = scope?.series?.slug;
+    const season = await resolveSeason(prisma, req.query.season, { includePrivate: true, series: slug });
+    const seasons = scope ? await seasonIdsOfSeries(prisma, scope.series.id) : [];
+    const n = Number(req.query.last);
+    const last = WINDOW_CHOICES.includes(n) ? n : 0;
+    if (!season) return res.json({ season: null, seasons, last, rounds: [], drivers: [] });
+
+    // The rounds that have been run, in the order they were raced, and the
+    // sprint classification of a sprint weekend folded into its event
+    // (scoringRaces) — the same races the standings score.
+    const rounds = await prisma.race.findMany({
+      where: { seasonId: season.id, isSpecialEvent: false, isCompleted: true },
+      orderBy: [{ number: "asc" }, { date: "asc" }],
+      select: { id: true, number: true, track: true, date: true },
+    });
+    const { raceIds, sprintChildOf } = await scoringRaces(prisma, rounds);
+    const roundOf = new Map(rounds.map((r) => [r.id, r.id]));
+    for (const [parentId, childId] of sprintChildOf) roundOf.set(childId, parentId);
+
+    const ph = raceIds.map(() => "?").join(",");
+    // Raw like every telemetry read (lib/telemetryRead.js): the columns come
+    // from ensureAppSchema and the generated client may not know them.
+    const [results, reports, people, nameOverrides] = await Promise.all([
+      raceIds.length
+        ? prisma.$queryRawUnsafe(
+            `SELECT "raceId", "driverId", "status", "contacts", "envContacts", "cuts", "gamePenalties"
+             FROM "RaceResult" WHERE "raceId" IN (${ph})`,
+            ...raceIds
+          )
+        : [],
+      raceIds.length
+        ? prisma
+            .$queryRawUnsafe(
+              `SELECT "raceId", "accusedDriverId", "status" FROM "Report" WHERE "raceId" IN (${ph})`,
+              ...raceIds
+            )
+            .catch(() => [])
+        : [],
+      getPersonGroups(prisma).catch(() => ({ byDriver: new Map() })),
+      getNameOverrides(prisma),
+    ]);
+
+    // Every row that has something on the card, whichever season it is from,
+    // so a line is never shown as "Unknown driver" for want of a name.
+    const involved = new Set([...results.map((r) => r.driverId), ...reports.map((r) => r.accusedDriverId)]);
+    const driverRows = await prisma.driver.findMany({
+      where: { OR: [{ seasonId: season.id }, { id: { in: [...involved].filter(Boolean) } }] },
+      include: { team: { select: { name: true, tier: true, color: true } } },
+    });
+    const rows = driverRows.map((d) => ({
+      id: d.id,
+      name: nameOverrides.get(d.id)?.displayName || d.name,
+      team: d.team?.name || null,
+      teamColor: d.team?.color || null,
+      // The TEAM's tier decides, as on the Activity view: a Tier-2 driver
+      // parked in the reserve pool is a reserve this season.
+      tier: d.team?.tier ?? d.tier,
+      isActive: d.isActive,
+      // A row of another season is only a name to show; this season's row
+      // wins whenever the person has one.
+      current: d.seasonId === season.id,
+    }));
+
+    const watch = incidentWatch({
+      rounds,
+      roundOf,
+      results,
+      reports,
+      rows,
+      personOf: (id) => personKey(id, people.byDriver),
+      last,
+    });
+    res.json({ season: { id: season.id, number: season.number }, seasons, last, ...watch });
   } catch (e) {
     next(e);
   }
