@@ -12,7 +12,9 @@ import { useAsk, Modal } from "../components/overlay.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
 import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
 import { confirmLeave } from "../utils/unsavedGuard.js";
+import { latestPastRace, rememberRound } from "../utils/sharedRound.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
@@ -1926,6 +1928,42 @@ function parseRaceTimeInput(text) {
   return { kind: gap ? "gap" : "abs", ms };
 }
 
+// What the results editor holds, one comparable string per part it saves on
+// its own (the classification, the race details, Driver of the Day, the
+// honours). The baseline is taken when a round is opened and moved on by each
+// successful save, and a part whose string differs is unsaved.
+//
+// The classification is compared on what the save sends, not on the row
+// objects: those also carry the baselines the overwrite guard asks from, and
+// a row added and removed again is no change at all.
+const EMPTY_META = { track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" };
+const EMPTY_HONOURS = { pole: "", poleTime: "", fl: "", flTime: "" };
+function resultsSnap(rs) {
+  return JSON.stringify(
+    rs.map((r) => [
+      r.driverId,
+      String(r.position).trim(),
+      r.status,
+      r.subForTeamId || "",
+      Number(r.penaltySeconds) || 0,
+      String(r.grid).trim(),
+      String(r.time).trim(),
+      String(r.contacts).trim(),
+      String(r.lapsLed).trim(),
+      !!r.isNew,
+    ])
+  );
+}
+const detailsSnap = (m) => JSON.stringify(m);
+const dotdSnap = (id, by) => JSON.stringify([id || "", id ? by.trim() : ""]);
+const honoursSnap = (h) => JSON.stringify(h);
+const EMPTY_BASELINE = {
+  results: resultsSnap([]),
+  details: detailsSnap(EMPTY_META),
+  dotd: dotdSnap("", ""),
+  honours: honoursSnap(EMPTY_HONOURS),
+};
+
 function EditResults() {
   const ask = useAsk();
   // Sprints included: a sprint classification is edited (penalties, driver
@@ -1933,12 +1971,60 @@ function EditResults() {
   // one place in the admin that has to reach it.
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(undefined, { includeSprints: true }), []));
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
+
+  // How the picker and the delete dialogs name a row. A sprint row is named
+  // for the round it scores under; the event of a sprint weekend says
+  // "feature" so the two halves read apart.
+  function raceLabel(race) {
+    if (!race) return "this race";
+    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
+    const what = race.sprintOf
+      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
+      : kind === "TRAINING" ? "Training"
+      : kind === "SPECIAL" ? "Event"
+      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
+      : `Round ${race.number}`;
+    return `${what} · ${race.track}`;
+  }
+
+  // The picker, in calendar order: each round, then the sprint hanging off it
+  // — the stored one, or the entry that creates it on first save.
+  const pickerEntries = [];
+  {
+    const all = races || [];
+    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
+    for (const r of all) {
+      if (r.sprintOf) continue;
+      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+      // Championship rounds always; trainings/events join once they have
+      // stored results (that's what there is to edit or delete).
+      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
+      pickerEntries.push({ value: r.id, label: raceLabel(r) });
+      const child = childOf.get(r.id);
+      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
+      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
+        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
+    }
+  }
+
   // What the picker holds: a race id, or "sprint:<eventId>" for the SPRINT of
   // a sprint+feature weekend that has nothing on file yet. Such a sprint has
   // no row of its own until its first save (lib/sprintRaces.js creates the
   // hidden child then), so the editor addresses it through its event and the
   // session flag, exactly as the import does.
-  const [pick, setPick] = useState("");
+  //
+  // It opens on the round the other race-weekend tabs were last on, or else
+  // on the latest round that has been run (hooks/useSharedRound.js). A sprint
+  // is shared as its event, the only one of the two the other tabs know.
+  const [pick, pickRound, setPick] = useSharedRound(
+    races ? pickerEntries.map((e) => e.value) : null,
+    latestPastRace((races || []).filter((r) => !r.sprintOf), { completedOnly: true })?.id
+  );
+  const sharedIdOf = (value) => {
+    if (value.startsWith("sprint:")) return value.slice("sprint:".length);
+    return (races || []).find((r) => r.id === value)?.sprintOf || value;
+  };
   const pendingSprint = pick.startsWith("sprint:");
   const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
@@ -1986,6 +2072,8 @@ function EditResults() {
   // save of a sprint creates its row and the editor moves over to it, and
   // the reset below would otherwise wipe the "saved" line on the way.
   const msgAfterSwitch = useRef(null);
+  // What was last loaded or saved, per part (see resultsSnap above).
+  const [baseline, setBaseline] = useState(EMPTY_BASELINE);
 
   useEffect(() => {
     setError(null);
@@ -1998,12 +2086,13 @@ function EditResults() {
     // and one race's classification was written onto another. Everything reset
     // here is per-race and reloaded below.
     setRows([]);
-    setMeta({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
+    setMeta(EMPTY_META);
     setDotd("");
     setDotdBy("");
-    setHonours({ pole: "", poleTime: "", fl: "", flTime: "" });
+    setHonours(EMPTY_HONOURS);
     setPenalties(null);
     setPrefilled([]);
+    setBaseline(EMPTY_BASELINE);
     if (!pick) return;
     // A sprint with nothing on file has no row to read: the table starts
     // empty and is filled in by hand below.
@@ -2030,7 +2119,7 @@ function EditResults() {
         );
         setPenalties(pen || { perDriver: [] });
         const filledIn = [];
-        setMeta({
+        const metaNow = {
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
           qualiMinutes: d.race?.qualiMinutes ?? "",
@@ -2039,9 +2128,13 @@ function EditResults() {
           raceLaps: d.race?.raceLaps ?? "",
           pointsTable: Array.isArray(d.race?.pointsTable) ? d.race.pointsTable.join(", ") : "",
           info: d.race?.info || "",
-        });
-        setDotd(d.race?.driverOfTheDay?.driverId || "");
-        setDotdBy(d.race?.driverOfTheDay?.pickedBy || "");
+        };
+        setMeta(metaNow);
+        const dotdNow = d.race?.driverOfTheDay?.driverId || "";
+        const dotdByNow = d.race?.driverOfTheDay?.pickedBy || "";
+        setDotd(dotdNow);
+        setDotdBy(dotdByNow);
+        let honoursNow;
         {
           // Current honours: pole = the imported qualifying session's fastest
           // driver where one is on file (read-only here), else the grid-1 row
@@ -2058,12 +2151,13 @@ function EditResults() {
             : null;
           setQualiPole(qPole ? { driverId: qPole.driverId || null, name: qPole.name, bestLapMs: qPole.bestLapMs } : null);
           const poleRow = d.results.find((r) => r.grid === 1);
-          setHonours({
+          honoursNow = {
             pole: qPole ? qPole.driverId || "" : poleRow?.driverId || "",
             poleTime: msToLapInput(qPole ? qPole.bestLapMs : poleRow?.qualiTimeMs),
             fl,
             flTime: msToLapInput(flRow?.bestLapMs),
-          });
+          };
+          setHonours(honoursNow);
         }
         // Stored race times prefill the Time / Gap inputs: the winner (and any
         // car with a smaller total, e.g. lapped ones) as a full time, the rest
@@ -2072,8 +2166,7 @@ function EditResults() {
           (x) => (x.rawPosition ?? x.position) === 1 && x.status === "FINISHED" && x.totalTimeMs > 0
         );
         const anchorMs = p1Row?.totalTimeMs ?? null;
-        setRows(
-          d.results.map((r) => {
+        const rowsNow = d.results.map((r) => {
             const raw = r.rawPosition ?? r.position ?? "";
             // What this driver's reports still owe the classification. Noted as
             // well as added, so the table can say out loud which cells it typed
@@ -2131,9 +2224,17 @@ function EditResults() {
               origContacts: String(r.contacts ?? ""),
               origLapsLed: String(r.lapsLed ?? ""),
             };
-          })
-        );
+          });
+        setRows(rowsNow);
         setPrefilled(filledIn);
+        // The baseline is what is STORED: a penalty the editor typed in from
+        // the stewards' decisions is not saved yet, and saying so is the point.
+        setBaseline({
+          results: resultsSnap(rowsNow.map((r) => ({ ...r, penaltySeconds: r.origPenalty }))),
+          details: detailsSnap(metaNow),
+          dotd: dotdSnap(dotdNow, dotdByNow),
+          honours: honoursSnap(honoursNow),
+        });
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -2395,6 +2496,8 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    // What is being sent, as the baseline it becomes once it is stored.
+    const sentSnap = resultsSnap(rows.map((r) => ({ ...r, isNew: false })));
     try {
       const saved = await api.editResults(raceId, toResults(rows), pendingSprint ? { session: "SPRINT" } : {});
       if (pendingSprint && saved?.raceId) {
@@ -2423,6 +2526,7 @@ function EditResults() {
           origLapsLed: String(r.lapsLed).trim(),
         }))
       );
+      setBaseline((b) => ({ ...b, results: sentSnap }));
       // The seconds are in the classification now, so the reports that decided
       // them can stop asking for them. AFTER the save and never before: what is
       // stored on a report has to follow what is stored on the race, or a save
@@ -2464,6 +2568,7 @@ function EditResults() {
     try {
       const customPoints = parsePointsInput(meta.pointsTable);
       if (!customPoints.ok) throw new Error(customPoints.error);
+      const sentMeta = detailsSnap(meta);
       await api.updateEvent(raceId, {
         track: meta.track,
         date: fromLocalInput(meta.date),
@@ -2478,47 +2583,12 @@ function EditResults() {
         info: meta.info || null,
       });
       setMsg("Race details saved.");
+      setBaseline((b) => ({ ...b, details: sentMeta }));
       reloadRaces(); // the round selector shows the new name
     } catch (e) {
       setError(e.message);
     } finally {
       setBusy(false);
-    }
-  }
-
-  // How the picker and the delete dialogs name a row. A sprint row is named
-  // for the round it scores under; the event of a sprint weekend says
-  // "feature" so the two halves read apart.
-  function raceLabel(race) {
-    if (!race) return "this race";
-    const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
-    const what = race.sprintOf
-      ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
-      : kind === "TRAINING" ? "Training"
-      : kind === "SPECIAL" ? "Event"
-      : race.raceFormat === "SPRINT_FEATURE" ? `Round ${race.number} feature`
-      : `Round ${race.number}`;
-    return `${what} · ${race.track}`;
-  }
-
-  // The picker, in calendar order: each round, then the sprint hanging off it
-  // — the stored one, or the entry that creates it on first save.
-  const pickerEntries = [];
-  {
-    const all = races || [];
-    const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
-    for (const r of all) {
-      if (r.sprintOf) continue;
-      const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-      // Championship rounds always; trainings/events join once they have
-      // stored results (that's what there is to edit or delete).
-      if (kind !== "CHAMPIONSHIP" && !(r.resultCount > 0)) continue;
-      pickerEntries.push({ value: r.id, label: raceLabel(r) });
-      const child = childOf.get(r.id);
-      if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
-      else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
-        pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
     }
   }
 
@@ -2599,6 +2669,7 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    const sentHonours = honoursSnap(honours);
     try {
       // With a qualifying session on file the pole is the session's and is
       // not sent at all: the server leaves the grid alone for a body without
@@ -2611,6 +2682,7 @@ function EditResults() {
         fastestLapMs: honours.fl ? flMs : null,
       });
       setMsg("Race honours saved.");
+      setBaseline((b) => ({ ...b, honours: sentHonours }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -2623,9 +2695,11 @@ function EditResults() {
     setBusy(true);
     setError(null);
     setMsg(null);
+    const sentDotd = dotdSnap(dotd, dotdBy);
     try {
       await api.setDriverOfTheDay(raceId, dotd || null, dotd ? dotdBy.trim() || null : null);
       setMsg(dotd ? "Driver of the Day saved." : "Driver of the Day cleared.");
+      setBaseline((b) => ({ ...b, dotd: sentDotd }));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -2633,11 +2707,32 @@ function EditResults() {
     }
   }
 
+  // Which parts hold edits that are not stored. Nothing counts while a round
+  // is still loading: the table is being filled, not edited.
+  const unsaved = loadingRace
+    ? []
+    : [
+        resultsSnap(rows) !== baseline.results && "results",
+        detailsSnap(meta) !== baseline.details && "race details",
+        dotdSnap(dotd, dotdBy) !== baseline.dotd && "Driver of the Day",
+        honoursSnap(honours) !== baseline.honours && "honours",
+      ].filter(Boolean);
+  useUnsavedGuard(unsaved.length > 0, `Edit Results (${unsaved.join(", ")})`);
+  const resultsDirty = unsaved.includes("results");
+
+  // Another round in the picker replaces everything on screen, so it asks
+  // first like leaving the tab does.
+  async function changeRound(value) {
+    if (value === pick) return;
+    if (!(await confirmLeave(ask))) return;
+    pickRound(value, value ? sharedIdOf(value) : "");
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-medium" htmlFor="admin-edit-race">Race</label>
-        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => setPick(e.target.value)}>
+        <select id="admin-edit-race" className="input max-w-xs" value={pick} onChange={(e) => changeRound(e.target.value)}>
           <option value="">Select a round…</option>
           {pickerEntries.map((e) => (
             <option key={e.value} value={e.value}>
@@ -3047,12 +3142,42 @@ function EditResults() {
 
           <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
 
-          {/* Locked while the picked round is still loading: the table is empty
+          {/* The save, pinned to the bottom of the screen for as long as the
+              editor is. The table and the preview under it run to several
+              screens on a full grid, and the button used to sit at the very
+              end of them while its answer ("saved", or why not) appeared at
+              the very top: a save meant scrolling down to press it and back up
+              to find out whether it had worked. The answer is repeated here,
+              next to the button, and the notices up top stay for whoever is
+              up there.
+              Locked while the picked round is still loading: the table is empty
               or half-swapped at that moment, and saving it would write that
               state onto the race. */}
-          <button className="btn-primary" onClick={save} disabled={busy || loadingRace}>
-            {busy ? "Saving…" : loadingRace ? "Loading round…" : "Save results"}
-          </button>
+          <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card p-3 shadow-lg sm:p-4">
+            <button className="btn-primary" onClick={save} disabled={busy || loadingRace}>
+              {busy ? "Saving…" : loadingRace ? "Loading round…" : "Save results"}
+            </button>
+            <div className="min-w-0 flex-1 text-sm" aria-live="polite">
+              {error ? (
+                <span className="line-clamp-2 font-medium text-bad">{error}</span>
+              ) : unsaved.length ? (
+                <span className="line-clamp-2">
+                  <UnsavedHint dirty />
+                  <span className="ml-2 text-xs text-light">
+                    {resultsDirty
+                      ? unsaved.length > 1
+                        ? `Results, plus ${unsaved.filter((u) => u !== "results").join(", ")} (saved with their own buttons above).`
+                        : "Nothing is stored until you save."
+                      : `${unsaved.join(", ")}: saved with their own buttons above.`}
+                  </span>
+                </span>
+              ) : msg ? (
+                <span className="line-clamp-2 font-medium text-ok">{msg}</span>
+              ) : (
+                <span className="text-xs text-light">No unsaved changes.</span>
+              )}
+            </div>
+          </div>
         </>
       )}
 

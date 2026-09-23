@@ -30,17 +30,30 @@ function roundTimeLine(r) {
   return segs.join("  ·  ");
 }
 
+// How much of a championship table the preview shows before "Show all".
+const PREVIEW_TOP = 20;
+
+// A championship table after the round. A full league has forty-odd drivers,
+// and the whole table under the editor made the page several screens longer
+// than the part anybody reads: the top of the table, and whoever this round
+// moves. So that is what shows — the top twenty plus every row with a change
+// further down, with a thin rule where rows are left out — and the rest is one
+// click away.
 function StandingsList({ title, rows, idKey }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.filter((r, i) => i < PREVIEW_TOP || r.delta);
+  const hidden = rows.length - shown.length;
+  const collapsible = rows.some((r, i) => i >= PREVIEW_TOP && !r.delta);
   return (
     <div>
       <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">{title}</div>
       <ul className="space-y-0.5">
-        {rows.map((r) => (
+        {shown.map((r, i) => (
           <li
             key={r[idKey]}
             className={`flex items-center gap-2 rounded px-2 py-1 text-sm ${
               r.delta ? "bg-surface2" : ""
-            }`}
+            } ${!all && i > 0 && rows.indexOf(r) !== rows.indexOf(shown[i - 1]) + 1 ? "mt-1 border-t border-dashed border-border pt-1.5" : ""}`}
           >
             <span className="w-5 text-right font-mono text-xs tabular-nums text-light">{r.position}</span>
             {r.color && (
@@ -54,6 +67,16 @@ function StandingsList({ title, rows, idKey }) {
           </li>
         ))}
       </ul>
+      {collapsible && (
+        <button
+          type="button"
+          className="mt-1.5 px-2 text-xs font-semibold text-link hover:underline"
+          aria-expanded={all}
+          onClick={() => setAll((v) => !v)}
+        >
+          {all ? `Show top ${PREVIEW_TOP} and changes only` : `Show all ${rows.length} (${hidden} unchanged hidden)`}
+        </button>
+      )}
     </div>
   );
 }
