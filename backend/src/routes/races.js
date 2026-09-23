@@ -102,6 +102,7 @@ router.get("/", async (req, res, next) => {
       includePrivate: isAdminRequest(req),
       series: req.query.series,
     });
+    const admin = isAdminRequest(req);
     const allRaces = await prisma.race.findMany({
       where: { seasonId },
       orderBy: { number: "asc" },
@@ -178,6 +179,10 @@ router.get("/", async (req, res, next) => {
         heroImageUrl: heroes.get(r.id) || null,
         photoCount: photoCounts.get(r.id) || 0,
         winner: winners.get(r.id) || null,
+        // Whether the round's RSVP post is up in Discord, for the admin's
+        // calendar. Only the fact, and only for an admin: the message id itself
+        // is the handle the bot edits the post by and stays on the server.
+        ...(admin ? { announced: !!r.discordMessageId } : {}),
       }))
     );
   } catch (e) {

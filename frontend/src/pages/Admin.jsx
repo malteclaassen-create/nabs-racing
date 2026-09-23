@@ -15,6 +15,9 @@ import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
 import { useSharedRound } from "../hooks/useSharedRound.js";
 import { confirmLeave } from "../utils/unsavedGuard.js";
 import { latestPastRace, rememberRound } from "../utils/sharedRound.js";
+import { fmtRaceTime } from "../utils/raceTime.js";
+import { BATCH_MAX, REPEAT_DAYS, TRACK_TBA, knownTrackNames, nextFreeRoundNumber, planProblem, planRounds } from "../utils/roundBatch.js";
+import { CIRCUITS } from "../data/circuits.js";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
@@ -4356,6 +4359,162 @@ function RaceHero({ race, onSaved, onError, onChanged }) {
   );
 }
 
+// --- ADD SEVERAL ROUNDS ------------------------------------------------------
+// A season's calendar in one go: N championship rounds a week apart, numbered
+// on from the first, tracks optional (utils/roundBatch.js works out the plan).
+// Created one after another through the same route as the single form, and a
+// round that fails (its number is taken, say) is reported on its own line
+// without stopping the ones after it.
+function AddSeveralRounds({ races, seasonId, onCreated }) {
+  const [count, setCount] = useState("4");
+  const [first, setFirst] = useState(""); // datetime-local value
+  const [firstNumber, setFirstNumber] = useState(""); // "" = the next free one
+  const [tracks, setTracks] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [outcome, setOutcome] = useState(null); // [{ number, track, ok, error }]
+
+  const nextFree = nextFreeRoundNumber(races);
+  const startNumber = firstNumber === "" ? nextFree : Number(firstNumber);
+  const plan = planRounds({ count, firstDate: first ? new Date(first) : null, firstNumber: startNumber, tracks });
+  const trackNames = knownTrackNames(races, Object.keys(CIRCUITS));
+
+  const setTrack = (i, value) =>
+    setTracks((t) => {
+      const next = [...t];
+      next[i] = value;
+      return next;
+    });
+  // A list pasted into one field (a calendar copied out of Discord) fills the
+  // fields below it, one line each, instead of landing as one long name.
+  function pasteTracks(i, e) {
+    const lines = e.clipboardData.getData("text").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) return;
+    e.preventDefault();
+    setTracks((t) => {
+      const next = [...t];
+      lines.forEach((l, k) => {
+        next[i + k] = l;
+      });
+      return next;
+    });
+    if (i + lines.length > Number(count || 0)) setCount(String(Math.min(BATCH_MAX, i + lines.length)));
+  }
+
+  async function createAll(e) {
+    e.preventDefault();
+    const bad = planProblem({ count, firstNumber: startNumber });
+    setProblem(bad);
+    if (bad) return;
+    setBusy(true);
+    setOutcome([]);
+    const done = [];
+    for (const r of plan) {
+      try {
+        await api.createEvent({
+          number: r.number,
+          track: r.track,
+          date: r.date,
+          type: "CHAMPIONSHIP",
+          seasonId,
+          raceFormat: "SINGLE",
+        });
+        done.push({ ...r, ok: true });
+      } catch (err) {
+        done.push({ ...r, ok: false, error: err.message });
+      }
+      setOutcome([...done]);
+    }
+    setBusy(false);
+    if (done.every((r) => r.ok)) {
+      setTracks([]);
+      setFirstNumber("");
+      setFirst("");
+    }
+    onCreated();
+  }
+
+  const failed = outcome?.filter((r) => !r.ok) || [];
+  return (
+    <form onSubmit={createAll} className="card space-y-3 p-5">
+      <CardHead eyebrow="Schedule" title="Add several rounds" />
+      <p className="text-sm text-light">
+        Championship rounds a week apart, from the first date on. Leave a track empty and the round is created as
+        “{TRACK_TBA}”, to rename in its editor once it is known.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={`Rounds (1–${BATCH_MAX})`} tone="plain">
+          <input aria-label="How many rounds" className="input" type="number" min="1" max={BATCH_MAX} value={count}
+            onChange={(e) => setCount(e.target.value)} />
+        </Field>
+        <Field label="First round #" tone="plain">
+          <input aria-label="First round number" className="input" type="number" min="1" placeholder={String(nextFree)}
+            value={firstNumber} onChange={(e) => setFirstNumber(e.target.value)} />
+        </Field>
+        <Field className="col-span-2" label="First date & time" tone="plain">
+          <input aria-label="First date & time" className="input" type="datetime-local" value={first}
+            onChange={(e) => setFirst(e.target.value)} />
+        </Field>
+      </div>
+      <p className="text-xs text-light">
+        Repeats every {REPEAT_DAYS} days at the same time.{!first && " Without a first date the rounds are created undated."}
+      </p>
+
+      {plan.length > 0 && (
+        <div>
+          <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+            What will be created
+          </div>
+          <datalist id="batch-round-tracks">
+            {trackNames.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+          <ol className="divide-y divide-border rounded-lg border border-border">
+            {plan.map((r, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-sm">
+                <span className="w-10 shrink-0 font-mono text-xs font-bold tabular-nums text-dark">R{r.number ?? "?"}</span>
+                <span className="flex-1 sm:w-44 sm:flex-none text-xs text-light">
+                  {r.date ? `${fmtRaceDate(r.date)} · ${fmtRaceTime(r.date)}` : "No date"}
+                </span>
+                <input
+                  aria-label={`Track of round ${r.number ?? i + 1}`}
+                  className="input w-full min-w-0 py-1 text-sm sm:w-auto sm:flex-1"
+                  list="batch-round-tracks"
+                  placeholder={TRACK_TBA}
+                  value={tracks[i] || ""}
+                  onChange={(e) => setTrack(i, e.target.value)}
+                  onPaste={(e) => pasteTracks(i, e)}
+                />
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {problem && <Notice kind="error">{problem}</Notice>}
+      {outcome && outcome.length > 0 && (
+        <div className="space-y-1">
+          {outcome.map((r) => (
+            <p key={`${r.number}-${r.date}`} className={`text-xs ${r.ok ? "text-ok" : "font-semibold text-bad"}`}>
+              R{r.number} · {r.track}: {r.ok ? "created" : r.error}
+            </p>
+          ))}
+          {!busy && failed.length > 0 && (
+            <p className="text-xs text-light">
+              {outcome.length - failed.length} of {outcome.length} created. The others were left out; fix their
+              numbers and add them again.
+            </p>
+          )}
+        </div>
+      )}
+      <button className="btn-primary w-full" disabled={busy || plan.length === 0}>
+        {busy ? `Creating ${Math.min(plan.length, (outcome?.length || 0) + 1)} of ${plan.length}…` : `Create ${plan.length} round${plan.length === 1 ? "" : "s"}`}
+      </button>
+    </form>
+  );
+}
+
 // --- DISCORD & EVENTS ------------------------------------------------------
 function DiscordEvents({ onJump }) {
   const ask = useAsk();
@@ -4407,6 +4566,27 @@ function DiscordEvents({ onJump }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // The calendar in date order, which is how a season is read: the special
+  // events used to sit on top of round 1 because they have no number, and a
+  // round moved to another week stayed where its number put it. Undated
+  // entries go last, in round order.
+  const calendar = [...(races || [])].sort((a, b) => {
+    const ta = a.date ? Date.parse(a.date) : NaN;
+    const tb = b.date ? Date.parse(b.date) : NaN;
+    if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    if (Number.isFinite(ta) !== Number.isFinite(tb)) return Number.isFinite(ta) ? -1 : 1;
+    return (a.number ?? 999) - (b.number ?? 999);
+  });
+  // Posting needs the events webhook; without it the button would only answer
+  // with an error, so it says why up front instead.
+  const canPost = !!hook?.configured;
+  // Anything that changes the calendar can settle (or create) a To do line:
+  // a round moved to next week is no longer overdue.
+  const calendarChanged = () => {
+    reloadRaces();
+    window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
+  };
+
   async function deleteRace(id) {
     if (
       !(await ask({
@@ -4418,7 +4598,7 @@ function DiscordEvents({ onJump }) {
     )
       return;
     setBusy(true); setError(null); setMsg(null);
-    try { await api.deleteEvent(id); setMsg("Race deleted."); reloadRaces(); }
+    try { await api.deleteEvent(id); setMsg("Race deleted."); calendarChanged(); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4464,7 +4644,7 @@ function DiscordEvents({ onJump }) {
       });
       setMsg("Race saved. An already-announced Discord post updates itself.");
       setEditingId(null);
-      reloadRaces();
+      calendarChanged();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4473,6 +4653,7 @@ function DiscordEvents({ onJump }) {
     try {
       await api.announceEvent(id);
       setMsg("Event posted/updated in Discord.");
+      reloadRaces(); // the "Announced" mark
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -4496,6 +4677,9 @@ function DiscordEvents({ onJump }) {
     <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Create event + announce */}
       <div className="contents">
+        {/* The two ways to add to the calendar share the left column, so the
+            second does not start below the (long) calendar on the right. */}
+        <div className="space-y-6">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
           <Field label="Type" tone="plain">
@@ -4557,6 +4741,9 @@ function DiscordEvents({ onJump }) {
           <button className="btn-primary w-full" disabled={busy}>Create</button>
         </form>
 
+        <AddSeveralRounds races={races} seasonId={current?.id} onCreated={calendarChanged} />
+        </div>
+
         <div className="card p-5">
           <CardHead eyebrow="Schedule" title="Season races" />
           <p className="mb-2 text-sm text-light">
@@ -4564,26 +4751,44 @@ function DiscordEvents({ onJump }) {
             here, before and after a round ran. Saving updates an announced Discord post automatically.
           </p>
           <ul className="divide-y divide-border">
-            {(races || []).map((r) => (
+            {calendar.map((r) => (
               <li key={r.id} className="py-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate font-semibold text-dark">
-                    {r.type === "TRAINING" ? "Training" : r.type === "SPECIAL" || r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
-                    {r.isCompleted && (
-                      <span className="pill ml-2 bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
-                    )}
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <span className="min-w-[12rem] flex-1">
+                    <span className="block truncate font-semibold text-dark">
+                      {r.type === "TRAINING" ? "Training" : r.type === "SPECIAL" || r.isSpecialEvent ? "SE" : `Round ${r.number}`} · {r.track}
+                    </span>
+                    {/* When, and whether the RSVP post is up: the two things a
+                        race week is checked for. Specials are never posted, so
+                        they carry no mark either way. */}
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-light">
+                      <span>{r.date ? `${fmtRaceDate(r.date)} · ${fmtRaceTime(r.date)}` : "No date yet"}</span>
+                      {r.isCompleted ? (
+                        <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
+                      ) : r.type !== "SPECIAL" && r.announced ? (
+                        <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-ok">Announced</span>
+                      ) : r.type !== "SPECIAL" ? (
+                        <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-warn">Not announced yet</span>
+                      ) : null}
+                    </span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
+                  <span className="ml-auto flex shrink-0 items-center gap-3">
                     <button className="transition text-xs font-semibold text-link hover:underline"
                       disabled={busy} onClick={() => (editingId === r.id ? setEditingId(null) : startEdit(r))}>
                       {editingId === r.id ? "Close" : "Edit"}
                     </button>
-                    {/* Rounds AND training sessions get the RSVP post; specials stay site-only. */}
+                    {/* Rounds AND training sessions get the RSVP post; specials stay site-only.
+                        The title sits on a wrapper too: a disabled button shows
+                        no tooltip of its own in most browsers. */}
                     {r.type !== "SPECIAL" && !r.isCompleted && (
-                      <button className="transition text-xs font-semibold text-link hover:underline"
-                        disabled={busy} onClick={() => announce(r.id)}>
-                        Post to Discord
-                      </button>
+                      <span title={canPost ? undefined : "Discord announcements are not connected. Connect the events webhook in System → Discord first."}>
+                        <button className="transition text-xs font-semibold text-link hover:underline disabled:cursor-not-allowed disabled:text-faint disabled:no-underline"
+                          disabled={busy || !canPost}
+                          title={canPost ? (r.announced ? "Posts the round again, or updates the post that is up" : "Posts the RSVP message to the events channel") : "Discord announcements are not connected"}
+                          onClick={() => announce(r.id)}>
+                          Post to Discord
+                        </button>
+                      </span>
                     )}
                     {r.resultCount === 0 && (
                       <button className="transition text-xs font-semibold text-rose-500 hover:underline"
