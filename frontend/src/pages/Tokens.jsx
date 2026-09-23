@@ -311,10 +311,11 @@ function MultiplierBar({ a }) {
   );
 }
 
-// The training week, in the card the points page gives it: one LINE per race
+// The training week, in the card the points page gives it: one line per race
 // server, because each server carries its own milestones (nineteen laps on
-// each of them is nothing). The rule itself is written once, underneath,
-// rather than repeated beside every bar.
+// each of them is nothing), stacked so the bars sit exactly under one another.
+// The rule itself is written once, underneath, rather than repeated beside
+// every bar.
 //
 // The series a server is counting for only gets named when the servers are
 // counting for DIFFERENT ones, which is the only time it tells you anything.
@@ -329,13 +330,12 @@ function PracticeCard({ week }) {
         <Heading>Training</Heading>
         <div className="text-xs text-light">This week</div>
       </div>
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-3">
         {weeks.map((w) => (
           <TrainingBar
             key={w.server}
             week={{ ...w, paying: week.paying }}
-            variant="row"
-            showTiers={false}
+            variant="stacked"
             label={manySeries ? `${w.serverName} · ${w.seriesName}` : w.serverName}
           />
         ))}
