@@ -455,9 +455,15 @@ adminRouter.put("/tuning", async (req, res, next) => {
     next(e);
   }
 });
+// "Back to defaults" resets the rules and prices, and keeps the start day for
+// the same reason a save does (see above): it is stamped by the earning
+// switch, and losing it would pay every race back to season 1.
 adminRouter.delete("/tuning", async (req, res, next) => {
   try {
-    res.json({ ok: true, tuning: await resetTuning(prisma) });
+    const before = await ensureTuning(prisma);
+    const tuning = await resetTuning(prisma);
+    if (before.startDay) return res.json({ ok: true, tuning: await saveTuning(prisma, { startDay: before.startDay }) });
+    res.json({ ok: true, tuning });
   } catch (e) {
     next(e);
   }
