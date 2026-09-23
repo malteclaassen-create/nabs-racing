@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Flag } from "lucide-react";
+import { Panel, Segmented } from "./TelemetryUI.jsx";
 
 // ---------------------------------------------------------------------------
 // The slow sections one by one, on one grid so the bars line up, each with a bar that grows left when A gains
@@ -43,15 +45,8 @@ export function SectionsPanel({ insights, activeN, colorA, colorB, onSelect }) {
   const summary = [aTotal >= 5 && `A +${fmt(aTotal)} s`, bTotal >= 5 && `B +${fmt(bTotal)} s`].filter(Boolean).join(", ")
     + (aTotal >= 5 && bTotal >= 5 ? ` · net ${Math.abs(net) < 5 ? "level" : `${who(net)} +${fmt(net)} s`}` : "");
   return (
-    <section aria-label="Slow sections">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
-        <h3 className="text-sm font-semibold text-dark">Slow sections{summary && <span className="font-normal text-light"> · {summary}</span>}</h3>
-        <p className="text-[11px] text-light">
-          {[["lap", "lap order"], ["size", "biggest first"]].map(([key, label], k) => (
-            <span key={key}>{k > 0 && " · "}<button type="button" aria-pressed={sort === key} onClick={() => setSort(key)} className={sort === key ? "font-semibold text-dark" : "hover:underline"}>{label}</button></span>
-          ))}
-        </p>
-      </div>
+    <Panel title="Slow sections" icon={Flag} note={summary} bodyClassName="!pt-1"
+      actions={<Segmented label="Order" value={sort} onChange={setSort} items={[{ key: "lap", label: "Lap order" }, { key: "size", label: "Biggest first" }]} />}>
       <div className="divide-y divide-border">
         {rows.map((c) => {
           const active = c.n === activeN;
@@ -59,7 +54,7 @@ export function SectionsPanel({ insights, activeN, colorA, colorB, onSelect }) {
           const facts = sectionFacts(c);
           return (
             <button key={c.n} type="button" onClick={() => onSelect(c)} aria-current={active ? "true" : undefined}
-              className={`grid w-full grid-cols-[1.25rem_6.5rem_minmax(0,1fr)_6rem] items-center gap-x-3 gap-y-1 px-1 py-2 sm:grid-cols-[1.25rem_6.5rem_minmax(0,1fr)_6rem_minmax(0,1.4fr)] text-left text-xs transition hover:bg-surface2 ${active ? "bg-surface2" : ""}`}>
+              className={`grid w-full grid-cols-[1.25rem_6.5rem_minmax(0,1fr)_6rem] items-center gap-x-3 gap-y-1 rounded-md px-2 py-2.5 text-left text-xs transition hover:bg-surface2 sm:grid-cols-[1.25rem_6.5rem_minmax(0,1fr)_6rem_minmax(0,1.4fr)] ${active ? "bg-surface2" : ""}`}>
               <span className="font-mono font-semibold tabular-nums" style={{ color: active ? "rgb(var(--c-accent))" : "var(--c-text)" }}>{c.n}</span>
               <span className="truncate font-mono text-[11px] tabular-nums text-light">{c.atPct}%{c.atM != null ? ` · ${c.atM.toLocaleString("en-GB")} m` : ""}</span>
               <DivergingBar value={c.gainMs} max={max} colorA={colorA} colorB={colorB} className="h-1.5" />
@@ -69,7 +64,7 @@ export function SectionsPanel({ insights, activeN, colorA, colorB, onSelect }) {
           );
         })}
       </div>
-      <p className="pt-2 text-[11px] text-light">From A’s speed trace, numbered in lap order — not the circuit’s corner numbers. Select one to zoom the traces to it.</p>
-    </section>
+      <p className="border-t border-border pt-2 text-[11px] text-light">From A’s speed trace, numbered in lap order — not the circuit’s corner numbers. Select one to zoom the traces to it.</p>
+    </Panel>
   );
 }

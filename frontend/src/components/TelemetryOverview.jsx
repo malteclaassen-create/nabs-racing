@@ -1,4 +1,6 @@
+import { Gauge } from "lucide-react";
 import { DivergingBar, fmt, who, sectionFacts } from "./TelemetrySections.jsx";
+import { Panel } from "./TelemetryUI.jsx";
 import { formatLapTime } from "../utils/telemetryAnalysis.js";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +19,7 @@ const sectorTime = (ms) => (ms >= 60000 ? formatLapTime(ms) : (ms / 1000).toFixe
 function PanelHeading({ title, note }) {
   return (
     <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h3 className="text-xs font-semibold text-dark">{title}</h3>
+      <h4 className="text-xs font-semibold text-dark">{title}</h4>
       {note && <p className="text-[11px] text-light">{note}</p>}
     </div>
   );
@@ -43,7 +45,7 @@ function SectorCards({ sectors, colorA, colorB, dist, n, onSelect }) {
         };
         return (
           <button key={s.n} type="button" onClick={() => onSelect?.(s)}
-            className="min-w-0 rounded-lg border border-border bg-card px-2.5 py-2 text-left text-xs transition hover:border-medium hover:bg-surface2 sm:px-3"
+            className="min-w-0 rounded-lg border border-border bg-surface2/40 px-2.5 py-2 text-left text-xs transition hover:border-medium hover:bg-surface2 sm:px-3"
             title={`Zoom the traces to sector ${s.n}`}>
             <span className="flex items-baseline justify-between gap-1">
               <span className="font-mono text-[11px] font-bold text-dark">S{s.n}</span>
@@ -78,8 +80,8 @@ function BiggestDifferences({ insights, colorA, colorB, onSelect }) {
         return (
           <li key={c.n}>
             <button type="button" onClick={() => onSelect(c)} title={`Zoom the traces to section ${c.n}`}
-              className="flex w-full items-start gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs transition hover:border-medium hover:bg-surface2">
-              <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[10px] font-bold text-dark">{c.n}</span>
+              className="flex w-full items-start gap-2.5 rounded-lg border border-border bg-surface2/40 px-3 py-2 text-left text-xs transition hover:border-medium hover:bg-surface2">
+              <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-[10px] font-bold text-dark">{c.n}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-baseline justify-between gap-x-2">
                   <span className="font-mono text-[11px] tabular-nums text-light">{c.atPct}% of lap{c.atM != null ? ` · ${c.atM.toLocaleString("en-GB")} m` : ""}</span>
@@ -118,7 +120,7 @@ function LapProfile({ profileA, profileB, colorA, colorB }) {
   return (
     <dl className="grid grid-cols-3 gap-2 lg:grid-cols-9">
       {rows.map((m) => (
-        <div key={m.key} className="flex min-w-0 flex-col justify-between rounded-lg border border-border bg-card px-2 py-2 sm:px-2.5" title={m.hint}>
+        <div key={m.key} className="flex min-w-0 flex-col justify-between rounded-lg border border-border bg-surface2/40 px-2 py-2 sm:px-2.5" title={m.hint}>
           <dt className="text-[11px] leading-tight text-light">{m.label}{m.unit && <span className="text-faint"> {m.unit}</span>}</dt>
           <dd className="mt-1 space-y-0.5 font-mono text-xs tabular-nums">
             <span className="flex items-baseline justify-between gap-1"><span className="text-[10px] font-bold" style={{ color: colorA }}>A</span><span className="truncate font-semibold text-dark">{value(profileA, m)}</span></span>
@@ -133,7 +135,7 @@ function LapProfile({ profileA, profileB, colorA, colorB }) {
 export default function TelemetryOverview({ sectors, insights, profileA, profileB, colorA, colorB, dist, n, onSector, onSection }) {
   const both = !!(sectors && profileB);
   return (
-    <section aria-label="Comparison overview" className="space-y-4 rounded-xl border border-border bg-surface2/30 p-3 sm:p-4">
+    <Panel title="At a glance" icon={Gauge} note={both ? "Where the time goes, and what each lap was made of" : "What this lap was made of"} bodyClassName="space-y-4">
       {both && (
         <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="min-w-0">
@@ -150,6 +152,6 @@ export default function TelemetryOverview({ sectors, insights, profileA, profile
         <PanelHeading title="Lap profile" note="Shares are of lap time" />
         <LapProfile profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} />
       </div>
-    </section>
+    </Panel>
   );
 }

@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity, ChartLine, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, RefreshCw, TriangleAlert,
+} from "lucide-react";
 import { api, getToken, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { Field } from "./ui.jsx";
+import { Field, Skeleton } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtLap } from "../utils/format.js";
-import { ChannelChart, PedalChart, ChartAxis, LapSummary, lapColor } from "./TelemetryCharts.jsx";
+import { ChannelChart, PedalChart, ChartAxis, lapColor } from "./TelemetryCharts.jsx";
+import TelemetryDuel from "./TelemetryDuel.jsx";
+import TelemetryPlayer from "./TelemetryPlayer.jsx";
+import { Chip, Menu, MenuItem, Panel, Segmented, ToolButton } from "./TelemetryUI.jsx";
 import TelemetryDashboard from "./TelemetryDashboard.jsx";
 import { SectionsPanel } from "./TelemetrySections.jsx";
 import TelemetryOverview from "./TelemetryOverview.jsx";
@@ -23,41 +29,62 @@ import { comparisonCsv, comparisonSummary, downloadText, exportSvgPng } from "..
 // imported: reaching into pages/Tools.jsx for it would pull the whole
 // race-prep page into the admin bundle to borrow a border. In full screen the
 // card is the page: it scrolls itself and its header stays put.
+//
+// `--tel-top` is where the pinned player bar sits: under the site's own bar
+// (84px, NavBar.jsx) on the page, under this card's header in full screen.
+// overflow-clip rather than hidden: hidden would make the card the player's
+// scroll container, and it would never pin.
 function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
+  const headRef = useRef(null);
+  const [headHeight, setHeadHeight] = useState(0);
+  useEffect(() => {
+    const el = headRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(() => setHeadHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div id={id} ref={cardRef} className={`card ${full ? "overflow-y-auto" : "overflow-hidden"}`}>
-      <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface2/50 px-5 py-3 ${full ? "sticky top-0 z-10 backdrop-blur" : ""}`}>
-        <div>
-          <h2 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs text-light">{subtitle}</p>}
+    <div id={id} ref={cardRef} className={`card ${full ? "overflow-y-auto" : "overflow-clip"}`} style={{ "--tel-top": full ? `${headHeight}px` : "84px" }}>
+      <div ref={headRef} className={`flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:px-5 ${full ? "sticky top-0 z-30" : ""}`}>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-dark" aria-hidden="true"><Activity className="h-5 w-5" /></span>
+          <div className="min-w-0">
+            <h2 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-light">{subtitle}</p>}
+          </div>
         </div>
         {actions}
       </div>
-      <div className={`space-y-4 p-5 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
+      <div className={`bg-surface2/50 p-3 sm:p-5 ${full ? "min-h-full" : ""}`}>
+        <div className={`space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
+      </div>
     </div>
   );
 }
 
-// The live map's zoom buttons, to the pixel: the same control in two places on
-// the site should not be two different controls.
+// The map's zoom buttons, laid over the map the way the live map's are: the
+// same control in two places on the site should not be two different
+// controls.
 const ZOOM_BTN =
-  "flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 font-mono text-sm font-bold text-white backdrop-blur transition hover:bg-black/75";
-// The header's actions, all four at one weight. They used to be three bare
-// text links plus one button — four things of equal rank drawn three different
-// ways, with the link style reading as prose rather than as a toolbar.
-const SMALL_BTN = "btn-secondary px-2.5 py-1 text-xs";
-const ICON_BTN = "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-medium transition hover:bg-surface2 disabled:opacity-30";
+  "flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg bg-black/60 px-1.5 font-mono text-[11px] font-bold text-white backdrop-blur transition hover:bg-black/75";
 
-// The transport's glyphs: the shapes every player uses, drawn rather than
-// typed so they look the same on every phone.
-function Icon({ name }) {
-  const common = { viewBox: "0 0 16 16", className: "h-3.5 w-3.5", fill: "currentColor", "aria-hidden": true };
-  switch (name) {
-    case "play": return <svg {...common}><path d="M4 2.5v11l9-5.5z" /></svg>;
-    case "pause": return <svg {...common}><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z" /></svg>;
-    case "prev": return <svg {...common}><path d="M3 2.5h2v11H3zM13 2.5v11L6 8z" /></svg>;
-    case "next": return <svg {...common}><path d="M11 2.5h2v11h-2zM3 2.5v11l7-5.5z" /></svg>;
-    default: return null;
+// Which optional traces are drawn, remembered per browser: somebody who always
+// reads the steering wants it there next time. Storage can be missing or
+// throw (private windows); the page works the same without it.
+const CHANNELS_KEY = "nabs_tel_channels";
+const OPTIONAL_CHANNELS = [
+  { key: "steer", label: "Steering" },
+  { key: "gear", label: "Gear" },
+  { key: "lat", label: "Lateral g" },
+  { key: "long", label: "Longitudinal g" },
+];
+function readChannels() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHANNELS_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((k) => OPTIONAL_CHANNELS.some((c) => c.key === k)) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -149,7 +176,12 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const [loadError, setLoadError] = useState(null);
   const [aError, setAError] = useState(null);
   const [bError, setBError] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
+  const [channels, setChannels] = useState(readChannels);
+  const toggleChannel = (key) => setChannels((list) => {
+    const next = list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+    try { localStorage.setItem(CHANNELS_KEY, JSON.stringify(next)); } catch { /* per-browser nicety only */ }
+    return next;
+  });
   const [playbackRate, setPlaybackRate] = useState(1);
   // Where the next run starts. Play resumes from the cursor rather than the
   // line: pause, drag to a corner, play — and it plays from that corner. Held
@@ -617,205 +649,183 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const said = [picksSeries ? null : seriesName, season ? `Season ${season}` : null].filter(Boolean);
   const subtitle = [...said, `${said.length ? "b" : "B"}oth laps aligned by track position`].join(" · ");
 
+  const lapOption = (l) => <option key={pickOf(l)} value={pickOf(l)}>{l.name} · {fmtLap(l.lapTimeMs)}{l.only ? '' : ` (${ORDINAL[l.rank] || l.rank + 1})`}</option>;
+  const pickerA = (
+    <select aria-label="Lap A · reference" className="input min-w-0 w-full py-1.5 font-semibold" value={aId} onChange={(e) => changeA(e.target.value)}>
+      {!rows.length && <option value="">{laps === null ? 'Loading laps…' : 'No laps available'}</option>}
+      {rows.map(lapOption)}
+    </select>
+  );
+  const pickerB = (
+    <select aria-label="Lap B · comparison" className="input min-w-0 w-full py-1.5 font-semibold" value={bId} onChange={(e) => setBId(e.target.value)}>
+      <option value="">Single lap · no comparison</option>
+      {rows.filter((l) => pickOf(l) !== aId).map(lapOption)}
+    </select>
+  );
+  const loadingChannels = !error && (laps === null || (aId && !lapA) || (bId && !lapB));
+  const playLabel = playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap';
+  const minSpan = Math.min(n - 1, Math.max(8, Math.ceil((n - 1) / 20)));
+  const shows = (key) => channels.includes(key);
+
   return (
     <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={subtitle}
-      actions={<div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs font-semibold">
+      actions={<div className="flex flex-wrap items-center gap-2">
         {/* The league, when there is more than one to choose from. Up here
             rather than beside the track dropdown so it is there when the list
             is empty — which is exactly when somebody wants to look at the
-            other league's laps instead. */}
+            other league's laps instead. The eyebrow says it picks the LEAGUE,
+            the choice that decides which laps exist at all, and the accent
+            border tells it apart from the track dropdown at a glance. A real
+            <label>, so the visible word is the accessible name too. */}
         {picksSeries && (
-          // It was a bare <select> in the plain input style: the same neutral
-          // box as the track dropdown below it, unlabelled, in a row of
-          // "Copy link" and "Export" — nothing said this one picked the
-          // LEAGUE, the choice that decides which laps exist at all. The
-          // eyebrow says it, and the accent border (the series' own colour)
-          // tells the two dropdowns apart at a glance.
-          //
-          // A real <label> rather than the aria-label it had: the visible
-          // word is now the accessible name too, instead of a hidden one
-          // that only a screen reader ever got.
           <label className="inline-flex items-center gap-1.5">
             <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
-            <select className="input w-auto border-accent/60 py-1 text-xs font-bold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
+            <select className="input h-8 w-auto border-accent/60 py-0 text-xs font-bold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
               {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
             </select>
           </label>
         )}
-        {/* Which laps you are looking at, then what you can do with them. */}
         {picksSeries && <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />}
-        {lapA && <button type="button" className={SMALL_BTN} onClick={copyLink} title="Copy a link that opens exactly this comparison">{copied === "link" ? "Link copied" : "Copy link"}</button>}
-        {lapA && <details className="relative">
-          <summary className={`${SMALL_BTN} cursor-pointer list-none`}>{copied === "summary" ? "Summary copied" : "Export"}</summary>
-          <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border bg-card py-1 font-normal shadow-lift">
-            <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={copySummary}>Copy summary as text</button>
-            <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={downloadCsv}>Download CSV</button>
-            {hasMap && <button type="button" className="block w-full px-3 py-1.5 text-left text-dark hover:bg-surface2" onClick={saveMap}>Save map as PNG</button>}
-          </div>
-        </details>}
-        {lapA && <button type="button" className={SMALL_BTN} onClick={toggleFull} aria-pressed={full} title="Full screen (F)">{full ? "Exit full screen" : "Full screen"}</button>}
-        <button type="button" className={SMALL_BTN} onClick={refresh} disabled={tracks.loading}>Refresh laps</button>
+        {/* Which laps you are looking at, then what you can do with them. */}
+        {lapA && <ToolButton icon={Link2} label={copied === "link" ? "Link copied" : "Copy link"} title="Copy a link that opens exactly this comparison" onClick={copyLink} />}
+        {lapA && (
+          <Menu icon={Download} label="Export" summary={<span className="hidden sm:inline">{copied === "summary" ? "Summary copied" : "Export"}</span>}>
+            <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>
+            <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>
+            {hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+          </Menu>
+        )}
+        {lapA && <ToolButton icon={full ? Minimize2 : Maximize2} label={full ? "Exit full screen" : "Full screen"} title="Full screen (F)" aria-pressed={full} onClick={toggleFull} />}
+        <ToolButton icon={RefreshCw} label="Refresh laps" onClick={refresh} disabled={tracks.loading} />
       </div>}>
-      {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad">{error} <button type="button" className="ml-2 underline" onClick={refresh}>Try again</button></div>}
-      {tracks.loading && !tracks.data ? <p role="status" className="py-6 text-sm text-light">Loading recorded tracks…</p>
-        : !list.length && !error ? <p className="py-6 text-sm text-light">No laps recorded{seriesName ? ` for ${seriesName}` : ''}{season ? ` in Season ${season}` : ''} yet. Refresh after a driver completes a clean lap.</p>
-        : list.length > 0 && <>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-            <Field label="Track">
-              <select aria-label="Track" className="input min-w-0 w-full" value={trackKey} onChange={(e) => setTrackKey(e.target.value)}>
-                {list.map((t) => <option key={t.trackKey} value={t.trackKey}>{readable(t.track)}{t.layout ? ` · ${readable(t.layout)}` : ''} · {t.laps} laps</option>)}
-              </select>
-            </Field>
-            <Field label="Lap A · reference">
-              <select aria-label="Lap A" className="input min-w-0 w-full" value={aId} onChange={(e) => changeA(e.target.value)}>
-                {!rows.length && <option value="">{laps === null ? 'Loading laps…' : 'No laps available'}</option>}
-                {rows.map((l) => <option key={pickOf(l)} value={pickOf(l)}>{l.name} · {fmtLap(l.lapTimeMs)}{l.only ? '' : ` (${ORDINAL[l.rank] || l.rank + 1})`}</option>)}
-              </select>
-            </Field>
-            <Field label="Lap B · comparison">
-              <select aria-label="Lap B" className="input min-w-0 w-full" value={bId} onChange={(e) => setBId(e.target.value)}>
-                <option value="">Single lap · no comparison</option>
-                {rows.filter((l) => pickOf(l) !== aId).map((l) => <option key={pickOf(l)} value={pickOf(l)}>{l.name} · {fmtLap(l.lapTimeMs)}{l.only ? '' : ` (${ORDINAL[l.rank] || l.rank + 1})`}</option>)}
-              </select>
-            </Field>
+      {error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />{error}<button type="button" className="ml-auto font-semibold underline" onClick={refresh}>Try again</button></div>}
+      {tracks.loading && !tracks.data ? <TelemetrySkeleton label="Loading recorded tracks…" />
+        : !list.length && !error ? (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
+            <Activity className="h-8 w-8 text-faint" aria-hidden="true" />
+            <p className="text-sm font-semibold text-dark">No laps recorded{seriesName ? ` for ${seriesName}` : ''}{season ? ` in Season ${season}` : ''} yet</p>
+            <p className="max-w-sm text-xs text-light">Laps appear here once a driver completes a clean lap with the in-game telemetry app running. Refresh after that.</p>
           </div>
-          {!error && (laps === null || (aId && !lapA) || (bId && !lapB)) && <p role="status" className="py-4 text-sm text-light">Loading lap channels…</p>}
-          {!error && laps?.length === 0 && <p className="py-4 text-sm text-light">No laps are currently available for this track. Refresh or select another track.</p>}
-          {lapA && <>
-            <div className="grid grid-cols-2 gap-4 border-y border-border sm:grid-cols-3">
-              <LapSummary lap={lapA} side="A" action={removeButton(lapA)} />
-              <LapSummary lap={lapB} side="B" action={removeButton(lapB)} />
-              <div className="col-span-2 flex flex-col justify-center gap-2 py-3 sm:col-span-1">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-xs font-semibold text-light">Finish-line gap</p>
-                  {both && <button type="button" className="text-xs font-semibold text-link hover:underline" onClick={() => { setAId(bId); setBId(aId); }}>Swap A / B ↔</button>}
-                </div>
-                <p className="font-display text-3xl font-extrabold tabular-nums text-dark">{gap == null ? '—' : `${Math.abs(gap).toFixed(3)} s`}</p>
-                <p className="text-xs text-light">{gap == null ? 'Choose lap B to see the difference.' : gap === 0 ? 'Same recorded lap time' : `Lap ${gap > 0 ? 'A' : 'B'} is quicker`}</p>
-                {idealMs != null && idealMs < Math.min(lapA.lapTimeMs, lapB.lapTimeMs) - 1 && (
-                  <p className="text-xs text-light" title="The quicker of the two through each sector, added up">Best of both sectors: <span className="font-mono font-semibold tabular-nums text-dark">{formatLapTime(idealMs)}</span> <span className="font-mono tabular-nums">(−{((Math.min(lapA.lapTimeMs, lapB.lapTimeMs) - idealMs) / 1000).toFixed(3)} s)</span></p>
-                )}
-              </div>
-            </div>
-            {both && lapA.car !== lapB.car && <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">Different cars selected. Vehicle performance also affects this comparison.</p>}
+        )
+        : list.length > 0 && <>
+          <Field label="Track" className="sm:max-w-md">
+            <select aria-label="Track" className="input min-w-0 w-full" value={trackKey} onChange={(e) => setTrackKey(e.target.value)}>
+              {list.map((t) => <option key={t.trackKey} value={t.trackKey}>{readable(t.track)}{t.layout ? ` · ${readable(t.layout)}` : ''} · {t.laps} laps</option>)}
+            </select>
+          </Field>
+          {!error && laps?.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card px-4 py-6 text-center text-sm text-light">No laps are currently available for this track. Refresh or select another track.</p>}
+          {laps?.length > 0 && (
+            <TelemetryDuel lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} pickerA={pickerA} pickerB={pickerB}
+              actionA={removeButton(lapA)} actionB={removeButton(lapB)} idealMs={idealMs} onSwap={() => { setAId(bId); setBId(aId); }}
+              placeholderA={aError ? 'Could not load this lap.' : 'Loading lap…'}
+              placeholderB={bId ? (bError ? 'Could not load this lap.' : 'Loading lap…') : 'Compare another driver or one of your own laps.'} />
+          )}
+          {loadingChannels && <TelemetrySkeleton label="Loading lap channels…" compact={laps?.length > 0} />}
+          {lapA && !loadingChannels && <>
+            {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
             {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
-            <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start' : ''}`}>
-              {hasMap && <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface2/30">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <h3 className="text-xs font-semibold text-dark">Track position</h3>
-                  {both && <div className="flex gap-1">{[['gain', 'Time gain'], ['lines', 'Racing lines']].map(([key, label]) => <button key={key} type="button" aria-pressed={mapMode === key}
-                    className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${mapMode === key ? 'bg-brand/15 text-dark' : 'text-light hover:bg-surface2'}`}
-                    onClick={() => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }}>{label}</button>)}</div>}
-                </div>
-                {/* Square on a phone: a circuit that runs taller than wide
-                    gets the height it needs; a fixed box from a desktop
-                    layout squashed it. */}
-                <div className="relative aspect-square max-h-[460px] w-full sm:aspect-auto sm:h-[380px]">
-                  <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}
-                    sections={sections} sectors={sectors || []} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border px-3 py-2">
-                  <button type="button" className={ZOOM_BTN + ' w-auto px-2 text-[10px]'} onClick={() => setZoom(1)} aria-label="Show whole track">Reset</button>
-                  <button type="button" className={ZOOM_BTN + ' w-auto px-2 text-[10px]'} onClick={() => {focusSomewhere();setZoom(30);setMapMode('lines');}}>Corner</button>
-                  <button type="button" className={ZOOM_BTN + ' w-auto px-2 text-[10px]'} onClick={() => {focusSomewhere();setZoom(120);setMapMode('lines');}}>Close-up</button>
-                  <button type="button" className={ZOOM_BTN} aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>−</button>
-                  <button type="button" className={ZOOM_BTN} aria-label="Zoom in" onClick={() => { focusSomewhere(); setZoom((z) => Math.min(240, z * 1.5)); }}>+</button>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-[11px] text-light">
-                  <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />A{both && mapMode === 'gain' ? ' gains' : ''}</span>
-                  {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, thicker for more' : ''}</span>}
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
-                  <span>numbers: slow sections</span>
-                  <span className="ml-auto">{zoom>1?'Drag to pan, double-click to reset':'Select a point on the line'}</span>
-                </div>
-              </div>}
-              <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
-            </div>
-            {/* The transport, laid out like a player: play on the left, the
-                lap as a slider, a section skip at either end of it, and the
-                speed on the right. On a phone the slider takes its own line. */}
-            <div className="border-y border-border py-3">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                {/* Pause keeps the cursor where it is; Play resumes from
-                    there. Only a lap that has run to the flag (or has no
-                    cursor yet) starts over from the line. */}
-                <button type="button" className="btn-primary min-w-[6.5rem] gap-2 px-3 py-1.5 text-xs" onClick={togglePlay} title="Space bar plays and pauses" aria-pressed={playing}>
-                  <Icon name={playing ? 'pause' : 'play'} />{playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap'}
-                </button>
-                <div className="order-last flex basis-full items-center gap-2 sm:order-none sm:basis-auto sm:flex-1">
-                  <button type="button" className={ICON_BTN} onClick={() => jumpSection(-1)} disabled={!neighbourSection(sections, at, -1)} aria-label="Previous slow section" title="Previous slow section, or press ["><Icon name="prev" /></button>
-                  <div className="relative min-w-0 flex-1">
-                    <input type="range" aria-label="Position around the lap" aria-valuetext={`${(at / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1} step="1" value={at} onChange={(e) => pickCursor(Number(e.target.value))} className="block w-full cursor-pointer accent-primary" />
-                    <div className="pointer-events-none absolute inset-x-2 top-full h-1.5" aria-hidden="true">
-                      {sections.map((s) => <span key={s.n} className="absolute top-0 h-1.5 w-px" style={{ left: `${(s.apex / (n - 1)) * 100}%`, background: s.n === active?.n ? 'rgb(var(--c-accent))' : 'var(--c-text3)' }} />)}
+            {/* Replay, player, traces and sections share one wrapper: the
+                player bar pins itself for as long as this block is on screen,
+                and lets go once the page has scrolled past it. */}
+            <div className="space-y-3 sm:space-y-4">
+              <Panel title="Replay" icon={MapIcon} note={hasMap ? null : "This lap was recorded before positions were, so there is no map."}
+                actions={hasMap && both && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
+                  onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}>
+                <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start' : ''}`}>
+                  {hasMap && <div className="min-w-0">
+                    {/* Square on a phone: a circuit that runs taller than wide
+                        gets the height it needs; a fixed box from a desktop
+                        layout squashed it. */}
+                    <div className="relative aspect-square max-h-[460px] w-full overflow-hidden rounded-lg border border-border sm:aspect-auto sm:h-[400px]">
+                      <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}
+                        sections={sections} sectors={sectors || []} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
+                      {/* Top left on a phone, where the scale bar (bottom left) and the
+                          zoom readout (top right) leave room; bottom right from sm up. */}
+                      <div className="absolute left-3 top-3 flex flex-wrap gap-1 sm:left-auto sm:top-auto sm:bottom-3 sm:right-3 sm:justify-end">
+                        <button type="button" className={ZOOM_BTN} onClick={() => setZoom(1)} aria-label="Show whole track" title="Whole track">Reset</button>
+                        <button type="button" className={ZOOM_BTN} onClick={() => {focusSomewhere();setZoom(30);setMapMode('lines');}} title="Zoom to a corner, both lines">Corner</button>
+                        <button type="button" className={ZOOM_BTN} onClick={() => {focusSomewhere();setZoom(120);setMapMode('lines');}} title="Close up on the cars">Close-up</button>
+                        <button type="button" className={ZOOM_BTN} aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>−</button>
+                        <button type="button" className={ZOOM_BTN} aria-label="Zoom in" onClick={() => { focusSomewhere(); setZoom((z) => Math.min(240, z * 1.5)); }}>+</button>
+                      </div>
                     </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
+                      <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />A{both && mapMode === 'gain' ? ' gains' : ''}</span>
+                      {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, thicker for more' : ''}</span>}
+                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
+                      <span>numbers: slow sections</span>
+                      <span className="ml-auto">{zoom>1?'Drag to pan, double-click to reset':'Select a point on the line'}</span>
+                    </div>
+                  </div>}
+                  <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
+                </div>
+              </Panel>
+              <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
+                onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
+                rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}
+                position={`${position(at)} of lap${active ? ` · §${active.n}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
+              <Panel title="Lap traces" icon={ChartLine}
+                note={<span className="inline-flex flex-wrap items-center gap-x-3"><span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2" style={{ borderColor: colorA }} />A solid</span>{both && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: colorB }} />B dashed</span>}</span>}
+                actions={<Segmented label="Position axis" value={dist ? axisMode : 'pct'} onChange={setAxisMode} items={[{ key: 'pct', label: '% of lap' }, ...(dist ? [{ key: 'dist', label: 'metres' }] : [])]} />}>
+                {/* The toolbar: zoom on the left, which stretch is showing and
+                    the optional channels on the right. */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border pb-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="inline-flex items-center rounded-lg border border-border bg-surface2 p-0.5">
+                      <button type="button" className="h-7 w-7 rounded-md text-sm font-bold text-medium transition hover:bg-card disabled:opacity-30" aria-label="Zoom out of graphs" disabled={!chartZoomed} onClick={() => zoomCharts(0.5)}>−</button>
+                      <span className="w-12 text-center font-mono text-xs tabular-nums text-dark">{((n - 1) / chartSpan).toFixed(1)}×</span>
+                      <button type="button" className="h-7 w-7 rounded-md text-sm font-bold text-medium transition hover:bg-card disabled:opacity-30" aria-label="Zoom in on graphs" disabled={chartSpan <= minSpan} onClick={() => zoomCharts(2)}>+</button>
+                    </div>
+                    <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-link transition hover:bg-surface2 disabled:text-faint disabled:hover:bg-transparent" disabled={!chartZoomed} onClick={resetCharts}>Full lap</button>
+                    <span className="font-mono text-[11px] tabular-nums text-light" aria-label="Visible graph section">{position(visibleRange[0])} – {position(visibleRange[1])}</span>
                   </div>
-                  <button type="button" className={ICON_BTN} onClick={() => jumpSection(1)} disabled={!neighbourSection(sections, at, 1)} aria-label="Next slow section" title="Next slow section, or press ]"><Icon name="next" /></button>
+                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Optional traces">
+                    {OPTIONAL_CHANNELS.filter((c) => c.key !== 'lat' || gA?.lat).map((c) => <Chip key={c.key} on={shows(c.key)} onClick={() => toggleChannel(c.key)}>{c.label}</Chip>)}
+                  </div>
                 </div>
-                {/* A speed change restarts the run's effect; handing it the
-                    current cursor keeps the dot in place instead of sending
-                    it back to the line. */}
-                <select aria-label="Playback speed" className="rounded-md border border-border bg-card px-2 py-1 text-xs text-dark" value={playbackRate} onChange={(e) => { startAtRef.current = at; setPlaybackRate(Number(e.target.value)); }}>
-                  {[0.25, 0.5, 1, 2, 4].map((rate) => <option key={rate} value={rate}>{rate}×</option>)}
-                </select>
-                {/* Fixed width and no section suffix (the readout above names
-                    it): text that changes length here reflows the whole row
-                    on a phone with every step of playback. */}
-                <span className="ml-auto min-w-[8.5rem] whitespace-nowrap text-right font-mono text-xs tabular-nums text-light">{position(at)} of lap</span>
-              </div>
-              <p className="mt-3 text-[10px] text-light">Drag the slider or a point on the map to inspect. The ticks are the slow sections.<span className="hidden sm:inline"> Arrow keys step, space plays, [ and ] jump between sections.</span></p>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-              <h3 className="font-display text-lg font-bold text-dark">Lap traces</h3>
-              <div className="flex flex-wrap items-center gap-4 text-xs">
-                <span className="flex items-center gap-2 text-light"><span className="w-5 border-t-2" style={{ borderColor: colorA }} />A · solid</span>
-                {both && <span className="flex items-center gap-2 text-light"><span className="w-5 border-t-2 border-dashed" style={{ borderColor: colorB }} />B · dashed</span>}
-                <div role="group" aria-label="Position axis" className="flex rounded-md border border-border p-0.5 text-[11px]">
-                  {[['pct', '% of lap'], ['dist', 'metres']].map(([key, label]) => <button key={key} type="button" aria-pressed={axisMode === key} disabled={key === 'dist' && !dist}
-                    className={`rounded px-2 py-0.5 font-semibold transition disabled:opacity-40 ${axisMode === key ? 'bg-brand/15 text-dark' : 'text-light hover:bg-surface2'}`} onClick={() => setAxisMode(key)}>{label}</button>)}
+                {chartZoomed && <div className="flex items-center gap-3 pt-3">
+                  <button type="button" className="text-sm text-light disabled:opacity-30" aria-label="Earlier graph section" disabled={visibleRange[0] === 0} onClick={() => panCharts(Math.max(0, visibleRange[0] - Math.round(chartSpan / 2)))}>←</button>
+                  <input type="range" aria-label="Move graph section" aria-valuetext={`${(visibleRange[0] / (n - 1) * 100).toFixed(1)} to ${(visibleRange[1] / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1 - chartSpan} step="1" value={visibleRange[0]} onChange={(e) => panCharts(Number(e.target.value))} className="min-w-0 flex-1 cursor-pointer accent-primary" />
+                  <button type="button" className="text-sm text-light disabled:opacity-30" aria-label="Later graph section" disabled={visibleRange[1] === n - 1} onClick={() => panCharts(Math.min(n - 1 - chartSpan, visibleRange[0] + Math.round(chartSpan / 2)))}>→</button>
+                </div>}
+                <div className="space-y-5 pt-4">
+                  {both && delta && <div>
+                    <ChannelChart {...chartProps} title="Time delta" unit="s · B − A" a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
+                    <p className="ml-12 mt-2 text-[11px] text-light">+ A ahead · − B ahead. Rising: B loses time.</p>
+                  </div>}
+                  <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={speedLo} hi={speedHi} height={150} />
+                  <PedalChart {...chartProps} a={pedalsA} b={pedalsB} height={160} />
+                  {shows('steer') && <ChannelChart {...chartProps} title="Steering" unit="°" a={lapA.steer} b={lapB?.steer} lo={-steerAbs} hi={steerAbs} format={(v) => (v / 10).toFixed(0)} />}
+                  {shows('gear') && <ChannelChart {...chartProps} title="Gear" unit="" a={lapA.gear} b={lapB?.gear} lo={0} hi={Math.max(6, ...lapA.gear, ...(lapB?.gear || []))} height={90} />}
+                  {shows('lat') && gA?.lat && <ChannelChart {...chartProps} title="Lateral g" unit="g · from the recorded line" a={gA.lat} b={gB?.lat || null} lo={-gRange.lat} hi={gRange.lat} format={(v) => v.toFixed(1)} height={100} />}
+                  {shows('long') && gA && <ChannelChart {...chartProps} title="Longitudinal g" unit="g · + accelerating, − braking" a={gA.long} b={gB?.long || null} lo={-gRange.long} hi={gRange.long} format={(v) => v.toFixed(1)} height={100} />}
+                  <ChartAxis visibleRange={visibleRange} n={n} dist={dist} mode={axisMode} zoomed={chartZoomed} />
                 </div>
-              </div>
+                <p className="mt-3 border-t border-border pt-2 text-[11px] text-light">Drag across a graph to zoom into that stretch. Double-click for the full lap. The shaded bands are the slow sections; their numbers zoom to them.</p>
+              </Panel>
+              {insights.length > 0 && <SectionsPanel insights={insights} activeN={active?.n ?? null} colorA={colorA} colorB={colorB} onSelect={selectSection} />}
             </div>
-            <div className="space-y-2 border-b border-border pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="mr-2 text-xs font-semibold text-light">Zoom</span>
-                  <button type="button" className="btn-secondary px-3 py-1 text-sm disabled:opacity-40" aria-label="Zoom out of graphs" disabled={!chartZoomed} onClick={() => zoomCharts(0.5)}>−</button>
-                  <span className="w-10 text-center font-mono text-xs tabular-nums text-dark">{((n - 1) / chartSpan).toFixed(1)}×</span>
-                  <button type="button" className="btn-secondary px-3 py-1 text-sm disabled:opacity-40" aria-label="Zoom in on graphs" disabled={chartSpan <= Math.min(n - 1, Math.max(8, Math.ceil((n - 1) / 20)))} onClick={() => zoomCharts(2)}>+</button>
-                  <button type="button" className="ml-2 text-xs text-link disabled:text-faint" disabled={!chartZoomed} onClick={resetCharts}>Full lap</button>
-                </div>
-                <span className="font-mono text-xs tabular-nums text-light" aria-label="Visible graph section">{position(visibleRange[0])} – {position(visibleRange[1])}</span>
-              </div>
-              {chartZoomed && <div className="flex items-center gap-3">
-                <button type="button" className="text-sm text-light disabled:opacity-30" aria-label="Earlier graph section" disabled={visibleRange[0] === 0} onClick={() => panCharts(Math.max(0, visibleRange[0] - Math.round(chartSpan / 2)))}>←</button>
-                <input type="range" aria-label="Move graph section" aria-valuetext={`${(visibleRange[0] / (n - 1) * 100).toFixed(1)} to ${(visibleRange[1] / (n - 1) * 100).toFixed(1)} percent of lap`} min="0" max={n - 1 - chartSpan} step="1" value={visibleRange[0]} onChange={(e) => panCharts(Number(e.target.value))} className="min-w-0 flex-1 cursor-pointer accent-primary" />
-                <button type="button" className="text-sm text-light disabled:opacity-30" aria-label="Later graph section" disabled={visibleRange[1] === n - 1} onClick={() => panCharts(Math.min(n - 1 - chartSpan, visibleRange[0] + Math.round(chartSpan / 2)))}>→</button>
-              </div>}
-              <p className="text-[11px] text-light">Drag across a graph to zoom. Double-click for the full lap.</p>
-            </div>
-            <div className="space-y-5">
-              {both && delta && <div>
-                <ChannelChart {...chartProps} title="Time delta" unit="s · B − A" a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
-                <p className="ml-12 mt-2 text-[11px] text-light">+ A ahead · − B ahead. Rising: B loses time.</p>
-              </div>}
-              <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={speedLo} hi={speedHi} height={150} />
-              <PedalChart {...chartProps} a={pedalsA} b={pedalsB} height={160} />
-              {showDetails && <>
-                <ChannelChart {...chartProps} title="Steering" unit="°" a={lapA.steer} b={lapB?.steer} lo={-steerAbs} hi={steerAbs} format={(v) => (v / 10).toFixed(0)} />
-                <ChannelChart {...chartProps} title="Gear" unit="" a={lapA.gear} b={lapB?.gear} lo={0} hi={Math.max(6, ...lapA.gear, ...(lapB?.gear || []))} height={90} />
-                {gA?.lat && <ChannelChart {...chartProps} title="Lateral g" unit="g · from the recorded line" a={gA.lat} b={gB?.lat || null} lo={-gRange.lat} hi={gRange.lat} format={(v) => v.toFixed(1)} height={100} />}
-                {gA && <ChannelChart {...chartProps} title="Longitudinal g" unit="g · + accelerating, − braking" a={gA.long} b={gB?.long || null} lo={-gRange.long} hi={gRange.long} format={(v) => v.toFixed(1)} height={100} />}
-              </>}
-              <ChartAxis visibleRange={visibleRange} n={n} dist={dist} mode={axisMode} zoomed={chartZoomed} />
-            </div>
-            <button type="button" className="text-xs font-semibold text-link hover:underline" aria-expanded={showDetails} onClick={() => setShowDetails((v) => !v)}>{showDetails ? 'Hide steering, gear & g-forces' : '+ Show steering, gear & g-forces'}</button>
-            {insights.length > 0 && <SectionsPanel insights={insights} activeN={active?.n ?? null} colorA={colorA} colorB={colorB} onSelect={selectSection} />}
           </>}
         </>}
     </ToolCard>
+  );
+}
+
+// Grey shapes where the comparison is about to be, so the page does not jump
+// from one line of text to a full dashboard. `compact` when the duel above is
+// already drawn and only the channels are on their way.
+function TelemetrySkeleton({ label, compact = false }) {
+  return (
+    <div role="status" aria-label={label} className="space-y-3 sm:space-y-4">
+      {!compact && <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_12rem_1fr]">
+        <Skeleton className="h-36 rounded-xl" /><Skeleton className="hidden h-36 rounded-xl sm:block" /><Skeleton className="h-36 rounded-xl" />
+      </div>}
+      <Skeleton className="h-28 rounded-xl" />
+      <div className="grid gap-3 lg:grid-cols-2"><Skeleton className="h-72 rounded-xl" /><Skeleton className="hidden h-72 rounded-xl lg:block" /></div>
+      <p className="text-center text-xs text-light">{label}</p>
+    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { telemetryIndexAt } from "../utils/telemetryWindow.js";
-import TeamLogo from "./TeamLogo.jsx";
 
 export const LAP_A_COLOR = "#0ea5e9";
 export const LAP_B_COLOR = "#f43f5e";
@@ -209,35 +208,4 @@ export function ChartAxis({ visibleRange, n, dist, mode = "pct", zoomed = false 
       })}
     </div>
   );
-}
-
-// `action` is a control about THIS lap, drawn under its facts — the admin's
-// "Remove lap" today. It sits inside the coloured block rather than beside
-// it so there is no doubt which of the two laps it acts on.
-export function LapSummary({ lap, side, action = null }) {
-  const color = lapColor(lap, side);
-  return (
-    <div className="my-3 min-w-0 border-l-2 pl-3" style={{ borderColor: color }}>
-      <div className="flex items-center gap-2 text-xs font-semibold">
-        <span className="font-mono" style={{ color }}>{side}</span>
-        <span className="truncate text-dark">{lap?.name || "Choose a comparison lap"}</span>
-      </div>
-      {lap?.team && <div className="mt-2 flex items-center gap-2 text-xs text-light"><TeamLogo key={lap.team.id} id={lap.team.id} name={lap.team.name} color={color} logoUrl={lap.team.logoUrl} size={22} /><span className="truncate">{lap.team.name}</span></div>}
-      <div className="mt-2 font-display text-xl font-bold tabular-nums text-dark sm:text-3xl">{lap ? formatTime(lap.lapTimeMs) : "—"}</div>
-      <p className="mt-2 text-xs text-light">{lap ? <><span className="block truncate" title={lap.car}>{String(lap.car || 'Unknown car').replaceAll("_", " ")}</span><span className="mt-1 block">{Math.round(Math.max(...lap.speed))} km/h peak{recordedOn(lap.recordedAt)}</span></> : "Compare another driver or one of your own laps."}</p>
-      {lap && action && <div className="mt-2">{action}</div>}
-    </div>
-  );
-}
-
-function formatTime(ms) {
-  return `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
-}
-
-// " · recorded 3 Sep" — which of a driver's laps this is, in a form that
-// tells them apart when the times do not.
-function recordedOn(iso) {
-  const d = iso ? new Date(iso) : null;
-  if (!d || Number.isNaN(d.getTime())) return "";
-  return ` · recorded ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(d)}`;
 }
