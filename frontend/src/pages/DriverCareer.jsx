@@ -122,16 +122,21 @@ function Hero({ person, span }) {
     <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
       <div className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{ background: "radial-gradient(120% 140% at 85% 0%, rgb(var(--c-brand)), transparent 55%)" }} />
-      <div className="relative flex flex-wrap items-center gap-4 p-5 sm:gap-7 sm:p-8">
+      {/* A grid rather than a wrapping row. On a phone the picture and the
+          name share the first line and everything else takes the full width
+          under them; the wrapping row put the picture beside all of it and
+          squeezed the name, the span and the leagues into a narrow column.
+          From sm up the picture sits beside both, as before. */}
+      <div className="relative grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-4 p-5 sm:gap-x-7 sm:p-8">
         <DriverAvatar
           name={person.name}
           photoUrl={person.photoUrl}
           fallbacks={person.photoFallbacks}
           color={accent}
           size={88}
-          className="text-4xl"
+          className="!h-16 !w-16 text-2xl sm:row-span-2 sm:!h-[88px] sm:!w-[88px] sm:text-4xl"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:text-[11px] sm:tracking-[0.2em]">
             Career record
           </div>
@@ -147,8 +152,10 @@ function Hero({ person, span }) {
           {person.formerName && (
             <div className="mt-1 text-xs font-medium text-light">raced as {person.formerName}</div>
           )}
+        </div>
+        <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2">
           {/* The span, and nothing the numbers underneath already say. */}
-          <div className="mt-3 text-sm text-medium">
+          <div className="text-sm text-medium">
             {span.firstSeason != null && (
               <>
                 Season {span.firstSeason}
@@ -158,19 +165,22 @@ function Hero({ person, span }) {
             {plural(span.seasonsRaced, "season")} raced
             {span.leagues > 1 ? ` · ${plural(span.leagues, "league")}` : ""}
           </div>
+          {/* One seat per league. On a phone every one is a full-width line
+              of the same shape, the league in bold and the team and season
+              after it, cut short rather than wrapped: as wrapping pills a long
+              team name made one of them twice the height of the other. */}
           {seats.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-col gap-2 sm:mt-4 sm:flex-row sm:flex-wrap">
               {seats.map((s) => (
                 <Link
                   key={s.seriesSlug}
                   to={`/s/${s.seriesSlug}/drivers/${s.handle || s.driverId}`}
-                  className="group inline-block max-w-full rounded-2xl border border-border bg-surface2 px-3 py-1.5 text-xs font-semibold text-medium transition hover:border-brand hover:text-dark sm:inline-flex sm:items-center sm:gap-2 sm:whitespace-nowrap sm:rounded-full"
+                  className="group flex min-w-0 items-center gap-2 rounded-xl border border-border bg-surface2 px-3 py-2 text-xs font-semibold text-medium transition hover:border-brand hover:text-dark sm:max-w-full sm:rounded-full sm:py-1.5"
                 >
-                  {/* inline on a phone, so a long league name wraps like a sentence */}
-                  <span className="mr-2 inline-block h-2 w-2 shrink-0 rounded-full align-middle sm:mr-0" style={{ background: s.teamColor || "rgb(var(--c-brand))" }} />
-                  {s.seriesName}{" "}
-                  <span className="text-light group-hover:text-medium">
-                    · {s.teamName || "Reserve"} · S{s.seasonNumber}
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.teamColor || "rgb(var(--c-brand))" }} />
+                  <span className="shrink-0 text-dark">{s.seriesName}</span>
+                  <span className="min-w-0 truncate text-light group-hover:text-medium">
+                    {s.teamName || "Reserve"} · S{s.seasonNumber}
                   </span>
                 </Link>
               ))}
@@ -205,25 +215,36 @@ function TrophyShelf({ titles }) {
   );
 }
 
+// Two across on a phone: a career with ten titles was ten full-width cards,
+// three screens of scrolling for one word and one line each.
 function ShelfRow({ titles }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
       {titles.map((t, i) => {
         return (
-          <div key={i} className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center gap-4">
+          <div key={i} className="rounded-xl border border-border bg-card p-3.5 sm:p-5">
+            <div className="flex items-center gap-3 sm:gap-4">
               {t.position === 1 ? (
-                <Crown className="h-8 w-8" style={{ color: MEDAL_TEXT[0] }} />
+                <Crown className="h-6 w-6 shrink-0 sm:h-8 sm:w-8" style={{ color: MEDAL_TEXT[0] }} />
               ) : (
-                <Medal className="h-8 w-8" style={{ color: MEDAL_TEXT[t.position - 1] }} />
+                <Medal className="h-6 w-6 shrink-0 sm:h-8 sm:w-8" style={{ color: MEDAL_TEXT[t.position - 1] }} />
               )}
               <div className="min-w-0">
-                <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+                <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark sm:text-lg">
                   {TITLE_WORD[t.type]}
                 </div>
-                <div className="mt-0.5 truncate text-xs font-medium text-light">
-                  {t.seriesName} · {t.seasonName || `Season ${t.seasonNumber}`}
-                  {t.teamName ? ` · ${t.teamName}` : ""}
+                {/* Two fixed lines on a phone, the league and then the season
+                    and team, so a long league name cannot push the season out
+                    of the card; one line from sm up. */}
+                <div className="mt-0.5 text-[11px] font-medium leading-snug text-light sm:truncate sm:text-xs">
+                  <span className="block truncate sm:inline">{t.seriesName}</span>
+                  <span className="hidden sm:inline"> · </span>
+                  <span className="block truncate sm:inline">
+                    {/* "S3" on a phone, so the team still fits beside it. */}
+                    <span className="sm:hidden">S{t.seasonNumber}</span>
+                    <span className="hidden sm:inline">{t.seasonName || `Season ${t.seasonNumber}`}</span>
+                    {t.teamName ? ` · ${t.teamName}` : ""}
+                  </span>
                 </div>
               </div>
             </div>
@@ -592,7 +613,7 @@ function CircuitTable({ tracks }) {
               <th className="hidden px-3 py-3 text-center sm:table-cell">Podiums</th>
               <th className="px-2 py-3 text-center sm:px-3">Best</th>
               <th className="hidden px-3 py-3 text-center sm:table-cell">Average</th>
-              <th className="px-2.5 py-3 text-right sm:px-6">Best lap</th>
+              <th className="hidden px-2.5 py-3 text-right sm:table-cell sm:px-6">Best lap</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -603,6 +624,11 @@ function CircuitTable({ tracks }) {
                     <Flag code={t.country} />
                     <span className="font-semibold text-dark">{t.track}</span>
                   </span>
+                  {/* On a phone the best lap rides under the name: as a column
+                      of its own it was pushed off the right-hand edge. */}
+                  {t.bestLapMs ? (
+                    <span className="mt-0.5 block pl-7 font-mono text-[11px] tabular-nums text-light sm:hidden">{fmtLap(t.bestLapMs)}</span>
+                  ) : null}
                 </td>
                 <td className="px-2 py-3.5 text-center tabular-nums text-medium sm:px-3">{t.starts}</td>
                 <td className="px-2 py-3.5 text-center font-semibold tabular-nums sm:px-3" style={t.wins ? { color: MEDAL_TEXT[0] } : undefined}>
@@ -611,7 +637,7 @@ function CircuitTable({ tracks }) {
                 <td className="hidden px-3 py-3.5 text-center tabular-nums text-medium sm:table-cell">{t.podiums || NO_VALUE}</td>
                 <td className="px-2 py-3.5 text-center font-semibold tabular-nums text-dark sm:px-3">{pos(t.best)}</td>
                 <td className="hidden px-3 py-3.5 text-center tabular-nums text-medium sm:table-cell">{t.avgFinish != null ? pos(t.avgFinish) : NO_VALUE}</td>
-                <td className="px-2.5 py-3.5 text-right font-mono text-xs tabular-nums text-medium sm:px-6 sm:text-[13px]">
+                <td className="hidden px-2.5 py-3.5 text-right font-mono text-xs tabular-nums text-medium sm:table-cell sm:px-6 sm:text-[13px]">
                   {t.bestLapMs ? fmtLap(t.bestLapMs) : NO_VALUE}
                 </td>
               </tr>
@@ -651,7 +677,9 @@ function DuelList({ teammates, me }) {
                 <span className="text-base font-semibold text-dark">
                   {me} <span className="font-normal text-light">against</span> {d.name}
                 </span>
-                <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+                {/* Its own line on a phone for every pairing: beside the names
+                    it fitted for a short name and wrapped for a long one. */}
+                <span className="basis-full font-mono text-[11px] uppercase tracking-wider text-light sm:basis-auto">
                   {plural(d.races, "race")} together
                   {d.seasons.length ? ` · S${d.seasons.join(", S")}` : ""}
                 </span>
@@ -685,7 +713,7 @@ function DuelList({ teammates, me }) {
                   )}
                 </span>
                 {d.qualiMe + d.qualiThem >= 3 && (
-                  <span className="font-mono text-[11px] uppercase tracking-wider">
+                  <span className="basis-full font-mono text-[11px] uppercase tracking-wider sm:basis-auto">
                     Qualifying {d.qualiMe} : {d.qualiThem}
                   </span>
                 )}
@@ -715,7 +743,7 @@ function Milestones({ milestones }) {
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <ol className="divide-y divide-border">
         {milestones.map((m) => (
-          <li key={m.key} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3.5">
+          <li key={m.key} className="flex items-center gap-x-4 px-5 py-3.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-surface2">
               {m.key === "firstWin" ? (
                 <Trophy className="h-4 w-4" style={{ color: MEDAL_TEXT[0] }} />
@@ -727,14 +755,19 @@ function Milestones({ milestones }) {
                 <Star className="h-4 w-4 text-light" />
               )}
             </span>
-            <span className="font-semibold text-dark">{m.label}</span>
-            <span className="min-w-0 flex-1 truncate text-sm text-medium">
-              {m.track}
-              {m.round ? ` · Round ${m.round}` : ""} · {m.seriesName} Season {m.seasonNumber}
+            {/* On a phone the where and when go under the label, in full:
+                beside it they were cut to "Melbourne · Round 1 · …". */}
+            <span className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-4">
+              <span className="block font-semibold text-dark sm:shrink-0">{m.label}</span>
+              <span className="block text-sm text-medium sm:min-w-0 sm:truncate">
+                {m.track}
+                {m.round ? ` · Round ${m.round}` : ""} · {m.seriesName} Season {m.seasonNumber}
+              </span>
+              {m.date && <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">{fmtStamp(m.date)}</span>}
             </span>
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-              {m.date ? fmtStamp(m.date) : ""}
-            </span>
+            {m.date && (
+              <span className="hidden shrink-0 font-mono text-[11px] uppercase tracking-wider text-light sm:block">{fmtStamp(m.date)}</span>
+            )}
           </li>
         ))}
       </ol>
@@ -974,6 +1007,28 @@ function ChapterBar({ chapters }) {
     bar.scrollTo({ left: Math.max(0, want), behavior: motionOff() ? "auto" : "smooth" });
   }, [here]);
 
+  // Which ends of the bar have more chapters past them. On a phone the bar is
+  // wider than the screen and its last chapter was simply cut off at the
+  // edge, with nothing to say it scrolls; a fade at that end says so.
+  const [more, setMore] = useState({ left: false, right: false });
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return undefined;
+    const update = () => {
+      const left = bar.scrollLeft > 2;
+      const right = bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2;
+      setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+    };
+    update();
+    bar.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      bar.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [key]);
+  const fade = `linear-gradient(to right, ${more.left ? "transparent 0, #000 28px" : "#000 0"}, ${more.right ? "#000 calc(100% - 36px), transparent 100%" : "#000 100%"})`;
+
   const go = (id) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: motionOff() ? "auto" : "smooth", block: "start" });
@@ -984,6 +1039,7 @@ function ChapterBar({ chapters }) {
       ref={barRef}
       aria-label="On this page"
       className="sticky top-[84px] z-20 -mx-1 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={{ maskImage: fade, WebkitMaskImage: fade }}
     >
       <SlidingTabs
         items={chapters.map(([id, label]) => ({ key: id, label }))}
@@ -1163,14 +1219,17 @@ export default function DriverCareer({ careerKey = null, embedded = false }) {
         <Section id="teams" eyebrow="Who they drove for" title="Teams">
           <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border">
             {teams.map((t) => (
-              <div key={t.name} className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-5 sm:px-6">
+              // Name over seasons for every team, and the numbers on a line of
+              // their own on a phone: side by side, a long name cut the
+              // seasons to "Sunday Championshi…" on one row and pushed them
+              // onto a line of their own on the next.
+              <div key={t.name} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 sm:px-6">
                 <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={36} />
-                <span className="min-w-0 truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
-                <span className="min-w-0 flex-1 truncate text-[13px] text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
-                {/* Its own line on a phone for every team, right-hand end of
-                    the row from sm up: where it wrapped used to depend on how
-                    long the team's name was. */}
-                <span className="basis-full font-mono text-[12px] uppercase tracking-wider text-light sm:ml-auto sm:basis-auto">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">{t.name}</span>
+                  <span className="block truncate text-[13px] text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
+                </span>
+                <span className="basis-full font-mono text-[12px] uppercase tracking-wider text-light sm:basis-auto">
                   {t.starts > 0
                     ? `${plural(t.starts, "start")} · ${plural(t.wins, "win")} · ${plural(t.podiums, "podium")} · ${t.points} pts`
                     : "No start yet"}
