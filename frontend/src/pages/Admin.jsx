@@ -22,6 +22,9 @@ import RacePreview from "../components/RacePreview.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
 import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
+import TabNotice from "../components/TabNotice.jsx";
+import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
+import { HelpNote } from "../components/ui.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { resolveTab } from "../data/adminIndex.js";
@@ -355,6 +358,13 @@ export default function Admin() {
     if (authed) prefetchTabs();
   }, [authed]);
 
+  // Leave the admin area. Clears the PIN token; a Discord admin stays signed in
+  // to the site (their admin rights come from their account).
+  function signOut() {
+    setToken(null);
+    window.location.href = "/";
+  }
+
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
     const onUnauth = () => {
@@ -380,24 +390,39 @@ export default function Admin() {
   return (
     <div className="content-in">
       {/* One row for everything that is true of the whole page: what is being
-          edited, where the menu sits, and the way out. */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <PageHeader eyebrow="League Office" title="Admin" />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          edited, where the menu sits, and the way out.
+          Below lg the row is rearranged to get the panel onto the first screen
+          of a phone: Sign out moves up beside the title (which steps down a
+          size and drops its eyebrow to make room), the menu toggle goes, and
+          only the season switch gets a line of its own. The wrapper
+          round the title dissolves from lg up (lg:contents), so a computer
+          gets exactly the one row it always had. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 sm:mb-6">
+        <div className="w-full lg:contents">
+          <PageHeader
+            // The eyebrow is a nicety a phone cannot afford here: a hidden span
+            // leaves its line with no height at all.
+            eyebrow={<span className="hidden sm:inline">League Office</span>}
+            title="Admin"
+            rightInline
+            right={
+              <button className="btn-secondary shrink-0 lg:hidden" onClick={signOut}>
+                Sign out
+              </button>
+            }
+          />
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto">
           <AdminScope />
-          {/* Same twenty-one tabs either way; this only says where they are. */}
-          <AdminNavToggle mode={navMode} onChange={setNavMode} />
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              // Leave the admin area. Clears the PIN token; a Discord admin stays
-              // signed in to the site (their admin rights come from their account).
-              setToken(null);
-              window.location.href = "/";
-            }}
-          >
-            Sign out
-          </button>
+          {/* Same twenty-one tabs either way; this only says where they are.
+              Phones and tablets always get the folded menu (see AdminNav), so
+              the choice only exists where it changes something. */}
+          <span className="hidden lg:contents">
+            <AdminNavToggle mode={navMode} onChange={setNavMode} />
+            <button className="btn-secondary" onClick={signOut}>
+              Sign out
+            </button>
+          </span>
         </div>
       </div>
 
@@ -3266,6 +3291,13 @@ function Drivers() {
   const [rosterQuery, setRosterQuery] = useState("");
   // Ticked drivers for bulk removal (ids survive folding teams open/closed).
   const [selected, setSelected] = useState(() => new Set());
+  // The chips over the roster: one tier (or any), plus any of "inactive",
+  // "no Discord id", "no Steam id" at once. Like the search, any of them
+  // unfolds every team with a hit.
+  const [tierFilter, setTierFilter] = useState(null);
+  const [flags, setFlags] = useState(() => new Set());
+  // The one roster row whose drawer (role, remove, the two ids) is open.
+  const [expanded, setExpanded] = useState(null);
 
   const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
   const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
@@ -3442,21 +3474,49 @@ function Drivers() {
     !q ||
     [d.name, d.discordName, d.formerName, d.discordUserId, d.inheritedDiscordUserId, d.steamId]
       .some((v) => v && String(v).toLowerCase().includes(q));
-  // The groups as shown: filtered to the hits while searching, every team
-  // otherwise. `teamGroups` (unfiltered) stays what the transfer dialog and
-  // the add-driver form read.
-  const shownGroups = q
-    ? teamGroups.map((t) => ({ ...t, drivers: t.drivers.filter(matches) })).filter((t) => t.drivers.length > 0)
+  // The chips. Each one is a question the roster gets asked before a season
+  // starts: who is in Tier 2, who has left, whose login and @mention will not
+  // work (no Discord id), whose results will be matched by name (no Steam id).
+  // An inherited Discord id counts as present, because login and mentions
+  // already use it.
+  const FLAG_TESTS = {
+    inactive: (d) => !d.isActive,
+    noDiscord: (d) => !d.discordUserId && !d.inheritedDiscordUserId,
+    noSteam: (d) => !d.steamId,
+  };
+  const passes = (d) =>
+    matches(d) &&
+    (tierFilter == null || d.tier === tierFilter) &&
+    [...flags].every((f) => FLAG_TESTS[f](d));
+  const filtering = !!q || tierFilter != null || flags.size > 0;
+  const countWith = (test) => allDrivers.filter(test).length;
+  const toggleFlag = (f) =>
+    setFlags((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  // The groups as shown: filtered to the hits while searching or filtering,
+  // every team otherwise. `teamGroups` (unfiltered) stays what the transfer
+  // dialog and the add-driver form read.
+  const shownGroups = filtering
+    ? teamGroups.map((t) => ({ ...t, drivers: t.drivers.filter(passes) })).filter((t) => t.drivers.length > 0)
     : teamGroups;
-  const isOpen = (t) => (q ? true : openTeam === t.id);
+  const shownCount = shownGroups.reduce((n, t) => n + t.drivers.length, 0);
+  const isOpen = (t) => (filtering ? true : openTeam === t.id);
 
   return (
     <div>
+    {/* Every message of this tab, from wherever the click was: a roster line,
+        the transfer dialog, the intake card (see TabNotice). */}
+    <TabNotice msg={msg} error={error} onClose={() => { setMsg(null); setError(null); }} />
     {/* First the whole field, then the seat-by-seat corrections. A season being
         built asks "who is racing" before it asks anything else, and answering it
-        by hand seventy times is the work this saves. */}
+        by hand seventy times is the work this saves. The two ways in sit side
+        by side, so the roster below can have the whole width to itself. */}
+    <div className="mb-6 grid gap-6 lg:grid-cols-2">
     {season?.id && (
-      <div className="mb-6">
         <DriverIntake
           seasonId={season.id}
           seasonName={season.name}
@@ -3469,9 +3529,7 @@ function Drivers() {
           onDone={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
           onError={(m) => { setError(m); setMsg(null); }}
         />
-      </div>
     )}
-    <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />
         <div className="grid grid-cols-2 gap-3">
@@ -3498,55 +3556,104 @@ function Drivers() {
             <option value={0}>Reserve</option>
           </select>
         </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "Saving…" : "Create driver"}
         </button>
       </form>
+    </div>
 
-      <div className="card max-h-[640px] overflow-y-auto p-5">
+      {/* No height cap and no scrollbar of its own: a list inside a list was
+          two scrollbars fighting over one thumb on a phone, and the Reserve
+          pool alone is longer than the old cap. The page scrolls; the rows are
+          short enough now that it does not have to scroll far. */}
+      <div className="card p-5">
         <CardHead eyebrow="Roster" title={`Drivers by team (${allDrivers.length})`} />
-        <p className="mb-3 text-xs text-light">
-          Use the dropdowns to move a driver to another team or change their tier. The Discord field links the
-          driver to their Discord account: it makes their website login connect instantly and lets the results
-          post @mention them, even before their first login. (Discord: Settings → Advanced → Developer Mode, then
-          right-click the user → Copy User ID.) The Steam field holds the id race imports match on. It normally
-          fills itself, from the first race a driver runs or from them connecting Steam on their profile, so only
-          touch it to correct a wrong one.
-        </p>
-        <div className="relative mb-3">
-          <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-light" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
-          </svg>
-          <input
-            aria-label="Find a driver on the roster"
-            className="input pl-9 pr-8"
-            placeholder={`Find a driver on the roster (${allDrivers.length}) — name, Discord or Steam id…`}
-            value={rosterQuery}
-            onChange={(e) => setRosterQuery(e.target.value)}
-          />
-          {rosterQuery && (
+        <div className="mb-3">
+          <HelpNote label="What the columns mean">
+            <p>
+              The team dropdown moves a driver to another team (it opens the transfer dialog, where the round is
+              picked); the tier one only corrects a mismatch. Everything else is behind the arrow at the end of the
+              row, or a click on the Discord or Steam mark.
+            </p>
+            <p>
+              <b>Discord</b> links the driver to their Discord account: it makes their website login connect
+              instantly and lets the results post @mention them, even before their first login. (Discord: Settings →
+              Advanced → Developer Mode, then right-click the user → Copy User ID.) <b>Steam</b> holds the id race
+              imports match on. It normally fills itself, from the first race a driver runs or from them connecting
+              Steam on their profile, so only touch it to correct a wrong one.
+            </p>
+          </HelpNote>
+        </div>
+        <SearchField
+          className="mb-2"
+          value={rosterQuery}
+          onChange={setRosterQuery}
+          label="Find a driver on the roster"
+          placeholder={`Find a driver on the roster (${allDrivers.length}) — name, Discord or Steam id…`}
+        />
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {[
+            [1, "Tier 1"],
+            [2, "Tier 2"],
+            [0, "Reserve"],
+          ].map(([tier, label]) => (
+            <FilterChip
+              key={tier}
+              on={tierFilter === tier}
+              count={countWith((d) => d.tier === tier)}
+              onClick={() => setTierFilter(tierFilter === tier ? null : tier)}
+            >
+              {label}
+            </FilterChip>
+          ))}
+          <span className="mx-1 hidden h-4 w-px bg-border sm:inline-block" aria-hidden="true" />
+          <FilterChip on={flags.has("inactive")} count={countWith(FLAG_TESTS.inactive)} onClick={() => toggleFlag("inactive")}>
+            Inactive
+          </FilterChip>
+          <FilterChip
+            on={flags.has("noDiscord")}
+            count={countWith(FLAG_TESTS.noDiscord)}
+            onClick={() => toggleFlag("noDiscord")}
+            title="No Discord user ID, on this row or an earlier season's: their login does not connect by itself and the results post cannot @mention them"
+          >
+            No Discord ID
+          </FilterChip>
+          <FilterChip
+            on={flags.has("noSteam")}
+            count={countWith(FLAG_TESTS.noSteam)}
+            onClick={() => toggleFlag("noSteam")}
+            title="No Steam ID: race imports match this driver by name until one is on file"
+          >
+            No Steam ID
+          </FilterChip>
+          {filtering && (
             <button
               type="button"
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-light transition hover:text-dark"
-              onClick={() => setRosterQuery("")}
+              className="ml-1 text-xs font-semibold text-link hover:underline"
+              onClick={() => { setRosterQuery(""); setTierFilter(null); setFlags(new Set()); }}
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              Show everyone
             </button>
           )}
         </div>
+        {filtering && shownCount > 0 && (
+          <p className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+            {shownCount} of {allDrivers.length} drivers
+          </p>
+        )}
         <div className="divide-y divide-border border-y border-border">
-          {q && shownGroups.length === 0 && (
-            <p className="py-3 text-sm text-light">Nobody on this season's roster matches "{rosterQuery.trim()}".</p>
+          {filtering && shownGroups.length === 0 && (
+            <p className="py-3 text-sm text-light">
+              {q ? `Nobody on this season's roster matches "${rosterQuery.trim()}" with these filters.` : "Nobody on this season's roster fits these filters."}
+            </p>
           )}
           {shownGroups.map((t) => (
             <div key={t.id}>
               {/* one compact row per team — click to open the roster + search */}
               <button
                 type="button"
-                onClick={() => !q && setOpenTeam(openTeam === t.id ? null : t.id)}
+                onClick={() => !filtering && setOpenTeam(openTeam === t.id ? null : t.id)}
+                aria-expanded={isOpen(t)}
                 className="flex w-full items-center gap-2.5 py-2.5 text-left transition hover:bg-surface2/60"
               >
                 <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={20} />
@@ -3562,6 +3669,8 @@ function Drivers() {
               </button>
               {isOpen(t) && (
               <div className="pb-3">
+              {/* Adding belongs to a team, not to a filtered view of it. */}
+              {!filtering && (
               <DbSeatSearch
                 team={t}
                 db={driverDb.entries}
@@ -3580,6 +3689,7 @@ function Drivers() {
                 onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
                 onError={(m) => { setError(m); setMsg(null); }}
               />
+              )}
               {t.drivers.length > 0 && (
                 <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium">
                   <input
@@ -3589,76 +3699,27 @@ function Drivers() {
                     disabled={busy}
                     onChange={() => toggleTeam(t)}
                   />
-                  Select all {t.drivers.length} driver{t.drivers.length === 1 ? "" : "s"} of {t.name} for removal
+                  {/* While filtering, this ticks the rows on screen and no others. */}
+                  Select all {t.drivers.length} {filtering ? "shown " : ""}driver{t.drivers.length === 1 ? "" : "s"} of {t.name} for removal
                 </label>
               )}
               <ul className="mt-1.5 divide-y divide-border border-t border-border">
                 {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet. Add one with the search above.</li>}
                 {t.drivers.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${d.name} for bulk removal`}
-                      className="h-4 w-4 shrink-0 accent-primary"
-                      title="Select for bulk removal"
-                      checked={selected.has(d.id)}
-                      disabled={busy}
-                      onChange={() => toggleSelected(d.id)}
-                    />
-                    <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
-                      {d.name}
-                    </span>
-                    {/* A team change is a transfer, not a field edit: it takes
-                        the tier with it and asks first. The Reserve entry is
-                        the season's own pool, or a plain destination for a
-                        season that has never needed one. */}
-                    <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
-                      title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
-                      onChange={(e) => setTransfer({ driver: d, teamId: e.target.value })}>
-                      {teamGroups.map((o) => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                      {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
-                    </select>
-                    <select aria-label={`Tier of ${d.name}`} className="input py-1 text-xs" value={d.tier} disabled={busy}
-                      title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
-                      onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
-                      <option value={1}>T1</option>
-                      <option value={2}>T2</option>
-                      <option value={0}>Res</option>
-                    </select>
-                    <select aria-label={`League role of ${d.name}`} className="input py-1 text-xs" value={d.role || ""} disabled={busy}
-                      title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
-                      onChange={(e) => patchDriver(d, { role: e.target.value })}>
-                      <option value="">Driver</option>
-                      <option value="safety">Safety Car</option>
-                    </select>
-                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                      onClick={() => patchDriver(d, { isActive: !d.isActive })}>
-                      {d.isActive ? "Deactivate" : "Reactivate"}
-                    </button>
-                    {/* Only a deactivated driver can be removed from the public
-                        standings; reactivating brings them back automatically. */}
-                    {!d.isActive && (
-                      <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                        title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
-                        onClick={() => patchDriver(d, { hideFromStandings: !d.hideFromStandings })}>
-                        {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
-                      </button>
-                    )}
-                    {!d.isActive && d.hideFromStandings && (
-                      <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
-                    )}
-                    <button className="transition text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
-                      title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
-                      onClick={() => removeDriver(d)}>
-                      Remove
-                    </button>
-                    <DriverDiscordId d={d} busy={busy} accounts={accounts}
-                      onSave={(v) => patchDriver(d, { discordUserId: v })} />
-                    <DriverSteamId d={d} busy={busy}
-                      onSave={(v) => patchDriver(d, { steamId: v })} />
-                  </li>
+                  <RosterRow
+                    key={d.id}
+                    d={d}
+                    teamGroups={teamGroups}
+                    accounts={accounts}
+                    busy={busy}
+                    selected={selected.has(d.id)}
+                    onSelect={() => toggleSelected(d.id)}
+                    open={expanded === d.id}
+                    onOpen={() => setExpanded(expanded === d.id ? null : d.id)}
+                    onTransfer={(teamId) => setTransfer({ driver: d, teamId })}
+                    onPatch={(patch) => patchDriver(d, patch)}
+                    onRemove={() => removeDriver(d)}
+                  />
                 ))}
               </ul>
               </div>
@@ -3667,7 +3728,7 @@ function Drivers() {
           ))}
         </div>
         {selected.size > 0 && (
-          <div className="sticky bottom-0 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+          <div className="sticky bottom-3 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
             <span className="text-sm font-semibold text-dark">
               {selected.size} driver{selected.size === 1 ? "" : "s"} selected
             </span>
@@ -3688,7 +3749,6 @@ function Drivers() {
           </div>
         )}
       </div>
-    </div>
 
     <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
 
@@ -3702,6 +3762,153 @@ function Drivers() {
       />
     )}
     </div>
+  );
+}
+
+// A green tick or a grey cross for one of the two ids, in the row itself: the
+// question the roster gets asked most ("who is still missing a Steam id?") is
+// answered by reading down one column. Pressing it opens the row's drawer,
+// where the id is edited.
+function IdMark({ platform, state, title, onClick, open }) {
+  const ok = state !== "missing";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      title={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-mono text-[11px] font-bold transition hover:bg-surface2 ${
+        state === "set" ? "text-ok" : state === "inherited" ? "text-ok/70" : "text-light"
+      }`}
+    >
+      <SocialIcon name={platform} className="h-3.5 w-3.5" />
+      <span aria-hidden="true">{ok ? "✓" : "✗"}</span>
+      <span className="sr-only">{platform === "discord" ? "Discord ID" : "Steam ID"} {ok ? "set" : "missing"}</span>
+    </button>
+  );
+}
+
+// One driver of the roster, on one line: who, which team, which tier, whether
+// the two ids are there, the racing number, and an arrow for the rest.
+//
+// Every row used to carry all of its controls at once — team, tier, role, four
+// buttons and both id fields — which stacked to about 230px per driver and made
+// the Reserve pool a scroll of several screens. The team and the tier stay in
+// the row because they are what a roster is read for; the role, (de)activating,
+// hiding, removing and the two ids fold out underneath, one row at a time.
+function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, onOpen, onTransfer, onPatch, onRemove }) {
+  const discordState = d.discordUserId ? "set" : d.inheritedDiscordUserId ? "inherited" : "missing";
+  return (
+    <li className={`py-1.5 text-sm ${open ? "bg-surface2/40" : ""}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <input
+          type="checkbox"
+          aria-label={`Select ${d.name} for bulk removal`}
+          className="h-4 w-4 shrink-0 accent-primary"
+          title="Select for bulk removal"
+          checked={selected}
+          disabled={busy}
+          onChange={onSelect}
+        />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className={`truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>{d.name}</span>
+          {d.role === "safety" && <SafetyCarBadge compact />}
+          {!d.isActive && d.hideFromStandings && (
+            <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
+          )}
+        </span>
+        {/* On a phone the two dropdowns take a line of their own under the
+            name; from sm up they sit in the row. */}
+        <span className="order-last flex w-full gap-2 pl-6 sm:order-none sm:w-auto sm:pl-0">
+          {/* A team change is a transfer, not a field edit: it takes the tier
+              with it and asks first. The Reserve entry is the season's own
+              pool, or a plain destination for a season that has never needed
+              one. */}
+          <select aria-label={`Team of ${d.name}`} className="input min-w-0 flex-1 py-1 text-xs sm:w-44 sm:flex-none" value={d.teamId} disabled={busy}
+            title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
+            onChange={(e) => onTransfer(e.target.value)}>
+            {teamGroups.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+            {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
+          </select>
+          <select aria-label={`Tier of ${d.name}`} className="input w-20 shrink-0 py-1 text-xs" value={d.tier} disabled={busy}
+            title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
+            onChange={(e) => onPatch({ tier: Number(e.target.value) })}>
+            <option value={1}>T1</option>
+            <option value={2}>T2</option>
+            <option value={0}>Res</option>
+          </select>
+        </span>
+        <IdMark
+          platform="discord"
+          state={discordState}
+          open={open}
+          onClick={onOpen}
+          title={
+            discordState === "set"
+              ? `Discord ID ${d.discordUserId}`
+              : discordState === "inherited"
+                ? `Discord ID ${d.inheritedDiscordUserId}, from an earlier season's row (login and @mentions already use it)`
+                : "No Discord ID: login does not connect by itself and the results post cannot @mention them. Click to add one."
+          }
+        />
+        <IdMark
+          platform="steam"
+          state={d.steamId ? "set" : "missing"}
+          open={open}
+          onClick={onOpen}
+          title={d.steamId ? `Steam ID ${d.steamId}` : "No Steam ID yet: race imports match by name until the first race fills it in. Click to enter one."}
+        />
+        <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-light" title="Racing number (set by the driver on their profile)">
+          {d.number != null ? `#${d.number}` : NO_VALUE}
+        </span>
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-expanded={open}
+          aria-label={`More for ${d.name}`}
+          title="Role, deactivate, remove, Discord and Steam IDs"
+          className="shrink-0 rounded-md p-1 text-light transition hover:bg-surface2 hover:text-dark"
+        >
+          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+      </div>
+      {open && (
+        <div className="pop-in mt-2 space-y-2 pb-1.5 pl-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <select aria-label={`League role of ${d.name}`} className="input w-auto py-1 text-xs" value={d.role || ""} disabled={busy}
+              title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
+              onChange={(e) => onPatch({ role: e.target.value })}>
+              <option value="">Driver</option>
+              <option value="safety">Safety Car</option>
+            </select>
+            <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+              onClick={() => onPatch({ isActive: !d.isActive })}>
+              {d.isActive ? "Deactivate" : "Reactivate"}
+            </button>
+            {/* Only a deactivated driver can be removed from the public
+                standings; reactivating brings them back automatically. */}
+            {!d.isActive && (
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
+                onClick={() => onPatch({ hideFromStandings: !d.hideFromStandings })}>
+                {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
+              </button>
+            )}
+            <button className="transition text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
+              title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
+              onClick={onRemove}>
+              Remove
+            </button>
+          </div>
+          <DriverDiscordId d={d} busy={busy} accounts={accounts}
+            onSave={(v) => onPatch({ discordUserId: v })} />
+          <DriverSteamId d={d} busy={busy}
+            onSave={(v) => onPatch({ steamId: v })} />
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -3784,7 +3991,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
 // Per-driver Discord user id (the long number). Login connects the member by
 // this exact id, and the Discord results post pings <@id> — so filling it in
 // for drivers who never signed in gives them a working login AND real
-// mentions. Full width on its own line so the roster row above stays tidy.
+// mentions. Full width on its own line, in the drawer under the roster row.
 // `accounts` (discordId -> login account) verifies entries on the spot: an id
 // that matches a known login shows WHOSE login it is, so a typo in a
 // hand-entered id is visible immediately instead of failing silently later.
@@ -4997,6 +5204,10 @@ function Seasons({ gotoRaces, gotoInSeason }) {
   }
 
   return (
+    <div>
+    {/* Every message of this tab, wherever the click was: a season row, its
+        photo, its scoring, the roster copy (see TabNotice). */}
+    <TabNotice msg={msg} error={error} onClose={() => { setMsg(null); setError(null); }} />
     <div className="space-y-6">
     {seasons && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
     <SeriesPanel />
@@ -5030,8 +5241,6 @@ function Seasons({ gotoRaces, gotoInSeason }) {
             placeholder="Points P1, P2, … (empty = league default)"
             title={`Points per finishing position, starting at P1. Default: ${DEFAULT_POINTS_HINT}`} />
         </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create season"}</button>
       </form>
 
@@ -5149,6 +5358,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
           })}
         </ul>
       </div>
+    </div>
     </div>
     </div>
   );

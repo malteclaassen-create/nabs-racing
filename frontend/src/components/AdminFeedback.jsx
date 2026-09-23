@@ -5,6 +5,7 @@ import { ErrorBox } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { useAsk } from "./overlay.jsx";
 import { FEEDBACK_CHANGED_EVENT } from "../data/adminEvents.js";
+import { SearchField } from "./AdminFilters.jsx";
 
 // Everything members and visitors wrote through the Feedback button: bug
 // reports, feature wishes, the rest. Each entry can be moved along (new →
@@ -42,11 +43,20 @@ function statusMeta(key) {
 }
 
 // The last message in the thread came from the sender, so the ball is here.
-// Counts a brand-new entry too: nobody has answered it yet.
+// Counts an open entry nobody has answered yet too, but not a filed one: an
+// entry marked done or won't do without a word to the sender was a decision,
+// and listing every one of them here buried the few that really wait.
 function awaitingAdmin(item) {
   const replies = item.replies || [];
-  const last = replies[replies.length - 1];
-  return !last || last.author === "SENDER";
+  if (replies.length) return replies[replies.length - 1].author === "SENDER";
+  return item.status === "NEW" || item.status === "PLANNED";
+}
+
+// Whether an entry mentions the search: the report, who sent it, how to reach
+// them, the page it came from, the private note and the whole conversation.
+function mentions(item, q) {
+  return [item.message, item.senderName, item.contact, item.pageUrl, item.adminNote, ...(item.replies || []).map((r) => r.body)]
+    .some((v) => v && String(v).toLowerCase().includes(q));
 }
 
 // The sender wrote back AFTER an answer. Easiest thing on this page to miss (it
@@ -328,6 +338,7 @@ function Entry({ item, onChanged }) {
 export default function AdminFeedback() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminFeedback(), []));
   const [filter, setFilter] = useState("OPEN");
+  const [query, setQuery] = useState("");
 
   const refresh = useCallback(() => {
     reload();
@@ -346,10 +357,14 @@ export default function AdminFeedback() {
         : filter === "WAITING"
         ? items.filter((i) => awaitingAdmin(i))
         : items.filter((i) => i.kind === filter);
+    // The search narrows whichever view is picked, so "the bug about the
+    // calendar that is still open" is one word and one tab away.
+    const q = query.trim().toLowerCase();
+    const found = q ? picked.filter((i) => mentions(i, q)) : picked;
     // Unanswered replies to the top; the server's order (new, then planned, then
     // newest first) holds underneath.
-    return [...picked].sort((a, b) => Number(hasNewSenderReply(b)) - Number(hasNewSenderReply(a)));
-  }, [items, filter]);
+    return [...found].sort((a, b) => Number(hasNewSenderReply(b)) - Number(hasNewSenderReply(a)));
+  }, [items, filter, query]);
   const waiting = items.filter(hasNewSenderReply).length;
 
   if (error) return <ErrorBox message={error} />;
@@ -372,13 +387,24 @@ export default function AdminFeedback() {
         </span>
       </div>
 
+      {items.length > 0 && (
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          label="Search the feedback"
+          placeholder="Search the feedback: words, sender, page, note or reply…"
+        />
+      )}
+
       {loading ? (
         <p className="text-sm text-light">Loading&hellip;</p>
       ) : shown.length === 0 ? (
         <p className="card p-6 text-sm leading-relaxed text-light">
           {items.length === 0
             ? "Nothing yet. When someone reports a bug or asks for a feature, it lands here."
-            : "Nothing in this view. Try Everything."}
+            : query.trim()
+              ? `Nothing in this view mentions "${query.trim()}". Try Everything, or fewer words.`
+              : "Nothing in this view. Try Everything."}
         </p>
       ) : (
         <ul className="card divide-y divide-border px-5">
