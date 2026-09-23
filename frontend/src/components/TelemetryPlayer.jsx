@@ -4,10 +4,12 @@ import { Kbd, Menu } from "./TelemetryUI.jsx";
 // ---------------------------------------------------------------------------
 // The transport, laid out like a player: play on the left, the lap as a
 // slider with a section skip at either end, the speed and where the cursor is
-// on the right. It stays pinned under the site's bar while the map and the
-// traces scroll past, so scrubbing and playing never mean scrolling back up —
-// and the gap at the cursor rides along, so the number the traces are
-// explaining is always in view.
+// on the right. It stays pinned while the map and the traces scroll past, so
+// scrubbing and playing never mean scrolling back up — and the gap at the
+// cursor rides along, so the number the traces are explaining is always in
+// view. On a phone it floats on the bottom edge, where the thumb is (the
+// caller puts it last in the block there); from sm up it pins under the
+// site's bar.
 // ---------------------------------------------------------------------------
 
 const RATES = [0.25, 0.5, 1, 2, 4];
@@ -21,7 +23,7 @@ function Shortcuts() {
     [["F"], "full screen"],
   ];
   return (
-    <Menu icon={Keyboard} label="Keyboard shortcuts and tips" summary={false} width="w-64">
+    <Menu icon={Keyboard} label="Keyboard shortcuts and tips" summary={false} width="w-64" upOnPhone>
       <div className="space-y-1.5 px-2.5 py-2 text-light">
         {rows.map(([keys, what]) => (
           <p key={what} className="flex items-center justify-between gap-3"><span className="flex gap-1">{keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span><span className="text-right">{what}</span></p>
@@ -35,7 +37,7 @@ function Shortcuts() {
 export default function TelemetryPlayer({ playing, onToggle, playLabel, at, n, sections, activeN, onPick, onJump, hasPrev, hasNext, rate, onRate, position, gapAt, colorA, colorB }) {
   const leader = gapAt == null || Math.abs(gapAt) < 0.0005 ? null : gapAt > 0 ? "A" : "B";
   return (
-    <div className="sticky z-20 -mx-1 px-1 py-1.5" style={{ top: "var(--tel-top, 84px)" }}>
+    <div className="sticky bottom-0 z-20 order-last -mx-1 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 sm:bottom-auto sm:order-none sm:top-[var(--tel-top,84px)] sm:py-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-card/90 px-2 py-2 shadow-lift backdrop-blur sm:gap-x-3 sm:px-3">
         {/* Pause keeps the cursor where it is; Play resumes from there. Only a
             lap that has run to the flag (or has no cursor yet) starts over. */}

@@ -726,10 +726,11 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
             {/* Player, replay, traces and sections share one wrapper: the
-                player bar sits above the map it drives, pins itself for as
-                long as this block is on screen, and lets go once the page has
-                scrolled past it. */}
-            <div className="space-y-3 sm:space-y-4">
+                player bar pins itself for as long as this block is on screen,
+                and lets go once the page has scrolled past it. From sm up it
+                sits above the map it drives and pins to the top; on a phone it
+                goes last (order-last) and floats on the bottom edge. */}
+            <div className="flex flex-col gap-3 sm:gap-4">
               <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
                 onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
                 rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}

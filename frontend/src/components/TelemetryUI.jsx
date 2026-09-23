@@ -65,7 +65,9 @@ export function ToolButton({ icon: Icon, label, showLabel = true, className = ""
 // A small drop-down built on <details>: no state to keep, keyboard and screen
 // reader behaviour for free. Closes itself on a pick, on a click elsewhere
 // and on Escape, which a bare <details> does not.
-export function Menu({ icon: Icon, label, summary, align = "right", width = "w-52", children }) {
+// `upOnPhone`: opens above its button on a phone, for a menu that lives on
+// the bottom edge of the screen there.
+export function Menu({ icon: Icon, label, summary, align = "right", width = "w-52", upOnPhone = false, children }) {
   const ref = useRef(null);
   useEffect(() => {
     const close = (e) => {
@@ -87,7 +89,7 @@ export function Menu({ icon: Icon, label, summary, align = "right", width = "w-5
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
         {summary ?? <span className="hidden sm:inline">{label}</span>}
       </summary>
-      <div className={`absolute ${align === "right" ? "right-0" : "left-0"} z-30 mt-1 ${width} rounded-lg border border-border bg-card p-1 text-xs font-normal shadow-lift`}>{children}</div>
+      <div className={`absolute ${align === "right" ? "right-0" : "left-0"} z-30 ${upOnPhone ? "bottom-full mb-1 sm:bottom-auto sm:top-full sm:mb-0 sm:mt-1" : "mt-1"} ${width} rounded-lg border border-border bg-card p-1 font-sans text-xs font-normal shadow-lift`}>{children}</div>
     </details>
   );
 }
