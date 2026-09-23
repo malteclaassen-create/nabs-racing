@@ -20,11 +20,16 @@ export function teamDeletionBlockers({
   subResults = 0,
   stampedResults = 0,
   scoredRounds = 0,
+  transfers = 0,
 } = {}) {
   const hard = [];
   if (drivers > 0) hard.push(`${drivers} driver(s) in its seats`);
   if (subResults > 0) hard.push(`${subResults} race result(s) subbed for it`);
   if (stampedResults > 0) hard.push(`${stampedResults} race result(s) scored under it`);
   if (scoredRounds > 0) hard.push(`${scoredRounds} round(s) where it scored points`);
+  // A recorded "from round N they drive for this team" (DriverTeamChange, no
+  // foreign key): deleted with the team, the round would be saved under a
+  // team id that no longer exists and its constructor points would vanish.
+  if (transfers > 0) hard.push(`${transfers} recorded driver transfer(s) to it`);
   return hard;
 }

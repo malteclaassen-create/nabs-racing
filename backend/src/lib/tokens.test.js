@@ -13,6 +13,7 @@ import {
   customFlairNote,
   flairFromNote,
   FLAIR_BY_KEY,
+  moveRacePayouts,
 } from "./tokens.js";
 
 // The rules and the shop are the two tables the league will actually edit, so
@@ -220,5 +221,59 @@ describe("what to call somebody", () => {
     expect(pickName({ displayName: "  ", username: null })).toBe(null);
     expect(pickName({})).toBe(null);
     expect(pickName()).toBe(null);
+  });
+});
+
+// A merge moves a row's results onto the kept row. The payments for them are
+// filed under the row id (race:<raceId>:<driverId>), and a payment the next
+// reconciliation cannot find under the kept row is a payment it makes again.
+describe("moveRacePayouts", () => {
+  // Just enough of a ledger for the four statements the move runs.
+  function fakeDb(keys) {
+    const ledger = keys.map((refKey, i) => ({ id: String(i), refKey }));
+    // SQLite's LIKE with ESCAPE '\': % any run, _ one character, \x literal x.
+    const esc = (c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const likeToRegex = (pat) => {
+      let re = "";
+      for (let i = 0; i < pat.length; i++) {
+        const c = pat[i];
+        if (c === "\\") re += esc(pat[++i]);
+        else if (c === "%") re += ".*";
+        else if (c === "_") re += ".";
+        else re += esc(c);
+      }
+      return new RegExp(`^${re}$`);
+    };
+    return {
+      ledger,
+      $queryRawUnsafe: async (sql, pat) => ledger.filter((r) => likeToRegex(pat).test(r.refKey)),
+      $executeRawUnsafe: async (sql, a, b) => {
+        if (sql.includes('"TokenLedger"')) {
+          const row = ledger.find((r) => r.id === b);
+          if (!row || ledger.some((r) => r.refKey === a)) return 0;
+          row.refKey = a;
+          return 1;
+        }
+        return 0;
+      },
+    };
+  }
+
+  it("files the dropped row's race payments under the kept row", async () => {
+    const db = fakeDb(["race:r1:old_s8", "clean:r1:old_s8", "race:r2:old_s8", "race:r1:other_s8", "shop:x"]);
+    expect(await moveRacePayouts(db, "old_s8", "new_s8")).toBe(3);
+    expect(db.ledger.map((r) => r.refKey)).toEqual([
+      "race:r1:new_s8",
+      "clean:r1:new_s8",
+      "race:r2:new_s8",
+      "race:r1:other_s8",
+      "shop:x",
+    ]);
+  });
+
+  it("does not take a row whose id only ends the same way", async () => {
+    // "_" is a LIKE wildcard: unescaped, old_s8 would also match oldXs8.
+    const db = fakeDb(["race:r1:oldXs8", "race:r1:xold_s8"]);
+    expect(await moveRacePayouts(db, "old_s8", "new_s8")).toBe(0);
   });
 });

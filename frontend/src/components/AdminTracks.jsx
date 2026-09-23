@@ -46,6 +46,10 @@ export default function AdminTracks() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
+  // The circuit the fields above were loaded for. Save writes them all (and
+  // the flag onto every race of the circuit), so until the picked circuit's
+  // own answer is in they belong to another track and must not be saved.
+  const [loadedKey, setLoadedKey] = useState("");
 
   // Distinct tracks of the selected season (championship rounds).
   const tracks = useMemo(() => {
@@ -61,20 +65,27 @@ export default function AdminTracks() {
   const key = selected ? trackKey(selected) : "";
 
   useEffect(() => {
+    setLoadedKey("");
     if (!key) return;
+    let alive = true;
     setError(null);
     setMsg(null);
     api
       .adminTrackInfo(key)
       .then((d) => {
+        if (!alive) return;
         setFacts(d.facts?.length ? d.facts : [{ label: "", value: "" }]);
         setKeepVideos(d.videos || []);
         setMapImageUrl(d.mapImageUrl || null);
         setMapImages(d.mapImages || {});
         setMapRotation(d.mapRotation || 0);
         setCountry(d.country || "");
+        setLoadedKey(key);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => alive && setError(e.message));
+    return () => {
+      alive = false;
+    };
   }, [key]);
 
   function setFact(i, patch) {
@@ -82,6 +93,7 @@ export default function AdminTracks() {
   }
 
   async function save() {
+    if (!key || loadedKey !== key) return;
     setBusy(true);
     setError(null);
     setMsg(null);
@@ -297,7 +309,7 @@ export default function AdminTracks() {
             </div>
           </div>
 
-          <button className="btn-primary" onClick={save} disabled={busy}>
+          <button className="btn-primary" onClick={save} disabled={busy || loadedKey !== key}>
             {busy ? "Saving…" : "Save track info"}
           </button>
         </div>

@@ -4,7 +4,9 @@ import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { ErrorBox, Notice, EmptyState } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
+import { useJumpView } from "../hooks/useJumpView.js";
 import TokenIcon from "./TokenIcon.jsx";
+import { useAsk } from "./overlay.jsx";
 
 // ---------------------------------------------------------------------------
 // The league office's side of the server tokens.
@@ -55,6 +57,42 @@ const MODE_TEXT = {
   admins: "Admins only. League admins see the balance, the shop and the studio and can try everything; members see nothing, and nothing shows on public pages.",
   all: "Everyone. Members see their balance in the nav bar, their invite link and the shop; profile designs and the wall are public.",
 };
+
+// What a switch of the mode will change, said before it happens. The mode is
+// the one control here that members see the result of at once (a balance in
+// the nav bar appears or vanishes on their next page), so it asks first, and
+// says what the members will see rather than what the setting is called.
+function modeQuestion(next, current, earning) {
+  if (next === "off")
+    return {
+      title: "Switch NABS Points off?",
+      body:
+        (current === "all"
+          ? "Members stop seeing their balance, their invite link and the shop, and profile designs and the wall go from the public pages. "
+          : "Admins stop seeing the balance, the shop and the studio. ") +
+        "Nothing is deleted: every balance comes back untouched when you switch it on again.",
+      confirmLabel: "Switch off",
+    };
+  if (next === "admins")
+    return {
+      title: "NABS Points for admins only?",
+      body:
+        (current === "all"
+          ? "Members stop seeing their balance, their invite link and the shop, and profile designs and the wall go from the public pages. "
+          : "Members still see nothing. ") +
+        "League admins see the balance, the shop and the studio and can try everything.",
+      confirmLabel: "Admins only",
+    };
+  return {
+    title: "Show NABS Points to everyone?",
+    body:
+      "Every member sees their balance in the nav bar, their invite link and the shop, and profile designs and the wall become public." +
+      (earning
+        ? ""
+        : "\n\nEarning is paused, so no race pays and every balance stands still until you start counting."),
+    confirmLabel: "Show to everyone",
+  };
+}
 
 function EarningSwitch({ earning, startDay, busy, onChange }) {
   return (
@@ -602,13 +640,14 @@ function TuningPanel({ d, busy, onSave, onReset }) {
   );
 }
 
-export default function AdminTokens() {
+export default function AdminTokens({ jumpView = null, jumpKey = null }) {
   const data = useApi(useCallback(() => api.adminTokens(), []));
-  const [view, setView] = useState("orders");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "orders");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
   const reload = data.reload;
+  const ask = useAsk();
 
   // Returns whether it worked, because a caller that clears its own fields
   // afterwards has to know: a failed booking used to wipe the amount and the
@@ -638,6 +677,7 @@ export default function AdminTokens() {
   const waiting = (d.orders || []).filter((o) => o.status === "NEW").length;
   const manual = (d.orders || []).filter((o) => o.manual);
   const auto = (d.orders || []).filter((o) => !o.manual);
+  const mode = d.mode || (d.enabled ? "all" : "off");
 
   return (
     <div className="space-y-4">
@@ -645,15 +685,28 @@ export default function AdminTokens() {
       {done && <Notice kind="success">{done}</Notice>}
 
       <TrialSwitch
-        mode={d.mode || (d.enabled ? "all" : "off")}
+        mode={mode}
         busy={busy}
-        onChange={(m) =>
+        onChange={async (m) => {
+          // The segmented control is controlled, so a cancelled question leaves
+          // it showing the mode that is actually in force.
+          if (!(await ask(modeQuestion(m, mode, !!d.earning)))) return;
           run(
             () => api.setTokensMode(m),
             m === "all" ? "NABS Points are on for everyone." : m === "admins" ? "NABS Points are on for admins only." : "NABS Points are off."
-          )
-        }
+          );
+        }}
       />
+
+      {/* Members can see the points, but nothing moves them: every race says
+          "earns you points" and no balance ever changes. Easy to leave like
+          that after trying the mode out, so it is said in the open. */}
+      {mode === "all" && !d.earning && (
+        <Notice kind="warn">
+          Everyone can see NABS Points, but earning is paused: members see a balance no race moves. Start counting
+          below, or switch to Admins only until you are ready.
+        </Notice>
+      )}
 
       <EarningSwitch
         earning={!!d.earning}
@@ -752,7 +805,20 @@ export default function AdminTokens() {
           d={d}
           busy={busy}
           onSave={(t) => run(() => api.saveTokenTuning(t), "Saved. Members and payouts follow right away.")}
-          onReset={() => run(() => api.resetTokenTuning(), "Back to the defaults from the code.")}
+          onReset={async () => {
+            const ok = await ask({
+              title: "Put every rule and price back to the defaults?",
+              body:
+                "Everything typed on this page goes back to the default from the code: what earns points, the " +
+                "shop, card and studio prices, the referral limit, the activity multiplier and which servers count. " +
+                "Changes not saved yet go too. The counting start day stays.\n\n" +
+                "Rules pay out backwards: a default above today's number also pays for the races already driven, " +
+                "and a lower one takes nothing back.",
+              danger: true,
+              confirmLabel: "Back to defaults",
+            });
+            if (ok) run(() => api.resetTokenTuning(), "Back to the defaults from the code. The start day is kept.");
+          }}
         />
       )}
     </div>

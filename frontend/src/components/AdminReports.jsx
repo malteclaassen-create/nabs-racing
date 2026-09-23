@@ -6,6 +6,11 @@ import { useAsk } from "./overlay.jsx";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
+import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
+import AdminLicencePoints from "./AdminLicencePoints.jsx";
+import {
+  PENALTY_KINDS, MAX_LICENCE_POINTS, filterReports, penaltyLabel, pointsLabel, resultsGap,
+} from "./reportDesk.mjs";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -25,7 +30,6 @@ import ReplayAnchor from "./ReplayAnchor.jsx";
 
 // Fired whenever a report is decided, deleted or answered here, so the counter
 // on the tab strip takes itself down instead of waiting for a page reload.
-export const REPORTS_CHANGED_EVENT = "nabs-reports-changed";
 const changed = () => window.dispatchEvent(new Event(REPORTS_CHANGED_EVENT));
 
 const STATUS = [
@@ -42,6 +46,205 @@ const when = (iso) => (iso ? fmtStamp(iso) : "");
 // round number and the sprint flag (routes/admin.js, withSprintRounds).
 const raceLabel = (r) =>
   `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.sprint ? " Sprint" : r.hasSprint ? " Feature" : ""}`;
+
+// A decision as the form edits it, from the stored report. A penalty from
+// before kinds existed comes back from the server as TIME already; the default
+// here is for a report that has never been decided at all.
+const draftOf = (rep) => ({
+  status: rep.status,
+  penaltyKind: rep.penaltyKind || "TIME",
+  penaltySeconds: rep.penaltySeconds ?? "",
+  licencePoints: rep.licencePoints ?? "",
+  verdict: rep.verdict || "",
+});
+
+const draftDirty = (draft, rep) =>
+  draft.status !== rep.status ||
+  (draft.status === "PENALTY" && draft.penaltyKind !== (rep.penaltyKind || "TIME")) ||
+  String(draft.penaltySeconds) !== String(rep.penaltySeconds ?? "") ||
+  String(draft.licencePoints) !== String(rep.licencePoints ?? "") ||
+  draft.verdict !== (rep.verdict || "");
+
+// What the server is sent. The kind only means something on a penalty, and the
+// seconds only on a TIME one: the backend drops them on any other kind anyway,
+// so a warning with "5" left in the box can never reach the results editor.
+const decisionBody = (draft) => ({
+  status: draft.status,
+  penaltyKind: draft.status === "PENALTY" ? draft.penaltyKind : null,
+  penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
+  licencePoints: draft.licencePoints === "" ? null : Number(draft.licencePoints),
+  verdict: draft.verdict,
+});
+
+// The line under the Save button: what saving does and, as important, what it
+// does NOT do. Only a time penalty goes anywhere near the results.
+function decisionNote(draft, who = "the drivers") {
+  if (!DECIDED.includes(draft.status)) return "Nothing is sent yet.";
+  if (draft.status !== "PENALTY" || draft.penaltyKind === "TIME") {
+    return `Saving tells ${who}. Enter the penalty in Edit Results too.`;
+  }
+  if (draft.penaltyKind === "WARNING") return `Saving tells ${who}. A warning changes nothing in the results.`;
+  return `Saving tells ${who}. Nothing reaches the results by itself: a ${
+    draft.penaltyKind === "GRID" ? "grid drop" : "disqualification"
+  } is carried out by hand.`;
+}
+
+// The controls of one decision, shared by the open report's box and every
+// linked driver's. Kind and points only appear on a penalty, and seconds only
+// on a time penalty, so the form never offers a number that would be thrown
+// away.
+function DecisionFields({ draft, setDraft, busy }) {
+  const penalty = draft.status === "PENALTY";
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <Field label="Outcome" tone="plain">
+        <select
+          className="input py-1.5 text-sm"
+          value={draft.status}
+          disabled={busy}
+          onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+        >
+          {STATUS.map((s) => (
+            <option key={s.key} value={s.key}>{s.label}</option>
+          ))}
+        </select>
+      </Field>
+      {penalty && (
+        <Field label="Kind" tone="plain">
+          <select
+            className="input py-1.5 text-sm"
+            value={draft.penaltyKind}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, penaltyKind: e.target.value })}
+          >
+            {PENALTY_KINDS.map((k) => (
+              <option key={k.key} value={k.key}>{k.label}</option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {(!penalty || draft.penaltyKind === "TIME") && (
+        <Field label="Seconds" tone="plain">
+          <input
+            type="number"
+            min="0"
+            className="input w-24 py-1.5 text-sm"
+            value={draft.penaltySeconds}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
+          />
+        </Field>
+      )}
+      {penalty && (
+        <Field label="Licence points" tone="plain">
+          <input
+            type="number"
+            min="0"
+            max={MAX_LICENCE_POINTS}
+            step="1"
+            placeholder="0"
+            className="input w-24 py-1.5 text-sm"
+            value={draft.licencePoints}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, licencePoints: e.target.value })}
+          />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+// The named driver's season so far, beside the report being decided: their
+// other reports, what was decided each time, and the licence points adding up
+// towards the ban threshold. A third incident is decided with the first two in
+// view, rather than from whatever the steward happens to remember.
+//
+// Every report about them is listed, decided or not, in the order the rounds
+// were raced. Only the ones that stand as penalties move the total; the rest
+// are dimmed. The one open now is marked, and any other opens on a tap.
+function DriverRecord({ record, races, onOpen }) {
+  const raceById = new Map((races || []).map((r) => [r.id, r]));
+  const others = record.entries.filter((e) => !e.current);
+  const pct = Math.min(100, (record.total / (record.threshold || 12)) * 100);
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+          Driver record · {record.name || "the driver named"}
+        </div>
+        {record.seasonNumber != null && (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Season {record.seasonNumber}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface2" aria-hidden="true">
+          <span
+            className={`block h-full rounded-full ${record.flagged ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-brand"}`}
+            style={{ width: `${pct}%` }}
+          />
+        </span>
+        <span className={`whitespace-nowrap font-mono text-sm font-bold ${record.flagged ? "text-bad" : "text-dark"}`}>
+          {record.total} / {record.threshold} pts
+        </span>
+      </div>
+      {record.flagged && (
+        <p className="mt-2 text-xs font-semibold text-bad">
+          At or over the threshold: a race ban is due.
+        </p>
+      )}
+      {others.length === 0 ? (
+        <p className="mt-3 text-xs text-light">No other reports about them this season.</p>
+      ) : (
+        <ol className="mt-3 space-y-1.5">
+          {record.entries.map((e) => {
+            const race = raceById.get(e.raceId);
+            const s = uiOf(e.status);
+            const label = penaltyLabel(e);
+            const body = (
+              <>
+                {/* The round on a line of its own on a phone, so the pills
+                    and the running total share the next one instead of
+                    wrapping into a column of fragments. */}
+                <span className="w-full shrink-0 truncate font-mono text-[11px] uppercase tracking-wider text-light sm:w-24">
+                  {race ? raceLabel(race) : "Round"}
+                </span>
+                <span className={`pill ${s.cls}`}>{s.label}</span>
+                {label && <span className="pill bg-red-500/15 text-bad">{label}</span>}
+                {e.licencePoints > 0 && (
+                  <span className={`text-xs font-semibold ${e.counts ? "text-medium" : "text-faint line-through"}`}>
+                    +{e.licencePoints} pt{e.licencePoints === 1 ? "" : "s"}
+                  </span>
+                )}
+                <span className="ml-auto whitespace-nowrap font-mono text-[11px] text-light">= {e.runningTotal}</span>
+              </>
+            );
+            const cls = `flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-left ${
+              e.current ? "bg-brand/10" : e.counts ? "" : "opacity-60"
+            }`;
+            return (
+              <li key={e.id}>
+                {e.current ? (
+                  <div className={cls}>
+                    {body}
+                    <span className="w-full font-mono text-[10px] uppercase tracking-wider text-brand">this report</span>
+                  </div>
+                ) : (
+                  <button
+                    className={`${cls} transition hover:bg-surface2/60`}
+                    title={e.verdict || undefined}
+                    onClick={() => onOpen?.(e.id)}
+                  >
+                    {body}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
+}
 
 // Where the file's own guess at the accused came from, in the two words a
 // steward needs to weigh it. "Matched" is the contact an in-game press was
@@ -202,18 +405,11 @@ function NameAccused({ report, drivers, busy, onName, onSplit }) {
 // all. It deletes their linked report, thread and decision included, after a
 // confirm; the report the steward has open stays exactly as it is.
 function LinkedDecision({ linked, busy, onSave, onRemove }) {
-  const [draft, setDraft] = useState({
-    status: linked.status,
-    penaltySeconds: linked.penaltySeconds ?? "",
-    verdict: linked.verdict || "",
-  });
+  const [draft, setDraft] = useState(() => draftOf(linked));
   useEffect(() => {
-    setDraft({ status: linked.status, penaltySeconds: linked.penaltySeconds ?? "", verdict: linked.verdict || "" });
-  }, [linked.id, linked.status, linked.penaltySeconds, linked.verdict]);
-  const dirty =
-    draft.status !== linked.status ||
-    String(draft.penaltySeconds) !== String(linked.penaltySeconds ?? "") ||
-    draft.verdict !== (linked.verdict || "");
+    setDraft(draftOf(linked));
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.licencePoints, linked.verdict]);
+  const dirty = draftDirty(draft, linked);
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -229,30 +425,7 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
           Remove from this incident
         </button>
       </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label="Outcome" tone="plain">
-          <select
-            className="input py-1.5 text-sm"
-            value={draft.status}
-            disabled={busy}
-            onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-          >
-            {STATUS.map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Seconds" tone="plain">
-          <input
-            type="number"
-            min="0"
-            className="input w-24 py-1.5 text-sm"
-            value={draft.penaltySeconds}
-            disabled={busy}
-            onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
-          />
-        </Field>
-      </div>
+      <DecisionFields draft={draft} setDraft={setDraft} busy={busy} />
       <textarea
         aria-label={`What the stewards decided about ${linked.accusedName || "the second driver"}`}
         className="input mt-2 h-16 resize-none"
@@ -265,27 +438,19 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
         <button
           className="btn-primary"
           disabled={busy || !dirty}
-          onClick={() =>
-            onSave({
-              status: draft.status,
-              penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
-              verdict: draft.verdict,
-            })
-          }
+          onClick={() => onSave(decisionBody(draft))}
         >
           {busy ? "Saving…" : "Save decision"}
         </button>
         <p className="min-w-40 flex-1 text-xs text-light">
-          {DECIDED.includes(draft.status)
-            ? `Saving tells ${linked.accusedName || "them"} in their own thread. Enter the penalty in Edit Results too.`
-            : "Nothing is sent yet."}
+          {decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
         </p>
       </div>
     </div>
   );
 }
 
-function Thread({ id, drivers, onChanged, onDeleted }) {
+function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
   const ask = useAsk();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -298,12 +463,6 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
   // corrected version arrived as a repeat and was thrown away.
   const [draft, setDraft] = useState(null);
 
-  const fromReport = (rep) => ({
-    status: rep.status,
-    penaltySeconds: rep.penaltySeconds ?? "",
-    verdict: rep.verdict || "",
-  });
-
   // `keepDraft` is every reload that is NOT the steward asking for the stored
   // version back. Writing a line to the drivers, naming the accused or letting
   // a witness in all reload the thread, and each one used to wipe a verdict
@@ -315,7 +474,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
         .adminReport(id)
         .then((d) => {
           setData(d);
-          setDraft((cur) => (keepDraft && cur ? cur : fromReport(d.report)));
+          setDraft((cur) => (keepDraft && cur ? cur : draftOf(d.report)));
         })
         .catch((e) => setError(e.message)),
     [id]
@@ -360,10 +519,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
   // never show the same person.
   const blocked = data.blocked || [];
   const inThread = (data.participants || []).filter((p) => !blocked.some((b) => b.discordId === p.discordId));
-  const dirty =
-    draft.status !== r.status ||
-    String(draft.penaltySeconds) !== String(r.penaltySeconds ?? "") ||
-    draft.verdict !== (r.verdict || "");
+  const dirty = draftDirty(draft, r);
   const willTell = DECIDED.includes(draft.status);
 
   return (
@@ -430,30 +586,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
       {/* the decision */}
       <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Decision</div>
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="Outcome" tone="plain">
-            <select
-              className="input py-1.5 text-sm"
-              value={draft.status}
-              disabled={busy}
-              onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-            >
-              {STATUS.map((s) => (
-                <option key={s.key} value={s.key}>{s.label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Seconds" tone="plain">
-            <input
-              type="number"
-              min="0"
-              className="input w-24 py-1.5 text-sm"
-              value={draft.penaltySeconds}
-              disabled={busy}
-              onChange={(e) => setDraft({ ...draft, penaltySeconds: e.target.value })}
-            />
-          </Field>
-        </div>
+        <DecisionFields draft={draft} setDraft={setDraft} busy={busy} />
         <textarea
           aria-label="What the stewards decided"
           className="input mt-2 h-16 resize-none"
@@ -468,12 +601,7 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             disabled={busy || !dirty}
             onClick={() =>
               run(
-                () =>
-                  api.decideReport(id, {
-                    status: draft.status,
-                    penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
-                    verdict: draft.verdict,
-                  }),
+                () => api.decideReport(id, decisionBody(draft)),
                 // How many people it actually reached, from the server. "Both
                 // drivers" is wrong when the accused has no account, and wrong
                 // again when nobody is named at all.
@@ -490,16 +618,25 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
             {busy ? "Saving…" : "Save decision"}
           </button>
           {dirty && (
-            <button className="btn-secondary" disabled={busy} onClick={load}>
+            // An arrow, not `onClick={load}`: handed straight over, the click
+            // event arrived as `keepDraft`, which is truthy, and Undo kept the
+            // very draft it was meant to throw away.
+            <button className="btn-secondary" disabled={busy} onClick={() => load()}>
               Undo
             </button>
           )}
           {/* The one thing the controls do NOT say: saving sends a message to
               people, and these seconds never reach the classification. */}
-          <p className="min-w-40 flex-1 text-xs text-light">
-            {willTell ? "Saving tells the drivers. Enter the penalty in Edit Results too." : "Nothing is sent yet."}
-          </p>
+          <p className="min-w-40 flex-1 text-xs text-light">{decisionNote(draft)}</p>
         </div>
+        {/* Decided, and not in the classification yet. The editor fills the
+            seconds in when the round is opened; until somebody does and
+            saves, the stewards' decision and the table disagree. */}
+        {resultsGap(r) && (
+          <p className="mt-2">
+            <span className="pill bg-amber-500/15 text-warn">{resultsGap(r)}</span>
+          </p>
+        )}
       </div>
 
       {/* The rest of the same incident: one decision box per driver the
@@ -536,6 +673,13 @@ function Thread({ id, drivers, onChanged, onDeleted }) {
           }}
         />
       ))}
+
+      {/* The named driver's season so far. Only for a report that names
+          somebody and belongs to a round: without a round there is no season
+          to add anything up in. */}
+      {data.record && (
+        <DriverRecord record={data.record} races={races} onOpen={onOpen} />
+      )}
 
       {/* who else may read it */}
       <div className="rounded-lg border border-border p-4">
@@ -714,6 +858,14 @@ export default function AdminReports() {
   const [swept, setSwept] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [show, setShow] = useState("open");
+  // Narrowing the list within open / decided / all. Kept up here rather than
+  // in the list, so opening a report and coming back finds the same view —
+  // a steward working through one driver's evening does it a report at a time.
+  const [q, setQ] = useState("");
+  const [roundId, setRoundId] = useState("");
+  const [source, setSource] = useState("");
+  const [unnamedOnly, setUnnamedOnly] = useState(false);
+  const filtering = !!(q.trim() || roundId || source || unnamedOnly);
   const [busy, setBusy] = useState(false);
   const ask = useAsk();
   // The in-game URL's two destructive buttons stay out of reach until asked
@@ -783,12 +935,18 @@ function ContactSuggestions({ report }) {
     return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [teams, db]);
 
-  const visible = useMemo(() => {
-    const all = data?.reports || [];
-    if (show === "all") return all;
-    if (show === "decided") return all.filter((r) => DECIDED.includes(r.status));
-    return all.filter((r) => !DECIDED.includes(r.status));
-  }, [data, show]);
+  const visible = useMemo(
+    () => filterReports(data?.reports, { show, q, raceId: roundId, source, unnamed: unnamedOnly }),
+    [data, show, q, roundId, source, unnamedOnly]
+  );
+
+  // The rounds the round filter offers: only ones that have reports, newest
+  // first, the way the list itself is ordered.
+  const rounds = useMemo(
+    () => [...(data?.races || [])].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
+    [data]
+  );
+  const anyWithoutRound = (data?.reports || []).some((r) => !r.raceId);
 
   // By round, newest race first, with anything that names no race at the end.
   const groups = useMemo(() => {
@@ -854,6 +1012,12 @@ function ContactSuggestions({ report }) {
                   <span className="pill bg-brand/15 text-brand">in-game</span>
                 )}
                 <span className={`pill ${s.cls}`}>{s.label}</span>
+                {penaltyLabel(openReportRow) && (
+                  <span className="pill bg-red-500/15 text-bad">{penaltyLabel(openReportRow)}</span>
+                )}
+                {openReportRow.status === "PENALTY" && openReportRow.licencePoints > 0 && (
+                  <span className="pill bg-surface2 text-medium">{pointsLabel(openReportRow.licencePoints)}</span>
+                )}
                 {/* Everything a steward needs to find the moment, in one chip
                     that copies the timeline figure. */}
                 <ReplayAnchor
@@ -870,8 +1034,14 @@ function ContactSuggestions({ report }) {
           />
           <ContactSuggestions report={openReportRow} />
           <Thread
+            key={openReportRow.id}
             id={openReportRow.id}
             drivers={drivers}
+            races={data?.races || []}
+            onOpen={(rid) => {
+              setOpenId(rid);
+              window.scrollTo({ top: 0 });
+            }}
             onChanged={reload}
             onDeleted={() => {
               setOpenId(null);
@@ -910,13 +1080,78 @@ function ContactSuggestions({ report }) {
         </div>
       )}
 
+      {/* Narrowing within that: one driver's reports, one round, where they
+          came from, and the ones nobody has been named on yet. */}
+      {data && counts.all > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            aria-label="Search by driver name"
+            placeholder="Driver name…"
+            className="input w-full py-1.5 text-sm sm:w-48"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <select
+            aria-label="Round"
+            className="input w-auto max-w-56 py-1.5 text-sm"
+            value={roundId}
+            onChange={(e) => setRoundId(e.target.value)}
+          >
+            <option value="">Every round</option>
+            {rounds.map((r) => (
+              <option key={r.id} value={r.id}>
+                {raceLabel(r)}
+              </option>
+            ))}
+            {anyWithoutRound && <option value="none">No round given</option>}
+          </select>
+          <select
+            aria-label="Filed from"
+            className="input w-auto py-1.5 text-sm"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+          >
+            <option value="">Site and in-game</option>
+            <option value="SITE">Filed on the site</option>
+            <option value="INGAME">Filed in-game</option>
+          </select>
+          <button
+            aria-pressed={unnamedOnly}
+            className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+              unnamedOnly
+                ? "border-brand bg-brand/10 text-dark"
+                : "border-border text-light hover:border-link hover:text-dark"
+            }`}
+            onClick={() => setUnnamedOnly((v) => !v)}
+          >
+            Names nobody
+          </button>
+          {filtering && (
+            <button
+              className="text-sm font-semibold text-link transition hover:underline"
+              onClick={() => {
+                setQ("");
+                setRoundId("");
+                setSource("");
+                setUnnamedOnly(false);
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {data && visible.length === 0 && (
         <Notice kind="info">
           {counts.all === 0
             ? "No incident reports yet. Drivers file them from the report button, or from a round on the Races page."
-            : show === "open"
-              ? "Nothing waiting. Everything filed has been decided."
-              : "Nothing decided yet."}
+            : filtering
+              ? "Nothing matches these filters."
+              : show === "open"
+                ? "Nothing waiting. Everything filed has been decided."
+                : "Nothing decided yet."}
         </Notice>
       )}
 
@@ -945,9 +1180,15 @@ function ContactSuggestions({ report }) {
                         in-game
                       </span>
                     )}
-                    {r.status === "PENALTY" && r.penaltySeconds > 0 && (
-                      <span className="pill bg-red-500/15 text-bad">+{r.penaltySeconds}s</span>
+                    {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
+                    {r.status === "PENALTY" && r.licencePoints > 0 && (
+                      <span className="pill bg-surface2 text-medium" title={pointsLabel(r.licencePoints)}>
+                        {r.licencePoints} pt{r.licencePoints === 1 ? "" : "s"}
+                      </span>
                     )}
+                    {/* Decided and not in the classification yet — the one
+                        thing on a decided report still waiting for somebody. */}
+                    {resultsGap(r) && <span className="pill bg-amber-500/15 text-warn">{resultsGap(r)}</span>}
                     {/* Nobody on the other side of it, which is the one thing
                         that has to be fixed before anything else can happen:
                         that driver cannot read the thread or answer it. */}
@@ -992,6 +1233,8 @@ function ContactSuggestions({ report }) {
           </ul>
         </div>
       ))}
+
+      {data && <AdminLicencePoints />}
 
       {/* Housekeeping. The dropdown says what it does, so nothing here says it
           again: WHY it exists (storage cost, and that the conversation always

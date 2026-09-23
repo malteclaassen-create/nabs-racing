@@ -359,6 +359,27 @@ export async function syncRosterToTransfers(prisma, seasonId) {
   return moved;
 }
 
+// A roster move made OUTSIDE the transfer list — the driver removal demotes a
+// team driver to the Reserve pool — has to be written into it as well, or
+// syncRosterToTransfers puts them straight back into whatever team a recorded
+// change names, on the next results save or restart. Only the rounds still to
+// come are rewritten: the rounds already driven keep the team they were driven
+// for. A driver with nothing on record needs nothing, since the sync only ever
+// looks at drivers who have a change.
+export async function recordRosterMove(prisma, { driverId, seasonId, teamId }) {
+  if (!driverId || !seasonId || !teamId) return false;
+  const existing = await readTransfers(prisma, { driverId });
+  if (!existing.length) return false;
+  const next = await nextRoundNumber(prisma, seasonId);
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM "DriverTeamChange" WHERE "driverId" = ? AND "fromRound" >= ?`, driverId, next);
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "DriverTeamChange" ("id","driverId","seasonId","fromRound","teamId") VALUES (?,?,?,?,?)`,
+    `${driverId}_r${next}_${teamId}`.slice(0, 190), driverId, seasonId, next, teamId
+  );
+  return true;
+}
+
 // The same, for every season that has a change on record. Runs at boot so a
 // database that was updated while the server was down catches up.
 export async function syncAllRostersToTransfers(prisma) {

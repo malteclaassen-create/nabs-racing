@@ -20,6 +20,7 @@ import { readHiddenRaceIds } from "./attendanceHidden.js";
 import { unlockStateFor, CARD_EDITIONS } from "./cardEditions.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
 import { dbListSeries } from "./series.js";
+import { stillToAnswer, reachableDiscordIds, splitByReach } from "./stillToAnswer.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
@@ -619,8 +620,8 @@ export async function notifyAdminsServerReset(prisma, { id, drivers, before, aft
     // landing on the right tab of the right series still left the question
     // twenty screens down from where the admin was put.
     const link = slug
-      ? `/admin?tab=social&series=${encodeURIComponent(slug)}&focus=training`
-      : "/admin?tab=social&focus=training";
+      ? `/admin?tab=live&series=${encodeURIComponent(slug)}&focus=training`
+      : "/admin?tab=live&focus=training";
     await notifyAdmins(prisma, {
       title: trackChanged
         ? `${board}new track version, keep the times from ${where}?`
@@ -628,8 +629,8 @@ export async function notifyAdminsServerReset(prisma, { id, drivers, before, aft
       body: trackChanged
         ? `The practice session held ${count} with a time, and the server came back on ${
             after?.layout || after?.track || "another version"
-          }. If the track limits were fixed, those times may be out of reach now. Answer it under Social & Live.`
-        : `The practice session held ${count} with a time. They are off the board until you keep them, under Social & Live.`,
+          }. If the track limits were fixed, those times may be out of reach now. Answer it under Live in the admin area.`
+        : `The practice session held ${count} with a time. They are off the board until you keep them, under Live in the admin area.`,
       link,
       dedupeSuffix: `admin-server-reset:${id}`,
     });
@@ -659,25 +660,116 @@ export async function notifyAdminsSeatDropped(prisma, { race, offerId, reserve, 
 }
 
 // --- manual attendance nudge ------------------------------------------------
-// The admin's "poke everyone" button: a broadcast asking members to answer (or
-// update) the attendance for one race. Deliberately NOT deduped per race — the
-// admin decides when a fresh nudge is warranted, so every press posts anew
-// (timestamp in the dedupeKey). Unlike the automatic triggers this THROWS on
-// bad input: the admin pressed a button and deserves a real error message.
-export async function sendAttendancePing(prisma, raceId) {
+// The admin's "send reminder" button. It used to be ONE broadcast to every
+// member, with a fresh dedupe key per press — so the people who had answered
+// on Monday were asked again on Wednesday, and again on Friday, which taught
+// them to ignore the reminder that was never meant for them.
+//
+// Now it goes only to the people the "Still to answer" list shows for that race
+// (lib/stillToAnswer.js — the same rule, called from both places): the race's
+// season, active drivers, per person, no answer yet. Each one gets a personal
+// note on the Discord login linked to them. Somebody with no linked login, or
+// one that has never signed in, cannot be reached through the bell at all; they
+// are counted instead, so the admin knows how many are left for a DM.
+//
+// Unlike the automatic triggers this THROWS on bad input: the admin pressed a
+// button and deserves a real error message.
+
+// When each race was last nudged, as { [raceId]: { at, sent, withoutLogin } }.
+// A Setting blob rather than a column: it is a handful of upcoming races, read
+// by one admin screen, and needs no migration.
+export const ATTENDANCE_PING_KEY = "attendance_ping_log";
+
+// A second press inside this window is treated as the first one arriving
+// twice (a double click, a retried request), not as a fresh reminder.
+export const ATTENDANCE_PING_REPEAT_MS = 60 * 1000;
+
+export async function readAttendancePings(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: ATTENDANCE_PING_KEY } });
+    const obj = row?.value ? JSON.parse(row.value) : null;
+    return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeAttendancePing(prisma, raceId, entry) {
+  const log = await readAttendancePings(prisma);
+  log[raceId] = entry;
+  // Only upcoming races are ever nudged, so the log only needs the recent
+  // ones. Oldest first out, so the blob cannot grow season after season.
+  const keep = Object.entries(log)
+    .sort((x, y) => String(y[1]?.at || "").localeCompare(String(x[1]?.at || "")))
+    .slice(0, 60);
+  const value = JSON.stringify(Object.fromEntries(keep));
+  await prisma.setting.upsert({
+    where: { key: ATTENDANCE_PING_KEY },
+    update: { value },
+    create: { key: ATTENDANCE_PING_KEY, value },
+  });
+}
+
+async function pingableRace(prisma, raceId) {
   const race = await prisma.race.findUnique({ where: { id: raceId } });
   if (!race) throw Object.assign(new Error("Race not found"), { status: 404 });
   if (race.isCompleted) throw Object.assign(new Error("Race already completed"), { status: 400 });
+  // A hidden race is off the attendance page, so there is nothing for the
+  // reminder's link to open and nothing to answer.
+  if ((await readHiddenRaceIds(prisma)).has(race.id)) {
+    throw Object.assign(new Error("This race is hidden from the attendance page"), { status: 400 });
+  }
+  return race;
+}
+
+// Who a reminder for this race would reach, without sending it: what the
+// admin's confirmation reads ("remind 12 drivers? 5 of them can't be reached").
+export async function previewAttendancePing(prisma, raceId) {
+  const race = await pingableRace(prisma, raceId);
+  const { silent, discordIds } = await stillToAnswer(prisma, race);
+  const reachable = await reachableDiscordIds(prisma, [...discordIds.values()]);
+  const { recipients, withoutLogin } = splitByReach(silent, discordIds, reachable);
+  const last = (await readAttendancePings(prisma))[race.id] || null;
+  return {
+    silent: silent.length,
+    reachable: recipients.length,
+    withoutLogin,
+    lastSentAt: last?.at || null,
+    lastSent: last?.sent ?? null,
+  };
+}
+
+export async function sendAttendancePing(prisma, raceId) {
+  const race = await pingableRace(prisma, raceId);
+  const last = (await readAttendancePings(prisma))[race.id];
+  if (last?.at && Date.now() - new Date(last.at).getTime() < ATTENDANCE_PING_REPEAT_MS) {
+    // Answer with what the first press did, so the second one reads as the
+    // same success rather than as an error the admin has to decode.
+    return { sent: last.sent ?? 0, withoutLogin: last.withoutLogin ?? 0, lastSentAt: last.at, repeated: true };
+  }
+
+  const { silent, discordIds } = await stillToAnswer(prisma, race);
+  const reachable = await reachableDiscordIds(prisma, [...discordIds.values()]);
+  const { recipients, withoutLogin } = splitByReach(silent, discordIds, reachable);
+
   const types = await readRaceTypes(prisma, [race.id]);
   const isTraining = (types.get(race.id) || "CHAMPIONSHIP") === "TRAINING";
   const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
-  await dbCreateNotification(prisma, {
-    type: "REMINDER",
-    title: `Attendance check: ${isTraining ? "training session" : roundName(race)} at ${race.track}`,
-    body: "Please confirm or update whether you're racing. Every answer helps the planning.",
-    link: `${prefix}/attendance?race=${race.id}`,
-    dedupeKey: `attendance-ping:${race.id}:${Date.now()}`,
-  });
+  const at = new Date().toISOString();
+  for (const discordId of recipients) {
+    await dbCreateNotification(prisma, {
+      type: "REMINDER",
+      title: `Are you racing? ${isTraining ? "Training session" : roundName(race)} at ${race.track}`,
+      body: "You haven't answered the sign-up for this one yet. In, out or maybe, every answer helps the planning.",
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId: discordId,
+      // Per press and per person: a second reminder a day later is a new
+      // note, the same press can never write two.
+      dedupeKey: `attendance-ping:${race.id}:${at}:${discordId}`,
+    });
+  }
+  await writeAttendancePing(prisma, race.id, { at, sent: recipients.length, withoutLogin });
+  return { sent: recipients.length, withoutLogin, lastSentAt: at };
 }
 
 // --- card unlocks --------------------------------------------------------------

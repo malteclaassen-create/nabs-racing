@@ -5,12 +5,11 @@ import { SmoothHeight } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { TAB_GROUPS, tabInfo } from "../data/adminIndex.js";
 import { NAV_RAIL, NAV_TABS } from "../hooks/useAdminNavMode.js";
-import { FEEDBACK_CHANGED_EVENT } from "./AdminFeedback.jsx";
-import { MEMBERS_CHANGED_EVENT } from "./AdminMembers.jsx";
+import { FEEDBACK_CHANGED_EVENT, MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
 // ---------------------------------------------------------------------------
-// The admin's navigation, in two shapes that show the SAME twenty-two tabs.
+// The admin's navigation, in two shapes that show the SAME twenty-one tabs.
 //
 //  * "tabs" — the strip that has always been at the top of the page: five
 //    little groups of buttons, everything visible at once, and about two lines
@@ -21,6 +20,13 @@ import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 //
 // Neither one changes what a tab CONTAINS. The choice is remembered per
 // browser, so an admin who prefers the old strip only says so once.
+//
+// The choice only applies from lg up. Below that the rail is already a single
+// folded line over the panel, while the strip wrapped into five groups of
+// buttons, about a screen of them on a phone before the panel started. So a
+// phone or tablet always gets the folded line, and the toggle is not offered
+// there (Admin.jsx hides it); the stored preference is left alone and comes
+// back on the next wide screen.
 //
 // The counts on Feedback and Reports are fetched here, once, rather than by the
 // buttons themselves: the rail can fold a group away, and a report waiting on a
@@ -65,9 +71,9 @@ function useAdminBadges() {
     feedback: feedback.data?.newCount || 0,
     members: members.data?.unlinked || 0,
     market: attention.data?.market || 0,
-    // A server reset waiting to be answered lives on the "Social & Live" tab,
-    // in the training best times card.
-    social: attention.data?.resets || 0,
+    // A server reset waiting to be answered lives on the Live tab, in the
+    // training best times card.
+    live: attention.data?.resets || 0,
     // Open incident reports. NOT a badge: this one is a quiet number (see
     // Count), and it is deliberately no part of the dot's sum either.
     reports: attention.data?.reports || 0,
@@ -162,7 +168,7 @@ export function AdminNavToggle({ mode, onChange }) {
 // --- the strip that was always there ----------------------------------------
 function TabStrip({ tab, onPick, badges }) {
   return (
-    <div className="mb-6 flex flex-wrap gap-x-7 gap-y-3 border-b border-border">
+    <div className="mb-6 hidden flex-wrap gap-x-7 gap-y-3 border-b border-border lg:flex">
       {TAB_GROUPS.map((g) => (
         <div key={g.label}>
           <div className="mb-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
@@ -183,7 +189,7 @@ function TabStrip({ tab, onPick, badges }) {
                 {t.id === "feedback" && <Badge n={badges.feedback} />}
                 {t.id === "members" && <Badge n={badges.members} />}
                 {t.id === "market" && <Badge n={badges.market} />}
-                {t.id === "social" && <Badge n={badges.social} />}
+                {t.id === "live" && <Badge n={badges.live} />}
                 {t.id === "reports" && <Count n={badges.reports} />}
               </button>
             ))}
@@ -195,7 +201,9 @@ function TabStrip({ tab, onPick, badges }) {
 }
 
 // --- the list down the left -------------------------------------------------
-function SideRail({ tab, onPick, badges }) {
+// `phoneOnly` is the rail standing in for the tab strip below lg: the folded
+// line and its drawer, and nothing from lg up, where the strip takes over.
+function SideRail({ tab, onPick, badges, phoneOnly = false }) {
   const active = tabInfo(tab);
   // Which groups are folded open. Only the one holding the current tab starts
   // open: five groups open at once is the tab strip again, just taller.
@@ -242,7 +250,7 @@ function SideRail({ tab, onPick, badges }) {
   }
 
   return (
-    <aside className="mb-6 lg:sticky lg:top-28 lg:mb-0 lg:self-start">
+    <aside className={`mb-4 sm:mb-6 ${phoneOnly ? "lg:hidden" : "lg:sticky lg:top-28 lg:mb-0 lg:self-start"}`}>
       {/* Phones: one line saying where you are, which opens the list. */}
       <button
         type="button"
@@ -260,7 +268,7 @@ function SideRail({ tab, onPick, badges }) {
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-light">
-          <Badge n={badges.feedback + badges.members + badges.market + badges.social} />
+          <Badge n={badges.feedback + badges.members + badges.market + badges.live} />
           <Chevron open={drawer} className="h-5 w-5" shut="rotate-90" turned="-rotate-90" />
         </span>
       </button>
@@ -348,6 +356,9 @@ export default function AdminNav({ mode, tab, onPick }) {
   return mode === NAV_RAIL ? (
     <SideRail tab={tab} onPick={onPick} badges={badges} />
   ) : (
-    <TabStrip tab={tab} onPick={onPick} badges={badges} />
+    <>
+      <SideRail tab={tab} onPick={onPick} badges={badges} phoneOnly />
+      <TabStrip tab={tab} onPick={onPick} badges={badges} />
+    </>
   );
 }

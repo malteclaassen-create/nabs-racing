@@ -593,6 +593,47 @@ function startOfStartDay() {
 // looks new after every correction and pays the whole grid a second time.
 const raceKey = (kind, r) => `${kind}:${r.raceId || "?"}:${r.driverId || "?"}`;
 
+// Two rows of one driver merged into one (services/driverMerge.js): the
+// results move to the kept row, so the payments for them have to move with
+// them. Left under the old row's id, the next syncEarned looks for
+// race:<raceId>:<kept row>, finds nothing and pays every one of those rounds a
+// second time — and the kept row would get a fresh rate stamped at today's
+// multiplier instead of the one the round was worth on the night.
+//
+// The merge refuses two results in one race, so no key can already exist
+// under the kept row; OR IGNORE only keeps a hand-edited ledger from failing
+// the whole merge. Runs inside the merge's transaction.
+export async function moveRacePayouts(prisma, fromDriverId, toDriverId) {
+  if (!fromDriverId || !toDriverId || fromDriverId === toDriverId) return 0;
+  let moved = 0;
+  for (const kind of ["race", "clean"]) {
+    const rows = await prisma
+      .$queryRawUnsafe(
+        `SELECT "id", "refKey" FROM "TokenLedger" WHERE "refKey" LIKE ? ESCAPE '\\'`,
+        `${kind}:%:${fromDriverId.replace(/[\\%_]/g, (c) => `\\${c}`)}`
+      )
+      .catch(() => []); // no token tables yet
+    for (const r of rows) {
+      const raceId = r.refKey.slice(kind.length + 1, r.refKey.length - fromDriverId.length - 1);
+      if (!raceId || raceId.includes(":")) continue;
+      moved += Number(
+        await prisma.$executeRawUnsafe(
+          `UPDATE OR IGNORE "TokenLedger" SET "refKey" = ? WHERE "id" = ?`,
+          raceKey(kind, { raceId, driverId: toDriverId }),
+          r.id
+        )
+      ) || 0;
+    }
+  }
+  // The stamped worth of each round goes along; where the kept row somehow has
+  // its own stamp for the round, that one stands.
+  await prisma
+    .$executeRawUnsafe(`UPDATE OR IGNORE "TokenRaceRate" SET "driverId" = ? WHERE "driverId" = ?`, toDriverId, fromDriverId)
+    .catch(() => {});
+  await prisma.$executeRawUnsafe(`DELETE FROM "TokenRaceRate" WHERE "driverId" = ?`, fromDriverId).catch(() => {});
+  return moved;
+}
+
 // The Discord account behind each of these driver rows, following the person
 // links, so somebody who signed in on one season's row is found from another.
 export async function discordForDrivers(prisma, driverIds) {

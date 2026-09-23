@@ -51,7 +51,7 @@ race data. It does **not** overwrite a changed admin PIN.
 ### Admin PIN
 
 Default admin PIN: **`nabs2026`** (stored hashed in the `Setting` table, change
-it from the admin UI under *Change PIN*).
+it from the admin UI under *System → Admin PIN*).
 
 ---
 
@@ -194,7 +194,7 @@ stored in the browser; on the first visit it follows the system setting.
 ### Webhook (posting sign-ups/events) — no bot needed
 1. Discord: channel → **Edit** → **Integrations** → **Webhooks** →
    **New Webhook** → **Copy Webhook URL**.
-2. Website: **Admin** (PIN) → **Discord & Events** tab → paste the URL →
+2. Website: **Admin** (PIN) → **System** tab → **Discord** → paste the URL →
    **Save** → **Send test**.
 
 From then on the website posts an Apollo-style message for every race sign-up

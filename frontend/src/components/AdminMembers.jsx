@@ -2,12 +2,14 @@ import { useCallback, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { ErrorBox, DriverAvatar, Field } from "./ui.jsx";
+import { ErrorBox, DriverAvatar, Field, Notice } from "./ui.jsx";
+import { FilterChip, SearchField } from "./AdminFilters.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtStamp, NO_VALUE } from "../utils/format.js";
+import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
 // site. Logins connect to a driver ONLY via a stored Discord user ID (the old
@@ -20,8 +22,8 @@ const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
 // The admin navigation puts the "logins with no driver" count on the Members
 // tab. Linking somebody (or creating their driver, or banning them) has to take
-// that number down straight away, so every finished action says so.
-export const MEMBERS_CHANGED_EVENT = "nabs:members-changed";
+// that number down straight away, so every finished action says so
+// (MEMBERS_CHANGED_EVENT, data/adminEvents.js).
 
 // One row of this tab, in two parts: WHO on the left, WHAT YOU CAN DO on the
 // right. They used to be one long flex line, which meant the buttons ate the
@@ -49,6 +51,27 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // has none of them, and the row must not keep an empty line's worth of margin
 // for the pills that aren't there.
 const hasPills = (m) => !!(m.isAdmin || m.isSteward || m.banned || !m.driver || !m.driver.isActiveSeason);
+
+// The chips over "All login accounts". Each is one of the questions this list
+// gets asked ("who is banned?", "who are the stewards?"), answered from what
+// the rows already carry. "Steam differs" is the case the Steam chip on a row
+// turns amber for: the account and its driver row name two different Steam
+// accounts, so race results may land on the wrong person.
+const steamDiffers = (m) => !!(m.steamId && m.driver?.steamId && m.steamId !== m.driver.steamId);
+const MEMBER_FILTERS = [
+  { key: "banned", label: "Banned", test: (m) => !!m.banned },
+  { key: "steward", label: "Stewards", test: (m) => !!m.isSteward && !m.isAdmin },
+  { key: "admin", label: "Admins", test: (m) => !!m.isAdmin },
+  { key: "nodriver", label: "Without driver", test: (m) => !m.driver },
+  { key: "steam", label: "Steam differs", test: steamDiffers },
+];
+
+// Whether an account matches the search: its names, its Discord and Steam
+// ids, and the driver it is linked to.
+function memberMatches(m, q) {
+  return [m.displayName, m.username, m.discordId, m.steamId, m.driver?.name, m.driver?.steamId, m.driver?.team?.name]
+    .some((v) => v && String(v).toLowerCase().includes(q));
+}
 
 function StatusPills({ m }) {
   return (
@@ -101,6 +124,10 @@ export default function AdminMembers() {
   // "Create new driver" inline form: which account it's open for + its fields.
   const [creating, setCreating] = useState(null); // discordId | null
   const [createForm, setCreateForm] = useState({ name: "", teamId: "" });
+  // Search and chips over "All login accounts". Chips combine (banned AND
+  // without driver), because each one narrows rather than picks a view.
+  const [query, setQuery] = useState("");
+  const [chips, setChips] = useState(() => new Set());
   const ask = useAsk();
 
   if (error) return <ErrorBox message={error} />;
@@ -113,6 +140,19 @@ export default function AdminMembers() {
     .filter((m) => !m.driver)
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   const requests = unlinked.filter((m) => m.raceRequestAt).length;
+  const q = query.trim().toLowerCase();
+  const shownMembers = members.filter(
+    (m) => (!q || memberMatches(m, q)) && MEMBER_FILTERS.every((f) => !chips.has(f.key) || f.test(m))
+  );
+  const filtering = !!q || chips.size > 0;
+  function toggleChip(key) {
+    setChips((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   // Reserve first — that's where newcomers usually start.
   const teams = [...(teamsApi.data || [])].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
 
@@ -264,6 +304,7 @@ export default function AdminMembers() {
       </div>
 
       {msg && !msg.ok && <ErrorBox message={msg.text} />}
+      {msg?.ok && <Notice kind="success">{msg.text}</Notice>}
       {loading && <p className="text-sm text-light">Loading accounts…</p>}
 
       {/* --- unlinked accounts first: this is the actual to-do list ---------- */}
@@ -444,15 +485,50 @@ export default function AdminMembers() {
       <div className="card p-5">
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
           All login accounts
-          <span className="ml-2 rounded-full bg-surface2 px-2 py-0.5 font-mono text-xs text-light">{members.length}</span>
+          <span className="ml-2 rounded-full bg-surface2 px-2 py-0.5 font-mono text-xs text-light">
+            {filtering ? `${shownMembers.length} of ${members.length}` : members.length}
+          </span>
         </h3>
+        {members.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <SearchField
+              value={query}
+              onChange={setQuery}
+              label="Search the login accounts"
+              placeholder="Search by name, @handle, Discord or Steam id, or driver…"
+            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {MEMBER_FILTERS.map((f) => (
+                <FilterChip
+                  key={f.key}
+                  on={chips.has(f.key)}
+                  count={members.filter(f.test).length}
+                  onClick={() => toggleChip(f.key)}
+                >
+                  {f.label}
+                </FilterChip>
+              ))}
+              {filtering && (
+                <button
+                  type="button"
+                  className="ml-1 text-xs font-semibold text-link hover:underline"
+                  onClick={() => { setQuery(""); setChips(new Set()); }}
+                >
+                  Show everyone
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {members.length === 0 && !loading ? (
           <p className="mt-2 text-sm text-light">
             Nobody has logged in with Discord yet. Accounts appear here automatically after the first login.
           </p>
+        ) : filtering && shownMembers.length === 0 ? (
+          <p className="mt-3 text-sm text-light">No login account fits this search and these filters.</p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
-            {members.map((m) => (
+            {shownMembers.map((m) => (
               <li key={m.discordId} className={`py-4 ${m.banned ? "opacity-70" : ""}`}>
                 <MemberRow
                   avatar={

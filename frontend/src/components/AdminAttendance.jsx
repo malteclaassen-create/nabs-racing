@@ -7,6 +7,7 @@ import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
 import AdminAttendanceGrid from "./AdminAttendanceGrid.jsx";
 import AdminAttendanceActivity from "./AdminAttendanceActivity.jsx";
+import { useAttendanceReminder, LastReminder } from "./AdminAttendanceReminder.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
 // Admin "Attendance" tab, in five views: who may answer which race, who is in
@@ -125,18 +126,24 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
     }
   }
 
+  // The reminder asks before it sends and says who it reaches (see
+  // AdminAttendanceReminder.jsx); here it only has to land its answer, and
+  // move the race's "last reminder" along with it.
+  const { remind, busyId: pinging } = useAttendanceReminder();
+  const [pings, setPings] = useState({});
+  // Re-read whenever the race list comes back into view: "Still to answer"
+  // and the Notifications tab send the same reminder from their own buttons.
+  useEffect(() => {
+    if (view === "signups") api.adminAttendancePings().then(setPings).catch(() => {});
+  }, [view]);
   async function ping(e) {
-    setBusy(true);
     setError(null);
     setMsg(null);
-    try {
-      await api.adminAttendancePing(e.id);
-      setMsg(`Reminder sent for ${e.track}.`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    const res = await remind(e);
+    if (!res) return;
+    if (!res.ok) return setError(res.text);
+    setMsg(res.text);
+    if (res.lastSentAt) setPings((p) => ({ ...p, [e.id]: { ...p[e.id], at: res.lastSentAt } }));
   }
 
   // Upcoming rounds, in calendar order, shared by the views below.
@@ -234,6 +241,11 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
             </li>
             <li>A race keeps taking late answers until you save its result.</li>
             <li>
+              <strong className="font-semibold text-medium">Send reminder</strong> reaches only the drivers who
+              haven&rsquo;t answered, with a personal note in the bell. It tells you how many first, and how many of
+              them have no login to reach.
+            </li>
+            <li>
               The eye takes a race off the attendance page, reminders included. It keeps its date, its calendar card
               and its results. A crossed-out eye puts it back.
             </li>
@@ -285,6 +297,7 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
                     <div className="font-mono text-[11px] uppercase tracking-wider text-light">
                       {fmtDate(e.date)} · {e.hidden ? "hidden" : effective} · {e.counts?.ACCEPTED ?? 0}/{e.capacity ?? 40} in
                     </div>
+                    {pings[e.id]?.at && <LastReminder at={pings[e.id].at} className="block text-xs text-light" />}
                   </div>
                   {/* The open/closed switch is meaningless while the race isn't
                       on the page. It stays visible (the setting is remembered),
@@ -308,10 +321,11 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
                   <button
                     type="button"
                     className="transition text-sm font-semibold text-link hover:underline disabled:opacity-50"
-                    disabled={busy || e.hidden}
+                    disabled={busy || !!pinging || e.hidden}
+                    title="A personal note in the bell for the drivers who haven't answered this race. You'll see how many before it goes."
                     onClick={() => ping(e)}
                   >
-                    Send reminder
+                    {pinging === e.id ? "Checking…" : "Send reminder"}
                   </button>
                 </li>
               );

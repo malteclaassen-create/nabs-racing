@@ -4,6 +4,8 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { useAsk } from "./overlay.jsx";
+import { FEEDBACK_CHANGED_EVENT } from "../data/adminEvents.js";
+import { SearchField } from "./AdminFilters.jsx";
 
 // Everything members and visitors wrote through the Feedback button: bug
 // reports, feature wishes, the rest. Each entry can be moved along (new →
@@ -41,11 +43,20 @@ function statusMeta(key) {
 }
 
 // The last message in the thread came from the sender, so the ball is here.
-// Counts a brand-new entry too: nobody has answered it yet.
+// Counts an open entry nobody has answered yet too, but not a filed one: an
+// entry marked done or won't do without a word to the sender was a decision,
+// and listing every one of them here buried the few that really wait.
 function awaitingAdmin(item) {
   const replies = item.replies || [];
-  const last = replies[replies.length - 1];
-  return !last || last.author === "SENDER";
+  if (replies.length) return replies[replies.length - 1].author === "SENDER";
+  return item.status === "NEW" || item.status === "PLANNED";
+}
+
+// Whether an entry mentions the search: the report, who sent it, how to reach
+// them, the page it came from, the private note and the whole conversation.
+function mentions(item, q) {
+  return [item.message, item.senderName, item.contact, item.pageUrl, item.adminNote, ...(item.replies || []).map((r) => r.body)]
+    .some((v) => v && String(v).toLowerCase().includes(q));
 }
 
 // The sender wrote back AFTER an answer. Easiest thing on this page to miss (it
@@ -114,6 +125,9 @@ function Entry({ item, onChanged }) {
   const [openReply, setOpenReply] = useState(false);
   const [reply, setReply] = useState("");
   const [replyError, setReplyError] = useState(null);
+  // A failed status change, note or delete: said out loud instead of the row
+  // just un-dimming as if it had worked.
+  const [error, setError] = useState(null);
   const meta = statusMeta(item.status);
   const agent = shortAgent(item.userAgent);
   const replies = item.replies || [];
@@ -122,15 +136,19 @@ function Entry({ item, onChanged }) {
 
   async function setStatus(status) {
     setBusy(true);
+    setError(null);
     try {
       await api.updateFeedback(item.id, { status });
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function sendReply() {
+    if (busy) return; // a double click would post the answer (and ping them) twice
     if (reply.trim().length < 2) {
       setReplyError("Write something first.");
       return;
@@ -153,10 +171,13 @@ function Entry({ item, onChanged }) {
 
   async function saveNote() {
     setBusy(true);
+    setError(null);
     try {
       await api.updateFeedback(item.id, { adminNote: note });
       setOpenNote(false);
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -165,9 +186,12 @@ function Entry({ item, onChanged }) {
   async function remove() {
     if (!(await ask({ title: "Delete this entry for good?", danger: true, confirmLabel: "Delete entry" }))) return;
     setBusy(true);
+    setError(null);
     try {
       await api.deleteFeedback(item.id);
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -175,6 +199,7 @@ function Entry({ item, onChanged }) {
 
   return (
     <li className={`space-y-3 py-4 ${busy ? "opacity-50" : ""}`}>
+      {error && <p className="text-sm font-medium text-bad">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <span className={`pill ${meta.cls}`}>{meta.label}</span>
         <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
@@ -213,7 +238,7 @@ function Entry({ item, onChanged }) {
           />
           {replyError && <p className="text-sm font-medium text-bad">{replyError}</p>}
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={sendReply} className="btn-primary py-1.5 text-xs">
+            <button type="button" onClick={sendReply} disabled={busy} className="btn-primary py-1.5 text-xs">
               Send reply
             </button>
             <button
@@ -248,7 +273,7 @@ function Entry({ item, onChanged }) {
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex gap-2">
-            <button type="button" onClick={saveNote} className="btn-primary py-1.5 text-xs">Save note</button>
+            <button type="button" onClick={saveNote} disabled={busy} className="btn-primary py-1.5 text-xs">Save note</button>
             <button type="button" onClick={() => { setNote(item.adminNote || ""); setOpenNote(false); }} className="btn-secondary py-1.5 text-xs">
               Cancel
             </button>
@@ -279,6 +304,7 @@ function Entry({ item, onChanged }) {
             key={s.key}
             type="button"
             onClick={() => setStatus(s.key)}
+            disabled={busy}
             className="rounded-lg bg-surface2 px-2.5 py-1 text-xs font-semibold text-medium transition hover:bg-border hover:text-dark"
           >
             {s.key === "NEW" ? "Back to new" : `Mark ${s.label.toLowerCase()}`}
@@ -296,6 +322,7 @@ function Entry({ item, onChanged }) {
         <button
           type="button"
           onClick={remove}
+          disabled={busy}
           className="ml-auto rounded-lg px-2.5 py-1 text-xs font-semibold text-bad transition hover:bg-red-500/10"
         >
           Delete
@@ -307,11 +334,11 @@ function Entry({ item, onChanged }) {
 
 // Anything that changes an entry says so, so the counter on the tab above
 // stops showing a number the admin has just worked through.
-export const FEEDBACK_CHANGED_EVENT = "nabs-feedback-changed";
 
 export default function AdminFeedback() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminFeedback(), []));
   const [filter, setFilter] = useState("OPEN");
+  const [query, setQuery] = useState("");
 
   const refresh = useCallback(() => {
     reload();
@@ -330,10 +357,14 @@ export default function AdminFeedback() {
         : filter === "WAITING"
         ? items.filter((i) => awaitingAdmin(i))
         : items.filter((i) => i.kind === filter);
+    // The search narrows whichever view is picked, so "the bug about the
+    // calendar that is still open" is one word and one tab away.
+    const q = query.trim().toLowerCase();
+    const found = q ? picked.filter((i) => mentions(i, q)) : picked;
     // Unanswered replies to the top; the server's order (new, then planned, then
     // newest first) holds underneath.
-    return [...picked].sort((a, b) => Number(hasNewSenderReply(b)) - Number(hasNewSenderReply(a)));
-  }, [items, filter]);
+    return [...found].sort((a, b) => Number(hasNewSenderReply(b)) - Number(hasNewSenderReply(a)));
+  }, [items, filter, query]);
   const waiting = items.filter(hasNewSenderReply).length;
 
   if (error) return <ErrorBox message={error} />;
@@ -356,13 +387,24 @@ export default function AdminFeedback() {
         </span>
       </div>
 
+      {items.length > 0 && (
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          label="Search the feedback"
+          placeholder="Search the feedback: words, sender, page, note or reply…"
+        />
+      )}
+
       {loading ? (
         <p className="text-sm text-light">Loading&hellip;</p>
       ) : shown.length === 0 ? (
         <p className="card p-6 text-sm leading-relaxed text-light">
           {items.length === 0
             ? "Nothing yet. When someone reports a bug or asks for a feature, it lands here."
-            : "Nothing in this view. Try Everything."}
+            : query.trim()
+              ? `Nothing in this view mentions "${query.trim()}". Try Everything, or fewer words.`
+              : "Nothing in this view. Try Everything."}
         </p>
       ) : (
         <ul className="card divide-y divide-border px-5">

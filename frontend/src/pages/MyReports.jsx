@@ -10,6 +10,9 @@ import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
+import { penaltyLabel, penaltySummary } from "../components/reportDesk.mjs";
+
+const capitalise = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 // "R5 Spa", "R5 Spa Sprint", "Session Most". A sprint row carries no round
 // number of its own; it borrows its event's (the sprintOf link) and says
@@ -164,11 +167,15 @@ function Thread({ id, races, onBack, onChanged }) {
             {when(r.createdAt)}
           </span>
         </div>
-        {r.verdict && (
+        {/* The decision, read-only: the verdict in the stewards' words and,
+            after it, what the penalty was — seconds, a warning, a grid drop or
+            a disqualification — with the licence points it carried. Only THIS
+            report's; a driver's season total is the stewards' to see. */}
+        {(r.verdict || penaltySummary(r)) && (
           <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
             <span className="font-semibold text-dark">The stewards: </span>
             {r.verdict}
-            {r.penaltySeconds != null && ` (${r.penaltySeconds}s)`}
+            {penaltySummary(r) && (r.verdict ? ` (${penaltySummary(r)})` : `${capitalise(penaltySummary(r))}.`)}
           </p>
         )}
       </div>
@@ -765,6 +772,8 @@ function Section({ title, hint, rows, races, onOpen, empty }) {
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <span className={`pill ${s.cls}`}>{s.label}</span>
+                    {/* What the penalty was, at a glance: "+5s", "Warning". */}
+                    {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
                     {/* Which of these are the button in the car and which are
                         somebody sitting down afterwards to write it out. The
                         two read very differently, and the in-game ones all

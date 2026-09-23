@@ -82,6 +82,7 @@ function TypeIcon({ type }) {
         </svg>
       );
     case "NEWS": // megaphone — feature announcements
+    case "ANNOUNCE": // ...and the ones an admin writes (Notifications tab)
       return (
         <svg {...common}>
           <path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z" />
@@ -204,6 +205,13 @@ export default function NotificationBell({ className = "" }) {
     // this app: a client-side navigation there lands on the 404. Real load.
     if (n.link.startsWith("/track-editor")) {
       window.location.assign(n.link.endsWith("/") ? n.link : `${n.link}/`);
+      return;
+    }
+    // An admin's announcement may point off the site (the server only lets
+    // http(s) through). The router would read it as a path of this app, so it
+    // opens in a new tab and the site stays where it was.
+    if (/^https?:\/\//i.test(n.link)) {
+      window.open(n.link, "_blank", "noopener,noreferrer");
       return;
     }
     navigate(n.link);

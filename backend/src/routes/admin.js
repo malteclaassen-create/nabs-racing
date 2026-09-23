@@ -10,7 +10,7 @@ import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult, RESULT_REF_RE } from "../services/emperorResults.js";
-import { saveRaceResults } from "../services/raceWriter.js";
+import { saveRaceResults, checkResultsForSeason } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 // The entry-list answer that follows a seat, shared with the driver-facing
@@ -66,6 +66,7 @@ import {
   dbThreadVoices, readFileRetentionDays, writeFileRetentionDays, RETENTION_CHOICES,
   dbSetAccused, dbRepointAccused, dbCreateReport, dbLinkedReports, dbEnsureIncidentGroup,
   dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbDriverRecord, dbLicenceTable, writeLicenceThreshold,
 } from "../lib/reports.js";
 import { sweepReportFiles } from "../services/reportHousekeeping.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
@@ -89,7 +90,7 @@ import {
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
-import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers } from "../services/driverTransfers.js";
+import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
 import { planMerge, mergeDrivers } from "../services/driverMerge.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
@@ -106,20 +107,25 @@ import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
-  sendAttendancePing, dbCreateNotification, withdrawAnswersNoLongerOffered,
+  sendAttendancePing, previewAttendancePing, readAttendancePings, dbCreateNotification, withdrawAnswersNoLongerOffered,
   notifyWaitlistPromoted, notifyWaitlistDemoted,
 } from "../lib/notifications.js";
 import {
   readFeedConfig, writeFeedConfig, readPosts, writePosts,
   resolveChannelId, fetchChannelVideos, lookupPost, downloadImage, extractUrls,
 } from "../lib/socialFeed.js";
-import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
+import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride, attendanceGate } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { gridSizeFor, setGridSize, parseGridSize } from "../lib/gridSize.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
+import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
+import {
+  validateAnnouncement, resolveAudience, discordText, findDuplicate, readAnnouncementLog, appendAnnouncementLog,
+  ANNOUNCE_AUDIENCES, ANNOUNCE_LIMITS,
+} from "../lib/announcements.js";
 import {
   activityFor, byNeedsAttention, tallyStates, QUIET_AFTER, INACTIVE_AFTER,
 } from "../lib/attendanceActivity.js";
@@ -229,6 +235,9 @@ const ACTIVITY_LOG = join(LOGS_DIR, "admin-activity.log");
 
 router.use((req, res, next) => {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  // A preview (POST /races/preview, /ratings/preview) changes nothing; logged,
+  // it buried the real changes under a line per keystroke of tuning.
+  if (/\/preview$/.test(req.path)) return next();
   res.on("finish", () => {
     if (res.statusCode >= 300) return; // only log successful changes
     try {
@@ -604,6 +613,12 @@ router.post("/races/commit", async (req, res, next) => {
     if (!raceId && !number) {
       return res.status(400).json({ error: "number (championship round) or raceId (training/event) required" });
     }
+    if (!raceId && !(Number.isInteger(Number(number)) && Number(number) >= 1)) {
+      return res.status(400).json({ error: "The round number must be a whole number from 1 up" });
+    }
+    if (date && Number.isNaN(new Date(date).getTime())) {
+      return res.status(400).json({ error: "That date can't be read" });
+    }
 
     // Explicit seasonId wins; the fallback resolves the active season of the
     // series the admin is editing (never a foreign series' active season).
@@ -619,6 +634,10 @@ router.post("/races/commit", async (req, res, next) => {
           include: { _count: { select: { results: true } } },
         });
     if (raceId && !race) return res.status(404).json({ error: "Race not found" });
+    if (!race && !targetSeasonId) return res.status(404).json({ error: "No season to put this round in" });
+    // Everything below writes (the round, its rename, its sprint row) before
+    // saveRaceResults would refuse a broken list: check it first.
+    await checkResultsForSeason(prisma, race ? race.seasonId : targetSeasonId, results);
 
     // session:"SPRINT" — this file is the SPRINT of a sprint+feature weekend.
     // The classification goes onto the event's hidden child row (find-or-create,
@@ -1065,14 +1084,174 @@ router.put("/notification-settings", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/races/:id/attendance-ping -> broadcast a manual "please
-// answer the attendance" nudge for one upcoming race. Repeatable on purpose.
+// GET  /api/admin/races/:id/attendance-ping -> { silent, reachable, withoutLogin, lastSentAt }
+// POST /api/admin/races/:id/attendance-ping -> { sent, withoutLogin, lastSentAt }
+//
+// The reminder for one upcoming race, to the drivers who have not answered it
+// (lib/notifications.js sendAttendancePing). The GET is what the confirmation
+// reads before anything is sent, so the admin sees "12 drivers, 5 of them
+// unreachable" and not a surprise afterwards. Repeatable on purpose; a second
+// press within a minute answers with the first one instead of sending twice.
+//
+// A race whose sign-up is not taking answers is refused: "please answer" with
+// no button to press is the reminder people learn to ignore. Checked here
+// rather than in lib/notifications.js, which lib/attendanceGate.js imports.
+async function reminderGateError(raceId) {
+  const race = await prisma.race.findUnique({ where: { id: raceId } });
+  if (!race || race.isCompleted) return null; // the lib says why, in its own words
+  const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+  const gate = attendanceGate(race, notify, overrides);
+  if (gate.open) return null;
+  if (gate.opensAt) return "Sign-up for this race hasn't opened yet, so there is nothing to answer.";
+  return "Sign-up for this race is closed, so there is nothing to answer.";
+}
+
+router.get("/races/:id/attendance-ping", async (req, res) => {
+  try {
+    const closed = await reminderGateError(req.params.id);
+    if (closed) return res.status(400).json({ error: closed });
+    res.json(await previewAttendancePing(prisma, req.params.id));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Failed to read" });
+  }
+});
+
 router.post("/races/:id/attendance-ping", async (req, res) => {
   try {
-    await sendAttendancePing(prisma, req.params.id);
-    res.json({ ok: true });
+    const closed = await reminderGateError(req.params.id);
+    if (closed) return res.status(400).json({ error: closed });
+    res.json({ ok: true, ...(await sendAttendancePing(prisma, req.params.id)) });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || "Failed to send" });
+  }
+});
+
+// GET /api/admin/attendance-pings -> { [raceId]: { at, sent, withoutLogin } }
+// When each race was last reminded, for the "Last reminder: 2 h ago" beside
+// every race's button.
+router.get("/attendance-pings", async (req, res, next) => {
+  try {
+    res.json(await readAttendancePings(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ANNOUNCEMENTS (Admin -> Notifications -> "Announcement")
+//
+// Words the admin writes, sent to the bell and/or the Discord events channel.
+// The rules — what a valid one is, who each audience reaches, the history —
+// are lib/announcements.js; these two routes only put them together.
+// ---------------------------------------------------------------------------
+
+// The season "drivers of the season" means: the running season of the series
+// the admin area is pointed at. Not the season switcher's pick — an
+// announcement is about now, and a look back at Season 5 must not turn "to the
+// drivers" into a message to last year's grid.
+async function announceSeason(series) {
+  return resolveSeason(prisma, null, { includePrivate: true, series: series || undefined }).catch(() => null);
+}
+
+// Announcements in flight, by id. The history only learns about one once it is
+// sent, so without this two copies of the same request arriving together would
+// both find nothing there and both go out.
+const announcing = new Set();
+
+// GET /api/admin/announcements?series= -> the form's context: the history,
+// how many each audience reaches, the season it would go to, whether Discord
+// is connected at all.
+router.get("/announcements", async (req, res, next) => {
+  try {
+    const season = await announceSeason(req.query.series);
+    const audiences = {};
+    for (const key of Object.keys(ANNOUNCE_AUDIENCES)) {
+      const r = await resolveAudience(prisma, { audience: key, seasonId: season?.id || null });
+      audiences[key] = { label: ANNOUNCE_AUDIENCES[key], reach: r.reach, drivers: r.drivers, withoutLogin: r.withoutLogin };
+    }
+    res.json({
+      list: await readAnnouncementLog(prisma),
+      audiences,
+      season: season ? { number: season.number, name: season.name } : null,
+      discord: { connected: !!(await getWebhookUrl(prisma)) },
+      limits: ANNOUNCE_LIMITS,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/announcements { id, title, body?, link?, audience, channels: { bell, discord }, series? }
+//
+// `id` is minted by the form when it is opened and kept until the send has
+// gone through, which is what makes a double click, a retry after a timeout
+// or a second tab pressing the same button harmless: the same id is answered
+// with the earlier result and nothing is sent again.
+router.post("/announcements", async (req, res, next) => {
+  const checked = validateAnnouncement(req.body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const v = checked.value;
+  if (announcing.has(v.id)) return res.status(409).json({ error: "This announcement is already being sent." });
+  announcing.add(v.id);
+  try {
+    const dup = findDuplicate(await readAnnouncementLog(prisma), v);
+    if (dup) return res.json({ ok: true, duplicate: true, announcement: dup });
+
+    // Refused up front rather than half-sent: bell notes written and then
+    // "Discord isn't connected" would leave the admin unsure what went out.
+    const webhook = v.channels.discord ? await getWebhookUrl(prisma) : null;
+    if (v.channels.discord && !webhook) {
+      return res.status(400).json({
+        error: "Discord isn't connected. Set the events webhook under Races & Events, or send to the bell only.",
+      });
+    }
+
+    const season = v.audience === "everyone" ? null : await announceSeason(req.body?.series);
+    if (v.audience !== "everyone" && !season) {
+      return res.status(400).json({ error: "This series has no running season, so there are no drivers to send to." });
+    }
+    const who = await resolveAudience(prisma, { audience: v.audience, seasonId: season?.id || null });
+    if (v.channels.bell && !who.broadcast && who.reach === 0 && !v.channels.discord) {
+      return res.status(400).json({ error: "Nobody in that audience has logged in on the site, so the bell reaches no one." });
+    }
+
+    let bellSent = 0;
+    if (v.channels.bell) {
+      const note = { type: "ANNOUNCE", title: v.title, body: v.body, link: v.link };
+      if (who.broadcast) {
+        await dbCreateNotification(prisma, { ...note, dedupeKey: `announce:${v.id}` });
+        bellSent = who.reach;
+      } else {
+        for (const discordId of who.recipients) {
+          await dbCreateNotification(prisma, { ...note, recipientId: discordId, dedupeKey: `announce:${v.id}:${discordId}` });
+        }
+        bellSent = who.recipients.length;
+      }
+    }
+
+    let discord = null;
+    if (v.channels.discord) {
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const r = await announce(prisma, discordText(v, origin));
+      discord = r.ok ? "sent" : r.skipped ? "not-connected" : "failed";
+    }
+
+    const entry = {
+      ...v,
+      audienceLabel: ANNOUNCE_AUDIENCES[v.audience],
+      season: season ? { number: season.number, name: season.name } : null,
+      reach: v.channels.bell ? bellSent : 0,
+      withoutLogin: v.channels.bell ? who.withoutLogin : 0,
+      discord,
+      by: req.user?.driverName || req.user?.discordName || req.user?.username || "Admin (PIN login)",
+      at: new Date().toISOString(),
+    };
+    await appendAnnouncementLog(prisma, entry);
+    res.json({ ok: true, announcement: entry });
+  } catch (e) {
+    next(e);
+  } finally {
+    announcing.delete(v.id);
   }
 });
 
@@ -1082,6 +1261,17 @@ router.post("/races/:id/attendance-ping", async (req, res) => {
 // take a Tier-1 seat) or cancel an offer outright. The driver-facing flow lives
 // in routes/market.js.
 // ---------------------------------------------------------------------------
+
+// One car per driver per race: a reserve already filling another seat of the
+// same round would sit in two columns of the entry list, and freeing either
+// seat would then take away their only "on the grid" answer.
+async function seatedElsewhere(raceId, reserveId, exceptOfferId) {
+  const other = await prisma.seatOffer.findFirst({
+    where: { raceId, filledById: reserveId, ...(exceptOfferId ? { id: { not: exceptOfferId } } : {}) },
+    select: { id: true },
+  });
+  return !!other;
+}
 
 // POST /api/admin/market/:offerId/assign  { driverId | null }
 // Force the chosen reserve for an offer; null clears it (back to OPEN).
@@ -1109,6 +1299,9 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
       // row from another season would poison the import pre-fill ids.
       if (offer.race?.seasonId && reserve.seasonId !== offer.race.seasonId) {
         return res.status(400).json({ error: "That driver belongs to another season's roster" });
+      }
+      if (await seatedElsewhere(offer.raceId, pickId, offer.id)) {
+        return res.status(409).json({ error: `${reserve.name} already fills another seat in this race` });
       }
     }
     const previous = offer.filledById;
@@ -1231,6 +1424,16 @@ router.post("/market", async (req, res, next) => {
       if (reserve.id === driver.id) return res.status(400).json({ error: "That is the same driver" });
     }
 
+    // Re-entering the swap with somebody else (or nobody) takes the seat off
+    // the reserve written down before, the same way /assign does.
+    const before = await prisma.seatOffer.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+      select: { id: true, filledById: true },
+    });
+    if (reserve && (await seatedElsewhere(race.id, reserve.id, before?.id))) {
+      return res.status(409).json({ error: `${reserve.name} already fills another seat in this race` });
+    }
+
     const offer = await prisma.seatOffer.upsert({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
       update: { status: reserve ? "FILLED" : "OPEN", filledById: reserve?.id || null, teamId: driver.teamId },
@@ -1252,6 +1455,9 @@ router.post("/market", async (req, res, next) => {
         create: { raceId: race.id, driverId: driver.id, status: "DECLINED" },
       })
       .catch(() => {});
+    if (before?.filledById && before.filledById !== reserve?.id) {
+      await setSeatRsvp(prisma, race.id, before.filledById, false);
+    }
     if (reserve) await setSeatRsvp(prisma, race.id, reserve.id, true);
 
     // No seat-offered fan-out: this is a done deal being written down, not a
@@ -1404,6 +1610,11 @@ router.post("/attendance/:raceId/answer", async (req, res, next) => {
     if (error) return res.status(error).json({ error: message });
     const driver = await prisma.driver.findUnique({ where: { id: driverId } });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+    // Driver rows are per season: a row from another season (or series) would
+    // take a seat on this grid and show up in its Discord post.
+    if (driver.seasonId !== race.seasonId) {
+      return res.status(400).json({ error: "That driver belongs to another season" });
+    }
 
     const before = await prisma.raceRsvp.findUnique({
       where: { raceId_driverId: { raceId: race.id, driverId } },
@@ -1888,6 +2099,9 @@ router.put("/live-links", async (req, res, next) => {
     const clean = (v) => {
       let val = String(v ?? "").trim();
       if (val && !/^[a-z]+:\/\//i.test(val)) val = `https://${val}`;
+      // These land in an href on the public live page: web links only, so a
+      // pasted javascript:// (or any other scheme) can never run there.
+      if (val && !/^https?:\/\//i.test(val)) return null;
       return val;
     };
     const map = {
@@ -1895,6 +2109,9 @@ router.put("/live-links", async (req, res, next) => {
       live_cm_join_url: clean(body.cmJoinUrl),
       live_stream_url: clean(body.streamUrl),
     };
+    if (Object.values(map).includes(null)) {
+      return res.status(400).json({ error: "Links must be http(s) addresses" });
+    }
     for (const [base, value] of Object.entries(map)) {
       const key = slug ? `${base}:${slug}` : base;
       await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
@@ -2405,6 +2622,9 @@ router.put("/races/:id/results", async (req, res, next) => {
     const isSprint = req.body?.session === "SPRINT";
     let sprintOf = null;
     if (isSprint) {
+      // Checked before the sprint row is made, or a refused list leaves an
+      // empty sprint behind.
+      await checkResultsForSeason(prisma, race.seasonId, results);
       sprintOf = race;
       race = await ensureSprintChild(prisma, race);
     }
@@ -2921,6 +3141,46 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
       return res.status(400).json({ error: `role must be empty or one of: ${DRIVER_ROLES.join(", ")}` });
     }
+    // Everything that can refuse the save is checked before anything is
+    // written: a 400 after the name, team and Discord id were already stored
+    // told the admin it failed while half of it had not.
+    const current = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true } });
+    if (!current) return res.status(404).json({ error: "Driver not found" });
+    if (tier !== undefined && ![0, 1, 2].includes(Number(tier))) {
+      return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+    }
+    if (teamId !== undefined) {
+      const team = await prisma.team.findUnique({ where: { id: String(teamId) }, select: { seasonId: true, name: true } });
+      if (!team) return res.status(400).json({ error: "Team not found" });
+      if (team.seasonId && current.seasonId && team.seasonId !== current.seasonId) {
+        return res.status(400).json({ error: `${team.name} belongs to a different season` });
+      }
+    }
+    const steamVal = steamId !== undefined ? String(steamId || "").trim() : undefined;
+    if (steamVal) {
+      if (!isIndividualSteamId(steamVal)) {
+        return res.status(400).json({
+          error:
+            "A Steam ID is the 17-digit number of a personal account (steamcommunity.com/profiles/7656...). Note it is not the Discord ID.",
+        });
+      }
+      // Unique PER SEASON, so only the same season can collide. Checked here to
+      // name the other driver, instead of the generic unique-violation message
+      // below, which talks about Discord IDs.
+      const clash = await prisma
+        .$queryRawUnsafe(
+          `SELECT "id", "name" FROM "Driver" WHERE "steamId" = ? AND "seasonId" IS ? AND "id" != ?`,
+          steamVal,
+          current.seasonId,
+          current.id
+        )
+        .catch(() => []);
+      if (clash.length) {
+        return res.status(409).json({
+          error: `That Steam ID is already on ${clash[0].name} in this season. Clear it there first if the two entries are the same person.`,
+        });
+      }
+    }
     const data = {};
     if (name !== undefined) data.name = name;
     if (discordName !== undefined) data.discordName = discordName;
@@ -3008,32 +3268,9 @@ router.put("/drivers/:id", async (req, res, next) => {
     // conflict after every race. Hence this editable field; "" clears it.
     // Raw-SQL column (see the note on attachSteamIds), so it is written after
     // the prisma update, like role and hideFromStandings.
-    if (steamId !== undefined) {
-      const v = String(steamId || "").trim();
-      if (v && !isIndividualSteamId(v)) {
-        return res.status(400).json({
-          error:
-            "A Steam ID is the 17-digit number of a personal account (steamcommunity.com/profiles/7656...). Note it is not the Discord ID.",
-        });
-      }
-      // Unique PER SEASON, so only the same season can collide. Checked here to
-      // name the other driver, instead of the generic unique-violation message
-      // below, which talks about Discord IDs.
-      if (v) {
-        const clash = await prisma
-          .$queryRawUnsafe(
-            `SELECT "id", "name" FROM "Driver" WHERE "steamId" = ? AND "seasonId" IS ? AND "id" != ?`,
-            v,
-            driver.seasonId,
-            driver.id
-          )
-          .catch(() => []);
-        if (clash.length) {
-          return res.status(409).json({
-            error: `That Steam ID is already on ${clash[0].name} in this season. Clear it there first if the two entries are the same person.`,
-          });
-        }
-      }
+    // Validated at the top, before anything was written.
+    if (steamVal !== undefined) {
+      const v = steamVal;
       await prisma.$executeRawUnsafe(
         `UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`,
         v || null,
@@ -3210,13 +3447,15 @@ router.delete("/drivers/:id", async (req, res, next) => {
         prisma.seatOffer.updateMany({ where: { driverId: driver.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
         prisma.driver.update({ where: { id: driver.id }, data: { teamId: pool.id, tier: 0 } }),
       ]);
+      await recordRosterMove(prisma, { driverId: driver.id, seasonId: driver.seasonId, teamId: pool.id });
       return res.json({ ok: true, demoted: true, keptRsvps: c.rsvps });
     }
 
-    // Person-link first (raw table without FK cascade), then everything that
-    // references the row, then the row itself.
-    await dbUnlinkDriver(prisma, driver.id);
+    // Raw references first (no FK cascade), then everything that references
+    // the row, then the row itself — one transaction, so a delete the foreign
+    // keys refuse leaves the person link standing.
     await prisma.$transaction([
+      ...driverRefCleanup(driver.id),
       prisma.raceRsvp.deleteMany({ where: { driverId: driver.id } }),
       prisma.seatInterest.deleteMany({ where: { driverId: driver.id } }),
       // Offers they made: drop them (any interests cascade with the offer).
@@ -3231,6 +3470,22 @@ router.delete("/drivers/:id", async (req, res, next) => {
     next(e);
   }
 });
+
+// What names a driver row without a foreign key, and so is left pointing at
+// nothing when the row is deleted. Driver ids are derived (`<id>_s<N>`), so a
+// row created later under the same id would otherwise inherit all of it: the
+// person link, recorded transfers (which decide the team its rounds are saved
+// under), and the picks and reports that name it.
+function driverRefCleanup(driverId) {
+  return [
+    prisma.$executeRaw`DELETE FROM "PersonLink" WHERE "driverId" = ${driverId}`,
+    prisma.$executeRaw`DELETE FROM "DriverTeamChange" WHERE "driverId" = ${driverId}`,
+    prisma.$executeRaw`UPDATE "Race" SET "driverOfTheDayId" = NULL, "driverOfTheDayBy" = NULL WHERE "driverOfTheDayId" = ${driverId}`,
+    prisma.$executeRaw`UPDATE "Season" SET "championDriverId" = NULL WHERE "championDriverId" = ${driverId}`,
+    // The report keeps the name it was filed against (accusedName).
+    prisma.$executeRaw`UPDATE "Report" SET "accusedDriverId" = NULL WHERE "accusedDriverId" = ${driverId}`,
+  ];
+}
 
 // POST /api/admin/drivers/bulk-delete -> remove SEVERAL driver rows at once
 // (same rules as the single delete above). Two-step like the single route:
@@ -3285,14 +3540,15 @@ router.post("/drivers/bulk-delete", async (req, res, next) => {
           prisma.seatOffer.updateMany({ where: { driverId: d.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
           prisma.driver.update({ where: { id: d.id }, data: { teamId: pool.id, tier: 0 } }),
         ]);
+        await recordRosterMove(prisma, { driverId: d.id, seasonId: d.seasonId, teamId: pool.id });
         demoted.push(d.name);
         continue;
       }
       // Same order as the single delete: person-link first (raw table, no FK),
       // then dependents, then the row. One transaction per driver keeps a
       // mid-list failure from voiding the deletions already done.
-      await dbUnlinkDriver(prisma, d.id);
       await prisma.$transaction([
+        ...driverRefCleanup(d.id),
         prisma.raceRsvp.deleteMany({ where: { driverId: d.id } }),
         prisma.seatInterest.deleteMany({ where: { driverId: d.id } }),
         prisma.seatOffer.deleteMany({ where: { driverId: d.id } }),
@@ -4452,6 +4708,13 @@ router.delete("/races/:id/results", async (req, res, next) => {
         race.id
       )
       .catch(() => {});
+    // The steward penalties that had been written into the deleted
+    // classification are not in any classification now: marked as still to
+    // apply, the results editor offers them again on the re-import instead of
+    // counting them as already entered (lib/reports.js dbPenaltiesForRace).
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "appliedSeconds" = NULL, "appliedAt" = NULL WHERE "raceId" = ?`, race.id)
+      .catch(() => {});
     // "The next round" has moved back, and a transfer recorded for the round
     // just wiped has not happened yet: the roster follows (driverTransfers.js).
     await syncRosterToTransfers(prisma, race.seasonId);
@@ -5145,6 +5408,9 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
           .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, d.steamId, newId)
           .catch(() => {});
       }
+      // Same person as the source row, as clone-drivers links it: careers,
+      // the login's season hand-over and the token payouts go by these links.
+      await dbLinkDrivers(prisma, [d.id, newId]).catch(() => {});
       driversCreated++;
     }
     res.json({ ok: true, teamsCreated, driversCreated });
@@ -5474,11 +5740,25 @@ router.put("/teams/:id", async (req, res, next) => {
   try {
     const { name, tier, color, logoUrl } = req.body || {};
     const data = {};
-    if (name !== undefined) data.name = name;
-    if (tier !== undefined) data.tier = Number(tier);
+    if (name !== undefined) {
+      data.name = String(name).trim();
+      if (!data.name) return res.status(400).json({ error: "A team needs a name" });
+    }
+    if (tier !== undefined) {
+      data.tier = Number(tier);
+      if (![0, 1, 2].includes(data.tier)) return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+    }
     if (color !== undefined) data.color = color;
     if (logoUrl !== undefined) data.logoUrl = logoUrl || null;
-    const team = await prisma.team.update({ where: { id: req.params.id }, data });
+    // Driver.tier is a copy of the team's (every move sets it from the team),
+    // and the standings read the driver's: a retiered team takes its drivers
+    // along, or they stay listed in the old tier's table.
+    const [team] = await prisma.$transaction([
+      prisma.team.update({ where: { id: req.params.id }, data }),
+      ...(data.tier !== undefined
+        ? [prisma.driver.updateMany({ where: { teamId: req.params.id }, data: { tier: data.tier } })]
+        : []),
+    ]);
     res.json(team);
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Team not found" });
@@ -6054,31 +6334,17 @@ router.get("/attendance-missing", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
 
-    const [allRows, rsvps, nameOverrides, people] = await Promise.all([
-      prisma.driver.findMany({
-        where: { seasonId: race.seasonId, isActive: true },
-        include: { team: { select: { name: true, tier: true, color: true } } },
-        orderBy: { name: "asc" },
-      }),
-      prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
+    // The roster minus the answers, per person — lib/stillToAnswer.js, shared
+    // with the reminder so the two can never disagree about who is silent.
+    const [{ roster, answered, silent, discordIds }, nameOverrides] = await Promise.all([
+      stillToAnswer(prisma, race),
       getNameOverrides(prisma),
-      getPersonGroups(prisma),
     ]);
-
-    // People, not rows — the same rule the entry list follows
-    // (lib/onePerPerson.js). Somebody with two roster rows in one season used
-    // to be chased for an answer their other row had already given, and
-    // counted twice in the roster they were being chased against. A row parked
-    // in the Reserve pool loses to one in a real team: the chase list is read
-    // per team, and the person is racing for one of them.
-    const roster = collapseByPerson(
-      allRows.map((d) => ({ ...d, driverId: d.id })),
-      people.byDriver,
-      (d) => ((d.team?.tier ?? d.tier) === 0 ? 0 : 1)
-    ).kept;
-    const answered = new Set(rsvps.map((r) => personKey(r.driverId, people.byDriver)));
-    const silent = roster.filter((d) => !answered.has(personKey(d.id, people.byDriver)));
-    const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
+    // Whose bell a reminder reaches. A Discord id alone is not enough: an
+    // account that has never logged in has no bell to ring, and the reminder's
+    // confirmation counts those people separately — so the list says which
+    // ones they are.
+    const reachable = await reachableDiscordIds(prisma, [...discordIds.values()]).catch(() => new Set());
 
     const shape = (d) => ({
       driverId: d.id,
@@ -6087,14 +6353,11 @@ router.get("/attendance-missing", async (req, res, next) => {
       // null = no login of theirs is known, so they cannot be @mentioned. The
       // admin can still search the handle above by hand.
       discordUserId: discordIds.get(d.id) || null,
+      canNotify: reachable.has(discordIds.get(d.id)),
       team: d.team?.name || null,
       teamColor: d.team?.color || null,
       tier: d.team?.tier ?? d.tier,
     });
-    // The row's TEAM tier decides, not the driver's own: a Tier-2 driver parked
-    // in the Reserve pool is a reserve this season, and that is the roster the
-    // grid is built from.
-    const isReserve = (d) => (d.team?.tier ?? d.tier) === 0;
     // Tier 1 first, then Tier 2, teammates together, alphabetical inside a team.
     // Sorted here rather than in the browser so the list arrives in the order it
     // is read in: chasing is a per-team job ("Renault: both of them"), and an
@@ -6109,14 +6372,14 @@ router.get("/attendance-missing", async (req, res, next) => {
       counts: {
         answered: answered.size,
         roster: roster.length,
-        fullTime: roster.filter((d) => !isReserve(d)).length,
-        reserve: roster.filter(isReserve).length,
+        fullTime: roster.filter((d) => !isReserveRow(d)).length,
+        reserve: roster.filter(isReserveRow).length,
       },
       missing: {
-        fullTime: silent.filter((d) => !isReserve(d)).map(shape).sort(byTeamThenName),
+        fullTime: silent.filter((d) => !isReserveRow(d)).map(shape).sort(byTeamThenName),
         // The reserve pool is one "team", so a team sort would say nothing —
         // they stay alphabetical, which is how you look a name up in a list.
-        reserve: silent.filter(isReserve).map(shape),
+        reserve: silent.filter(isReserveRow).map(shape),
       },
     });
   } catch (e) {
@@ -6411,10 +6674,14 @@ router.delete("/teams/:id", async (req, res, next) => {
     // actually scored under is the plain `RaceResult.teamId` stamp raceWriter
     // leaves. That one has no foreign key, so nothing in the database would
     // stop the delete from orphaning a real classification.
-    const [scoredRounds, blankRounds, stampedResults] = await Promise.all([
+    const [scoredRounds, blankRounds, stampedResults, transfers] = await Promise.all([
       prisma.constructorRaceScore.count({ where: { teamId: team.id, points: { not: 0 } } }),
       prisma.constructorRaceScore.count({ where: { teamId: team.id, points: 0 } }),
       prisma.raceResult.count({ where: { teamId: team.id } }),
+      prisma
+        .$queryRawUnsafe(`SELECT COUNT(*) AS n FROM "DriverTeamChange" WHERE "teamId" = ?`, team.id)
+        .then((rows) => Number(rows[0]?.n) || 0)
+        .catch(() => 0), // table not created yet
     ]);
 
     // Real history. None of this may be thrown away by deleting a team, and
@@ -6424,6 +6691,7 @@ router.delete("/teams/:id", async (req, res, next) => {
       subResults: c.results,
       stampedResults,
       scoredRounds,
+      transfers,
     });
     if (hard.length) {
       return res.status(409).json({
@@ -6563,7 +6831,11 @@ router.delete("/downloads/:id", async (req, res, next) => {
     const alsoFile = req.query.file === "1" || req.query.file === "true";
     const row = alsoFile ? await dbGetDownload(prisma, req.params.id) : null;
     await dbDeleteDownload(prisma, req.params.id);
-    const fileDeleted = alsoFile && row?.fileName ? deleteStoredFile(row.fileName) : false;
+    // Same guard as the orphan clean-up below: a file another catalogue entry
+    // still offers stays on disk, or removing a duplicate breaks the live one.
+    const stillUsed =
+      alsoFile && row?.fileName ? (await dbListDownloads(prisma)).some((r) => r.fileName === row.fileName) : false;
+    const fileDeleted = alsoFile && row?.fileName && !stillUsed ? deleteStoredFile(row.fileName) : false;
     res.json({ ok: true, fileDeleted });
   } catch (e) {
     next(e);
@@ -6786,8 +7058,14 @@ router.get("/reports", async (req, res, next) => {
       // Counted here rather than in the browser so the tab badge and the panel
       // in the results editor cannot disagree about it. A penalty the editor
       // has already written is done with, however it was typed.
+      // Time penalties only: a warning, grid drop or disqualification never
+      // reaches the editor, so it is never "not yet entered" either.
       pendingPenalties: reports.filter(
-        (r) => r.status === "PENALTY" && r.penaltySeconds > 0 && (r.appliedSeconds ?? null) !== r.penaltySeconds
+        (r) =>
+          r.status === "PENALTY" &&
+          r.penaltyKind === "TIME" &&
+          r.penaltySeconds > 0 &&
+          (r.appliedSeconds ?? null) !== r.penaltySeconds
       ).length,
       // And how many still have nobody on the other side of them. Every one of
       // those is a driver who cannot see the thread they are the subject of.
@@ -6846,14 +7124,53 @@ router.get("/reports/:id", async (req, res, next) => {
         status: l.status,
         verdict: l.verdict,
         penaltySeconds: l.penaltySeconds,
+        penaltyKind: l.penaltyKind,
+        licencePoints: l.licencePoints,
       })),
+      // The named driver's season so far — their other reports, the decisions
+      // and the points adding up towards a ban — so a third incident is never
+      // decided without the first two in view. Admin-only: the member API
+      // never carries it, a driver's record being nobody else's business.
+      record: await dbDriverRecord(prisma, report).catch(() => null),
     });
   } catch (e) {
     next(e);
   }
 });
 
-// PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds? }
+// GET /api/admin/licence-points?series=&season=N -> the season's licence table:
+// who has had penalties, how many points they add up to, and who has reached
+// the threshold and is due a race ban.
+//
+// The season is the edited series' active one unless ?season= names another,
+// and the series' other seasons come back with it so the card can switch
+// between them. Counted per person (lib/reports.js licenceTable).
+router.get("/licence-points", async (req, res, next) => {
+  try {
+    const scope = await adminSeriesScope(req.query.series);
+    const slug = scope?.series?.slug;
+    const season = await resolveSeason(prisma, req.query.season, { includePrivate: true, series: slug });
+    const seasons = scope ? await seasonIdsOfSeries(prisma, scope.series.id) : [];
+    if (!season) return res.json({ season: null, seasons, threshold: null, drivers: [] });
+    const table = await dbLicenceTable(prisma, season.id);
+    res.json({ season: { id: season.id, number: season.number }, seasons, ...table });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/licence-points/threshold { threshold } — the points at which a
+// driver is due a race ban. League-wide, 12 until somebody decides otherwise.
+router.put("/licence-points/threshold", async (req, res, next) => {
+  try {
+    res.json({ ok: true, threshold: await writeLicenceThreshold(prisma, req.body?.threshold) });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// PUT /api/admin/reports/:id  { status, verdict?, penaltySeconds?, penaltyKind?, licencePoints? }
 // The whole decision in ONE call, deliberately: the drivers are told the moment
 // this lands, and a decision sent in three pieces means they are told the
 // outcome before the reasoning has been typed.
@@ -7079,6 +7396,8 @@ router.post("/reports/:id/viewers", async (req, res, next) => {
     if (!/^\d{5,25}$/.test(String(discordId || ""))) {
       return res.status(400).json({ error: "That is not a Discord user ID" });
     }
+    // Like the block route: no viewer row (and no bell) for a report that isn't there.
+    if (!(await dbGetReport(prisma, req.params.id))) return res.status(404).json({ error: "Report not found" });
     const viewers = await dbAddViewer(prisma, req.params.id, discordId, name);
     // Tell them, otherwise being let in is a thing that happened silently and
     // they only find out if they happen to look.

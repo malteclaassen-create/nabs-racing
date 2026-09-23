@@ -20,7 +20,15 @@ vi.mock("./persons.js", () => ({
     const known = { d1: "111", d2: "222" };
     return new Map(ids.filter((i) => known[i]).map((i) => [i, known[i]]));
   },
+  // The person links, set per test: [[personId, [driverRowIds]], ...].
+  getPersonGroups: async () => {
+    const byDriver = new Map();
+    const byPerson = new Map(personLinks);
+    for (const [pid, ids] of personLinks) for (const id of ids) byDriver.set(id, pid);
+    return { byDriver, byPerson };
+  },
 }));
+let personLinks = [];
 
 const {
   dbCreateReport, dbAddMessage, dbDecideReport, canRead, readersOf, dbSetAccused, dbRepointAccused,
@@ -28,6 +36,8 @@ const {
   dbLinkedReports, dbEnsureIncidentGroup,
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
+  dbGetReport, dbLicenceTable, dbDriverRecord, licenceTable, penaltyOutcome,
+  readLicenceThreshold, writeLicenceThreshold, DEFAULT_LICENCE_THRESHOLD,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -37,9 +47,19 @@ const {
 
 let rows;
 
-function makePrisma() {
+function makePrisma({ races = [], settings = {} } = {}) {
   rows = { Report: [], ReportMessage: [], ReportViewer: [], ReportAttachment: [], ReportBlock: [] };
   return {
+    race: {
+      findMany: async ({ where }) => races.filter((r) => r.seasonId === where.seasonId),
+      findUnique: async ({ where }) => races.find((r) => r.id === where.id) || null,
+    },
+    setting: {
+      findUnique: async ({ where }) => (where.key in settings ? { key: where.key, value: settings[where.key] } : null),
+      upsert: async ({ where, create }) => {
+        settings[where.key] = create.value;
+      },
+    },
     $executeRawUnsafe: async (sql, ...a) => {
       if (sql.includes('INSERT INTO "Report"')) {
         rows.Report.push({
@@ -68,8 +88,10 @@ function makePrisma() {
       } else if (sql.startsWith('DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"')) {
         rows.ReportViewer = rows.ReportViewer.filter((v) => !(v.reportId === a[0] && v.discordId === a[1]));
       } else if (sql.startsWith('UPDATE "Report" SET "status"')) {
-        const r = rows.Report.find((x) => x.id === a[4]);
-        Object.assign(r, { status: a[0], verdict: a[1], penaltySeconds: a[2], updatedAt: a[3] });
+        const r = rows.Report.find((x) => x.id === a[6]);
+        Object.assign(r, {
+          status: a[0], verdict: a[1], penaltySeconds: a[2], penaltyKind: a[3], licencePoints: a[4], updatedAt: a[5],
+        });
       } else if (sql.startsWith('UPDATE "Report" SET "accusedDriverId"')) {
         const r = rows.Report.find((x) => x.id === a[3]);
         Object.assign(r, { accusedDriverId: a[0], accusedName: a[1], updatedAt: a[2] });
@@ -86,6 +108,7 @@ function makePrisma() {
       if (sql.includes('FROM "Report" WHERE "id"')) return rows.Report.filter((r) => r.id === a[0]);
       if (sql.includes('FROM "Report" WHERE "incidentGroupId"'))
         return rows.Report.filter((r) => r.incidentGroupId === a[0] && r.id !== a[1]);
+      if (sql.includes('FROM "Report" WHERE "raceId" IN')) return rows.Report.filter((r) => a.includes(r.raceId));
       if (sql.includes('FROM "Report" WHERE "raceId"'))
         return rows.Report.filter(
           (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED"].includes(r.status)
@@ -108,6 +131,7 @@ const base = { body: "He hit me at the hairpin", reporterDiscordId: "111", repor
 beforeEach(() => {
   notes.length = 0;
   stewards.clear();
+  personLinks = [];
 });
 
 describe("who can read a report", () => {
@@ -620,5 +644,185 @@ describe("penalties owed to a classification", () => {
     const r = await dbCreateReport(p, inRound);
     await dbDecideReport(p, r, { status: "NO_PENALTY", verdict: "Racing incident." });
     expect(await dbPenaltiesForRace(p, "r1")).toHaveLength(0);
+  });
+});
+
+// A decision has a KIND as well as seconds. Only TIME ever reaches the results
+// editor; the rest are recorded and shown, and carried out by hand. Pinned here
+// because the editor fills its penalty column from dbPenaltiesForRace on its
+// own, so a warning that leaked seconds into it would put time on a driver
+// nobody meant to.
+describe("the kind of a penalty", () => {
+  const inRound = { ...base, raceId: "r1", accusedDriverId: "d2", accusedName: "mtimmis" };
+
+  it("reads a penalty with no kind given as TIME, which is what every old one was", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    const d = await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: 5 });
+    expect(d.penaltyKind).toBe("TIME");
+    expect(d.penaltySeconds).toBe(5);
+    // And a row stored before the column existed reads the same way.
+    rows.Report[0].penaltyKind = null;
+    expect((await dbGetReport(p, r.id)).penaltyKind).toBe("TIME");
+  });
+
+  it("refuses a kind it does not know rather than reading it as seconds", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    await expect(dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "BAN", penaltySeconds: 5 })).rejects.toThrow(
+      /unknown penalty kind/i
+    );
+    // Nothing was written by the refused call.
+    expect((await dbGetReport(p, r.id)).status).toBe("NEW");
+    // Case does not matter; the spelling does.
+    expect((await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "grid" })).penaltyKind).toBe("GRID");
+  });
+
+  it("keeps no seconds on a kind that is not TIME", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    const d = await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "WARNING", penaltySeconds: 5 });
+    expect(d.penaltySeconds).toBe(null);
+  });
+
+  it("puts TIME penalties into the editor's figures exactly as before, and nothing else", async () => {
+    const p = makePrisma();
+    const time = await dbCreateReport(p, inRound);
+    await dbDecideReport(p, time, { status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 2 });
+    for (const kind of ["WARNING", "GRID", "DSQ"]) {
+      const r = await dbCreateReport(p, inRound);
+      await dbDecideReport(p, r, { status: "PENALTY", penaltyKind: kind, penaltySeconds: 30, licencePoints: 3 });
+    }
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.decided).toBe(5);
+    expect(g.outstanding).toBe(5);
+    expect(g.reports.map((x) => x.id)).toEqual([time.id]);
+  });
+
+  it("takes the seconds back off when an entered time penalty becomes a warning", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, inRound);
+    await dbDecideReport(p, r, { status: "PENALTY", penaltySeconds: 5 });
+    await dbMarkPenaltiesApplied(p, [r.id]);
+    await dbDecideReport(p, await dbGetReport(p, r.id), { status: "PENALTY", penaltyKind: "WARNING" });
+    const [g] = await dbPenaltiesForRace(p, "r1");
+    expect(g.decided).toBe(0);
+    expect(g.outstanding).toBe(-5);
+  });
+
+  it("tells the drivers what kind it was and the points it carried", async () => {
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5 })).toBe("Penalty: 5 seconds.");
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 2 })).toBe(
+      "Penalty: 5 seconds, 2 licence points."
+    );
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "DSQ", licencePoints: 1 })).toBe(
+      "Penalty: disqualification, 1 licence point."
+    );
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "TIME" })).toBe("A penalty was given.");
+    expect(penaltyOutcome({ status: "NO_PENALTY", licencePoints: 4 })).toBe("No penalty was given.");
+  });
+});
+
+describe("licence points", () => {
+  const S7 = [
+    { id: "r1", seasonId: "s7", number: 1, track: "Spa", date: "2026-03-01" },
+    { id: "r2", seasonId: "s7", number: 2, track: "Monza", date: "2026-03-08" },
+    { id: "r3", seasonId: "s7", number: 3, track: "Imola", date: "2026-03-15" },
+  ];
+  const S6 = [{ id: "old", seasonId: "s6", number: 9, track: "Suzuka", date: "2025-11-01" }];
+
+  async function penalise(p, raceId, driverId, points, extra = {}) {
+    const r = await dbCreateReport(p, { ...base, raceId, accusedDriverId: driverId, accusedName: driverId });
+    return dbDecideReport(p, r, { status: "PENALTY", penaltyKind: "WARNING", licencePoints: points, ...extra });
+  }
+
+  it("refuses points outside 0 to 12, and fractions", async () => {
+    const p = makePrisma();
+    const r = await dbCreateReport(p, base);
+    for (const bad of [-1, 13, 2.5, "lots"]) {
+      await expect(dbDecideReport(p, r, { status: "PENALTY", licencePoints: bad })).rejects.toThrow(/0 to 12/);
+    }
+    expect((await dbDecideReport(p, r, { status: "PENALTY", licencePoints: "12" })).licencePoints).toBe(12);
+    expect((await dbDecideReport(p, r, { status: "PENALTY", licencePoints: "" })).licencePoints).toBe(null);
+  });
+
+  it("adds up per PERSON within the season of the report's race", async () => {
+    // d2 and d2b are the same human on two rows of one season (a team change
+    // mid-season); d9 is somebody else. The S6 points belong to last season.
+    personLinks = [["steve", ["d2", "d2b"]]];
+    const p = makePrisma({ races: [...S7, ...S6] });
+    await penalise(p, "r1", "d2", 3);
+    await penalise(p, "r2", "d2b", 4);
+    await penalise(p, "r2", "d9", 2);
+    await penalise(p, "old", "d2", 10);
+    const { drivers, threshold } = await dbLicenceTable(p, "s7");
+    expect(threshold).toBe(DEFAULT_LICENCE_THRESHOLD);
+    expect(drivers.map((d) => [d.key, d.points, d.decisions])).toEqual([
+      ["steve", 7, 2],
+      ["d9", 2, 1],
+    ]);
+    expect((await dbLicenceTable(p, "s6")).drivers.map((d) => [d.key, d.points])).toEqual([["steve", 10]]);
+  });
+
+  it("only counts decisions that stand as penalties", async () => {
+    const p = makePrisma({ races: S7 });
+    await penalise(p, "r1", "d2", 5);
+    // Reversed afterwards: the points stay in the column and count for nothing.
+    const reversed = await penalise(p, "r2", "d2", 6);
+    await dbDecideReport(p, reversed, { status: "NO_PENALTY", licencePoints: 6 });
+    // Not decided yet at all.
+    await dbCreateReport(p, { ...base, raceId: "r3", accusedDriverId: "d2" });
+    const [row] = (await dbLicenceTable(p, "s7")).drivers;
+    expect(row.points).toBe(5);
+    expect(row.decisions).toBe(1);
+  });
+
+  it("flags a driver as due a ban on REACHING the threshold, and the threshold is a setting", async () => {
+    const p = makePrisma({ races: S7 });
+    await penalise(p, "r1", "d2", 6);
+    await penalise(p, "r2", "d2", 5);
+    await penalise(p, "r3", "d2", 1);
+    await penalise(p, "r1", "d9", 11);
+    const flags = async () => Object.fromEntries((await dbLicenceTable(p, "s7")).drivers.map((d) => [d.key, d.flagged]));
+    expect(await flags()).toEqual({ d2: true, d9: false });
+    await writeLicenceThreshold(p, 10);
+    expect(await readLicenceThreshold(p)).toBe(10);
+    expect(await flags()).toEqual({ d2: true, d9: true });
+    await expect(writeLicenceThreshold(p, 0)).rejects.toThrow(/1 to 99/);
+    await expect(writeLicenceThreshold(p, "x")).rejects.toThrow(/1 to 99/);
+  });
+
+  it("sorts most points first", () => {
+    const rep = (id, d, pts) => ({ id, status: "PENALTY", accusedDriverId: d, accusedName: d, licencePoints: pts });
+    const t = licenceTable([rep("1", "a", 1), rep("2", "b", 5), rep("3", "c", 0), rep("4", "a", 1)]);
+    expect(t.map((x) => x.key)).toEqual(["b", "a", "c"]);
+  });
+
+  it("gives the named driver's season in race order with a running total", async () => {
+    personLinks = [["steve", ["d2", "d2b"]]];
+    const p = makePrisma({ races: [...S7, ...S6] });
+    // Filed out of order on purpose: round 3 first, then round 1.
+    const third = await penalise(p, "r3", "d2", 2);
+    await penalise(p, "r1", "d2b", 4, { penaltyKind: "TIME", penaltySeconds: 5 });
+    await penalise(p, "old", "d2", 9);
+    await penalise(p, "r2", "d9", 3);
+    const open = await dbCreateReport(p, { ...base, raceId: "r2", accusedDriverId: "d2", accusedName: "Steve" });
+    const rec = await dbDriverRecord(p, open);
+    expect(rec.seasonId).toBe("s7");
+    expect(rec.entries.map((e) => [e.raceId, e.runningTotal, e.current])).toEqual([
+      ["r1", 4, false],
+      ["r2", 4, true],
+      ["r3", 6, false],
+    ]);
+    expect(rec.entries[0]).toMatchObject({ penaltyKind: "TIME", penaltySeconds: 5, licencePoints: 4, counts: true });
+    expect(rec.entries[2].id).toBe(third.id);
+    expect(rec.total).toBe(6);
+    expect(rec.flagged).toBe(false);
+  });
+
+  it("has no record for a report that names nobody or no round", async () => {
+    const p = makePrisma({ races: S7 });
+    expect(await dbDriverRecord(p, await dbCreateReport(p, { ...base, raceId: "r1" }))).toBe(null);
+    expect(await dbDriverRecord(p, await dbCreateReport(p, { ...base, accusedDriverId: "d2" }))).toBe(null);
   });
 });

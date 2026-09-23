@@ -7,6 +7,8 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import AdminResultGraphic from "./AdminResultGraphic.jsx";
 import AdminStandingsGraphic from "./AdminStandingsGraphic.jsx";
 import AdminDiscordPost from "./AdminDiscordPost.jsx";
+import AdminRaceRecap from "./AdminRaceRecap.jsx";
+import { useJumpView } from "../hooks/useJumpView.js";
 
 // ---------------------------------------------------------------------------
 // Admin → Content: everything a finished round gets published AS.
@@ -25,14 +27,18 @@ const VIEWS = [
   { key: "graphic", label: "Result" },
   { key: "standings", label: "Standings" },
   { key: "post", label: "Discord post" },
+  // The recap members get after a round: the other thing a finished round is
+  // turned into. It has its own round picker (it previews any driver's), so
+  // the round select above steps aside for it.
+  { key: "recap", label: "Race recap" },
 ];
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
-export default function AdminContent() {
+export default function AdminContent({ jumpView = null, jumpKey = null }) {
   const { data: races, error, reload } = useApi(useCallback(() => api.races(), []));
   const [raceId, setRaceId] = useState("");
-  const [view, setView] = useState("graphic");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "graphic");
   // Bumped whenever the poster's ingredients change on the Graphic side (a car
   // uploaded, a flag filled in). The message half draws its own copy of the
   // poster, and this is what tells it to go and fetch the new one — otherwise
@@ -69,28 +75,34 @@ export default function AdminContent() {
     <div className="space-y-5">
       {error && <ErrorBox message={error} onRetry={reload} />}
 
-      {finished.length === 0 ? (
-        <p className="card p-5 text-sm text-light">No finished round in this season yet.</p>
-      ) : (
-        <>
-          {/* The round, then what you are making of it. Both live in the same
-              bar so it always reads as one sentence. */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <select
-              aria-label="Round"
-              className="input w-auto max-w-[18rem] py-2 text-sm font-semibold"
-              value={raceId}
-              onChange={(e) => setRaceId(e.target.value)}
-            >
-              {finished.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {roundOf(r)} {r.track} · {fmtDate(r.date)}
-                </option>
-              ))}
-            </select>
-            <SlidingTabs items={VIEWS} value={view} onChange={setView} btnClassName="px-4 py-1.5 text-xs" />
-          </div>
+      {/* The round, then what you are making of it. Both live in the same
+          bar so it always reads as one sentence. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {view !== "recap" && finished.length > 0 ? (
+          <select
+            aria-label="Round"
+            className="input w-auto max-w-[18rem] py-2 text-sm font-semibold"
+            value={raceId}
+            onChange={(e) => setRaceId(e.target.value)}
+          >
+            {finished.map((r) => (
+              <option key={r.id} value={r.id}>
+                {roundOf(r)} {r.track} · {fmtDate(r.date)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span />
+        )}
+        <SlidingTabs items={VIEWS} value={view} onChange={setView} btnClassName="px-4 py-1.5 text-xs" />
+      </div>
 
+      {view === "recap" && <AdminRaceRecap />}
+
+      {view !== "recap" && finished.length === 0 ? (
+        <p className="card p-5 text-sm text-light">No finished round in this season yet.</p>
+      ) : finished.length > 0 && (
+        <>
           {/* Both stay mounted: switching back to the poster should not redraw
               it, and switching away must not throw away a message you have
               spent five minutes editing. */}

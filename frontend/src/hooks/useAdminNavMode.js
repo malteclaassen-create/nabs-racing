@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 
 // Which shape the admin's navigation takes: the folding list down the left side
 // ("rail"), or the strip of tabs across the top ("tabs"). Both show the same
-// twenty-two tabs and the same panels; the choice is only where the menu lives,
-// so it is remembered per browser rather than per account.
+// twenty-one tabs and the same panels; the choice is only where the menu lives,
+// so it is remembered per browser rather than per account. It only takes effect
+// from the lg breakpoint up: narrower screens always get the folded line (see
+// AdminNav), and the stored choice waits for the next wide screen untouched.
 //
 // It sits in its own file rather than next to the navigation it belongs to
 // because a module that exports both components and a hook cannot be hot

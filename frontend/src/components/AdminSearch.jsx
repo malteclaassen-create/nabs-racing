@@ -1,18 +1,66 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { api } from "../api/client.js";
 import { searchAdmin } from "../data/adminIndex.js";
 
-// A way into the admin that isn't "read all twenty-two tab names and guess".
+// A way into the admin that isn't "read all twenty-one tab names and guess".
 //
 // It searches what each tab lets you DO, not what it is called (see
 // data/adminIndex.js), so "ban", "backup", "who is coming" and "rickroll" all
 // land somewhere sensible. A hit switches to its tab, and to the right view
 // inside that tab where the tab has several.
 //
+// Below the jobs come the league's own records: every driver, team and race of
+// the series across all its seasons (private ones included), each opening the
+// tab that edits it in its own season. That was a tab of its own ("All-time")
+// with a second search box, and two search boxes that search different things
+// is one too many.
+//
 // Deliberately not a modal: a search box you can see is a search box people
 // discover. It stays out of the way at one line high and opens a results panel
 // only while something is typed.
-export default function AdminSearch({ onGo }) {
+// A driver, team or race of any season, as a row of the result list: what it
+// is, which season, and the tab that edits it.
+function dataItems(data) {
+  if (!data) return [];
+  const season = (x) => x.seasonName || (x.seasonNumber != null ? `Season ${x.seasonNumber}` : "");
+  const out = [];
+  for (const d of data.drivers || []) {
+    out.push({
+      key: `d:${d.id}`,
+      title: d.name,
+      where: `Driver · ${season(d)}`,
+      hint: d.teamName || "No team",
+      tab: "drivers",
+      seasonNumber: d.seasonNumber,
+    });
+  }
+  for (const t of data.teams || []) {
+    out.push({
+      key: `t:${t.id}`,
+      title: t.name,
+      where: `Team · ${season(t)}`,
+      hint: t.tier === 0 ? "Reserve pool" : `Tier ${t.tier}`,
+      tab: "teams",
+      seasonNumber: t.seasonNumber,
+    });
+  }
+  for (const r of data.races || []) {
+    out.push({
+      key: `r:${r.id}`,
+      title: r.track,
+      where: `${r.isSpecialEvent ? "Event" : r.number != null ? `Round ${r.number}` : "Race"} · ${season(r)}`,
+      // A round that has run is edited in Edit Results; one still to come on
+      // the calendar.
+      hint: r.isCompleted ? "Finished · opens Edit Results" : "Not run yet · opens Races & Events",
+      tab: r.isCompleted ? "edit" : "discord",
+      seasonNumber: r.seasonNumber,
+    });
+  }
+  return out;
+}
+
+export default function AdminSearch({ onGo, onGoData }) {
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
   const [open, setOpen] = useState(false);
@@ -24,7 +72,35 @@ export default function AdminSearch({ onGo }) {
   const panelRef = useRef(null);
   const inputRef = useRef(null);
 
-  const hits = useMemo(() => searchAdmin(q), [q]);
+  const jobs = useMemo(() => searchAdmin(q), [q]);
+  // The records half, fetched as the admin types (debounced; an answer for a
+  // query that has since changed is dropped).
+  const [data, setData] = useState(null);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) {
+      setData(null);
+      setSearching(false);
+      return undefined;
+    }
+    let alive = true;
+    setSearching(true);
+    const t = setTimeout(() => {
+      api
+        .adminSearch(query)
+        .then((d) => alive && setData(d))
+        .catch(() => alive && setData(null))
+        .finally(() => alive && setSearching(false));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+  const records = useMemo(() => dataItems(data), [data]);
+  // One list for the arrow keys: the jobs first, then the records.
+  const hits = useMemo(() => [...jobs, ...records.map((r) => ({ ...r, record: true }))], [jobs, records]);
   // The highlight belongs to the current result list, not to the last one.
   useEffect(() => setCursor(0), [q]);
 
@@ -74,7 +150,8 @@ export default function AdminSearch({ onGo }) {
     setQ("");
     setOpen(false);
     inputRef.current?.blur();
-    onGo(hit);
+    if (hit.record) onGoData?.(hit.tab, hit.seasonNumber);
+    else onGo(hit);
   }
 
   function onKeyDown(e) {
@@ -134,7 +211,9 @@ export default function AdminSearch({ onGo }) {
                 maxHeight: anchor.maxHeight,
               }}
             >
-              {hits.length === 0 ? (
+              {hits.length === 0 && searching ? (
+                <p className="px-4 py-3 text-sm text-light">Searching…</p>
+              ) : hits.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-light">
                   Nothing matches &ldquo;{q.trim()}&rdquo;. Try a plainer word for it, like{" "}
                   <span className="font-semibold text-medium">points</span>,{" "}
@@ -145,7 +224,14 @@ export default function AdminSearch({ onGo }) {
                 <>
                   <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
                     {hits.map((h, i) => (
-                      <li key={`${h.tab}:${h.view || ""}:${h.title}`}>
+                      <li key={h.record ? h.key : `${h.tab}:${h.view || ""}:${h.title}`}>
+                        {/* Where the league's records start: a line of its own,
+                            so a driver's name is not read as a setting. */}
+                        {h.record && !hits[i - 1]?.record && (
+                          <div className="bg-surface2/60 px-4 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+                            Drivers, teams and races · all seasons
+                          </div>
+                        )}
                         <button
                           type="button"
                           role="option"
@@ -162,8 +248,14 @@ export default function AdminSearch({ onGo }) {
                             {/* Where it lives, so the next time they go straight
                                 there instead of searching again. */}
                             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">
-                              {h.groupLabel} › {h.tabLabel}
-                              {h.viewLabel ? ` › ${h.viewLabel}` : ""}
+                              {h.record ? (
+                                h.where
+                              ) : (
+                                <>
+                                  {h.groupLabel} › {h.tabLabel}
+                                  {h.viewLabel ? ` › ${h.viewLabel}` : ""}
+                                </>
+                              )}
                             </span>
                           </span>
                           <span className="text-xs leading-relaxed text-light">{h.hint}</span>
@@ -178,6 +270,7 @@ export default function AdminSearch({ onGo }) {
                   <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface2/60 px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-light">
                     <span>
                       {hits.length} {hits.length === 1 ? "result" : "results"}
+                      {searching ? " · searching the seasons…" : ""}
                     </span>
                     <span className="hidden sm:inline">↑ ↓ to move · Enter to open · Esc to close</span>
                   </div>
@@ -208,7 +301,7 @@ export default function AdminSearch({ onGo }) {
           ref={inputRef}
           type="search"
           className="input pl-9"
-          placeholder="Search the admin: what do you want to change? (hotlap, ban, backup, points…)"
+          placeholder="Search the admin: a setting (hotlap, ban, backup…) or a driver, team or track"
           aria-label="Search admin settings"
           role="combobox"
           aria-expanded={showPanel}

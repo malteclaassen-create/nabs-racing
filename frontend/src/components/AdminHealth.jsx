@@ -48,7 +48,7 @@ function SecurityCheck() {
         {data.pinIsDefault && (
           <Notice kind="error">
             The admin PIN is still the built-in default (<span className="font-mono">nabs2026</span>), so anyone who has
-            seen the project files can log in here. Change it in the <b>Change PIN</b> tab before sharing the site.
+            seen the project files can log in here. Change it under <b>System → Admin PIN</b> before sharing the site.
           </Notice>
         )}
         {data.jwtIsDefault && (

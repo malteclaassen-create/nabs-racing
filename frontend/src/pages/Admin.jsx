@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Armchair, Bug, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
@@ -7,50 +7,190 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton } from "../components/ui.jsx";
 import { useAsk, Modal } from "../components/overlay.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
+import { useJumpView } from "../hooks/useJumpView.js";
 import TeamLogo from "../components/TeamLogo.jsx";
-import AdminImport from "../components/AdminImport.jsx";
-import AdminRatings from "../components/AdminRatings.jsx";
-import AdminTelemetry from "../components/AdminTelemetry.jsx";
-import AdminMedia from "../components/AdminMedia.jsx";
-import AdminContent from "../components/AdminContent.jsx";
-import AdminDownloads from "../components/AdminDownloads.jsx";
-import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
-import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
-import AdminPrivacy from "../components/AdminPrivacy.jsx";
-import AdminTracks from "../components/AdminTracks.jsx";
-import AdminAttendance from "../components/AdminAttendance.jsx";
-import AdminSocialFeed from "../components/AdminSocialFeed.jsx";
-import AdminHealth from "../components/AdminHealth.jsx";
-import AdminMembers from "../components/AdminMembers.jsx";
-import AdminNotifications from "../components/AdminNotifications.jsx";
-import AdminAllTime from "../components/AdminAllTime.jsx";
-// (Their "how many are waiting" counters live with the navigation now, since
-// the folding rail has to be able to show a hidden one on its group header.)
-import AdminFeedback from "../components/AdminFeedback.jsx";
-import AdminTokens from "../components/AdminTokens.jsx";
-import AdminReports from "../components/AdminReports.jsx";
-import AdminRaceRecap from "../components/AdminRaceRecap.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
-// The navigation itself: the same twenty-two tabs as either the strip across
+// The navigation itself: the same twenty-one tabs as either the strip across
 // the top or a folding list down the left, plus the switch between the two.
 import AdminNav, { AdminNavToggle } from "../components/AdminNav.jsx";
 import { NAV_RAIL, useAdminNavMode } from "../hooks/useAdminNavMode.js";
 import RacePreview from "../components/RacePreview.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
-import AdminTransfers from "../components/AdminTransfers.jsx";
+import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
+import TabNotice from "../components/TabNotice.jsx";
+import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
+import { HelpNote } from "../components/ui.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
-import { TAB_GROUPS } from "../data/adminIndex.js";
+import { resolveTab } from "../data/adminIndex.js";
 import { formatLapTime } from "../utils/telemetryAnalysis.js";
 import { SOCIAL_META, SocialIcon } from "../components/SocialLinks.jsx";
 import { isSteamId64 } from "../utils/steamId.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 
+// Each tab is its own chunk: only one panel is ever on screen, and loading all
+// of them up front made the admin area one download of well over half a
+// megabyte before anything showed. Once the page is up they are fetched in the
+// background (see prefetchTabs), so switching tabs is still instant.
+const TAB_CHUNKS = {
+  AdminImport: () => import("../components/AdminImport.jsx"),
+  AdminRatings: () => import("../components/AdminRatings.jsx"),
+  AdminTelemetry: () => import("../components/AdminTelemetry.jsx"),
+  AdminMedia: () => import("../components/AdminMedia.jsx"),
+  AdminContent: () => import("../components/AdminContent.jsx"),
+  AdminDownloads: () => import("../components/AdminDownloads.jsx"),
+  AdminRaceInfo: () => import("../components/AdminRaceInfo.jsx"),
+  AdminWelcomeFaq: () => import("../components/AdminWelcomeFaq.jsx"),
+  AdminPrivacy: () => import("../components/AdminPrivacy.jsx"),
+  AdminTracks: () => import("../components/AdminTracks.jsx"),
+  AdminAttendance: () => import("../components/AdminAttendance.jsx"),
+  AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
+  AdminHealth: () => import("../components/AdminHealth.jsx"),
+  AdminMembers: () => import("../components/AdminMembers.jsx"),
+  AdminNotifications: () => import("../components/AdminNotifications.jsx"),
+  AdminFeedback: () => import("../components/AdminFeedback.jsx"),
+  AdminTokens: () => import("../components/AdminTokens.jsx"),
+  AdminReports: () => import("../components/AdminReports.jsx"),
+  AdminDiscordConnections: () => import("../components/AdminDiscordConnections.jsx"),
+  AdminTransfers: () => import("../components/AdminTransfers.jsx"),
+};
+const AdminImport = lazy(TAB_CHUNKS.AdminImport);
+const AdminRatings = lazy(TAB_CHUNKS.AdminRatings);
+const AdminTelemetry = lazy(TAB_CHUNKS.AdminTelemetry);
+const AdminMedia = lazy(TAB_CHUNKS.AdminMedia);
+const AdminContent = lazy(TAB_CHUNKS.AdminContent);
+const AdminDownloads = lazy(TAB_CHUNKS.AdminDownloads);
+const AdminRaceInfo = lazy(TAB_CHUNKS.AdminRaceInfo);
+const AdminWelcomeFaq = lazy(TAB_CHUNKS.AdminWelcomeFaq);
+const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
+const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
+const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
+const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
+const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
+const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
+const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
+const AdminFeedback = lazy(TAB_CHUNKS.AdminFeedback);
+const AdminTokens = lazy(TAB_CHUNKS.AdminTokens);
+const AdminReports = lazy(TAB_CHUNKS.AdminReports);
+const AdminDiscordConnections = lazy(TAB_CHUNKS.AdminDiscordConnections);
+const AdminTransfers = lazy(TAB_CHUNKS.AdminTransfers);
+
+// Warm the tab chunks one after another while the browser is idle. The import
+// is cached, so a tab opened later renders without a loading state. Failures
+// are ignored: the lazy() import retries when the tab is actually opened.
+let tabsPrefetched = false;
+function prefetchTabs() {
+  // Once per visit: the page remounts on every season or series switch.
+  if (tabsPrefetched) return;
+  tabsPrefetched = true;
+  const loaders = Object.values(TAB_CHUNKS);
+  const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 200));
+  const next = () => {
+    const load = loaders.shift();
+    if (!load) return;
+    load().catch(() => {}).finally(() => idle(next));
+  };
+  idle(next);
+}
+
+// What a tab shows while its chunk is on the way (the first time it is opened).
+function TabSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <Skeleton className="h-16 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
+  );
+}
+
+// The view switch of a tab that holds several small ones. Same control the
+// other split tabs use (Photos & Videos, Attendance).
+function ViewSwitch({ items, value, onChange }) {
+  return <SlidingTabs items={items} value={value} onChange={onChange} />;
+}
+
+// Ratings & Telemetry: the rating formula and the lap telemetry it is built
+// from. Two tabs of one card each before.
+function RatingsTab({ jumpView, jumpKey }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "ratings");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "ratings", label: "Ratings" },
+          { key: "telemetry", label: "Telemetry" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "ratings" && <AdminRatings />}
+      {view === "telemetry" && <AdminTelemetry />}
+    </div>
+  );
+}
+
+// Site texts: the public pages' own words and pictures, one view per page.
+// Four tabs (Tracks, Race Info, Home FAQ, Privacy & app) and the social half of
+// the old "Social & Live" before.
+function SiteTexts({ jumpView, jumpKey }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "tracks");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "tracks", label: "Tracks" },
+          { key: "raceinfo", label: "Race Info" },
+          { key: "faq", label: "Home FAQ" },
+          { key: "social", label: "Social" },
+          { key: "privacy", label: "Privacy & app" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "tracks" && <AdminTracks />}
+      {view === "raceinfo" && <AdminRaceInfo />}
+      {view === "faq" && <AdminWelcomeFaq />}
+      {view === "social" && (
+        <div className="space-y-4">
+          <SocialAdmin />
+          <AdminSocialFeed />
+        </div>
+      )}
+      {view === "privacy" && <AdminPrivacy />}
+    </div>
+  );
+}
+
+// System: how the site itself is doing, and what connects it to the outside.
+// Health, Traffic and Change PIN were three tabs; the Discord connections were
+// spread over three others (components/AdminDiscordConnections.jsx).
+function SystemTab({ jumpView, jumpKey, onJump }) {
+  const [view, setView] = useJumpView(jumpView, jumpKey, "health");
+  return (
+    <div className="space-y-5">
+      <ViewSwitch
+        items={[
+          { key: "health", label: "Health & backups" },
+          { key: "traffic", label: "Traffic" },
+          { key: "discord", label: "Discord" },
+          { key: "access", label: "Admin PIN" },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "health" && <AdminHealth />}
+      {view === "traffic" && <TrafficAdmin />}
+      {view === "discord" && <AdminDiscordConnections onJump={onJump} />}
+      {view === "access" && <ChangePin />}
+    </div>
+  );
+}
 
 // WHICH series and season every scoped edit below applies to, and the two
 // switches for them, in the page's own header row.
@@ -141,17 +281,26 @@ export default function Admin() {
   const [unauthorized, setUnauthorized] = useState(false);
   const authed = !unauthorized && (pinAuthed || isDiscordAdmin);
   const [expired, setExpired] = useState(false);
-  // Three ways the opening tab is decided, in this order: ?tab=<id> from a link
-  // (the "new feedback" notification points straight at a tab), a one-shot
-  // hand-off some panel left behind before it triggered a remount ("Schedule
-  // races" jumping to Races & Events), and otherwise wherever the admin was.
+  // Three ways the opening tab is decided, in this order: a one-shot hand-off
+  // some panel left behind before it triggered a remount ("Schedule races"
+  // jumping to Races & Events after switching the season; it goes first
+  // because the address may still name the tab it was launched from, e.g.
+  // ?tab=seasons), then ?tab=<id> from a link (the "new feedback" notification
+  // points straight at a tab), and otherwise wherever the admin was.
   // (Read-only initializer: React may run it twice in dev StrictMode, so the
   // clean-up happens in the effect below, not here.)
-  const [tab, setTab] = useState(() => {
-    const wanted = new URLSearchParams(window.location.search).get("tab");
-    const known = TAB_GROUPS.some((g) => g.tabs.some((t) => t.id === wanted));
-    return (known && wanted) || sessionStorage.getItem("nabs_admin_tab") || lastTab || "seasons";
-  });
+  // Old tab names (from a notification sent before the tabs were merged, or a
+  // tab remembered in this browser) resolve to the tab that took the job over,
+  // at the right view — see TAB_ALIASES.
+  const [opening] = useState(
+    () =>
+      resolveTab(sessionStorage.getItem("nabs_admin_tab")) ||
+      resolveTab(new URLSearchParams(window.location.search).get("tab")) ||
+      resolveTab(lastTab) ||
+      // Races & Events: the calendar is what a race week starts from.
+      { tab: "discord" }
+  );
+  const [tab, setTab] = useState(opening.tab);
   useEffect(() => {
     sessionStorage.removeItem("nabs_admin_tab");
   }, []);
@@ -175,18 +324,46 @@ export default function Admin() {
   // a hit can name one; `n` counts the jumps, because searching the SAME hit
   // twice has to land twice — a plain view string would be unchanged the second
   // time and the tab would sit wherever the admin had left it.
-  const [jump, setJump] = useState(null);
+  const [jump, setJump] = useState(() => (opening.view ? { tab: opening.tab, view: opening.view, n: 1 } : null));
   // Bumped by the To do card to send the training card back to its question.
   const [trainingFocus, setTrainingFocus] = useState(0);
   function goTo(hit) {
     setTab(hit.tab);
     setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
   }
+  // Jump from an all-time search hit to the tab that edits it. A hit in another
+  // season switches the global season first (which remounts the page, so the
+  // target tab is stashed to survive it); a hit in the season already being
+  // edited just changes the tab.
+  function gotoInSeason(t, seasonNumber) {
+    if (seasonNumber != null && seasonNumber !== season) {
+      sessionStorage.setItem("nabs_admin_tab", t);
+      setSeason(seasonNumber);
+    } else {
+      openTab(t);
+    }
+  }
+  // Open a tab by any name it has had, optionally at one of its views.
+  function openTab(id, view = null) {
+    const r = resolveTab(id);
+    if (r) goTo({ tab: r.tab, view: view || r.view || null });
+  }
   const viewFor = (tabId) => (jump?.tab === tabId ? jump.view : null);
   const { season, setSeason } = useSeason();
   // Which shape the navigation takes: the folding list down the left side, or
   // the strip of tabs across the top. Remembered per browser.
   const [navMode, setNavMode] = useAdminNavMode();
+  // Signed in and the page is up: fetch the other tabs' code in the background.
+  useEffect(() => {
+    if (authed) prefetchTabs();
+  }, [authed]);
+
+  // Leave the admin area. Clears the PIN token; a Discord admin stays signed in
+  // to the site (their admin rights come from their account).
+  function signOut() {
+    setToken(null);
+    window.location.href = "/";
+  }
 
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
@@ -213,53 +390,68 @@ export default function Admin() {
   return (
     <div className="content-in">
       {/* One row for everything that is true of the whole page: what is being
-          edited, where the menu sits, and the way out. */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <PageHeader eyebrow="League Office" title="Admin" />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          edited, where the menu sits, and the way out.
+          Below lg the row is rearranged to get the panel onto the first screen
+          of a phone: Sign out moves up beside the title (which steps down a
+          size and drops its eyebrow to make room), the menu toggle goes, and
+          only the season switch gets a line of its own. The wrapper
+          round the title dissolves from lg up (lg:contents), so a computer
+          gets exactly the one row it always had. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 sm:mb-6">
+        <div className="w-full lg:contents">
+          <PageHeader
+            // The eyebrow is a nicety a phone cannot afford here: a hidden span
+            // leaves its line with no height at all.
+            eyebrow={<span className="hidden sm:inline">League Office</span>}
+            title="Admin"
+            rightInline
+            right={
+              <button className="btn-secondary shrink-0 lg:hidden" onClick={signOut}>
+                Sign out
+              </button>
+            }
+          />
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto">
           <AdminScope />
-          {/* Same twenty-two tabs either way; this only says where they are. */}
-          <AdminNavToggle mode={navMode} onChange={setNavMode} />
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              // Leave the admin area. Clears the PIN token; a Discord admin stays
-              // signed in to the site (their admin rights come from their account).
-              setToken(null);
-              window.location.href = "/";
-            }}
-          >
-            Sign out
-          </button>
+          {/* Same twenty-one tabs either way; this only says where they are.
+              Phones and tablets always get the folded menu (see AdminNav), so
+              the choice only exists where it changes something. */}
+          <span className="hidden lg:contents">
+            <AdminNavToggle mode={navMode} onChange={setNavMode} />
+            <button className="btn-secondary" onClick={signOut}>
+              Sign out
+            </button>
+          </span>
         </div>
       </div>
 
       {/* Above the tabs on purpose: it is the way in for anyone who does not
           already know which of the five menus below holds the thing they came
           for. */}
-      <AdminSearch onGo={goTo} />
+      <AdminSearch onGo={goTo} onGoData={gotoInSeason} />
 
       <TodoCard
-        onPick={setTab}
+        onPick={openTab}
         onReset={(slug) => {
           // The question belongs to one series' board: point the admin area at
           // it, open the tab, and let the training card scroll itself into view
           // (it looks for ?focus=training when it mounts; the key remounts it
           // if the tab was already open).
           const url = new URL(window.location.href);
-          url.searchParams.set("tab", "social");
+          url.searchParams.set("tab", "live");
           url.searchParams.set("focus", "training");
           if (slug) url.searchParams.set("series", slug);
           window.history.replaceState(window.history.state, "", url);
           if (slug && editingSeries?.slug !== slug) setEditingSeries(slug);
-          setTab("social");
+          setTab("live");
           setTrainingFocus((n) => n + 1);
         }}
       />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
           the panel below is the same element in either layout, so switching the
-          navigation does not remount twenty-two panels (and refetch everything
+          navigation does not remount twenty-one panels (and refetch everything
           they hold) just to move a menu. The rail column is 15rem from lg up;
           below that the grid is a single column and the rail sits on top of the
           panel as its own folded-away line. */}
@@ -272,10 +464,11 @@ export default function Admin() {
       >
         <AdminNav mode={navMode} tab={tab} onPick={setTab} />
 
-        {/* Keyed on the tab: all 22 panels fade in on switch instead of snapping.
+        {/* Keyed on the tab: all 21 panels fade in on switch instead of snapping.
             One wrapper rather than 22 edits, and it means any tab added later is
             animated by default. */}
         <div key={tab} className="content-in min-h-[70vh] min-w-0">
+          <Suspense fallback={<TabSkeleton />}>
           {tab === "seasons" && (
             <Seasons
               // One click from a season row to its race calendar: select that
@@ -284,59 +477,36 @@ export default function Admin() {
                 sessionStorage.setItem("nabs_admin_tab", "discord");
                 setSeason(s.number); // remounts the page; the tab survives above
               }}
+              gotoInSeason={gotoInSeason}
             />
           )}
           {tab === "teams" && <Teams />}
-          {tab === "alltime" && (
-            <AdminAllTime
-              // Jump from a search hit to the tab that edits it. A hit in another
-              // season switches the global season first (which remounts the page,
-              // so the target tab is stashed to survive it); a hit in the season
-              // already being edited just changes the tab.
-              gotoTab={(t, seasonNumber) => {
-                if (seasonNumber != null && seasonNumber !== season) {
-                  sessionStorage.setItem("nabs_admin_tab", t);
-                  setSeason(seasonNumber);
-                } else {
-                  setTab(t);
-                }
-              }}
-            />
-          )}
           {tab === "import" && <AdminImport />}
           {tab === "edit" && <EditResults />}
-          {tab === "content" && <AdminContent />}
+          {tab === "content" && <AdminContent jumpView={viewFor("content")} jumpKey={jump?.n} />}
           {tab === "photos" && <AdminMedia jumpView={viewFor("photos")} jumpKey={jump?.n} />}
-          {tab === "recap" && <AdminRaceRecap />}
-          {tab === "ratings" && <AdminRatings />}
-          {tab === "telemetry" && <AdminTelemetry />}
-          {tab === "discord" && <DiscordEvents />}
+          {tab === "ratings" && <RatingsTab jumpView={viewFor("ratings")} jumpKey={jump?.n} />}
+          {tab === "discord" && <DiscordEvents onJump={openTab} />}
           {tab === "market" && <MarketAdmin />}
           {tab === "drivers" && <Drivers />}
           {tab === "transfers" && <AdminTransfers />}
           {tab === "members" && <AdminMembers />}
           {tab === "reports" && <AdminReports />}
           {tab === "feedback" && <AdminFeedback />}
-          {tab === "tokens" && <AdminTokens />}
+          {tab === "tokens" && <AdminTokens jumpView={viewFor("tokens")} jumpKey={jump?.n} />}
           {tab === "notify" && <AdminNotifications />}
-          {tab === "social" && (
+          {tab === "live" && (
             <div className="space-y-4">
-              <SocialAdmin />
-              <AdminSocialFeed />
               <LiveLinksAdmin />
               <LiveServersAdmin />
               <TrainingBestLapsAdmin key={trainingFocus} />
             </div>
           )}
           {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
-          {tab === "tracks" && <AdminTracks />}
-          {tab === "raceinfo" && <AdminRaceInfo />}
-          {tab === "faq" && <AdminWelcomeFaq />}
-          {tab === "privacy" && <AdminPrivacy />}
+          {tab === "site" && <SiteTexts jumpView={viewFor("site")} jumpKey={jump?.n} />}
           {tab === "downloads" && <AdminDownloads />}
-          {tab === "traffic" && <TrafficAdmin />}
-          {tab === "health" && <AdminHealth />}
-          {tab === "pin" && <ChangePin />}
+          {tab === "system" && <SystemTab jumpView={viewFor("system")} jumpKey={jump?.n} onJump={openTab} />}
+          </Suspense>
         </div>
       </div>
     </div>
@@ -778,15 +948,6 @@ function SocialAdmin() {
       <p className="text-sm text-light">
         Paste each profile or invite URL. Empty fields are simply hidden. The Discord link also
         powers the “Join Discord” button in the top bar.
-      </p>
-      <p className="text-sm text-light">
-        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
-        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
-        not until the next upload: the session file it came in will not put it back, and while the race server is
-        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
-        than showing it again. They are back on the board the moment they{" "}
-        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
-        and can be put back.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
@@ -1359,6 +1520,15 @@ function TrainingBestLapsAdmin() {
   }
 
   async function remove(key) {
+    // Every driver's time on the circuit, gone for good: unlike a single lap
+    // there is no "put back" for this one.
+    const ok = await ask({
+      title: "Remove every training time on this track?",
+      body: "All drivers' best laps for this circuit come off the Live page and cannot be put back here.",
+      danger: true,
+      confirmLabel: "Remove all",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     setUploaded(null);
@@ -1402,6 +1572,15 @@ function TrainingBestLapsAdmin() {
         <b className="text-dark">per season</b>: what is given now belongs to season {data.season}, and the day a new
         season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back with
         the calendar, and nobody has to delete it.
+      </p>
+      <p className="text-sm text-light">
+        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
+        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
+        not until the next upload: the session file it came in will not put it back, and while the race server is
+        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
+        than showing it again. They are back on the board the moment they{" "}
+        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
+        and can be put back.
       </p>
 
       {err && <Notice kind="error">{err}</Notice>}
@@ -3112,6 +3291,13 @@ function Drivers() {
   const [rosterQuery, setRosterQuery] = useState("");
   // Ticked drivers for bulk removal (ids survive folding teams open/closed).
   const [selected, setSelected] = useState(() => new Set());
+  // The chips over the roster: one tier (or any), plus any of "inactive",
+  // "no Discord id", "no Steam id" at once. Like the search, any of them
+  // unfolds every team with a hit.
+  const [tierFilter, setTierFilter] = useState(null);
+  const [flags, setFlags] = useState(() => new Set());
+  // The one roster row whose drawer (role, remove, the two ids) is open.
+  const [expanded, setExpanded] = useState(null);
 
   const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
   const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
@@ -3288,21 +3474,49 @@ function Drivers() {
     !q ||
     [d.name, d.discordName, d.formerName, d.discordUserId, d.inheritedDiscordUserId, d.steamId]
       .some((v) => v && String(v).toLowerCase().includes(q));
-  // The groups as shown: filtered to the hits while searching, every team
-  // otherwise. `teamGroups` (unfiltered) stays what the transfer dialog and
-  // the add-driver form read.
-  const shownGroups = q
-    ? teamGroups.map((t) => ({ ...t, drivers: t.drivers.filter(matches) })).filter((t) => t.drivers.length > 0)
+  // The chips. Each one is a question the roster gets asked before a season
+  // starts: who is in Tier 2, who has left, whose login and @mention will not
+  // work (no Discord id), whose results will be matched by name (no Steam id).
+  // An inherited Discord id counts as present, because login and mentions
+  // already use it.
+  const FLAG_TESTS = {
+    inactive: (d) => !d.isActive,
+    noDiscord: (d) => !d.discordUserId && !d.inheritedDiscordUserId,
+    noSteam: (d) => !d.steamId,
+  };
+  const passes = (d) =>
+    matches(d) &&
+    (tierFilter == null || d.tier === tierFilter) &&
+    [...flags].every((f) => FLAG_TESTS[f](d));
+  const filtering = !!q || tierFilter != null || flags.size > 0;
+  const countWith = (test) => allDrivers.filter(test).length;
+  const toggleFlag = (f) =>
+    setFlags((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  // The groups as shown: filtered to the hits while searching or filtering,
+  // every team otherwise. `teamGroups` (unfiltered) stays what the transfer
+  // dialog and the add-driver form read.
+  const shownGroups = filtering
+    ? teamGroups.map((t) => ({ ...t, drivers: t.drivers.filter(passes) })).filter((t) => t.drivers.length > 0)
     : teamGroups;
-  const isOpen = (t) => (q ? true : openTeam === t.id);
+  const shownCount = shownGroups.reduce((n, t) => n + t.drivers.length, 0);
+  const isOpen = (t) => (filtering ? true : openTeam === t.id);
 
   return (
     <div>
+    {/* Every message of this tab, from wherever the click was: a roster line,
+        the transfer dialog, the intake card (see TabNotice). */}
+    <TabNotice msg={msg} error={error} onClose={() => { setMsg(null); setError(null); }} />
     {/* First the whole field, then the seat-by-seat corrections. A season being
         built asks "who is racing" before it asks anything else, and answering it
-        by hand seventy times is the work this saves. */}
+        by hand seventy times is the work this saves. The two ways in sit side
+        by side, so the roster below can have the whole width to itself. */}
+    <div className="mb-6 grid gap-6 lg:grid-cols-2">
     {season?.id && (
-      <div className="mb-6">
         <DriverIntake
           seasonId={season.id}
           seasonName={season.name}
@@ -3315,9 +3529,7 @@ function Drivers() {
           onDone={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
           onError={(m) => { setError(m); setMsg(null); }}
         />
-      </div>
     )}
-    <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Drivers" title="Add driver" />
         <div className="grid grid-cols-2 gap-3">
@@ -3344,55 +3556,104 @@ function Drivers() {
             <option value={0}>Reserve</option>
           </select>
         </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? "Saving…" : "Create driver"}
         </button>
       </form>
+    </div>
 
-      <div className="card max-h-[640px] overflow-y-auto p-5">
+      {/* No height cap and no scrollbar of its own: a list inside a list was
+          two scrollbars fighting over one thumb on a phone, and the Reserve
+          pool alone is longer than the old cap. The page scrolls; the rows are
+          short enough now that it does not have to scroll far. */}
+      <div className="card p-5">
         <CardHead eyebrow="Roster" title={`Drivers by team (${allDrivers.length})`} />
-        <p className="mb-3 text-xs text-light">
-          Use the dropdowns to move a driver to another team or change their tier. The Discord field links the
-          driver to their Discord account: it makes their website login connect instantly and lets the results
-          post @mention them, even before their first login. (Discord: Settings → Advanced → Developer Mode, then
-          right-click the user → Copy User ID.) The Steam field holds the id race imports match on. It normally
-          fills itself, from the first race a driver runs or from them connecting Steam on their profile, so only
-          touch it to correct a wrong one.
-        </p>
-        <div className="relative mb-3">
-          <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-light" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
-          </svg>
-          <input
-            aria-label="Find a driver on the roster"
-            className="input pl-9 pr-8"
-            placeholder={`Find a driver on the roster (${allDrivers.length}) — name, Discord or Steam id…`}
-            value={rosterQuery}
-            onChange={(e) => setRosterQuery(e.target.value)}
-          />
-          {rosterQuery && (
+        <div className="mb-3">
+          <HelpNote label="What the columns mean">
+            <p>
+              The team dropdown moves a driver to another team (it opens the transfer dialog, where the round is
+              picked); the tier one only corrects a mismatch. Everything else is behind the arrow at the end of the
+              row, or a click on the Discord or Steam mark.
+            </p>
+            <p>
+              <b>Discord</b> links the driver to their Discord account: it makes their website login connect
+              instantly and lets the results post @mention them, even before their first login. (Discord: Settings →
+              Advanced → Developer Mode, then right-click the user → Copy User ID.) <b>Steam</b> holds the id race
+              imports match on. It normally fills itself, from the first race a driver runs or from them connecting
+              Steam on their profile, so only touch it to correct a wrong one.
+            </p>
+          </HelpNote>
+        </div>
+        <SearchField
+          className="mb-2"
+          value={rosterQuery}
+          onChange={setRosterQuery}
+          label="Find a driver on the roster"
+          placeholder={`Find a driver on the roster (${allDrivers.length}) — name, Discord or Steam id…`}
+        />
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {[
+            [1, "Tier 1"],
+            [2, "Tier 2"],
+            [0, "Reserve"],
+          ].map(([tier, label]) => (
+            <FilterChip
+              key={tier}
+              on={tierFilter === tier}
+              count={countWith((d) => d.tier === tier)}
+              onClick={() => setTierFilter(tierFilter === tier ? null : tier)}
+            >
+              {label}
+            </FilterChip>
+          ))}
+          <span className="mx-1 hidden h-4 w-px bg-border sm:inline-block" aria-hidden="true" />
+          <FilterChip on={flags.has("inactive")} count={countWith(FLAG_TESTS.inactive)} onClick={() => toggleFlag("inactive")}>
+            Inactive
+          </FilterChip>
+          <FilterChip
+            on={flags.has("noDiscord")}
+            count={countWith(FLAG_TESTS.noDiscord)}
+            onClick={() => toggleFlag("noDiscord")}
+            title="No Discord user ID, on this row or an earlier season's: their login does not connect by itself and the results post cannot @mention them"
+          >
+            No Discord ID
+          </FilterChip>
+          <FilterChip
+            on={flags.has("noSteam")}
+            count={countWith(FLAG_TESTS.noSteam)}
+            onClick={() => toggleFlag("noSteam")}
+            title="No Steam ID: race imports match this driver by name until one is on file"
+          >
+            No Steam ID
+          </FilterChip>
+          {filtering && (
             <button
               type="button"
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-light transition hover:text-dark"
-              onClick={() => setRosterQuery("")}
+              className="ml-1 text-xs font-semibold text-link hover:underline"
+              onClick={() => { setRosterQuery(""); setTierFilter(null); setFlags(new Set()); }}
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              Show everyone
             </button>
           )}
         </div>
+        {filtering && shownCount > 0 && (
+          <p className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+            {shownCount} of {allDrivers.length} drivers
+          </p>
+        )}
         <div className="divide-y divide-border border-y border-border">
-          {q && shownGroups.length === 0 && (
-            <p className="py-3 text-sm text-light">Nobody on this season's roster matches "{rosterQuery.trim()}".</p>
+          {filtering && shownGroups.length === 0 && (
+            <p className="py-3 text-sm text-light">
+              {q ? `Nobody on this season's roster matches "${rosterQuery.trim()}" with these filters.` : "Nobody on this season's roster fits these filters."}
+            </p>
           )}
           {shownGroups.map((t) => (
             <div key={t.id}>
               {/* one compact row per team — click to open the roster + search */}
               <button
                 type="button"
-                onClick={() => !q && setOpenTeam(openTeam === t.id ? null : t.id)}
+                onClick={() => !filtering && setOpenTeam(openTeam === t.id ? null : t.id)}
+                aria-expanded={isOpen(t)}
                 className="flex w-full items-center gap-2.5 py-2.5 text-left transition hover:bg-surface2/60"
               >
                 <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={20} />
@@ -3408,6 +3669,8 @@ function Drivers() {
               </button>
               {isOpen(t) && (
               <div className="pb-3">
+              {/* Adding belongs to a team, not to a filtered view of it. */}
+              {!filtering && (
               <DbSeatSearch
                 team={t}
                 db={driverDb.entries}
@@ -3426,6 +3689,7 @@ function Drivers() {
                 onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
                 onError={(m) => { setError(m); setMsg(null); }}
               />
+              )}
               {t.drivers.length > 0 && (
                 <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium">
                   <input
@@ -3435,76 +3699,27 @@ function Drivers() {
                     disabled={busy}
                     onChange={() => toggleTeam(t)}
                   />
-                  Select all {t.drivers.length} driver{t.drivers.length === 1 ? "" : "s"} of {t.name} for removal
+                  {/* While filtering, this ticks the rows on screen and no others. */}
+                  Select all {t.drivers.length} {filtering ? "shown " : ""}driver{t.drivers.length === 1 ? "" : "s"} of {t.name} for removal
                 </label>
               )}
               <ul className="mt-1.5 divide-y divide-border border-t border-border">
                 {t.drivers.length === 0 && <li className="py-2 text-xs text-light">No drivers yet. Add one with the search above.</li>}
                 {t.drivers.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${d.name} for bulk removal`}
-                      className="h-4 w-4 shrink-0 accent-primary"
-                      title="Select for bulk removal"
-                      checked={selected.has(d.id)}
-                      disabled={busy}
-                      onChange={() => toggleSelected(d.id)}
-                    />
-                    <span className={`min-w-0 flex-1 truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>
-                      {d.name}
-                    </span>
-                    {/* A team change is a transfer, not a field edit: it takes
-                        the tier with it and asks first. The Reserve entry is
-                        the season's own pool, or a plain destination for a
-                        season that has never needed one. */}
-                    <select aria-label={`Team of ${d.name}`} className="input py-1 text-xs" value={d.teamId} disabled={busy}
-                      title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
-                      onChange={(e) => setTransfer({ driver: d, teamId: e.target.value })}>
-                      {teamGroups.map((o) => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                      {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
-                    </select>
-                    <select aria-label={`Tier of ${d.name}`} className="input py-1 text-xs" value={d.tier} disabled={busy}
-                      title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
-                      onChange={(e) => patchDriver(d, { tier: Number(e.target.value) })}>
-                      <option value={1}>T1</option>
-                      <option value={2}>T2</option>
-                      <option value={0}>Res</option>
-                    </select>
-                    <select aria-label={`League role of ${d.name}`} className="input py-1 text-xs" value={d.role || ""} disabled={busy}
-                      title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
-                      onChange={(e) => patchDriver(d, { role: e.target.value })}>
-                      <option value="">Driver</option>
-                      <option value="safety">Safety Car</option>
-                    </select>
-                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                      onClick={() => patchDriver(d, { isActive: !d.isActive })}>
-                      {d.isActive ? "Deactivate" : "Reactivate"}
-                    </button>
-                    {/* Only a deactivated driver can be removed from the public
-                        standings; reactivating brings them back automatically. */}
-                    {!d.isActive && (
-                      <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                        title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
-                        onClick={() => patchDriver(d, { hideFromStandings: !d.hideFromStandings })}>
-                        {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
-                      </button>
-                    )}
-                    {!d.isActive && d.hideFromStandings && (
-                      <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
-                    )}
-                    <button className="transition text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
-                      title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
-                      onClick={() => removeDriver(d)}>
-                      Remove
-                    </button>
-                    <DriverDiscordId d={d} busy={busy} accounts={accounts}
-                      onSave={(v) => patchDriver(d, { discordUserId: v })} />
-                    <DriverSteamId d={d} busy={busy}
-                      onSave={(v) => patchDriver(d, { steamId: v })} />
-                  </li>
+                  <RosterRow
+                    key={d.id}
+                    d={d}
+                    teamGroups={teamGroups}
+                    accounts={accounts}
+                    busy={busy}
+                    selected={selected.has(d.id)}
+                    onSelect={() => toggleSelected(d.id)}
+                    open={expanded === d.id}
+                    onOpen={() => setExpanded(expanded === d.id ? null : d.id)}
+                    onTransfer={(teamId) => setTransfer({ driver: d, teamId })}
+                    onPatch={(patch) => patchDriver(d, patch)}
+                    onRemove={() => removeDriver(d)}
+                  />
                 ))}
               </ul>
               </div>
@@ -3513,7 +3728,7 @@ function Drivers() {
           ))}
         </div>
         {selected.size > 0 && (
-          <div className="sticky bottom-0 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
+          <div className="sticky bottom-3 mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3 shadow-lg">
             <span className="text-sm font-semibold text-dark">
               {selected.size} driver{selected.size === 1 ? "" : "s"} selected
             </span>
@@ -3534,7 +3749,6 @@ function Drivers() {
           </div>
         )}
       </div>
-    </div>
 
     <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
 
@@ -3548,6 +3762,153 @@ function Drivers() {
       />
     )}
     </div>
+  );
+}
+
+// A green tick or a grey cross for one of the two ids, in the row itself: the
+// question the roster gets asked most ("who is still missing a Steam id?") is
+// answered by reading down one column. Pressing it opens the row's drawer,
+// where the id is edited.
+function IdMark({ platform, state, title, onClick, open }) {
+  const ok = state !== "missing";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      title={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-mono text-[11px] font-bold transition hover:bg-surface2 ${
+        state === "set" ? "text-ok" : state === "inherited" ? "text-ok/70" : "text-light"
+      }`}
+    >
+      <SocialIcon name={platform} className="h-3.5 w-3.5" />
+      <span aria-hidden="true">{ok ? "✓" : "✗"}</span>
+      <span className="sr-only">{platform === "discord" ? "Discord ID" : "Steam ID"} {ok ? "set" : "missing"}</span>
+    </button>
+  );
+}
+
+// One driver of the roster, on one line: who, which team, which tier, whether
+// the two ids are there, the racing number, and an arrow for the rest.
+//
+// Every row used to carry all of its controls at once — team, tier, role, four
+// buttons and both id fields — which stacked to about 230px per driver and made
+// the Reserve pool a scroll of several screens. The team and the tier stay in
+// the row because they are what a roster is read for; the role, (de)activating,
+// hiding, removing and the two ids fold out underneath, one row at a time.
+function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, onOpen, onTransfer, onPatch, onRemove }) {
+  const discordState = d.discordUserId ? "set" : d.inheritedDiscordUserId ? "inherited" : "missing";
+  return (
+    <li className={`py-1.5 text-sm ${open ? "bg-surface2/40" : ""}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <input
+          type="checkbox"
+          aria-label={`Select ${d.name} for bulk removal`}
+          className="h-4 w-4 shrink-0 accent-primary"
+          title="Select for bulk removal"
+          checked={selected}
+          disabled={busy}
+          onChange={onSelect}
+        />
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className={`truncate font-semibold ${d.isActive ? "text-dark" : "text-light line-through"}`}>{d.name}</span>
+          {d.role === "safety" && <SafetyCarBadge compact />}
+          {!d.isActive && d.hideFromStandings && (
+            <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
+          )}
+        </span>
+        {/* On a phone the two dropdowns take a line of their own under the
+            name; from sm up they sit in the row. */}
+        <span className="order-last flex w-full gap-2 pl-6 sm:order-none sm:w-auto sm:pl-0">
+          {/* A team change is a transfer, not a field edit: it takes the tier
+              with it and asks first. The Reserve entry is the season's own
+              pool, or a plain destination for a season that has never needed
+              one. */}
+          <select aria-label={`Team of ${d.name}`} className="input min-w-0 flex-1 py-1 text-xs sm:w-44 sm:flex-none" value={d.teamId} disabled={busy}
+            title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
+            onChange={(e) => onTransfer(e.target.value)}>
+            {teamGroups.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+            {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
+          </select>
+          <select aria-label={`Tier of ${d.name}`} className="input w-20 shrink-0 py-1 text-xs" value={d.tier} disabled={busy}
+            title="Normally set by the team: moving a driver takes their tier with it. Only change it here to correct a mismatch."
+            onChange={(e) => onPatch({ tier: Number(e.target.value) })}>
+            <option value={1}>T1</option>
+            <option value={2}>T2</option>
+            <option value={0}>Res</option>
+          </select>
+        </span>
+        <IdMark
+          platform="discord"
+          state={discordState}
+          open={open}
+          onClick={onOpen}
+          title={
+            discordState === "set"
+              ? `Discord ID ${d.discordUserId}`
+              : discordState === "inherited"
+                ? `Discord ID ${d.inheritedDiscordUserId}, from an earlier season's row (login and @mentions already use it)`
+                : "No Discord ID: login does not connect by itself and the results post cannot @mention them. Click to add one."
+          }
+        />
+        <IdMark
+          platform="steam"
+          state={d.steamId ? "set" : "missing"}
+          open={open}
+          onClick={onOpen}
+          title={d.steamId ? `Steam ID ${d.steamId}` : "No Steam ID yet: race imports match by name until the first race fills it in. Click to enter one."}
+        />
+        <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-light" title="Racing number (set by the driver on their profile)">
+          {d.number != null ? `#${d.number}` : NO_VALUE}
+        </span>
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-expanded={open}
+          aria-label={`More for ${d.name}`}
+          title="Role, deactivate, remove, Discord and Steam IDs"
+          className="shrink-0 rounded-md p-1 text-light transition hover:bg-surface2 hover:text-dark"
+        >
+          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+      </div>
+      {open && (
+        <div className="pop-in mt-2 space-y-2 pb-1.5 pl-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <select aria-label={`League role of ${d.name}`} className="input w-auto py-1 text-xs" value={d.role || ""} disabled={busy}
+              title="Special league role: shown on the profile and turns the rating card into the Safety Car edition"
+              onChange={(e) => onPatch({ role: e.target.value })}>
+              <option value="">Driver</option>
+              <option value="safety">Safety Car</option>
+            </select>
+            <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+              onClick={() => onPatch({ isActive: !d.isActive })}>
+              {d.isActive ? "Deactivate" : "Reactivate"}
+            </button>
+            {/* Only a deactivated driver can be removed from the public
+                standings; reactivating brings them back automatically. */}
+            {!d.isActive && (
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                title="Hidden drivers disappear from the public driver standings (everyone below moves up). Their race results and their team's points stay untouched."
+                onClick={() => onPatch({ hideFromStandings: !d.hideFromStandings })}>
+                {d.hideFromStandings ? "Show in standings" : "Hide from standings"}
+              </button>
+            )}
+            <button className="transition text-xs font-semibold text-rose-500 hover:underline" disabled={busy}
+              title="Removes this driver from THIS season only (their entries in other seasons stay). Blocked while they have race results; attendance answers and driver-market entries are listed for confirmation first."
+              onClick={onRemove}>
+              Remove
+            </button>
+          </div>
+          <DriverDiscordId d={d} busy={busy} accounts={accounts}
+            onSave={(v) => onPatch({ discordUserId: v })} />
+          <DriverSteamId d={d} busy={busy}
+            onSave={(v) => onPatch({ steamId: v })} />
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -3630,7 +3991,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
 // Per-driver Discord user id (the long number). Login connects the member by
 // this exact id, and the Discord results post pings <@id> — so filling it in
 // for drivers who never signed in gives them a working login AND real
-// mentions. Full width on its own line so the roster row above stays tidy.
+// mentions. Full width on its own line, in the drawer under the roster row.
 // `accounts` (discordId -> login account) verifies entries on the spot: an id
 // that matches a known login shows WHOSE login it is, so a typo in a
 // hand-entered id is visible immediately instead of failing silently later.
@@ -3839,12 +4200,13 @@ function RaceHero({ race, onSaved, onError, onChanged }) {
 }
 
 // --- DISCORD & EVENTS ------------------------------------------------------
-function DiscordEvents() {
+function DiscordEvents({ onJump }) {
   const ask = useAsk();
   const { current } = useSeason();
-  const { data: hook, reload } = useApi(useCallback(() => api.getWebhook(), []));
+  // Only whether announcements can go out: the webhook itself is set up with
+  // the other Discord connections, under System → Discord.
+  const { data: hook } = useApi(useCallback(() => api.getWebhook(), []));
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
-  const [url, setUrl] = useState("");
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -3852,45 +4214,6 @@ function DiscordEvents() {
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
     qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
   });
-
-  async function saveWebhook(e) {
-    e.preventDefault();
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.setWebhook(url);
-      setMsg("Webhook saved.");
-      setUrl("");
-      reload();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-
-  async function test() {
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.testWebhook();
-      setMsg("Test message sent. Check your Discord channel!");
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
-
-  // Clearing the webhook stops all event posts/updates; the URL itself keeps
-  // working in Discord until it's deleted there too, hence the hint.
-  async function removeWebhook() {
-    if (
-      !(await ask({
-        title: "Remove the saved webhook?",
-        body: "Event posts and RSVP updates to Discord stop until a new one is saved. (To fully revoke the URL, also delete the webhook in Discord.)",
-        danger: true,
-        confirmLabel: "Remove webhook",
-      }))
-    )
-      return;
-    setBusy(true); setError(null); setMsg(null);
-    try {
-      await api.setWebhook("");
-      setMsg("Webhook removed.");
-      reload();
-    } catch (err) { setError(err.message); } finally { setBusy(false); }
-  }
 
   async function createEvent(e) {
     e.preventDefault();
@@ -3997,47 +4320,25 @@ function DiscordEvents() {
   }
 
   return (
-    <div>
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* Webhook (second on purpose: scheduling races is the everyday task) */}
-      <form onSubmit={saveWebhook} className="card space-y-4 p-5 order-2">
-        <CardHead eyebrow="Integration" title="Discord Webhook" />
-        <p className="text-sm text-light">
-          Discord channel → Edit Channel → Integrations → Webhooks → "New Webhook" →
-          "Copy Webhook URL" and paste it here.
-        </p>
-        <div className="rounded-lg bg-surface2 p-3 text-sm">
-          Status:{" "}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface2 px-4 py-2.5 text-sm">
+        <span>
+          Discord announcements:{" "}
           {hook?.configured ? (
-            <span className="font-semibold text-ok">connected ({hook.preview})</span>
+            <span className="font-semibold text-ok">connected</span>
           ) : (
-            <span className="font-semibold text-light">not connected</span>
+            <span className="font-semibold text-bad">not connected, nothing is posted</span>
           )}
-        </div>
-        <input
-          aria-label="Discord webhook URL"
-          className="input"
-          placeholder="https://discord.com/api/webhooks/…"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" disabled={busy || !url.trim()}>Save</button>
-          <button type="button" className="btn-secondary" disabled={busy || !hook?.configured} onClick={test}>
-            Send test
-          </button>
-          {hook?.configured && (
-            <button type="button" className="btn-secondary" disabled={busy} onClick={removeWebhook}>
-              Remove
-            </button>
-          )}
-        </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
-      </form>
-
+        </span>
+        <button type="button" className="btn-secondary py-1 text-xs" onClick={() => onJump?.("system", "discord")}>
+          {hook?.configured ? "Change in System → Discord" : "Connect in System → Discord"}
+        </button>
+      </div>
+      {error && <Notice kind="error">{error}</Notice>}
+      {msg && <Notice kind="success">{msg}</Notice>}
+    <div className="grid items-start gap-6 lg:grid-cols-2">
       {/* Create event + announce */}
-      <div className="space-y-6 order-1">
+      <div className="contents">
         <form onSubmit={createEvent} className="card space-y-3 p-5">
           <CardHead eyebrow="Schedule" title="Create race / event" />
           <Field label="Type" tone="plain">
@@ -4746,7 +5047,7 @@ function SeasonIdentity({ season, onSaved, onError }) {
   );
 }
 
-function Seasons({ gotoRaces }) {
+function Seasons({ gotoRaces, gotoInSeason }) {
   const ask = useAsk();
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
   const { season: editingSeason } = useSeason();
@@ -4903,7 +5204,12 @@ function Seasons({ gotoRaces }) {
   }
 
   return (
+    <div>
+    {/* Every message of this tab, wherever the click was: a season row, its
+        photo, its scoring, the roster copy (see TabNotice). */}
+    <TabNotice msg={msg} error={error} onClose={() => { setMsg(null); setError(null); }} />
     <div className="space-y-6">
+    {seasons && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
     <SeriesPanel />
     <div className="grid gap-6 lg:grid-cols-2">
       <form onSubmit={create} className="card space-y-4 p-5">
@@ -4935,8 +5241,6 @@ function Seasons({ gotoRaces }) {
             placeholder="Points P1, P2, … (empty = league default)"
             title={`Points per finishing position, starting at P1. Default: ${DEFAULT_POINTS_HINT}`} />
         </div>
-        {error && <Notice kind="error">{error}</Notice>}
-        {msg && <Notice kind="success">{msg}</Notice>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create season"}</button>
       </form>
 
@@ -5054,6 +5358,7 @@ function Seasons({ gotoRaces }) {
           })}
         </ul>
       </div>
+    </div>
     </div>
     </div>
   );
