@@ -78,11 +78,18 @@ export const TAB_GROUPS = [
 // one instead of on whatever the tab happens to open with.
 export const TAB_VIEWS = {
   attendance: {
-    hotlaps: "Hotlap videos",
     signups: "Who can sign up",
+    grid: "Grid & waiting list",
     missing: "Still to answer",
     history: "Past sign-ups",
     activity: "Activity",
+  },
+  // The hotlap videos moved here from Attendance; the search hit said so only
+  // by its title, and its view label came back empty.
+  photos: {
+    photos: "Race photos",
+    highlights: "Race highlights",
+    hotlaps: "Hotlap videos",
   },
 };
 
