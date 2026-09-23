@@ -107,20 +107,21 @@ import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
-  sendAttendancePing, dbCreateNotification, withdrawAnswersNoLongerOffered,
+  sendAttendancePing, previewAttendancePing, readAttendancePings, dbCreateNotification, withdrawAnswersNoLongerOffered,
   notifyWaitlistPromoted, notifyWaitlistDemoted,
 } from "../lib/notifications.js";
 import {
   readFeedConfig, writeFeedConfig, readPosts, writePosts,
   resolveChannelId, fetchChannelVideos, lookupPost, downloadImage, extractUrls,
 } from "../lib/socialFeed.js";
-import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride } from "../lib/attendanceGate.js";
+import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride, attendanceGate } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { gridSizeFor, setGridSize, parseGridSize } from "../lib/gridSize.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
+import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
 import {
   activityFor, byNeedsAttention, tallyStates, QUIET_AFTER, INACTIVE_AFTER,
 } from "../lib/attendanceActivity.js";
@@ -1079,14 +1080,56 @@ router.put("/notification-settings", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/races/:id/attendance-ping -> broadcast a manual "please
-// answer the attendance" nudge for one upcoming race. Repeatable on purpose.
+// GET  /api/admin/races/:id/attendance-ping -> { silent, reachable, withoutLogin, lastSentAt }
+// POST /api/admin/races/:id/attendance-ping -> { sent, withoutLogin, lastSentAt }
+//
+// The reminder for one upcoming race, to the drivers who have not answered it
+// (lib/notifications.js sendAttendancePing). The GET is what the confirmation
+// reads before anything is sent, so the admin sees "12 drivers, 5 of them
+// unreachable" and not a surprise afterwards. Repeatable on purpose; a second
+// press within a minute answers with the first one instead of sending twice.
+//
+// A race whose sign-up is not taking answers is refused: "please answer" with
+// no button to press is the reminder people learn to ignore. Checked here
+// rather than in lib/notifications.js, which lib/attendanceGate.js imports.
+async function reminderGateError(raceId) {
+  const race = await prisma.race.findUnique({ where: { id: raceId } });
+  if (!race || race.isCompleted) return null; // the lib says why, in its own words
+  const [notify, overrides] = await Promise.all([readNotifySettings(prisma), readAttendanceOverrides(prisma)]);
+  const gate = attendanceGate(race, notify, overrides);
+  if (gate.open) return null;
+  if (gate.opensAt) return "Sign-up for this race hasn't opened yet, so there is nothing to answer.";
+  return "Sign-up for this race is closed, so there is nothing to answer.";
+}
+
+router.get("/races/:id/attendance-ping", async (req, res) => {
+  try {
+    const closed = await reminderGateError(req.params.id);
+    if (closed) return res.status(400).json({ error: closed });
+    res.json(await previewAttendancePing(prisma, req.params.id));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message || "Failed to read" });
+  }
+});
+
 router.post("/races/:id/attendance-ping", async (req, res) => {
   try {
-    await sendAttendancePing(prisma, req.params.id);
-    res.json({ ok: true });
+    const closed = await reminderGateError(req.params.id);
+    if (closed) return res.status(400).json({ error: closed });
+    res.json({ ok: true, ...(await sendAttendancePing(prisma, req.params.id)) });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message || "Failed to send" });
+  }
+});
+
+// GET /api/admin/attendance-pings -> { [raceId]: { at, sent, withoutLogin } }
+// When each race was last reminded, for the "Last reminder: 2 h ago" beside
+// every race's button.
+router.get("/attendance-pings", async (req, res, next) => {
+  try {
+    res.json(await readAttendancePings(prisma));
+  } catch (e) {
+    next(e);
   }
 });
 
@@ -6169,31 +6212,17 @@ router.get("/attendance-missing", async (req, res, next) => {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race) return res.status(404).json({ error: "Race not found" });
 
-    const [allRows, rsvps, nameOverrides, people] = await Promise.all([
-      prisma.driver.findMany({
-        where: { seasonId: race.seasonId, isActive: true },
-        include: { team: { select: { name: true, tier: true, color: true } } },
-        orderBy: { name: "asc" },
-      }),
-      prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
+    // The roster minus the answers, per person — lib/stillToAnswer.js, shared
+    // with the reminder so the two can never disagree about who is silent.
+    const [{ roster, answered, silent, discordIds }, nameOverrides] = await Promise.all([
+      stillToAnswer(prisma, race),
       getNameOverrides(prisma),
-      getPersonGroups(prisma),
     ]);
-
-    // People, not rows — the same rule the entry list follows
-    // (lib/onePerPerson.js). Somebody with two roster rows in one season used
-    // to be chased for an answer their other row had already given, and
-    // counted twice in the roster they were being chased against. A row parked
-    // in the Reserve pool loses to one in a real team: the chase list is read
-    // per team, and the person is racing for one of them.
-    const roster = collapseByPerson(
-      allRows.map((d) => ({ ...d, driverId: d.id })),
-      people.byDriver,
-      (d) => ((d.team?.tier ?? d.tier) === 0 ? 0 : 1)
-    ).kept;
-    const answered = new Set(rsvps.map((r) => personKey(r.driverId, people.byDriver)));
-    const silent = roster.filter((d) => !answered.has(personKey(d.id, people.byDriver)));
-    const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
+    // Whose bell a reminder reaches. A Discord id alone is not enough: an
+    // account that has never logged in has no bell to ring, and the reminder's
+    // confirmation counts those people separately — so the list says which
+    // ones they are.
+    const reachable = await reachableDiscordIds(prisma, [...discordIds.values()]).catch(() => new Set());
 
     const shape = (d) => ({
       driverId: d.id,
@@ -6202,14 +6231,11 @@ router.get("/attendance-missing", async (req, res, next) => {
       // null = no login of theirs is known, so they cannot be @mentioned. The
       // admin can still search the handle above by hand.
       discordUserId: discordIds.get(d.id) || null,
+      canNotify: reachable.has(discordIds.get(d.id)),
       team: d.team?.name || null,
       teamColor: d.team?.color || null,
       tier: d.team?.tier ?? d.tier,
     });
-    // The row's TEAM tier decides, not the driver's own: a Tier-2 driver parked
-    // in the Reserve pool is a reserve this season, and that is the roster the
-    // grid is built from.
-    const isReserve = (d) => (d.team?.tier ?? d.tier) === 0;
     // Tier 1 first, then Tier 2, teammates together, alphabetical inside a team.
     // Sorted here rather than in the browser so the list arrives in the order it
     // is read in: chasing is a per-team job ("Renault: both of them"), and an
@@ -6224,14 +6250,14 @@ router.get("/attendance-missing", async (req, res, next) => {
       counts: {
         answered: answered.size,
         roster: roster.length,
-        fullTime: roster.filter((d) => !isReserve(d)).length,
-        reserve: roster.filter(isReserve).length,
+        fullTime: roster.filter((d) => !isReserveRow(d)).length,
+        reserve: roster.filter(isReserveRow).length,
       },
       missing: {
-        fullTime: silent.filter((d) => !isReserve(d)).map(shape).sort(byTeamThenName),
+        fullTime: silent.filter((d) => !isReserveRow(d)).map(shape).sort(byTeamThenName),
         // The reserve pool is one "team", so a team sort would say nothing —
         // they stay alphabetical, which is how you look a name up in a list.
-        reserve: silent.filter(isReserve).map(shape),
+        reserve: silent.filter(isReserveRow).map(shape),
       },
     });
   } catch (e) {

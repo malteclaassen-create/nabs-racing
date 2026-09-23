@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
+import { useAttendanceReminder, LastReminder } from "./AdminAttendanceReminder.jsx";
 
 // Admin tab "Notifications": league-wide control over the nav-bar bell.
 // Which events post a notification, who hears about seat offers, and when the
@@ -33,27 +34,29 @@ const OFFSET_LABELS = { 72: "3 days before", 24: "1 day before", 6: "6 hours bef
 const STATUS_LABELS = { ACCEPTED: "Accepted", DECLINED: "Declined", TENTATIVE: "Tentative" };
 
 // Manual "please answer the attendance" nudge for one upcoming race. Separate
-// from the settings form on purpose: it's an action, not a setting.
+// from the settings form on purpose: it's an action, not a setting. The same
+// reminder as the Attendance tab's button (AdminAttendanceReminder.jsx): only
+// the drivers who haven't answered, and it says how many before it goes.
 function AttendanceNudge() {
   const events = useApi(useCallback(() => api.events(), []));
   const [raceId, setRaceId] = useState("");
   const [state, setState] = useState(null); // {ok, text}
-  const [busy, setBusy] = useState(false);
+  const { remind, busyId } = useAttendanceReminder();
+  const [pings, setPings] = useState({});
+  useEffect(() => {
+    api.adminAttendancePings().then(setPings).catch(() => {});
+  }, []);
   const list = events.data || [];
   const selected = raceId || list[0]?.id || "";
 
   async function send() {
-    if (!selected) return;
-    setBusy(true);
+    const race = list.find((e) => e.id === selected);
+    if (!race) return;
     setState(null);
-    try {
-      await api.adminAttendancePing(selected);
-      setState({ ok: true, text: "Sent. Every member's bell has the nudge now." });
-    } catch (e) {
-      setState({ ok: false, text: e.message });
-    } finally {
-      setBusy(false);
-    }
+    const res = await remind(race);
+    if (!res) return;
+    setState(res);
+    if (res.lastSentAt) setPings((p) => ({ ...p, [race.id]: { ...p[race.id], at: res.lastSentAt } }));
   }
 
   if (!list.length) return null;
@@ -61,8 +64,9 @@ function AttendanceNudge() {
     <div className="mt-4 border-t border-border pt-4">
       <div className="mb-2 text-sm font-semibold text-dark">Send a nudge now</div>
       <p className="mb-3 text-xs leading-relaxed text-light">
-        Posts a &ldquo;please confirm or update your attendance&rdquo; note to everyone&rsquo;s
-        bell for the chosen race. Works any number of times. Use it when the list looks thin.
+        A personal &ldquo;you haven&rsquo;t answered yet&rdquo; note in the bell of every driver who
+        hasn&rsquo;t answered the chosen race. People who already answered hear nothing. Works any
+        number of times; use it when the list looks thin.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -77,9 +81,10 @@ function AttendanceNudge() {
             </option>
           ))}
         </select>
-        <button onClick={send} disabled={busy || !selected} className="btn-secondary">
-          {busy ? "Sending…" : "Send nudge"}
+        <button onClick={send} disabled={!!busyId || !selected} className="btn-secondary">
+          {busyId ? "Checking…" : "Send nudge"}
         </button>
+        <LastReminder at={pings[selected]?.at} className="text-xs text-light" />
       </div>
       {state && (
         <p className={`mt-2 text-sm font-medium ${state.ok ? "text-ok" : "text-bad"}`}>{state.text}</p>
