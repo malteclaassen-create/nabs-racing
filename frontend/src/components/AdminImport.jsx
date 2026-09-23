@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSharedRound } from "../hooks/useSharedRound.js";
+import { latestPastRace } from "../utils/sharedRound.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Notice, CardHead, Field } from "./ui.jsx";
 import RacePreview from "./RacePreview.jsx";
@@ -203,7 +205,15 @@ export default function AdminImport({ onCommitted }) {
   // attaching a qualifying is even possible yet. It also removes the old
   // "save as / round number" pair at the bottom, which asked the same question
   // a second time, after the work.
-  const [targetRaceId, setTargetRaceId] = useState("");
+  //
+  // It opens on the round the other race-weekend tabs were last on (the To do
+  // card's Import button sets that too), or else on the latest race whose date
+  // has passed: the import is for the night that has just been run.
+  const [targetRaceId, pickTargetRace] = useSharedRound(
+    seasonRaces.data ? seasonRaces.data.map((r) => r.id) : null,
+    latestPastRace(seasonRaces.data)?.id
+  );
+  const setTargetRaceId = (id) => pickTargetRace(id, id === NEW_ROUND ? "" : id);
   const [newRoundNumber, setNewRoundNumber] = useState("");
   // Which race of a sprint+feature weekend this file is. Only asked when the
   // chosen event actually runs the format; everyone else never sees it.
