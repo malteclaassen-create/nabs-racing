@@ -309,7 +309,10 @@ function TopListPanel({ lists }) {
                   />
                 </span>
               </span>
-              <span className="shrink-0 font-display text-xl font-black tabular-nums text-dark sm:text-2xl">
+              {/* Room for four digits, right-aligned: a width that followed the
+                  number let every row's bar end in a different place, and made
+                  the bar shrink while the count ran up. */}
+              <span className="min-w-[4ch] shrink-0 text-right font-display text-xl font-black tabular-nums text-dark sm:text-2xl">
                 <CountUp end={r.value} />
               </span>
             </Link>
