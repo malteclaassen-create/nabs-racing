@@ -1120,7 +1120,10 @@ export default function MyRating({ me, leagues = [] }) {
                   {/* The feature race first, then the sprint — the order the
                       weekend is spelled out in everywhere else on the site
                       (StandingsTable, the profile, the recap). */}
-                  <span className="shrink-0 text-sm font-bold text-dark">
+                  {/* Its own line on a phone, for every row: sharing the line
+                      left a sprint weekend's track name as a bare "…" and
+                      wrapped a long DNF, so rows came out in three shapes. */}
+                  <span className="shrink-0 basis-full pl-12 text-sm font-bold text-dark sm:basis-auto sm:pl-0">
                     {p.race.position != null ? `P${p.race.position}` : p.race.status}
                     {p.race.grid != null && <span className="font-semibold text-light"> from P{p.race.grid}</span>}
                     {sprint && (

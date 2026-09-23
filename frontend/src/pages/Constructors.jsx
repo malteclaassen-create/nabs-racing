@@ -109,8 +109,11 @@ function TeamCard({ team, index = 0, champion = false }) {
                 to={`/drivers/${d.id}`}
                 className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface2"
               >
-                <span className="font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
-                <span className="truncate text-light">{d.discordName}</span>
+                {/* The driver's name keeps its line; the Discord name gives way.
+                    Sharing the shrink made long Discord names break the
+                    driver's name in two on some rows and not others. */}
+                <span className="shrink-0 font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
+                <span className="min-w-0 truncate text-right text-light">{d.discordName}</span>
               </Link>
             </li>
           ))}

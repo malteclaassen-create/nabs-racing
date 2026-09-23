@@ -864,8 +864,10 @@ export default function Welcome() {
                     </span>
                     <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
                     <span className="min-w-0 flex-1 truncate font-display text-base font-bold uppercase tracking-tight text-dark">{d.name}</span>
-                    <Flag code={countryFor(d.driverId, d.country)} />
-                    <span className="font-mono text-base font-bold tabular-nums text-dark">{d.total}</span>
+                    {/* Fixed slots for the flag and the points, so both sit in
+                        one column whatever the digit count, flag or no flag. */}
+                    <span className="flex w-6 shrink-0 justify-center"><Flag code={countryFor(d.driverId, d.country)} /></span>
+                    <span className="w-10 shrink-0 text-right font-mono text-base font-bold tabular-nums text-dark">{d.total}</span>
                   </Link>
                 ))}
               </div>

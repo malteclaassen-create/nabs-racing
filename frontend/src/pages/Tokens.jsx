@@ -187,15 +187,17 @@ function Leaderboard() {
                   // follows in grey. Otherwise a voice board and a message
                   // board look identical and you cannot tell which you are on.
                   <span className="font-mono text-xs tabular-nums text-medium">
+                    {/* Two fixed columns, so the ranked number lines up down
+                        the list instead of moving with the grey one after it. */}
                     {tab === "voice" ? (
                       <>
-                        <span className="font-bold text-dark">{hours(r.minutes)} h</span>
-                        <span className="text-light"> · {fmt(r.messages)} msgs</span>
+                        <span className="inline-block w-14 text-right font-bold text-dark">{hours(r.minutes)} h</span>
+                        <span className="inline-block w-24 text-right text-light">{fmt(r.messages)} msgs</span>
                       </>
                     ) : (
                       <>
-                        <span className="font-bold text-dark">{fmt(r.messages)} msgs</span>
-                        <span className="text-light"> · {hours(r.minutes)} h</span>
+                        <span className="inline-block w-24 text-right font-bold text-dark">{fmt(r.messages)} msgs</span>
+                        <span className="inline-block w-14 text-right text-light">{hours(r.minutes)} h</span>
                       </>
                     )}
                   </span>
@@ -1116,15 +1118,17 @@ function Collection({ orders }) {
         {orders.map((o) => {
           const s = ORDER_STATUS[o.status] || ORDER_STATUS.NEW;
           return (
-            <li key={o.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
-              <div className="min-w-0">
+            // No wrap: a long detail line used to drop the status pill under
+            // the text, at the left, while shorter orders kept it right.
+            <li key={o.id} className="flex items-baseline justify-between gap-x-4 py-3">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold text-dark">{o.itemName}</div>
                 <div className="text-xs text-light">
                   {fmtWhen(o.createdAt)}
                   {o.detail ? `. ${o.detail}` : o.note && o.itemKey !== "profile_flair" ? `. ${o.note}` : ""}
                 </div>
               </div>
-              <span className={`pill ${s.cls}`}>{s.label}</span>
+              <span className={`pill shrink-0 ${s.cls}`}>{s.label}</span>
             </li>
           );
         })}
