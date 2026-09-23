@@ -290,6 +290,12 @@ router.post("/offer", async (req, res, next) => {
       return res.status(403).json({ error: "Only full-time drivers can offer a seat" });
     }
 
+    // A re-offer drops the pick, so whoever had been picked has no car now:
+    // their "on the grid" answer goes with it, as it does on /pick.
+    const previous = await prisma.seatOffer.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+      select: { filledById: true },
+    });
     const offer = await prisma.seatOffer.upsert({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
       // Re-opening an old offer starts fresh: a leftover pick must not ride
@@ -298,6 +304,7 @@ router.post("/offer", async (req, res, next) => {
       create: { raceId: race.id, driverId: driver.id, teamId: driver.teamId, status: "OPEN" },
       include: offerInclude,
     });
+    if (previous?.filledById) await setSeatRsvp(prisma, race.id, previous.filledById, false);
 
     // Offering your seat IS the answer to "are you on the grid". It said
     // nothing before, so a driver could give their seat away and stand in the

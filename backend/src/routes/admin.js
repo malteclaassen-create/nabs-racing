@@ -10,7 +10,7 @@ import { requireAdmin } from "../middleware/auth.js";
 import { isSafeId, safeUploadPath } from "../lib/safeUpload.js";
 import { parseAcRaceJson, parseAcQualiJson } from "../services/acJsonParser.js";
 import { listRemoteResults, fetchRemoteResult, RESULT_REF_RE } from "../services/emperorResults.js";
-import { saveRaceResults } from "../services/raceWriter.js";
+import { saveRaceResults, checkResultsForSeason } from "../services/raceWriter.js";
 import { previewRaceImpact } from "../services/previewService.js";
 import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsService.js";
 // The entry-list answer that follows a seat, shared with the driver-facing
@@ -89,7 +89,7 @@ import {
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
-import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers } from "../services/driverTransfers.js";
+import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
 import { planMerge, mergeDrivers } from "../services/driverMerge.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
@@ -604,6 +604,12 @@ router.post("/races/commit", async (req, res, next) => {
     if (!raceId && !number) {
       return res.status(400).json({ error: "number (championship round) or raceId (training/event) required" });
     }
+    if (!raceId && !(Number.isInteger(Number(number)) && Number(number) >= 1)) {
+      return res.status(400).json({ error: "The round number must be a whole number from 1 up" });
+    }
+    if (date && Number.isNaN(new Date(date).getTime())) {
+      return res.status(400).json({ error: "That date can't be read" });
+    }
 
     // Explicit seasonId wins; the fallback resolves the active season of the
     // series the admin is editing (never a foreign series' active season).
@@ -619,6 +625,10 @@ router.post("/races/commit", async (req, res, next) => {
           include: { _count: { select: { results: true } } },
         });
     if (raceId && !race) return res.status(404).json({ error: "Race not found" });
+    if (!race && !targetSeasonId) return res.status(404).json({ error: "No season to put this round in" });
+    // Everything below writes (the round, its rename, its sprint row) before
+    // saveRaceResults would refuse a broken list: check it first.
+    await checkResultsForSeason(prisma, race ? race.seasonId : targetSeasonId, results);
 
     // session:"SPRINT" — this file is the SPRINT of a sprint+feature weekend.
     // The classification goes onto the event's hidden child row (find-or-create,
@@ -1083,6 +1093,17 @@ router.post("/races/:id/attendance-ping", async (req, res) => {
 // in routes/market.js.
 // ---------------------------------------------------------------------------
 
+// One car per driver per race: a reserve already filling another seat of the
+// same round would sit in two columns of the entry list, and freeing either
+// seat would then take away their only "on the grid" answer.
+async function seatedElsewhere(raceId, reserveId, exceptOfferId) {
+  const other = await prisma.seatOffer.findFirst({
+    where: { raceId, filledById: reserveId, ...(exceptOfferId ? { id: { not: exceptOfferId } } : {}) },
+    select: { id: true },
+  });
+  return !!other;
+}
+
 // POST /api/admin/market/:offerId/assign  { driverId | null }
 // Force the chosen reserve for an offer; null clears it (back to OPEN).
 // Works on completed races too — this is how the admin corrects the takeover
@@ -1109,6 +1130,9 @@ router.post("/market/:offerId/assign", async (req, res, next) => {
       // row from another season would poison the import pre-fill ids.
       if (offer.race?.seasonId && reserve.seasonId !== offer.race.seasonId) {
         return res.status(400).json({ error: "That driver belongs to another season's roster" });
+      }
+      if (await seatedElsewhere(offer.raceId, pickId, offer.id)) {
+        return res.status(409).json({ error: `${reserve.name} already fills another seat in this race` });
       }
     }
     const previous = offer.filledById;
@@ -1231,6 +1255,16 @@ router.post("/market", async (req, res, next) => {
       if (reserve.id === driver.id) return res.status(400).json({ error: "That is the same driver" });
     }
 
+    // Re-entering the swap with somebody else (or nobody) takes the seat off
+    // the reserve written down before, the same way /assign does.
+    const before = await prisma.seatOffer.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+      select: { id: true, filledById: true },
+    });
+    if (reserve && (await seatedElsewhere(race.id, reserve.id, before?.id))) {
+      return res.status(409).json({ error: `${reserve.name} already fills another seat in this race` });
+    }
+
     const offer = await prisma.seatOffer.upsert({
       where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
       update: { status: reserve ? "FILLED" : "OPEN", filledById: reserve?.id || null, teamId: driver.teamId },
@@ -1252,6 +1286,9 @@ router.post("/market", async (req, res, next) => {
         create: { raceId: race.id, driverId: driver.id, status: "DECLINED" },
       })
       .catch(() => {});
+    if (before?.filledById && before.filledById !== reserve?.id) {
+      await setSeatRsvp(prisma, race.id, before.filledById, false);
+    }
     if (reserve) await setSeatRsvp(prisma, race.id, reserve.id, true);
 
     // No seat-offered fan-out: this is a done deal being written down, not a
@@ -1404,6 +1441,11 @@ router.post("/attendance/:raceId/answer", async (req, res, next) => {
     if (error) return res.status(error).json({ error: message });
     const driver = await prisma.driver.findUnique({ where: { id: driverId } });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+    // Driver rows are per season: a row from another season (or series) would
+    // take a seat on this grid and show up in its Discord post.
+    if (driver.seasonId !== race.seasonId) {
+      return res.status(400).json({ error: "That driver belongs to another season" });
+    }
 
     const before = await prisma.raceRsvp.findUnique({
       where: { raceId_driverId: { raceId: race.id, driverId } },
@@ -1888,6 +1930,9 @@ router.put("/live-links", async (req, res, next) => {
     const clean = (v) => {
       let val = String(v ?? "").trim();
       if (val && !/^[a-z]+:\/\//i.test(val)) val = `https://${val}`;
+      // These land in an href on the public live page: web links only, so a
+      // pasted javascript:// (or any other scheme) can never run there.
+      if (val && !/^https?:\/\//i.test(val)) return null;
       return val;
     };
     const map = {
@@ -1895,6 +1940,9 @@ router.put("/live-links", async (req, res, next) => {
       live_cm_join_url: clean(body.cmJoinUrl),
       live_stream_url: clean(body.streamUrl),
     };
+    if (Object.values(map).includes(null)) {
+      return res.status(400).json({ error: "Links must be http(s) addresses" });
+    }
     for (const [base, value] of Object.entries(map)) {
       const key = slug ? `${base}:${slug}` : base;
       await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
@@ -2405,6 +2453,9 @@ router.put("/races/:id/results", async (req, res, next) => {
     const isSprint = req.body?.session === "SPRINT";
     let sprintOf = null;
     if (isSprint) {
+      // Checked before the sprint row is made, or a refused list leaves an
+      // empty sprint behind.
+      await checkResultsForSeason(prisma, race.seasonId, results);
       sprintOf = race;
       race = await ensureSprintChild(prisma, race);
     }
@@ -2921,6 +2972,46 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (role !== undefined && role !== "" && role !== null && !DRIVER_ROLES.includes(role)) {
       return res.status(400).json({ error: `role must be empty or one of: ${DRIVER_ROLES.join(", ")}` });
     }
+    // Everything that can refuse the save is checked before anything is
+    // written: a 400 after the name, team and Discord id were already stored
+    // told the admin it failed while half of it had not.
+    const current = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true } });
+    if (!current) return res.status(404).json({ error: "Driver not found" });
+    if (tier !== undefined && ![0, 1, 2].includes(Number(tier))) {
+      return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+    }
+    if (teamId !== undefined) {
+      const team = await prisma.team.findUnique({ where: { id: String(teamId) }, select: { seasonId: true, name: true } });
+      if (!team) return res.status(400).json({ error: "Team not found" });
+      if (team.seasonId && current.seasonId && team.seasonId !== current.seasonId) {
+        return res.status(400).json({ error: `${team.name} belongs to a different season` });
+      }
+    }
+    const steamVal = steamId !== undefined ? String(steamId || "").trim() : undefined;
+    if (steamVal) {
+      if (!isIndividualSteamId(steamVal)) {
+        return res.status(400).json({
+          error:
+            "A Steam ID is the 17-digit number of a personal account (steamcommunity.com/profiles/7656...). Note it is not the Discord ID.",
+        });
+      }
+      // Unique PER SEASON, so only the same season can collide. Checked here to
+      // name the other driver, instead of the generic unique-violation message
+      // below, which talks about Discord IDs.
+      const clash = await prisma
+        .$queryRawUnsafe(
+          `SELECT "id", "name" FROM "Driver" WHERE "steamId" = ? AND "seasonId" IS ? AND "id" != ?`,
+          steamVal,
+          current.seasonId,
+          current.id
+        )
+        .catch(() => []);
+      if (clash.length) {
+        return res.status(409).json({
+          error: `That Steam ID is already on ${clash[0].name} in this season. Clear it there first if the two entries are the same person.`,
+        });
+      }
+    }
     const data = {};
     if (name !== undefined) data.name = name;
     if (discordName !== undefined) data.discordName = discordName;
@@ -3008,32 +3099,9 @@ router.put("/drivers/:id", async (req, res, next) => {
     // conflict after every race. Hence this editable field; "" clears it.
     // Raw-SQL column (see the note on attachSteamIds), so it is written after
     // the prisma update, like role and hideFromStandings.
-    if (steamId !== undefined) {
-      const v = String(steamId || "").trim();
-      if (v && !isIndividualSteamId(v)) {
-        return res.status(400).json({
-          error:
-            "A Steam ID is the 17-digit number of a personal account (steamcommunity.com/profiles/7656...). Note it is not the Discord ID.",
-        });
-      }
-      // Unique PER SEASON, so only the same season can collide. Checked here to
-      // name the other driver, instead of the generic unique-violation message
-      // below, which talks about Discord IDs.
-      if (v) {
-        const clash = await prisma
-          .$queryRawUnsafe(
-            `SELECT "id", "name" FROM "Driver" WHERE "steamId" = ? AND "seasonId" IS ? AND "id" != ?`,
-            v,
-            driver.seasonId,
-            driver.id
-          )
-          .catch(() => []);
-        if (clash.length) {
-          return res.status(409).json({
-            error: `That Steam ID is already on ${clash[0].name} in this season. Clear it there first if the two entries are the same person.`,
-          });
-        }
-      }
+    // Validated at the top, before anything was written.
+    if (steamVal !== undefined) {
+      const v = steamVal;
       await prisma.$executeRawUnsafe(
         `UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`,
         v || null,
@@ -3210,13 +3278,15 @@ router.delete("/drivers/:id", async (req, res, next) => {
         prisma.seatOffer.updateMany({ where: { driverId: driver.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
         prisma.driver.update({ where: { id: driver.id }, data: { teamId: pool.id, tier: 0 } }),
       ]);
+      await recordRosterMove(prisma, { driverId: driver.id, seasonId: driver.seasonId, teamId: pool.id });
       return res.json({ ok: true, demoted: true, keptRsvps: c.rsvps });
     }
 
-    // Person-link first (raw table without FK cascade), then everything that
-    // references the row, then the row itself.
-    await dbUnlinkDriver(prisma, driver.id);
+    // Raw references first (no FK cascade), then everything that references
+    // the row, then the row itself — one transaction, so a delete the foreign
+    // keys refuse leaves the person link standing.
     await prisma.$transaction([
+      ...driverRefCleanup(driver.id),
       prisma.raceRsvp.deleteMany({ where: { driverId: driver.id } }),
       prisma.seatInterest.deleteMany({ where: { driverId: driver.id } }),
       // Offers they made: drop them (any interests cascade with the offer).
@@ -3231,6 +3301,22 @@ router.delete("/drivers/:id", async (req, res, next) => {
     next(e);
   }
 });
+
+// What names a driver row without a foreign key, and so is left pointing at
+// nothing when the row is deleted. Driver ids are derived (`<id>_s<N>`), so a
+// row created later under the same id would otherwise inherit all of it: the
+// person link, recorded transfers (which decide the team its rounds are saved
+// under), and the picks and reports that name it.
+function driverRefCleanup(driverId) {
+  return [
+    prisma.$executeRaw`DELETE FROM "PersonLink" WHERE "driverId" = ${driverId}`,
+    prisma.$executeRaw`DELETE FROM "DriverTeamChange" WHERE "driverId" = ${driverId}`,
+    prisma.$executeRaw`UPDATE "Race" SET "driverOfTheDayId" = NULL, "driverOfTheDayBy" = NULL WHERE "driverOfTheDayId" = ${driverId}`,
+    prisma.$executeRaw`UPDATE "Season" SET "championDriverId" = NULL WHERE "championDriverId" = ${driverId}`,
+    // The report keeps the name it was filed against (accusedName).
+    prisma.$executeRaw`UPDATE "Report" SET "accusedDriverId" = NULL WHERE "accusedDriverId" = ${driverId}`,
+  ];
+}
 
 // POST /api/admin/drivers/bulk-delete -> remove SEVERAL driver rows at once
 // (same rules as the single delete above). Two-step like the single route:
@@ -3285,14 +3371,15 @@ router.post("/drivers/bulk-delete", async (req, res, next) => {
           prisma.seatOffer.updateMany({ where: { driverId: d.id, status: "OPEN" }, data: { status: "CANCELLED" } }),
           prisma.driver.update({ where: { id: d.id }, data: { teamId: pool.id, tier: 0 } }),
         ]);
+        await recordRosterMove(prisma, { driverId: d.id, seasonId: d.seasonId, teamId: pool.id });
         demoted.push(d.name);
         continue;
       }
       // Same order as the single delete: person-link first (raw table, no FK),
       // then dependents, then the row. One transaction per driver keeps a
       // mid-list failure from voiding the deletions already done.
-      await dbUnlinkDriver(prisma, d.id);
       await prisma.$transaction([
+        ...driverRefCleanup(d.id),
         prisma.raceRsvp.deleteMany({ where: { driverId: d.id } }),
         prisma.seatInterest.deleteMany({ where: { driverId: d.id } }),
         prisma.seatOffer.deleteMany({ where: { driverId: d.id } }),
@@ -4452,6 +4539,13 @@ router.delete("/races/:id/results", async (req, res, next) => {
         race.id
       )
       .catch(() => {});
+    // The steward penalties that had been written into the deleted
+    // classification are not in any classification now: marked as still to
+    // apply, the results editor offers them again on the re-import instead of
+    // counting them as already entered (lib/reports.js dbPenaltiesForRace).
+    await prisma
+      .$executeRawUnsafe(`UPDATE "Report" SET "appliedSeconds" = NULL, "appliedAt" = NULL WHERE "raceId" = ?`, race.id)
+      .catch(() => {});
     // "The next round" has moved back, and a transfer recorded for the round
     // just wiped has not happened yet: the roster follows (driverTransfers.js).
     await syncRosterToTransfers(prisma, race.seasonId);
@@ -5145,6 +5239,9 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
           .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, d.steamId, newId)
           .catch(() => {});
       }
+      // Same person as the source row, as clone-drivers links it: careers,
+      // the login's season hand-over and the token payouts go by these links.
+      await dbLinkDrivers(prisma, [d.id, newId]).catch(() => {});
       driversCreated++;
     }
     res.json({ ok: true, teamsCreated, driversCreated });
@@ -5474,11 +5571,25 @@ router.put("/teams/:id", async (req, res, next) => {
   try {
     const { name, tier, color, logoUrl } = req.body || {};
     const data = {};
-    if (name !== undefined) data.name = name;
-    if (tier !== undefined) data.tier = Number(tier);
+    if (name !== undefined) {
+      data.name = String(name).trim();
+      if (!data.name) return res.status(400).json({ error: "A team needs a name" });
+    }
+    if (tier !== undefined) {
+      data.tier = Number(tier);
+      if (![0, 1, 2].includes(data.tier)) return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+    }
     if (color !== undefined) data.color = color;
     if (logoUrl !== undefined) data.logoUrl = logoUrl || null;
-    const team = await prisma.team.update({ where: { id: req.params.id }, data });
+    // Driver.tier is a copy of the team's (every move sets it from the team),
+    // and the standings read the driver's: a retiered team takes its drivers
+    // along, or they stay listed in the old tier's table.
+    const [team] = await prisma.$transaction([
+      prisma.team.update({ where: { id: req.params.id }, data }),
+      ...(data.tier !== undefined
+        ? [prisma.driver.updateMany({ where: { teamId: req.params.id }, data: { tier: data.tier } })]
+        : []),
+    ]);
     res.json(team);
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Team not found" });
@@ -6411,10 +6522,14 @@ router.delete("/teams/:id", async (req, res, next) => {
     // actually scored under is the plain `RaceResult.teamId` stamp raceWriter
     // leaves. That one has no foreign key, so nothing in the database would
     // stop the delete from orphaning a real classification.
-    const [scoredRounds, blankRounds, stampedResults] = await Promise.all([
+    const [scoredRounds, blankRounds, stampedResults, transfers] = await Promise.all([
       prisma.constructorRaceScore.count({ where: { teamId: team.id, points: { not: 0 } } }),
       prisma.constructorRaceScore.count({ where: { teamId: team.id, points: 0 } }),
       prisma.raceResult.count({ where: { teamId: team.id } }),
+      prisma
+        .$queryRawUnsafe(`SELECT COUNT(*) AS n FROM "DriverTeamChange" WHERE "teamId" = ?`, team.id)
+        .then((rows) => Number(rows[0]?.n) || 0)
+        .catch(() => 0), // table not created yet
     ]);
 
     // Real history. None of this may be thrown away by deleting a team, and
@@ -6424,6 +6539,7 @@ router.delete("/teams/:id", async (req, res, next) => {
       subResults: c.results,
       stampedResults,
       scoredRounds,
+      transfers,
     });
     if (hard.length) {
       return res.status(409).json({
@@ -6563,7 +6679,11 @@ router.delete("/downloads/:id", async (req, res, next) => {
     const alsoFile = req.query.file === "1" || req.query.file === "true";
     const row = alsoFile ? await dbGetDownload(prisma, req.params.id) : null;
     await dbDeleteDownload(prisma, req.params.id);
-    const fileDeleted = alsoFile && row?.fileName ? deleteStoredFile(row.fileName) : false;
+    // Same guard as the orphan clean-up below: a file another catalogue entry
+    // still offers stays on disk, or removing a duplicate breaks the live one.
+    const stillUsed =
+      alsoFile && row?.fileName ? (await dbListDownloads(prisma)).some((r) => r.fileName === row.fileName) : false;
+    const fileDeleted = alsoFile && row?.fileName && !stillUsed ? deleteStoredFile(row.fileName) : false;
     res.json({ ok: true, fileDeleted });
   } catch (e) {
     next(e);
@@ -7079,6 +7199,8 @@ router.post("/reports/:id/viewers", async (req, res, next) => {
     if (!/^\d{5,25}$/.test(String(discordId || ""))) {
       return res.status(400).json({ error: "That is not a Discord user ID" });
     }
+    // Like the block route: no viewer row (and no bell) for a report that isn't there.
+    if (!(await dbGetReport(prisma, req.params.id))) return res.status(404).json({ error: "Report not found" });
     const viewers = await dbAddViewer(prisma, req.params.id, discordId, name);
     // Tell them, otherwise being let in is a thing that happened silently and
     // they only find out if they happen to look.

@@ -1359,6 +1359,15 @@ function TrainingBestLapsAdmin() {
   }
 
   async function remove(key) {
+    // Every driver's time on the circuit, gone for good: unlike a single lap
+    // there is no "put back" for this one.
+    const ok = await ask({
+      title: "Remove every training time on this track?",
+      body: "All drivers' best laps for this circuit come off the Live page and cannot be put back here.",
+      danger: true,
+      confirmLabel: "Remove all",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     setUploaded(null);

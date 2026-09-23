@@ -49,6 +49,10 @@ export default function AdminHotlapVideos() {
   const [selected, setSelected] = useState("");
   const [info, setInfo] = useState(null); // a circuit's whole blob, kept intact
   const [videos, setVideos] = useState([]);
+  // Which pick (`race:<id>` / `track:<key>`) the rows above were loaded for.
+  // Until the current pick's own answer is in they belong to the previous one,
+  // and saving them would write that event's laps (or circuit's facts) here.
+  const [loadedFor, setLoadedFor] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -91,27 +95,42 @@ export default function AdminHotlapVideos() {
   // The rows the editor is holding. An event reads its own list; a circuit
   // reads the blob it shares with the facts and the map image.
   useEffect(() => {
+    setLoadedFor("");
     if (!kind) return;
+    let alive = true;
+    const pick = kind === "race" ? `race:${raceId}` : `track:${key}`;
     setError(null);
     setMsg(null);
+    setInfo(null);
+    setVideos([]);
     const rows = (list) => (list || []).map((v) => ({ url: `https://youtu.be/${v.id}`, title: v.title || "" }));
+    const fail = (e) => alive && setError(e.message);
     if (kind === "race") {
-      setInfo(null);
       api
         .adminRaceHotlaps(raceId)
-        .then((d) => setVideos(rows(d.videos)))
-        .catch((e) => setError(e.message));
-      return;
+        .then((d) => {
+          if (!alive) return;
+          setVideos(rows(d.videos));
+          setLoadedFor(pick);
+        })
+        .catch(fail);
+    } else {
+      api
+        .adminTrackInfo(key)
+        .then((d) => {
+          if (!alive) return;
+          setInfo(d);
+          setVideos(rows(d.videos));
+          setHave((h) => ({ ...h, [key]: (d.videos || []).length }));
+          setLoadedFor(pick);
+        })
+        .catch(fail);
     }
-    api
-      .adminTrackInfo(key)
-      .then((d) => {
-        setInfo(d);
-        setVideos(rows(d.videos));
-        setHave((h) => ({ ...h, [key]: (d.videos || []).length }));
-      })
-      .catch((e) => setError(e.message));
+    return () => {
+      alive = false;
+    };
   }, [kind, raceId, key]);
+  const currentPick = kind === "race" ? `race:${raceId}` : kind === "track" ? `track:${key}` : "";
 
   // A count for every circuit the picker names, so "which ones still need a
   // lap?" is answerable at a glance instead of by clicking through them. The
@@ -134,6 +153,7 @@ export default function AdminHotlapVideos() {
   }
 
   async function save() {
+    if (!currentPick || loadedFor !== currentPick) return;
     setBusy(true);
     setError(null);
     setMsg(null);
@@ -349,7 +369,7 @@ export default function AdminHotlapVideos() {
                 + Add a lap
               </button>
             )}
-            <button className="btn-primary" onClick={save} disabled={busy || (kind === "track" && !info)}>
+            <button className="btn-primary" onClick={save} disabled={busy || loadedFor !== currentPick || (kind === "track" && !info)}>
               {busy ? "Saving…" : "Save"}
             </button>
             {/* The other place this event's lap could live, one click away —

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let dataDir;
-let archiveDirsFor, refreshArchiveIndex, migrateArchiveLayout, saveDirect, seriesSlugForSeason;
+let archiveDirsFor, refreshArchiveIndex, migrateArchiveLayout, saveDirect, seriesSlugForSeason, stashIncoming, archiveCommitted;
 
 const fakePrisma = {
   $queryRawUnsafe: async (sql) => {
@@ -29,7 +29,8 @@ const fakePrisma = {
 beforeAll(async () => {
   dataDir = mkdtempSync(join(tmpdir(), "archive-"));
   process.env.DATA_DIR = dataDir;
-  ({ archiveDirsFor, refreshArchiveIndex, migrateArchiveLayout, saveDirect, seriesSlugForSeason } = await import("./resultsArchive.js"));
+  ({ archiveDirsFor, refreshArchiveIndex, migrateArchiveLayout, saveDirect, seriesSlugForSeason, stashIncoming, archiveCommitted } =
+    await import("./resultsArchive.js"));
 });
 
 afterAll(() => {
@@ -132,5 +133,21 @@ describe("with the index", () => {
     expect(existsSync(join(root, "season7"))).toBe(false);
     // Running it again finds nothing more to do.
     expect(migrateArchiveLayout()).toBe(0);
+  });
+});
+
+describe("committing a stashed file", () => {
+  it("only takes the key stashIncoming handed out, never a path", () => {
+    // The key comes back from the browser: "../" in it used to move any .json
+    // the server could reach into the archive.
+    const victim = join(dataDir, "victim.json");
+    writeFileSync(victim, "{}");
+    expect(archiveCommitted("../../victim", { seasonNumber: 9, raceNumber: 1, track: "Monza" })).toBe(null);
+    expect(existsSync(victim)).toBe(true);
+
+    const key = stashIncoming({ ok: true });
+    const dest = archiveCommitted(key, { seasonNumber: 9, raceNumber: 1, track: "Monza" });
+    expect(dest).toBeTruthy();
+    expect(existsSync(dest)).toBe(true);
   });
 });

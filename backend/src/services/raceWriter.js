@@ -64,6 +64,19 @@ function validateResults(results, drivers, teams) {
   }
 }
 
+// The same check saveRaceResults runs, for a caller that has to write other
+// things first (the import creates the round, renames it, makes its sprint
+// row): asked up front, a result list that will be refused leaves nothing
+// behind — no empty round on the calendar, no track renamed for nothing.
+export async function checkResultsForSeason(prisma, seasonId, results) {
+  const seasonWhere = seasonId ? { seasonId } : {};
+  const [drivers, teams] = await Promise.all([
+    prisma.driver.findMany({ where: seasonWhere, select: { id: true, name: true } }),
+    prisma.team.findMany({ where: seasonWhere, select: { id: true } }),
+  ]);
+  validateResults(results, drivers, teams);
+}
+
 // results: [{ driverId, position, status, subForTeamId, penaltySeconds, totalTimeMs }]
 // `position` is the RAW finishing position; any time penalties are applied here
 // when computing scores (race time + penalty seconds, re-sorted). The raw

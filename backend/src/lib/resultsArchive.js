@@ -197,6 +197,9 @@ function sweepIncoming() {
   }
 }
 
+const INCOMING_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isIncomingKey = (key) => typeof key === "string" && INCOMING_KEY.test(key);
+
 // Stash a freshly parsed JSON; returns an opaque key to pass to archiveCommitted.
 export function stashIncoming(json) {
   try {
@@ -220,7 +223,9 @@ export function archiveCommitted(
   archiveKey,
   { season = null, seasonNumber = null, raceNumber, track, sprint = false } = {}
 ) {
-  if (!archiveKey) return null;
+  // The key is the UUID stashIncoming handed out and nothing else: it arrives
+  // back from the browser, and a path in it would move any .json on the disk.
+  if (!isIncomingKey(archiveKey)) return null;
   try {
     const src = join(INCOMING_DIR, `${archiveKey}.json`);
     if (!existsSync(src)) return null;

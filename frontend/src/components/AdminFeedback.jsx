@@ -114,6 +114,9 @@ function Entry({ item, onChanged }) {
   const [openReply, setOpenReply] = useState(false);
   const [reply, setReply] = useState("");
   const [replyError, setReplyError] = useState(null);
+  // A failed status change, note or delete: said out loud instead of the row
+  // just un-dimming as if it had worked.
+  const [error, setError] = useState(null);
   const meta = statusMeta(item.status);
   const agent = shortAgent(item.userAgent);
   const replies = item.replies || [];
@@ -122,15 +125,19 @@ function Entry({ item, onChanged }) {
 
   async function setStatus(status) {
     setBusy(true);
+    setError(null);
     try {
       await api.updateFeedback(item.id, { status });
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function sendReply() {
+    if (busy) return; // a double click would post the answer (and ping them) twice
     if (reply.trim().length < 2) {
       setReplyError("Write something first.");
       return;
@@ -153,10 +160,13 @@ function Entry({ item, onChanged }) {
 
   async function saveNote() {
     setBusy(true);
+    setError(null);
     try {
       await api.updateFeedback(item.id, { adminNote: note });
       setOpenNote(false);
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -165,9 +175,12 @@ function Entry({ item, onChanged }) {
   async function remove() {
     if (!(await ask({ title: "Delete this entry for good?", danger: true, confirmLabel: "Delete entry" }))) return;
     setBusy(true);
+    setError(null);
     try {
       await api.deleteFeedback(item.id);
       onChanged();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -175,6 +188,7 @@ function Entry({ item, onChanged }) {
 
   return (
     <li className={`space-y-3 py-4 ${busy ? "opacity-50" : ""}`}>
+      {error && <p className="text-sm font-medium text-bad">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <span className={`pill ${meta.cls}`}>{meta.label}</span>
         <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
@@ -213,7 +227,7 @@ function Entry({ item, onChanged }) {
           />
           {replyError && <p className="text-sm font-medium text-bad">{replyError}</p>}
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={sendReply} className="btn-primary py-1.5 text-xs">
+            <button type="button" onClick={sendReply} disabled={busy} className="btn-primary py-1.5 text-xs">
               Send reply
             </button>
             <button
@@ -248,7 +262,7 @@ function Entry({ item, onChanged }) {
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex gap-2">
-            <button type="button" onClick={saveNote} className="btn-primary py-1.5 text-xs">Save note</button>
+            <button type="button" onClick={saveNote} disabled={busy} className="btn-primary py-1.5 text-xs">Save note</button>
             <button type="button" onClick={() => { setNote(item.adminNote || ""); setOpenNote(false); }} className="btn-secondary py-1.5 text-xs">
               Cancel
             </button>
@@ -279,6 +293,7 @@ function Entry({ item, onChanged }) {
             key={s.key}
             type="button"
             onClick={() => setStatus(s.key)}
+            disabled={busy}
             className="rounded-lg bg-surface2 px-2.5 py-1 text-xs font-semibold text-medium transition hover:bg-border hover:text-dark"
           >
             {s.key === "NEW" ? "Back to new" : `Mark ${s.label.toLowerCase()}`}
@@ -296,6 +311,7 @@ function Entry({ item, onChanged }) {
         <button
           type="button"
           onClick={remove}
+          disabled={busy}
           className="ml-auto rounded-lg px-2.5 py-1 text-xs font-semibold text-bad transition hover:bg-red-500/10"
         >
           Delete

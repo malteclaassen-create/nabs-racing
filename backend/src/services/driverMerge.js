@@ -196,6 +196,8 @@ export async function mergeDrivers(prisma, { keepId, dropId }) {
     // Picks and reports that name the row.
     await tx.$executeRawUnsafe(`UPDATE "Race" SET "driverOfTheDayId" = ? WHERE "driverOfTheDayId" = ?`, keep.id, drop.id).catch(() => {});
     await tx.report.updateMany({ where: { accusedDriverId: drop.id }, data: { accusedDriverId: keep.id } }).catch(() => {});
+    // A title the league awarded by rule to the dropped row stays awarded.
+    await tx.$executeRawUnsafe(`UPDATE "Season" SET "championDriverId" = ? WHERE "championDriverId" = ?`, keep.id, drop.id).catch(() => {});
 
     // Identity and profile: the login and the Steam id are unique, so they
     // leave the old row before they land on the kept one.

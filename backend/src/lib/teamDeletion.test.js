@@ -35,4 +35,10 @@ describe("teamDeletionBlockers", () => {
       "1 round(s) where it scored points",
     ]);
   });
+
+  it("refuses while a recorded transfer still names the team", () => {
+    // DriverTeamChange has no foreign key: without this the round the transfer
+    // starts at would be saved under a team id that no longer exists.
+    expect(teamDeletionBlockers({ transfers: 2 })).toEqual(["2 recorded driver transfer(s) to it"]);
+  });
 });

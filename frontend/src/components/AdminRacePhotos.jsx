@@ -62,20 +62,25 @@ export default function AdminRacePhotos() {
   const race = (races || []).find((r) => r.id === raceId) || null;
   const dirty = loaded != null && JSON.stringify(photos) !== JSON.stringify(loaded);
 
+  // Which race the last load was for. The gallery is saved as a whole list
+  // and the server deletes every file not on it, so another race's list must
+  // never be standing here: switching empties the editor first, and an answer
+  // for a race that is no longer picked is dropped.
+  const loadFor = useRef("");
   const load = useCallback(async (id) => {
-    if (!id) {
-      setPhotos([]);
-      setLoaded(null);
-      return;
-    }
+    loadFor.current = id;
+    setPhotos([]);
+    setLoaded(null);
+    if (!id) return;
     setError(null);
     setMsg(null);
     try {
       const d = await api.racePhotos(id);
+      if (loadFor.current !== id) return;
       setPhotos(d.photos || []);
       setLoaded(d.photos || []);
     } catch (e) {
-      setError(e.message);
+      if (loadFor.current === id) setError(e.message);
     }
   }, []);
 
@@ -164,7 +169,9 @@ export default function AdminRacePhotos() {
   }
 
   async function save({ silent = false } = {}) {
-    if (!raceId) return false;
+    // Nothing loaded for this race (still loading, or the load failed): there
+    // is no list of ITS photos to save, and an empty one would delete them all.
+    if (!raceId || loaded == null) return false;
     setBusy(true);
     setError(null);
     try {
@@ -258,7 +265,7 @@ export default function AdminRacePhotos() {
           </label>
           {dirty && (
             <>
-              <button type="button" className="btn-secondary" disabled={busy} onClick={() => save()}>
+              <button type="button" className="btn-secondary" disabled={busy || loaded == null} onClick={() => save()}>
                 Save changes
               </button>
               <button
