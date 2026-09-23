@@ -20,6 +20,7 @@ import ProfileAppearance, { ProfileBanner, useProfilePageTheme } from "../compon
 import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import TrackStrengths from "../components/TrackStrengths.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
@@ -2186,6 +2187,12 @@ export default function DriverProfile({ previewId, preview }) {
 
         <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} teammateHistory={p.teammateHistory || []} />
       </div>
+
+      {/* Which kind of circuit suits this driver (not in the /profile live
+          preview, which is about how the page looks, not what it measures). */}
+      {!previewId && (
+        <TrackStrengths key={driver.id} driver={driver} color={color} standings={standingsData.standings} />
+      )}
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
       <CareerBlock career={p.career} otherSeries={p.otherSeries} careerKey={p.driver.handle || p.driver.id} />

@@ -17,6 +17,7 @@ import { readFileSync } from "fs";
 import { sanitizeVideoList } from "./videoLinks.js";
 import { imageSize } from "./socialFeed.js";
 import { UPLOADS_DIR } from "./dataDirs.js";
+import { sanitizeTypes, sanitizeCorners } from "./trackProfile.js";
 
 const KEY_PREFIX = "track_info_";
 const MAX_FACTS = 8;
@@ -30,7 +31,10 @@ const MAX_TITLE = 80;
 const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 
 // The shape every reader gets, including for an unknown or unsaved track.
-const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [] });
+// `types` and `corners` are the circuit's kind and its corner names
+// (lib/trackProfile.js); types stays null until an admin picks, which is
+// what lets the circuit's default reading apply.
+const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [], types: null, corners: [] });
 
 // A series slug as lib/series.js makes them: lowercase letters, digits and
 // hyphens. Anything else in the map is not a series and is dropped.
@@ -72,6 +76,8 @@ export function sanitizeTrackInfo(input) {
   // what we can actually embed survives, and the id is resolved here, once, so
   // every reader gets it without re-parsing.
   out.videos = sanitizeVideoList(input?.videos, { max: MAX_VIDEOS, maxTitle: MAX_TITLE });
+  out.types = sanitizeTypes(input?.types);
+  out.corners = sanitizeCorners(input?.corners);
   return out;
 }
 

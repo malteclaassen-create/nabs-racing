@@ -435,6 +435,11 @@ export const api = {
   // series and the season given (null = the selected one) to the right row.
   driverProfileAt: (id, season) => request(`/drivers/${id}/profile${seasonParam(season)}`, { auth: true }),
   driverRatingAt: (id, season) => request(`/drivers/${id}/rating${seasonParam(season)}`, { auth: true }),
+  // Which kind of circuit the person behind a driver row goes best on:
+  // "all" = every season of this league, "season" = the row's own
+  // (backend services/trackStrengthService.js).
+  driverTrackStrengths: (id, scope = "all") =>
+    request(`/drivers/${id}/track-strengths?scope=${scope === "season" ? "season" : "all"}`, { auth: true }),
   // Own round-by-round rating history + component breakdown (My Rating tab).
   // `driverId` is one of the person's OWN league rows (api.myLeagues): a rating
   // belongs to a league — it ranks you against that field, over that series'
@@ -469,6 +474,9 @@ export const api = {
   // Admin-stored track flag countries ({ trackKey: "gb", ... }), loaded once at
   // app boot and layered over the static circuit table (circuits.js flagFor).
   trackCountries: () => request(`/tracks/countries`),
+  // A circuit's types and named corners, for any spelling of it (a calendar
+  // name or an AC folder id off a telemetry lap). Backend lib/trackProfile.js.
+  trackProfile: (track) => request(`/tracks/profile?track=${encodeURIComponent(track)}`),
   // Track history across the series' seasons (userAuth so a member gets their own record).
   trackHistory: (track) =>
     request(

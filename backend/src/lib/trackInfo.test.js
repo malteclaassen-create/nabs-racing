@@ -20,7 +20,7 @@ describe("per-series track map images", () => {
   });
 
   it("an unsaved track has no images at all", () => {
-    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [] });
+    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [], types: null, corners: [] });
   });
 
   it("a series sees its own image first, then the shared one, then nothing", () => {

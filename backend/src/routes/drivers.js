@@ -7,6 +7,7 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { resolveDriverRow } from "../lib/driverHandles.js";
 import { tokensPublic, flairsFor } from "../lib/tokens.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
+import { getTrackStrengths } from "../services/trackStrengthService.js";
 
 const router = Router();
 
@@ -51,6 +52,22 @@ router.get("/:id/profile", async (req, res, next) => {
       /* no flair then */
     }
     res.json(profile);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/drivers/:id/track-strengths?scope=all|season -> which kind of
+// circuit this person goes best on (services/trackStrengthService.js):
+// "all" = every season of this league they raced, "season" = this row's.
+router.get("/:id/track-strengths", async (req, res, next) => {
+  try {
+    const rowId = await rowFor(req);
+    const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
+    const scope = req.query.scope === "season" ? "season" : "all";
+    res.json(await getTrackStrengths(prisma, rowId, { scope, includePrivate: isAdminRequest(req) }));
   } catch (e) {
     next(e);
   }

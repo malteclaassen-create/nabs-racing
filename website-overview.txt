@@ -36,6 +36,16 @@ Driver profile
   column in the race by race table (with the weekend's points split), and
   Sprint Wins / Sprint Podiums stat tiles that break the totals down.
 
+  Track Strengths (on the same page, under the race by race table) shows which
+  kind of circuit suits the driver: high-speed, heavy braking, power, flowing,
+  technical or street. Every race is measured against its own field (where they
+  finished among the finishers, where their best lap ranked), so 50 is the
+  average driver of the grid and higher is better. There is a radar of the six
+  types, a row per type with the circuits behind it, a tile per circuit, and a
+  rival picker that lays another driver's shape over the radar. All seasons of
+  the league or just this one. Each circuit's types come from the admin Tracks
+  tab; circuits the site knows start on a default reading.
+
 Constructors
   The Tier 1 and Tier 2 tables, both with a round by round points breakdown. The
   rounds that get dropped (see the rules file) are shown crossed out. Each tier
@@ -60,6 +70,16 @@ Live timing
   This connects straight to our Assetto Corsa server and shows live sectors,
   best and last lap, gaps, tyres, pit stops and who is out on track right now.
   If no session is running it just says it is waiting for the server.
+
+Telemetry tips
+  The lap comparison on the Tools page has a Tips panel. It is written for the
+  driver of the slower of the two laps: where the gap goes corner by corner,
+  then the three corners that cost the most as cards - "You brake 22 m earlier
+  than Siggsta and still carry 8 km/h less through the slowest point" - with
+  the numbers behind it, a small speed trace, and what the quicker lap did
+  there as a suggestion. When one habit (say, early braking) is behind most of
+  the lost time it says so once. Corners carry their real names (T4 Roggia)
+  once they are named in the admin Tracks tab; until then they are numbered.
 
 Sign up
   This is our replacement for Apollo. People log in with their Discord account
@@ -147,6 +167,10 @@ This sits behind a PIN (top right, "Admin"). From there I can:
     site - the Hall of Fame, the profiles, the track pages. Without one the
     pole is whoever started from grid slot 1, so a reverse-grid feature race
     should always have its qualifying imported.
+  - Per circuit (Tracks tab): its type (up to three of high-speed, heavy
+    braking, power, flowing, technical, street), which the driver profiles'
+    Track Strengths group by, and its corner names with where they sit in the
+    lap (percent), which the telemetry tips use.
   - Change the admin PIN.
 
 
