@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useAuth } from "./useAuth.js";
 import { useVisiblePoll } from "./useVisiblePoll.js";
 import { useSeries } from "../context/SeriesContext.jsx";
+import { FEEDBACK_CHANGED_EVENT, MEMBERS_CHANGED_EVENT, REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // How much is waiting on an admin, for the parts of the site that are not the
 // admin area.
@@ -40,9 +41,9 @@ export const MARKET_CHANGED_EVENT = "nabs-market-changed";
 // uses a colon where the other two use a hyphen. That is how it is written.)
 const CLEARED_EVENTS = [
   MARKET_CHANGED_EVENT,
-  "nabs-feedback-changed", // AdminFeedback.jsx FEEDBACK_CHANGED_EVENT
-  "nabs-reports-changed", // AdminReports.jsx REPORTS_CHANGED_EVENT
-  "nabs:members-changed", // AdminMembers.jsx MEMBERS_CHANGED_EVENT
+  FEEDBACK_CHANGED_EVENT,
+  REPORTS_CHANGED_EVENT,
+  MEMBERS_CHANGED_EVENT,
   "nabs-todo-changed", // pages/Admin.jsx TODO_CHANGED_EVENT (a server reset answered)
 ];
 

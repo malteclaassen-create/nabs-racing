@@ -6,6 +6,7 @@ import { useAsk } from "./overlay.jsx";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
+import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -25,7 +26,6 @@ import ReplayAnchor from "./ReplayAnchor.jsx";
 
 // Fired whenever a report is decided, deleted or answered here, so the counter
 // on the tab strip takes itself down instead of waiting for a page reload.
-export const REPORTS_CHANGED_EVENT = "nabs-reports-changed";
 const changed = () => window.dispatchEvent(new Event(REPORTS_CHANGED_EVENT));
 
 const STATUS = [

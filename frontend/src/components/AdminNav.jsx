@@ -5,8 +5,7 @@ import { SmoothHeight } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { TAB_GROUPS, tabInfo } from "../data/adminIndex.js";
 import { NAV_RAIL, NAV_TABS } from "../hooks/useAdminNavMode.js";
-import { FEEDBACK_CHANGED_EVENT } from "./AdminFeedback.jsx";
-import { MEMBERS_CHANGED_EVENT } from "./AdminMembers.jsx";
+import { FEEDBACK_CHANGED_EVENT, MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
 // ---------------------------------------------------------------------------

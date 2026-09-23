@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Armchair, Bug, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
@@ -7,31 +7,9 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton } from "../components/ui.jsx";
 import { useAsk, Modal } from "../components/overlay.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
-import AdminImport from "../components/AdminImport.jsx";
-import AdminRatings from "../components/AdminRatings.jsx";
-import AdminTelemetry from "../components/AdminTelemetry.jsx";
-import AdminMedia from "../components/AdminMedia.jsx";
-import AdminContent from "../components/AdminContent.jsx";
-import AdminDownloads from "../components/AdminDownloads.jsx";
-import AdminRaceInfo from "../components/AdminRaceInfo.jsx";
-import AdminWelcomeFaq from "../components/AdminWelcomeFaq.jsx";
-import AdminPrivacy from "../components/AdminPrivacy.jsx";
-import AdminTracks from "../components/AdminTracks.jsx";
-import AdminAttendance from "../components/AdminAttendance.jsx";
-import AdminSocialFeed from "../components/AdminSocialFeed.jsx";
-import AdminHealth from "../components/AdminHealth.jsx";
-import AdminMembers from "../components/AdminMembers.jsx";
-import AdminNotifications from "../components/AdminNotifications.jsx";
-import AdminAllTime from "../components/AdminAllTime.jsx";
-// (Their "how many are waiting" counters live with the navigation now, since
-// the folding rail has to be able to show a hidden one on its group header.)
-import AdminFeedback from "../components/AdminFeedback.jsx";
-import AdminTokens from "../components/AdminTokens.jsx";
-import AdminReports from "../components/AdminReports.jsx";
-import AdminRaceRecap from "../components/AdminRaceRecap.jsx";
 import { MARKET_CHANGED_EVENT, useAdminAttention } from "../hooks/useAdminAttention.js";
 import AdminSearch from "../components/AdminSearch.jsx";
 // The navigation itself: the same twenty-two tabs as either the strip across
@@ -41,7 +19,6 @@ import { NAV_RAIL, useAdminNavMode } from "../hooks/useAdminNavMode.js";
 import RacePreview from "../components/RacePreview.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
-import AdminTransfers from "../components/AdminTransfers.jsx";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { TAB_GROUPS } from "../data/adminIndex.js";
@@ -51,6 +28,82 @@ import { isSteamId64 } from "../utils/steamId.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 
+// Each tab is its own chunk: only one panel is ever on screen, and loading all
+// of them up front made the admin area one download of well over half a
+// megabyte before anything showed. Once the page is up they are fetched in the
+// background (see prefetchTabs), so switching tabs is still instant.
+const TAB_CHUNKS = {
+  AdminImport: () => import("../components/AdminImport.jsx"),
+  AdminRatings: () => import("../components/AdminRatings.jsx"),
+  AdminTelemetry: () => import("../components/AdminTelemetry.jsx"),
+  AdminMedia: () => import("../components/AdminMedia.jsx"),
+  AdminContent: () => import("../components/AdminContent.jsx"),
+  AdminDownloads: () => import("../components/AdminDownloads.jsx"),
+  AdminRaceInfo: () => import("../components/AdminRaceInfo.jsx"),
+  AdminWelcomeFaq: () => import("../components/AdminWelcomeFaq.jsx"),
+  AdminPrivacy: () => import("../components/AdminPrivacy.jsx"),
+  AdminTracks: () => import("../components/AdminTracks.jsx"),
+  AdminAttendance: () => import("../components/AdminAttendance.jsx"),
+  AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
+  AdminHealth: () => import("../components/AdminHealth.jsx"),
+  AdminMembers: () => import("../components/AdminMembers.jsx"),
+  AdminNotifications: () => import("../components/AdminNotifications.jsx"),
+  AdminAllTime: () => import("../components/AdminAllTime.jsx"),
+  AdminFeedback: () => import("../components/AdminFeedback.jsx"),
+  AdminTokens: () => import("../components/AdminTokens.jsx"),
+  AdminReports: () => import("../components/AdminReports.jsx"),
+  AdminRaceRecap: () => import("../components/AdminRaceRecap.jsx"),
+  AdminTransfers: () => import("../components/AdminTransfers.jsx"),
+};
+const AdminImport = lazy(TAB_CHUNKS.AdminImport);
+const AdminRatings = lazy(TAB_CHUNKS.AdminRatings);
+const AdminTelemetry = lazy(TAB_CHUNKS.AdminTelemetry);
+const AdminMedia = lazy(TAB_CHUNKS.AdminMedia);
+const AdminContent = lazy(TAB_CHUNKS.AdminContent);
+const AdminDownloads = lazy(TAB_CHUNKS.AdminDownloads);
+const AdminRaceInfo = lazy(TAB_CHUNKS.AdminRaceInfo);
+const AdminWelcomeFaq = lazy(TAB_CHUNKS.AdminWelcomeFaq);
+const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
+const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
+const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
+const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
+const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
+const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
+const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
+const AdminAllTime = lazy(TAB_CHUNKS.AdminAllTime);
+const AdminFeedback = lazy(TAB_CHUNKS.AdminFeedback);
+const AdminTokens = lazy(TAB_CHUNKS.AdminTokens);
+const AdminReports = lazy(TAB_CHUNKS.AdminReports);
+const AdminRaceRecap = lazy(TAB_CHUNKS.AdminRaceRecap);
+const AdminTransfers = lazy(TAB_CHUNKS.AdminTransfers);
+
+// Warm the tab chunks one after another while the browser is idle. The import
+// is cached, so a tab opened later renders without a loading state. Failures
+// are ignored: the lazy() import retries when the tab is actually opened.
+let tabsPrefetched = false;
+function prefetchTabs() {
+  // Once per visit: the page remounts on every season or series switch.
+  if (tabsPrefetched) return;
+  tabsPrefetched = true;
+  const loaders = Object.values(TAB_CHUNKS);
+  const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 200));
+  const next = () => {
+    const load = loaders.shift();
+    if (!load) return;
+    load().catch(() => {}).finally(() => idle(next));
+  };
+  idle(next);
+}
+
+// What a tab shows while its chunk is on the way (the first time it is opened).
+function TabSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <Skeleton className="h-16 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
+  );
+}
 
 // WHICH series and season every scoped edit below applies to, and the two
 // switches for them, in the page's own header row.
@@ -187,6 +240,10 @@ export default function Admin() {
   // Which shape the navigation takes: the folding list down the left side, or
   // the strip of tabs across the top. Remembered per browser.
   const [navMode, setNavMode] = useAdminNavMode();
+  // Signed in and the page is up: fetch the other tabs' code in the background.
+  useEffect(() => {
+    if (authed) prefetchTabs();
+  }, [authed]);
 
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
@@ -276,6 +333,7 @@ export default function Admin() {
             One wrapper rather than 22 edits, and it means any tab added later is
             animated by default. */}
         <div key={tab} className="content-in min-h-[70vh] min-w-0">
+          <Suspense fallback={<TabSkeleton />}>
           {tab === "seasons" && (
             <Seasons
               // One click from a season row to its race calendar: select that
@@ -337,6 +395,7 @@ export default function Admin() {
           {tab === "traffic" && <TrafficAdmin />}
           {tab === "health" && <AdminHealth />}
           {tab === "pin" && <ChangePin />}
+          </Suspense>
         </div>
       </div>
     </div>

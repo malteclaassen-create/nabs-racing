@@ -8,6 +8,7 @@ import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtStamp, NO_VALUE } from "../utils/format.js";
+import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
 // site. Logins connect to a driver ONLY via a stored Discord user ID (the old
@@ -20,8 +21,8 @@ const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
 // The admin navigation puts the "logins with no driver" count on the Members
 // tab. Linking somebody (or creating their driver, or banning them) has to take
-// that number down straight away, so every finished action says so.
-export const MEMBERS_CHANGED_EVENT = "nabs:members-changed";
+// that number down straight away, so every finished action says so
+// (MEMBERS_CHANGED_EVENT, data/adminEvents.js).
 
 // One row of this tab, in two parts: WHO on the left, WHAT YOU CAN DO on the
 // right. They used to be one long flex line, which meant the buttons ate the

@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { useAsk } from "./overlay.jsx";
+import { FEEDBACK_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // Everything members and visitors wrote through the Feedback button: bug
 // reports, feature wishes, the rest. Each entry can be moved along (new →
@@ -323,7 +324,6 @@ function Entry({ item, onChanged }) {
 
 // Anything that changes an entry says so, so the counter on the tab above
 // stops showing a number the admin has just worked through.
-export const FEEDBACK_CHANGED_EVENT = "nabs-feedback-changed";
 
 export default function AdminFeedback() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.adminFeedback(), []));
