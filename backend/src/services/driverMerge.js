@@ -11,8 +11,9 @@
 // the driver has been looking after: photo, bio, links, the login) and this
 // moves everything the other row holds onto it, then removes the empty shell:
 //
-//   * race results, attendance answers, driver-market offers and interests,
-//     recorded transfers, driver-of-the-day picks, incident reports;
+//   * race results (with the token payments filed under them), attendance
+//     answers, driver-market offers and interests, recorded transfers,
+//     driver-of-the-day picks, incident reports, a champion override;
 //   * the Discord login and the Steam id, where the kept row has none;
 //   * every profile field the kept row left empty (photo, card, bio, number,
 //     socials, flag, role, manual points);
@@ -27,6 +28,7 @@
 // ---------------------------------------------------------------------------
 import { dbLinkDrivers, dbUnlinkDriver, discordIdsForDrivers } from "../lib/persons.js";
 import { dbGetMember } from "../lib/members.js";
+import { moveRacePayouts } from "../lib/tokens.js";
 
 // Profile fields carried over when the kept row's own value is empty.
 const PROFILE_FIELDS = [
@@ -164,6 +166,9 @@ export async function mergeDrivers(prisma, { keepId, dropId }) {
   await prisma.$transaction(async (tx) => {
     // Results: no clash by now, so a plain re-point.
     await tx.raceResult.updateMany({ where: { driverId: drop.id }, data: { driverId: keep.id } });
+    // The token payments for those results are filed under the row's id, and
+    // follow them — or every one of these rounds would be paid again.
+    await moveRacePayouts(tx, drop.id, keep.id);
 
     // Attendance answers: the kept row's answer wins where both answered.
     const keepRsvpRaces = new Set((await tx.raceRsvp.findMany({ where: { driverId: keep.id }, select: { raceId: true } })).map((r) => r.raceId));
