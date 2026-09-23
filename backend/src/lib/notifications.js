@@ -51,6 +51,15 @@ export async function dbCreateNotification(
     VALUES (${id}, ${type}, ${title}, ${body}, ${link}, ${recipientId}, ${dedupeKey}, ${now})`;
 }
 
+// Admin to-dos (type ADMIN: a server reset to answer, a login without a
+// driver, a raised hand, a seat given back) are not bell entries. They are
+// work, and work is listed where it is done: the To do card at the top of the
+// admin area (GET /api/admin/attention). In the bell they read like news, sat
+// there after the job was done, and a busy week of resets buried everything a
+// member is actually told there. The rows are still written — the admin card
+// reads the given-back seats from them — the bell just does not show them.
+const BELL_EXCLUDES_TYPE = "ADMIN";
+
 // Everything a member can see, newest first: broadcasts + their personal ones,
 // each flagged unread relative to when they last opened the bell.
 export async function dbListNotificationsFor(prisma, discordId, limit = 30) {
@@ -59,7 +68,8 @@ export async function dbListNotificationsFor(prisma, discordId, limit = 30) {
       CASE WHEN n."createdAt" > COALESCE(m."notificationsSeenAt", '') THEN 1 ELSE 0 END AS unread
     FROM "Notification" n
     LEFT JOIN "MemberAccount" m ON m."discordId" = ${discordId}
-    WHERE n."recipientId" IS NULL OR n."recipientId" = ${discordId}
+    WHERE (n."recipientId" IS NULL OR n."recipientId" = ${discordId})
+      AND n."type" <> ${BELL_EXCLUDES_TYPE}
     ORDER BY n."createdAt" DESC
     LIMIT ${limit}`;
   return rows.map(shapeNotification);
@@ -70,6 +80,7 @@ export async function dbUnreadCount(prisma, discordId) {
     SELECT COUNT(*) AS n
     FROM "Notification"
     WHERE ("recipientId" IS NULL OR "recipientId" = ${discordId})
+      AND "type" <> ${BELL_EXCLUDES_TYPE}
       AND "createdAt" > COALESCE(
         (SELECT "notificationsSeenAt" FROM "MemberAccount" WHERE "discordId" = ${discordId}), '')`;
   return Number(rows[0]?.n || 0);
@@ -100,7 +111,7 @@ export const NOTIFY_DEFAULTS = {
   downloads: true, // "new download" broadcast
   seatOffers: "reserves", // who hears about seat offers: "reserves" | "all" | "off"
   seatFilled: true, // personal "you got the seat" note to the picked reserve
-  adminAlerts: true, // admins-only: a login with no driver, a "I want to race"
+  adminAlerts: true, // no longer read: admin to-dos are the admin area's To do card now (kept so stored settings round-trip)
   reminders: [24], // race reminders, hours before kickoff
   trainingReminders: true, // do the reminders above also cover training sessions?
   attendanceOpenDays: null, // sign-up opens N days before race day (null = always open)
@@ -511,16 +522,19 @@ export async function notifyWaitlistDemoted(prisma, { race, driver, place = null
 }
 
 // --- admin alerts -------------------------------------------------------------
-// The two things in the Members tab that need a HUMAN: somebody signed in and no
-// driver row claims them, and somebody asked for a seat. Both sit in the admin
-// area, which nobody keeps open, so the bell carries them to whoever can act.
+// Things that need a HUMAN: somebody signed in and no driver row claims them,
+// somebody asked for a seat, the race server was reset, a reserve gave a seat
+// back. They used to ring the admins' bell; they are now the admin area's To do
+// card instead (see BELL_EXCLUDES_TYPE above), which lists what is still open
+// rather than what once happened.
 //
-// Personal rows addressed to the Discord admins (no broadcast — the rest of the
-// league has no business seeing who logged in). Muteable in the Notifications
-// tab. Best-effort like every other trigger: a login must never fail because a
+// The rows are still written, one per admin, as the record of what arrived:
+// the To do card reads the given-back seats from them, the one piece of work
+// nothing else in the database remembers. No longer behind the "Admin alerts"
+// switch — the card must not miss a seat because a bell was muted once.
+// Best-effort like every other trigger: a login must never fail because a
 // notification could not be written.
 async function notifyAdmins(prisma, { title, body, link, dedupeSuffix }) {
-  if (!(await readNotifySettings(prisma)).adminAlerts) return;
   const admins = await getAdminDiscordIds(prisma);
   for (const discordId of admins) {
     await dbCreateNotification(prisma, {

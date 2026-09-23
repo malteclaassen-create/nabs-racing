@@ -43,6 +43,7 @@ const CLEARED_EVENTS = [
   "nabs-feedback-changed", // AdminFeedback.jsx FEEDBACK_CHANGED_EVENT
   "nabs-reports-changed", // AdminReports.jsx REPORTS_CHANGED_EVENT
   "nabs:members-changed", // AdminMembers.jsx MEMBERS_CHANGED_EVENT
+  "nabs-todo-changed", // pages/Admin.jsx TODO_CHANGED_EVENT (a server reset answered)
 ];
 
 // Slower than the notification bell's minute. What this counts arrives over

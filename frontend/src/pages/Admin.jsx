@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Armchair, Bug, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -174,6 +176,8 @@ export default function Admin() {
   // twice has to land twice — a plain view string would be unchanged the second
   // time and the tab would sit wherever the admin had left it.
   const [jump, setJump] = useState(null);
+  // Bumped by the To do card to send the training card back to its question.
+  const [trainingFocus, setTrainingFocus] = useState(0);
   function goTo(hit) {
     setTab(hit.tab);
     setJump((j) => ({ tab: hit.tab, view: hit.view || null, n: (j?.n || 0) + 1 }));
@@ -235,7 +239,23 @@ export default function Admin() {
           for. */}
       <AdminSearch onGo={goTo} />
 
-      <WaitingLine onPick={setTab} />
+      <TodoCard
+        onPick={setTab}
+        onReset={(slug) => {
+          // The question belongs to one series' board: point the admin area at
+          // it, open the tab, and let the training card scroll itself into view
+          // (it looks for ?focus=training when it mounts; the key remounts it
+          // if the tab was already open).
+          const url = new URL(window.location.href);
+          url.searchParams.set("tab", "social");
+          url.searchParams.set("focus", "training");
+          if (slug) url.searchParams.set("series", slug);
+          window.history.replaceState(window.history.state, "", url);
+          if (slug && editingSeries?.slug !== slug) setEditingSeries(slug);
+          setTab("social");
+          setTrainingFocus((n) => n + 1);
+        }}
+      />
 
       {/* One wrapper for both shapes, and only its CLASSES change between them:
           the panel below is the same element in either layout, so switching the
@@ -305,7 +325,7 @@ export default function Admin() {
               <AdminSocialFeed />
               <LiveLinksAdmin />
               <LiveServersAdmin />
-              <TrainingBestLapsAdmin />
+              <TrainingBestLapsAdmin key={trainingFocus} />
             </div>
           )}
           {tab === "attendance" && <AdminAttendance jumpView={viewFor("attendance")} jumpKey={jump?.n} />}
@@ -1028,25 +1048,99 @@ function LiveServersAdmin() {
 // group in the side rail, so the honest answer to "where do I go" was "open the
 // five menus and look". This is the answer written down. It is not there at all
 // when nothing is waiting, which is most of the time.
-function WaitingLine({ onPick }) {
-  const { parts } = useAdminAttention();
-  if (!parts.length) return null;
+//
+// It is also where the admin alerts went when they left the bell: a server
+// reset to answer, a raised hand, a seat given back. In the bell they read as
+// news and stayed there after the job was done; here each one is a line with
+// the button that does it, and it is gone once it is done. The counts come
+// from the dot's own poll (useAdminAttention); the detail from /admin/todo,
+// read when the page opens and again whenever a piece of work is finished.
+export const TODO_CHANGED_EVENT = "nabs-todo-changed";
+const TODO_REFRESH_EVENTS = [TODO_CHANGED_EVENT, MARKET_CHANGED_EVENT, "nabs:members-changed", "nabs-feedback-changed"];
+
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - Date.parse(iso || "")) / 1000);
+  if (!Number.isFinite(s)) return "";
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
+function TodoRow({ icon: Icon, title, detail, action, onAction }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-surface2/60 px-4 py-2.5 text-sm">
-      <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">Waiting</span>
-      {parts.map((p, i) => (
-        <span key={p.key} className="flex items-center gap-2">
-          {i > 0 && <span className="text-border">·</span>}
-          <button
-            type="button"
-            className="font-semibold text-medium underline-offset-2 transition hover:text-dark hover:underline"
-            onClick={() => onPick(p.tab)}
-          >
-            {p.n} {p.n === 1 ? p.one : p.many}
-          </button>
-        </span>
-      ))}
-    </div>
+    <li className="flex items-center gap-3 px-4 py-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium" aria-hidden="true"><Icon className="h-4 w-4" /></span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-dark">{title}</p>
+        {detail && <p className="mt-0.5 text-xs text-light">{detail}</p>}
+      </div>
+      <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={onAction}>{action}</button>
+    </li>
+  );
+}
+
+function TodoCard({ onPick, onReset }) {
+  const { parts } = useAdminAttention();
+  const navigate = useNavigate();
+  const todo = useApi(useCallback(() => api.adminTodo(), []));
+  const reload = todo.reload;
+  useEffect(() => {
+    for (const ev of TODO_REFRESH_EVENTS) window.addEventListener(ev, reload);
+    return () => { for (const ev of TODO_REFRESH_EVENTS) window.removeEventListener(ev, reload); };
+  }, [reload]);
+  const resets = todo.data?.resets || [];
+  const requests = todo.data?.requests || [];
+  const givenBack = todo.data?.givenBack || [];
+  const count = (key) => parts.find((p) => p.key === key)?.n || 0;
+  // Logins without a driver, less the ones already listed by name for having
+  // asked to race: the same person should not be two lines.
+  const quietLogins = Math.max(0, count("members") - requests.length);
+
+  const rows = [];
+  for (const r of resets) {
+    const where = r.layout ? `${r.track} · ${r.layout}` : r.track || "the track";
+    const why = r.raceNight ? "the server moved on to race night" : r.trackChanged ? "the server came back on a new track version" : "the server was reset";
+    rows.push(
+      <TodoRow key={`reset-${r.id}`} icon={RotateCcw} action="Answer"
+        title={`${r.seriesName ? `${r.seriesName}: ` : ""}keep the practice times from ${where}?`}
+        detail={`${r.drivers} driver${r.drivers === 1 ? "" : "s"} with a time · ${why} · ${ago(r.endedAt)}. They are off the board until answered.`}
+        onAction={() => onReset(r.series)} />
+    );
+  }
+  for (const q of requests.slice(0, 3)) {
+    rows.push(
+      <TodoRow key={`req-${q.discordId}`} icon={Hand} action="Link driver"
+        title={`${q.name} wants to race`}
+        detail={`${q.text ? `Asked for ${q.text}` : "Asked for a seat"} · ${ago(q.at)}. Linking them to a driver answers it.`}
+        onAction={() => onPick("members")} />
+    );
+  }
+  if (requests.length > 3) {
+    rows.push(<TodoRow key="req-more" icon={Hand} action="Open" title={`${requests.length - 3} more asked to race`} onAction={() => onPick("members")} />);
+  }
+  for (const g of givenBack) {
+    rows.push(<TodoRow key={`back-${g.offerId}`} icon={UserMinus} action="Open" title={g.title} detail={`${g.body || ""} ${ago(g.at)}.`.trim()} onAction={() => navigate(g.link || "/attendance")} />);
+  }
+  if (count("market")) {
+    const n = count("market");
+    rows.push(<TodoRow key="market" icon={Armchair} action="Open" title={`${n} seat${n === 1 ? "" : "s"} waiting on a decision`} detail="Reserves have put their hand up. Pick who gets the seat." onAction={() => onPick("market")} />);
+  }
+  if (quietLogins) {
+    rows.push(<TodoRow key="logins" icon={UserRoundX} action="Open" title={`${quietLogins} login${quietLogins === 1 ? "" : "s"} without a driver`} detail="Somebody signed in with Discord and no driver row carries their account." onAction={() => onPick("members")} />);
+  }
+  if (count("feedback")) {
+    const n = count("feedback");
+    rows.push(<TodoRow key="feedback" icon={Bug} action="Open" title={`${n} bug report${n === 1 ? "" : "s"} waiting`} detail="New, or the sender has replied since." onAction={() => onPick("feedback")} />);
+  }
+  if (!rows.length) return null;
+  return (
+    <section className="card mb-4 overflow-hidden" aria-label="To do">
+      <div className="flex items-baseline justify-between gap-3 border-b border-border px-4 py-2.5">
+        <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">To do</h2>
+        <span className="font-mono text-[11px] tabular-nums text-light">{rows.length} open</span>
+      </div>
+      <ul className="divide-y divide-border">{rows}</ul>
+    </section>
   );
 }
 
@@ -1075,6 +1169,8 @@ function ResetPrompt({ pending, onAnswered }) {
     setErr(null);
     try {
       await api.answerTrainingReset(pending.id, { keep, clearCarried: alsoClear && !keep });
+      // The To do card lists this question too; it goes with the answer.
+      window.dispatchEvent(new Event(TODO_CHANGED_EVENT));
       onAnswered();
     } catch (e) {
       setErr(e.message);

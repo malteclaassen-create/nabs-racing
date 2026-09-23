@@ -150,6 +150,28 @@ function SteamTag({ steamId }) {
   );
 }
 
+// The admin's switch for the Steam ids: one button, in one place, in both
+// states. It used to be two different controls — a bare fingerprint square in
+// the grid row while off, and a row of its own with a big filled pill (and a
+// copy-everything button) while on — so switching it moved the thing you had
+// just pressed. Now it stays put and only fills in, and it says what it is.
+function SteamToggle({ on, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={on ? "Hide the Steam IDs" : "Show Steam IDs beside every name (admins only)"}
+      className={`-my-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 font-mono text-[10px] font-bold uppercase tracking-wider transition ${
+        on ? "border-brand bg-brand text-ink" : "border-border bg-card text-medium hover:border-medium hover:text-dark"
+      }`}
+    >
+      <Fingerprint className="h-3 w-3" aria-hidden="true" />
+      IDs
+    </button>
+  );
+}
+
 // One upcoming race: attendance buttons (when signed in) + the three status
 // columns + the embedded Driver Market. State/actions are owned by the parent.
 export default function RaceSignupCard({
@@ -266,17 +288,11 @@ export default function RaceSignupCard({
   const [adminView, setAdminView] = useState(false);
   const [steamIds, setSteamIds] = useState(null);
   const [steamError, setSteamError] = useState(null);
-  const [copyNote, setCopyNote] = useState(null);
   useEffect(() => {
     setAdminView(false);
     setSteamIds(null);
     setSteamError(null);
   }, [ev.id]);
-  useEffect(() => {
-    if (!copyNote) return undefined;
-    const t = setTimeout(() => setCopyNote(null), 2000);
-    return () => clearTimeout(t);
-  }, [copyNote]);
   async function toggleAdminView() {
     if (adminView) {
       setAdminView(false);
@@ -290,17 +306,6 @@ export default function RaceSignupCard({
     } catch (e) {
       setSteamError(e.message);
     }
-  }
-  // The whole accepted column as a list of ids, which is the shape an entry
-  // list for the server wants. Names left out on purpose: this is the thing
-  // that gets pasted, and a name beside it only has to be deleted again.
-  const acceptedSteamIds = useMemo(
-    () => ev.rsvps.ACCEPTED.map((r) => steamIds?.[r.driverId]).filter(Boolean),
-    [ev.rsvps.ACCEPTED, steamIds]
-  );
-  async function copyAllSteamIds() {
-    const ok = await copyText(acceptedSteamIds.join("\n"));
-    setCopyNote(ok ? `${acceptedSteamIds.length} Steam IDs copied` : "This browser blocked the clipboard");
   }
 
   // Sign-up window (admin-configured): before it opens, the buttons make way
@@ -473,38 +478,14 @@ export default function RaceSignupCard({
         )}
       </div>
 
-      {/* The admin's own row. Off by default and off again as soon as the card
-          moves to another race: it puts Steam ids on screen, which is not
-          something to leave lying around on a page with a league in it. */}
-      {isAdmin && !notYetOpen && (adminView || !gridRow) && (
-        <div className="pop-in flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface2/40 px-5 py-2.5">
-          <button
-            type="button"
-            onClick={toggleAdminView}
-            aria-pressed={adminView}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
-              adminView ? "border-brand bg-brand text-ink" : "border-border bg-card text-medium hover:text-dark"
-            }`}
-          >
-            <Fingerprint className="h-3.5 w-3.5" aria-hidden="true" />
-            Steam IDs
-          </button>
-          {adminView && (
-            <>
-              <button
-                type="button"
-                onClick={copyAllSteamIds}
-                disabled={!acceptedSteamIds.length}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:text-dark disabled:opacity-40"
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                Copy accepted ({acceptedSteamIds.length})
-              </button>
-              <span className="text-xs text-light">
-                {copyNote || steamError || "Steam IDs beside every name, click one to copy it. Admins only."}
-              </span>
-            </>
-          )}
+      {/* The Steam ids are off by default and off again as soon as the card
+          moves to another race: they are not something to leave lying around
+          on a page with a league in it. The switch sits in the grid row; a
+          race without a grid size has no such row, so it gets this one. */}
+      {isAdmin && !notYetOpen && !gridRow && (
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2.5">
+          <span className="text-xs text-light">{steamError || (adminView ? "Tap an ID to copy it. Admins only." : "Steam IDs, admins only")}</span>
+          <SteamToggle on={adminView} onClick={toggleAdminView} />
         </div>
       )}
 
@@ -517,19 +498,7 @@ export default function RaceSignupCard({
             <span className={`tabular-nums ${gridFull ? "text-warn" : "text-medium"}`}>
               {gridFull ? `Full · ${accepted}/${capacity} seats taken` : `${accepted}/${capacity} seats taken`}
             </span>
-            {/* Admins: the Steam ID switch lives here instead of a row of its own */}
-            {isAdmin && !adminView && (
-              <button
-                type="button"
-                onClick={toggleAdminView}
-                aria-pressed={false}
-                title="Show Steam IDs beside every name (admins only)"
-                aria-label="Show Steam IDs"
-                className="-my-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-medium transition hover:text-dark"
-              >
-                <Fingerprint className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
+            {isAdmin && !notYetOpen && <SteamToggle on={adminView} onClick={toggleAdminView} />}
           </span>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">
@@ -538,6 +507,9 @@ export default function RaceSignupCard({
             style={{ width: `${Math.min(100, (accepted / capacity) * 100)}%` }}
           />
         </div>
+        {adminView && (
+          <p className="mt-2 text-xs text-light">{steamError || "Tap an ID to copy it. Admins only."}</p>
+        )}
       </div>
       )}
 

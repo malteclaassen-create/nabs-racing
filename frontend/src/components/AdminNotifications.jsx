@@ -189,12 +189,9 @@ export default function AdminNotifications() {
             value={form.seatFilled}
             onChange={(v) => set("seatFilled", v)}
           />
-          <ToggleRow
-            label="Admin alerts"
-            help="Admins only: a note when somebody signs in that no driver is connected to, when somebody presses 'I want to race', and when the race server has been reset and the week's training times are waiting to be kept or dropped. Nobody else sees these."
-            value={form.adminAlerts}
-            onChange={(v) => set("adminAlerts", v)}
-          />
+          {/* No "Admin alerts" switch any more: a login without a driver, a
+              raised hand, a server reset and a seat given back are the To do
+              card at the top of the admin area, not bell notifications. */}
         </div>
       </div>
 
