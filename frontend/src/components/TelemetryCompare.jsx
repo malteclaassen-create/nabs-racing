@@ -16,6 +16,8 @@ import { Chip, Menu, MenuItem, Panel, Segmented, ToolButton } from "./TelemetryU
 import TelemetryDashboard from "./TelemetryDashboard.jsx";
 import { SectionsPanel } from "./TelemetrySections.jsx";
 import TelemetryOverview from "./TelemetryOverview.jsx";
+import TelemetryTips from "./TelemetryTips.jsx";
+import { buildTips } from "../utils/drivingTips.js";
 import TelemetryTrackMap from "./TelemetryTrackMap.jsx";
 import { fitTelemetryWindow } from "../utils/telemetryWindow.js";
 import { sampleAtTime } from "../utils/telemetryGeometry.js";
@@ -393,6 +395,24 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     [lapA, lapB, both, corners, n]
   );
   const sectors = useMemo(() => (both ? sectorDeltas(lapA, lapB, dist, n) : null), [both, lapA, lapB, dist, n]);
+  // The circuit's named corners (admin Tracks tab), so a tip can say "T4
+  // Roggia" rather than "section 3". Asked by the AC folder name the laps
+  // carry; the backend resolves it to the circuit. None is a normal answer.
+  // The layout goes along: the default names only fit the Grand Prix one.
+  const rawTrack = list.find((t) => t.trackKey === trackKey)?.track || "";
+  const rawLayout = list.find((t) => t.trackKey === trackKey)?.layout || "";
+  const [namedCorners, setNamedCorners] = useState([]);
+  useEffect(() => {
+    setNamedCorners([]);
+    if (!rawTrack) return undefined;
+    let alive = true;
+    api.trackProfile(rawTrack, rawLayout).then((d) => alive && setNamedCorners(d?.corners || [])).catch(() => {});
+    return () => { alive = false; };
+  }, [rawTrack, rawLayout]);
+  const tips = useMemo(
+    () => (both && insights.length ? buildTips(insights, lapA, lapB, { corners: namedCorners, dist, n }) : null),
+    [both, insights, lapA, lapB, namedCorners, dist, n]
+  );
   // The lap neither of them drove: the quicker of the two through each
   // sector, added up. What the pair could do together — and, for one driver
   // comparing their own laps, what they could do on a clean one.
@@ -728,6 +748,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
             {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
+            {tips && <TelemetryTips tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB}
+              onSection={(s) => { selectSection(s); document.getElementById("telemetry-traces")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
             {/* Player, replay, traces and sections share one wrapper: the
                 player bar pins itself for as long as this block is on screen,
                 and lets go once the page has scrolled past it. From sm up it
@@ -771,7 +793,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                   <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
                 </div>
               </Panel>
-              <Panel title="Lap traces" icon={ChartLine}
+              <Panel id="telemetry-traces" title="Lap traces" icon={ChartLine} style={{ scrollMarginTop: "var(--tel-top, 84px)" }}
                 note={<span className="inline-flex flex-wrap items-center gap-x-3"><span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2" style={{ borderColor: colorA }} />A solid</span>{both && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: colorB }} />B dashed</span>}</span>}
                 actions={<Segmented label="Position axis" value={dist ? axisMode : 'pct'} onChange={setAxisMode} items={[{ key: 'pct', label: '% of lap' }, ...(dist ? [{ key: 'dist', label: 'metres' }] : [])]} />}>
                 {/* The toolbar: zoom on the left, which stretch is showing and

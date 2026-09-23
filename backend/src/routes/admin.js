@@ -54,9 +54,11 @@ import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.j
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { invalidateCareerCache } from "../services/careerService.js";
+import { invalidateTrackStrengthCache } from "../services/trackStrengthService.js";
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
+import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
@@ -2801,6 +2803,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateTrackStrengthCache();
     invalidateRatingHistoryCache();
     invalidateCardRatingCache();
     notifyCardUnlocksForSeason(prisma, race.seasonId);
@@ -5214,6 +5217,7 @@ router.put("/seasons/:id/manual-points", async (req, res, next) => {
     // The Hall of Fame caches its walk over every season for a few minutes.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateTrackStrengthCache();
     res.json({ saved: parsed.length });
   } catch (e) {
     next(e);
@@ -5891,10 +5895,20 @@ router.get("/tracks/:key/info", async (req, res, next) => {
     const [info, countries] = await Promise.all([readTrackInfo(prisma, key), readTrackCountries(prisma)]);
     // Effective flag country: admin-stored code on the races, else the static
     // circuit table. countrySource tells the UI whether it's an override.
+    // The circuit's types as the site applies them: the admin's pick, else
+    // the default reading of a circuit it knows (lib/trackProfile.js).
+    const eff = effectiveTypes(info, key);
     res.json({
       ...info,
       country: countries[key] || staticCountryFor(key) || null,
       countryStored: countries[key] || null,
+      typesEffective: eff.types,
+      typesSource: eff.source,
+      defaultTypes: effectiveTypes(null, key).types,
+      typeDefs: TRACK_TYPES,
+      // The same for the corner names: stored list, or the circuit's default.
+      cornersSource: effectiveCorners(info, key).source,
+      defaultCorners: effectiveCorners(null, key).corners,
     });
   } catch (e) {
     next(e);
@@ -5922,8 +5936,16 @@ router.put("/tracks/:key/info", async (req, res, next) => {
     // The per-series map images are uploaded through the map endpoint below,
     // not typed into this form; a client that sends the blob without them
     // (an older page, a tab opened before they existed) must not wipe them.
-    const keep = content.mapImages === undefined ? (await readTrackInfo(prisma, key)).mapImages : undefined;
-    const saved = await writeTrackInfo(prisma, key, keep ? { ...content, mapImages: keep } : content);
+    // The same goes for the circuit's types and corner names (lib/trackProfile.js):
+    // a form that does not carry them leaves them as they are.
+    const stored = await readTrackInfo(prisma, key);
+    const merged = { ...content };
+    if (content.mapImages === undefined) merged.mapImages = stored.mapImages;
+    if (content.types === undefined) merged.types = stored.types;
+    if (content.corners === undefined) merged.corners = stored.corners;
+    const saved = await writeTrackInfo(prisma, key, merged);
+    // A circuit's types are what the track strengths group by.
+    invalidateTrackStrengthCache();
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);

@@ -17,6 +17,7 @@ import { telemetryForRaces } from "../lib/telemetryRead.js";
 import { readTrackInfo, mapImageFor, ensureMapImageSize } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 import { readPoleHolders } from "../lib/raceHonours.js";
+import { TRACK_TYPES, effectiveTypes, effectiveCorners } from "../lib/trackProfile.js";
 
 const router = Router();
 
@@ -26,6 +27,37 @@ const router = Router();
 router.get("/countries", async (_req, res, next) => {
   try {
     res.json(await readTrackCountries(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/tracks/profile?track=<name>[&layout=<ac layout>] -> { key, types, typeDefs, corners }:
+// what kind of circuit it is and what its corners are called
+// (lib/trackProfile.js). Takes any spelling the site meets — a calendar name,
+// an AC folder id off a telemetry lap ("ks_monza") — and answers for the
+// circuit it resolves to. Public: it is the same reading the driver profiles
+// and the lap comparison show anyway.
+router.get("/profile", async (req, res, next) => {
+  try {
+    const track = String(req.query.track || "").slice(0, 200);
+    if (!track) return res.status(400).json({ error: "track required" });
+    const key = groupKeyFor(track);
+    const info = await readTrackInfo(prisma, key);
+    const known = trackKeyFor(track) ? key : null;
+    const { types, source } = effectiveTypes(info, known);
+    // The layout decides whether the default corner names fit (they were
+    // measured on the Grand Prix layouts). The lap comparison sends it.
+    const corners = effectiveCorners(info, known, String(req.query.layout || "").slice(0, 80));
+    res.json({
+      key,
+      name: known ? displayNameFor(key) : track,
+      types,
+      typesSource: source,
+      typeDefs: TRACK_TYPES,
+      corners: corners.corners,
+      cornersSource: corners.source,
+    });
   } catch (e) {
     next(e);
   }
