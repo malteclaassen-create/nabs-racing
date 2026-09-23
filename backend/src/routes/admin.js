@@ -139,7 +139,7 @@ import {
   clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf, removeLap, restoreLap,
 } from "../lib/liveBestLaps.js";
 import { listBlocks, blockLap, unblockLap } from "../lib/liveLapBlocks.js";
-import { pendingFor, take as takePendingReset } from "../lib/liveResetKeep.js";
+import { listPending, pendingFor, take as takePendingReset } from "../lib/liveResetKeep.js";
 import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
 import { getBoard as getLiveBoard, realGuidForPublicId, publicDriverId } from "../services/liveTiming.js";
@@ -3431,6 +3431,86 @@ async function adminSeriesScope(seriesSlug) {
     : [];
   return { series, seasonIds, raceIds: new Set(races.map((r) => r.id)) };
 }
+
+// GET /api/admin/todo -> { resets, requests, givenBack }
+// The To do card at the top of the admin area: the pieces of work that used to
+// arrive as bell notifications, listed where they are done and only for as
+// long as they are open. The counts beside them (bug reports, logins, seats)
+// come from /attention, which the rest of the site polls; this is the detail,
+// asked for once when the admin area opens.
+//
+//   resets    every server reset still waiting for keep-or-drop, in EVERY
+//             series — the question belongs to a board, and an admin looking
+//             at Friday must still see that Sunday's times are waiting.
+//   requests  who pressed "I want to race" and is not linked to a driver yet.
+//   givenBack seats a reserve gave back that are still open on a race that has
+//             not been run. Nothing else in the database remembers that a seat
+//             was once filled, so these come from the admin rows written when
+//             it happened (lib/notifications.js, notifyAdminsSeatDropped).
+router.get("/todo", async (req, res, next) => {
+  try {
+    const series = await dbListSeries(prisma, { includePrivate: true }).catch(() => []);
+    const nameOf = new Map(series.map((s) => [s.slug, s.name]));
+    const resets = listPending().map((p) => {
+      const slug = p.scopes[0]?.series || "";
+      return {
+        id: p.id,
+        series: slug,
+        seriesName: nameOf.get(slug) || slug,
+        track: p.before?.track || "",
+        layout: p.before?.layout || "",
+        drivers: p.laps?.length || 0,
+        trackChanged: !!p.trackChanged,
+        // The server moving on to qualifying on the same track (race night)
+        // rather than coming back from a restart.
+        raceNight: !p.trackChanged && Number(p.after?.sessionType) > 1,
+        endedAt: p.endedAt,
+      };
+    });
+
+    const requestRows = await prisma.$queryRaw`
+      SELECT m."discordId", m."displayName", m."username", m."raceRequestText", m."raceRequestAt"
+      FROM "MemberAccount" m
+      WHERE m."raceRequestAt" IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId")
+      ORDER BY m."raceRequestAt" DESC`.catch(() => []);
+    const requests = requestRows.map((m) => ({
+      discordId: String(m.discordId),
+      name: m.displayName || m.username || "Someone",
+      text: m.raceRequestText || null,
+      at: m.raceRequestAt,
+    }));
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const dropRows = await prisma.$queryRaw`
+      SELECT "title", "body", "link", "dedupeKey", "createdAt"
+      FROM "Notification"
+      WHERE "type" = 'ADMIN' AND "dedupeKey" LIKE 'admin-seat-dropped:%' AND "createdAt" > ${since}
+      ORDER BY "createdAt" DESC`.catch(() => []);
+    // One row per admin was written; one entry per seat is wanted.
+    const byOffer = new Map();
+    for (const r of dropRows) {
+      const offerId = String(r.dedupeKey || "").split(":")[1];
+      if (offerId && !byOffer.has(offerId)) byOffer.set(offerId, r);
+    }
+    const stillOpen = byOffer.size
+      ? await prisma.seatOffer
+          .findMany({
+            where: { id: { in: [...byOffer.keys()] }, status: "OPEN", race: { isCompleted: false } },
+            select: { id: true },
+          })
+          .catch(() => [])
+      : [];
+    const givenBack = stillOpen.map(({ id }) => {
+      const r = byOffer.get(id);
+      return { offerId: id, title: r.title, body: r.body, link: r.link, at: r.createdAt };
+    });
+
+    res.json({ resets, requests, givenBack });
+  } catch (e) {
+    next(e);
+  }
+});
 
 // GET /api/admin/attention -> { feedback, members, market, resets, reports, total }
 // Everything waiting on an admin, as numbers and their sum.
