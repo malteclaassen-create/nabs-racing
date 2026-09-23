@@ -358,6 +358,13 @@ export default function Admin() {
     if (authed) prefetchTabs();
   }, [authed]);
 
+  // Leave the admin area. Clears the PIN token; a Discord admin stays signed in
+  // to the site (their admin rights come from their account).
+  function signOut() {
+    setToken(null);
+    window.location.href = "/";
+  }
+
   // If any admin request reports an expired/invalid token, bounce to the login.
   useEffect(() => {
     const onUnauth = () => {
@@ -383,24 +390,39 @@ export default function Admin() {
   return (
     <div className="content-in">
       {/* One row for everything that is true of the whole page: what is being
-          edited, where the menu sits, and the way out. */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <PageHeader eyebrow="League Office" title="Admin" />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          edited, where the menu sits, and the way out.
+          Below lg the row is rearranged to get the panel onto the first screen
+          of a phone: Sign out moves up beside the title (which steps down a
+          size and drops its eyebrow to make room), the menu toggle goes, and
+          only the season switch gets a line of its own. The wrapper
+          round the title dissolves from lg up (lg:contents), so a computer
+          gets exactly the one row it always had. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 sm:mb-6">
+        <div className="w-full lg:contents">
+          <PageHeader
+            // The eyebrow is a nicety a phone cannot afford here: a hidden span
+            // leaves its line with no height at all.
+            eyebrow={<span className="hidden sm:inline">League Office</span>}
+            title="Admin"
+            rightInline
+            right={
+              <button className="btn-secondary shrink-0 lg:hidden" onClick={signOut}>
+                Sign out
+              </button>
+            }
+          />
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto">
           <AdminScope />
-          {/* Same twenty-one tabs either way; this only says where they are. */}
-          <AdminNavToggle mode={navMode} onChange={setNavMode} />
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              // Leave the admin area. Clears the PIN token; a Discord admin stays
-              // signed in to the site (their admin rights come from their account).
-              setToken(null);
-              window.location.href = "/";
-            }}
-          >
-            Sign out
-          </button>
+          {/* Same twenty-one tabs either way; this only says where they are.
+              Phones and tablets always get the folded menu (see AdminNav), so
+              the choice only exists where it changes something. */}
+          <span className="hidden lg:contents">
+            <AdminNavToggle mode={navMode} onChange={setNavMode} />
+            <button className="btn-secondary" onClick={signOut}>
+              Sign out
+            </button>
+          </span>
         </div>
       </div>
 

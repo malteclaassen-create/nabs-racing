@@ -21,6 +21,13 @@ import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 // Neither one changes what a tab CONTAINS. The choice is remembered per
 // browser, so an admin who prefers the old strip only says so once.
 //
+// The choice only applies from lg up. Below that the rail is already a single
+// folded line over the panel, while the strip wrapped into five groups of
+// buttons, about a screen of them on a phone before the panel started. So a
+// phone or tablet always gets the folded line, and the toggle is not offered
+// there (Admin.jsx hides it); the stored preference is left alone and comes
+// back on the next wide screen.
+//
 // The counts on Feedback and Reports are fetched here, once, rather than by the
 // buttons themselves: the rail can fold a group away, and a report waiting on a
 // decision must not disappear with it. The group header carries the total of
@@ -161,7 +168,7 @@ export function AdminNavToggle({ mode, onChange }) {
 // --- the strip that was always there ----------------------------------------
 function TabStrip({ tab, onPick, badges }) {
   return (
-    <div className="mb-6 flex flex-wrap gap-x-7 gap-y-3 border-b border-border">
+    <div className="mb-6 hidden flex-wrap gap-x-7 gap-y-3 border-b border-border lg:flex">
       {TAB_GROUPS.map((g) => (
         <div key={g.label}>
           <div className="mb-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
@@ -194,7 +201,9 @@ function TabStrip({ tab, onPick, badges }) {
 }
 
 // --- the list down the left -------------------------------------------------
-function SideRail({ tab, onPick, badges }) {
+// `phoneOnly` is the rail standing in for the tab strip below lg: the folded
+// line and its drawer, and nothing from lg up, where the strip takes over.
+function SideRail({ tab, onPick, badges, phoneOnly = false }) {
   const active = tabInfo(tab);
   // Which groups are folded open. Only the one holding the current tab starts
   // open: five groups open at once is the tab strip again, just taller.
@@ -241,7 +250,7 @@ function SideRail({ tab, onPick, badges }) {
   }
 
   return (
-    <aside className="mb-6 lg:sticky lg:top-28 lg:mb-0 lg:self-start">
+    <aside className={`mb-4 sm:mb-6 ${phoneOnly ? "lg:hidden" : "lg:sticky lg:top-28 lg:mb-0 lg:self-start"}`}>
       {/* Phones: one line saying where you are, which opens the list. */}
       <button
         type="button"
@@ -347,6 +356,9 @@ export default function AdminNav({ mode, tab, onPick }) {
   return mode === NAV_RAIL ? (
     <SideRail tab={tab} onPick={onPick} badges={badges} />
   ) : (
-    <TabStrip tab={tab} onPick={onPick} badges={badges} />
+    <>
+      <SideRail tab={tab} onPick={onPick} badges={badges} phoneOnly />
+      <TabStrip tab={tab} onPick={onPick} badges={badges} />
+    </>
   );
 }
