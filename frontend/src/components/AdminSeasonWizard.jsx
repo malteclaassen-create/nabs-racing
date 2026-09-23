@@ -137,7 +137,9 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   }
 
   const counts = target?._count || { teams: 0, drivers: 0, races: 0 };
-  const hasField = counts.teams > 0;
+  const hasTeams = counts.teams > 0;
+  // Teams alone are not a field: "Teams only" leaves the drivers still to come.
+  const hasField = hasTeams && counts.drivers > 0;
   const hasCalendar = counts.races > 0;
 
   async function goLive() {
@@ -145,7 +147,8 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
       title: `Make ${target.name} the active season?`,
       body:
         `${target.name} becomes public and what the site shows by default. ` +
-        `${active && active.id !== target.id ? `${active.name} stays readable in the season switcher.` : ""}`,
+        `${active && active.id !== target.id ? `${active.name} stays readable in the season switcher. ` : ""}` +
+        (hasCalendar ? "" : "Its calendar is still empty: the site will show a season with no races."),
       confirmLabel: "Make it active",
     });
     if (!ok) return;
@@ -265,9 +268,15 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
           <Step
             n={2}
             done={hasField}
-            title={hasField ? `${counts.teams} team(s) and ${counts.drivers} driver(s)` : "Bring the field over"}
+            title={
+              hasField
+                ? `${counts.teams} team(s) and ${counts.drivers} driver(s)`
+                : hasTeams
+                  ? `${counts.teams} team(s), no drivers yet`
+                  : "Bring the field over"
+            }
           >
-            {!hasField && source ? (
+            {!hasTeams && source ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -294,7 +303,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   Teams only
                 </button>
               </div>
-            ) : !hasField ? (
+            ) : !hasTeams ? (
               <button
                 type="button"
                 className="btn-secondary py-1.5 text-sm"
@@ -302,6 +311,31 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               >
                 Add teams by hand
               </button>
+            ) : !hasField ? (
+              <div className="flex flex-wrap gap-2">
+                {source && (
+                  <button
+                    type="button"
+                    className="btn-primary py-1.5 text-sm"
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => api.cloneDrivers(target.id, source.id),
+                        (r) => `Copied ${r.created} driver(s) from ${source.name} into the teams of the same name.`
+                      )
+                    }
+                  >
+                    Drivers from {source.name}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary py-1.5 text-sm"
+                  onClick={() => gotoInSeason("drivers", target.number)}
+                >
+                  Add drivers by hand
+                </button>
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 <button
@@ -371,6 +405,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
             <p className="text-xs text-light">
               Announcing shows name, game and opener while the season stays private. Making it active publishes it and
               makes it the site&rsquo;s default.
+              {!hasCalendar && " The calendar is still empty, so the season would go live with no races."}
             </p>
           </Step>
         </ol>
