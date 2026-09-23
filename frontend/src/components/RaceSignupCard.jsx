@@ -541,7 +541,7 @@ export default function RaceSignupCard({
                       admin's Steam id sits beside the name on one line; with
                       three columns there isn't the room, so it drops underneath
                       instead of shortening the name to a letter and a dot. */}
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2">
+                  <div className={`flex min-w-0 ${adminView ? "flex-wrap" : "flex-nowrap"} items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2`}>
                   {/* The team's mark rather than a coloured dot: on a grid
                       with two cars per team the colour alone was a quiz, and
                       the logo says who at a glance. Falls back to the
@@ -557,20 +557,21 @@ export default function RaceSignupCard({
                       on a laptop and longer names get cut. In the admin view the
                       tooltip carries when they answered as well, which is what
                       says who was the last one in. */}
-                  {/* flex-1 outside the admin view: a name's width is then taken
-                      from the room left, not from its text, so a long name
-                      truncates beside its logo instead of dropping under it
-                      while the short names in the column stay on one line. In
-                      the admin view the Steam id is meant to wrap underneath,
-                      which only happens while the name keeps its own width. */}
+                  {/* Outside the admin view the row never wraps, so a long name
+                      truncates beside its logo instead of dropping under it. It
+                      keeps its own width otherwise (no flex-1): stretched to the
+                      room left, it pushed the flag and the stand-in arrow to the
+                      far edge of the column, away from the name they belong to.
+                      In the admin view the row wraps so the Steam id can drop
+                      underneath. */}
                   <span
-                    className={`min-w-[3.5rem] truncate ${adminView ? "" : "flex-1"} ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
+                    className={`min-w-[3.5rem] truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
                     title={adminView && r.answeredAt ? `${r.name} · answered ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}
                   </span>
                   <SubMark sub={r.sub} />
-                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden shrink-0 sm:inline-block" />
                   {adminView && (
                     <span className="ml-auto">
                       <SteamTag steamId={steamIds?.[r.driverId]} />
@@ -605,7 +606,7 @@ export default function RaceSignupCard({
           <ol className="cascade grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
             {waiting.map((r, i) => (
               <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2">
+                <div className={`flex min-w-0 ${adminView ? "flex-wrap" : "flex-nowrap"} items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2`}>
                   <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">{i + 1}.</span>
                   <TeamLogo
                     id={r.team.id}
@@ -615,12 +616,12 @@ export default function RaceSignupCard({
                     size={18}
                   />
                   <span
-                    className={`min-w-[3.5rem] truncate ${adminView ? "" : "flex-1"} ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
+                    className={`min-w-[3.5rem] truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
                     title={adminView && r.answeredAt ? `${r.name} · joined ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}
                   </span>
-                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden sm:inline-block" />
+                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden shrink-0 sm:inline-block" />
                   {adminView && (
                     <span className="ml-auto">
                       <SteamTag steamId={steamIds?.[r.driverId]} />
