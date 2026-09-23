@@ -123,6 +123,10 @@ import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSug
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
 import {
+  validateAnnouncement, resolveAudience, discordText, findDuplicate, readAnnouncementLog, appendAnnouncementLog,
+  ANNOUNCE_AUDIENCES, ANNOUNCE_LIMITS,
+} from "../lib/announcements.js";
+import {
   activityFor, byNeedsAttention, tallyStates, QUIET_AFTER, INACTIVE_AFTER,
 } from "../lib/attendanceActivity.js";
 import {
@@ -1130,6 +1134,124 @@ router.get("/attendance-pings", async (req, res, next) => {
     res.json(await readAttendancePings(prisma));
   } catch (e) {
     next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ANNOUNCEMENTS (Admin -> Notifications -> "Announcement")
+//
+// Words the admin writes, sent to the bell and/or the Discord events channel.
+// The rules — what a valid one is, who each audience reaches, the history —
+// are lib/announcements.js; these two routes only put them together.
+// ---------------------------------------------------------------------------
+
+// The season "drivers of the season" means: the running season of the series
+// the admin area is pointed at. Not the season switcher's pick — an
+// announcement is about now, and a look back at Season 5 must not turn "to the
+// drivers" into a message to last year's grid.
+async function announceSeason(series) {
+  return resolveSeason(prisma, null, { includePrivate: true, series: series || undefined }).catch(() => null);
+}
+
+// Announcements in flight, by id. The history only learns about one once it is
+// sent, so without this two copies of the same request arriving together would
+// both find nothing there and both go out.
+const announcing = new Set();
+
+// GET /api/admin/announcements?series= -> the form's context: the history,
+// how many each audience reaches, the season it would go to, whether Discord
+// is connected at all.
+router.get("/announcements", async (req, res, next) => {
+  try {
+    const season = await announceSeason(req.query.series);
+    const audiences = {};
+    for (const key of Object.keys(ANNOUNCE_AUDIENCES)) {
+      const r = await resolveAudience(prisma, { audience: key, seasonId: season?.id || null });
+      audiences[key] = { label: ANNOUNCE_AUDIENCES[key], reach: r.reach, drivers: r.drivers, withoutLogin: r.withoutLogin };
+    }
+    res.json({
+      list: await readAnnouncementLog(prisma),
+      audiences,
+      season: season ? { number: season.number, name: season.name } : null,
+      discord: { connected: !!(await getWebhookUrl(prisma)) },
+      limits: ANNOUNCE_LIMITS,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/announcements { id, title, body?, link?, audience, channels: { bell, discord }, series? }
+//
+// `id` is minted by the form when it is opened and kept until the send has
+// gone through, which is what makes a double click, a retry after a timeout
+// or a second tab pressing the same button harmless: the same id is answered
+// with the earlier result and nothing is sent again.
+router.post("/announcements", async (req, res, next) => {
+  const checked = validateAnnouncement(req.body);
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const v = checked.value;
+  if (announcing.has(v.id)) return res.status(409).json({ error: "This announcement is already being sent." });
+  announcing.add(v.id);
+  try {
+    const dup = findDuplicate(await readAnnouncementLog(prisma), v);
+    if (dup) return res.json({ ok: true, duplicate: true, announcement: dup });
+
+    // Refused up front rather than half-sent: bell notes written and then
+    // "Discord isn't connected" would leave the admin unsure what went out.
+    const webhook = v.channels.discord ? await getWebhookUrl(prisma) : null;
+    if (v.channels.discord && !webhook) {
+      return res.status(400).json({
+        error: "Discord isn't connected. Set the events webhook under Races & Events, or send to the bell only.",
+      });
+    }
+
+    const season = v.audience === "everyone" ? null : await announceSeason(req.body?.series);
+    if (v.audience !== "everyone" && !season) {
+      return res.status(400).json({ error: "This series has no running season, so there are no drivers to send to." });
+    }
+    const who = await resolveAudience(prisma, { audience: v.audience, seasonId: season?.id || null });
+    if (v.channels.bell && !who.broadcast && who.reach === 0 && !v.channels.discord) {
+      return res.status(400).json({ error: "Nobody in that audience has logged in on the site, so the bell reaches no one." });
+    }
+
+    let bellSent = 0;
+    if (v.channels.bell) {
+      const note = { type: "ANNOUNCE", title: v.title, body: v.body, link: v.link };
+      if (who.broadcast) {
+        await dbCreateNotification(prisma, { ...note, dedupeKey: `announce:${v.id}` });
+        bellSent = who.reach;
+      } else {
+        for (const discordId of who.recipients) {
+          await dbCreateNotification(prisma, { ...note, recipientId: discordId, dedupeKey: `announce:${v.id}:${discordId}` });
+        }
+        bellSent = who.recipients.length;
+      }
+    }
+
+    let discord = null;
+    if (v.channels.discord) {
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const r = await announce(prisma, discordText(v, origin));
+      discord = r.ok ? "sent" : r.skipped ? "not-connected" : "failed";
+    }
+
+    const entry = {
+      ...v,
+      audienceLabel: ANNOUNCE_AUDIENCES[v.audience],
+      season: season ? { number: season.number, name: season.name } : null,
+      reach: v.channels.bell ? bellSent : 0,
+      withoutLogin: v.channels.bell ? who.withoutLogin : 0,
+      discord,
+      by: req.user?.driverName || req.user?.discordName || req.user?.username || "Admin (PIN login)",
+      at: new Date().toISOString(),
+    };
+    await appendAnnouncementLog(prisma, entry);
+    res.json({ ok: true, announcement: entry });
+  } catch (e) {
+    next(e);
+  } finally {
+    announcing.delete(v.id);
   }
 });
 

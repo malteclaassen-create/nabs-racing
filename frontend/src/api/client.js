@@ -603,6 +603,12 @@ export const api = {
   adminAttendancePingPreview: (raceId) => request(`/admin/races/${raceId}/attendance-ping`, { auth: true }),
   // { [raceId]: { at, sent, withoutLogin } } — when each race was last reminded.
   adminAttendancePings: () => request("/admin/attendance-pings", { auth: true }),
+  // Free announcements (Notifications tab). The series rides along because
+  // "drivers of the season" means the running season of the series being
+  // edited; the body's `id` is minted by the form and makes a resend harmless.
+  adminAnnouncements: () => request(`/admin/announcements${seriesQ()}`, { auth: true }),
+  sendAnnouncement: (body) =>
+    request("/admin/announcements", { method: "POST", body: { ...body, ...seriesBody() }, auth: true }),
 
   // feedback (the floating Feedback button). Open to everyone — userAuth only
   // attaches the session when there is one, so a signed-in member's report
