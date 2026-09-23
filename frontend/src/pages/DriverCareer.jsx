@@ -1165,9 +1165,12 @@ export default function DriverCareer({ careerKey = null, embedded = false }) {
             {teams.map((t) => (
               <div key={t.name} className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-5 sm:px-6">
                 <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={36} />
-                <span className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
+                <span className="min-w-0 truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
                 <span className="min-w-0 flex-1 truncate text-[13px] text-light">{seasonSpell(t.seasons, leagues.length > 1)}</span>
-                <span className="font-mono text-[12px] uppercase tracking-wider text-light">
+                {/* Its own line on a phone for every team, right-hand end of
+                    the row from sm up: where it wrapped used to depend on how
+                    long the team's name was. */}
+                <span className="basis-full font-mono text-[12px] uppercase tracking-wider text-light sm:ml-auto sm:basis-auto">
                   {t.starts > 0
                     ? `${plural(t.starts, "start")} · ${plural(t.wins, "win")} · ${plural(t.podiums, "podium")} · ${t.points} pts`
                     : "No start yet"}

@@ -808,7 +808,9 @@ function AchievementCard({ a, color, pinned, onPin, pinFull, index = 0 }) {
                     an unset one collapsed the bar to nothing instead. */}
                 <div className="bar-fill h-full rounded-full" style={{ "--w": `${pct}%`, backgroundColor: color, opacity: 0.7 }} />
               </div>
-              <span className="font-mono text-[10px] font-bold tabular-nums text-faint">{a.value}/{a.target}</span>
+              {/* Fixed room for the count, so "1/5" and "20/100" leave the bars
+                  on neighbouring cards the same length. */}
+              <span className="min-w-[7ch] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-faint">{a.value}/{a.target}</span>
             </div>
           )}
         </div>

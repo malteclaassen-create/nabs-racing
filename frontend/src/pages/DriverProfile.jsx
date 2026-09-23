@@ -1232,10 +1232,12 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
                   {/* A standings position, but only for the people the
                       standings actually list: a reserve who never started a
                       round holds a row number, not a championship place. */}
-                  <span className="font-mono text-xs font-semibold tabular-nums text-light">
+                  <span className="w-8 shrink-0 text-right font-mono text-xs font-semibold tabular-nums text-light">
                     {isIdleReserve(m) ? NO_VALUE : `P${m.position}`}
                   </span>
-                  <span className="font-display text-sm font-black tabular-nums text-dark">{m.total}</span>
+                  {/* Fixed room for both numbers, so every row's bar ends in
+                      the same place ("P1 8" and "P14 212" used to move it). */}
+                  <span className="min-w-[3ch] shrink-0 text-right font-display text-sm font-black tabular-nums text-dark">{m.total}</span>
                   {pct != null && (
                     <span className="w-9 text-right font-mono text-[10px] font-semibold tabular-nums text-light">{Math.round(pct)}%</span>
                   )}

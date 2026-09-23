@@ -13,7 +13,12 @@
 // The bar runs to the FAR milestone, with a notch where the near one sits, so
 // the whole week is one shape rather than two bars in a row.
 //
-// Three shapes. The `card` one is the block on the points page. The `row` one
+// Four shapes. The `card` one is a block of its own. The `stacked` one is a
+// server's line on the points page, where one sits under the other: the name
+// on a line of its own, then the bar and the count on a grid of fixed columns,
+// so every bar starts and ends in the same place however long the server's
+// name is (in `row` a long name pushed its bar onto a line of its own and the
+// two bars on the page came out different lengths). The `row` one
 // is a single line for the live page's session card, where it sits under the
 // session's own numbers and has to read like one of them: the eyebrow, the
 // bar, the count, the two milestones, and nothing else. The `mini` one is a
@@ -63,6 +68,32 @@ export default function TrainingBar({ week, variant = "card", label = "Your trai
         </span>
         <span className="shrink-0 font-mono text-[10px] leading-none tabular-nums text-faint">{target}</span>
       </span>
+    );
+  }
+
+  if (variant === "stacked") {
+    return (
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-light" title={label}>
+            {label}
+          </span>
+          {/* What this server's week has paid, while the league is paying. */}
+          {earning && week.earned > 0 && (
+            <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-ok">+{fmt(week.earned)}</span>
+          )}
+        </div>
+        <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_4rem] items-center gap-3">
+          <div className="relative h-2 overflow-hidden rounded-full bg-surface2">
+            <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${fill * 100}%` }} />
+            {notches}
+          </div>
+          <span className="text-right font-mono text-sm font-bold tabular-nums text-dark">
+            {laps}
+            <span className="font-normal text-light">/{target}</span>
+          </span>
+        </div>
+      </div>
     );
   }
 

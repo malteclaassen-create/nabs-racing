@@ -122,7 +122,9 @@ function DownloadCard({ item, highlight = false }) {
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-3 pt-1">
+      {/* mt-auto: the buttons sit on the cards' bottom edge whatever the
+          description above them runs to. */}
+      <div className="mt-auto flex items-center gap-3 pt-4">
         <button
           onClick={go}
           disabled={busy || !item.available}
@@ -274,7 +276,7 @@ function RuleGroup({ icon, subject, rules, defaultOpen = false, index = 0 }) {
 // One rule card in the "how it works" grid.
 function RuleCard({ icon, title, children }) {
   return (
-    <div className="card p-5">
+    <div className="card h-full p-5">
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
           <Icon name={icon} className="h-[18px] w-[18px]" />

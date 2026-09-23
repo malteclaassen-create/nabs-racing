@@ -1680,9 +1680,9 @@ function TeamProjection({ title, rows, flipKey }) {
               </td>
               <td className="py-3 pr-5 text-right">
                 <span className="font-mono text-base font-bold tabular-nums text-dark">{t.total}</span>
-                {t.gained > 0 && (
-                  <span className="ml-2 font-mono text-xs font-bold tabular-nums text-ok">+{t.gained}</span>
-                )}
+                {/* The gain's slot is there on every row, empty when nothing
+                    was gained, so the totals line up in one column. */}
+                <span className="ml-2 inline-block w-8 text-left font-mono text-xs font-bold tabular-nums text-ok">{t.gained > 0 ? `+${t.gained}` : ""}</span>
               </td>
             </tr>
           ))}
@@ -1820,9 +1820,8 @@ function ChampionshipProjection({ data }) {
                   </td>
                   <td className="py-3 pr-5 text-right">
                     <span className="font-mono text-base font-bold tabular-nums text-dark sm:text-lg">{d.total}</span>
-                    {d.gained > 0 && (
-                      <span className="ml-2 font-mono text-xs font-bold tabular-nums text-ok">+{d.gained}</span>
-                    )}
+                    {/* Same fixed slot as the constructors' table above. */}
+                    <span className="ml-2 inline-block w-8 text-left font-mono text-xs font-bold tabular-nums text-ok">{d.gained > 0 ? `+${d.gained}` : ""}</span>
                   </td>
                 </tr>
               ))}

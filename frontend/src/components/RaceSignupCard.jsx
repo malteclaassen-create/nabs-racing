@@ -557,8 +557,14 @@ export default function RaceSignupCard({
                       on a laptop and longer names get cut. In the admin view the
                       tooltip carries when they answered as well, which is what
                       says who was the last one in. */}
+                  {/* flex-1 outside the admin view: a name's width is then taken
+                      from the room left, not from its text, so a long name
+                      truncates beside its logo instead of dropping under it
+                      while the short names in the column stay on one line. In
+                      the admin view the Steam id is meant to wrap underneath,
+                      which only happens while the name keeps its own width. */}
                   <span
-                    className={`min-w-[3.5rem] truncate ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
+                    className={`min-w-[3.5rem] truncate ${adminView ? "" : "flex-1"} ${r.driverId === driverId ? "font-bold text-dark" : "text-dark"}`}
                     title={adminView && r.answeredAt ? `${r.name} · answered ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}
@@ -609,7 +615,7 @@ export default function RaceSignupCard({
                     size={18}
                   />
                   <span
-                    className={`min-w-[3.5rem] truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
+                    className={`min-w-[3.5rem] truncate ${adminView ? "" : "flex-1"} ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
                     title={adminView && r.answeredAt ? `${r.name} · joined ${answerTime(r.answeredAt)}` : r.name}
                   >
                     {r.name}

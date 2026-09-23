@@ -1859,7 +1859,10 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
           <path d={iconPath} />
         </svg>
       ) : null}
-      <div className="relative flex items-center gap-2.5">
+      {/* The label row is held to the icon's height, and a long label takes
+          two tight lines inside it: a label that wrapped used to push its
+          number 16px below the number in the tile beside it. */}
+      <div className="relative flex h-8 items-center gap-2.5">
         {iconPath ? (
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
@@ -1870,7 +1873,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
             </svg>
           </span>
         ) : null}
-        <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">{label}</span>
+        <span className="min-w-0 font-mono text-[11px] font-bold uppercase leading-tight tracking-widest text-light">{label}</span>
         {to && (
           <span className="ml-auto text-light opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100">
             →
@@ -1930,9 +1933,12 @@ function DriversTable({ rows, leaderTotal, decided = false }) {
                 <td className="py-4 pl-2">
                   <div className="flex items-center gap-3">
                     <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: d.team.color }} />
+                    {/* A max width on a phone, because a table cell grows to its
+                        content and truncate alone would not hold: a long name
+                        made its row twice as tall as the rest. */}
                     <Link
                       to={`/drivers/${d.driverId}`}
-                      className="font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand sm:text-lg"
+                      className="block max-w-[9.5rem] truncate font-display text-base font-bold uppercase tracking-tight text-dark transition hover:text-brand sm:max-w-none sm:text-lg"
                     >
                       {d.name}
                     </Link>
