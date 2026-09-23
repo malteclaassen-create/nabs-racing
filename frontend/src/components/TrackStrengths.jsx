@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import SlidingTabs from "./SlidingTabs.jsx";
@@ -94,6 +95,34 @@ function Radar({ axes, color, rivalColor }) {
   );
 }
 
+// Folded content that slides open, the same way the tyre-strategy drawer on
+// the race results does: a one-row grid going 0fr -> 1fr, so the height
+// animates to whatever the content is without measuring it. Always rendered,
+// so opening it never pops.
+function Drawer({ open, id, children }) {
+  return (
+    <div id={id} aria-hidden={!open} className={`ts-drawer grid transition-[grid-template-rows] duration-base ease-out-soft ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+      <div className="min-h-0 overflow-hidden" inert={open ? undefined : ""}>{children}</div>
+    </div>
+  );
+}
+
+// The chevron every fold on the card uses: down when closed, up when open.
+const Chevron = ({ open, className = "" }) => (
+  <ChevronDown className={`h-4 w-4 shrink-0 text-light transition-transform duration-base ${open ? "rotate-180" : ""} ${className}`} aria-hidden="true" />
+);
+
+// Whether the screen has room to show everything open: the card starts with
+// the long parts folded on a phone and open on a desktop. Read once — a
+// window resized afterwards keeps whatever the reader has opened.
+const startsWide = () => {
+  try {
+    return window.matchMedia("(min-width: 1024px)").matches;
+  } catch {
+    return true;
+  }
+};
+
 // Radar labels have a spoke's worth of room; the rows say it in full.
 const SHORT = { highspeed: "High-speed", braking: "Braking", power: "Power", flowing: "Flowing", technical: "Technical", street: "Street" };
 
@@ -115,6 +144,20 @@ function summary(data, name) {
 export default function TrackStrengths({ driver, color, standings = [] }) {
   const [scope, setScope] = useState("all");
   const [rivalId, setRivalId] = useState("");
+  // What is unfolded: the detail of each circuit type (none to start with —
+  // the bar and the number say the most), the circuit tiles (open on a
+  // desktop, folded on a phone, where they are a long scroll) and the note on
+  // how it is measured.
+  const [openTypes, setOpenTypes] = useState(() => new Set());
+  const [tracksOpen, setTracksOpen] = useState(startsWide);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const toggleType = (key) =>
+    setOpenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const { data, loading, error } = useApi(useCallback(() => api.driverTrackStrengths(driver.id, scope), [driver.id, scope]));
   // The rival is read for the same scope, so the two shapes on the radar
   // are always measured over the same stretch of seasons.
@@ -223,58 +266,79 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
             <ul className="divide-y divide-border">
               {data.types.map((t) => {
                 const none = t.score == null;
+                const open = openTypes.has(t.key);
+                const panel = `ts-type-${t.key}`;
                 return (
-                  <li key={t.key} className={`grid grid-cols-[minmax(0,1fr)_3.5rem] gap-x-4 px-5 py-3 sm:px-6 ${none ? "opacity-60" : ""}`}>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-display text-sm font-bold uppercase tracking-tight text-dark" title={t.hint}>{t.label}</span>
-                        {data.strongest === t.key && <span className="pill bg-ok/15 text-ok">Strongest</span>}
-                        {data.weakest === t.key && <span className="pill bg-bad/15 text-bad">Weakest</span>}
-                        {rivalBy[t.key]?.score != null && !none && (
-                          <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: RIVAL }} title={`${rivalName}: ${rivalBy[t.key].score}`}>
-                            {rivalName?.split(" ")[0]} {rivalBy[t.key].score}
-                          </span>
-                        )}
-                      </div>
-                      <div className="relative mb-1.5 mt-2 h-[7px] rounded-full bg-surface2">
-                        {!none && <div className="h-full rounded-full" style={{ width: `${t.score}%`, background: color }} />}
-                        {/* The field's average, where every bar is read from. */}
-                        <span className="absolute -bottom-[3px] -top-[3px] left-1/2 w-0.5 rounded bg-faint" aria-hidden="true" />
-                      </div>
-                      <div className="font-mono text-[11px] tracking-wide text-light">
-                        {none ? (
-                          "no races on this kind of circuit yet"
-                        ) : (
-                          <>
-                            <span className="text-medium">{races(t.races)}</span>
-                            {t.avgFinish != null && <> · avg finish <span className="text-medium">P{t.avgFinish}</span></>}
-                            {t.avgGapPct != null && <> · gap to fastest lap <span className="text-medium">{gap(t.avgGapPct)}</span></>}
-                          </>
-                        )}
-                      </div>
-                      {t.tracks.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {t.tracks.map((x) => (
-                            <span key={x.key} className="rounded-md border border-border bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">{x.name}</span>
-                          ))}
+                  <li key={t.key} className={none ? "opacity-60" : ""}>
+                    {/* The row is the switch: tap it for the races, the
+                        average finish and the circuits behind the number. */}
+                    <button type="button" onClick={() => toggleType(t.key)} aria-expanded={open} aria-controls={panel}
+                      className="grid w-full grid-cols-[minmax(0,1fr)_3.5rem_1rem] items-center gap-x-3 px-5 py-3 text-left transition hover:bg-surface2/60 sm:px-6">
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-display text-sm font-bold uppercase tracking-tight text-dark" title={t.hint}>{t.label}</span>
+                          {data.strongest === t.key && <span className="pill bg-ok/15 text-ok">Strongest</span>}
+                          {data.weakest === t.key && <span className="pill bg-bad/15 text-bad">Weakest</span>}
+                          {rivalBy[t.key]?.score != null && !none && (
+                            <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: RIVAL }} title={`${rivalName}: ${rivalBy[t.key].score}`}>
+                              {rivalName?.split(" ")[0]} {rivalBy[t.key].score}
+                            </span>
+                          )}
+                        </span>
+                        <span className="relative mt-2 block h-[7px] rounded-full bg-surface2">
+                          {!none && <span className="block h-full rounded-full" style={{ width: `${t.score}%`, background: color }} />}
+                          {/* The field's average, where every bar is read from. */}
+                          <span className="absolute -bottom-[3px] -top-[3px] left-1/2 w-0.5 rounded bg-faint" aria-hidden="true" />
+                        </span>
+                      </span>
+                      <span className="text-right font-display text-2xl font-black tabular-nums" style={{ color: tone(t.score) }}>
+                        {none ? "–" : t.score}
+                      </span>
+                      <Chevron open={open} />
+                    </button>
+                    <Drawer open={open} id={panel}>
+                      <div className="px-5 pb-3 sm:px-6">
+                        <div className="font-mono text-[11px] tracking-wide text-light">
+                          {none ? (
+                            "no races on this kind of circuit yet"
+                          ) : (
+                            <>
+                              <span className="text-medium">{races(t.races)}</span>
+                              {t.avgFinish != null && <> · avg finish <span className="text-medium">P{t.avgFinish}</span></>}
+                              {t.avgGapPct != null && <> · gap to fastest lap <span className="text-medium">{gap(t.avgGapPct)}</span></>}
+                            </>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="self-center text-right font-display text-2xl font-black tabular-nums" style={{ color: tone(t.score) }}>
-                      {none ? "–" : t.score}
-                    </div>
+                        {t.hint && <div className="mt-1 text-xs text-light">{t.hint}</div>}
+                        {t.tracks.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {t.tracks.map((x) => (
+                              <span key={x.key} className="rounded-md border border-border bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">{x.name}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </Drawer>
                   </li>
                 );
               })}
             </ul>
           </div>
 
-          <div className="border-t border-border px-5 py-4 sm:px-6">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">By track</h3>
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">best first · avg finish · gap to fastest lap</span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="border-t border-border">
+            <button type="button" onClick={() => setTracksOpen((o) => !o)} aria-expanded={tracksOpen} aria-controls="ts-tracks"
+              className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-4 text-left transition hover:bg-surface2/60 sm:px-6">
+              <span className="flex items-baseline gap-2">
+                <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">By track</h3>
+                <span className="font-mono text-[11px] font-semibold text-light">{data.tracks.length}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:inline">best first · avg finish · gap to fastest lap</span>
+                <Chevron open={tracksOpen} />
+              </span>
+            </button>
+            <Drawer open={tracksOpen} id="ts-tracks">
+            <div className="grid grid-cols-2 gap-2.5 px-5 pb-4 sm:grid-cols-3 sm:px-6 lg:grid-cols-6">
               {data.tracks.map((t) => {
                 const c = toneTile(t.score);
                 return (
@@ -302,11 +366,22 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
                 );
               })}
             </div>
+            </Drawer>
           </div>
         </>
       )}
 
-      <p className="border-t border-border px-5 py-3 text-xs leading-relaxed text-faint sm:px-6">
+      <div className="border-t border-border">
+      <button type="button" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen} aria-controls="ts-about"
+        className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left text-xs font-semibold text-light transition hover:bg-surface2/60 hover:text-dark sm:px-6">
+        <span>
+          {races(data.races)}
+          {data.seasons?.length ? ` · Season${data.seasons.length === 1 ? "" : "s"} ${data.seasons.join(", ")}` : ""} · How is this measured?
+        </span>
+        <Chevron open={aboutOpen} />
+      </button>
+      <Drawer open={aboutOpen} id="ts-about">
+      <p className="px-5 pb-3 text-xs leading-relaxed text-faint sm:px-6">
         {races(data.races)}
         {data.seasons?.length ? ` across Season${data.seasons.length === 1 ? "" : "s"} ${data.seasons.join(", ")}` : ""}. Every race is
         measured against its own field: where the driver finished among the finishers and where their best lap ranked. The
@@ -314,6 +389,8 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
         to three types, set per track in the admin area.
         {data.untyped > 0 && ` ${races(data.untyped)} at circuits without a type count in the track list only.`}
       </p>
+      </Drawer>
+      </div>
     </div>
   );
 }
