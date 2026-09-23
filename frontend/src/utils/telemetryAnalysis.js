@@ -242,6 +242,45 @@ export function gForces(lap, n) {
   return { long: smoothSeries(long, 5), lat };
 }
 
+// What a lap was made of, in the numbers a driver compares first: how much of
+// it was spent flat out, on the brakes or on neither, how fast it went at
+// either end, how often the gear changed. Shares are of TIME, not of slices —
+// the slices are spaced by track position, and a slice in a hairpin lasts
+// three times as long as one on the straight. Every value is measured off the
+// channels; `g` (from gForces) adds the peak accelerations when given.
+export const COAST_LIMIT = 10; // % below which neither pedal counts as pressed
+export function lapProfile(lap, n, g = null) {
+  const last = Math.min(n, lap.t.length) - 1;
+  let total = 0, full = 0, braking = 0, coasting = 0, speedTime = 0, shifts = 0;
+  let top = -Infinity, low = Infinity;
+  for (let i = 0; i <= last; i++) {
+    const v = lap.speed[i];
+    if (v > top) top = v;
+    if (v < low) low = v;
+    if (i > 0 && lap.gear[i] !== lap.gear[i - 1] && lap.gear[i] > 0 && lap.gear[i - 1] > 0) shifts++;
+    if (i === last) break;
+    const dt = Math.max(0, lap.t[i + 1] - lap.t[i]);
+    total += dt;
+    speedTime += ((v + lap.speed[i + 1]) / 2) * dt;
+    if (lap.gas[i] >= FULL_THROTTLE) full += dt;
+    if (lap.brake[i] >= COAST_LIMIT) braking += dt;
+    else if (lap.gas[i] < COAST_LIMIT) coasting += dt;
+  }
+  const share = (ms) => (total > 0 ? (ms / total) * 100 : 0);
+  const peak = (arr, sign) => (arr ? Math.max(0, ...arr.slice(0, last + 1).map((v) => v * sign)) : null);
+  return {
+    fullThrottlePct: share(full),
+    brakingPct: share(braking),
+    coastingPct: share(coasting),
+    topSpeed: top,
+    minSpeed: low,
+    avgSpeed: total > 0 ? speedTime / total : 0,
+    shifts,
+    peakBrakeG: g ? peak(g.long, -1) : null,
+    peakLatG: g?.lat ? peak(g.lat.map(Math.abs), 1) : null,
+  };
+}
+
 // Put a lap on another lap's grid.
 //
 // Every channel is sampled at i/(n-1) of the way round the track, so two laps

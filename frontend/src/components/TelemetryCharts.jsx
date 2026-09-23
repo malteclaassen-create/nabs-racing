@@ -12,6 +12,12 @@ export const BRAKE_COLOR = "#ef4444";
 export const lapColor = (lap, side) => /^#[\da-f]{6}$/i.test(lap?.team?.color || '') ? lap.team.color : side === 'A' ? LAP_A_COLOR : LAP_B_COLOR;
 export const signedSeconds = (seconds, digits = 3) => `${seconds > 0 ? "+" : seconds < 0 ? "−" : ""}${Math.abs(seconds).toFixed(digits)} s`;
 
+// A formatted difference with its sign spelled out, "−" rather than "-".
+const signedNumber = (text) => {
+  const v = Number(text);
+  return v > 0 ? `+${text}` : v < 0 ? `−${String(text).replace("-", "")}` : String(text).replace("-", "");
+};
+
 const yOf = (v, lo, hi) => 96 - ((v - lo) / (hi - lo || 1)) * 92;
 const points = (values, lo, hi) => values.map((v, i) => `${i},${yOf(v, lo, hi).toFixed(2)}`).join(" ");
 
@@ -126,6 +132,7 @@ export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range,
         {delta ? <span className="text-light">{signedSeconds(a[cursor] ?? 0)}</span> : <>
           <span style={{ color: colorA }}>A {format(a[cursor] ?? 0)}</span>
           {b && <span style={{ color: colorB }}>B {format(b[cursor] ?? 0)}</span>}
+          {b && <span className="text-light" title="A − B at the cursor">Δ {signedNumber(format((a[cursor] ?? 0) - (b[cursor] ?? 0)))}</span>}
         </>}
       </ChartHeader>
       <ChartFrame height={height} ticks={ticks} visible={visible} span={span} cursor={cursor} handlers={handlers} selection={selection} bands={bands} onBand={onBand} onResetRange={onResetRange} dashedMid={delta}>

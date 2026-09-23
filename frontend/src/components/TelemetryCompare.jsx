@@ -8,13 +8,14 @@ import { useAsk } from "./overlay.jsx";
 import { fmtLap } from "../utils/format.js";
 import { ChannelChart, PedalChart, ChartAxis, LapSummary, lapColor } from "./TelemetryCharts.jsx";
 import TelemetryDashboard from "./TelemetryDashboard.jsx";
-import { SectorStrip, SectionsPanel } from "./TelemetrySections.jsx";
+import { SectionsPanel } from "./TelemetrySections.jsx";
+import TelemetryOverview from "./TelemetryOverview.jsx";
 import TelemetryTrackMap from "./TelemetryTrackMap.jsx";
 import { fitTelemetryWindow } from "../utils/telemetryWindow.js";
 import { sampleAtTime } from "../utils/telemetryGeometry.js";
 import {
   detectCorners, cumulativeDist, cornerInsights, sectionWindows, lapMarkers, sectorDeltas, gForces,
-  resampleLap, indexAtTime, sectionAt, neighbourSection, formatLapTime,
+  resampleLap, indexAtTime, sectionAt, neighbourSection, formatLapTime, lapProfile,
 } from "../utils/telemetryAnalysis.js";
 import { comparisonCsv, comparisonSummary, downloadText, exportSvgPng } from "../utils/telemetryExport.js";
 
@@ -318,10 +319,13 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     return { d, maxAbs };
   }, [both, lapA, lapB, n]);
 
-  const speedHi = useMemo(() => {
-    if (!lapA) return 100;
+  // The speed axis spans what was driven, in steps of 50: starting it at 0
+  // spent a third of the chart on speeds no car on the track ever dropped to,
+  // and squashed the corner minimums the comparison is about.
+  const [speedLo, speedHi] = useMemo(() => {
+    if (!lapA) return [0, 100];
     const all = both ? [...lapA.speed, ...lapB.speed] : lapA.speed;
-    return Math.ceil(Math.max(...all) / 50) * 50;
+    return [Math.max(0, Math.floor(Math.min(...all) / 50) * 50), Math.ceil(Math.max(...all) / 50) * 50];
   }, [lapA, lapB, both]);
 
   const steerAbs = useMemo(() => {
@@ -367,6 +371,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   }, [sectors, lapA, n]);
   const gA = useMemo(() => (lapA ? gForces(lapA, n) : null), [lapA, n]);
   const gB = useMemo(() => (both ? gForces(lapB, n) : null), [both, lapB, n]);
+  const profileA = useMemo(() => (lapA ? lapProfile(lapA, n, gA) : null), [lapA, n, gA]);
+  const profileB = useMemo(() => (both ? lapProfile(lapB, n, gB) : null), [both, lapB, n, gB]);
   const gRange = useMemo(() => {
     if (!gA) return { lat: 1, long: 1 };
     const abs = (arr) => Math.max(0.5, ...arr.map(Math.abs));
@@ -689,10 +695,11 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                 {idealMs != null && idealMs < Math.min(lapA.lapTimeMs, lapB.lapTimeMs) - 1 && (
                   <p className="text-xs text-light" title="The quicker of the two through each sector, added up">Best of both sectors: <span className="font-mono font-semibold tabular-nums text-dark">{formatLapTime(idealMs)}</span> <span className="font-mono tabular-nums">(−{((Math.min(lapA.lapTimeMs, lapB.lapTimeMs) - idealMs) / 1000).toFixed(3)} s)</span></p>
                 )}
-                {sectors && <SectorStrip sectors={sectors} colorA={colorA} colorB={colorB} onSelect={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} />}
               </div>
             </div>
             {both && lapA.car !== lapB.car && <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">Different cars selected. Vehicle performance also affects this comparison.</p>}
+            {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
+              onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
             <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start' : ''}`}>
               {hasMap && <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface2/30">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
@@ -794,7 +801,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                 <ChannelChart {...chartProps} title="Time delta" unit="s · B − A" a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
                 <p className="ml-12 mt-2 text-[11px] text-light">+ A ahead · − B ahead. Rising: B loses time.</p>
               </div>}
-              <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={0} hi={speedHi} height={150} />
+              <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={speedLo} hi={speedHi} height={150} />
               <PedalChart {...chartProps} a={pedalsA} b={pedalsB} height={160} />
               {showDetails && <>
                 <ChannelChart {...chartProps} title="Steering" unit="°" a={lapA.steer} b={lapB?.steer} lo={-steerAbs} hi={steerAbs} format={(v) => (v / 10).toFixed(0)} />
