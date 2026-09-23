@@ -669,7 +669,10 @@ function TelemetryCompare({ series: fixedSeries = null }) {
 
   return (
     <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={subtitle}
-      actions={<div className="flex flex-wrap items-center gap-2">
+      // One row on a phone: the league picker takes what the four icon buttons
+      // leave, and its word is for screen readers only there. From sm up the
+      // row sits beside the title and may wrap.
+      actions={<div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-wrap">
         {/* The league, when there is more than one to choose from. Up here
             rather than beside the track dropdown so it is there when the list
             is empty — which is exactly when somebody wants to look at the
@@ -678,9 +681,9 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             border tells it apart from the track dropdown at a glance. A real
             <label>, so the visible word is the accessible name too. */}
         {picksSeries && (
-          <label className="inline-flex items-center gap-1.5">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
-            <select className="input h-8 w-auto border-accent/60 py-0 text-xs font-bold" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
+          <label className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+            <span className="sr-only font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:not-sr-only">Series</span>
+            <select className="input h-8 min-w-0 border-accent/60 py-0 text-xs font-bold sm:w-auto" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
               {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
             </select>
           </label>
