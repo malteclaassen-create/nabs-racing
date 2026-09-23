@@ -725,10 +725,15 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
             {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
-            {/* Replay, player, traces and sections share one wrapper: the
-                player bar pins itself for as long as this block is on screen,
-                and lets go once the page has scrolled past it. */}
+            {/* Player, replay, traces and sections share one wrapper: the
+                player bar sits above the map it drives, pins itself for as
+                long as this block is on screen, and lets go once the page has
+                scrolled past it. */}
             <div className="space-y-3 sm:space-y-4">
+              <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
+                onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
+                rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}
+                position={`${position(at)} of lap${active ? ` · §${active.n}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
               <Panel title="Replay" icon={MapIcon} note={hasMap ? null : "This lap was recorded before positions were, so there is no map."}
                 actions={hasMap && both && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
                   onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}>
@@ -762,10 +767,6 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                   <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
                 </div>
               </Panel>
-              <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
-                onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
-                rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}
-                position={`${position(at)} of lap${active ? ` · §${active.n}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
               <Panel title="Lap traces" icon={ChartLine}
                 note={<span className="inline-flex flex-wrap items-center gap-x-3"><span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2" style={{ borderColor: colorA }} />A solid</span>{both && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: colorB }} />B dashed</span>}</span>}
                 actions={<Segmented label="Position axis" value={dist ? axisMode : 'pct'} onChange={setAxisMode} items={[{ key: 'pct', label: '% of lap' }, ...(dist ? [{ key: 'dist', label: 'metres' }] : [])]} />}>

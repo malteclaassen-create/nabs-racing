@@ -23,11 +23,12 @@ function recordedOn(iso) {
 // sits inside the coloured card rather than beside it so there is no doubt
 // which of the two laps it acts on.
 function DuelCard({ side, lap, color, picker, action, placeholder }) {
+  // Flat, the way the rest of the site draws a lap: the team colour is the
+  // stripe down the side and the letter's tile, nothing washed across the card.
   return (
-    <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card"
-      style={{ backgroundImage: `linear-gradient(155deg, ${color}${lap ? "24" : "0d"}, transparent 58%)` }}>
-      <span className="absolute inset-x-0 top-0 h-1" style={{ background: color }} aria-hidden="true" />
-      <div className="p-3 pt-4 sm:p-4 sm:pt-5">
+    <div className="relative min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+      <span className={`absolute inset-y-0 left-0 w-1 ${lap ? "" : "opacity-40"}`} style={{ background: color }} aria-hidden="true" />
+      <div className="p-3 pl-4 sm:p-4 sm:pl-5">
         <div className="flex items-center gap-2">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-xs font-black" style={{ background: color, color: readableInkOn(color) }} aria-hidden="true">{side}</span>
           <div className="min-w-0 flex-1">{picker}</div>
