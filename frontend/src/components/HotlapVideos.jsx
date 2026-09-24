@@ -66,7 +66,9 @@ export default function HotlapVideos({
         title={current.title || `${track} hotlap`}
         className="rounded-xl"
       />
-      {current.title && videos.length === 1 && (
+      {/* Not in the map card: the tab already says what this is, and a line of
+          text under the player there only pushes the board further down. */}
+      {current.title && videos.length === 1 && !bare && (
         <p className="mt-2.5 text-sm font-semibold text-medium">{current.title}</p>
       )}
     </div>
