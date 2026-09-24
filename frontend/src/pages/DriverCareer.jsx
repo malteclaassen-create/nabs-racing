@@ -487,6 +487,17 @@ import { MIN_RACES, TAIL_FROM, finishSpread } from "./finishSpread.mjs";
 
 function FinishSpread({ races, leagues }) {
   const [league, setLeague] = useState("all");
+  // A league is only offered when its own spread would be drawn: picking one
+  // with too few races used to blank the whole chart, tabs and all, with no
+  // way back.
+  const offered = useMemo(
+    () =>
+      leagues.filter((l) => {
+        const d = finishSpread(races.filter((r) => r.seriesSlug === l.slug));
+        return d && d.starts >= MIN_RACES;
+      }),
+    [races, leagues]
+  );
   const rows = useMemo(
     () => (league === "all" ? races : races.filter((r) => r.seriesSlug === league)),
     [races, league]
@@ -508,9 +519,9 @@ function FinishSpread({ races, leagues }) {
 
   return (
     <div className="space-y-4">
-      {leagues.length > 1 && (
+      {leagues.length > 1 && offered.length > 0 && (
         <SlidingTabs
-          items={[{ key: "all", label: "Every league" }, ...leagues.map((l) => ({ key: l.slug, label: l.name }))]}
+          items={[{ key: "all", label: "Every league" }, ...offered.map((l) => ({ key: l.slug, label: l.name }))]}
           value={league}
           onChange={setLeague}
           btnClassName="px-3 py-1.5 text-xs sm:text-sm"
