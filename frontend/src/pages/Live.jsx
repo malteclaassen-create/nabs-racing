@@ -15,10 +15,11 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
 import { useLiveServers, LiveServerSwitch } from "../components/LiveServerSwitch.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
-import { circuitForLive } from "../data/circuits.js";
+import { CIRCUITS, circuitForLive, canonicalTrack, circuitFor, trackKey } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
+import HotlapVideos from "../components/HotlapVideos.jsx";
 import TrainingBar from "../components/TrainingBar.jsx";
 import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
 import { streamEmbed } from "../utils/streamEmbed.js";
@@ -2420,6 +2421,68 @@ function useOneShotCascade(ready) {
 // first second and a half does not glide. Rows are still arriving then, and the
 // alternative was no entrance at all.
 
+// The hotlap for the circuit on screen — the same lap (or laps) the sign-up
+// page plays, so a driver in practice can watch the line without leaving the
+// board. During a session it is the circuit the server is running; off air it
+// is the next round's.
+//
+// Same precedence as the sign-up page: an event's OWN laps win (a training
+// session and a round at one circuit can run different cars), and anything
+// else falls back to the circuit's list. A series that switched the hotlap
+// column off in the admin gets nothing here either, and a circuit with no lap
+// on file drops the card entirely rather than parking "coming soon" under the
+// timing.
+function LiveHotlap({ track, raceId = null, subtitle, className = "" }) {
+  const events = useApi(useCallback(() => (track ? api.events() : Promise.resolve(null)), [track]));
+  const ev = useMemo(() => {
+    const list = events.data || [];
+    if (raceId != null) {
+      const byId = list.find((e) => e.id === raceId);
+      if (byId) return byId;
+    }
+    if (!track) return null;
+    const k = trackKey(track);
+    return list.find((e) => trackKey(e.track) === k) || null;
+  }, [events.data, raceId, track]);
+  const ownLaps = ev?.hotlapVideos?.length ? ev.hotlapVideos : null;
+  const off = ev?.showHotlaps === false;
+  // Asked only once the events feed has answered, and only when that answer
+  // leaves the circuit's list to fill in: no second request for a lap that is
+  // already here, or for a series that shows none.
+  const needCircuit = !!track && !!events.data && !ownLaps && !off;
+  const hist = useApi(
+    useCallback(() => (needCircuit ? api.trackHistory(track) : Promise.resolve(null)), [needCircuit, track])
+  );
+  if (!track || off) return null;
+  return (
+    <HotlapVideos
+      track={track}
+      videos={ownLaps || hist.data?.videos}
+      loading={!ownLaps && (events.loading || hist.loading)}
+      hideWhenEmpty
+      subtitle={subtitle}
+      className={className}
+    />
+  );
+}
+
+// The league's name for the circuit a live session is running ("Spa" rather
+// than AC's "ks_spa" / "Spa-Francorchamps"), which is what races and the
+// circuit's hotlap list are stored under. An unknown track goes through as the
+// server named it; the backend normalises it the same way it does everywhere.
+function liveTrackName(session) {
+  if (!session) return null;
+  for (const t of [session.track, session.trackName]) {
+    if (t && circuitFor(t)) return canonicalTrack(t);
+  }
+  const c = circuitForLive(session.trackName, session.track);
+  if (c) {
+    const hit = Object.entries(CIRCUITS).find(([, v]) => v === c);
+    if (hit) return hit[0];
+  }
+  return session.trackName || session.track || null;
+}
+
 // Nothing is running. The league races roughly once a week, so this is what
 // the page looks like most of the time, and it used to be an endless spinner
 // reading "Waiting for the server…" — which says "this is broken" far more than
@@ -3368,6 +3431,7 @@ export default function Live() {
     const opener = teaserApi.data?.firstRace;
     return opener?.date ? { ...opener, seasonName: teaserApi.data?.name } : null;
   }, [racesApi.data, teaserApi.data]);
+  const liveTrack = useMemo(() => liveTrackName(session), [session?.track, session?.trackName]);
   const entries = board?.entries || [];
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
@@ -3687,7 +3751,19 @@ export default function Live() {
           <p className="font-mono text-[13px] uppercase tracking-wider text-light">Connecting to the server…</p>
         </div>
       ) : offAir ? (
-        <OffAir nextRace={nextRace} />
+        <div className="space-y-8">
+          <OffAir nextRace={nextRace} />
+          {/* The next round's lap, under the "next up" card that names it: the
+              week before is exactly when somebody opens this page to learn it. */}
+          {nextRace?.track && (
+            <LiveHotlap
+              track={nextRace.track}
+              raceId={nextRace.id ?? null}
+              subtitle={`Learn ${nextRace.track} before race night`}
+              className="mx-auto w-full max-w-4xl"
+            />
+          )}
+        </div>
       ) : (
         <div className="space-y-8">
           {/* ===== Session bar across the top ===== */}
@@ -3789,6 +3865,16 @@ export default function Live() {
           )}
           </>
           )}
+
+          {/* The hotlap of the circuit being run, under the board. Last on the
+              page rather than beside the map: the timing is what the page is
+              for, and a driver in practice scrolls down to it between runs. */}
+          <LiveHotlap
+            track={liveTrack}
+            raceId={nextRace && liveTrack && trackKey(nextRace.track) === trackKey(liveTrack) ? nextRace.id ?? null : null}
+            subtitle={`Learn ${liveTrack}`}
+            className="mx-auto w-full max-w-4xl"
+          />
 
           {/* A quiet session and a broken connection both mean "these numbers
               are not moving", and they used to print the same alarming line.

@@ -12,7 +12,7 @@ import { ErrorBox, PageHeader, TableSkeleton, EmptyState, Notice } from "../comp
 import RaceSignupCard from "../components/RaceSignupCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
-import VideoEmbed from "../components/VideoEmbed.jsx";
+import HotlapVideos from "../components/HotlapVideos.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Flag from "../components/Flag.jsx";
 import { flagFor } from "../data/circuits.js";
@@ -65,90 +65,6 @@ function SignInBanner() {
   );
 }
 
-
-// Hotlap videos for the circuit, from the admin's Attendance tab. One player
-// with a picker above it when there's more than one lap on file (a season's car
-// each, say).
-//
-// A circuit nobody has filmed yet says so, in the same panel the video would
-// have filled. It used to play a stand-in lap — the rickroll — which was funny
-// exactly once and unhelpful to somebody genuinely trying to learn the track
-// before Friday.
-//
-// `loading` only suppresses the panel before the FIRST answer is in, so the
-// page doesn't announce "coming soon" and then replace itself with a video half
-// a second later. Once there is an answer it stays on screen while the next one
-// is fetched, rather than blinking out.
-function TrackVideos({ track, videos, loading = false }) {
-  const [i, setI] = useState(0);
-  useEffect(() => setI(0), [track]);
-  if (loading && !videos) return null;
-  if (!videos?.length) return <HotlapComingSoon track={track} />;
-  const current = videos[Math.min(i, videos.length - 1)];
-  return (
-    <div className="card reveal overflow-hidden p-5">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
-        <span className="font-mono text-[11px] uppercase tracking-wider text-light">Learn {track} before Friday</span>
-      </div>
-      {videos.length > 1 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {videos.map((v, idx) => (
-            <button
-              key={v.id}
-              type="button"
-              aria-pressed={idx === i}
-              onClick={() => setI(idx)}
-              className={`inline-flex min-h-[36px] items-center rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                idx === i ? "bg-brand text-ink" : "bg-surface2 text-medium hover:text-dark"
-              }`}
-            >
-              {v.title || `Lap ${idx + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
-      <VideoEmbed
-        videoId={current.id}
-        title={current.title || `${track} hotlap`}
-        className="rounded-xl"
-      />
-      {current.title && videos.length === 1 && (
-        <p className="mt-2.5 text-sm font-semibold text-medium">{current.title}</p>
-      )}
-    </div>
-  );
-}
-
-// The circuit has no lap on file. Same card, same eyebrow, same shape as the
-// player it stands in for, so the page doesn't rearrange itself the week a lap
-// finally lands — only the window's contents change.
-function HotlapComingSoon({ track }) {
-  return (
-    <div className="card reveal overflow-hidden p-5">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
-        <span className="font-mono text-[11px] uppercase tracking-wider text-light">Coming soon</span>
-      </div>
-      <div
-        style={{ aspectRatio: 16 / 9 }}
-        className="flex w-full flex-col items-center justify-center gap-3 rounded-xl bg-surface2 px-6 text-center"
-      >
-        <svg viewBox="0 0 24 24" className="h-9 w-9 text-faint" fill="none" stroke="currentColor" strokeWidth="1.6"
-          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="2.5" y="5" width="19" height="14" rx="3" />
-          <path d="M10 9.5l5 2.5-5 2.5z" />
-        </svg>
-        <p className="font-display text-lg font-extrabold uppercase tracking-tight text-medium">
-          No hotlap yet
-        </p>
-        <p className="max-w-xs text-sm leading-relaxed text-light">
-          Nobody has filmed a lap of {track} for us yet. One turns up here as soon as somebody does.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 export default function Attendance() {
   const [params, setParams] = useSearchParams();
@@ -456,7 +372,7 @@ export default function Attendance() {
           // half beside the entry list is worse than a full-width entry list.
           const showVideo = ev.showHotlaps !== false;
           const videoPanel = showVideo ? (
-            <TrackVideos
+            <HotlapVideos
               track={ev.track}
               videos={ownLaps || hist.data?.videos}
               loading={!ownLaps && hist.loading}
