@@ -2023,7 +2023,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, hotlap = null, hotlapTrack = null, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -2036,6 +2036,16 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const stream = useMemo(() => streamEmbed(streamUrl), [streamUrl]);
   const [view, setView] = useState("map");
   const showStream = !!stream && view === "stream";
+  // The circuit's hotlap is the third view, for a driver who wants the line
+  // while the cars are out: swapping it in for the map keeps it at the top of
+  // the page instead of under the whole board. No lap on file, no tab.
+  const hasHotlap = !!hotlap?.length;
+  const showHotlap = hasHotlap && view === "hotlap";
+  const tabs = [
+    { key: "map", label: "Map" },
+    ...(stream ? [{ key: "stream", label: "Stream" }] : []),
+    ...(hasHotlap ? [{ key: "hotlap", label: "Hotlap" }] : []),
+  ];
   return (
     <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
       {/* No header strip over the map. A card that says "Track map" above a
@@ -2045,15 +2055,12 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
           the same thing. What survives is the switch, and only when there is a
           stream to switch TO, because nothing else can say which of the two
           views you are looking at. */}
-      {stream && (
+      {tabs.length > 1 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
           {showStream && <StreamLink url={streamUrl} stream={stream} />}
           <SlidingTabs
             className="ml-auto w-full sm:w-auto"
-            items={[
-              { key: "map", label: "Map" },
-              { key: "stream", label: "Stream" },
-            ]}
+            items={tabs}
             value={view}
             onChange={setView}
             btnClassName="flex-1 px-3 py-1 text-[11px] font-bold uppercase tracking-wider sm:flex-none"
@@ -2062,6 +2069,8 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
       )}
       {showStream ? (
         <VideoEmbed embedUrl={stream.embedUrl} poster={false} title={stream.title} accent={stream.accent} />
+      ) : showHotlap ? (
+        <HotlapVideos track={hotlapTrack} videos={hotlap} bare />
       ) : (
       // The same 12px the fullscreen board leaves around its map, at every
       // width — the map's own frame draws the border inside it.
@@ -2424,7 +2433,8 @@ function useOneShotCascade(ready) {
 // The hotlap for the circuit on screen — the same lap (or laps) the sign-up
 // page plays, so a driver in practice can watch the line without leaving the
 // board. During a session it is the circuit the server is running; off air it
-// is the next round's.
+// is the next round's. During a session it rides in the map card as a third
+// view (see TrackMapSection); off air it is a card of its own.
 //
 // Same precedence as the sign-up page: an event's OWN laps win (a training
 // session and a round at one circuit can run different cars), and anything
@@ -2432,7 +2442,7 @@ function useOneShotCascade(ready) {
 // column off in the admin gets nothing here either, and a circuit with no lap
 // on file drops the card entirely rather than parking "coming soon" under the
 // timing.
-function LiveHotlap({ track, raceId = null, subtitle, className = "" }) {
+function useHotlapVideos(track, raceId = null) {
   const events = useApi(useCallback(() => (track ? api.events() : Promise.resolve(null)), [track]));
   const ev = useMemo(() => {
     const list = events.data || [];
@@ -2453,12 +2463,21 @@ function LiveHotlap({ track, raceId = null, subtitle, className = "" }) {
   const hist = useApi(
     useCallback(() => (needCircuit ? api.trackHistory(track) : Promise.resolve(null)), [needCircuit, track])
   );
-  if (!track || off) return null;
+  if (!track || off) return { videos: null, loading: false };
+  return {
+    videos: ownLaps || hist.data?.videos || null,
+    loading: !ownLaps && (events.loading || hist.loading),
+  };
+}
+
+function LiveHotlap({ track, raceId = null, subtitle, className = "" }) {
+  const { videos, loading } = useHotlapVideos(track, raceId);
+  if (!track) return null;
   return (
     <HotlapVideos
       track={track}
-      videos={ownLaps || hist.data?.videos}
-      loading={!ownLaps && (events.loading || hist.loading)}
+      videos={videos}
+      loading={loading}
       hideWhenEmpty
       subtitle={subtitle}
       className={className}
@@ -3432,6 +3451,10 @@ export default function Live() {
     return opener?.date ? { ...opener, seasonName: teaserApi.data?.name } : null;
   }, [racesApi.data, teaserApi.data]);
   const liveTrack = useMemo(() => liveTrackName(session), [session?.track, session?.trackName]);
+  const liveHotlap = useHotlapVideos(
+    liveTrack,
+    nextRace && liveTrack && trackKey(nextRace.track) === trackKey(liveTrack) ? nextRace.id ?? null : null
+  );
   const entries = board?.entries || [];
   const onTrack = entries.filter((e) => e.onTrack);
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
@@ -3783,8 +3806,14 @@ export default function Live() {
             // everything else (driving now, map, pit lane, strategy) sits out —
             // and with the map goes the stream, which lives in that card as its
             // second view. A lone player floating over the best-times table was
-            // the one thing on this page with nothing beside it.
-            bestTimes
+            // the one thing on this page with nothing beside it. The hotlap,
+            // which also lives in that card, comes back as a card of its own
+            // under the times: an empty server is exactly when somebody is
+            // learning the track.
+            <>
+              {bestTimes}
+              <LiveHotlap track={liveTrack} raceId={null} subtitle={`Learn ${liveTrack}`} className="mx-auto w-full max-w-4xl" />
+            </>
           ) : (
           <>
           {/* ===== Driving now (left, wider) beside the track map + pit lane
@@ -3812,6 +3841,8 @@ export default function Live() {
                 // down with the rest: a map of the other circuit would be a
                 // confident lie.
                 server={board?.serverKey || serverKey}
+                hotlap={liveHotlap.videos}
+                hotlapTrack={liveTrack}
               />
               {/* Phones skip the pit-lane card: the same drivers already show
                   as dimmed dots on the map above and carry a PIT badge in the
@@ -3865,16 +3896,6 @@ export default function Live() {
           )}
           </>
           )}
-
-          {/* The hotlap of the circuit being run, under the board. Last on the
-              page rather than beside the map: the timing is what the page is
-              for, and a driver in practice scrolls down to it between runs. */}
-          <LiveHotlap
-            track={liveTrack}
-            raceId={nextRace && liveTrack && trackKey(nextRace.track) === trackKey(liveTrack) ? nextRace.id ?? null : null}
-            subtitle={`Learn ${liveTrack}`}
-            className="mx-auto w-full max-w-4xl"
-          />
 
           {/* A quiet session and a broken connection both mean "these numbers
               are not moving", and they used to print the same alarming line.

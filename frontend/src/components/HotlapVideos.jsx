@@ -27,6 +27,9 @@ export default function HotlapVideos({
   hideWhenEmpty = false,
   subtitle = `Learn ${track} before Friday`,
   className = "",
+  // Just the picker and the player, no card or heading: for a card that
+  // already has its own chrome (live timing's map card, where it is a tab).
+  bare = false,
 }) {
   const [i, setI] = useState(0);
   useEffect(() => setI(0), [track]);
@@ -34,11 +37,13 @@ export default function HotlapVideos({
   if (!videos?.length) return hideWhenEmpty ? null : <HotlapComingSoon track={track} className={className} />;
   const current = videos[Math.min(i, videos.length - 1)];
   return (
-    <div className={`card reveal overflow-hidden p-5 ${className}`}>
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
-        <span className="font-mono text-[11px] uppercase tracking-wider text-light">{subtitle}</span>
-      </div>
+    <div className={bare ? `p-3 ${className}` : `card reveal overflow-hidden p-5 ${className}`}>
+      {!bare && (
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Hotlap</h3>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">{subtitle}</span>
+        </div>
+      )}
       {videos.length > 1 && (
         <div className="mb-3 flex flex-wrap gap-2">
           {videos.map((v, idx) => (
