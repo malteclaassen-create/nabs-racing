@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { activityTotals } from "./tokens.js";
 
-// Two briefings: Fri 18 Sep and Fri 25 Sep 2026, 19:00 Berlin (17:00 UTC).
+// Two F1 briefings: Fri 18 Sep and Fri 25 Sep 2026, 19:00 Berlin (17:00 UTC),
+// and a race of the Sunday series in between them.
 const B1 = Date.parse("2026-09-18T17:00:00Z");
 const B2 = Date.parse("2026-09-25T17:00:00Z");
+const SUN = Date.parse("2026-09-20T16:00:00Z");
 function db({ days, cuts }) {
   return {
     async $queryRawUnsafe(sql, ...a) {
-      if (/FROM "Race"/.test(sql)) return [{ date: B1, parentRaceId: null }, { date: B2, parentRaceId: null }, { date: B2, parentRaceId: "x" }];
+      if (/FROM "Race"/.test(sql)) return [
+          { date: B1, parentRaceId: null, primary: 1 },
+          { date: B2, parentRaceId: null, primary: 1 },
+          { date: B2, parentRaceId: "x", primary: 1 }, // sprint half: no briefing of its own
+          { date: SUN, parentRaceId: null, primary: 0 }, // Sunday series: no reset
+        ];
       if (/TokenActivityCut/.test(sql)) return cuts[a[1]] ? [cuts[a[1]]] : [];
       if (/SUM/.test(sql)) {
         const [, from, to] = a;
@@ -34,6 +41,12 @@ describe("multiplier window: briefing to briefing", () => {
     const t = await activityTotals(db({ days, cuts }), "1", B2);
     expect(t).toMatchObject({ chatMessages: 20 + 100 + 40, vcMinutes: 40 + 200 + 50, since: B1 });
   });
+  it("a Sunday race is paid on the last complete F1 window", async () => {
+    const sunday = Date.parse("2026-09-27T16:00:00Z"); // after B2
+    const t = await activityTotals(db({ days, cuts }), "1", sunday);
+    expect(t).toMatchObject({ chatMessages: 20 + 100 + 40, vcMinutes: 40 + 200 + 50, since: B1 });
+  });
+
   it("resets right after a briefing", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.parse("2026-09-26T12:00:00Z"));

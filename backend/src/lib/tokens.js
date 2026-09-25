@@ -990,15 +990,24 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
 // When rounds start (the briefing), as instants, for the league days they fall
 // on. Held a few minutes: the bot reports every five.
 //
-// `briefings` is the same thing as one sorted list, minus the sprint halves: a
-// sprint weekend has one briefing, the main race's, and that is where the
-// multiplier's window turns over.
+// `briefings` is what the multiplier's window turns over on: the F1 briefings
+// only, i.e. the rounds of the primary series (Series.isActive). A race of
+// another series (the Sunday one) does not open a window of its own, and
+// neither does a sprint half, since a sprint weekend has one briefing, the main
+// race's. With no primary series marked, every series' rounds count.
 let roundStarts = { at: 0, byDay: new Map(), briefings: [] };
 async function loadRoundStarts(prisma) {
   if (Date.now() - roundStarts.at > 5 * 60 * 1000) {
     const rows = await prisma
-      .$queryRawUnsafe(`SELECT "date", "parentRaceId" FROM "Race" WHERE "date" IS NOT NULL AND "isSpecialEvent" = 0`)
+      .$queryRawUnsafe(
+        `SELECT r."date", r."parentRaceId", se."isActive" AS "primary"
+           FROM "Race" r
+           LEFT JOIN "Season" s ON s."id" = r."seasonId"
+           LEFT JOIN "Series" se ON se."id" = s."seriesId"
+          WHERE r."date" IS NOT NULL AND r."isSpecialEvent" = 0`
+      )
       .catch(() => []);
+    const anyPrimary = rows.some((r) => Number(r.primary) === 1 || r.primary === true);
     const byDay = new Map();
     const briefings = new Set();
     for (const r of rows) {
@@ -1006,7 +1015,8 @@ async function loadRoundStarts(prisma) {
       if (!start) continue;
       const key = leagueDay(start.getTime());
       byDay.set(key, [...(byDay.get(key) || []), start.getTime()]);
-      if (!r.parentRaceId) briefings.add(start.getTime());
+      const primary = Number(r.primary) === 1 || r.primary === true;
+      if (!r.parentRaceId && (primary || !anyPrimary)) briefings.add(start.getTime());
     }
     roundStarts = { at: Date.now(), byDay, briefings: [...briefings].sort((a, b) => a - b) };
   }
@@ -1016,12 +1026,13 @@ async function roundStartsOn(prisma, day) {
   return (await loadRoundStarts(prisma)).byDay.get(day) || [];
 }
 
-// The last briefing strictly before `t`, or null when there has been none.
-async function briefingBefore(prisma, t) {
+// The last F1 briefing before `t` (or at it, with `inclusive`), or null when
+// there has been none.
+async function briefingBefore(prisma, t, { inclusive = false } = {}) {
   const { briefings } = await loadRoundStarts(prisma);
   let found = null;
   for (const b of briefings) {
-    if (b >= t) break;
+    if (inclusive ? b > t : b >= t) break;
     found = b;
   }
   return found;
@@ -1035,6 +1046,10 @@ async function briefingBefore(prisma, t) {
 // With `until` (a round's start) the window is the one that closed at that
 // briefing: from the briefing before it up to it. Without, it runs from the
 // latest briefing up to now.
+//
+// Only F1 briefings open and close windows. A race of another series (the
+// Sunday one) is paid on the last complete F1 window before it, the same one
+// the Friday race before it was paid on.
 //
 // Activity is stored per day, so the two briefing days are split with the cut
 // taken at the briefing (TokenActivityCut): the opening day counts only what
@@ -1067,6 +1082,10 @@ export async function activityTotals(prisma, discordId, until = null) {
       return cut.length ? sum(cut) : dayRow(day);
     };
 
+    if (until) {
+      const closedAt = await briefingBefore(prisma, until, { inclusive: true });
+      if (closedAt != null && closedAt !== until) return activityTotals(prisma, discordId, closedAt);
+    }
     const end = until ?? Date.now();
     const opened = await briefingBefore(prisma, end);
     const firstDay = opened != null ? leagueDay(opened) : activityWindowStart(end);
