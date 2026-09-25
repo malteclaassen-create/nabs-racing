@@ -70,17 +70,25 @@ function TokenPill({ mobile = false, segment = false }) {
   const [run, setRun] = useState(null);
   // Which look the running light has. DEVELOPMENT ONLY: ?runfx=1..5 picks one
   // while the league decides; a built site always has the first.
+  // The demo number, so the pill can make room for it before it plays.
+  const demoN = import.meta.env.DEV ? Number(new URLSearchParams(window.location.search).get("tokendemo")) || 0 : 0;
+  const demoPlayed = useRef(false);
+  // The widest the number's slot has been this visit. It never narrows again
+  // until the next page load, so the capsule does not shrink after a show.
+  const widest = useRef(0);
   const runFx = (import.meta.env.DEV && Number(new URLSearchParams(window.location.search).get("runfx"))) || 1;
 
   // Spending: the number glides DOWN to the new total and the pink light goes
   // round once. Rises are not handled here, they arrive as news below.
   const [gliding, setGliding] = useState(null);
+  const glideFrom = useRef(null);
   const lastShown = useRef(null);
   useEffect(() => {
     if (balance === null) return;
     const prev = lastShown.current;
     lastShown.current = balance;
     if (prev === null || balance >= prev || playing.current || motionOff()) return;
+    glideFrom.current = prev;
     setRun("spend");
     const off = setTimeout(() => setRun((r) => (r === "spend" ? null : r)), 1500);
     let raf = 0;
@@ -110,6 +118,7 @@ function TokenPill({ mobile = false, segment = false }) {
       ? Number(new URLSearchParams(window.location.search).get("tokendemo"))
       : 0;
     // The demo climbs from 0, whatever the account really holds.
+    if (demo > 0) demoPlayed.current = true;
     const news = demo > 0
       ? { gained: demo, from: 0, reasons: [{ title: "Raced a round", detail: "Demo" }] }
       : takeTokenGain();
@@ -161,8 +170,26 @@ function TokenPill({ mobile = false, segment = false }) {
   if (balance === null) return null;
   const announcing = play && counting === play.from;
   // While news is held back the old number stays up, so it can climb later.
-  const held = !play && !ready ? peekTokenGain() : null;
+  const held =
+    !play && !ready
+      ? peekTokenGain() || (demoN > 0 && !demoPlayed.current ? { from: 0, gained: demoN, to: demoN } : null)
+      : null;
   const shown = counting ?? gliding ?? (held ? held.from : balance);
+  // How wide the number's slot is, in characters (the font is monospaced, so
+  // a character is exactly 1ch). While news waits or plays it is already as
+  // wide as the widest thing it will hold, the old number, the new one and
+  // the "+250", so the capsule does not grow in the middle of the show and
+  // the "+250" never spills into the star. Otherwise it follows the number,
+  // and the width glides rather than jumps (see the transition below).
+  const len = (n) => String(Math.round(Number(n) || 0)).length;
+  const news = play || held;
+  const want = news
+    ? Math.max(len(news.from), len(play ? play.to : news.to ?? balance), len(news.gained) + 1)
+    : gliding !== null
+      ? Math.max(len(glideFrom.current), len(balance))
+      : len(shown);
+  const slot = Math.max(want, widest.current);
+  widest.current = slot;
   // What the tokens were for, for the tooltip: "Raced a round, Spa" reads
   // better than a bare number when somebody wonders where it came from.
   const why = play?.reasons?.length
@@ -186,7 +213,10 @@ function TokenPill({ mobile = false, segment = false }) {
       </span>
       {/* The count and the "+100" share one slot: the number steps aside while
           the news rises through its place, then comes back and climbs. */}
-      <span className="relative inline-flex min-w-[2ch] items-center justify-end leading-none">
+      <span
+        className="relative inline-flex items-center justify-end leading-none transition-[min-width] duration-300"
+        style={{ minWidth: `${Math.max(1, slot)}ch` }}
+      >
         <span className={announcing ? "invisible" : undefined}>{shown}</span>
         {announcing && (
           // Green, not the league's pink: this is the one place on the bar
