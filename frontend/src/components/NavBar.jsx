@@ -20,7 +20,8 @@ import { openFeedback } from "./FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
 import { DriverAvatar } from "./ui.jsx";
-import { useTokenBalance, takeTokenGain } from "../hooks/useTokenBalance.js";
+import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useTokenBalance.js";
+import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
 
@@ -58,15 +59,27 @@ function TokenPill({ mobile = false, segment = false }) {
   // renders (the strip and the open menu on a phone) asks first gets it, and
   // the hook hands it out exactly once.
   const playing = useRef(false);
-  // Any OTHER change of the balance (a purchase, a refund) glides to the new
-  // number instead of jumping. Spending is never celebrated, it just moves.
+  // News waits until the member is past the race recap: the host has to have
+  // had its answer, and we must not be ON the recap page. The tokens are the
+  // last beat of the evening, after the recap is clicked away.
+  const { pathname } = useLocation();
+  const recapSettled = useRecapSettled();
+  const ready = recapSettled && !/\/recap\//.test(pathname);
+  // The light running round the outside of the capsule: "ok" (green) while
+  // news plays, "spend" (the league pink, once round) after a purchase.
+  const [run, setRun] = useState(null);
+
+  // Spending: the number glides DOWN to the new total and the pink light goes
+  // round once. Rises are not handled here, they arrive as news below.
   const [gliding, setGliding] = useState(null);
   const lastShown = useRef(null);
   useEffect(() => {
     if (balance === null) return;
     const prev = lastShown.current;
     lastShown.current = balance;
-    if (prev === null || prev === balance || playing.current || motionOff()) return;
+    if (prev === null || balance >= prev || playing.current || motionOff()) return;
+    setRun("spend");
+    const off = setTimeout(() => setRun((r) => (r === "spend" ? null : r)), 1500);
     let raf = 0;
     const t0 = performance.now();
     const tick = (t) => {
@@ -76,13 +89,16 @@ function TokenPill({ mobile = false, segment = false }) {
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(off);
+    };
   }, [balance]);
 
   // Picking the news up. Runs whenever the balance changes, which is also how a
   // member who leaves the site open gets their reward the moment it lands.
   useEffect(() => {
-    if (balance === null || playing.current) return;
+    if (balance === null || playing.current || !ready) return;
     // DEVELOPMENT ONLY: ?tokendemo=250 plays the whole thing with a made-up
     // gain, as often as you like, without a race being scored first. It touches
     // nothing — no ledger row, no "seen" mark — and the branch is compiled out
@@ -101,9 +117,10 @@ function TokenPill({ mobile = false, segment = false }) {
       return;
     }
     playing.current = true;
+    setRun("ok");
     setPlay({ ...news, to: balance, demo: demo > 0 });
     setCounting(news.from);
-  }, [balance]);
+  }, [balance, ready]);
 
   // Playing it. Deliberately its OWN effect, keyed on the news rather than on
   // the balance: the first version hung both on the balance, so the refetch
@@ -123,6 +140,7 @@ function TokenPill({ mobile = false, segment = false }) {
           return;
         }
         playing.current = false;
+        setRun(null);
         setPlay(null);
         setCounting(null);
         if (!play.demo) api.markTokensSeen().catch(() => {});
@@ -137,7 +155,9 @@ function TokenPill({ mobile = false, segment = false }) {
 
   if (balance === null) return null;
   const announcing = play && counting === play.from;
-  const shown = counting ?? gliding ?? balance;
+  // While news is held back the old number stays up, so it can climb later.
+  const held = !play && !ready ? peekTokenGain() : null;
+  const shown = counting ?? gliding ?? (held ? held.from : balance);
   // What the tokens were for, for the tooltip: "Raced a round, Spa" reads
   // better than a bare number when somebody wonders where it came from.
   const why = play?.reasons?.length
@@ -153,11 +173,10 @@ function TokenPill({ mobile = false, segment = false }) {
           ? // the right half of the identity capsule: shares its border with the chip
             "border-l border-border bg-brand/10 py-1.5 pl-2.5 pr-3 text-dark hover:bg-brand/20"
           : `rounded-lg border border-border px-2.5 py-1.5 text-dark hover:bg-surface2 ${mobile ? "" : "ml-1"}`
-      } ${play ? "token-pill-celebrating" : ""}`}
+      } ${segment ? "" : "nav-pill-solo"} ${play ? "token-pill-celebrating" : ""} ${run ? `token-run-${run}` : ""}`}
     >
-      {/* The coin catches the light now and then, hops when you point at it,
-          and bounces while news is coming in. See .nav-coin in index.css. */}
-      <span className={`nav-coin ${play ? "nav-coin-news" : ""}`} style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
+      {/* The coin catches the light now and then. See .nav-coin in index.css. */}
+      <span className="nav-coin" style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
         <TokenIcon className="h-5 w-5" />
       </span>
       {/* The count and the "+100" share one slot: the number steps aside while

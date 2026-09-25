@@ -35,6 +35,30 @@ export function useRaceRecapEnabled() {
 
 let asked = false; // once per page load, whichever page it was
 
+// Whether the host has had its answer, so the nav bar can hold a "+50" back
+// until the member is past the recap: the tokens are the ending, not
+// something that plays behind the recap page on its way in.
+const SETTLED_EVENT = "nabs-race-recap-settled";
+let settled = false;
+function settle() {
+  if (settled) return;
+  settled = true;
+  window.dispatchEvent(new Event(SETTLED_EVENT));
+}
+export function useRecapSettled() {
+  const [done, setDone] = useState(settled);
+  useEffect(() => {
+    if (settled) {
+      setDone(true);
+      return undefined;
+    }
+    const on = () => setDone(true);
+    window.addEventListener(SETTLED_EVENT, on);
+    return () => window.removeEventListener(SETTLED_EVENT, on);
+  }, []);
+  return done;
+}
+
 export default function RaceRecapHost() {
   const { isLoggedIn } = useAuth();
   const location = useLocation();
@@ -45,13 +69,13 @@ export default function RaceRecapHost() {
       asked = false; // the next login on this tab asks afresh
       return;
     }
-    if (asked) return;
+    if (asked) return settle();
     // Not on race night: the live page is left up for hours, and being sent
     // to last week's recap in the middle of this week's timing would be
     // rude. Nor from the admin, where the office is busy saving the very
     // result, and not from the recap page itself.
     const p = location.pathname;
-    if (p.startsWith("/admin") || p.startsWith("/auth") || /\/live(\/|$)/.test(p) || /\/recap\//.test(p)) return;
+    if (p.startsWith("/admin") || p.startsWith("/auth") || /\/live(\/|$)/.test(p) || /\/recap\//.test(p)) return settle();
     let gone = false;
     // A beat after the page, so the hand-over happens on a settled page.
     const t = setTimeout(() => {
@@ -63,7 +87,8 @@ export default function RaceRecapHost() {
           if (gone || !r?.recap) return;
           navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(settle);
     }, 900);
     return () => {
       gone = true;

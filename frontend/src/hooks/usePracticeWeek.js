@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useAuth } from "./useAuth.js";
 import { useSeries } from "../context/SeriesContext.jsx";
+import { TOKENS_CHANGED_EVENT } from "./useTokenBalance.js";
 
 // ---------------------------------------------------------------------------
 // This member's training week: laps done on the practice server since the last
@@ -21,6 +22,15 @@ import { useSeries } from "../context/SeriesContext.jsx";
 // ---------------------------------------------------------------------------
 
 let cached; // undefined = never asked, null = nothing to show
+let lastReached = null; // training milestones reached at the last answer
+
+function milestonesReached(week) {
+  if (!week) return 0;
+  const weeks = week.weeks?.length ? week.weeks : [week];
+  let n = 0;
+  for (const w of weeks) for (const t of w.tiers || []) if ((w.laps || 0) >= t.laps) n += 1;
+  return n;
+}
 let cachedFor; // the series the answer was asked for
 let inflight = null;
 const subs = new Map(); // setter -> how often that subscriber wants it, in ms
@@ -34,6 +44,11 @@ function load(series) {
       .tokenPractice(series)
       .then((r) => {
         cached = r?.enabled ? r.practice || null : null;
+        // A training milestone just paid: tell the nav bar to ask for the
+        // balance, so the green run and the "+10" happen while you watch.
+        const reached = milestonesReached(cached);
+        if (lastReached != null && reached > lastReached) window.dispatchEvent(new Event(TOKENS_CHANGED_EVENT));
+        lastReached = reached;
         return cached;
       })
       .catch(() => {

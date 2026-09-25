@@ -91,6 +91,12 @@ function load() {
 
 // Hand the waiting news to ONE caller. Whoever takes it owns it, and is
 // expected to tell the server it has been shown (api.markTokensSeen).
+// Look at the waiting news without taking it: the bar keeps showing the old
+// number while it holds the news back (behind the race recap).
+export function peekTokenGain() {
+  return pendingGain;
+}
+
 export function takeTokenGain() {
   const gain = pendingGain;
   pendingGain = null;

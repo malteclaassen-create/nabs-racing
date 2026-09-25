@@ -2140,10 +2140,8 @@ body::before {
 .fx-lite .nav-identity .nav-avatar { transition: none; }
 .fx-lite .nav-identity .nav-identity-me:hover .nav-avatar { transform: none; }
 
-/* The coin in the bar. It hops when you point at it (up and back, no tilt:
-   a tilted logo reads as a mistake), catches the light every nine seconds,
-   and bounces a few times while a "+50" is coming in. The glint is masked to
-   the star's own shape. */
+/* The coin in the bar catches the light every nine seconds. The glint is
+   masked to the star's own shape. */
 .nav-coin { position: relative; display: inline-flex; }
 .nav-coin::after {
   content: "";
@@ -2161,21 +2159,57 @@ body::before {
   0% { background-position: 150% 0; }
   10%, 100% { background-position: -60% 0; }
 }
-.nav-identity-points:hover .nav-coin { animation: nav-coin-hop 520ms var(--e-pop); }
-.nav-coin.nav-coin-news { animation: nav-coin-hop 520ms var(--e-pop) 3; }
-.nav-coin.nav-coin-news::after { animation: nav-coin-glint 1.2s var(--e-soft) 2; }
-@keyframes nav-coin-hop {
-  0% { transform: none; }
-  40% { transform: translateY(-4px) scale(1.14); }
-  70% { transform: translateY(0) scale(0.96); }
-  100% { transform: none; }
+
+/* A light running round the OUTSIDE of the whole identity capsule while
+   tokens come in (green, twice round) or go out (league pink, once). A
+   conic gradient spun by an animated angle, masked down to a 2px ring so only
+   the edge lights up. On a phone the pill stands alone and wears it itself. */
+@property --run-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.nav-identity { position: relative; }
+.nav-pill-solo { position: relative; }
+.nav-identity:has(.token-run-ok)::before,
+.nav-identity:has(.token-run-spend)::before,
+.nav-pill-solo.token-run-ok::before,
+.nav-pill-solo.token-run-spend::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--run-angle), transparent 0 40%, rgb(var(--run-rgb) / 0.3) 68%, rgb(var(--run-rgb)) 94%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+  animation: token-run-twice 2600ms linear both;
+}
+.nav-identity:has(.token-run-ok)::before,
+.nav-pill-solo.token-run-ok::before { --run-rgb: var(--c-ok); }
+.nav-identity:has(.token-run-spend)::before,
+.nav-pill-solo.token-run-spend::before { --run-rgb: var(--c-brand); animation: token-run-once 1300ms linear both; }
+@keyframes token-run-twice {
+  0% { --run-angle: 0deg; opacity: 0; }
+  5% { opacity: 1; }
+  93% { opacity: 1; }
+  100% { --run-angle: 720deg; opacity: 0; }
+}
+@keyframes token-run-once {
+  0% { --run-angle: 0deg; opacity: 0; }
+  8% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { --run-angle: 360deg; opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nav-coin, .nav-coin.nav-coin-news, .nav-identity-points:hover .nav-coin { animation: none; }
   .nav-coin::after { display: none; }
+  .nav-identity::before, .nav-pill-solo::before { display: none !important; }
 }
-.fx-lite .nav-coin, .fx-lite .nav-coin.nav-coin-news, .fx-lite .nav-identity-points:hover .nav-coin { animation: none; }
 .fx-lite .nav-coin::after { display: none; }
+.fx-lite .nav-identity::before, .fx-lite .nav-pill-solo::before { display: none !important; }
 
 /* The pill itself lights up for as long as there is news in it. */
 /* The green stays INSIDE the points half. There used to be a green border and a
