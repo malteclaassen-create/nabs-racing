@@ -16,7 +16,7 @@ import { getCareer } from "../services/careerService.js";
 import { resolveSeason, resolveSeasonId } from "../services/seasonService.js";
 import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
 import { applyPenalties } from "../services/pointsCalculator.js";
-import { resolveSeries } from "../lib/series.js";
+import { resolveSeries, SHARE_PAGES } from "../lib/series.js";
 import { getNameOverrides } from "./persons.js";
 import { readSocialLinks } from "./leagueSocials.js";
 import { primarySlug, seasonLabel, disciplineOf } from "./seo.js";
@@ -571,20 +571,27 @@ export function themeColorOf(series) {
   return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : DEFAULT_THEME_COLOR;
 }
 
-// The status-bar colour for an address. Private series count too: the colour
-// gives nothing away, and an admin previewing an unpublished series in the app
-// should see its bar. Any failure answers the default — a colour is never
-// worth failing a page load over.
+// The series an address belongs to: the root (and /join) is the primary
+// series, /s/<slug>/… is that series, and the unprefixed pages (downloads,
+// tools, the admin) belong to none (null). Private series count too: neither
+// the colour nor the share picture gives anything away, and an admin
+// previewing an unpublished series should see both.
+async function pageSeries(prisma, pathname) {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  if (!parts.length || (parts.length === 1 && parts[0] === "join")) {
+    return resolveSeries(prisma, undefined, { includePrivate: true });
+  }
+  if (parts[0] === "s" && parts[1]) {
+    return resolveSeries(prisma, decodeURIComponent(parts[1]), { includePrivate: true });
+  }
+  return null;
+}
+
+// The status-bar colour for an address. Any failure answers the default — a
+// colour is never worth failing a page load over.
 export async function pageThemeColor(prisma, pathname) {
   try {
-    const parts = String(pathname || "").split("/").filter(Boolean);
-    let series = null;
-    if (!parts.length || (parts.length === 1 && parts[0] === "join")) {
-      series = await resolveSeries(prisma, undefined, { includePrivate: true });
-    } else if (parts[0] === "s" && parts[1]) {
-      series = await resolveSeries(prisma, decodeURIComponent(parts[1]), { includePrivate: true });
-    }
-    return themeColorOf(series);
+    return themeColorOf(await pageSeries(prisma, pathname));
   } catch {
     return DEFAULT_THEME_COLOR;
   }
@@ -622,4 +629,138 @@ export function applyPageMeta(html, meta) {
       .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${d}$2`);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// The picture on a pasted link.
+//
+// index.html ships one og:image (og-image.jpg) for every page. A series can
+// replace it with its own (Series.shareImageUrl, uploaded in the Series tab),
+// so every link into that series — the landing page, the tables, sign-ups —
+// unfurls on Discord with that series' picture instead of the shared one. And
+// each page of the series can go one further with a picture of its own
+// (Series.shareImages), so a sign-up link and a standings link look different.
+// ---------------------------------------------------------------------------
+
+// Which page of a series an address is, as a SHARE_PAGES key: "home" for the
+// landing page (and /join), the alias-folded section for /s/<slug>/<section>
+// and anything below it (a driver's page is part of the standings), else null.
+export function sharePageOf(pathname) {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  if (!parts.length || (parts.length === 1 && parts[0] === "join")) return "home";
+  if (parts[0] !== "s" || !parts[1]) return null;
+  if (!parts[2]) return "home";
+  const section = SECTION_ALIASES[parts[2]] || parts[2];
+  return SHARE_PAGES[section] ? section : null;
+}
+
+// Which picture a page of a series unfurls with, and why: its own ("page"),
+// the series-wide one ("series"), or none of them ("default", the shipped
+// og-image.jpg, url null). Only server-generated upload paths
+// ("/api/uploads/…") count, so the columns can never point an unfurl
+// somewhere else. Pure.
+export function resolveShareImage(series, page) {
+  const ok = (u) => typeof u === "string" && u.startsWith("/api/uploads/");
+  const own = page && series?.shareImages?.[page];
+  if (ok(own)) return { url: own, source: "page" };
+  if (ok(series?.shareImageUrl)) return { url: series.shareImageUrl, source: "series" };
+  return { url: null, source: "default" };
+}
+
+// The absolute share-picture URL for an address, or null to keep the shipped
+// og-image.jpg.
+export async function pageShareImage(prisma, pathname, origin) {
+  try {
+    const series = await pageSeries(prisma, pathname);
+    if (!series || !origin) return null;
+    const { url } = resolveShareImage(series, sharePageOf(pathname));
+    return url ? `${origin}${url}` : null;
+  } catch {
+    return null;
+  }
+}
+
+// The admin's own link-preview wording for an address ({ title?,
+// description? }), or null when the page has none.
+export async function pageShareText(prisma, pathname) {
+  try {
+    const series = await pageSeries(prisma, pathname);
+    const page = sharePageOf(pathname);
+    const text = page && series?.shareTexts?.[page];
+    return text && (text.title || text.description) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+// Writes that wording into the og: and twitter: tags only. The <title> and
+// the meta description stay as applyPageMeta left them: those are what a
+// search engine shows, and they are written to be found, whereas this is
+// written to be clicked in a Discord channel.
+export function applyShareText(html, text) {
+  if (!text) return html;
+  let out = html;
+  if (text.title) {
+    const t = esc(text.title);
+    out = out
+      .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${t}$2`);
+  }
+  if (text.description) {
+    const d = esc(text.description);
+    out = out
+      .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${d}$2`);
+  }
+  return out;
+}
+
+// What each page of a series looks like as a pasted link, for the admin's
+// Link previews view: the same title, description, picture and stripe colour
+// the unfurler gets. A page with nothing of its own to say (or a private
+// series, which the public meta never describes) shows the shipped defaults,
+// which is exactly what the unfurler would see too.
+export const DEFAULT_TITLE = SITE;
+export const DEFAULT_DESCRIPTION =
+  "Formula 1 sim racing league on Assetto Corsa. Online F1 championship with driver and team standings, results, live timing and open sign-ups.";
+
+export async function linkPreviews(prisma, series) {
+  const color = themeColorOf(series);
+  return Promise.all(
+    Object.entries(SHARE_PAGES).map(async ([page, label]) => {
+      const path = page === "home" ? `/s/${series.slug}` : `/s/${series.slug}/${page}`;
+      const meta = await buildPageMeta(prisma, path).catch(() => null);
+      const image = resolveShareImage(series, page);
+      const own = series.shareTexts?.[page] || {};
+      const autoTitle = meta?.title || DEFAULT_TITLE;
+      const autoDescription = meta?.description || DEFAULT_DESCRIPTION;
+      return {
+        page,
+        label,
+        path,
+        title: own.title || autoTitle,
+        description: own.description || autoDescription,
+        autoTitle,
+        autoDescription,
+        ownTitle: own.title || null,
+        ownDescription: own.description || null,
+        image: image.url || "/og-image.jpg",
+        imageSource: image.source,
+        color,
+      };
+    })
+  );
+}
+
+// Rewrites og:image and twitter:image in the shipped index.html. The shipped
+// width/height tags describe og-image.jpg, not the upload, so they go: an
+// unfurler that is told the wrong size crops or letterboxes the picture,
+// whereas one told nothing measures it itself.
+export function applyShareImage(html, url) {
+  if (!url) return html;
+  const u = esc(url);
+  return html
+    .replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${u}$2`)
+    .replace(/(<meta name="twitter:image" content=")[^"]*(")/, `$1${u}$2`)
+    .replace(/\s*<meta property="og:image:(?:width|height)" content="[^"]*" \/>/g, "");
 }

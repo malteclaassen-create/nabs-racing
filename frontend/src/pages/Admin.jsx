@@ -59,6 +59,7 @@ const TAB_CHUNKS = {
   AdminTracks: () => import("../components/AdminTracks.jsx"),
   AdminAttendance: () => import("../components/AdminAttendance.jsx"),
   AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
+  AdminLinkPreviews: () => import("../components/AdminLinkPreviews.jsx"),
   AdminHealth: () => import("../components/AdminHealth.jsx"),
   AdminMembers: () => import("../components/AdminMembers.jsx"),
   AdminNotifications: () => import("../components/AdminNotifications.jsx"),
@@ -80,6 +81,7 @@ const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
 const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
 const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
 const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
+const AdminLinkPreviews = lazy(TAB_CHUNKS.AdminLinkPreviews);
 const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
 const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
 const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
@@ -158,6 +160,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "raceinfo", label: "Race Info" },
           { key: "faq", label: "Home FAQ" },
           { key: "social", label: "Social" },
+          { key: "links", label: "Link previews" },
           { key: "privacy", label: "Privacy & app" },
         ]}
         value={view}
@@ -172,6 +175,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           <AdminSocialFeed />
         </div>
       )}
+      {view === "links" && <AdminLinkPreviews />}
       {view === "privacy" && <AdminPrivacy />}
     </div>
   );

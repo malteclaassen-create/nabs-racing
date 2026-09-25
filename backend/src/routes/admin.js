@@ -106,7 +106,12 @@ import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
   writeSeriesLogo,
+  writeSeriesShareImage,
+  SHARE_PAGES,
+  parseShareText,
+  writeSeriesShareText,
 } from "../lib/series.js";
+import { linkPreviews } from "../lib/pageMeta.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
@@ -4953,6 +4958,90 @@ router.delete("/series/:id/logo", async (req, res, next) => {
     const series = await getSeriesById(prisma, req.params.id);
     if (!series) return res.status(404).json({ error: "Series not found" });
     await writeSeriesLogo(prisma, series.id, null);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/series/:id/link-previews -> every page of the series as a
+// pasted link would show it (lib/pageMeta.js linkPreviews), for the Link
+// previews view in the Site tab.
+router.get("/series/:id/link-previews", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const pages = await linkPreviews(prisma, series);
+    res.json({
+      series: { id: series.id, name: series.name, slug: series.slug, shareImageUrl: series.shareImageUrl },
+      pages,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/series/:id/share-text/:page  { title, description }
+// The page's own wording on a pasted link (og:/twitter: tags only; the page
+// title and search snippet keep theirs). Blank = the automatic text; both
+// blank clears the override.
+router.put("/series/:id/share-text/:page", async (req, res, next) => {
+  try {
+    const page = req.params.page;
+    if (!SHARE_PAGES[page]) return res.status(400).json({ error: "Unknown page" });
+    const parsed = parseShareText(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await writeSeriesShareText(prisma, series.id, page, parsed.value);
+    res.json({ ok: true, ...parsed.value });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/share-image[/:page]  (multipart: file=<image>)
+// Uploads (or replaces) the picture a pasted link into this series unfurls
+// with on Discord & co (og:image; lib/pageMeta.js applyShareImage). Without a
+// page it is the series-wide picture; with one (a lib/series.js SHARE_PAGES
+// key: attendance, drivers, …) it is that page's own, which wins over the
+// series-wide one. PNG or JPEG only: WEBP and SVG don't unfurl everywhere.
+// 1200x630 is the size the unfurlers are built around; anything else gets
+// cropped or letterboxed.
+const SHARE_IMAGE_EXT = { "image/png": ".png", "image/jpeg": ".jpg" };
+router.post("/series/:id/share-image/:page?", upload.single("file"), async (req, res, next) => {
+  try {
+    const page = req.params.page || null;
+    if (page && !SHARE_PAGES[page]) return res.status(400).json({ error: "Unknown page" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = SHARE_IMAGE_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use JPG or PNG)" });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+
+    mkdirSync(SERIES_DIR, { recursive: true });
+    const filename = `${series.id}-share${page ? `-${page}` : ""}${ext}`;
+    const dest = safeUploadPath(SERIES_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This series' id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
+    // Cache-bust: Discord caches an unfurl's picture by its URL.
+    const shareImageUrl = `/api/uploads/series/${filename}?v=${Date.now()}`;
+    await writeSeriesShareImage(prisma, series.id, shareImageUrl, page);
+    res.json({ ok: true, shareImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id/share-image[/:page] -> clear it: a page falls
+// back to the series-wide picture, the series-wide one to og-image.jpg.
+router.delete("/series/:id/share-image/:page?", async (req, res, next) => {
+  try {
+    const page = req.params.page || null;
+    if (page && !SHARE_PAGES[page]) return res.status(400).json({ error: "Unknown page" });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await writeSeriesShareImage(prisma, series.id, null, page);
     res.json({ ok: true });
   } catch (e) {
     next(e);

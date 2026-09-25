@@ -126,6 +126,7 @@ export const TAB_VIEWS = {
     raceinfo: "Race Info",
     faq: "Home FAQ",
     social: "Social",
+    links: "Link previews",
     privacy: "Privacy & app",
   },
   system: {
@@ -605,6 +606,14 @@ export const ADMIN_INDEX = [
     title: "Home page FAQ",
     hint: "The questions and answers newcomers see on the front page.",
     keywords: "faq questions answers welcome home newcomer help",
+  },
+  {
+    tab: "site",
+    view: "links",
+    title: "Link previews",
+    hint: "How links to each page look on Discord, and the picture each one shows.",
+    keywords:
+      "link preview embed discord unfurl og image open graph share picture background thumbnail card whatsapp",
   },
   {
     tab: "site",

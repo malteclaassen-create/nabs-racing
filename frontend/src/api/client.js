@@ -1072,6 +1072,20 @@ export const api = {
     return request(`/admin/series/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearSeriesLogo: (id) => request(`/admin/series/${id}/logo`, { method: "DELETE", auth: true }),
+  // Every page of a series as a pasted link shows it (Site -> Link previews).
+  adminLinkPreviews: (id) => request(`/admin/series/${id}/link-previews`, { auth: true }),
+  // A page's own link-preview title/description (blank = automatic).
+  saveSeriesShareText: (id, page, body) =>
+    request(`/admin/series/${id}/share-text/${page}`, { method: "PUT", body, auth: true }),
+  // Series link-preview picture (og:image). No page = the series-wide one;
+  // a page (attendance, drivers, …) = that page's own, which wins over it.
+  uploadSeriesShareImage: (id, file, page = "") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/series/${id}/share-image${page ? `/${page}` : ""}`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeriesShareImage: (id, page = "") =>
+    request(`/admin/series/${id}/share-image${page ? `/${page}` : ""}`, { method: "DELETE", auth: true }),
 
   // seasons + teams (admin) — scoped to the series being edited
   adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),

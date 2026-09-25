@@ -27,6 +27,9 @@ function shapeSeries(r) {
     isPublic: r.isPublic == null ? true : !!Number(r.isPublic),
     accentColor: r.accentColor || null,
     logoDarkUrl: r.logoDarkUrl || null,
+    shareImageUrl: r.shareImageUrl || null,
+    shareImages: parseShareImages(r.shareImages),
+    shareTexts: parseShareTexts(r.shareTexts),
     createdAt: r.createdAt,
   };
 }
@@ -38,6 +41,100 @@ function shapeSeries(r) {
 // to a user-editable field.
 export async function writeSeriesLogo(prisma, id, url) {
   await prisma.$executeRawUnsafe(`UPDATE "Series" SET "logoDarkUrl" = ? WHERE "id" = ?`, url, id);
+}
+
+// The pages of a series that can carry a link-preview picture of their own,
+// on top of the series-wide one (shareImageUrl). Keys are the section names
+// in /s/<slug>/<section> (aliases folded, see lib/pageMeta.js), plus "home"
+// for the landing page. Labels are what the Series tab shows.
+export const SHARE_PAGES = {
+  home: "Home page",
+  attendance: "Sign-ups & attendance",
+  drivers: "Driver standings",
+  constructors: "Constructor standings",
+  races: "Results & calendar",
+  transfers: "Transfers",
+  records: "Records",
+  live: "Live timing",
+};
+
+// Series.shareImages: a JSON object { <page>: <url> }. Anything unreadable, or
+// any key that is not a known page, is dropped rather than trusted.
+function parseShareImages(raw) {
+  let obj = {};
+  try {
+    obj = raw ? JSON.parse(raw) : {};
+  } catch {
+    obj = {};
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (SHARE_PAGES[k] && typeof v === "string" && v) out[k] = v;
+  }
+  return out;
+}
+
+// Write the series' uploaded link-preview picture (og:image) URL, or null to
+// clear it. Server-generated, like the logo. Without a page it is the
+// series-wide picture (back to the shared og-image.jpg when cleared); with one
+// it is that page's own (back to the series-wide picture when cleared).
+export async function writeSeriesShareImage(prisma, id, url, page = null) {
+  if (!page) {
+    await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImageUrl" = ? WHERE "id" = ?`, url, id);
+    return;
+  }
+  const rows = await prisma.$queryRawUnsafe(`SELECT "shareImages" FROM "Series" WHERE "id" = ?`, id);
+  const map = parseShareImages(rows?.[0]?.shareImages);
+  if (url) map[page] = url;
+  else delete map[page];
+  const json = Object.keys(map).length ? JSON.stringify(map) : null;
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImages" = ? WHERE "id" = ?`, json, id);
+}
+
+// Series.shareTexts: JSON { <page>: { title?, description? } }, the admin's
+// own wording for a page's link preview (og:/twitter: tags only; the page
+// title and search snippet keep theirs, lib/pageMeta.js applyShareText).
+// Unknown pages, non-strings and blanks are dropped.
+export const SHARE_TITLE_MAX = 200;
+export const SHARE_DESCRIPTION_MAX = 400;
+function parseShareTexts(raw) {
+  let obj = {};
+  try {
+    obj = raw ? JSON.parse(raw) : {};
+  } catch {
+    obj = {};
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (!SHARE_PAGES[k] || !v || typeof v !== "object") continue;
+    const entry = {};
+    if (typeof v.title === "string" && v.title.trim()) entry.title = v.title.trim();
+    if (typeof v.description === "string" && v.description.trim()) entry.description = v.description.trim();
+    if (Object.keys(entry).length) out[k] = entry;
+  }
+  return out;
+}
+
+// Validates an admin's { title, description } for a page. Blank (or missing)
+// means "use the automatic one". Returns { ok, value } or { ok: false, error }.
+export function parseShareText(body) {
+  const title = String(body?.title ?? "").replace(/\s+/g, " ").trim();
+  const description = String(body?.description ?? "").replace(/\s+/g, " ").trim();
+  if (title.length > SHARE_TITLE_MAX) return { ok: false, error: `Title is longer than ${SHARE_TITLE_MAX} characters` };
+  if (description.length > SHARE_DESCRIPTION_MAX) {
+    return { ok: false, error: `Description is longer than ${SHARE_DESCRIPTION_MAX} characters` };
+  }
+  return { ok: true, value: { ...(title ? { title } : {}), ...(description ? { description } : {}) } };
+}
+
+// Write one page's link-preview wording (an empty object clears it).
+export async function writeSeriesShareText(prisma, id, page, value) {
+  const rows = await prisma.$queryRawUnsafe(`SELECT "shareTexts" FROM "Series" WHERE "id" = ?`, id);
+  const map = parseShareTexts(rows?.[0]?.shareTexts);
+  if (value && Object.keys(value).length) map[page] = value;
+  else delete map[page];
+  const json = Object.keys(map).length ? JSON.stringify(map) : null;
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareTexts" = ? WHERE "id" = ?`, json, id);
 }
 
 // Admin-picked accent colour: a plain 6-digit hex like "#6de0fc", or "" /

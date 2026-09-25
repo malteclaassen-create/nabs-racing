@@ -57,6 +57,16 @@ model Series {
   // accentColor above — a /logo-dark-<slug>.png convention has the identical
   // failure mode if the real slug ever differs from what was tested locally.
   logoDarkUrl String?
+  // Admin-uploaded link-preview picture (ensureSchema adds the column), e.g.
+  // "/api/uploads/series/<id>-share.jpg?v=<ts>". Replaces og-image.jpg as the
+  // og:image of every page of this series. null = the shared og-image.jpg.
+  shareImageUrl String?
+  // Per-page overrides of shareImageUrl, JSON { <page>: <url> } with pages
+  // from lib/series.js SHARE_PAGES (attendance, drivers, …). Raw-SQL column.
+  shareImages   String?
+  // Per-page link-preview wording, JSON { <page>: { title?, description? } }.
+  // Goes into the og:/twitter: tags only, never the page title. Raw-SQL column.
+  shareTexts    String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

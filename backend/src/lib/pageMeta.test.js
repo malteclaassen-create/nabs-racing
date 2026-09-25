@@ -14,9 +14,15 @@ import {
   themeColorOf,
   applyThemeColor,
   pageThemeColor,
+  pageShareImage,
+  sharePageOf,
+  applyShareText,
+  pageShareText,
+  applyShareImage,
   DEFAULT_THEME_COLOR,
 } from "./pageMeta.js";
 import { disciplineOf } from "./seo.js";
+import { parseShareText } from "./series.js";
 
 // Real Fridays and Sundays in league time, stored the way the app stores them.
 const FRIDAYS = ["2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29"];
@@ -167,6 +173,105 @@ describe("theme colour (the phone's status bar)", () => {
       },
     };
     expect(await pageThemeColor(prisma, "/s/sunday-championship")).toBe(DEFAULT_THEME_COLOR);
+  });
+});
+
+describe("share picture (og:image on a pasted link)", () => {
+  const HTML =
+    '<head><meta property="og:image" content="https://nabsracing.com/og-image.jpg" />\n' +
+    '    <meta property="og:image:width" content="1200" />\n' +
+    '    <meta property="og:image:height" content="630" />\n' +
+    '    <meta name="twitter:image" content="https://nabsracing.com/og-image.jpg" /></head>';
+  const rows = [
+    { id: "a", name: "F1 Friday", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1, shareImageUrl: "/api/uploads/series/a-share.jpg?v=1" },
+    {
+      id: "b", name: "Sunday", slug: "sunday", order: 1, isActive: 0, isPublic: 1, shareImageUrl: null,
+      shareImages: JSON.stringify({ attendance: "/api/uploads/series/b-share-attendance.png?v=2", bogus: "/api/uploads/x.png" }),
+    },
+    { id: "c", name: "Rogue", slug: "rogue", order: 2, isActive: 0, isPublic: 1, shareImageUrl: "https://evil.example/x.jpg" },
+  ];
+  const prisma = { $queryRawUnsafe: async () => rows };
+
+  it("answers the series' own picture as an absolute URL", async () => {
+    const o = "https://nabsracing.com";
+    expect(await pageShareImage(prisma, "/", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+    expect(await pageShareImage(prisma, "/s/friday-f1/attendance", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+    expect(await pageShareImage(prisma, "/s/sunday/attendance", o)).toBe(`${o}/api/uploads/series/b-share-attendance.png?v=2`);
+    expect(await pageShareImage(prisma, "/s/sunday/drivers", o)).toBe(null); // no page picture, no default
+    expect(await pageShareImage(prisma, "/s/rogue", o)).toBe(null); // never anything but an upload
+    expect(await pageShareImage(prisma, "/downloads", o)).toBe(null);
+  });
+
+  it("a page's own picture wins over the series default", async () => {
+    const own = [{ ...rows[0], shareImages: JSON.stringify({ drivers: "/api/uploads/series/a-share-drivers.jpg" }) }];
+    const p = { $queryRawUnsafe: async () => own };
+    const o = "https://nabsracing.com";
+    expect(await pageShareImage(p, "/s/friday-f1/drivers/abc", o)).toBe(`${o}/api/uploads/series/a-share-drivers.jpg`);
+    expect(await pageShareImage(p, "/s/friday-f1/attendance", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+  });
+
+  it("names the page an address is", () => {
+    expect(sharePageOf("/")).toBe("home");
+    expect(sharePageOf("/join")).toBe("home");
+    expect(sharePageOf("/s/sunday")).toBe("home");
+    expect(sharePageOf("/s/sunday/attendance")).toBe("attendance");
+    expect(sharePageOf("/s/sunday/results")).toBe("races");
+    expect(sharePageOf("/s/sunday/teams/x")).toBe("constructors");
+    expect(sharePageOf("/s/sunday/admin")).toBe(null);
+    expect(sharePageOf("/downloads")).toBe(null);
+  });
+
+  it("rewrites both picture tags and drops the stale size tags", () => {
+    const out = applyShareImage(HTML, "https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&x=2");
+    expect(out).not.toContain("og-image.jpg");
+    expect(out).not.toContain("og:image:width");
+    expect(out).not.toContain("og:image:height");
+    expect(out).toContain('<meta property="og:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
+    expect(out).toContain('<meta name="twitter:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
+    expect(applyShareImage(HTML, null)).toBe(HTML);
+  });
+});
+
+describe("link preview wording (og:/twitter: text)", () => {
+  const HTML =
+    '<head><title>Season 8 sign-ups</title><meta name="description" content="auto" />' +
+    '<meta property="og:title" content="auto" /><meta property="og:description" content="auto" />' +
+    '<meta name="twitter:title" content="auto" /><meta name="twitter:description" content="auto" /></head>';
+
+  it("rewrites the social tags only, never the page title or search snippet", () => {
+    const out = applyShareText(HTML, { title: 'Sign up <now> & "race"', description: "Grid is filling" });
+    expect(out).toContain('<meta property="og:title" content="Sign up &lt;now&gt; &amp; &quot;race&quot;" />');
+    expect(out).toContain('<meta name="twitter:title" content="Sign up &lt;now&gt; &amp; &quot;race&quot;" />');
+    expect(out).toContain('<meta property="og:description" content="Grid is filling" />');
+    expect(out).toContain('<meta name="twitter:description" content="Grid is filling" />');
+    expect(out).toContain("<title>Season 8 sign-ups</title>");
+    expect(out).toContain('<meta name="description" content="auto" />');
+  });
+
+  it("a title alone leaves the automatic description, and nothing leaves the page alone", () => {
+    const out = applyShareText(HTML, { title: "Only the title" });
+    expect(out).toContain('<meta property="og:description" content="auto" />');
+    expect(applyShareText(HTML, null)).toBe(HTML);
+  });
+
+  it("answers the page's own wording, and nothing for a page without", async () => {
+    const rows = [
+      {
+        id: "a", name: "F1", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1,
+        shareTexts: JSON.stringify({ attendance: { title: "Sign up!" }, nope: { title: "x" }, drivers: { title: "  " } }),
+      },
+    ];
+    const prisma = { $queryRawUnsafe: async () => rows };
+    expect(await pageShareText(prisma, "/s/friday-f1/attendance")).toEqual({ title: "Sign up!" });
+    expect(await pageShareText(prisma, "/s/friday-f1/drivers")).toBe(null);
+    expect(await pageShareText(prisma, "/downloads")).toBe(null);
+  });
+
+  it("validates what the admin typed", () => {
+    expect(parseShareText({ title: "  Sign   up ", description: "" })).toEqual({ ok: true, value: { title: "Sign up" } });
+    expect(parseShareText({})).toEqual({ ok: true, value: {} });
+    expect(parseShareText({ title: "x".repeat(201) }).ok).toBe(false);
+    expect(parseShareText({ description: "x".repeat(401) }).ok).toBe(false);
   });
 });
 

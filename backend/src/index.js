@@ -47,6 +47,10 @@ import {
   applyJsonLd,
   pageThemeColor,
   applyThemeColor,
+  applyShareImage,
+  applyShareText,
+  pageShareText,
+  pageShareImage,
 } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
@@ -580,6 +584,16 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     // the page later changes it, so the colour has to be right in the HTML.
     try {
       html = applyThemeColor(html, await pageThemeColor(prisma, req.path));
+    } catch {
+      /* same rule */
+    }
+    // The picture on the unfurl: the page's or series' own, when one was
+    // uploaded (Site texts -> Link previews), else the shipped og-image.jpg.
+    try {
+      html = applyShareImage(html, await pageShareImage(prisma, req.path, publicOrigin(req)));
+      // And the admin's own wording for it (Site texts -> Link previews),
+      // in the og:/twitter: tags only, never the page title.
+      html = applyShareText(html, await pageShareText(prisma, req.path));
     } catch {
       /* same rule */
     }
