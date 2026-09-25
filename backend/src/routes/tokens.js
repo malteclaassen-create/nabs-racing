@@ -53,6 +53,7 @@ import {
   tunedPracticeServers,
   tunedMultiplier,
   activityBoard,
+  activityForDay,
   FLAIRS,
   CUSTOM_FLAIR_MAX,
   hallOfFameWall,
@@ -324,6 +325,24 @@ router.post("/activity", async (req, res, next) => {
       if (out.ok) written++;
     }
     res.json({ ok: true, written, skipped: entries.length - written });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/tokens/activity/day { key, day } — what the site has stored for
+// one day, every member. The bot asks on startup so a restart carries on from
+// the stored totals instead of counting the day again from zero. POST for the
+// same reason as above: the key travels in the body, never in a URL that ends
+// up in a log.
+router.post("/activity/day", async (req, res, next) => {
+  try {
+    if (!(await activityKeyValid(prisma, req.body?.key))) {
+      return res.status(401).json({ error: "Bad key" });
+    }
+    const out = await activityForDay(prisma, req.body?.day);
+    if (out.error) return res.status(400).json(out);
+    res.json(out);
   } catch (e) {
     next(e);
   }

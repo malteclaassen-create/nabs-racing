@@ -987,6 +987,28 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
   return { ok: true, day: d };
 }
 
+// Everything stored for one day, for the bot. It runs on a host that can lose
+// its notes on a restart, and a bot that starts the day again at zero reports
+// numbers below what is stored here, which the MAX in recordActivity then
+// ignores until it has caught up: everything it counted in between was lost.
+// Reading the day back on startup lets it carry on from here instead.
+export async function activityForDay(prisma, day) {
+  const d = String(day || leagueDay());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "Bad day" };
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT "discordId", "messages", "minutes" FROM "TokenActivity" WHERE "day" = ?`, d)
+    .catch(() => []);
+  return {
+    ok: true,
+    day: d,
+    entries: rows.map((r) => ({
+      discordId: String(r.discordId),
+      messages: Number(r.messages || 0),
+      minutes: Number(r.minutes || 0),
+    })),
+  };
+}
+
 // When rounds start (the briefing), as instants, for the league days they fall
 // on. Held a few minutes: the bot reports every five.
 //

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bumpMessages, bumpMinutes, forgetOldDays, markSent, pendingActivity } from "./store.js";
+import { bootSnapshot, bumpMessages, bumpMinutes, forgetOldDays, markSent, pendingActivity, seedFromSite } from "./store.js";
 
 const fresh = () => ({ days: {}, invites: {}, referrals: [] });
 
@@ -66,5 +66,37 @@ describe("forgetOldDays", () => {
     bumpMessages(s, "steve", 1, "2026-07-01");
     expect(forgetOldDays(s, Date.parse("2026-09-18T12:00:00Z"))).toBe(0);
     expect(Object.keys(s.days)).toEqual(["2026-07-01"]);
+  });
+});
+
+describe("seedFromSite", () => {
+  const day = "2026-09-25";
+
+  it("a restart that lost its notes carries on from the site's totals", () => {
+    // state.json is gone: the day starts empty, then one message comes in
+    // before the site has answered
+    const s = fresh();
+    const boot = bootSnapshot(s, day);
+    bumpMessages(s, "malte", 1, day);
+    seedFromSite(s, day, [{ discordId: "malte", messages: 30, minutes: 120 }], boot);
+    expect(s.days[day].malte).toMatchObject({ messages: 31, minutes: 120 });
+    // and that is what gets sent, above what the site has, so it counts
+    expect(pendingActivity(s)).toEqual([{ discordId: "malte", day, messages: 31, minutes: 120 }]);
+  });
+
+  it("notes that survived are not counted twice", () => {
+    const s = fresh();
+    bumpMessages(s, "steve", 30, day);
+    bumpMinutes(s, "steve", 120, day);
+    const boot = bootSnapshot(s, day);
+    bumpMinutes(s, "steve", 5, day);
+    seedFromSite(s, day, [{ discordId: "steve", messages: 30, minutes: 118 }], boot);
+    expect(s.days[day].steve).toMatchObject({ messages: 30, minutes: 125 });
+  });
+
+  it("members the bot has not seen since the restart are taken as the site has them", () => {
+    const s = fresh();
+    seedFromSite(s, day, [{ discordId: "duck", messages: 4, minutes: 60 }], bootSnapshot(s, day));
+    expect(s.days[day].duck).toMatchObject({ messages: 4, minutes: 60 });
   });
 });

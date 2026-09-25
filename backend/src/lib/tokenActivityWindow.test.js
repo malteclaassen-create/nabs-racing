@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { activityBoard, activityTotals } from "./tokens.js";
+import { activityBoard, activityForDay, activityTotals } from "./tokens.js";
 
 // Two F1 briefings: Fri 18 Sep and Fri 25 Sep 2026, 19:00 Berlin (17:00 UTC),
 // and a race of the Sunday series in between them.
@@ -78,5 +78,19 @@ describe("multiplier window: briefing to briefing", () => {
       ["quiet", 0, 0],
     ]);
     expect(board.members[1].multiplier.total).toBe(1);
+  });
+
+  it("hands the bot a whole day back, so a restart can carry on from it", async () => {
+    const prisma = {
+      async $queryRawUnsafe(sql, day) {
+        return day === "2026-09-25" ? [{ discordId: "1", messages: 30, minutes: 120 }] : [];
+      },
+    };
+    expect(await activityForDay(prisma, "2026-09-25")).toEqual({
+      ok: true,
+      day: "2026-09-25",
+      entries: [{ discordId: "1", messages: 30, minutes: 120 }],
+    });
+    expect((await activityForDay(prisma, "friday")).error).toBeTruthy();
   });
 });
