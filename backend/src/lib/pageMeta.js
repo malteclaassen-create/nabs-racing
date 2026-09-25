@@ -16,7 +16,7 @@ import { getCareer } from "../services/careerService.js";
 import { resolveSeason, resolveSeasonId } from "../services/seasonService.js";
 import { getPrivateSeasonIds, getSeasonTeaser } from "../services/seasonService.js";
 import { applyPenalties } from "../services/pointsCalculator.js";
-import { resolveSeries } from "../lib/series.js";
+import { resolveSeries, SHARE_PAGES } from "../lib/series.js";
 import { getNameOverrides } from "./persons.js";
 import { readSocialLinks } from "./leagueSocials.js";
 import { primarySlug, seasonLabel, disciplineOf } from "./seo.js";
@@ -637,17 +637,35 @@ export function applyPageMeta(html, meta) {
 // index.html ships one og:image (og-image.jpg) for every page. A series can
 // replace it with its own (Series.shareImageUrl, uploaded in the Series tab),
 // so every link into that series — the landing page, the tables, sign-ups —
-// unfurls on Discord with that series' picture instead of the shared one.
+// unfurls on Discord with that series' picture instead of the shared one. And
+// each page of the series can go one further with a picture of its own
+// (Series.shareImages), so a sign-up link and a standings link look different.
 // ---------------------------------------------------------------------------
 
+// Which page of a series an address is, as a SHARE_PAGES key: "home" for the
+// landing page (and /join), the alias-folded section for /s/<slug>/<section>
+// and anything below it (a driver's page is part of the standings), else null.
+export function sharePageOf(pathname) {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  if (!parts.length || (parts.length === 1 && parts[0] === "join")) return "home";
+  if (parts[0] !== "s" || !parts[1]) return null;
+  if (!parts[2]) return "home";
+  const section = SECTION_ALIASES[parts[2]] || parts[2];
+  return SHARE_PAGES[section] ? section : null;
+}
+
 // The absolute share-picture URL for an address, or null to keep the shipped
-// og-image.jpg. Only server-generated upload paths ("/api/uploads/…") are
-// accepted, so the column can never point an unfurl somewhere else.
+// og-image.jpg: the page's own picture, else the series-wide one. Only
+// server-generated upload paths ("/api/uploads/…") are accepted, so the
+// columns can never point an unfurl somewhere else.
 export async function pageShareImage(prisma, pathname, origin) {
   try {
-    const url = String((await pageSeries(prisma, pathname))?.shareImageUrl || "");
-    if (!url.startsWith("/api/uploads/") || !origin) return null;
-    return `${origin}${url}`;
+    const series = await pageSeries(prisma, pathname);
+    if (!series || !origin) return null;
+    const page = sharePageOf(pathname);
+    const candidates = [page && series.shareImages?.[page], series.shareImageUrl];
+    const url = candidates.find((u) => typeof u === "string" && u.startsWith("/api/uploads/"));
+    return url ? `${origin}${url}` : null;
   } catch {
     return null;
   }

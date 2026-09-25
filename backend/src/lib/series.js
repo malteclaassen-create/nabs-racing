@@ -28,6 +28,7 @@ function shapeSeries(r) {
     accentColor: r.accentColor || null,
     logoDarkUrl: r.logoDarkUrl || null,
     shareImageUrl: r.shareImageUrl || null,
+    shareImages: parseShareImages(r.shareImages),
     createdAt: r.createdAt,
   };
 }
@@ -41,10 +42,52 @@ export async function writeSeriesLogo(prisma, id, url) {
   await prisma.$executeRawUnsafe(`UPDATE "Series" SET "logoDarkUrl" = ? WHERE "id" = ?`, url, id);
 }
 
+// The pages of a series that can carry a link-preview picture of their own,
+// on top of the series-wide one (shareImageUrl). Keys are the section names
+// in /s/<slug>/<section> (aliases folded, see lib/pageMeta.js), plus "home"
+// for the landing page. Labels are what the Series tab shows.
+export const SHARE_PAGES = {
+  home: "Home page",
+  attendance: "Sign-ups & attendance",
+  drivers: "Driver standings",
+  constructors: "Constructor standings",
+  races: "Results & calendar",
+  transfers: "Transfers",
+  records: "Records",
+  live: "Live timing",
+};
+
+// Series.shareImages: a JSON object { <page>: <url> }. Anything unreadable, or
+// any key that is not a known page, is dropped rather than trusted.
+function parseShareImages(raw) {
+  let obj = {};
+  try {
+    obj = raw ? JSON.parse(raw) : {};
+  } catch {
+    obj = {};
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (SHARE_PAGES[k] && typeof v === "string" && v) out[k] = v;
+  }
+  return out;
+}
+
 // Write the series' uploaded link-preview picture (og:image) URL, or null to
-// clear it (back to the shared og-image.jpg). Server-generated, like the logo.
-export async function writeSeriesShareImage(prisma, id, url) {
-  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImageUrl" = ? WHERE "id" = ?`, url, id);
+// clear it. Server-generated, like the logo. Without a page it is the
+// series-wide picture (back to the shared og-image.jpg when cleared); with one
+// it is that page's own (back to the series-wide picture when cleared).
+export async function writeSeriesShareImage(prisma, id, url, page = null) {
+  if (!page) {
+    await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImageUrl" = ? WHERE "id" = ?`, url, id);
+    return;
+  }
+  const rows = await prisma.$queryRawUnsafe(`SELECT "shareImages" FROM "Series" WHERE "id" = ?`, id);
+  const map = parseShareImages(rows?.[0]?.shareImages);
+  if (url) map[page] = url;
+  else delete map[page];
+  const json = Object.keys(map).length ? JSON.stringify(map) : null;
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImages" = ? WHERE "id" = ?`, json, id);
 }
 
 // Admin-picked accent colour: a plain 6-digit hex like "#6de0fc", or "" /

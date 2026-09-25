@@ -15,6 +15,7 @@ import {
   applyThemeColor,
   pageThemeColor,
   pageShareImage,
+  sharePageOf,
   applyShareImage,
   DEFAULT_THEME_COLOR,
 } from "./pageMeta.js";
@@ -180,7 +181,10 @@ describe("share picture (og:image on a pasted link)", () => {
     '    <meta name="twitter:image" content="https://nabsracing.com/og-image.jpg" /></head>';
   const rows = [
     { id: "a", name: "F1 Friday", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1, shareImageUrl: "/api/uploads/series/a-share.jpg?v=1" },
-    { id: "b", name: "Sunday", slug: "sunday", order: 1, isActive: 0, isPublic: 1, shareImageUrl: null },
+    {
+      id: "b", name: "Sunday", slug: "sunday", order: 1, isActive: 0, isPublic: 1, shareImageUrl: null,
+      shareImages: JSON.stringify({ attendance: "/api/uploads/series/b-share-attendance.png?v=2", bogus: "/api/uploads/x.png" }),
+    },
     { id: "c", name: "Rogue", slug: "rogue", order: 2, isActive: 0, isPublic: 1, shareImageUrl: "https://evil.example/x.jpg" },
   ];
   const prisma = { $queryRawUnsafe: async () => rows };
@@ -189,9 +193,29 @@ describe("share picture (og:image on a pasted link)", () => {
     const o = "https://nabsracing.com";
     expect(await pageShareImage(prisma, "/", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
     expect(await pageShareImage(prisma, "/s/friday-f1/attendance", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
-    expect(await pageShareImage(prisma, "/s/sunday/attendance", o)).toBe(null);
+    expect(await pageShareImage(prisma, "/s/sunday/attendance", o)).toBe(`${o}/api/uploads/series/b-share-attendance.png?v=2`);
+    expect(await pageShareImage(prisma, "/s/sunday/drivers", o)).toBe(null); // no page picture, no default
     expect(await pageShareImage(prisma, "/s/rogue", o)).toBe(null); // never anything but an upload
     expect(await pageShareImage(prisma, "/downloads", o)).toBe(null);
+  });
+
+  it("a page's own picture wins over the series default", async () => {
+    const own = [{ ...rows[0], shareImages: JSON.stringify({ drivers: "/api/uploads/series/a-share-drivers.jpg" }) }];
+    const p = { $queryRawUnsafe: async () => own };
+    const o = "https://nabsracing.com";
+    expect(await pageShareImage(p, "/s/friday-f1/drivers/abc", o)).toBe(`${o}/api/uploads/series/a-share-drivers.jpg`);
+    expect(await pageShareImage(p, "/s/friday-f1/attendance", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+  });
+
+  it("names the page an address is", () => {
+    expect(sharePageOf("/")).toBe("home");
+    expect(sharePageOf("/join")).toBe("home");
+    expect(sharePageOf("/s/sunday")).toBe("home");
+    expect(sharePageOf("/s/sunday/attendance")).toBe("attendance");
+    expect(sharePageOf("/s/sunday/results")).toBe("races");
+    expect(sharePageOf("/s/sunday/teams/x")).toBe("constructors");
+    expect(sharePageOf("/s/sunday/admin")).toBe(null);
+    expect(sharePageOf("/downloads")).toBe(null);
   });
 
   it("rewrites both picture tags and drops the stale size tags", () => {

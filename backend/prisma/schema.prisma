@@ -61,6 +61,9 @@ model Series {
   // "/api/uploads/series/<id>-share.jpg?v=<ts>". Replaces og-image.jpg as the
   // og:image of every page of this series. null = the shared og-image.jpg.
   shareImageUrl String?
+  // Per-page overrides of shareImageUrl, JSON { <page>: <url> } with pages
+  // from lib/series.js SHARE_PAGES (attendance, drivers, …). Raw-SQL column.
+  shareImages   String?
   createdAt   DateTime @default(now())
 
   seasons Season[]
