@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   attachReferral,
   attachReferralById,
+  attachReferralByName,
+  removeReferral,
   gainFromSeen,
   SHOP_ITEMS,
   pickName,
@@ -122,11 +124,14 @@ describe("gainFromSeen", () => {
 // Both end in the same place, and these check that the second way cannot be
 // used to claim anything the first way could not.
 // ---------------------------------------------------------------------------
-function fakeDb({ accounts = [], hasRaced = [] } = {}) {
+function fakeDb({ accounts = [], hasRaced = [], ledger = [] } = {}) {
   const rows = accounts.map((a) => ({ referredBy: null, ...a }));
   return {
     rows,
+    ledger,
     async $queryRawUnsafe(sql, ...args) {
+      if (sql.includes('LEFT JOIN "MemberAccount"')) return rows;
+      if (sql.includes('FROM "MemberAccount" WHERE')) return rows.filter((r) => r.discordId === args[0]);
       if (sql.includes('"TokenAccount" WHERE "discordId"')) return rows.filter((r) => r.discordId === args[0]);
       if (sql.includes('"TokenAccount" WHERE "code"')) return rows.filter((r) => r.code === args[0]);
       if (sql.includes('FROM "Driver"')) return hasRaced.includes(args[0]) ? [{ id: `driver-${args[0]}` }] : [];
@@ -138,6 +143,21 @@ function fakeDb({ accounts = [], hasRaced = [] } = {}) {
       if (sql.includes('INSERT INTO "TokenAccount"')) {
         rows.push({ discordId: args[0], code: args[1], referredBy: null });
         return 1;
+      }
+      if (sql.includes('SET "referredBy" = NULL')) {
+        const row = rows.find((r) => r.discordId === args[0]);
+        if (row) row.referredBy = null;
+        return 1;
+      }
+      if (sql.includes('DELETE FROM "TokenLedger"')) {
+        const [owner, joinKey, raceLike] = args;
+        const prefix = raceLike.replace(/%$/, "").replace(/\\(.)/g, "$1");
+        const before = ledger.length;
+        for (let i = ledger.length - 1; i >= 0; i--) {
+          const r = ledger[i];
+          if (r.discordId === owner && (r.refKey === joinKey || r.refKey.startsWith(prefix))) ledger.splice(i, 1);
+        }
+        return before - ledger.length;
       }
       if (sql.includes('SET "referredBy"')) {
         const row = rows.find((r) => r.discordId === args[1]);
@@ -202,6 +222,62 @@ describe("a referral the Discord bot reports", () => {
   it("ignores an invite code that belongs to nobody", async () => {
     const db = fakeDb({ accounts: [{ discordId: "new" }] });
     expect(await attachReferral(db, "new", "ZZZZ99")).toBe(null);
+  });
+});
+
+// The newcomer types who brought them in: a code or a name.
+describe("naming who invited you", () => {
+  const STEVE = { discordId: "steve", code: "AAAA11", displayName: "Steve" };
+
+  it("takes the inviter's name, whatever the case", async () => {
+    const db = fakeDb({ accounts: [STEVE, { discordId: "new" }] });
+    expect(await attachReferralByName(db, "new", "  steve ")).toEqual({ ok: true, inviter: "Steve" });
+    expect(db.rows.find((r) => r.discordId === "new").referredBy).toBe("steve");
+  });
+
+  it("takes the inviter's code", async () => {
+    const db = fakeDb({ accounts: [STEVE, { discordId: "new" }] });
+    expect((await attachReferralByName(db, "new", "aaaa11")).ok).toBe(true);
+  });
+
+  it("refuses a name two members share, rather than guess", async () => {
+    const db = fakeDb({ accounts: [STEVE, { discordId: "steve2", code: "BBBB22", username: "steve" }, { discordId: "new" }] });
+    expect((await attachReferralByName(db, "new", "Steve")).error).toMatch(/more than one/i);
+    expect(db.rows.find((r) => r.discordId === "new").referredBy).toBe(null);
+  });
+
+  it("refuses nobody, yourself, a second inviter and a driver who has raced", async () => {
+    const db = fakeDb({
+      accounts: [STEVE, { discordId: "me", displayName: "Me" }, { discordId: "vet" }],
+      hasRaced: ["vet"],
+    });
+    expect((await attachReferralByName(db, "me", "Nobody")).error).toBeTruthy();
+    expect((await attachReferralByName(db, "me", "Me")).error).toBeTruthy();
+    expect((await attachReferralByName(db, "vet", "Steve")).error).toBeTruthy();
+    expect((await attachReferralByName(db, "me", "Steve")).ok).toBe(true);
+    expect((await attachReferralByName(db, "me", "Steve")).error).toMatch(/already/);
+  });
+});
+
+describe("taking a wrong inviter back", () => {
+  it("clears the inviter and what they were paid for that member, nothing else", async () => {
+    const db = fakeDb({
+      accounts: [{ discordId: "steve", code: "AAAA11" }, { discordId: "jayden", referredBy: "steve" }],
+      ledger: [
+        { discordId: "steve", refKey: "referral-join:jayden" },
+        { discordId: "steve", refKey: "referral-race:jayden:race1" },
+        { discordId: "steve", refKey: "referral-join:someone" },
+        { discordId: "steve", refKey: "race:race1:d1" },
+      ],
+    });
+    expect(await removeReferral(db, "jayden")).toEqual({ ok: true, removed: 2 });
+    expect(db.rows.find((r) => r.discordId === "jayden").referredBy).toBe(null);
+    expect(db.ledger.map((r) => r.refKey)).toEqual(["referral-join:someone", "race:race1:d1"]);
+  });
+
+  it("says so when there is nobody to take back", async () => {
+    const db = fakeDb({ accounts: [{ discordId: "jayden" }] });
+    expect((await removeReferral(db, "jayden")).error).toBeTruthy();
   });
 });
 

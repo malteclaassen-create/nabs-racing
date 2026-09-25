@@ -796,6 +796,7 @@ export async function ensureAppSchema(prisma) {
   )`);
 
   await migrateLiveLinksToSeries(prisma);
+  await resetReferralsOnce(prisma);
   await migrateTelemetryToSeries(prisma);
 }
 
@@ -858,5 +859,35 @@ async function migrateLiveLinksToSeries(prisma) {
     });
   } catch {
     /* best-effort: a failed copy leaves every series on the built-in defaults */
+  }
+}
+
+// Invites start again from zero, once. Until now a click on somebody's ?ref=
+// link, or joining the Discord through an invite somebody made, credited them,
+// and the Discord half credited whoever made the server's everyday link with
+// every newcomer. The league's decision: invites count only when the newcomer
+// names who brought them in when signing in, and only from now on. So every
+// inviter recorded so far is cleared and every point paid for an invite taken
+// back. Races and training laps are not touched.
+async function resetReferralsOnce(prisma) {
+  const MARKER = "token_referrals_reset_v1";
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: MARKER } });
+    if (done) return;
+    const removed = await prisma.$executeRawUnsafe(
+      `DELETE FROM "TokenLedger" WHERE "rule" IN ('referral_join','referral_race')
+          OR "refKey" LIKE 'referral-join:%' OR "refKey" LIKE 'referral-race:%'`
+    );
+    const cleared = await prisma.$executeRawUnsafe(
+      `UPDATE "TokenAccount" SET "referredBy" = NULL, "referredAt" = NULL WHERE "referredBy" IS NOT NULL`
+    );
+    await prisma.setting.upsert({
+      where: { key: MARKER },
+      update: {},
+      create: { key: MARKER, value: new Date().toISOString() },
+    });
+    console.log(`[tokens] invites reset: ${Number(cleared) || 0} inviters cleared, ${Number(removed) || 0} payments taken back`);
+  } catch (e) {
+    console.warn(`[tokens] invite reset failed, will retry on the next start: ${e.message}`);
   }
 }

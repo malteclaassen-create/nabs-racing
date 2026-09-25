@@ -453,8 +453,76 @@ export async function attachReferral(prisma, discordId, code) {
 // somebody joined the Discord server through a member's invite, so the bot
 // knows who brought them in and says so. Same guards, deliberately — where the
 // claim came from changes nothing about which claims are allowed.
+//
+// No longer called by the bot's route (routes/tokens.js): whoever made the
+// server's everyday invite link was credited with every newcomer who used it,
+// people they never talked to. Only the member's own link and a name the
+// newcomer types in count now.
 export async function attachReferralById(prisma, discordId, inviterDiscordId) {
   return linkReferral(prisma, discordId, inviterDiscordId);
+}
+
+// The newcomer names who brought them in: the inviter's code, or their name as
+// the site shows it. A name has to point at exactly one member, or nothing is
+// written and the answer says why, so a common name cannot land on the wrong
+// person. Same three guards as every other way in.
+export async function attachReferralByName(prisma, discordId, text) {
+  const q = String(text || "").trim();
+  if (!q) return { error: "Who invited you?" };
+  if (q.length > 64) return { error: "That name is too long." };
+  let inviter = await dbAccountByCode(prisma, q);
+  if (!inviter) {
+    const rows = await prisma
+      .$queryRawUnsafe(
+        `SELECT a."discordId", a."discordName", m."username", m."displayName",
+                (SELECT d."name" FROM "Driver" d WHERE d."discordUserId" = a."discordId" LIMIT 1) AS "driverName"
+           FROM "TokenAccount" a
+           LEFT JOIN "MemberAccount" m ON m."discordId" = a."discordId"`
+      )
+      .catch(() => []);
+    const want = q.toLowerCase();
+    const hits = rows.filter(
+      (r) =>
+        r.discordId !== discordId &&
+        [r.displayName, r.username, r.driverName, r.discordName].some((n) => String(n || "").trim().toLowerCase() === want)
+    );
+    if (hits.length > 1) return { error: "More than one member has that name. Ask them for their code." };
+    inviter = hits[0] || null;
+  }
+  if (!inviter) return { error: "Nobody found with that name or code." };
+  if (inviter.discordId === discordId) return { error: "You cannot invite yourself." };
+  const me = await ensureTokenAccount(prisma, discordId);
+  if (me?.referredBy) return { error: "You already have an inviter." };
+  if (await hasRacedBefore(prisma, discordId)) return { error: "Only new members can name an inviter." };
+  const linked = await linkReferral(prisma, discordId, inviter.discordId);
+  if (!linked) return { error: "That could not be saved." };
+  return { ok: true, inviter: await memberName(prisma, linked) };
+}
+
+// Can this member still name who brought them in? Nobody yet, and never raced.
+export async function canNameInviter(prisma, discordId, account) {
+  if (!discordId || account?.referredBy) return false;
+  return !(await hasRacedBefore(prisma, discordId));
+}
+
+// The league office takes an inviter back off a member: a wrong credit. What
+// the inviter was paid for this member goes with it, so the balance is as if
+// it had never happened, and the member can then name the right person.
+export async function removeReferral(prisma, discordId) {
+  const me = await dbGetTokenAccount(prisma, discordId).catch(() => null);
+  if (!me?.referredBy) return { error: "This member has no inviter." };
+  const esc = discordId.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const removed = await prisma.$executeRawUnsafe(
+    `DELETE FROM "TokenLedger" WHERE "discordId" = ? AND ("refKey" = ? OR "refKey" LIKE ? ESCAPE '\\')`,
+    me.referredBy,
+    `referral-join:${discordId}`,
+    `referral-race:${esc}:%`
+  );
+  await prisma.$executeRawUnsafe(
+    `UPDATE "TokenAccount" SET "referredBy" = NULL, "referredAt" = NULL WHERE "discordId" = ?`,
+    discordId
+  );
+  return { ok: true, removed: Number(removed) || 0 };
 }
 
 // Both ways in end here, so the three rules above are written once.
@@ -558,7 +626,7 @@ export async function driverIdsFor(prisma, discordId) {
 }
 
 // Name to print in somebody's history for a person they brought in.
-async function memberName(prisma, discordId) {
+export async function memberName(prisma, discordId) {
   try {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT "displayName","username" FROM "MemberAccount" WHERE "discordId" = ?`,

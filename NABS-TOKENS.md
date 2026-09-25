@@ -39,7 +39,7 @@ Set under "Rules and prices". Defaults come from the league's sheet:
 
 - finish a race: 50
 - finish it without a penalty: 20 on top, paid on the Tuesday after the round (that's when the stewards are done)
-- somebody signs up through your invite link or your Discord invite: 50
+- a newcomer names you (your name or code) when they sign in with Discord: 50. A click on a link no longer counts.
 - that person finishes a race: 30, for their first 12 races
 
 Racing points are multiplied by Discord activity (chat messages and voice time
@@ -89,8 +89,8 @@ hand, with a reason. Members see that reason in their history.
 ## 5. The Discord bot
 
 Optional but worth it. It counts messages and voice minutes (for the
-multiplier) and notices who invited whom on Discord, so referrals work without
-a link.
+multiplier). It still reports who joined through whose Discord invite, but the
+site no longer credits that: an invite counts only when the newcomer names you.
 
 Setup is in `discord-bot/README.md`. Short version: create a bot in the Discord
 developer portal, put it on the server with Manage Server and View Channels,

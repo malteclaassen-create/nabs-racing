@@ -174,33 +174,31 @@ export function takeDiscordReturnTo() {
   }
 }
 
-// The invite code a visitor arrived with (?ref=XXXXXX on any page of the site).
-// Remembered until they sign in, because that is the earliest moment the league
-// knows who they are — which can be days later, and is usually not in the tab
-// they first landed in. Hence localStorage rather than sessionStorage, and no
-// expiry: somebody who takes a week to make up their mind is exactly the person
-// the invite worked on.
-//
-// Kept, not consumed, when the login reads it: the backend records the first
-// inviter an account ever had and ignores every later one, so a second login on
-// the same machine changes nothing, and a failed sign-in does not throw the
-// invite away.
-const REF_KEY = "nabs_invite_ref";
-export function rememberInvite(code) {
-  const c = String(code || "").trim().toUpperCase();
-  if (!/^[A-Z0-9]{4,12}$/.test(c)) return;
+// Who invited this visitor, as they typed it on the sign-in page: a member's
+// name or invite code. Handed to the backend with the Discord login, which is
+// the moment the league knows who the newcomer is. Kept in this tab only
+// (sessionStorage), and cleared once the login has gone through, so the next
+// person to sign in on the same machine does not inherit it. A click on an
+// invite link no longer credits anybody: the newcomer has to say it.
+const INVITED_BY_KEY = "nabs_invited_by";
+export function rememberInviter(text) {
+  const t = String(text || "").trim().slice(0, 64);
   try {
-    localStorage.setItem(REF_KEY, c);
+    if (t) sessionStorage.setItem(INVITED_BY_KEY, t);
+    else sessionStorage.removeItem(INVITED_BY_KEY);
   } catch {
-    /* private mode with no storage — the invite is simply not credited */
+    /* no storage: the member can still name them on the points page */
   }
 }
-export function storedInvite() {
+export function storedInviter() {
   try {
-    return localStorage.getItem(REF_KEY) || null;
+    return sessionStorage.getItem(INVITED_BY_KEY) || null;
   } catch {
     return null;
   }
+}
+export function forgetInviter() {
+  rememberInviter("");
 }
 
 // The series the site is currently viewing (a URL slug), or null for the
@@ -835,12 +833,12 @@ export const api = {
     ),
   // The viewed series rides along so the login's season handover lands the
   // member on THAT series' roster (fallback: the primary series).
-  // The invite code rides along too (see rememberInvite): this is the first
-  // moment the account behind a ?ref= link has a name.
+  // Who invited them rides along too (see rememberInviter): this is the first
+  // moment the league knows who the newcomer is.
   discordCallback: (code) =>
     request("/auth/discord/callback", {
       method: "POST",
-      body: { code, redirectUri: discordRedirectUri(), ref: storedInvite(), ...seriesBody() },
+      body: { code, redirectUri: discordRedirectUri(), invitedBy: storedInviter(), ...seriesBody() },
     }),
 
   // --- server tokens (trial feature; { enabled: false } while it is switched
@@ -861,7 +859,8 @@ export const api = {
       `/admin/race-recap/preview?raceId=${encodeURIComponent(raceId)}${driverId ? `&driverId=${encodeURIComponent(driverId)}` : ""}`,
       { auth: true }
     ),
-  claimInvite: () => request("/tokens/invite", { method: "POST", body: { code: storedInvite() }, userAuth: true }),
+  // The newcomer names who brought them in: a code, or the member's name.
+  nameInviter: (name) => request("/tokens/invited-by", { method: "POST", body: { name }, userAuth: true }),
   // `text` is only read for the flair you write yourself (choice "custom").
   redeemToken: (itemKey, choice = null, text = null) =>
     request("/tokens/redeem", { method: "POST", body: { itemKey, choice, text }, userAuth: true }),
@@ -894,6 +893,8 @@ export const api = {
     request("/admin/tokens/enabled", { method: "POST", body: { enabled }, auth: true }),
   adjustTokens: (discordId, delta, note) =>
     request("/admin/tokens/adjust", { method: "POST", body: { discordId, delta, note }, auth: true }),
+  removeTokenReferral: (discordId) =>
+    request(`/admin/tokens/referral/${encodeURIComponent(discordId)}`, { method: "DELETE", auth: true }),
   updateTokenOrder: (id, body) =>
     request(`/admin/tokens/orders/${id}`, { method: "PATCH", body, auth: true }),
 

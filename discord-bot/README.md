@@ -3,7 +3,7 @@
 Small bot that sits on the league Discord and sends two things to the website:
 
 - messages + voice minutes per person per day (that's the activity multiplier)
-- who invited a new member (so the inviter gets their points automatically)
+- who invited a new member (the site keeps only the names now: a Discord invite no longer credits anybody, because the server's everyday link credited whoever made it)
 
 That's all it does. It doesn't read messages (doesn't even have the permission for it), doesn't post anything, doesn't touch roles. It just counts.
 
