@@ -59,12 +59,30 @@ function db({
       const row = practice.get(args.join("|"));
       return row ? [{ laps: row.laps }] : [];
     }
+    // Which circuit a row's laps were driven on, before the next one is added.
+    if (/SELECT "trackKey" FROM "TokenPractice"/.test(sql)) {
+      const row = practice.get(args.join("|"));
+      return row ? [{ trackKey: row.trackKey }] : [];
+    }
     // The switch-on read: every tally that is left.
-    if (/SELECT "steamId","series","period","server","laps" FROM "TokenPractice"/.test(sql)) {
+    if (/SELECT "steamId","series","period","server","laps","trackKey" FROM "TokenPractice"/.test(sql)) {
       return [...practice].map(([key, row]) => {
         const [steamId, series, period, server] = key.split("|");
-        return { steamId, series, period, server, laps: row.laps };
+        return { steamId, series, period, server, laps: row.laps, trackKey: row.trackKey };
       });
+    }
+    // The page's read: this member's rows in the running weeks, one per row.
+    // Args are the member's Steam ids followed by the period keys.
+    if (/"trackKey" AS "trackKey"/.test(sql)) {
+      const ids = args.filter((a) => /^\d{10,20}$/.test(String(a)));
+      const periodKeys = args.filter((a) => !ids.includes(a));
+      const out = [];
+      for (const [key, row] of practice) {
+        const [steamId, series, period, server] = key.split("|");
+        if (!ids.includes(steamId) || !periodKeys.includes(period)) continue;
+        out.push({ server, series, period, laps: row.laps, car: row.car, trackKey: row.trackKey });
+      }
+      return out;
     }
     if (/SUM\("laps"\)/.test(sql)) {
       // The page's read: every week of every server, grouped. Args are the
@@ -108,7 +126,7 @@ function db({
       return 1;
     }
     if (/INSERT INTO "TokenPractice"/.test(sql)) {
-      const [steamId, series, period, server, laps, trackKey, car, lastAt] = args;
+      const [steamId, series, period, server, laps, trackKey, car, lastAt, restart] = args;
       const key = `${steamId}|${series}|${period}|${server}`;
       const row = practice.get(key);
       if (!row) {
@@ -116,7 +134,7 @@ function db({
         return 1;
       }
       if (lastAt <= row.lastAt) return 0; // the same lap again
-      Object.assign(row, { laps: row.laps + laps, trackKey, car, lastAt });
+      Object.assign(row, { laps: restart ? laps : row.laps + laps, trackKey, car, lastAt });
       return 1;
     }
     if (/INSERT OR IGNORE INTO "TokenLedger"/.test(sql)) {
@@ -315,6 +333,35 @@ describe("training laps", () => {
       trackKey: "somewhere_else--x",
     });
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
+  });
+
+  it("does not count laps on the circuit just raced before the next round's track is up", async () => {
+    // After the race the server sits on Poznan in a practice session; the week
+    // already belongs to the next round, at Interlagos.
+    const prisma = db({ seriesList: ["f1"], nextRaceBySeries: { f1: "Interlagos" } });
+    await drive(prisma, 5, { serverKey: "nabs1", trackKey: "rt_poznan--gp" });
+    expect(prisma.practice.size).toBe(0);
+    const progress = await practiceProgress(prisma, "disc1");
+    expect(progress.weeks.find((w) => w.server === "nabs1").laps).toBe(0);
+
+    // The track changes: from here on the laps count.
+    await drive(prisma, 3, { serverKey: "nabs1", trackKey: "vhe_interlagos--gp", from: 1_700_100_000 });
+    const after = await practiceProgress(prisma, "disc1");
+    expect(after.weeks.find((w) => w.server === "nabs1").laps).toBe(3);
+  });
+
+  it("laps filed from the old circuit are dropped: the page ignores them, the right track restarts the count", async () => {
+    const prisma = db({ seriesList: ["f1"], nextRaceBySeries: { f1: "Interlagos" } });
+    // What the live site already holds from before the rule.
+    prisma.practice.set("76561100000000001|f1|race:race-f1|nabs1", {
+      laps: 2,
+      trackKey: "rt_poznan--gp",
+      car: "f2010",
+      lastAt: 1_600_000_000,
+    });
+    expect((await practiceProgress(prisma, "disc1")).weeks.find((w) => w.server === "nabs1").laps).toBe(0);
+    await drive(prisma, 4, { serverKey: "nabs1", trackKey: "vhe_interlagos--gp" });
+    expect(prisma.practice.get("76561100000000001|f1|race:race-f1|nabs1").laps).toBe(4);
   });
 
   it("lists a server ONCE, however many series are running", async () => {
