@@ -2161,9 +2161,10 @@ body::before {
 }
 
 /* A light running round the OUTSIDE of the whole identity capsule while
-   tokens come in (green, twice round) or go out (league pink, once). A
-   conic gradient spun by an animated angle, masked down to a 2px ring so only
-   the edge lights up. On a phone the pill stands alone and wears it itself. */
+   tokens come in (green) or go out (league pink). The ring is the capsule's
+   ::before, masked down to a 2px edge. Five looks (run-v1..v5) while the
+   league picks one; ?runfx=N on a dev build switches between them.
+   On a phone the pill stands alone and wears it itself. */
 @property --run-angle {
   syntax: "<angle>";
   inherits: false;
@@ -2171,27 +2172,52 @@ body::before {
 }
 .nav-identity { position: relative; }
 .nav-pill-solo { position: relative; }
-.nav-identity:has(.token-run-ok)::before,
-.nav-identity:has(.token-run-spend)::before,
-.nav-pill-solo.token-run-ok::before,
-.nav-pill-solo.token-run-spend::before {
+:is(.nav-identity:has(.token-run-ok), .nav-pill-solo.token-run-ok) { --run-rgb: var(--c-ok); }
+:is(.nav-identity:has(.token-run-spend), .nav-pill-solo.token-run-spend) { --run-rgb: var(--c-brand); }
+:is(.nav-identity:has([class*="token-run-"]), .nav-pill-solo[class*="token-run-"])::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 3;
   border-radius: inherit;
   padding: 2px;
-  background: conic-gradient(from var(--run-angle), transparent 0 40%, rgb(var(--run-rgb) / 0.3) 68%, rgb(var(--run-rgb)) 94%, transparent 100%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   pointer-events: none;
+  /* v1, the comet: one bright head with a tail, twice round. */
+  background: conic-gradient(from var(--run-angle), transparent 0 40%, rgb(var(--run-rgb) / 0.3) 68%, rgb(var(--run-rgb)) 94%, transparent 100%);
   animation: token-run-twice 2600ms linear both;
 }
-.nav-identity:has(.token-run-ok)::before,
-.nav-pill-solo.token-run-ok::before { --run-rgb: var(--c-ok); }
-.nav-identity:has(.token-run-spend)::before,
-.nav-pill-solo.token-run-spend::before { --run-rgb: var(--c-brand); animation: token-run-once 1300ms linear both; }
+:is(.nav-identity:has(.token-run-spend), .nav-pill-solo.token-run-spend)::before { animation: token-run-once 1300ms linear both; }
+
+/* v2, two comets chasing each other, once round, slower. */
+:is(.nav-identity:has(.run-v2), .nav-pill-solo.run-v2)::before {
+  background: conic-gradient(from var(--run-angle),
+    transparent 0 22%, rgb(var(--run-rgb) / 0.3) 38%, rgb(var(--run-rgb)) 49%, transparent 50% 72%,
+    rgb(var(--run-rgb) / 0.3) 88%, rgb(var(--run-rgb)) 99%, transparent 100%);
+  animation: token-run-once 2600ms linear both;
+}
+
+/* v3, the whole edge lights up and breathes twice, with a glow outside. */
+:is(.nav-identity:has(.run-v3), .nav-pill-solo.run-v3)::before {
+  background: rgb(var(--run-rgb));
+  animation: token-ring-breathe 2600ms var(--e-soft) both;
+}
+:is(.nav-identity:has(.run-v3), .nav-pill-solo.run-v3) { animation: token-glow-breathe 2600ms var(--e-soft) both; }
+
+/* v4, the edge draws itself round from the top like a progress ring, holds a
+   moment full, then fades. */
+:is(.nav-identity:has(.run-v4), .nav-pill-solo.run-v4)::before {
+  background: conic-gradient(from 0deg, rgb(var(--run-rgb)) var(--run-angle), transparent 0);
+  animation: token-run-draw 2600ms var(--e-soft) both;
+}
+
+/* v5, the comet with a glow around the whole capsule while it runs. */
+:is(.nav-identity:has(.run-v5), .nav-pill-solo.run-v5)::before { padding: 2.5px; }
+:is(.nav-identity:has(.run-v5), .nav-pill-solo.run-v5) { animation: token-glow-soft 2600ms var(--e-soft) both; }
+:is(.nav-identity:has(.token-run-spend.run-v5), .nav-pill-solo.token-run-spend.run-v5) { animation-duration: 1300ms; }
+
 @keyframes token-run-twice {
   0% { --run-angle: 0deg; opacity: 0; }
   5% { opacity: 1; }
@@ -2204,6 +2230,32 @@ body::before {
   90% { opacity: 1; }
   100% { --run-angle: 360deg; opacity: 0; }
 }
+@keyframes token-ring-breathe {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  45% { opacity: 0.25; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes token-glow-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--run-rgb) / 0); }
+  20%, 70% { box-shadow: 0 0 16px 2px rgb(var(--run-rgb) / 0.55); }
+  45% { box-shadow: 0 0 6px 0 rgb(var(--run-rgb) / 0.2); }
+}
+@keyframes token-run-draw {
+  0% { --run-angle: 0deg; opacity: 1; }
+  60% { --run-angle: 360deg; opacity: 1; }
+  80% { --run-angle: 360deg; opacity: 1; }
+  100% { --run-angle: 360deg; opacity: 0; }
+}
+@keyframes token-glow-soft {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--run-rgb) / 0); }
+  25%, 75% { box-shadow: 0 0 14px 1px rgb(var(--run-rgb) / 0.45); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-identity, .nav-pill-solo { animation: none !important; }
+}
+.fx-lite .nav-identity, .fx-lite .nav-pill-solo { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .nav-coin::after { display: none; }
   .nav-identity::before, .nav-pill-solo::before { display: none !important; }

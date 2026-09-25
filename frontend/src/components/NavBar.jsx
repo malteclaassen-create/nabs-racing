@@ -68,6 +68,9 @@ function TokenPill({ mobile = false, segment = false }) {
   // The light running round the outside of the capsule: "ok" (green) while
   // news plays, "spend" (the league pink, once round) after a purchase.
   const [run, setRun] = useState(null);
+  // Which look the running light has. DEVELOPMENT ONLY: ?runfx=1..5 picks one
+  // while the league decides; a built site always has the first.
+  const runFx = (import.meta.env.DEV && Number(new URLSearchParams(window.location.search).get("runfx"))) || 1;
 
   // Spending: the number glides DOWN to the new total and the pink light goes
   // round once. Rises are not handled here, they arrive as news below.
@@ -106,8 +109,9 @@ function TokenPill({ mobile = false, segment = false }) {
     const demo = import.meta.env.DEV
       ? Number(new URLSearchParams(window.location.search).get("tokendemo"))
       : 0;
+    // The demo climbs from 0, whatever the account really holds.
     const news = demo > 0
-      ? { gained: demo, from: balance - demo, reasons: [{ title: "Raced a round", detail: "Demo" }] }
+      ? { gained: demo, from: 0, reasons: [{ title: "Raced a round", detail: "Demo" }] }
       : takeTokenGain();
     if (!news) return;
     // Nothing to play: hand the member the new number and tell the server it
@@ -118,7 +122,7 @@ function TokenPill({ mobile = false, segment = false }) {
     }
     playing.current = true;
     setRun("ok");
-    setPlay({ ...news, to: balance, demo: demo > 0 });
+    setPlay({ ...news, to: demo > 0 ? demo : balance, demo: demo > 0 });
     setCounting(news.from);
   }, [balance, ready]);
 
@@ -142,7 +146,8 @@ function TokenPill({ mobile = false, segment = false }) {
         playing.current = false;
         setRun(null);
         setPlay(null);
-        setCounting(null);
+        // A demo keeps its made-up total on the pill until the next page load.
+        if (!play.demo) setCounting(null);
         if (!play.demo) api.markTokensSeen().catch(() => {});
       };
       raf = requestAnimationFrame(tick);
@@ -173,7 +178,7 @@ function TokenPill({ mobile = false, segment = false }) {
           ? // the right half of the identity capsule: shares its border with the chip
             "border-l border-border bg-brand/10 py-1.5 pl-2.5 pr-3 text-dark hover:bg-brand/20"
           : `rounded-lg border border-border px-2.5 py-1.5 text-dark hover:bg-surface2 ${mobile ? "" : "ml-1"}`
-      } ${segment ? "" : "nav-pill-solo"} ${play ? "token-pill-celebrating" : ""} ${run ? `token-run-${run}` : ""}`}
+      } ${segment ? "" : "nav-pill-solo"} ${play ? "token-pill-celebrating" : ""} ${run ? `token-run-${run} run-v${runFx}` : ""}`}
     >
       {/* The coin catches the light now and then. See .nav-coin in index.css. */}
       <span className="nav-coin" style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
