@@ -14,6 +14,8 @@ import {
   themeColorOf,
   applyThemeColor,
   pageThemeColor,
+  pageShareImage,
+  applyShareImage,
   DEFAULT_THEME_COLOR,
 } from "./pageMeta.js";
 import { disciplineOf } from "./seo.js";
@@ -167,6 +169,39 @@ describe("theme colour (the phone's status bar)", () => {
       },
     };
     expect(await pageThemeColor(prisma, "/s/sunday-championship")).toBe(DEFAULT_THEME_COLOR);
+  });
+});
+
+describe("share picture (og:image on a pasted link)", () => {
+  const HTML =
+    '<head><meta property="og:image" content="https://nabsracing.com/og-image.jpg" />\n' +
+    '    <meta property="og:image:width" content="1200" />\n' +
+    '    <meta property="og:image:height" content="630" />\n' +
+    '    <meta name="twitter:image" content="https://nabsracing.com/og-image.jpg" /></head>';
+  const rows = [
+    { id: "a", name: "F1 Friday", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1, shareImageUrl: "/api/uploads/series/a-share.jpg?v=1" },
+    { id: "b", name: "Sunday", slug: "sunday", order: 1, isActive: 0, isPublic: 1, shareImageUrl: null },
+    { id: "c", name: "Rogue", slug: "rogue", order: 2, isActive: 0, isPublic: 1, shareImageUrl: "https://evil.example/x.jpg" },
+  ];
+  const prisma = { $queryRawUnsafe: async () => rows };
+
+  it("answers the series' own picture as an absolute URL", async () => {
+    const o = "https://nabsracing.com";
+    expect(await pageShareImage(prisma, "/", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+    expect(await pageShareImage(prisma, "/s/friday-f1/attendance", o)).toBe(`${o}/api/uploads/series/a-share.jpg?v=1`);
+    expect(await pageShareImage(prisma, "/s/sunday/attendance", o)).toBe(null);
+    expect(await pageShareImage(prisma, "/s/rogue", o)).toBe(null); // never anything but an upload
+    expect(await pageShareImage(prisma, "/downloads", o)).toBe(null);
+  });
+
+  it("rewrites both picture tags and drops the stale size tags", () => {
+    const out = applyShareImage(HTML, "https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&x=2");
+    expect(out).not.toContain("og-image.jpg");
+    expect(out).not.toContain("og:image:width");
+    expect(out).not.toContain("og:image:height");
+    expect(out).toContain('<meta property="og:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
+    expect(out).toContain('<meta name="twitter:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
+    expect(applyShareImage(HTML, null)).toBe(HTML);
   });
 });
 

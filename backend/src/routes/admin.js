@@ -106,6 +106,7 @@ import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
   writeSeriesLogo,
+  writeSeriesShareImage,
 } from "../lib/series.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
@@ -4953,6 +4954,46 @@ router.delete("/series/:id/logo", async (req, res, next) => {
     const series = await getSeriesById(prisma, req.params.id);
     if (!series) return res.status(404).json({ error: "Series not found" });
     await writeSeriesLogo(prisma, series.id, null);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/share-image  (multipart: file=<image>)
+// Uploads (or replaces) the picture a pasted link into this series unfurls
+// with on Discord & co (og:image; lib/pageMeta.js applyShareImage). PNG or
+// JPEG only: WEBP and SVG don't unfurl everywhere. 1200x630 is the size the
+// unfurlers are built around; anything else gets cropped or letterboxed.
+const SHARE_IMAGE_EXT = { "image/png": ".png", "image/jpeg": ".jpg" };
+router.post("/series/:id/share-image", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = SHARE_IMAGE_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use JPG or PNG)" });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+
+    mkdirSync(SERIES_DIR, { recursive: true });
+    const filename = `${series.id}-share${ext}`;
+    const dest = safeUploadPath(SERIES_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This series' id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
+    // Cache-bust: Discord caches an unfurl's picture by its URL.
+    const shareImageUrl = `/api/uploads/series/${filename}?v=${Date.now()}`;
+    await writeSeriesShareImage(prisma, series.id, shareImageUrl);
+    res.json({ ok: true, shareImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id/share-image -> back to the shared og-image.jpg.
+router.delete("/series/:id/share-image", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await writeSeriesShareImage(prisma, series.id, null);
     res.json({ ok: true });
   } catch (e) {
     next(e);

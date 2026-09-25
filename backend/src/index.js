@@ -47,6 +47,8 @@ import {
   applyJsonLd,
   pageThemeColor,
   applyThemeColor,
+  applyShareImage,
+  pageShareImage,
 } from "./lib/pageMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
@@ -580,6 +582,13 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     // the page later changes it, so the colour has to be right in the HTML.
     try {
       html = applyThemeColor(html, await pageThemeColor(prisma, req.path));
+    } catch {
+      /* same rule */
+    }
+    // The picture on the unfurl: the series' own, when it has uploaded one
+    // (Series tab -> Share image), else the shipped og-image.jpg.
+    try {
+      html = applyShareImage(html, await pageShareImage(prisma, req.path, publicOrigin(req)));
     } catch {
       /* same rule */
     }

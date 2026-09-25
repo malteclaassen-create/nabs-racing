@@ -358,6 +358,9 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Series", "accentColor", "TEXT");
   // Admin-uploaded dark-mode logo mark. null = the shared default logo-dark.png.
   await addColumn(prisma, "Series", "logoDarkUrl", "TEXT");
+  // Admin-uploaded link-preview picture (og:image) for every page of the
+  // series. null = the shared og-image.jpg. See lib/pageMeta.js.
+  await addColumn(prisma, "Series", "shareImageUrl", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.

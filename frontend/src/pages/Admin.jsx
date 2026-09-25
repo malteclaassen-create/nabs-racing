@@ -5825,6 +5825,60 @@ function SeriesLogo({ series, onSaved, onError }) {
   );
 }
 
+// The picture a pasted link into this series unfurls with on Discord & co
+// (og:image), in place of the shared og-image.jpg. 1200x630 JPG or PNG.
+// Discord caches unfurls, so a link already posted keeps its old picture;
+// fresh pastes pick up the new one.
+function SeriesShareImage({ series, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadSeriesShareImage(series.id, file);
+      onSaved(`Link preview picture updated for ${series.name}. Links already posted keep the old one; new pastes show it.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clear() {
+    if (
+      !(await ask({
+        title: `Remove ${series.name}'s link preview picture?`,
+        body: "Links fall back to the default NABS picture.",
+        danger: true,
+        confirmLabel: "Remove picture",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      await api.clearSeriesShareImage(series.id);
+      onSaved(`Link preview picture reset for ${series.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <input aria-label={`Link preview picture for ${series.name}`} ref={fileRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={pick} />
+      <button type="button" className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+        onClick={() => fileRef.current?.click()} title="The picture on Discord link previews, recommended: 1200x630 JPG or PNG">
+        {series.shareImageUrl ? "Replace link picture" : "Upload link picture"}
+      </button>
+      {series.shareImageUrl && (
+        <button type="button" className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
+          onClick={clear}>
+          Reset link picture
+        </button>
+      )}
+    </>
+  );
+}
+
 // --- SERIES ------------------------------------------------------------------
 // The level above seasons: several championships (Friday F1, Sunday GT, …) in
 // one deployment. The slug (the /s/<slug>/ URL identity) is set once at
@@ -6000,6 +6054,7 @@ function SeriesPanel() {
                 </button>
               )}
               <SeriesLogo series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+              <SeriesShareImage series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →

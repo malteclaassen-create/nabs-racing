@@ -27,6 +27,7 @@ function shapeSeries(r) {
     isPublic: r.isPublic == null ? true : !!Number(r.isPublic),
     accentColor: r.accentColor || null,
     logoDarkUrl: r.logoDarkUrl || null,
+    shareImageUrl: r.shareImageUrl || null,
     createdAt: r.createdAt,
   };
 }
@@ -38,6 +39,12 @@ function shapeSeries(r) {
 // to a user-editable field.
 export async function writeSeriesLogo(prisma, id, url) {
   await prisma.$executeRawUnsafe(`UPDATE "Series" SET "logoDarkUrl" = ? WHERE "id" = ?`, url, id);
+}
+
+// Write the series' uploaded link-preview picture (og:image) URL, or null to
+// clear it (back to the shared og-image.jpg). Server-generated, like the logo.
+export async function writeSeriesShareImage(prisma, id, url) {
+  await prisma.$executeRawUnsafe(`UPDATE "Series" SET "shareImageUrl" = ? WHERE "id" = ?`, url, id);
 }
 
 // Admin-picked accent colour: a plain 6-digit hex like "#6de0fc", or "" /
