@@ -11,6 +11,7 @@ import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
 import { penaltyLabel, penaltySummary } from "../components/reportDesk.mjs";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 
 const capitalise = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -139,9 +140,10 @@ function Thread({ id, races, onBack, onChanged }) {
           <span className={`pill ${s.cls}`}>{s.label}</span>
           {/* Which round, in words. A thread that only says "lap 14" is an
               argument about an evening nobody can place. */}
-          {race && (
+          {(race || r.raceLabel) && (
             <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-              {raceLabel(race, races)}
+              {race ? raceLabel(race, races) : r.raceLabel}
+              {r.series?.name ? ` · ${r.series.name}` : ""}
             </span>
           )}
           {/* The same anchor the row carried, and here it is a real button: a
@@ -638,9 +640,21 @@ export default function MyReports() {
   // know. Yours is the argument you are IN; shown-to-you is a thread an admin
   // let you read; everything else is what an appointed steward sees, and only
   // they ever have one.
-  const mine = list.filter((r) => r.myRole === "REPORTER" || r.myRole === "ACCUSED");
-  const addedTo = list.filter((r) => r.myRole === "VIEWER");
-  const asSteward = list.filter((r) => r.myRole === "STEWARD");
+  // Friday F1 or Sunday league: the list spans every series, so a steward in
+  // both can narrow it to one. Only offered once there is more than one.
+  const seriesList = useMemo(() => {
+    const seen = new Map();
+    for (const r of list) if (r.series?.slug && !seen.has(r.series.slug)) seen.set(r.series.slug, r.series);
+    return [...seen.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [list]);
+  const [seriesPick, setSeriesPick] = useState("all");
+  const pickValid = seriesPick === "all" || seriesList.some((x) => x.slug === seriesPick);
+  const shown = !pickValid || seriesPick === "all" ? list : list.filter((r) => r.series?.slug === seriesPick);
+  const showSeriesTag = seriesList.length > 1 && (!pickValid || seriesPick === "all");
+
+  const mine = shown.filter((r) => r.myRole === "REPORTER" || r.myRole === "ACCUSED");
+  const addedTo = shown.filter((r) => r.myRole === "VIEWER");
+  const asSteward = shown.filter((r) => r.myRole === "STEWARD");
 
   if (!isLoggedIn) {
     return (
@@ -701,11 +715,21 @@ export default function MyReports() {
             />
           )}
 
+          {seriesList.length > 1 && (
+            <SlidingTabs
+              items={[{ key: "all", label: "All" }, ...seriesList.map((x) => ({ key: x.slug, label: x.name }))]}
+              value={pickValid ? seriesPick : "all"}
+              onChange={setSeriesPick}
+              btnClassName="px-3 py-1.5 text-xs"
+            />
+          )}
+
           <Section
             title="Yours"
             hint="Reports you filed, and reports that name you."
             rows={mine}
             races={raceList}
+            seriesTag={showSeriesTag}
             onOpen={openThread}
             empty="You are not part of any report. That is the good outcome."
           />
@@ -715,6 +739,7 @@ export default function MyReports() {
               hint="Threads the stewards let you read, because you saw what happened."
               rows={addedTo}
               races={raceList}
+              seriesTag={showSeriesTag}
               onOpen={openThread}
             />
           )}
@@ -724,6 +749,7 @@ export default function MyReports() {
               hint="You are a steward, so you can read and answer every report in the league."
               rows={asSteward}
               races={raceList}
+              seriesTag={showSeriesTag}
               onOpen={openThread}
             />
           )}
@@ -749,7 +775,7 @@ export default function MyReports() {
 }
 
 // One list of reports under a heading that says why they are in it.
-function Section({ title, hint, rows, races, onOpen, empty }) {
+function Section({ title, hint, rows, races, onOpen, empty, seriesTag }) {
   return (
     <section>
       <div className="mb-1 flex flex-wrap items-baseline gap-x-3">
@@ -784,9 +810,12 @@ function Section({ title, hint, rows, races, onOpen, empty }) {
                         in-game
                       </span>
                     )}
-                    {race && (
+                    {seriesTag && r.series?.name && (
+                      <span className="pill bg-surface2 text-light">{r.series.name}</span>
+                    )}
+                    {(race || r.raceLabel) && (
                       <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                        {raceLabel(race, races)}
+                        {race ? raceLabel(race, races) : r.raceLabel}
                       </span>
                     )}
                     <span className="text-sm font-semibold text-dark">

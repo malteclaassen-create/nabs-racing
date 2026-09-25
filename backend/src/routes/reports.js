@@ -290,6 +290,31 @@ async function racesForReports(reports) {
   return withSprintRounds(prisma, rows);
 }
 
+// Which series each report's round belongs to, plus the round in words. The
+// list spans every series (a steward in both leagues reads both), but the page
+// only knows the calendar of the series it is on, so the filter and the label
+// come from here.
+async function withSeries(reports, races) {
+  const ids = [...new Set(races.map((r) => r.id))];
+  const rows = ids.length
+    ? await prisma.race
+        .findMany({
+          where: { id: { in: ids } },
+          select: { id: true, season: { select: { series: { select: { slug: true, name: true, order: true } } } } },
+        })
+        .catch(() => [])
+    : [];
+  const seriesOf = new Map(rows.map((r) => [r.id, r.season?.series || null]));
+  const raceOf = new Map(races.map((r) => [r.id, r]));
+  return reports.map((r) => {
+    const race = raceOf.get(r.raceId);
+    const label = race
+      ? `${race.number != null ? `R${race.number}` : "Session"} ${race.track}${race.sprint ? " Sprint" : race.hasSprint ? " Feature" : ""}`
+      : null;
+    return { ...r, series: seriesOf.get(r.raceId) || null, raceLabel: label };
+  });
+}
+
 // GET /api/reports -> the ones this member may see
 //
 // ?all=1 drops the round window and serves the lot, which is what the "earlier
@@ -317,7 +342,7 @@ router.get("/", optionalUser, async (req, res, next) => {
     // running it showed the driver, and the steward reading the same page, a
     // row that said only who filed it, while the admin tab showed the incident.
     res.json({
-      reports: await anchorReports(prisma, reports, races),
+      reports: await withSeries(await anchorReports(prisma, reports, races), races),
       // What the window is holding back, counted on reports this account may
       // actually read — so the button never offers rounds that turn out to be
       // somebody else's arguments.
@@ -343,7 +368,8 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     const teams = await dbThreadVoices(prisma, report.id, report);
     // The same anchor the list carries, so opening a report never shows less
     // than the row it was opened from.
-    const [anchored] = await anchorReports(prisma, [report], await racesForReports([report]));
+    const oneRace = await racesForReports([report]);
+    const [anchored] = await withSeries(await anchorReports(prisma, [report], oneRace), oneRace);
     res.json({
       report: { ...anchored, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
       messages: await dbMessages(prisma, report.id, me.discordId, teams),
