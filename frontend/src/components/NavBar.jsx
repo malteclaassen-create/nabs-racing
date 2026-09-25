@@ -58,6 +58,26 @@ function TokenPill({ mobile = false, segment = false }) {
   // renders (the strip and the open menu on a phone) asks first gets it, and
   // the hook hands it out exactly once.
   const playing = useRef(false);
+  // Any OTHER change of the balance (a purchase, a refund) glides to the new
+  // number instead of jumping. Spending is never celebrated, it just moves.
+  const [gliding, setGliding] = useState(null);
+  const lastShown = useRef(null);
+  useEffect(() => {
+    if (balance === null) return;
+    const prev = lastShown.current;
+    lastShown.current = balance;
+    if (prev === null || prev === balance || playing.current || motionOff()) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t) => {
+      const p = Math.min(1, (t - t0) / 800);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setGliding(p < 1 ? Math.round(prev + (balance - prev) * eased) : null);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [balance]);
 
   // Picking the news up. Runs whenever the balance changes, which is also how a
   // member who leaves the site open gets their reward the moment it lands.
@@ -117,7 +137,7 @@ function TokenPill({ mobile = false, segment = false }) {
 
   if (balance === null) return null;
   const announcing = play && counting === play.from;
-  const shown = counting ?? balance;
+  const shown = counting ?? gliding ?? balance;
   // What the tokens were for, for the tooltip: "Raced a round, Spa" reads
   // better than a bare number when somebody wonders where it came from.
   const why = play?.reasons?.length
@@ -135,7 +155,11 @@ function TokenPill({ mobile = false, segment = false }) {
           : `rounded-lg border border-border px-2.5 py-1.5 text-dark hover:bg-surface2 ${mobile ? "" : "ml-1"}`
       } ${play ? "token-pill-celebrating" : ""}`}
     >
-      <TokenIcon className="h-5 w-5" />
+      {/* The coin catches the light now and then, hops when you point at it,
+          and bounces while news is coming in. See .nav-coin in index.css. */}
+      <span className={`nav-coin ${play ? "nav-coin-news" : ""}`} style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
+        <TokenIcon className="h-5 w-5" />
+      </span>
       {/* The count and the "+100" share one slot: the number steps aside while
           the news rises through its place, then comes back and climbs. */}
       <span className="relative inline-flex min-w-[2ch] items-center justify-end leading-none">

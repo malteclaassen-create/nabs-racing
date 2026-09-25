@@ -2131,20 +2131,51 @@ body::before {
    No rotation on the coin: it carries the league's mark, and a tilted logo
    reads as a mistake rather than as motion. 1.12 keeps both inside the
    capsule, which clips at its own edge. */
-.nav-identity .nav-avatar,
-.nav-identity .nav-identity-points img { transition: transform 200ms var(--e-soft); }
-.nav-identity .nav-identity-me:hover .nav-avatar,
-.nav-identity .nav-identity-points:hover img { transform: scale(1.12); }
+.nav-identity .nav-avatar { transition: transform 200ms var(--e-soft); }
+.nav-identity .nav-identity-me:hover .nav-avatar { transform: scale(1.12); }
 @media (prefers-reduced-motion: reduce) {
-  .nav-identity .nav-avatar,
-  .nav-identity .nav-identity-points img { transition: none; }
-  .nav-identity .nav-identity-me:hover .nav-avatar,
-  .nav-identity .nav-identity-points:hover img { transform: none; }
+  .nav-identity .nav-avatar { transition: none; }
+  .nav-identity .nav-identity-me:hover .nav-avatar { transform: none; }
 }
-.fx-lite .nav-identity .nav-avatar,
-.fx-lite .nav-identity .nav-identity-points img { transition: none; }
-.fx-lite .nav-identity .nav-identity-me:hover .nav-avatar,
-.fx-lite .nav-identity .nav-identity-points:hover img { transform: none; }
+.fx-lite .nav-identity .nav-avatar { transition: none; }
+.fx-lite .nav-identity .nav-identity-me:hover .nav-avatar { transform: none; }
+
+/* The coin in the bar. It hops when you point at it (up and back, no tilt:
+   a tilted logo reads as a mistake), catches the light every nine seconds,
+   and bounces a few times while a "+50" is coming in. The glint is masked to
+   the star's own shape. */
+.nav-coin { position: relative; display: inline-flex; }
+.nav-coin::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  -webkit-mask: var(--coin-mask) center / contain no-repeat;
+  mask: var(--coin-mask) center / contain no-repeat;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.9) 50%, transparent 62%) no-repeat;
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  animation: nav-coin-glint 9s var(--e-soft) 2s infinite;
+  pointer-events: none;
+}
+@keyframes nav-coin-glint {
+  0% { background-position: 150% 0; }
+  10%, 100% { background-position: -60% 0; }
+}
+.nav-identity-points:hover .nav-coin { animation: nav-coin-hop 520ms var(--e-pop); }
+.nav-coin.nav-coin-news { animation: nav-coin-hop 520ms var(--e-pop) 3; }
+.nav-coin.nav-coin-news::after { animation: nav-coin-glint 1.2s var(--e-soft) 2; }
+@keyframes nav-coin-hop {
+  0% { transform: none; }
+  40% { transform: translateY(-4px) scale(1.14); }
+  70% { transform: translateY(0) scale(0.96); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-coin, .nav-coin.nav-coin-news, .nav-identity-points:hover .nav-coin { animation: none; }
+  .nav-coin::after { display: none; }
+}
+.fx-lite .nav-coin, .fx-lite .nav-coin.nav-coin-news, .fx-lite .nav-identity-points:hover .nav-coin { animation: none; }
+.fx-lite .nav-coin::after { display: none; }
 
 /* The pill itself lights up for as long as there is news in it. */
 /* The green stays INSIDE the points half. There used to be a green border and a
