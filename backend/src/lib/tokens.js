@@ -536,12 +536,16 @@ async function linkReferral(prisma, discordId, inviterDiscordId) {
   const inviter = await ensureTokenAccount(prisma, inviterDiscordId).catch(() => null);
   if (!inviter) return null;
   if (await hasRacedBefore(prisma, discordId)) return null;
-  await prisma.$executeRawUnsafe(
-    `UPDATE "TokenAccount" SET "referredBy" = ?, "referredAt" = CURRENT_TIMESTAMP WHERE "discordId" = ?`,
+  // Only while nobody is on file, in the same statement: two sign-ins in the
+  // same instant (two tabs, a double click) both passed the check above and
+  // the second one used to overwrite the first, paying two inviters.
+  const written = await prisma.$executeRawUnsafe(
+    `UPDATE "TokenAccount" SET "referredBy" = ?, "referredAt" = CURRENT_TIMESTAMP
+      WHERE "discordId" = ? AND "referredBy" IS NULL`,
     inviter.discordId,
     discordId
   );
-  return inviter.discordId;
+  return Number(written) ? inviter.discordId : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1113,22 +1117,28 @@ export async function syncEarned(prisma, discordId) {
   // --- what the people they brought in did
   for (const inv of await invitedBy(prisma, discordId)) {
     const who = await memberName(prisma, inv.discordId);
+    // One series only: somebody racing F1 and F3 is still one person brought
+    // in. The series they finished a race in first is the one that counts.
+    const all = await racesFinished(prisma, inv.discordId);
+    // Nothing is paid for somebody who has not raced yet, the sign-up bonus
+    // included. Naming an inviter costs nothing, so a bonus paid on the name
+    // alone paid for every spare Discord account anybody cared to sign in
+    // with. A finished race needs a seat on the grid, which an admin gives.
+    if (!all.length) continue;
     if (ruleOn("referral_join"))
       await dbAward(prisma, {
         discordId,
         delta: tunedPoints("referral_join"),
-      rule: "referral_join",
-      title: "Someone signed up through you",
-      detail: who,
-      refKey: `referral-join:${inv.discordId}`,
-    });
+        rule: "referral_join",
+        title: "Someone you brought in raced",
+        detail: who,
+        refKey: `referral-join:${inv.discordId}`,
+        at: all[0].date,
+      });
     // Their first twelve finishes pay, and then this stops. Keyed on the round
     // rather than on a running count, so the cap cannot be walked past by a
     // result being corrected.
     if (!ruleOn("referral_race")) continue;
-    // One series only: somebody racing F1 and F3 is still one person brought
-    // in. The series they finished a race in first is the one that counts.
-    const all = await racesFinished(prisma, inv.discordId);
     const theirs = all.filter((r) => r.series === all[0]?.series).slice(0, tunedReferralLimit());
     for (const r of theirs) {
       await dbAward(prisma, {
