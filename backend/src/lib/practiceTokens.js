@@ -234,9 +234,16 @@ export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackK
 // Only a clear mismatch is refused: both names known circuits, and different
 // ones. An unknown track name (a new mod, a round with no track yet) is let
 // through, as before, rather than silently paying nobody.
+//
+// The lap's key is the live relay's slug (lib/telemetryLaps.js trackKeyOf):
+// "rs-tor-poznanl--laser", hyphens where the server's folder name has
+// underscores. The mod prefix is only recognised with its underscore, so it is
+// put back before the name is looked up; as a slug, Poznan read as unknown and
+// its laps were let through.
 export function offTrack(periodTrack, lapTrackKey) {
   const want = trackKeyFor(String(periodTrack || ""));
-  const got = trackKeyFor(String(lapTrackKey || "").split("--")[0]);
+  const folder = String(lapTrackKey || "").split("--")[0];
+  const got = trackKeyFor(folder.replace(/-/g, "_")) || trackKeyFor(folder);
   return !!(want && got && want !== got);
 }
 
