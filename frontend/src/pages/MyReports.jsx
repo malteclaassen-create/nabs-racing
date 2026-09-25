@@ -12,6 +12,7 @@ import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
 import { penaltyLabel, penaltySummary } from "../components/reportDesk.mjs";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { ChevronDown } from "lucide-react";
 
 const capitalise = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -774,8 +775,41 @@ export default function MyReports() {
   );
 }
 
-// One list of reports under a heading that says why they are in it.
+// One list of reports under a heading that says why they are in it, split by
+// round. A season of stewarding is a long list; grouped, the round you want is
+// one tap away and the rest stay folded. The newest round starts open.
+const OPEN_STATUSES = new Set(["NEW", "REVIEWING"]);
+
+function groupByRound(rows, races) {
+  const groups = [];
+  const byKey = new Map();
+  for (const r of rows) {
+    const key = r.raceId || "none";
+    let g = byKey.get(key);
+    if (!g) {
+      const race = races.find((x) => x.id === r.raceId);
+      g = {
+        key,
+        label: race ? raceLabel(race, races) : r.raceLabel || "No round",
+        series: r.series?.name || null,
+        rows: [],
+      };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.rows.push(r);
+  }
+  return groups;
+}
+
 function Section({ title, hint, rows, races, onOpen, empty, seriesTag }) {
+  const groups = useMemo(() => groupByRound(rows, races), [rows, races]);
+  // Only what the reader changed; everything else follows the default, so a
+  // round that turns up later (a filter switch, "show earlier rounds") is
+  // folded unless it is the newest.
+  const [toggled, setToggled] = useState({});
+  const isOpen = (g, i) => (g.key in toggled ? toggled[g.key] : i === 0);
+
   return (
     <section>
       <div className="mb-1 flex flex-wrap items-baseline gap-x-3">
@@ -786,76 +820,102 @@ function Section({ title, hint, rows, races, onOpen, empty, seriesTag }) {
       {rows.length === 0 ? (
         empty ? <EmptyState title="Nothing here" hint={empty} /> : null
       ) : (
-        <ul className="card divide-y divide-border overflow-hidden">
-          {rows.map((r) => {
-            const s = STATUS_META[r.status] || STATUS_META.NEW;
-            const race = races.find((x) => x.id === r.raceId);
+        <div className="space-y-2">
+          {groups.map((g, i) => {
+            const open = isOpen(g, i);
+            const waiting = g.rows.filter((r) => OPEN_STATUSES.has(r.status)).length;
             return (
-              <li key={r.id}>
+              <div key={g.key} className="card overflow-hidden">
                 <button
-                  className="flex w-full flex-col gap-1.5 px-5 py-4 text-left transition hover:bg-surface2/60"
-                  onClick={() => onOpen(r.id)}
+                  type="button"
+                  aria-expanded={open}
+                  className="flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-surface2/60"
+                  onClick={() => setToggled((t) => ({ ...t, [g.key]: !open }))}
                 >
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className={`pill ${s.cls}`}>{s.label}</span>
-                    {/* What the penalty was, at a glance: "+5s", "Warning". */}
-                    {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
-                    {/* Which of these are the button in the car and which are
-                        somebody sitting down afterwards to write it out. The
-                        two read very differently, and the in-game ones all
-                        carry the same generated first line, so without this
-                        they look like one report filed six times. */}
-                    {r.source === "INGAME" && (
-                      <span className="pill bg-brand/15 text-brand" title="Fired from inside the race by webPenalty">
-                        in-game
-                      </span>
-                    )}
-                    {seriesTag && r.series?.name && (
-                      <span className="pill bg-surface2 text-light">{r.series.name}</span>
-                    )}
-                    {(race || r.raceLabel) && (
-                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                        {race ? raceLabel(race, races) : r.raceLabel}
-                      </span>
-                    )}
-                    <span className="text-sm font-semibold text-dark">
-                      {r.reporterName || "Someone"}
-                      {r.accusedName ? ` → ${r.accusedName}` : ""}
-                    </span>
-                    {/* Where in the round it happened — and, for a report fired
-                        from inside the race, the contact the result file
-                        matched it to. Without this a round's reports were a
-                        column of identical rows: same status, same boilerplate
-                        first line, nothing to tell one incident from the next
-                        or to take to the replay. Read-only because the row is
-                        already a button; the copy is in the opened report. */}
-                    {hasReplayAnchor(r) ? (
-                      <ReplayAnchor
-                        readOnly
-                        second={r.sessionSecond}
-                        approx={r.sessionSecondApprox}
-                        matched={r.contactMatched}
-                        at={r.incidentAt}
-                        kph={r.contactKph}
-                        lap={r.lap}
-                        eventIndex={r.contactIndex}
-                      />
-                    ) : (
-                      r.lap != null && (
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-faint">lap {r.lap}</span>
-                      )
-                    )}
-                    <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
-                      {when(r.createdAt)}
-                    </span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-light transition-transform ${open ? "" : "-rotate-90"}`}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">
+                    {g.label}
                   </span>
-                  <span className="line-clamp-2 text-xs leading-relaxed text-light">{r.body}</span>
+                  {seriesTag && g.series && <span className="pill hidden bg-surface2 text-light sm:inline-flex">{g.series}</span>}
+                  {waiting > 0 && <span className="pill bg-surface2 text-light">{waiting} open</span>}
+                  <span className="w-6 text-right font-mono text-[11px] font-bold tabular-nums text-light">
+                    {g.rows.length}
+                  </span>
                 </button>
-              </li>
+                {open && (
+                  <ul className="divide-y divide-border border-t border-border">
+                    {g.rows.map((r) => (
+                      <ReportRow key={r.id} r={r} onOpen={onOpen} />
+                    ))}
+                  </ul>
+                )}
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </section>
+  );
+}
+
+function ReportRow({ r, onOpen }) {
+  const s = STATUS_META[r.status] || STATUS_META.NEW;
+  return (
+    <li>
+      <button
+        className="flex w-full flex-col gap-1.5 px-5 py-4 text-left transition hover:bg-surface2/60"
+        onClick={() => onOpen(r.id)}
+      >
+        <span className="flex flex-wrap items-center gap-2">
+          <span className={`pill ${s.cls}`}>{s.label}</span>
+          {/* What the penalty was, at a glance: "+5s", "Warning". */}
+          {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
+          {/* Which of these are the button in the car and which are
+              somebody sitting down afterwards to write it out. The
+              two read very differently, and the in-game ones all
+              carry the same generated first line, so without this
+              they look like one report filed six times. */}
+          {r.source === "INGAME" && (
+            <span className="pill bg-brand/15 text-brand" title="Fired from inside the race by webPenalty">
+              in-game
+            </span>
+          )}
+          <span className="text-sm font-semibold text-dark">
+            {r.reporterName || "Someone"}
+            {r.accusedName ? ` → ${r.accusedName}` : ""}
+          </span>
+          {/* Where in the round it happened — and, for a report fired
+              from inside the race, the contact the result file
+              matched it to. Without this a round's reports were a
+              column of identical rows: same status, same boilerplate
+              first line, nothing to tell one incident from the next
+              or to take to the replay. Read-only because the row is
+              already a button; the copy is in the opened report. */}
+          {hasReplayAnchor(r) ? (
+            <ReplayAnchor
+              readOnly
+              second={r.sessionSecond}
+              approx={r.sessionSecondApprox}
+              matched={r.contactMatched}
+              at={r.incidentAt}
+              kph={r.contactKph}
+              lap={r.lap}
+              eventIndex={r.contactIndex}
+            />
+          ) : (
+            r.lap != null && (
+              <span className="font-mono text-[10px] uppercase tracking-wider text-faint">lap {r.lap}</span>
+            )
+          )}
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-faint">
+            {when(r.createdAt)}
+          </span>
+        </span>
+        <span className="line-clamp-2 text-xs leading-relaxed text-light">{r.body}</span>
+      </button>
+    </li>
   );
 }
