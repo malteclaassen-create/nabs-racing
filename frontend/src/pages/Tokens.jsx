@@ -4,7 +4,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
-import { Spinner, ErrorBox, EmptyState, Notice, DriverAvatar } from "../components/ui.jsx";
+import { Spinner, ErrorBox, EmptyState, Notice, DriverAvatar, MEDAL_TEXT } from "../components/ui.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { Modal, useAsk } from "../components/overlay.jsx";
 import TokenIcon from "../components/TokenIcon.jsx";
@@ -50,10 +50,13 @@ function reduceMotion() {
   return (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) || html.contains("fx-lite");
 }
 
-function MovingNumber({ value, className = "" }) {
+// `fromZero`: the first time it shows, it counts up from nothing, so opening
+// the page is a little moment rather than a number that was simply there.
+function MovingNumber({ value, className = "", fromZero = false }) {
   const target = Number(value) || 0;
-  const [shown, setShown] = useState(target);
-  const from = useRef(target);
+  const start0 = fromZero && !reduceMotion() ? 0 : target;
+  const [shown, setShown] = useState(start0);
+  const from = useRef(start0);
   useEffect(() => {
     const start = from.current;
     if (start === target) return;
@@ -63,7 +66,7 @@ function MovingNumber({ value, className = "" }) {
       return;
     }
     const t0 = performance.now();
-    const dur = 900;
+    const dur = start === 0 ? 1300 : 900;
     let raf = 0;
     const tick = (t) => {
       const p = Math.min(1, (t - t0) / dur);
@@ -76,6 +79,59 @@ function MovingNumber({ value, className = "" }) {
     return () => cancelAnimationFrame(raf);
   }, [target]);
   return <span className={className}>{fmt(shown)}</span>;
+}
+
+// A bar that grows from nothing to its width when it first shows, and glides
+// when the width changes later. With motion off it simply has its width.
+function GrowBar({ share, className = "", trackClassName = "h-2 bg-surface2" }) {
+  const [grown, setGrown] = useState(reduceMotion);
+  useEffect(() => {
+    if (grown) return;
+    // Two frames: the first paints the empty bar, the second starts the growth.
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setGrown(true));
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [grown]);
+  const w = Math.max(0, Math.min(1, share || 0)) * 100;
+  return (
+    <div className={`overflow-hidden rounded-full ${trackClassName}`}>
+      <div className={`token-grow h-full rounded-full ${className}`} style={{ width: grown ? `${w}%` : 0 }} />
+    </div>
+  );
+}
+
+// The balance card's coin: pops in, then catches the light now and then.
+function Coin({ className }) {
+  return (
+    <span className="token-coin" style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
+      <TokenIcon className={className} />
+    </span>
+  );
+}
+
+// A handful of coins flying out of the button that just spent tokens. Mounted
+// once per purchase; the numbers are fixed per coin so it looks the same every
+// time rather than random.
+const BURST = Array.from({ length: 12 }, (_, i) => {
+  const angle = (-90 + (i - 5.5) * 17) * (Math.PI / 180);
+  const dist = 70 + (i % 3) * 22;
+  return { dx: Math.cos(angle) * dist, dy: Math.sin(angle) * dist, r: (i % 2 ? 1 : -1) * (90 + i * 20), d: (i % 4) * 40 };
+});
+function CoinBurst() {
+  return (
+    <span className="token-burst" aria-hidden="true">
+      {BURST.map((c, i) => (
+        <span key={i} style={{ "--dx": `${c.dx}px`, "--dy": `${c.dy}px`, "--r": `${c.r}deg`, "--d": `${c.d}ms` }}>
+          <TokenIcon className="h-full w-full" />
+        </span>
+      ))}
+    </span>
+  );
 }
 
 // "Saving for": the one thing in the shop you are working towards. Kept in
@@ -117,9 +173,11 @@ function Goal({ item, balance, onClear }) {
           )}
         </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface2">
-        <div className={`h-full rounded-full ${left > 0 ? "bg-brand" : "bg-ok"}`} style={{ width: `${share * 100}%` }} />
-      </div>
+      <GrowBar
+        share={share}
+        trackClassName={`mt-2 h-2 bg-surface2 ${left > 0 ? "" : "token-goal-done"}`}
+        className={left > 0 ? "bg-brand" : "bg-ok"}
+      />
       <button type="button" onClick={onClear} className="mt-1.5 text-[11px] text-light underline-offset-2 hover:underline">
         stop saving for this
       </button>
@@ -139,8 +197,19 @@ function Leaderboard() {
   if (!d || d.enabled === false) return null;
   const rows = tab === "earned" ? d.earned : tab === "voice" ? d.voice : d.chat;
   const hours = (m) => Math.round((m || 0) / 6) / 10;
+  // The one number that makes a board worth coming back to: how far it is to
+  // the next name up.
+  const myIndex = rows ? rows.findIndex((r) => r.mine) : -1;
+  const ahead = myIndex > 0 ? rows[myIndex - 1] : null;
+  let chase = null;
+  if (ahead) {
+    const me = rows[myIndex];
+    if (tab === "earned") chase = `${fmt(ahead.earned - me.earned + 1)} tokens`;
+    else if (tab === "voice") chase = hm(Math.max(1, (ahead.minutes || 0) - (me.minutes || 0) + 1));
+    else chase = `${fmt((ahead.messages || 0) - (me.messages || 0) + 1)} messages`;
+  }
   return (
-    <div className="card p-5">
+    <div className="card reveal p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Heading>Who is ahead</Heading>
@@ -160,16 +229,33 @@ function Leaderboard() {
           btnClassName="px-3 py-1 text-[12px]"
         />
       </div>
+      {rows?.length > 0 && (myIndex === 0 || chase) && (
+        <div key={`chase-${tab}`} className="pop-in mt-3 text-xs text-medium">
+          {myIndex === 0 ? (
+            <span className="font-semibold text-ok">You are top of this board.</span>
+          ) : (
+            <>
+              <span className="font-mono font-bold tabular-nums text-dark">{chase}</span> to pass{" "}
+              <span className="font-semibold text-dark">{ahead.name}</span> for P{myIndex}.
+            </>
+          )}
+        </div>
+      )}
       {rows?.length ? (
-        <ol className="mt-3 divide-y divide-border">
+        // keyed on the tab so the rows deal in again when you switch boards.
+        <ol key={tab} className="cascade mt-3 divide-y divide-border">
           {rows.map((r, i) => {
             const mine = !!r.mine;
             return (
               <li
                 key={r.id || i}
+                style={{ "--i": i }}
                 className={`flex items-center gap-3 py-2 ${mine ? "-mx-2 rounded-lg bg-brand/10 px-2" : ""}`}
               >
-                <span className={`w-6 shrink-0 text-center font-mono text-sm font-bold tabular-nums ${i < 3 ? "text-dark" : "text-light"}`}>
+                <span
+                  className={`w-6 shrink-0 text-center font-mono text-sm font-bold tabular-nums ${i < 3 ? "" : "text-light"}`}
+                  style={i < 3 ? { color: MEDAL_TEXT[i] } : undefined}
+                >
                   {i + 1}
                 </span>
                 <DriverAvatar name={r.name} photoUrl={r.avatarUrl} size={28} />
@@ -229,13 +315,13 @@ function Balance({ data, goal, onClearGoal }) {
     // h-full + the space pushed between the two halves: the card fills whatever
     // height the row has (see the grid in the page below) instead of leaving a
     // gap under itself next to a taller neighbour.
-    <div className="card flex h-full flex-col justify-between p-5 sm:p-6">
+    <div className="card reveal flex h-full flex-col justify-between p-5 sm:p-6">
       <div className="flex items-center gap-3">
-        <TokenIcon className="h-12 w-12" />
+        <Coin className="h-12 w-12" />
         <div>
           <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Your balance</div>
           <div className="font-display text-3xl font-extrabold tabular-nums leading-none text-dark">
-            <MovingNumber value={data.balance} />{" "}
+            <MovingNumber value={data.balance} fromZero />{" "}
             <span className="font-display text-base font-bold uppercase tracking-tight text-light">tokens</span>
           </div>
         </div>
@@ -295,9 +381,7 @@ function MultiplierBar({ a }) {
         {rows.map((r) => (
           <Fragment key={r.key}>
             <span className={r.big ? "font-semibold text-dark" : "text-light"}>{r.label}</span>
-            <div className="h-2 overflow-hidden rounded-full bg-surface2">
-              <div className={`h-full rounded-full ${r.big ? "bg-brand" : "bg-brand/60"}`} style={{ width: `${r.fill * 100}%` }} />
-            </div>
+            <GrowBar share={r.fill} className={r.big ? "bg-brand" : "bg-brand/60"} />
             <span className="flex items-center justify-end gap-2 font-mono tabular-nums">
               <span className={r.big ? "font-bold text-dark" : "text-medium"}>
                 {r.value}
@@ -308,10 +392,66 @@ function MultiplierBar({ a }) {
           </Fragment>
         ))}
       </div>
+      <NextStep a={a} />
       <p className="mt-2 text-[11px] leading-relaxed text-light">
         Recounted every day. Chat starts counting at {fmt(a.chatRange?.min || 50)} messages, voice at{" "}
         {Math.round((a.voiceRange?.min || 300) / 60)} hours. The two halves add up: total = chat + voice, minus one.
       </p>
+    </div>
+  );
+}
+
+// What it takes to get the multiplier one step (0.1) higher, from chat OR
+// from voice. The same straight line the server draws (lib/tokenRules.js):
+// a half is 1.1 at its lower threshold and 2.0 at its upper one.
+const HALF_FLOOR = 1.1;
+const HALF_CEILING = 2;
+function amountFor(half, range) {
+  if (half <= 1) return 0;
+  if (half <= HALF_FLOOR) return range.min;
+  if (half > HALF_CEILING) return Infinity;
+  return range.min + ((half - HALF_FLOOR) / (HALF_CEILING - HALF_FLOOR)) * (range.max - range.min);
+}
+function nextStep(a) {
+  const max = a.max || 3;
+  const total = a.total || 1;
+  if (total >= max - 1e-9 || !a.chatRange || !a.voiceRange) return null;
+  // One step above the number the card SHOWS (rounded to a tenth), or a 1.55
+  // shown as "1.6x" would get "next step x1.6" under it.
+  const next = Math.min(max, Math.round(total * 10) / 10 + 0.1);
+  const gap = next - total;
+  const msgs = Math.ceil(amountFor((a.chat || 1) + gap, a.chatRange) - (a.chatMessages || 0));
+  const mins = Math.ceil(amountFor((a.voice || 1) + gap, a.voiceRange) - (a.vcMinutes || 0));
+  return { next, msgs: Number.isFinite(msgs) ? Math.max(1, msgs) : null, mins: Number.isFinite(mins) ? Math.max(1, mins) : null };
+}
+const hm = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`);
+
+function NextStep({ a }) {
+  const max = a.max || 3;
+  if ((a.total || 1) >= max - 1e-9) {
+    return (
+      <div className="mt-3 rounded-lg bg-ok/10 px-3 py-2 text-xs font-semibold text-ok">
+        Maxed out. Every race you finish pays x{max.toFixed(1)}.
+      </div>
+    );
+  }
+  const s = nextStep(a);
+  if (!s || (!s.msgs && !s.mins)) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-border px-3 py-2 text-xs text-medium">
+      <span className="font-semibold text-dark">Next step x{s.next.toFixed(1)}:</span>{" "}
+      {s.msgs && (
+        <>
+          <span className="font-mono tabular-nums">{fmt(s.msgs)}</span> more {s.msgs === 1 ? "message" : "messages"}
+        </>
+      )}
+      {s.msgs && s.mins && " or "}
+      {s.mins && (
+        <>
+          <span className="font-mono tabular-nums">{hm(s.mins)}</span> more in voice
+        </>
+      )}
+      .
     </div>
   );
 }
@@ -330,7 +470,7 @@ function PracticeCard({ week }) {
   const manySeries = new Set(weeks.map((w) => w.series)).size > 1;
   const tiers = weeks[0]?.tiers || [];
   return (
-    <div className="card px-5 py-4">
+    <div className="card reveal px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>Training</Heading>
         <div className="text-xs text-light">This week</div>
@@ -363,7 +503,7 @@ function PracticeCard({ week }) {
 // So this card tells the member what the newcomer types in when signing in.
 function InviteCard({ code, name, earning = true }) {
   return (
-    <div className="card flex h-full flex-col gap-3 p-5">
+    <div className="card reveal flex h-full flex-col gap-3 p-5">
       <div>
         <Heading>Bring someone in</Heading>
         <p className="mt-1 text-sm leading-relaxed text-light">
@@ -392,7 +532,7 @@ function InviteCard({ code, name, earning = true }) {
 function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
   const boosted = rules.some((r) => r.boosted);
   return (
-    <div className="card px-5 py-4">
+    <div className="card reveal px-5 py-4">
       <Heading>Earning tokens</Heading>
       {boosted && (
         <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
@@ -544,16 +684,18 @@ function buyLabel(item, balance) {
 //
 // The whole thing opens the window rather than buying on the spot: every entry
 // has more to say than fits here, and nothing should be bought by a stray click.
-function ShopTile({ item, balance, onOpen }) {
+function ShopTile({ item, balance, onOpen, index = 0 }) {
   const short = item.cost - balance;
   return (
-    <li className="h-full">
+    <li className="h-full" style={{ "--i": index }}>
       <button
         type="button"
         onClick={() => onOpen(item)}
-        className="lift flex h-full w-full gap-3 rounded-xl border border-border bg-card p-2 text-left transition hover:border-brand/40 sm:flex-col sm:gap-0"
+        className={`lift shine token-tile flex h-full w-full gap-3 rounded-xl border bg-card p-2 text-left transition hover:border-brand/40 sm:flex-col sm:gap-0 ${
+          short > 0 ? "border-border" : "token-ready border-ok/40"
+        }`}
       >
-        <ShopArt item={item} className="h-[72px] w-[104px] shrink-0 sm:aspect-[3/2] sm:h-auto sm:w-full" />
+        <ShopArt item={item} className="token-tile-art h-[72px] w-[104px] shrink-0 sm:aspect-[3/2] sm:h-auto sm:w-full" />
         <div className="flex min-w-0 flex-1 flex-col px-1 pb-0.5 sm:pt-2.5">
           <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-light">
             {item.category}
@@ -561,13 +703,20 @@ function ShopTile({ item, balance, onOpen }) {
           <div className="text-sm font-semibold leading-snug text-dark">{item.name}</div>
           <div className="line-clamp-2 text-xs leading-snug text-light">{item.description}</div>
           <span
-            className={`mt-auto inline-flex items-center gap-1 pt-1.5 font-mono text-sm font-bold tabular-nums ${
-              short > 0 ? "text-light" : "text-dark"
+            className={`mt-auto flex items-center gap-1 pt-1.5 font-mono text-sm font-bold tabular-nums ${
+              short > 0 ? "text-light" : "text-ok"
             }`}
           >
             <TokenIcon className="h-3.5 w-3.5" />
             {withPrefix(item)}
+            {short <= 0 && (
+              <span className="ml-auto hidden whitespace-nowrap font-sans text-[10px] font-bold uppercase tracking-wider sm:inline">You can buy this</span>
+            )}
           </span>
+          {/* How close you are, for the ones you cannot buy yet. */}
+          {short > 0 && item.cost > 0 && (
+            <GrowBar share={balance / item.cost} trackClassName="mt-1.5 h-1 bg-surface2" className="bg-brand/70" />
+          )}
         </div>
       </button>
     </li>
@@ -649,13 +798,13 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
 
           {error && <ErrorBox message={error} />}
           {ordered && (
-            <Notice kind="success">
+            <div className="token-done-pop"><Notice kind="success">
               {ownFlair
                 ? "Sent to the admins. They read your wording first, and it goes up on your profile once they say yes. If they turn it down you get the tokens back."
                 : instant
                   ? "Done. It is live on the site right now."
                   : "Ordered. The league office picks it up from here and will come back to you on Discord."}
-            </Notice>
+            </Notice></div>
           )}
 
           <p className="text-sm leading-relaxed text-medium">{live.blurb || live.description}</p>
@@ -731,14 +880,17 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
             <button type="button" className="btn-secondary" onClick={onClose}>
               {ordered ? "Done" : "Not now"}
             </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy || ordered || short > 0 || (flairs && (!choice || (ownFlair && !ownReady)))}
-              onClick={act}
-            >
-              {busy ? "…" : buyLabel({ ...live, instant }, balance)}
-            </button>
+            <span className="relative">
+              {ordered && <CoinBurst />}
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || ordered || short > 0 || (flairs && (!choice || (ownFlair && !ownReady)))}
+                onClick={act}
+              >
+                {busy ? "…" : ordered ? (instant ? "Yours" : "Ordered") : buyLabel({ ...live, instant }, balance)}
+              </button>
+            </span>
           </div>
         </div>
       </div>
@@ -964,9 +1116,11 @@ function CardDesignWindow({ data, onClose, onChanged }) {
             <div className="space-y-4 lg:max-h-[62vh] lg:overflow-y-auto lg:scrollbar-slim lg:pr-1">
               {error && <ErrorBox message={error} />}
               {bought && (
-                <Notice kind="success">
-                  {bought} is yours. Pick it on your card under Personal Area, Edit card.
-                </Notice>
+                <div className="token-done-pop">
+                  <Notice kind="success">
+                    {bought} is yours. Pick it on your card under Personal Area, Edit card.
+                  </Notice>
+                </div>
               )}
               {collections.map((c) => (
                 <div key={c.key}>
@@ -1020,6 +1174,10 @@ function CardDesignWindow({ data, onClose, onChanged }) {
             <button type="button" className="btn-secondary" onClick={onClose}>
               {bought ? "Done" : "Not now"}
             </button>
+            <span className="relative">
+            {/* keyed on the name so a second purchase in the same window
+                throws a fresh handful. */}
+            {bought && <CoinBurst key={bought} />}
             <button
               type="button"
               className="btn-primary"
@@ -1036,6 +1194,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                       ? `${fmt(short)} short`
                       : `Buy ${design.name}`}
             </button>
+            </span>
           </div>
         </div>
       </div>
@@ -1071,11 +1230,11 @@ function Shop({ data, onChanged, goal, onGoal }) {
   // one or two tiles each and a lot of empty space to the right of every
   // heading. Each tile says which category it is in instead.
   return (
-    <div className="card space-y-3 p-5">
+    <div className="card reveal space-y-3 p-5">
       <Heading>The shop</Heading>
-      <ul className={`grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 ${wideCols(data.shop.length)}`}>
-        {data.shop.map((item) => (
-          <ShopTile key={item.key} item={item} balance={data.balance} onOpen={(i) => (i.link ? navigate(i.link) : setOpen(i))} />
+      <ul className={`cascade grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 ${wideCols(data.shop.length)}`}>
+        {data.shop.map((item, i) => (
+          <ShopTile key={item.key} index={i} item={item} balance={data.balance} onOpen={(i) => (i.link ? navigate(i.link) : setOpen(i))} />
         ))}
       </ul>
       {/* The card entry opens the catalogue; everything else opens the plain
@@ -1101,7 +1260,7 @@ const ORDER_STATUS = {
 function Collection({ orders }) {
   if (!orders.length) return null;
   return (
-    <div className="card space-y-3 p-5">
+    <div className="card reveal space-y-3 p-5">
       <Heading>Your orders</Heading>
       <ul className="divide-y divide-border">
         {orders.map((o) => {
@@ -1140,7 +1299,7 @@ function History({ ledger }) {
   // Capped and scrolling rather than however tall a career happens to be: a
   // driver with seventy races had a page whose last two thirds were one list.
   return (
-    <div className="card px-5 py-4">
+    <div className="card reveal px-5 py-4">
       <Heading>Your history</Heading>
       <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto scrollbar-slim">
       {ledger.map((e) => (

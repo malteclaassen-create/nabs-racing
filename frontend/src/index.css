@@ -2197,6 +2197,90 @@ body::before {
 .fx-lite .token-gain { animation: none !important; }
 .fx-lite .token-pill-celebrating::after { display: none; }
 
+/* --- The tokens page ----------------------------------------------------- */
+/* The coin on the balance card pops in once and then catches the light every
+   few seconds. The glint is masked to the star's own shape, so it runs across
+   the mark and not across a square around it. */
+.token-coin { position: relative; display: inline-block; animation: token-coin-in 700ms var(--e-pop) both; }
+.token-coin::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  -webkit-mask: var(--coin-mask) center / contain no-repeat;
+  mask: var(--coin-mask) center / contain no-repeat;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.85) 50%, transparent 62%) no-repeat;
+  background-size: 250% 100%;
+  background-position: 150% 0;
+  animation: token-coin-glint 5s var(--e-soft) 900ms infinite;
+  pointer-events: none;
+}
+@keyframes token-coin-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes token-coin-glint {
+  0% { background-position: 150% 0; }
+  22%, 100% { background-position: -60% 0; }
+}
+
+/* Bars that grow to their width (GrowBar in pages/Tokens.jsx sets the width). */
+.token-grow { transition: width 1000ms var(--e-draw); }
+
+/* A shop entry you can afford: its price turns green and the tile glows at the
+   edge once, on arrival. */
+.token-ready { animation: token-ready-in 1400ms var(--e-soft) 300ms both; }
+@keyframes token-ready-in {
+  0% { box-shadow: 0 0 0 0 rgb(var(--c-ok) / 0); }
+  35% { box-shadow: 0 0 0 3px rgb(var(--c-ok) / 0.35); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--c-ok) / 0); }
+}
+.token-tile-art img { transition: transform 400ms var(--e-soft); }
+.token-tile:hover .token-tile-art img { transform: scale(1.07) translateY(-2px); }
+
+/* "You can get it now" under the goal bar: the bar gets a light running
+   through it, so the moment it fills up is a moment. */
+.token-goal-done { position: relative; overflow: hidden; }
+.token-goal-done::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: token-goal-run 2.4s var(--e-soft) 1.1s infinite;
+}
+@keyframes token-goal-run { 60%, 100% { transform: translateX(100%); } }
+
+/* The coin burst after a purchase: a handful of coins fly out of the button
+   and fall away. Each coin gets its own --dx/--dy/--r from the component. */
+.token-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 5; }
+.token-burst > span {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  animation: token-burst-fly 1100ms var(--e-out) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes token-burst-fly {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4) rotate(0); }
+  12% { opacity: 1; }
+  70% { opacity: 1; transform: translate(var(--dx), var(--dy)) scale(1) rotate(var(--r)); }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 40px)) scale(0.8) rotate(var(--r)); }
+}
+/* The success line in a shop window pops rather than appearing. */
+.token-done-pop { animation: champ-pop var(--t-slow) var(--e-pop) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .token-coin, .token-ready, .token-done-pop { animation: none; }
+  .token-coin::after, .token-goal-done::after, .token-burst { display: none; }
+  .token-grow, .token-tile-art img { transition: none; }
+}
+.fx-lite .token-coin, .fx-lite .token-ready, .fx-lite .token-done-pop { animation: none; }
+.fx-lite .token-coin::after, .fx-lite .token-goal-done::after, .fx-lite .token-burst { display: none; }
+.fx-lite .token-grow, .fx-lite .token-tile-art img { transition: none; }
+.fx-lite .token-tile:hover .token-tile-art img { transform: none; }
+
 /* --- Settings drawer ----------------------------------------------------- */
 /* The drawer slides/fades both IN and OUT via a transform/opacity transition on
    its `settings-anim` elements (driven by a `show` state in SettingsPanel, so it
