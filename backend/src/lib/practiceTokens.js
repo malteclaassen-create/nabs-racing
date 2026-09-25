@@ -42,7 +42,7 @@ import {
 } from "./tokens.js";
 import { leagueDay } from "./tokenRules.js";
 import { raceKickoff } from "./raceKickoff.js";
-import { groupKeyFor } from "./trackKeys.js";
+import { groupKeyFor, trackKeyFor } from "./trackKeys.js";
 import { LIVE_SERVERS } from "./liveServers.js";
 import { boardScopes } from "./liveBestLaps.js";
 
@@ -223,6 +223,42 @@ export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackK
   return remember(candidates[0]);
 }
 
+// ---- Is this lap on the week's track ----------------------------------------
+//
+// After a race the server stays on the circuit it was raced on, in a practice
+// session, until the league puts the next round's track up. Laps driven there
+// are not practice for the next round, but the week already belongs to it, so
+// they used to fill the next round's bar before its track was even on the
+// server. A lap counts once the server runs the round's circuit.
+//
+// Only a clear mismatch is refused: both names known circuits, and different
+// ones. An unknown track name (a new mod, a round with no track yet) is let
+// through, as before, rather than silently paying nobody.
+export function offTrack(periodTrack, lapTrackKey) {
+  const want = trackKeyFor(String(periodTrack || ""));
+  const got = trackKeyFor(String(lapTrackKey || "").split("--")[0]);
+  return !!(want && got && want !== got);
+}
+
+// A member's rows for the running weeks, summed per server, series and week,
+// leaving out a row whose laps were driven on the old circuit.
+function sumOnTrack(rows, periods) {
+  const out = new Map();
+  for (const r of rows || []) {
+    const p = periods.find((x) => x.slug === r.series && x.period.key === r.period);
+    if (p && offTrack(p.period.track, r.trackKey)) continue;
+    const key = `${r.server}|${r.series}|${r.period}`;
+    const have = out.get(key);
+    if (have) {
+      have.laps += Number(r.laps || 0);
+      if (!have.car && r.car) have.car = r.car;
+    } else {
+      out.set(key, { server: r.server, series: r.series, period: r.period, laps: Number(r.laps || 0), car: r.car || null });
+    }
+  }
+  return [...out.values()];
+}
+
 // ---- Counting ---------------------------------------------------------------
 
 // The relay hands laps in as they happen and must not wait for a database, so
@@ -262,6 +298,22 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   if (!slug) return;
   const period = await currentPeriod(prisma, slug);
   if (!period) return;
+  if (offTrack(period.track, trackKey)) return;
+
+  // Laps already filed for this week from the old circuit (from before this
+  // rule, or a server that went back to it) are not practice for this round:
+  // the first lap on the right track starts the count again.
+  const filed = await prisma
+    .$queryRawUnsafe(
+      `SELECT "trackKey" FROM "TokenPractice"
+        WHERE "steamId" = ? AND "series" = ? AND "period" = ? AND "server" = ?`,
+      id,
+      slug,
+      period.key,
+      from
+    )
+    .catch(() => []);
+  const restart = filed.length > 0 && offTrack(period.track, filed[0].trackKey) ? 1 : 0;
 
   // The lap is counted only when it is newer than the last one counted for this
   // driver, so a relay that reconnects and sees the same lap again adds nothing.
@@ -271,7 +323,7 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
       `INSERT INTO "TokenPractice" ("steamId","series","period","server","laps","trackKey","car","lastAt","updatedAt")
        VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
        ON CONFLICT("steamId","series","period","server") DO UPDATE SET
-         "laps" = "laps" + excluded."laps",
+         "laps" = CASE WHEN ? THEN excluded."laps" ELSE "laps" + excluded."laps" END,
          "trackKey" = excluded."trackKey",
          "car" = excluded."car",
          "lastAt" = excluded."lastAt",
@@ -284,7 +336,8 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
       many,
       String(trackKey || "").slice(0, 80) || null,
       String(car || "").slice(0, 80) || null,
-      stamp
+      stamp,
+      restart
     )
     .catch(() => 0);
   if (!Number(written)) return;
@@ -482,13 +535,13 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
   const lapRows = await prisma
     .$queryRawUnsafe(
       `SELECT "server" AS "server", "series" AS "series", "period" AS "period",
-              COALESCE(SUM("laps"), 0) AS "laps", MAX("car") AS "car"
+              "laps" AS "laps", "car" AS "car", "trackKey" AS "trackKey"
          FROM "TokenPractice"
-        WHERE "steamId" IN (${ph}) AND "period" IN (${periodPh})
-        GROUP BY "server", "series", "period"`,
+        WHERE "steamId" IN (${ph}) AND "period" IN (${periodPh})`,
       ...steamIds,
       ...periods.map((p) => p.period.key)
     )
+    .then((rows) => sumOnTrack(rows, periods))
     .catch(() => []);
 
   const weeks = [];
@@ -590,12 +643,12 @@ export async function settleThisWeek(prisma) {
     )
     .catch(() => {});
   const rows = await prisma
-    .$queryRawUnsafe(`SELECT "steamId","series","period","server","laps" FROM "TokenPractice"`)
+    .$queryRawUnsafe(`SELECT "steamId","series","period","server","laps","trackKey" FROM "TokenPractice"`)
     .catch(() => []);
   let paid = 0;
   for (const r of rows) {
     const on = current.find((c) => c.slug === r.series && c.period.key === r.period);
-    if (!on) continue;
+    if (!on || offTrack(on.period.track, r.trackKey)) continue;
     const discordId = await discordForSteamIds(prisma, [r.steamId]);
     if (!discordId) continue;
     paid += await payPractice(prisma, discordId, {
