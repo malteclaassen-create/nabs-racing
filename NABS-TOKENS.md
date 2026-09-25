@@ -1,6 +1,6 @@
-# NABS Points - the admin's guide
+# NABS Tokens - the admin's guide
 
-NABS Points are the league's own currency. Members earn them by racing and by
+NABS Tokens are the league's own currency. Members earn them by racing and by
 bringing people in, and spend them in a shop on the site (card designs, profile
 designs, a helmet, a Discord role, a name on the Hall of Fame wall). Everything
 is switched from the admin area, nothing needs a code change.
@@ -9,7 +9,7 @@ This page is for whoever runs it. Ten minutes to read.
 
 ## 1. Switching it on
 
-Admin -> Community -> NABS Points. The card at the top has three settings:
+Admin -> Community -> NABS Tokens. The card at the top has three settings:
 
 | Setting | What happens |
 | --- | --- |
@@ -80,7 +80,7 @@ hand, with a reason. Members see that reason in their history.
 
 - Nav bar: avatar and points in one capsule, with a "+50" animation the first
   time they look after a race.
-- Profile -> NABS Points tab: balance, activity multiplier, invite link, shop,
+- Profile -> NABS Tokens tab: balance, activity multiplier, invite link, shop,
   orders, leaderboard, the rules.
 - Profile studio (from the shop): themes, banners, name lettering, stats styles
   and effects for their public profile page, tried live before buying.
@@ -94,7 +94,7 @@ a link.
 
 Setup is in `discord-bot/README.md`. Short version: create a bot in the Discord
 developer portal, put it on the server with Manage Server and View Channels,
-copy the key from Admin -> NABS Points -> Discord bot into the bot's `.env`,
+copy the key from Admin -> NABS Tokens -> Discord bot into the bot's `.env`,
 run it. The bot can run before the points are switched on, then the 30-day
 window is already full on day one.
 

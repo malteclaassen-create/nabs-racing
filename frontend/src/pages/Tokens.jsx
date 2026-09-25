@@ -13,7 +13,7 @@ import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
 
 // ---------------------------------------------------------------------------
-// NABS Points: the member's own page. What they have, how it got there, how to
+// NABS Tokens: the member's own page. What they have, how it got there, how to
 // get more, and what it buys. Lives as a tab of the Personal Area next to My
 // Rating, because it is the same kind of thing: yours and nobody else's.
 // ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ function Leaderboard() {
         </div>
         <SlidingTabs
           items={[
-            { key: "earned", label: "Points earned" },
+            { key: "earned", label: "Tokens earned" },
             { key: "voice", label: "Time in voice" },
             { key: "chat", label: "Messages" },
           ]}
@@ -236,7 +236,7 @@ function Balance({ data, goal, onClearGoal }) {
           <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Your balance</div>
           <div className="font-display text-3xl font-extrabold tabular-nums leading-none text-dark">
             <MovingNumber value={data.balance} />{" "}
-            <span className="font-display text-base font-bold uppercase tracking-tight text-light">points</span>
+            <span className="font-display text-base font-bold uppercase tracking-tight text-light">tokens</span>
           </div>
         </div>
       </div>
@@ -404,7 +404,7 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
   const boosted = rules.some((r) => r.boosted);
   return (
     <div className="card px-5 py-4">
-      <Heading>Earning points</Heading>
+      <Heading>Earning tokens</Heading>
       {boosted && (
         <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
           The marked lines are multiplied by how active you are on Discord, chat and voice together, up to 3x.
@@ -625,12 +625,12 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
     // place.
     const ok = await ask({
       title: `${instant ? "Buy" : "Order"} ${live.name}?`,
-      body: `${fmt(live.cost)} points come off your balance. You have ${fmt(balance)}.${
+      body: `${fmt(live.cost)} tokens come off your balance. You have ${fmt(balance)}.${
         ownFlair
-          ? `\n\nAn admin reads "${ownText.trim()}" before it goes up, and can decline it, which puts the points back.`
+          ? `\n\nAn admin reads "${ownText.trim()}" before it goes up, and can decline it, which puts the tokens back.`
           : instant
             ? ""
-            : "\n\nThe league office fills this by hand and can decline it, which puts the points back."
+            : "\n\nThe league office fills this by hand and can decline it, which puts the tokens back."
       }`,
       confirmLabel: `${instant ? "Buy" : "Order"} for ${fmt(live.cost)}`,
     });
@@ -662,7 +662,7 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
           {ordered && (
             <Notice kind="success">
               {ownFlair
-                ? "Sent to the admins. They read your wording first, and it goes up on your profile once they say yes. If they turn it down you get the points back."
+                ? "Sent to the admins. They read your wording first, and it goes up on your profile once they say yes. If they turn it down you get the tokens back."
                 : instant
                   ? "Done. It is live on the site right now."
                   : "Ordered. The league office picks it up from here and will come back to you on Discord."}
@@ -715,7 +715,7 @@ function ItemWindow({ item, data, onClose, onChanged, goal, onGoal }) {
                   </div>
                   <Notice kind="info">
                     This one does not go up by itself. An admin reads it first and puts it on your profile if it is
-                    fine. Turn it down and your points come straight back.
+                    fine. Turn it down and your tokens come straight back.
                   </Notice>
                 </div>
               )}
@@ -866,7 +866,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
     if (running.current || !design || design.owned) return;
     const ok = await ask({
       title: `Buy ${design.name}?`,
-      body: `${fmt(design.cost)} points come off your balance. You have ${fmt(balance)}.\n\nThe design is yours right away and you can switch back to any design you own at any time.`,
+      body: `${fmt(design.cost)} tokens come off your balance. You have ${fmt(balance)}.\n\nThe design is yours right away and you can switch back to any design you own at any time.`,
       confirmLabel: `Buy for ${fmt(design.cost)}`,
     });
     if (!ok) return;
@@ -1008,7 +1008,7 @@ function CardDesignWindow({ data, onClose, onChanged }) {
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[13px] font-semibold text-dark">{d.name}</span>
                               <span className="block font-mono text-[10px] uppercase tracking-wider text-light">
-                                {d.owned ? "Yours" : `${fmt(d.cost)} points`}
+                                {d.owned ? "Yours" : `${fmt(d.cost)} tokens`}
                               </span>
                             </span>
                           </button>
@@ -1219,14 +1219,14 @@ export default function Tokens() {
     setGoalState(key);
   };
 
-  if (tokens.loading && !tokens.data) return <Spinner label="Loading your points…" />;
+  if (tokens.loading && !tokens.data) return <Spinner label="Loading your tokens…" />;
   if (tokens.error) return <ErrorBox message={tokens.error} onRetry={reload} />;
   const data = tokens.data;
   if (!data?.enabled) {
     return (
       <EmptyState
         title="Not switched on"
-        hint="NABS Points are being tried out. The league will say when they go live."
+        hint="NABS Tokens are being tried out. The league will say when they go live."
       />
     );
   }

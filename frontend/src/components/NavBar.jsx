@@ -127,7 +127,7 @@ function TokenPill({ mobile = false, segment = false }) {
   return (
     <NavLink
       to="/profile?tab=tokens"
-      title={why ? `+${play.gained} points: ${why}` : "Your NABS Points"}
+      title={why ? `+${play.gained} tokens: ${why}` : "Your NABS Tokens"}
       className={`nav-identity-points inline-flex items-center gap-1.5 font-mono text-[15px] font-bold tabular-nums transition ${
         segment
           ? // the right half of the identity capsule: shares its border with the chip

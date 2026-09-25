@@ -14,7 +14,7 @@
 
 // `where`: "league" = the page lives under /s/<series>/…, "flat" = it does not.
 // `needs`: "member" = only worth offering to somebody signed in, "admin" = to
-// an admin, "points" = only while the NABS Points trial is switched on.
+// an admin, "points" = only while the NABS Tokens trial is switched on.
 const PAGES = [
   { key: "home", label: "Home", hint: "Next race, standings, the season", icon: "home", where: "league", path: "" ,
     words: ["home", "start", "front", "startseite", "news"] },
@@ -56,8 +56,8 @@ const PAGES = [
     words: ["rating", "my rating", "rtg", "exp", "pac", "rac", "bewertung"] },
   { key: "mytelemetry", label: "My telemetry", hint: "Your own laps and traces", icon: "gauge", where: "flat", path: "/profile?tab=tools", needs: "member",
     words: ["telemetry", "telemetrie", "my telemetry", "traces", "laps", "daten"] },
-  { key: "points", label: "NABS Points", hint: "Balance, shop, how to earn", icon: "coin", where: "flat", path: "/profile?tab=tokens", needs: "points",
-    words: ["points", "nabs points", "tokens", "shop", "balance", "punkte", "muenzen"] },
+  { key: "points", label: "NABS Tokens", hint: "Balance, shop, how to earn", icon: "coin", where: "flat", path: "/profile?tab=tokens", needs: "points",
+    words: ["points", "nabs tokens", "tokens", "shop", "balance", "punkte", "muenzen"] },
   { key: "settings", label: "Settings", hint: "Theme, performance, account", icon: "sliders", where: "flat", path: "/profile?tab=settings", needs: "member",
     words: ["settings", "theme", "dark mode", "light mode", "performance", "einstellungen", "design"] },
   { key: "feedback", label: "Feedback", hint: "Report a bug or an idea", icon: "message", where: "flat", path: "/feedback", needs: "member",

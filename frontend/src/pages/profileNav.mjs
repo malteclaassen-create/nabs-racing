@@ -31,7 +31,7 @@ export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false
       // Only while the token trial is switched on. The hook answers null when
       // it is off, which is the same answer it gives the nav bar, so the row
       // and the count up there appear and disappear together.
-      ...(tokens === null ? [] : [{ kind: "section", key: "tokens", label: "NABS Points", icon: "tokens", count: tokens }]),
+      ...(tokens === null ? [] : [{ kind: "section", key: "tokens", label: "NABS Tokens", icon: "tokens", count: tokens }]),
       // The key stays "tools": ?tab=tools is in bell links and bookmarks.
       { kind: "section", key: "tools", label: "Telemetry", icon: "tools" },
       // Theme, performance, where your own name in the bar leads, and the way

@@ -5,7 +5,7 @@
 // so all of them are stood in for here. What is under test is the wiring: that
 // the sprint comes back beside the feature race in the same shape, that each
 // race reports what IT paid, that the round's total is still the championship's
-// own number, that the NABS Points of both races are found, and that asking for
+// own number, that the NABS Tokens of both races are found, and that asking for
 // the sprint gives you the weekend rather than half of it.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -174,7 +174,7 @@ describe("a sprint weekend in the recap", () => {
     expect(weekend.feature + weekend.sprint).toBe(weekend.total);
   });
 
-  it("finds the NABS Points of both races and says which paid what", async () => {
+  it("finds the NABS Tokens of both races and says which paid what", async () => {
     const { points } = await build(PARENT);
     expect(points.earned).toBe(20);
     expect(points.entries.map((e) => e.race)).toEqual(["Feature race", "Sprint"]);

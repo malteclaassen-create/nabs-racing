@@ -2,14 +2,14 @@
 // The race recap: what a driver sees the first time they open the site after
 // the league office has saved a round. One round, told from their seat: where
 // they finished, what it did to the championship, how the live rating moved,
-// what it paid in NABS Points, and the round's facts for everyone.
+// what it paid in NABS Tokens, and the round's facts for everyone.
 //
 // A SPRINT WEEKEND is one round with two races (lib/sprintRaces.js), and the
 // recap tells it as two. The feature race is the recap's own subject as ever;
 // the sprint comes back beside it under `sprint`, built to the same shape from
 // the hidden child row, so the page can show either half without knowing which
 // one it is looking at. What the two share — the championship, the rating, the
-// season, the NABS Points — is told once, over the whole weekend, and its
+// season, the NABS Tokens — is told once, over the whole weekend, and its
 // points are shown as the two races that paid them rather than as one sum:
 // `weekend` carries the feature's share, the sprint's, and the total.
 //
@@ -19,7 +19,7 @@
 // disagree with the page it sends the reader to. The only state is which
 // round a member has already been shown (MemberAccount.recapSeenRaceId).
 //
-// The switch works like the NABS Points one: off, admins only (to look at it
+// The switch works like the NABS Tokens one: off, admins only (to look at it
 // on the real site before anybody else does), everyone.
 // ---------------------------------------------------------------------------
 import {
@@ -508,7 +508,7 @@ async function ratingMove(prisma, rowId, raceId) {
   };
 }
 
-// The NABS Points this round paid the member, read straight off the ledger,
+// The NABS Tokens this round paid the member, read straight off the ledger,
 // plus a clean-race bonus that is still waiting for the stewards. null when
 // the feature is not on for this request.
 //
@@ -894,7 +894,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   if (own?.finished) own.beatTeams = beatWholeTeams(finished, own, (ownRow.effectiveTeam || ownRow.team)?.id || null);
   const steamRow = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null) : null;
   // The sprint of a sprint weekend, told the same way as the race above. It
-  // is built before the NABS Points so the ledger can be asked about both
+  // is built before the NABS Tokens so the ledger can be asked about both
   // races at once.
   const sprintId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
   const sprint = sprintId ? await sprintHalf(prisma, race, sprintId, rowId, cell, steamRow?.steamId).catch(() => null) : null;

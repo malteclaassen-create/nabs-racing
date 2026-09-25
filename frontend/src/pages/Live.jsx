@@ -148,7 +148,7 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   // somebody watches, so it keeps a slow clock rather than none.
   const practiceWeek = usePracticeWeek(detailsOpen ? 20000 : 60000);
   // This page is a PUBLIC one, so the week only appears here once the league
-  // has put NABS Points in front of everybody. While the trial is still
+  // has put NABS Tokens in front of everybody. While the trial is still
   // admins-only an admin sees it on their own points page and nowhere else,
   // which is the same rule the flair and the hall of fame wall follow.
   //

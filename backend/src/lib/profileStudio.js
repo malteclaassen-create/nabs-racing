@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // The profile studio: designs a member can put on their public profile page
-// (themes, banners, lettering, stats styles, effects), bought with NABS Points.
+// (themes, banners, lettering, stats styles, effects), bought with NABS Tokens.
 //
 // The catalogue is shared with the frontend (shared/profileCosmetics.json):
 // the site draws the designs, this file sells them and remembers what each

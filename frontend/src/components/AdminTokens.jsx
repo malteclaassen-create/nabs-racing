@@ -65,7 +65,7 @@ const MODE_TEXT = {
 function modeQuestion(next, current, earning) {
   if (next === "off")
     return {
-      title: "Switch NABS Points off?",
+      title: "Switch NABS Tokens off?",
       body:
         (current === "all"
           ? "Members stop seeing their balance, their invite link and the shop, and profile designs and the wall go from the public pages. "
@@ -75,7 +75,7 @@ function modeQuestion(next, current, earning) {
     };
   if (next === "admins")
     return {
-      title: "NABS Points for admins only?",
+      title: "NABS Tokens for admins only?",
       body:
         (current === "all"
           ? "Members stop seeing their balance, their invite link and the shop, and profile designs and the wall go from the public pages. "
@@ -84,7 +84,7 @@ function modeQuestion(next, current, earning) {
       confirmLabel: "Admins only",
     };
   return {
-    title: "Show NABS Points to everyone?",
+    title: "Show NABS Tokens to everyone?",
     body:
       "Every member sees their balance in the nav bar, their invite link and the shop, and profile designs and the wall become public." +
       (earning
@@ -98,7 +98,7 @@ function EarningSwitch({ earning, startDay, busy, onChange }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
-        <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Earning points</div>
+        <div className="font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-eyebrow">Earning tokens</div>
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
           {earning
             ? `Running${startDay ? `, races from ${startDay} count` : ""}. Everyone earns as they go.`
@@ -117,7 +117,7 @@ function TrialSwitch({ mode, onChange, busy }) {
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
         <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">
-          NABS Points
+          NABS Tokens
         </div>
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">{MODE_TEXT[mode] || MODE_TEXT.off}</p>
       </div>
@@ -332,7 +332,7 @@ function BotPanel() {
       <CopyField label="Key" value={bot.data.key || ""} />
       <p className="text-xs leading-relaxed text-light">
         Setting the bot up is a handful of steps in Discord, written out in <span className="font-mono">discord-bot/README.md</span>.
-        It can run before the points are switched on for members, which fills the 30 day window in advance.
+        It can run before the tokens are switched on for members, which fills the 30 day window in advance.
       </p>
     </div>
   );
@@ -436,7 +436,7 @@ function TuningPanel({ d, busy, onSave, onReset }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card p-5">
-          <Head>What earns points</Head>
+          <Head>What earns tokens</Head>
           <ul className="mt-1 divide-y divide-border">
             {(defaults.rules || []).map((r) => {
               const isMult = r.key === "activity";
@@ -693,7 +693,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
           if (!(await ask(modeQuestion(m, mode, !!d.earning)))) return;
           run(
             () => api.setTokensMode(m),
-            m === "all" ? "NABS Points are on for everyone." : m === "admins" ? "NABS Points are on for admins only." : "NABS Points are off."
+            m === "all" ? "NABS Tokens are on for everyone." : m === "admins" ? "NABS Tokens are on for admins only." : "NABS Tokens are off."
           );
         }}
       />
@@ -703,7 +703,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
           that after trying the mode out, so it is said in the open. */}
       {mode === "all" && !d.earning && (
         <Notice kind="warn">
-          Everyone can see NABS Points, but earning is paused: members see a balance no race moves. Start counting
+          Everyone can see NABS Tokens, but earning is paused: members see a balance no race moves. Start counting
           below, or switch to Admins only until you are ready.
         </Notice>
       )}
@@ -793,7 +793,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
         ) : (
           <EmptyState
             title="Nobody has an account yet"
-            hint="One is created the first time a member signs in while the points are switched on."
+            hint="One is created the first time a member signs in while the tokens are switched on."
           />
         ))}
 
@@ -809,7 +809,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
             const ok = await ask({
               title: "Put every rule and price back to the defaults?",
               body:
-                "Everything typed on this page goes back to the default from the code: what earns points, the " +
+                "Everything typed on this page goes back to the default from the code: what earns tokens, the " +
                 "shop, card and studio prices, the referral limit, the activity multiplier and which servers count. " +
                 "Changes not saved yet go too. The counting start day stays.\n\n" +
                 "Rules pay out backwards: a default above today's number also pays for the races already driven, " +

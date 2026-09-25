@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// NABS Points: the league's reward currency. Called tokens throughout the code
-// so it is never confused with championship points; the site says NABS Points.
+// NABS Tokens: the league's reward currency. Called tokens throughout the code
+// so it is never confused with championship points; the site says NABS Tokens.
 //
 // Two switches, and they are separate on purpose. tokens_enabled decides who
 // SEES any of it (off / admins / everyone), tokens_earning decides whether
@@ -1087,7 +1087,7 @@ async function spend(prisma, { discordId, cost, key, name, status, note = null, 
     return await prisma.$transaction(async (tx) => {
       if (owns && (await owns(tx))) return { error: "You already have that one" };
       const balance = await dbBalance(tx, discordId);
-      if (balance < cost) return { error: "Not enough points for that yet" };
+      if (balance < cost) return { error: "Not enough tokens for that yet" };
       const id = randomUUID();
       const paid = await dbAward(tx, { discordId, delta: -cost, rule, title, detail, refKey: `${rule}:${id}` });
       if (!paid) throw new Error("the ledger would not take it");
@@ -1474,7 +1474,7 @@ export async function setRedemptionStatus(prisma, id, status, note = null, flair
 // because "give Steve 200 for the stream" is not a thing to be deduplicated.
 export async function adminAdjust(prisma, discordId, delta, note) {
   const n = Math.round(Number(delta) || 0);
-  if (!n) return { error: "Give a number of points" };
+  if (!n) return { error: "Give a number of tokens" };
   await ensureTokenAccount(prisma, discordId);
   await dbAward(prisma, {
     discordId,

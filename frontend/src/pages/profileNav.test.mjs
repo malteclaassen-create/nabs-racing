@@ -22,7 +22,7 @@ test("Settings is a panel of the page, not a drawer over it or a page away", () 
   assert.ok(!elsewhere.some((i) => i.key === "settings"));
 });
 
-test("NABS Points appears only while the trial is on, and carries the balance", () => {
+test("NABS Tokens appears only while the trial is on, and carries the balance", () => {
   const off = profileNav({ tokens: null });
   assert.ok(!off.sections.some((s) => s.key === "tokens"));
 

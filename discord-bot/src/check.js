@@ -28,7 +28,7 @@ if (!missing.length) {
   } catch (e) {
     const why = String(e.message);
     bad(why);
-    if (why.includes("Bad key")) console.log("\nWrong key. Copy it again from Admin -> NABS Points -> Discord bot.\n");
+    if (why.includes("Bad key")) console.log("\nWrong key. Copy it again from Admin -> NABS Tokens -> Discord bot.\n");
     else if (why.includes("fetch failed") || why.includes("ECONNREFUSED"))
       console.log(`\nNothing answered at ${config.siteUrl}. SITE_URL right? Site running?\n`);
     else console.log("");

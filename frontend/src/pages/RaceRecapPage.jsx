@@ -5,7 +5,7 @@
 // driver chip, then cards that each say one thing with one big number and a
 // line of words under it (where you finished and what that meant, what it
 // paid, your pace against the field, the tyres, your incidents, the lap chart,
-// the rating, the season curve, the NABS Points, your team-mate, the night's
+// the rating, the season curve, the NABS Tokens, your team-mate, the night's
 // honours).
 //
 // The page builds itself as you scroll. Each card is a .recap-reveal that the
@@ -82,7 +82,7 @@ export default function RaceRecapPage() {
   // sprint weekend. Both halves come back in the same shape, so everything
   // below reads the same field names either way; what belongs to the WEEKEND
   // rather than to one race (the championship, the rating, the season, the
-  // NABS Points) keeps being read off `recap`.
+  // NABS Tokens) keeps being read off `recap`.
   const shown = half === "sprint" && recap?.sprint ? { ...recap, ...recap.sprint, half: "sprint" } : recap && { ...recap, half: "feature" };
   const shownId = shown?.race?.id || null;
 
@@ -1206,7 +1206,7 @@ function PointsCard({ points: p }) {
     <Card>
       <div className="grid gap-8 lg:grid-cols-[1fr,1.2fr] lg:gap-14">
         <div>
-          <Label>{p.hypothetical ? "NABS Points this round would pay" : "NABS Points earned"}</Label>
+          <Label>{p.hypothetical ? "NABS Tokens this round would pay" : "NABS Tokens earned"}</Label>
           <div className="mt-2 flex items-end gap-3">
             <TokenIcon className="champ-chip mb-3 h-12 w-12 sm:h-14 sm:w-14" />
             <span className="recap-pop font-display text-[5.5rem] font-black leading-none tracking-tighter text-accent">

@@ -1,5 +1,5 @@
 // The profile studio: try designs on your own profile page and buy them with
-// NABS Points. Ported from the league's design copy; the catalogue lives in
+// NABS Tokens. Ported from the league's design copy; the catalogue lives in
 // shared/profileCosmetics.json, ownership and payment in the tokens API.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -184,7 +184,7 @@ export default function ProfileStyle() {
     if (kind === "buy") {
       const ok = await ask({
         title: `Buy ${item.name}?`,
-        body: `${cost.toLocaleString()} points come off your balance. You have ${account.balance.toLocaleString()}.\n\nIt stays in your collection and you can put it on and take it off whenever you like.`,
+        body: `${cost.toLocaleString()} tokens come off your balance. You have ${account.balance.toLocaleString()}.\n\nIt stays in your collection and you can put it on and take it off whenever you like.`,
         confirmLabel: `Buy for ${cost.toLocaleString()}`,
       });
       if (!ok) return;
@@ -213,7 +213,7 @@ export default function ProfileStyle() {
 
   return <div className={`profile-shop ${pageOnly ? "profile-shop--page" : "space-y-6"}`} style={{ "--profile-team": driver?.team?.color || "#638daf" }}>
     {pageOnly ? <button className="shop-return btn-primary" onClick={() => setPageOnly(false)}>← Back to customization</button> : <>
-      <PageHeader title="Profile Studio" subtitle="Your look belongs to you, not to one season: what you wear here shows on your profile in every league you race in, and on every season you have raced." right={<div className="flex flex-wrap items-center gap-3"><Link to="/profile?tab=tokens" className="btn-secondary">NABS Points</Link><Link to="/profile" className="btn-secondary">My profile</Link><button className="btn-primary" disabled={!driverId} onClick={() => setPageOnly(true)}>View full page ↗</button></div>} />
+      <PageHeader title="Profile Studio" subtitle="Your look belongs to you, not to one season: what you wear here shows on your profile in every league you race in, and on every season you have raced." right={<div className="flex flex-wrap items-center gap-3"><Link to="/profile?tab=tokens" className="btn-secondary">NABS Tokens</Link><Link to="/profile" className="btn-secondary">My profile</Link><button className="btn-primary" disabled={!driverId} onClick={() => setPageOnly(true)}>View full page ↗</button></div>} />
       <div className="shop-toolbar"><div className="shop-tabs" role="group" aria-label="Design category">{CATEGORIES.map(s => {
         const status = categoryStatus(s.id, draft, content, baseline, baselineContent);
         const description = `${status.label}${status.changed ? " · Unsaved changes" : status.active ? " · Saved" : ""}`;
@@ -222,7 +222,7 @@ export default function ProfileStyle() {
           <span className="shop-tab-design" aria-hidden="true">{status.label}</span>
           <span className="sr-only" id={`shop-category-${s.id}`}>{description}</span>
         </button>;
-      })}</div><div className="shop-balance"><TokenIcon className="h-6 w-6" /><span>NABS Points</span><strong>{account ? account.balance.toLocaleString() : "–"}</strong></div></div>
+      })}</div><div className="shop-balance"><TokenIcon className="h-6 w-6" /><span>NABS Tokens</span><strong>{account ? account.balance.toLocaleString() : "–"}</strong></div></div>
       {error && <div role="alert" className="shop-message shop-message--error">{error} {!account && user && <button className="btn-secondary" onClick={() => setReload(n => n + 1)}>Retry</button>}</div>}
       {loading && <p role="status">Loading your collection…</p>}
       <section className="shop-catalog" aria-label="Profile designs">
@@ -235,7 +235,7 @@ export default function ProfileStyle() {
             <div className={`shop-item-art shop-item-art--${slot}`} data-finish={item.finish} aria-hidden="true">
               <DesignSwatch item={item} driver={picturedDriver} appearance={draft} stats={loadedDriver ? profile.data.stats : null} />
             </div>
-            <span className="shop-item-caption"><strong>{item.name}</strong><span>{profileItemPrice(catalogue, item, owned) === 0 ? "Owned" : `${profileItemPrice(catalogue, item, owned)} points`}</span></span>
+            <span className="shop-item-caption"><strong>{item.name}</strong><span>{profileItemPrice(catalogue, item, owned) === 0 ? "Owned" : `${profileItemPrice(catalogue, item, owned)} tokens`}</span></span>
           </button><button type="button" className="shop-favorite" aria-label={`${favorites.includes(item.id) ? "Remove" : "Add"} ${item.name} ${favorites.includes(item.id) ? "from" : "to"} favorites`} aria-pressed={favorites.includes(item.id)} onClick={() => toggleFavorite(item.id)}>{favorites.includes(item.id) ? "★" : "☆"}</button></div>)}
         </div>
         {!items.length && <div className="shop-empty"><span>No matching designs.</span><button type="button" className="text-link" onClick={() => { setSearch(""); setTone("all"); setFavoritesOnly(false); setOwnedOnly(false); }}>Clear filters</button></div>}
@@ -272,11 +272,11 @@ export default function ProfileStyle() {
               <span>{content.backgroundImage ? "Change image" : "Choose an image"}</span>
             </button>
             <div className="shop-background-copy">
-              <div className="shop-background-title"><h3>Custom background</h3><span>{backgroundOwned ? "✓ Unlocked" : `${backgroundPrice.toLocaleString()} points · one-time`}</span></div>
+              <div className="shop-background-title"><h3>Custom background</h3><span>{backgroundOwned ? "✓ Unlocked" : `${backgroundPrice.toLocaleString()} tokens · one-time`}</span></div>
               <p>Your own picture across the whole profile page. Try it here, unlock it once, and change the picture whenever you like.</p>
               <small>PNG, JPG or WebP · up to 8 MB</small>
               <div className="shop-background-actions">
-                {!backgroundOwned && (!user ? <Link to="/profile" className="btn-secondary">Sign in to unlock</Link> : <button type="button" className="btn-primary" disabled={busy || !account || account.balance < backgroundPrice} onClick={() => act("buy", BACKGROUND_ITEM, backgroundPrice)}>{busy ? "Working…" : account && account.balance < backgroundPrice ? `${(backgroundPrice - account.balance).toLocaleString()} points short` : `Unlock for ${backgroundPrice.toLocaleString()} points`}</button>)}
+                {!backgroundOwned && (!user ? <Link to="/profile" className="btn-secondary">Sign in to unlock</Link> : <button type="button" className="btn-primary" disabled={busy || !account || account.balance < backgroundPrice} onClick={() => act("buy", BACKGROUND_ITEM, backgroundPrice)}>{busy ? "Working…" : account && account.balance < backgroundPrice ? `${(backgroundPrice - account.balance).toLocaleString()} tokens short` : `Unlock for ${backgroundPrice.toLocaleString()} tokens`}</button>)}
                 {content.backgroundImage && <button type="button" className="btn-secondary" disabled={editingDisabled} onClick={() => { editContent({ backgroundImage: null }); setFiles(f => { const next = { ...f }; delete next.background; return next; }); }}>Remove background</button>}
               </div>
             </div>
@@ -296,9 +296,9 @@ export default function ProfileStyle() {
           <p>The preview follows every change. Apply to profile to keep it in the real table.</p>
         </section>}
         <input type="file" ref={bannerRef} hidden accept="image/png,image/jpeg,image/webp" onChange={e => pickImage(e, "banner")} />
-        {slot !== "layout" && <div className="shop-selection"><div><strong>{selected?.name || "Original"}</strong><span>{price > 0 ? `${price} points` : "In your collection"}</span></div>{!user ? <Link to="/profile" className="btn-primary">Sign in to buy</Link> : selected && price > 0 ? <button className="btn-primary" disabled={busy || !account || account.balance < price} onClick={() => act("buy")}>{busy ? "Working…" : account && account.balance < price ? `${price - account.balance} points short` : `Buy for ${price} points`}</button> : <span className="shop-owned">✓ Owned</span>}</div>}
+        {slot !== "layout" && <div className="shop-selection"><div><strong>{selected?.name || "Original"}</strong><span>{price > 0 ? `${price} tokens` : "In your collection"}</span></div>{!user ? <Link to="/profile" className="btn-primary">Sign in to buy</Link> : selected && price > 0 ? <button className="btn-primary" disabled={busy || !account || account.balance < price} onClick={() => act("buy")}>{busy ? "Working…" : account && account.balance < price ? `${price - account.balance} tokens short` : `Buy for ${price} tokens`}</button> : <span className="shop-owned">✓ Owned</span>}</div>}
         <div className="shop-save"><button type="button" className="btn-primary" disabled={!account || editingDisabled || locked || !changed} onClick={() => act("save")}>{busy ? "Working…" : "Apply to profile"}</button><button type="button" className="btn-secondary" disabled={editingDisabled || !changed} onClick={reset}>Reset preview</button></div>
-        {locked && <div className="shop-unlock-summary"><span>{missing.length} {missing.length === 1 ? "design" : "designs"} to unlock · {missingCost.toLocaleString()} points</span>{missing.map(item => <button key={item.id} type="button" onClick={() => changeCategory(item.slot === "background" ? "theme" : item.slot)}>{item.name}</button>)}</div>}{notice && <p role="status" className="shop-message">{notice}</p>}
+        {locked && <div className="shop-unlock-summary"><span>{missing.length} {missing.length === 1 ? "design" : "designs"} to unlock · {missingCost.toLocaleString()} tokens</span>{missing.map(item => <button key={item.id} type="button" onClick={() => changeCategory(item.slot === "background" ? "theme" : item.slot)}>{item.name}</button>)}</div>}{notice && <p role="status" className="shop-message">{notice}</p>}
       </section>
       <div className="shop-section-head shop-profile-picker"><h2>{me?.isLinked ? "Your profile" : driver?.name || "Driver profile"}</h2><div className="flex flex-wrap items-center gap-3">
         <button type="button" className="btn-secondary" aria-pressed={comparing} disabled={editingDisabled || !changed} onClick={() => setComparing(value => !value)}>{comparing ? "Back to your changes" : "Compare with saved"}</button>

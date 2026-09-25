@@ -262,7 +262,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   // a no-op there. Raw SQL so it works even before the generated client is
   // refreshed for the new column (same idiom as the telemetry columns above).
   const steamIdConflicts = await reconcileSteamIds(prisma, results, drivers);
-  // NABS Points for the round, now. The multiplier a member carries moves every
+  // NABS Tokens for the round, now. The multiplier a member carries moves every
   // day, so what a race pays is decided the night it is imported, not whenever
   // that member next happens to open their points page. payRace fixes the rate
   // per driver and writes the money straight away (lib/tokens.js). Best-effort

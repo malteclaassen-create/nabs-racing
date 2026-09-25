@@ -52,7 +52,7 @@ export const TAB_GROUPS = [
       // which server each series follows, the training board.
       { id: "live", label: "Live" },
       // Trial feature, and the tab carries its own on/off switch.
-      { id: "tokens", label: "NABS Points" },
+      { id: "tokens", label: "NABS Tokens" },
     ],
   },
   {
@@ -519,9 +519,9 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "tokens",
-    title: "Switch NABS Points on or off",
+    title: "Switch NABS Tokens on or off",
     hint: "The whole reward currency is a trial. This is the switch that shows or hides it for every member.",
-    keywords: "nabs points tokens reward currency trial enable disable switch on off shop referral invite",
+    keywords: "nabs tokens tokens reward currency trial enable disable switch on off shop referral invite",
   },
   {
     tab: "tokens",

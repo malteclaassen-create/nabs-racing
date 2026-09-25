@@ -1036,7 +1036,7 @@ router.put("/race-recap", async (req, res, next) => {
 
 // GET /api/admin/race-recap/preview?raceId=&driverId= -> { recap } as that
 // driver would see it. The points block shows what THAT member's ledger says
-// for the round, which the office can see in the NABS Points tab anyway.
+// for the round, which the office can see in the NABS Tokens tab anyway.
 router.get("/race-recap/preview", async (req, res, next) => {
   try {
     const raceId = String(req.query.raceId || "");

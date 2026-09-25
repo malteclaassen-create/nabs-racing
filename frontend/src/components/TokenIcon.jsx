@@ -1,6 +1,6 @@
 import { useSeries } from "../context/SeriesContext.jsx";
 
-// The NABS Points mark. One image for every size it appears in: the nav bar
+// The NABS Tokens mark. One image for every size it appears in: the nav bar
 // pill, the price tags in the shop, the balance card. Kept square by the
 // className (h-4 w-4 and the like), so the callers did not change.
 //

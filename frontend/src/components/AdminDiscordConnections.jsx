@@ -9,7 +9,7 @@ import { useAsk } from "./overlay.jsx";
 //
 // It used to be spread over three tabs, each next to the page that happens to
 // use it: the events webhook beside the race calendar, the results webhook under
-// the results post, the bot's key among the NABS Points settings. Nobody looking
+// the results post, the bot's key among the NABS Tokens settings. Nobody looking
 // for "why did nothing arrive in Discord" knows that map. The events webhook is
 // edited here; the results webhook stays editable beside the post it sends (you
 // set it up the moment you first want to post), and the bot's key stays with
@@ -155,7 +155,7 @@ export default function AdminDiscordConnections({ onJump }) {
         />
         <ElsewhereRow
           title="Discord bot"
-          text="Counts messages and voice minutes for the NABS Points multiplier and reports invites. Its key is kept with the points."
+          text="Counts messages and voice minutes for the NABS Tokens multiplier and reports invites. Its key is kept with the tokens."
           action="Open the bot's key"
           onAction={() => onJump?.("tokens", "bot")}
         />

@@ -30,8 +30,8 @@ test("nothing personal is offered to somebody who is not signed in", () => {
 test("the admin page is for admins, the points page for an open trial", () => {
   assert.deepEqual(matchPages("admin", member), []);
   assert.equal(matchPages("admin", { ...member, isAdmin: true })[0].label, "Admin");
-  assert.deepEqual(matchPages("nabs points", member), []);
-  assert.equal(matchPages("nabs points", { ...member, pointsOn: true })[0].label, "NABS Points");
+  assert.deepEqual(matchPages("nabs tokens", member), []);
+  assert.equal(matchPages("nabs tokens", { ...member, pointsOn: true })[0].label, "NABS Tokens");
 });
 
 test("an exact word beats a word that merely starts the same way", () => {
