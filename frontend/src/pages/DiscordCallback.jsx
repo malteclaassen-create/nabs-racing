@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, takeDiscordLoginState, takeDiscordReturnTo } from "../api/client.js";
+import { api, takeDiscordLoginState, takeDiscordReturnTo, forgetInviter } from "../api/client.js";
 import { saveUser } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox } from "../components/ui.jsx";
 
@@ -70,6 +70,7 @@ export default function DiscordCallback() {
     result
       .then((res) => {
         saveUser(res.token, res.user);
+        forgetInviter(); // handed in with this login; the next one on this machine starts blank
         // Back where the sign-in was started, when it named a page (the
         // attendance banner does); the profile otherwise, as it always has.
         if (!gone) navigate(returnTo || "/profile", { replace: true, state: { linked: res.linked } });

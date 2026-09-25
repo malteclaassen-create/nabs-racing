@@ -8,7 +8,7 @@ import { CockpitPanels, COCKPIT_TABS } from "./Cockpit.jsx";
 import { profileNav, sectionKeys } from "./profileNav.mjs";
 import ProfileNav from "../components/ProfileNav.jsx";
 import Tools from "./Tools.jsx";
-import { api } from "../api/client.js";
+import { api, rememberInviter, storedInviter } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
@@ -320,6 +320,9 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
 
 function DiscordLogin() {
   const { enabled, loading, start } = useDiscordLogin();
+  // Who invited them, typed before the jump to Discord and handed in with the
+  // login (rememberInviter). Optional: most sign-ins are members coming back.
+  const [invitedBy, setInvitedBy] = useState(() => storedInviter() || "");
   return (
     <div className="content-in">
       <PageHeader
@@ -343,13 +346,28 @@ function DiscordLogin() {
           {loading ? (
             <span className="text-sm text-light">…</span>
           ) : enabled ? (
-            <button
-              onClick={start}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#4752c4]"
-            >
-              <SocialIcon name="discord" className="h-5 w-5" />
-              Continue with Discord
-            </button>
+            <>
+              <label className="w-full text-left">
+                <span className="text-xs font-semibold text-medium">Who invited you? (optional, new members only)</span>
+                <input
+                  className="input mt-1 w-full"
+                  placeholder="Their name or code"
+                  maxLength={64}
+                  value={invitedBy}
+                  onChange={(e) => setInvitedBy(e.target.value)}
+                />
+              </label>
+              <button
+                onClick={() => {
+                  rememberInviter(invitedBy);
+                  start();
+                }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#4752c4]"
+              >
+                <SocialIcon name="discord" className="h-5 w-5" />
+                Continue with Discord
+              </button>
+            </>
           ) : (
             <p className="text-sm text-medium">Discord login is not configured yet.</p>
           )}

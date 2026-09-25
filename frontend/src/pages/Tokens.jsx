@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, storedInvite } from "../api/client.js";
+import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { TOKENS_CHANGED_EVENT } from "../hooks/useTokenBalance.js";
 import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
@@ -355,45 +355,31 @@ function PracticeCard({ week }) {
   );
 }
 
-// The invite link. The one thing on this page somebody actually has to do
-// something with, so it gets the copy button and the plain sentence about what
-// happens when it is used.
-function InviteCard({ code, earning = true }) {
-  const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/?ref=${code}`;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(link);
-    } catch {
-      window.prompt("Copy your invite link:", link);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }
-
+// How to bring somebody in. There is no link to share any more: a click on a
+// link used to count, and the league wants the newcomer to say it themselves.
+// So this card tells the member what the newcomer types in when signing in.
+function InviteCard({ code, name, earning = true }) {
   return (
     <div className="card flex h-full flex-col gap-3 p-5">
       <div>
-        <Heading>Your invite link</Heading>
+        <Heading>Bring someone in</Heading>
         <p className="mt-1 text-sm leading-relaxed text-light">
-          Send this to someone you want on the grid. When they open it and sign in with Discord, the league knows
-          they came from you{earning ? ", and it keeps paying you as they keep racing" : ". It is noted now and pays once the counting starts"}.
-          {" "}New members can also type your name or code in when they first sign in.
+          When somebody new signs in with Discord, the sign-in page asks who invited them. If they type your name
+          or your code, the league knows they came from you
+          {earning ? ", and it keeps paying you as they keep racing" : ". It is noted now and pays once the counting starts"}.
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-surface2/60 px-3 py-2 font-mono text-[13px] text-medium">
-          {link}
-        </code>
-        <button type="button" onClick={copy} className="btn-primary whitespace-nowrap">
-          {copied ? "Copied" : "Copy link"}
-        </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-medium">
+        {name && (
+          <span>
+            Your name: <span className="font-semibold text-dark">{name}</span>
+          </span>
+        )}
+        <span>
+          Your code: <span className="font-mono font-bold text-dark">{code}</span>
+        </span>
       </div>
-      <p className="mt-auto text-xs text-light">
-        Your code is <span className="font-mono font-bold text-medium">{code}</span>. One inviter per person, and it
-        is whoever they arrived with the first time.
-      </p>
+      <p className="mt-auto text-xs text-light">One inviter per person, and only for somebody who has never raced.</p>
     </div>
   );
 }
@@ -1229,25 +1215,6 @@ function WhoInvitedYou({ onSaved }) {
 export default function Tokens() {
   const tokens = useApi(useCallback(() => api.tokens(), []));
   const reload = tokens.reload;
-  const claimed = useRef(false);
-
-  // An invite this browser is still carrying. The login hands it in already;
-  // this is the second door, for a member whose login predates the trial (and,
-  // on a laptop, for the dev login, which never touches the Discord callback).
-  // Once per mount, and only while the invite has not been taken up yet: the
-  // backend refuses everything that should be refused, so this is allowed to be
-  // as blunt as it looks.
-  const invitedBy = tokens.data?.invitedBy;
-  useEffect(() => {
-    if (claimed.current || invitedBy !== false || !storedInvite()) return;
-    claimed.current = true;
-    api
-      .claimInvite()
-      .then((r) => {
-        if (r?.attached) reload();
-      })
-      .catch(() => {});
-  }, [invitedBy, reload]);
 
   // Buying changes the number in the nav bar too, so the bar is told rather
   // than left to find out on the next page load.
@@ -1302,7 +1269,7 @@ export default function Tokens() {
           different heights side by side is the thing that looks unfinished. */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Balance data={data} goal={goalItem} onClearGoal={() => setGoal(null)} />
-        <InviteCard code={data.code} earning={earning} />
+        <InviteCard code={data.code} name={data.name} earning={earning} />
       </div>
 
       {data.canNameInviter && <WhoInvitedYou onSaved={changed} />}

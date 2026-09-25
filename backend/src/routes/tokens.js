@@ -39,9 +39,9 @@ import {
   TOKEN_MODES,
   setTokensEnabled,
   ensureTokenAccount,
-  attachReferral,
   attachReferralByName,
   canNameInviter,
+  memberName,
   removeReferral,
   rulesForDisplay,
   botConnected,
@@ -92,6 +92,8 @@ router.get("/", requireUser, async (req, res, next) => {
       enabled: true,
       balance: await dbBalance(prisma, discordId),
       code: account?.code || null,
+      // What a newcomer types to name this member as their inviter.
+      name: await memberName(prisma, discordId),
       invitedBy: account?.referredBy ? true : false,
       // New and nobody named yet: the page asks "who invited you?".
       canNameInviter: await canNameInviter(prisma, discordId, account),
@@ -143,25 +145,6 @@ router.post("/seen", requireUser, async (req, res, next) => {
     if (!(await tokensVisibleTo(prisma, req))) return res.json({ ok: false });
     const discordId = req.user.discordId;
     res.json(await markSeen(prisma, discordId, await dbBalance(prisma, discordId)));
-  } catch (e) {
-    next(e);
-  }
-});
-
-// POST /api/tokens/invite { code } — the invite link the browser is still
-// carrying, handed in after the fact.
-//
-// The login already does this (routes/discordAuth.js), and this is the second
-// door for the cases that one cannot cover: a member who signed in before the
-// trial existed, and, on a laptop, the dev login, which never goes near the
-// Discord callback. Harmless to call with anything: attachReferral refuses a
-// member who already has an inviter, their own code, and anybody who has
-// already raced.
-router.post("/invite", requireUser, async (req, res, next) => {
-  try {
-    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
-    const inviter = await attachReferral(prisma, req.user.discordId, req.body?.code);
-    res.json({ attached: !!inviter });
   } catch (e) {
     next(e);
   }

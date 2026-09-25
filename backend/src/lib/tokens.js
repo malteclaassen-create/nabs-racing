@@ -626,7 +626,7 @@ export async function driverIdsFor(prisma, discordId) {
 }
 
 // Name to print in somebody's history for a person they brought in.
-async function memberName(prisma, discordId) {
+export async function memberName(prisma, discordId) {
   try {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT "displayName","username" FROM "MemberAccount" WHERE "discordId" = ?`,

@@ -16,7 +16,7 @@ import { dbRecordLogin, dbGetMember } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
-import { ensureTokenAccount, attachReferral } from "../lib/tokens.js";
+import { attachReferralByName } from "../lib/tokens.js";
 
 const router = Router();
 
@@ -126,18 +126,17 @@ router.post("/callback", async (req, res, next) => {
       avatarUrl,
     }).catch(() => {});
 
-    // The invite that brought them here, if the frontend carried a ?ref= along.
-    // Recorded once per account, first inviter wins, never somebody's own code
-    // (see lib/tokens.js). Recorded whatever the switches say, like the bot's
-    // version of it: a first login happens once, so skipping it while the
-    // feature is off would lose it for good. Paying for it is the earning
-    // switch's business. In its own catch, a reward currency must not be able
-    // to break a login.
+    // Who brought them in, as typed into the sign-in page: a member's name or
+    // invite code. The only way an invite is credited: a click on a link no
+    // longer counts, the newcomer has to say it. First inviter wins, never
+    // themselves, never somebody who has already raced (see lib/tokens.js).
+    // Recorded whatever the switches say: a first login happens once, so
+    // skipping it while the feature is off would lose it for good. Paying for
+    // it is the earning switch's business. In its own catch, a reward currency
+    // must not be able to break a login.
+    let invite = null;
     try {
-      if (req.body?.ref) {
-        await ensureTokenAccount(prisma, me.id);
-        await attachReferral(prisma, me.id, req.body.ref);
-      }
+      if (req.body?.invitedBy) invite = await attachReferralByName(prisma, me.id, req.body.invitedBy);
     } catch (e) {
       console.warn(`[tokens] invite not recorded: ${e.message}`);
     }
@@ -253,7 +252,7 @@ router.post("/callback", async (req, res, next) => {
       isAdmin: await isDiscordAdmin(prisma, me.id).catch(() => false),
     };
     const token = signUserToken(profile);
-    res.json({ token, user: profile, linked: !!driver });
+    res.json({ token, user: profile, linked: !!driver, invite });
   } catch (e) {
     next(e);
   }
