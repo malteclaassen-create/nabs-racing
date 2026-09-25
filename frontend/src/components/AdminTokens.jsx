@@ -209,7 +209,7 @@ function OrderRow({ order, onUpdate, busy }) {
 
 // Everyone with an account: what they hold, who brought them in, how many they
 // have brought in themselves, and the box for a hand-written award.
-function MemberRow({ m, onAdjust, busy }) {
+function MemberRow({ m, onAdjust, onRemoveInviter, busy }) {
   const [open, setOpen] = useState(false);
   const [delta, setDelta] = useState("");
   const [note, setNote] = useState("");
@@ -251,6 +251,11 @@ function MemberRow({ m, onAdjust, busy }) {
             <TokenIcon className="h-3.5 w-3.5 text-brand" />
             {fmt(m.balance)}
           </span>
+          {m.invitedBy && (
+            <button type="button" disabled={busy} className="btn-secondary" onClick={() => onRemoveInviter(m)}>
+              Remove inviter
+            </button>
+          )}
           <button type="button" className="btn-secondary" onClick={() => setOpen((v) => !v)}>
             {open ? "Cancel" : "Give or take"}
           </button>
@@ -786,6 +791,17 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
                   onAdjust={(discordId, delta, note) =>
                     run(() => api.adjustTokens(discordId, delta, note), "Booked.")
                   }
+                  onRemoveInviter={async (member) => {
+                    const ok = await ask({
+                      title: `Remove ${member.invitedBy} as inviter of ${member.name}?`,
+                      body:
+                        `${member.invitedBy} loses the points they were paid for bringing in ${member.name}, and ` +
+                        `${member.name} can name the right person on their points page.`,
+                      danger: true,
+                      confirmLabel: "Remove inviter",
+                    });
+                    if (ok) run(() => api.removeTokenReferral(member.discordId), "Inviter removed.");
+                  }}
                 />
               ))}
             </ul>

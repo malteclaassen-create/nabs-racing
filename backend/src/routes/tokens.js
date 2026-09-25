@@ -40,7 +40,9 @@ import {
   setTokensEnabled,
   ensureTokenAccount,
   attachReferral,
-  attachReferralById,
+  attachReferralByName,
+  canNameInviter,
+  removeReferral,
   rulesForDisplay,
   botConnected,
   tunedShop,
@@ -91,6 +93,8 @@ router.get("/", requireUser, async (req, res, next) => {
       balance: await dbBalance(prisma, discordId),
       code: account?.code || null,
       invitedBy: account?.referredBy ? true : false,
+      // New and nobody named yet: the page asks "who invited you?".
+      canNameInviter: await canNameInviter(prisma, discordId, account),
       rules: await rulesForDisplay(prisma),
       shop: tunedShop().filter((i) => i.active),
       flairs: FLAIRS,
@@ -158,6 +162,19 @@ router.post("/invite", requireUser, async (req, res, next) => {
     if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
     const inviter = await attachReferral(prisma, req.user.discordId, req.body?.code);
     res.json({ attached: !!inviter });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/tokens/invited-by { name } — a newcomer says who brought them in:
+// that member's invite code, or their name as the site shows it.
+router.post("/invited-by", requireUser, async (req, res, next) => {
+  try {
+    if (!(await tokensVisibleTo(prisma, req))) return res.status(403).json({ error: "Not available" });
+    const out = await attachReferralByName(prisma, req.user.discordId, req.body?.name);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json(out);
   } catch (e) {
     next(e);
   }
@@ -397,9 +414,11 @@ router.post("/names", async (req, res, next) => {
 // somebody into the server. Discord itself knows this: every invite link on a
 // server counts its uses and names the member who made it, so a bot that takes
 // a snapshot of those counts and compares them when somebody joins can tell
-// which link was used, and therefore who invited them. That is the automatic
-// version of the invite link on the Tokens page, and both end in the same
-// place, with the same guards.
+// which link was used, and therefore who invited them.
+//
+// Which is exactly the trouble: the link used is usually the server's everyday
+// invite, made by an admin, who was then credited with every newcomer. So this
+// no longer links anybody; it only keeps the names the bot sends along.
 //
 //   { key, entries: [{ discordId, inviterDiscordId }, ...] }
 //
@@ -413,10 +432,12 @@ router.post("/referral", async (req, res, next) => {
     }
     const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
     if (entries.length > 500) return res.status(400).json({ error: "Too many entries at once" });
-    let linked = 0;
-    for (const e of entries) {
-      if (await attachReferralById(prisma, e?.discordId, e?.inviterDiscordId)) linked++;
-    }
+    // Nothing is credited from here any more. Discord only knows whose invite
+    // link was used, and the server's everyday link belongs to whichever admin
+    // made it, who then got every newcomer. An invite counts when the newcomer
+    // used the member's own link on the site, or names them (/invited-by).
+    // The names are still worth keeping, for the admin list.
+    const linked = 0;
     // Both names come along for the ride when the bot knows them: whoever just
     // joined has no account on the site yet, and the admin list would have
     // nothing to call them.
@@ -507,6 +528,18 @@ adminRouter.post("/adjust", async (req, res, next) => {
     const { discordId, delta, note } = req.body || {};
     if (!discordId) return res.status(400).json({ error: "Which member?" });
     const out = await adminAdjust(prisma, discordId, delta, note);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/tokens/referral/:discordId — take a wrong inviter back
+// off a member, and what the inviter was paid for them.
+adminRouter.delete("/referral/:discordId", async (req, res, next) => {
+  try {
+    const out = await removeReferral(prisma, req.params.discordId);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
   } catch (e) {

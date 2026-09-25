@@ -358,7 +358,7 @@ function PracticeCard({ week }) {
 // The invite link. The one thing on this page somebody actually has to do
 // something with, so it gets the copy button and the plain sentence about what
 // happens when it is used.
-function InviteCard({ code, botConnected, earning = true }) {
+function InviteCard({ code, earning = true }) {
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/?ref=${code}`;
 
@@ -379,7 +379,7 @@ function InviteCard({ code, botConnected, earning = true }) {
         <p className="mt-1 text-sm leading-relaxed text-light">
           Send this to someone you want on the grid. When they open it and sign in with Discord, the league knows
           they came from you{earning ? ", and it keeps paying you as they keep racing" : ". It is noted now and pays once the counting starts"}.
-          {botConnected && " Same if they join the Discord server through an invite link you made: that counts too."}
+          {" "}New members can also type your name or code in when they first sign in.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -1177,6 +1177,55 @@ function History({ ledger }) {
   );
 }
 
+// A new member names who brought them in: the one way besides the link. Shown
+// only while it can still be done (nobody named yet, never raced), and gone
+// again the moment it is saved.
+function WhoInvitedYou({ onSaved }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function save(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.nameInviter(name.trim());
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="card flex flex-col gap-3 p-5">
+      <div>
+        <Heading>Who invited you?</Heading>
+        <p className="mt-1 text-sm leading-relaxed text-light">
+          If a member brought you into the league, type their name or their invite code, and they get the credit.
+          Nobody? Just leave it empty.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="input min-w-0 flex-1"
+          placeholder="Their name or code"
+          maxLength={64}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit" disabled={busy || !name.trim()} className="btn-primary whitespace-nowrap">
+          Save
+        </button>
+      </div>
+      {error && <ErrorBox message={error} />}
+    </form>
+  );
+}
+
 export default function Tokens() {
   const tokens = useApi(useCallback(() => api.tokens(), []));
   const reload = tokens.reload;
@@ -1253,8 +1302,10 @@ export default function Tokens() {
           different heights side by side is the thing that looks unfinished. */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Balance data={data} goal={goalItem} onClearGoal={() => setGoal(null)} />
-        <InviteCard code={data.code} botConnected={!!data.botConnected} earning={earning} />
+        <InviteCard code={data.code} earning={earning} />
       </div>
+
+      {data.canNameInviter && <WhoInvitedYou onSaved={changed} />}
 
       <PracticeCard week={week ?? data.practice} />
 

@@ -862,6 +862,8 @@ export const api = {
       { auth: true }
     ),
   claimInvite: () => request("/tokens/invite", { method: "POST", body: { code: storedInvite() }, userAuth: true }),
+  // The newcomer names who brought them in: a code, or the member's name.
+  nameInviter: (name) => request("/tokens/invited-by", { method: "POST", body: { name }, userAuth: true }),
   // `text` is only read for the flair you write yourself (choice "custom").
   redeemToken: (itemKey, choice = null, text = null) =>
     request("/tokens/redeem", { method: "POST", body: { itemKey, choice, text }, userAuth: true }),
@@ -894,6 +896,8 @@ export const api = {
     request("/admin/tokens/enabled", { method: "POST", body: { enabled }, auth: true }),
   adjustTokens: (discordId, delta, note) =>
     request("/admin/tokens/adjust", { method: "POST", body: { discordId, delta, note }, auth: true }),
+  removeTokenReferral: (discordId) =>
+    request(`/admin/tokens/referral/${encodeURIComponent(discordId)}`, { method: "DELETE", auth: true }),
   updateTokenOrder: (id, body) =>
     request(`/admin/tokens/orders/${id}`, { method: "PATCH", body, auth: true }),
 
