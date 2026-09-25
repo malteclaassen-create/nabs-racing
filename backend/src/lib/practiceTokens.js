@@ -25,8 +25,8 @@
 // Paid the moment the lap that reaches the milestone is completed, so the
 // progress bar on the points page and the bell tell somebody the same evening.
 // The ledger's unique (member, refKey) is what keeps that honest: the payout
-// is also re-checked whenever the page is opened, which is what settles a week
-// whose laps were driven while the counting was switched off.
+// is also re-checked whenever the page is opened. Laps driven while the
+// counting is switched off are not counted at all, so they never pay.
 // ---------------------------------------------------------------------------
 import {
   practiceServerOn,
@@ -243,6 +243,9 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // promise the site cannot keep.
   const from = String(serverKey || "");
   if (!practiceServerOn(from)) return;
+  // Nor while the counting is off: a lap has no date in the tally, so a lap
+  // kept from before the start would be paid for the moment it is switched on.
+  if (!(await payingNow(prisma))) return;
   // `series` is only passed by the tests; the relay hands over what it knows
   // about the server and lets the rule above decide.
   const slug = series || (await seriesForLap(prisma, { serverKey, scopes, trackKey, steamId: id }));

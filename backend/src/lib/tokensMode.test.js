@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { tokensMode, isTokensEnabled, tokensPublic, tokensVisibleTo, setTokensMode, isEarningOn, setEarning } from "./tokens.js";
+import {
+  tokensMode,
+  isTokensEnabled,
+  tokensPublic,
+  tokensVisibleTo,
+  setTokensMode,
+  isEarningOn,
+  setEarning,
+  tunedStartDay,
+} from "./tokens.js";
+import { saveTuning } from "./tokenTuning.js";
 
 // A prisma stand-in holding the one setting row.
 function db(value) {
@@ -77,5 +87,13 @@ describe("the earning switch", () => {
     expect(await isEarningOn(d)).toBe(true);
     await setTokensMode(d, "all");
     expect(await isEarningOn(d)).toBe(true); // changing the mode leaves it alone
+  });
+
+  it("keeps the start day when it is pressed while already running", async () => {
+    const d = db("all");
+    await setEarning(d, true);
+    await saveTuning(d, { startDay: "2026-01-01" });
+    await setEarning(d, true);
+    expect(tunedStartDay()).toBe("2026-01-01");
   });
 });

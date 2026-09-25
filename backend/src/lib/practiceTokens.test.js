@@ -186,25 +186,23 @@ describe("training laps", () => {
     expect([...prisma.ledger.values()]).toHaveLength(1);
   });
 
-  it("keeps counting while the payout is switched off, and settles later", async () => {
+  it("does not count laps while the counting is switched off", async () => {
     const off = db({ earning: "0" });
     await drive(off, 25);
-    expect([...off.practice.values()][0].laps).toBe(25);
+    expect([...off.practice.values()]).toEqual([]);
     expect([...off.ledger.values()]).toEqual([]);
-
-    const progress = await practiceProgress(off, "disc1");
-    expect(progress.laps).toBe(25);
-    expect([...off.ledger.values()]).toEqual([]); // still off
   });
 
-  it("pays what a week already earned the next time the page is opened", async () => {
+  it("pays nothing for laps driven before the counting was started", async () => {
     const prisma = db({ earning: "0" });
     await drive(prisma, 22);
     prisma.settings.set("tokens_earning", "1"); // the league starts the counting
     __clearCaches();
     const progress = await practiceProgress(prisma, "disc1");
-    expect(progress.laps).toBe(22);
-    expect(progress.earned).toBe(10);
+    expect(progress.laps).toBe(0);
+    expect([...prisma.ledger.values()]).toEqual([]);
+    // Only what is driven from here on counts.
+    await drive(prisma, 20, { from: 1_700_100_000 });
     expect([...prisma.ledger.values()].map((r) => r.rule)).toEqual(["practice_20"]);
   });
 
