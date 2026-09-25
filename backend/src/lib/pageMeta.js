@@ -654,21 +654,60 @@ export function sharePageOf(pathname) {
   return SHARE_PAGES[section] ? section : null;
 }
 
+// Which picture a page of a series unfurls with, and why: its own ("page"),
+// the series-wide one ("series"), or none of them ("default", the shipped
+// og-image.jpg, url null). Only server-generated upload paths
+// ("/api/uploads/…") count, so the columns can never point an unfurl
+// somewhere else. Pure.
+export function resolveShareImage(series, page) {
+  const ok = (u) => typeof u === "string" && u.startsWith("/api/uploads/");
+  const own = page && series?.shareImages?.[page];
+  if (ok(own)) return { url: own, source: "page" };
+  if (ok(series?.shareImageUrl)) return { url: series.shareImageUrl, source: "series" };
+  return { url: null, source: "default" };
+}
+
 // The absolute share-picture URL for an address, or null to keep the shipped
-// og-image.jpg: the page's own picture, else the series-wide one. Only
-// server-generated upload paths ("/api/uploads/…") are accepted, so the
-// columns can never point an unfurl somewhere else.
+// og-image.jpg.
 export async function pageShareImage(prisma, pathname, origin) {
   try {
     const series = await pageSeries(prisma, pathname);
     if (!series || !origin) return null;
-    const page = sharePageOf(pathname);
-    const candidates = [page && series.shareImages?.[page], series.shareImageUrl];
-    const url = candidates.find((u) => typeof u === "string" && u.startsWith("/api/uploads/"));
+    const { url } = resolveShareImage(series, sharePageOf(pathname));
     return url ? `${origin}${url}` : null;
   } catch {
     return null;
   }
+}
+
+// What each page of a series looks like as a pasted link, for the admin's
+// Link previews view: the same title, description, picture and stripe colour
+// the unfurler gets. A page with nothing of its own to say (or a private
+// series, which the public meta never describes) shows the shipped defaults,
+// which is exactly what the unfurler would see too.
+export const DEFAULT_TITLE = SITE;
+export const DEFAULT_DESCRIPTION =
+  "Formula 1 sim racing league on Assetto Corsa. Online F1 championship with driver and team standings, results, live timing and open sign-ups.";
+
+export async function linkPreviews(prisma, series) {
+  const color = themeColorOf(series);
+  return Promise.all(
+    Object.entries(SHARE_PAGES).map(async ([page, label]) => {
+      const path = page === "home" ? `/s/${series.slug}` : `/s/${series.slug}/${page}`;
+      const meta = await buildPageMeta(prisma, path).catch(() => null);
+      const image = resolveShareImage(series, page);
+      return {
+        page,
+        label,
+        path,
+        title: meta?.title || DEFAULT_TITLE,
+        description: meta?.description || DEFAULT_DESCRIPTION,
+        image: image.url || "/og-image.jpg",
+        imageSource: image.source,
+        color,
+      };
+    })
+  );
 }
 
 // Rewrites og:image and twitter:image in the shipped index.html. The shipped

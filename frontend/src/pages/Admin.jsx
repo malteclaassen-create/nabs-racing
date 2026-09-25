@@ -59,6 +59,7 @@ const TAB_CHUNKS = {
   AdminTracks: () => import("../components/AdminTracks.jsx"),
   AdminAttendance: () => import("../components/AdminAttendance.jsx"),
   AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
+  AdminLinkPreviews: () => import("../components/AdminLinkPreviews.jsx"),
   AdminHealth: () => import("../components/AdminHealth.jsx"),
   AdminMembers: () => import("../components/AdminMembers.jsx"),
   AdminNotifications: () => import("../components/AdminNotifications.jsx"),
@@ -80,6 +81,7 @@ const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
 const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
 const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
 const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
+const AdminLinkPreviews = lazy(TAB_CHUNKS.AdminLinkPreviews);
 const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
 const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
 const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
@@ -158,6 +160,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "raceinfo", label: "Race Info" },
           { key: "faq", label: "Home FAQ" },
           { key: "social", label: "Social" },
+          { key: "links", label: "Link previews" },
           { key: "privacy", label: "Privacy & app" },
         ]}
         value={view}
@@ -172,6 +175,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           <AdminSocialFeed />
         </div>
       )}
+      {view === "links" && <AdminLinkPreviews />}
       {view === "privacy" && <AdminPrivacy />}
     </div>
   );
@@ -5825,106 +5829,6 @@ function SeriesLogo({ series, onSaved, onError }) {
   );
 }
 
-// The pictures a pasted link into this series unfurls with on Discord & co
-// (og:image), in place of the shared og-image.jpg: one for the whole series,
-// and optionally one per page, which wins over it. 1200x630 JPG or PNG.
-// Discord caches unfurls, so a link already posted keeps its old picture;
-// fresh pastes pick up the new one. Keys match backend lib/series.js
-// SHARE_PAGES (the server rejects any other).
-const SHARE_PAGES = [
-  ["", "All pages (default)"],
-  ["home", "Home page"],
-  ["attendance", "Sign-ups & attendance"],
-  ["drivers", "Driver standings"],
-  ["constructors", "Constructor standings"],
-  ["races", "Results & calendar"],
-  ["transfers", "Transfers"],
-  ["records", "Records"],
-  ["live", "Live timing"],
-];
-
-function SeriesShareImages({ series, onSaved, onError }) {
-  const [open, setOpen] = useState(false);
-  const count = (series.shareImageUrl ? 1 : 0) + Object.keys(series.shareImages || {}).length;
-  return (
-    <>
-      <button type="button" className="transition text-xs font-semibold text-link hover:underline"
-        onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        title="The pictures on Discord link previews, per page">
-        Link pictures{count ? ` (${count})` : ""} {open ? "▴" : "▾"}
-      </button>
-      {open && (
-        <div className="basis-full rounded-lg border border-border p-3">
-          <p className="mb-2 text-xs text-light">
-            The picture shown when a link is pasted on Discord. A page without its own uses the default; without a
-            default, the NABS picture. Best at 1200×630, JPG or PNG. Links already posted keep their old picture.
-          </p>
-          <ul className="divide-y divide-border">
-            {SHARE_PAGES.map(([page, label]) => (
-              <SeriesShareImageRow key={page || "default"} series={series} page={page} label={label}
-                url={page ? series.shareImages?.[page] : series.shareImageUrl} onSaved={onSaved} onError={onError} />
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  );
-}
-
-function SeriesShareImageRow({ series, page, label, url, onSaved, onError }) {
-  const ask = useAsk();
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-
-  async function pick(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setBusy(true);
-    try {
-      await api.uploadSeriesShareImage(series.id, file, page);
-      onSaved(`Link picture for ${label} updated in ${series.name}. Links already posted keep the old one; new pastes show it.`);
-    } catch (err) { onError(err.message); } finally { setBusy(false); }
-  }
-
-  async function clear() {
-    if (
-      !(await ask({
-        title: `Remove the link picture for ${label}?`,
-        body: page ? "This page falls back to the series' default picture." : "Links fall back to the NABS picture.",
-        danger: true,
-        confirmLabel: "Remove picture",
-      }))
-    )
-      return;
-    setBusy(true);
-    try {
-      await api.clearSeriesShareImage(series.id, page);
-      onSaved(`Link picture for ${label} reset in ${series.name}.`);
-    } catch (err) { onError(err.message); } finally { setBusy(false); }
-  }
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-      <div className="h-8 w-[61px] shrink-0 overflow-hidden rounded border border-border bg-surface2">
-        {url && <img src={url} alt="" className="h-full w-full object-cover" />}
-      </div>
-      <span className="min-w-40 flex-1 text-sm">{label}</span>
-      <input aria-label={`Link picture for ${label}`} ref={fileRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={pick} />
-      <button type="button" className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-        onClick={() => fileRef.current?.click()}>
-        {url ? "Replace" : "Upload"}
-      </button>
-      {url && (
-        <button type="button" className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
-          onClick={clear}>
-          Reset
-        </button>
-      )}
-    </li>
-  );
-}
-
 // --- SERIES ------------------------------------------------------------------
 // The level above seasons: several championships (Friday F1, Sunday GT, …) in
 // one deployment. The slug (the /s/<slug>/ URL identity) is set once at
@@ -6100,7 +6004,6 @@ function SeriesPanel() {
                 </button>
               )}
               <SeriesLogo series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-              <SeriesShareImages series={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
               <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => setSlug(s.slug)} title="Point the admin at this series (the bar above follows)">
                 Edit this series →

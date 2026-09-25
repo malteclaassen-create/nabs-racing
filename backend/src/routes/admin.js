@@ -109,6 +109,7 @@ import {
   writeSeriesShareImage,
   SHARE_PAGES,
 } from "../lib/series.js";
+import { linkPreviews } from "../lib/pageMeta.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import {
@@ -4956,6 +4957,23 @@ router.delete("/series/:id/logo", async (req, res, next) => {
     if (!series) return res.status(404).json({ error: "Series not found" });
     await writeSeriesLogo(prisma, series.id, null);
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/series/:id/link-previews -> every page of the series as a
+// pasted link would show it (lib/pageMeta.js linkPreviews), for the Link
+// previews view in the Site tab.
+router.get("/series/:id/link-previews", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const pages = await linkPreviews(prisma, series);
+    res.json({
+      series: { id: series.id, name: series.name, slug: series.slug, shareImageUrl: series.shareImageUrl },
+      pages,
+    });
   } catch (e) {
     next(e);
   }
