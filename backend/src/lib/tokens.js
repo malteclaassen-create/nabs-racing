@@ -725,6 +725,12 @@ export async function stampRaceRates(prisma, raceId) {
 export async function payRace(prisma, raceId) {
   const stamped = await stampRaceRates(prisma, raceId);
   if (!(await isEarningOn(prisma))) return { stamped, paid: 0 };
+  // A sprint pays through its main race (oneFinishPerWeekend): somebody who
+  // only finished the sprint is picked up by syncEarned under the main race.
+  const parent = await prisma
+    .$queryRawUnsafe(`SELECT "parentRaceId" FROM "Race" WHERE "id" = ?`, raceId)
+    .catch(() => []);
+  if (parent[0]?.parentRaceId) return { stamped, paid: 0 };
   const from = startOfStartDay();
   const rows = await prisma
     .$queryRawUnsafe(
@@ -793,9 +799,12 @@ async function racesFinished(prisma, discordId) {
             r."penaltySeconds" AS "penaltySeconds",
             r."gamePenalties" AS "gamePenalties",
             ra."id" AS "raceId", ra."track" AS "track", ra."date" AS "date",
+            ra."parentRaceId" AS "parentRaceId", se."slug" AS "series",
             rate."rate" AS "rate"
        FROM "RaceResult" r
        JOIN "Race" ra ON ra."id" = r."raceId"
+       LEFT JOIN "Season" s ON s."id" = ra."seasonId"
+       LEFT JOIN "Series" se ON se."id" = s."seriesId"
        LEFT JOIN "TokenRaceRate" rate ON rate."raceId" = ra."id" AND rate."driverId" = r."driverId"
       WHERE r."driverId" IN (${ph}) AND ra."isCompleted" = 1 AND r."status" = 'FINISHED'
         ${from == null ? "" : `AND ra."date" >= ?`}
@@ -803,7 +812,21 @@ async function racesFinished(prisma, discordId) {
     ...ids,
     ...(from == null ? [] : [from])
   );
-  return rows;
+  return oneFinishPerWeekend(rows);
+}
+
+// A sprint weekend is two races on one evening (the sprint is its own row,
+// pointing at the main race), but it pays like one round: the main race if
+// they finished it, the sprint if that is the only one they finished. Filed
+// under the main race either way, so the two can never both pay.
+export function oneFinishPerWeekend(rows) {
+  const byWeekend = new Map();
+  for (const r of rows) {
+    const weekend = r.parentRaceId || r.raceId;
+    const have = byWeekend.get(weekend);
+    if (!have || (have.parentRaceId && !r.parentRaceId)) byWeekend.set(weekend, { ...r, raceId: weekend });
+  }
+  return [...byWeekend.values()];
 }
 
 // --- Discord activity --------------------------------------------------------
@@ -1035,7 +1058,10 @@ export async function syncEarned(prisma, discordId) {
     // rather than on a running count, so the cap cannot be walked past by a
     // result being corrected.
     if (!ruleOn("referral_race")) continue;
-    const theirs = (await racesFinished(prisma, inv.discordId)).slice(0, tunedReferralLimit());
+    // One series only: somebody racing F1 and F3 is still one person brought
+    // in. The series they finished a race in first is the one that counts.
+    const all = await racesFinished(prisma, inv.discordId);
+    const theirs = all.filter((r) => r.series === all[0]?.series).slice(0, tunedReferralLimit());
     for (const r of theirs) {
       await dbAward(prisma, {
         discordId,
