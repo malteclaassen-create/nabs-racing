@@ -365,8 +365,8 @@ function InviteCard({ code, name, earning = true }) {
         <Heading>Bring someone in</Heading>
         <p className="mt-1 text-sm leading-relaxed text-light">
           When somebody new signs in with Discord, the sign-in page asks who invited them. If they type your name
-          or your code, the league knows they came from you
-          {earning ? ", and it keeps paying you as they keep racing" : ". It is noted now and pays once the counting starts"}.
+          or your code, the league knows they came from you. It pays once they have finished their first race, and
+          then for each race after that{earning ? "" : ", once the counting starts"}.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-medium">

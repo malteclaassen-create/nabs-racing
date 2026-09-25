@@ -156,8 +156,8 @@ export const EARN_RULES = [
   },
   {
     key: "referral_join",
-    label: "Someone signs up through you",
-    hint: "They use your invite link, or name you when they join.",
+    label: "Someone you brought in races",
+    hint: "They name you when they sign in, and it pays once they have finished their first race.",
     points: 50,
     unit: "per person",
     active: true,

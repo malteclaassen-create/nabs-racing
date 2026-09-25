@@ -161,7 +161,8 @@ function fakeDb({ accounts = [], hasRaced = [], ledger = [] } = {}) {
       }
       if (sql.includes('SET "referredBy"')) {
         const row = rows.find((r) => r.discordId === args[1]);
-        if (row) row.referredBy = args[0];
+        if (!row || row.referredBy) return 0; // WHERE "referredBy" IS NULL
+        row.referredBy = args[0];
         return 1;
       }
       return 0;
