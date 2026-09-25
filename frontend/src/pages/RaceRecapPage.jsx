@@ -1155,7 +1155,10 @@ function ChampionshipCard({ standings: s, team, season }) {
       <div className="mt-3 flex items-end gap-4">
         <div className="recap-pop flex items-start font-display font-black leading-none tracking-tighter text-dark">
           <span className="mt-2 text-2xl text-light">P</span>
-          <span className="text-6xl">{s.after.position}</span>
+          {/* Rolls from the old place to the new one, up or down the table. */}
+          <span className="text-6xl">
+            <Tween from={s.before?.position} to={s.after.position} />
+          </span>
         </div>
         <div className="mb-1">
           <div className="font-mono text-[11px] text-light">of {s.fieldSize} drivers</div>
@@ -1195,7 +1198,7 @@ function ChampionshipCard({ standings: s, team, season }) {
             label={`${team.name} · constructors`}
             value={
               <>
-                P{team.after.position}
+                P<Tween from={team.before?.position} to={team.after.position} />
                 {team.before && team.before.position !== team.after.position && (
                   <span className="recap-tag ml-2 inline-block">
                     <Delta value={team.before.position - team.after.position} className="text-xs" arrow />
