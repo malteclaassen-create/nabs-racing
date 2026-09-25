@@ -1,9 +1,12 @@
-# Discord bot for the NABS Points
+# Discord bot for the NABS Tokens
 
-Small bot that sits on the league Discord and sends two things to the website:
+Small bot that sits on the league Discord and sends three things to the website:
 
 - messages + voice minutes per person per day (that's the activity multiplier)
 - who invited a new member (the site keeps only the names now: a Discord invite no longer credits anybody, because the server's everyday link credited whoever made it)
+- what the people on the server are called, at startup and every six hours, so
+  the NABS Tokens list in the admin has a name for somebody who was invited but
+  has never opened the website
 
 That's all it does. It doesn't read messages (doesn't even have the permission for it), doesn't post anything, doesn't touch roles. It just counts.
 
@@ -13,7 +16,7 @@ Voice minutes only count when you're actually there: not muted, not deafened, no
 
 **1. Create the bot**
 
-- https://discord.com/developers/applications -> New Application, call it whatever (e.g. NABS Points)
+- https://discord.com/developers/applications -> New Application, call it whatever (e.g. NABS Tokens)
 - Bot tab -> Privileged Gateway Intents -> turn on **Server Members Intent**. Leave the other two off.
 - Bot tab -> Reset Token -> copy it. Only shown once, keep it like a password.
 
@@ -32,7 +35,7 @@ Copy `.env.example` to `.env` and fill in:
 DISCORD_TOKEN=   from step 1
 GUILD_ID=        right-click the server -> Copy Server ID (needs developer mode in discord settings -> advanced)
 SITE_URL=        the website address
-TOKEN_KEY=       Admin -> NABS Points -> Discord bot
+TOKEN_KEY=       Admin -> NABS Tokens -> Discord bot
 ```
 
 **4. Run**
@@ -48,7 +51,7 @@ npm start
 Running log looks like this:
 
 ```
-2026-09-18 19:04:11 Signed in as NABS Points#4417
+2026-09-18 19:04:11 Signed in as NABS Tokens#4417
 2026-09-18 19:04:11 Watching NABS Racing, day 2026-09-18
 2026-09-18 19:04:12 Website ok: https://...
 2026-09-18 19:09:12 -> 14 day rows sent
