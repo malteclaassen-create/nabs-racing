@@ -146,13 +146,16 @@ describe("the start day", () => {
     expect(cleanTuning({ startDay: "19.09.2026" }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
   });
 
-  it("is set the first time the COUNTING is started, and then left alone", async () => {
+  it("is today whenever the COUNTING is started, so nothing before it pays", async () => {
     expect(tunedStartDay()).toBe(null);
     await setEarning(fakePrisma, true);
-    expect(tunedStartDay()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const today = tunedStartDay();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // A day left over from a trial run, or typed in by hand, does not survive
+    // the switch: starting means from now on.
     await saveTuning(fakePrisma, { startDay: "2026-01-01" });
     await setEarning(fakePrisma, false);
     await setEarning(fakePrisma, true);
-    expect(tunedStartDay()).toBe("2026-01-01"); // pausing and restarting does not move it
+    expect(tunedStartDay()).toBe(today);
   });
 });

@@ -102,7 +102,7 @@ function EarningSwitch({ earning, startDay, busy, onChange }) {
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
           {earning
             ? `Running${startDay ? `, races from ${startDay} count` : ""}. Everyone earns as they go.`
-            : "Paused. Members can look around, but no race pays and no balance moves. Switching it on sets the day counting starts."}
+            : "Paused. Members can look around, but no race pays and no balance moves. Switching it on counts from today; nothing from before pays."}
         </p>
       </div>
       <button type="button" disabled={busy} onClick={() => onChange(!earning)} className={earning ? "btn-secondary" : "btn-primary"}>
@@ -422,8 +422,8 @@ function TuningPanel({ d, busy, onSave, onReset }) {
         <div className="min-w-0">
           <Head>Counting from</Head>
           <p className="mt-1 text-xs leading-relaxed text-light">
-            Races before this day pay nothing. The site fills it in the first time you start the counting. Empty
-            means every race ever, back to season 1.
+            Races before this day pay nothing. Starting the counting sets it to that day, so nothing from before
+            pays. Empty means every race ever, back to season 1.
           </p>
         </div>
         <input

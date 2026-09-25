@@ -81,18 +81,35 @@ export async function isEarningOn(prisma) {
   }
 }
 
-// Switching it on for the first time is also the day the counting starts, so
-// nobody wakes up with a season of back pay they were never promised.
+// Switching it on is the day the counting starts: from now on, nothing from
+// before. Every time, not only the first: a start day left over from a trial
+// run, or typed into the form weeks ago, used to survive the switch and pay
+// every round since that day in one go the moment it was pressed. A pause is
+// a pause, and what happened while it was paused is not paid afterwards
+// either. The league can still move the day back by hand (Rules and prices ->
+// Counting from) if it ever wants to pay for the past on purpose.
+//
+// The training laps are a weekly tally with no date on each lap, so the ones
+// driven before the switch cannot be told apart from the ones after it. They
+// are not counted while it is off (lib/practiceTokens.js), and whatever a
+// tally still holds from before is cleared here, or the first lap after the
+// start would pay a milestone reached last Tuesday.
 export async function setEarning(prisma, on) {
+  const wasOn = await isEarningOn(prisma);
   const value = on ? "1" : "0";
   await prisma.setting.upsert({
     where: { key: EARNING_SETTING },
     update: { value },
     create: { key: EARNING_SETTING, value },
   });
-  if (on) {
+  if (on && !wasOn) {
     const t = await ensureTuning(prisma);
-    if (!t.startDay) await saveTuning(prisma, { ...t, startDay: leagueDay() });
+    await saveTuning(prisma, { ...t, startDay: leagueDay() });
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "TokenPractice"`);
+    } catch {
+      /* no table yet */
+    }
   }
   return !!on;
 }
@@ -881,8 +898,8 @@ export async function multiplierFor(prisma, discordId) {
 export async function syncEarned(prisma, discordId) {
   if (!discordId) return;
   // Paused: balances stand still. Shop purchases and the league office's own
-  // bookings still work, and the moment it is switched on everything from the
-  // start day is credited in one go.
+  // bookings still work. Switching it back on starts a new start day (see
+  // setEarning), so nothing from the pause is paid afterwards.
   if (!(await isEarningOn(prisma))) return;
   await ensureTokenAccount(prisma, discordId);
   // A round is worth what it was worth the night it was imported: payRace
