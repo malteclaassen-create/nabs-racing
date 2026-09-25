@@ -33,6 +33,7 @@
 // ---------------------------------------------------------------------------
 import { randomUUID, randomInt, timingSafeEqual, createHash } from "crypto";
 import { IS_DEPLOYED } from "./deployment.js";
+import { raceKickoff } from "./raceKickoff.js";
 import { catalogueFor, isBuyableDesign, ownedDesigns, priceOf, CARD_DESIGN_BY_KEY } from "./cardShop.js";
 import { overrides, ensureTuning, saveTuning } from "./tokenTuning.js";
 import { STUDIO_BY_ID, studioPriceOf, ownedStudioItems } from "./profileStudio.js";
@@ -89,11 +90,10 @@ export async function isEarningOn(prisma) {
 // either. The league can still move the day back by hand (Rules and prices ->
 // Counting from) if it ever wants to pay for the past on purpose.
 //
-// The training laps are a weekly tally with no date on each lap, so the ones
-// driven before the switch cannot be told apart from the ones after it. They
-// are not counted while it is off (lib/practiceTokens.js), and whatever a
-// tally still holds from before is cleared here, or the first lap after the
-// start would pay a milestone reached last Tuesday.
+// The training laps are a weekly tally with no date on each lap. The week
+// that is running counts in full, laps from before the switch included, and
+// what it already reached pays right away; older weeks are cleared
+// (settleThisWeek in lib/practiceTokens.js).
 export async function setEarning(prisma, on) {
   const wasOn = await isEarningOn(prisma);
   const value = on ? "1" : "0";
@@ -105,11 +105,8 @@ export async function setEarning(prisma, on) {
   if (on && !wasOn) {
     const t = await ensureTuning(prisma);
     await saveTuning(prisma, { ...t, startDay: leagueDay() });
-    try {
-      await prisma.$executeRawUnsafe(`DELETE FROM "TokenPractice"`);
-    } catch {
-      /* no table yet */
-    }
+    const { settleThisWeek } = await import("./practiceTokens.js");
+    await settleThisWeek(prisma).catch(() => {});
   }
   return !!on;
 }
@@ -694,13 +691,20 @@ export async function stampRaceRates(prisma, raceId) {
     .catch(() => []);
   const ids = [...new Set(rows.map((r) => r.driverId).filter(Boolean))];
   if (!ids.length) return 0;
+  // Measured up to the briefing, not up to the import: the race evening
+  // itself does not count towards what the round is worth.
+  const race = await prisma
+    .$queryRawUnsafe(`SELECT "date" FROM "Race" WHERE "id" = ?`, raceId)
+    .catch(() => []);
+  const start = race[0]?.date == null ? null : raceKickoff(new Date(Number(race[0].date)));
+  const until = start && start.getTime() <= Date.now() ? start.getTime() : null;
   const accounts = await discordForDrivers(prisma, ids);
   let n = 0;
   for (const driverId of ids) {
     const discordId = accounts.get(driverId);
     // No Discord account means no activity to measure, so a plain 1.0. Which is
     // what they would have been paid anyway.
-    const rate = discordId ? (await multiplierFor(prisma, discordId)).total : 1;
+    const rate = discordId ? (await multiplierFor(prisma, discordId, until)).total : 1;
     const ok = await prisma
       .$executeRawUnsafe(
         `INSERT OR IGNORE INTO "TokenRaceRate" ("raceId","driverId","rate") VALUES (?,?,?)`,
@@ -847,6 +851,26 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
   const d = String(day || leagueDay());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "Bad day" };
   await ensureTokenAccount(prisma, discordId);
+  // A round started on this day: keep what the day held until then, before
+  // this report (which may already include the race evening) goes on top.
+  for (const cutAt of await roundStartsOn(prisma, d)) {
+    if (cutAt > Date.now()) continue;
+    await prisma
+      .$executeRawUnsafe(
+        `INSERT OR IGNORE INTO "TokenActivityCut" ("discordId","cutAt","day","messages","minutes")
+         VALUES (?,?,?,
+           COALESCE((SELECT "messages" FROM "TokenActivity" WHERE "discordId" = ? AND "day" = ?),0),
+           COALESCE((SELECT "minutes" FROM "TokenActivity" WHERE "discordId" = ? AND "day" = ?),0))`,
+        discordId,
+        cutAt,
+        d,
+        discordId,
+        d,
+        discordId,
+        d
+      )
+      .catch(() => {});
+  }
   // A day's totals only ever go UP, so the higher number wins. Straight
   // overwriting looked right until you think about where the bot runs: on a
   // host with no disk of its own it loses its notes on every restart, starts
@@ -868,18 +892,72 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
   return { ok: true, day: d };
 }
 
-// What this member has done in the window that counts: today and the
-// twenty-nine days before it. Older rows simply fall out of the sum, which is
-// how a multiplier earned in a busy month fades again in a quiet one.
-export async function activityTotals(prisma, discordId) {
+// When rounds start (the briefing), as instants, for the league days they fall
+// on. Held a few minutes: the bot reports every five.
+let roundStarts = { at: 0, byDay: new Map() };
+async function roundStartsOn(prisma, day) {
+  if (Date.now() - roundStarts.at > 5 * 60 * 1000) {
+    const rows = await prisma
+      .$queryRawUnsafe(`SELECT "date" FROM "Race" WHERE "date" IS NOT NULL AND "isSpecialEvent" = 0`)
+      .catch(() => []);
+    const byDay = new Map();
+    for (const r of rows) {
+      const start = raceKickoff(new Date(Number(r.date)));
+      if (!start) continue;
+      const key = leagueDay(start.getTime());
+      byDay.set(key, [...(byDay.get(key) || []), start.getTime()]);
+    }
+    roundStarts = { at: Date.now(), byDay };
+  }
+  return roundStarts.byDay.get(day) || [];
+}
+
+// What this member has done in the window that counts: the last seven days.
+// Older rows simply fall out of the sum, which is how a multiplier earned in a
+// busy week fades again in a quiet one.
+//
+// With `until` (a round's start) the window is the seven days up to that
+// moment instead of up to now: the six days before, plus the race day as it
+// stood at the briefing.
+export async function activityTotals(prisma, discordId, until = null) {
   try {
-    const rows = await prisma.$queryRawUnsafe(
+    if (!until) {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
+           FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ?`,
+        discordId,
+        activityWindowStart()
+      );
+      return { chatMessages: Number(rows[0]?.m || 0), vcMinutes: Number(rows[0]?.v || 0) };
+    }
+    const lastDay = leagueDay(until);
+    const before = await prisma.$queryRawUnsafe(
       `SELECT COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
-         FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ?`,
+         FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ? AND "day" < ?`,
       discordId,
-      activityWindowStart()
+      activityWindowStart(until),
+      lastDay
     );
-    return { chatMessages: Number(rows[0]?.m || 0), vcMinutes: Number(rows[0]?.v || 0) };
+    const cut = await prisma
+      .$queryRawUnsafe(
+        `SELECT "messages" AS m, "minutes" AS v FROM "TokenActivityCut" WHERE "discordId" = ? AND "cutAt" = ?`,
+        discordId,
+        until
+      )
+      .catch(() => []);
+    // No cut means nothing was reported after the start, so the day's row is
+    // still the day as it stood then.
+    const raceDay = cut.length
+      ? cut
+      : await prisma.$queryRawUnsafe(
+          `SELECT "messages" AS m, "minutes" AS v FROM "TokenActivity" WHERE "discordId" = ? AND "day" = ?`,
+          discordId,
+          lastDay
+        );
+    return {
+      chatMessages: Number(before[0]?.m || 0) + Number(raceDay[0]?.m || 0),
+      vcMinutes: Number(before[0]?.v || 0) + Number(raceDay[0]?.v || 0),
+    };
   } catch {
     // No table yet (a database from before the trial): nobody has any activity,
     // which is the right answer and never an error the member should see.
@@ -887,10 +965,10 @@ export async function activityTotals(prisma, discordId) {
   }
 }
 
-// The multiplier this member currently carries. 1.0 for everybody until the
-// Discord bot is reporting, see lib/tokenRules.js.
-export async function multiplierFor(prisma, discordId) {
-  const totals = await activityTotals(prisma, discordId);
+// The multiplier this member carries, now or at a round's start. 1.0 for
+// everybody until the Discord bot is reporting, see lib/tokenRules.js.
+export async function multiplierFor(prisma, discordId, until = null) {
+  const totals = await activityTotals(prisma, discordId, until);
   return { ...activityMultiplier(totals, tunedMultiplier()), ...totals, windowDays: ACTIVITY_WINDOW_DAYS };
 }
 

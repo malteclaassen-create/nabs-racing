@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { notePracticeLap, practiceWritesSettled, practiceProgress, __clearCaches } from "./practiceTokens.js";
+import { notePracticeLap, practiceWritesSettled, practiceProgress, settleThisWeek, currentPeriod, __clearCaches } from "./practiceTokens.js";
 import { saveTuning } from "./tokenTuning.js";
 
 // A prisma stand-in with the three tables this touches: the lap tally, the
@@ -13,6 +13,7 @@ function db({
   seriesList = ["nabs"],
   driverSeries = {},
   nextRaceBySeries = null,
+  races = null,
 } = {}) {
   const practice = new Map(); // `${steam}|${series}|${period}` -> row
   const ledger = new Map(); // refKey -> row
@@ -21,6 +22,7 @@ function db({
   async function query(sql, ...args) {
     if (/FROM "Race" ra/.test(sql)) {
       if (!race) return [];
+      if (races) return races;
       if (nextRaceBySeries) {
         const track = nextRaceBySeries[args[0]];
         return track ? [{ id: `race-${args[0]}`, track, number: 5, date: null }] : [];
@@ -57,6 +59,13 @@ function db({
       const row = practice.get(args.join("|"));
       return row ? [{ laps: row.laps }] : [];
     }
+    // The switch-on read: every tally that is left.
+    if (/SELECT "steamId","series","period","server","laps" FROM "TokenPractice"/.test(sql)) {
+      return [...practice].map(([key, row]) => {
+        const [steamId, series, period, server] = key.split("|");
+        return { steamId, series, period, server, laps: row.laps };
+      });
+    }
     if (/SUM\("laps"\)/.test(sql)) {
       // The page's read: every week of every server, grouped. Args are the
       // member's Steam ids followed by the period keys.
@@ -91,6 +100,13 @@ function db({
   }
 
   async function exec(sql, ...args) {
+    if (/DELETE FROM "TokenPractice"/.test(sql)) {
+      for (const key of [...practice.keys()]) {
+        const [, series, period] = key.split("|");
+        if (!args.includes(`${series}|${period}`)) practice.delete(key);
+      }
+      return 1;
+    }
     if (/INSERT INTO "TokenPractice"/.test(sql)) {
       const [steamId, series, period, server, laps, trackKey, car, lastAt] = args;
       const key = `${steamId}|${series}|${period}|${server}`;
@@ -186,24 +202,33 @@ describe("training laps", () => {
     expect([...prisma.ledger.values()]).toHaveLength(1);
   });
 
-  it("does not count laps while the counting is switched off", async () => {
+  it("counts laps while the counting is off, but pays nothing for them yet", async () => {
     const off = db({ earning: "0" });
     await drive(off, 25);
-    expect([...off.practice.values()]).toEqual([]);
+    expect([...off.practice.values()].map((r) => r.laps)).toEqual([25]);
     expect([...off.ledger.values()]).toEqual([]);
   });
 
-  it("pays nothing for laps driven before the counting was started", async () => {
+  it("pays this week's laps the moment the counting is started", async () => {
     const prisma = db({ earning: "0" });
     await drive(prisma, 22);
     prisma.settings.set("tokens_earning", "1"); // the league starts the counting
     __clearCaches();
-    const progress = await practiceProgress(prisma, "disc1");
-    expect(progress.laps).toBe(0);
-    expect([...prisma.ledger.values()]).toEqual([]);
-    // Only what is driven from here on counts.
-    await drive(prisma, 20, { from: 1_700_100_000 });
+    await settleThisWeek(prisma);
     expect([...prisma.ledger.values()].map((r) => r.rule)).toEqual(["practice_20"]);
+  });
+
+  it("ends the week when the round starts, imported or not", async () => {
+    const now = Date.now();
+    const prisma = db({
+      races: [
+        { id: "past", track: "Baku", number: 1, date: now - 3600_000, isCompleted: 0 },
+        { id: "next", track: "Poznan", number: 2, date: now + 3600_000, isCompleted: 0 },
+      ],
+    });
+    expect((await currentPeriod(prisma, "nabs", now)).key).toBe("race:next");
+    __clearCaches();
+    expect((await currentPeriod(prisma, "nabs", now + 2 * 3600_000)).key).toMatch(/^week:/);
   });
 
   it("says whether the feature is out in the open, which the live page waits for", async () => {

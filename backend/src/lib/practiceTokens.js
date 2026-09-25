@@ -26,7 +26,8 @@
 // progress bar on the points page and the bell tell somebody the same evening.
 // The ledger's unique (member, refKey) is what keeps that honest: the payout
 // is also re-checked whenever the page is opened. Laps driven while the
-// counting is switched off are not counted at all, so they never pay.
+// counting is off still count for the week they are in, and pay when it is
+// switched on; earlier weeks do not.
 // ---------------------------------------------------------------------------
 import {
   practiceServerOn,
@@ -40,6 +41,7 @@ import {
   discordForDrivers,
 } from "./tokens.js";
 import { leagueDay } from "./tokenRules.js";
+import { raceKickoff } from "./raceKickoff.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { LIVE_SERVERS } from "./liveServers.js";
 import { boardScopes } from "./liveBestLaps.js";
@@ -81,23 +83,31 @@ export async function currentPeriod(prisma, series, now = Date.now()) {
   const slug = String(series || "");
   if (!slug) return null;
   const hit = periodCache.get(slug);
-  if (hit && now - hit.at < PERIOD_TTL_MS) return hit.period;
+  if (hit && now - hit.at < PERIOD_TTL_MS && !(hit.until && now >= hit.until)) return hit.period;
 
   let period = { key: `week:${weekKey(now)}`, label: "This week", raceId: null, track: null, date: null };
+  let turnsAt = null;
   try {
+    // The week ends when the round starts (the briefing, 19:30 on a Friday),
+    // not when somebody gets round to importing the results. A round whose
+    // start has passed is over for training whether it is marked done or not.
     const rows = await prisma.$queryRawUnsafe(
-      `SELECT ra."id", ra."track", ra."number", ra."date"
+      `SELECT ra."id", ra."track", ra."number", ra."date", ra."isCompleted"
          FROM "Race" ra
          JOIN "Season" s ON s."id" = ra."seasonId"
          JOIN "Series" se ON se."id" = s."seriesId"
-        WHERE se."slug" = ? AND s."isActive" = 1
-          AND ra."isCompleted" = 0 AND ra."isSpecialEvent" = 0
-        ORDER BY (ra."date" IS NULL), ra."date" ASC, ra."number" ASC
-        LIMIT 1`,
+        WHERE se."slug" = ? AND s."isActive" = 1 AND ra."isSpecialEvent" = 0
+        ORDER BY (ra."date" IS NULL), ra."date" ASC, ra."number" ASC`,
       slug
     );
-    const r = rows[0];
+    const r = rows.find((row) => {
+      if (row.date == null) return !Number(row.isCompleted);
+      const start = raceKickoff(new Date(Number(row.date)));
+      return start && start.getTime() > now;
+    });
     if (r?.id) {
+      const start = r.date == null ? null : raceKickoff(new Date(Number(r.date)));
+      turnsAt = start ? start.getTime() : null;
       period = {
         key: `race:${r.id}`,
         label: r.number ? `Round ${r.number}, ${r.track}` : String(r.track || "Next round"),
@@ -110,7 +120,8 @@ export async function currentPeriod(prisma, series, now = Date.now()) {
     // A database that cannot answer is not a reason to stop counting laps: the
     // week key below still files them somewhere sensible.
   }
-  periodCache.set(slug, { at: now, period });
+  // Held until the round starts at the latest, so the switch happens on time.
+  periodCache.set(slug, { at: now, period, until: turnsAt });
   return period;
 }
 
@@ -243,9 +254,8 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // promise the site cannot keep.
   const from = String(serverKey || "");
   if (!practiceServerOn(from)) return;
-  // Nor while the counting is off: a lap has no date in the tally, so a lap
-  // kept from before the start would be paid for the moment it is switched on.
-  if (!(await payingNow(prisma))) return;
+  // Counted while the counting is off too: this week's laps pay once it is
+  // switched on (settleThisWeek). Older weeks are cleared at that moment.
   // `series` is only passed by the tests; the relay hands over what it knows
   // about the server and lets the rule above decide.
   const slug = series || (await seriesForLap(prisma, { serverKey, scopes, trackKey, steamId: id }));
@@ -552,4 +562,48 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
     // One per race server, in the league's own order.
     weeks,
   };
+}
+
+// The counting has just been switched on. This week's laps count (the league
+// wanted "from this week"), so whatever they already reached pays now, before
+// the round starts and the week is gone. Laps from earlier weeks are dropped.
+export async function settleThisWeek(prisma) {
+  const seriesRows = await prisma
+    .$queryRawUnsafe(
+      `SELECT DISTINCT se."slug" AS "slug" FROM "Series" se JOIN "Season" s ON s."seriesId" = se."id" WHERE s."isActive" = 1`
+    )
+    .catch(() => []);
+  const current = [];
+  for (const row of seriesRows) {
+    const period = await currentPeriod(prisma, row.slug);
+    if (period) current.push({ slug: row.slug, period });
+  }
+  if (!current.length) {
+    await prisma.$executeRawUnsafe(`DELETE FROM "TokenPractice"`).catch(() => {});
+    return 0;
+  }
+  const keep = current.map((c) => `${c.slug}|${c.period.key}`);
+  await prisma
+    .$executeRawUnsafe(
+      `DELETE FROM "TokenPractice" WHERE ("series" || '|' || "period") NOT IN (${keep.map(() => "?").join(",")})`,
+      ...keep
+    )
+    .catch(() => {});
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT "steamId","series","period","server","laps" FROM "TokenPractice"`)
+    .catch(() => []);
+  let paid = 0;
+  for (const r of rows) {
+    const on = current.find((c) => c.slug === r.series && c.period.key === r.period);
+    if (!on) continue;
+    const discordId = await discordForSteamIds(prisma, [r.steamId]);
+    if (!discordId) continue;
+    paid += await payPractice(prisma, discordId, {
+      series: r.series,
+      period: on.period,
+      server: r.server,
+      laps: Number(r.laps) || 0,
+    });
+  }
+  return paid;
 }

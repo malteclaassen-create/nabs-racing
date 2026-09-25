@@ -699,6 +699,17 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "TokenActivity_day_idx" ON "TokenActivity"("day")`
   );
+  // A member's race-day totals as they stood when the round started. The bot
+  // counts in whole days, so without this the evening itself (everybody in
+  // voice for the race) would land in the multiplier the round is paid at.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenActivityCut" (
+    "discordId" TEXT NOT NULL,
+    "cutAt" INTEGER NOT NULL,
+    "day" TEXT NOT NULL,
+    "messages" INTEGER NOT NULL DEFAULT 0,
+    "minutes" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("discordId", "cutAt")
+  )`);
   // The ledger. A balance is SUM(delta) over these rows, never a stored number:
   // the reconciliation in lib/tokens.js rewrites nothing, it only adds what is
   // missing, and the unique (discordId, refKey) is what stops it paying twice.

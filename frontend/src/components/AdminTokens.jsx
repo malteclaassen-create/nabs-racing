@@ -102,7 +102,7 @@ function EarningSwitch({ earning, startDay, busy, onChange }) {
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
           {earning
             ? `Running${startDay ? `, races from ${startDay} count` : ""}. Everyone earns as they go.`
-            : "Paused. Members can look around, but no race pays and no balance moves. Switching it on counts from today; nothing from before pays."}
+            : "Paused. Members can look around, but no race pays and no balance moves. Switching it on counts races from today, plus this week's training laps and Discord activity."}
         </p>
       </div>
       <button type="button" disabled={busy} onClick={() => onChange(!earning)} className={earning ? "btn-secondary" : "btn-primary"}>
