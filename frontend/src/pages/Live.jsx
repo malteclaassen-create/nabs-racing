@@ -192,10 +192,6 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
   return (
     <div className="reveal card relative overflow-hidden">
       <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-amber-500 to-sky-600" />
-      {/* The one thing that changes how everything below it should be read. It
-          sits above the numbers rather than among them, and stays put on phones
-          instead of hiding behind the details toggle — a caution is not a
-          detail. Yellow, because that is what it is. */}
       {/* The session is over and this is its result, not a live board: said
           in so many words, with how old the last data is, so a result held on
           the page for a while is never mistaken for a race still running. */}
@@ -211,20 +207,6 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
           {agoLabel(lastDataAt) && (
             <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-light">last data {agoLabel(lastDataAt)}</span>
           )}
-        </div>
-      )}
-      {session.safetyCar && !session.finished && (
-        <div
-          role="status"
-          className="flex items-center gap-2.5 border-b border-amber-500/40 bg-amber-500/15 px-4 py-2 sm:px-6"
-        >
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
-          </span>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-warn sm:text-xs">
-            Safety car on track
-          </span>
         </div>
       )}
       {/* Track and actions share the first row; four stats get a full row below. */}
@@ -3136,11 +3118,6 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
             {session?.serverName ? ` · ${session.serverName}` : ""}
           </div>
         </div>
-        {session?.safetyCar && (
-          <span className="pill shrink-0 bg-amber-500/20 text-warn" role="status">
-            Safety car
-          </span>
-        )}
         <div className="ml-auto flex shrink-0 items-center gap-5 sm:gap-8">
           {session && (
             <>
