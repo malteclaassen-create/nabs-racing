@@ -339,13 +339,13 @@ describe("training laps", () => {
     // After the race the server sits on Poznan in a practice session; the week
     // already belongs to the next round, at Interlagos.
     const prisma = db({ seriesList: ["f1"], nextRaceBySeries: { f1: "Interlagos" } });
-    await drive(prisma, 5, { serverKey: "nabs1", trackKey: "rt_poznan--gp" });
+    await drive(prisma, 5, { serverKey: "nabs1", trackKey: "rs-tor-poznanl--laser" });
     expect(prisma.practice.size).toBe(0);
     const progress = await practiceProgress(prisma, "disc1");
     expect(progress.weeks.find((w) => w.server === "nabs1").laps).toBe(0);
 
     // The track changes: from here on the laps count.
-    await drive(prisma, 3, { serverKey: "nabs1", trackKey: "vhe_interlagos--gp", from: 1_700_100_000 });
+    await drive(prisma, 3, { serverKey: "nabs1", trackKey: "vhe-interlagos--nabs-interlagos-2025-v2", from: 1_700_100_000 });
     const after = await practiceProgress(prisma, "disc1");
     expect(after.weeks.find((w) => w.server === "nabs1").laps).toBe(3);
   });
@@ -355,12 +355,12 @@ describe("training laps", () => {
     // What the live site already holds from before the rule.
     prisma.practice.set("76561100000000001|f1|race:race-f1|nabs1", {
       laps: 2,
-      trackKey: "rt_poznan--gp",
+      trackKey: "rs-tor-poznanl--laser",
       car: "f2010",
       lastAt: 1_600_000_000,
     });
     expect((await practiceProgress(prisma, "disc1")).weeks.find((w) => w.server === "nabs1").laps).toBe(0);
-    await drive(prisma, 4, { serverKey: "nabs1", trackKey: "vhe_interlagos--gp" });
+    await drive(prisma, 4, { serverKey: "nabs1", trackKey: "vhe-interlagos--nabs-interlagos-2025-v2" });
     expect(prisma.practice.get("76561100000000001|f1|race:race-f1|nabs1").laps).toBe(4);
   });
 
