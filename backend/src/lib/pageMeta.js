@@ -680,6 +680,41 @@ export async function pageShareImage(prisma, pathname, origin) {
   }
 }
 
+// The admin's own link-preview wording for an address ({ title?,
+// description? }), or null when the page has none.
+export async function pageShareText(prisma, pathname) {
+  try {
+    const series = await pageSeries(prisma, pathname);
+    const page = sharePageOf(pathname);
+    const text = page && series?.shareTexts?.[page];
+    return text && (text.title || text.description) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+// Writes that wording into the og: and twitter: tags only. The <title> and
+// the meta description stay as applyPageMeta left them: those are what a
+// search engine shows, and they are written to be found, whereas this is
+// written to be clicked in a Discord channel.
+export function applyShareText(html, text) {
+  if (!text) return html;
+  let out = html;
+  if (text.title) {
+    const t = esc(text.title);
+    out = out
+      .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${t}$2`);
+  }
+  if (text.description) {
+    const d = esc(text.description);
+    out = out
+      .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${d}$2`);
+  }
+  return out;
+}
+
 // What each page of a series looks like as a pasted link, for the admin's
 // Link previews view: the same title, description, picture and stripe colour
 // the unfurler gets. A page with nothing of its own to say (or a private
@@ -696,12 +731,19 @@ export async function linkPreviews(prisma, series) {
       const path = page === "home" ? `/s/${series.slug}` : `/s/${series.slug}/${page}`;
       const meta = await buildPageMeta(prisma, path).catch(() => null);
       const image = resolveShareImage(series, page);
+      const own = series.shareTexts?.[page] || {};
+      const autoTitle = meta?.title || DEFAULT_TITLE;
+      const autoDescription = meta?.description || DEFAULT_DESCRIPTION;
       return {
         page,
         label,
         path,
-        title: meta?.title || DEFAULT_TITLE,
-        description: meta?.description || DEFAULT_DESCRIPTION,
+        title: own.title || autoTitle,
+        description: own.description || autoDescription,
+        autoTitle,
+        autoDescription,
+        ownTitle: own.title || null,
+        ownDescription: own.description || null,
         image: image.url || "/og-image.jpg",
         imageSource: image.source,
         color,

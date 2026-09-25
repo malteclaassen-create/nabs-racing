@@ -108,6 +108,8 @@ import {
   writeSeriesLogo,
   writeSeriesShareImage,
   SHARE_PAGES,
+  parseShareText,
+  writeSeriesShareText,
 } from "../lib/series.js";
 import { linkPreviews } from "../lib/pageMeta.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
@@ -4974,6 +4976,25 @@ router.get("/series/:id/link-previews", async (req, res, next) => {
       series: { id: series.id, name: series.name, slug: series.slug, shareImageUrl: series.shareImageUrl },
       pages,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/series/:id/share-text/:page  { title, description }
+// The page's own wording on a pasted link (og:/twitter: tags only; the page
+// title and search snippet keep theirs). Blank = the automatic text; both
+// blank clears the override.
+router.put("/series/:id/share-text/:page", async (req, res, next) => {
+  try {
+    const page = req.params.page;
+    if (!SHARE_PAGES[page]) return res.status(400).json({ error: "Unknown page" });
+    const parsed = parseShareText(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    await writeSeriesShareText(prisma, series.id, page, parsed.value);
+    res.json({ ok: true, ...parsed.value });
   } catch (e) {
     next(e);
   }

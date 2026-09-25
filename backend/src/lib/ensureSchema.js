@@ -363,6 +363,8 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Series", "shareImageUrl", "TEXT");
   // Per-page overrides of it, JSON { <page>: <url> } (lib/series.js SHARE_PAGES).
   await addColumn(prisma, "Series", "shareImages", "TEXT");
+  // Per-page link-preview wording, JSON { <page>: { title, description } }.
+  await addColumn(prisma, "Series", "shareTexts", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.

@@ -16,10 +16,13 @@ import {
   pageThemeColor,
   pageShareImage,
   sharePageOf,
+  applyShareText,
+  pageShareText,
   applyShareImage,
   DEFAULT_THEME_COLOR,
 } from "./pageMeta.js";
 import { disciplineOf } from "./seo.js";
+import { parseShareText } from "./series.js";
 
 // Real Fridays and Sundays in league time, stored the way the app stores them.
 const FRIDAYS = ["2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29"];
@@ -226,6 +229,49 @@ describe("share picture (og:image on a pasted link)", () => {
     expect(out).toContain('<meta property="og:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
     expect(out).toContain('<meta name="twitter:image" content="https://nabsracing.com/api/uploads/series/a-share.jpg?v=1&amp;x=2" />');
     expect(applyShareImage(HTML, null)).toBe(HTML);
+  });
+});
+
+describe("link preview wording (og:/twitter: text)", () => {
+  const HTML =
+    '<head><title>Season 8 sign-ups</title><meta name="description" content="auto" />' +
+    '<meta property="og:title" content="auto" /><meta property="og:description" content="auto" />' +
+    '<meta name="twitter:title" content="auto" /><meta name="twitter:description" content="auto" /></head>';
+
+  it("rewrites the social tags only, never the page title or search snippet", () => {
+    const out = applyShareText(HTML, { title: 'Sign up <now> & "race"', description: "Grid is filling" });
+    expect(out).toContain('<meta property="og:title" content="Sign up &lt;now&gt; &amp; &quot;race&quot;" />');
+    expect(out).toContain('<meta name="twitter:title" content="Sign up &lt;now&gt; &amp; &quot;race&quot;" />');
+    expect(out).toContain('<meta property="og:description" content="Grid is filling" />');
+    expect(out).toContain('<meta name="twitter:description" content="Grid is filling" />');
+    expect(out).toContain("<title>Season 8 sign-ups</title>");
+    expect(out).toContain('<meta name="description" content="auto" />');
+  });
+
+  it("a title alone leaves the automatic description, and nothing leaves the page alone", () => {
+    const out = applyShareText(HTML, { title: "Only the title" });
+    expect(out).toContain('<meta property="og:description" content="auto" />');
+    expect(applyShareText(HTML, null)).toBe(HTML);
+  });
+
+  it("answers the page's own wording, and nothing for a page without", async () => {
+    const rows = [
+      {
+        id: "a", name: "F1", slug: "friday-f1", order: 0, isActive: 1, isPublic: 1,
+        shareTexts: JSON.stringify({ attendance: { title: "Sign up!" }, nope: { title: "x" }, drivers: { title: "  " } }),
+      },
+    ];
+    const prisma = { $queryRawUnsafe: async () => rows };
+    expect(await pageShareText(prisma, "/s/friday-f1/attendance")).toEqual({ title: "Sign up!" });
+    expect(await pageShareText(prisma, "/s/friday-f1/drivers")).toBe(null);
+    expect(await pageShareText(prisma, "/downloads")).toBe(null);
+  });
+
+  it("validates what the admin typed", () => {
+    expect(parseShareText({ title: "  Sign   up ", description: "" })).toEqual({ ok: true, value: { title: "Sign up" } });
+    expect(parseShareText({})).toEqual({ ok: true, value: {} });
+    expect(parseShareText({ title: "x".repeat(201) }).ok).toBe(false);
+    expect(parseShareText({ description: "x".repeat(401) }).ok).toBe(false);
   });
 });
 
