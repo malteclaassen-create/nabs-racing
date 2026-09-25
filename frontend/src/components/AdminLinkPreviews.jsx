@@ -69,7 +69,7 @@ export default function AdminLinkPreviews() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {data.pages.map((p) => (
-            <PageCard key={p.page} seriesId={series.id} preview={p} onSaved={saved} onError={setError} />
+            <PageCard key={p.page} series={series} seriesId={series.id} preview={p} onSaved={saved} onError={setError} />
           ))}
         </div>
       )}
@@ -80,7 +80,7 @@ export default function AdminLinkPreviews() {
 // One page: its preview, where its picture comes from, and the controls for
 // its picture and its wording. While the wording is being edited the preview
 // follows the draft, so the admin sees the result before saving it.
-function PageCard({ seriesId, preview, onSaved, onError }) {
+function PageCard({ series, seriesId, preview, onSaved, onError }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -162,6 +162,7 @@ function PageCard({ seriesId, preview, onSaved, onError }) {
               Automatic text
             </button>
           )}
+          <SharePictureGenerator series={series} page={preview.page} label={preview.label} onSaved={onSaved} onError={onError} />
           <PictureButtons seriesId={seriesId} page={preview.page} label={preview.label}
             url={preview.imageSource === "page" ? preview.image : null} onSaved={onSaved} onError={onError} />
         </div>
@@ -372,7 +373,10 @@ async function drawSharePicture(canvas, { background, logo, tintLogo, color, lin
   ctx.fillText(sub2, left, 572);
 }
 
-function SharePictureGenerator({ series, onSaved, onError }) {
+// Without a page it makes the series default, starting from the race photo.
+// With one it makes that page's own picture and starts by asking for the
+// photo: the point there is a different photo under the same words and logo.
+function SharePictureGenerator({ series, page = "", label = "", onSaved, onError }) {
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState(() => defaultLines(series));
   const [color, setColor] = useState(series.accentColor || DEFAULT_PINK);
@@ -388,7 +392,8 @@ function SharePictureGenerator({ series, onSaved, onError }) {
     setFields(defaultLines(series));
     setColor(series.accentColor || DEFAULT_PINK);
     setBackground("/hero.jpg");
-    setOpen(true);
+    if (page) bgFileRef.current?.click();
+    else setOpen(true);
   }
 
   // Redraw on every change; the canvas IS the preview.
@@ -413,7 +418,9 @@ function SharePictureGenerator({ series, onSaved, onError }) {
   function pickBackground(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (file) setBackground(URL.createObjectURL(file));
+    if (!file) return;
+    setBackground(URL.createObjectURL(file));
+    setOpen(true);
   }
 
   async function save() {
@@ -421,10 +428,10 @@ function SharePictureGenerator({ series, onSaved, onError }) {
     try {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
       if (!blob) throw new Error("Could not create the picture");
-      const file = new File([blob], `${series.slug}-share.jpg`, { type: "image/jpeg" });
-      await api.uploadSeriesShareImage(series.id, file, "");
+      const file = new File([blob], `${series.slug}-share${page ? `-${page}` : ""}.jpg`, { type: "image/jpeg" });
+      await api.uploadSeriesShareImage(series.id, file, page);
       setOpen(false);
-      onSaved(`New default link picture for ${series.name} saved.`);
+      onSaved(page ? `New link picture for ${label} saved.` : `New default link picture for ${series.name} saved.`);
     } catch (err) { onError(err.message); } finally { setBusy(false); }
   }
 
@@ -432,17 +439,27 @@ function SharePictureGenerator({ series, onSaved, onError }) {
 
   return (
     <>
-      <button type="button" className="btn-primary" onClick={start}
-        title="Draws a picture in this series' colour, logo and name">
-        Generate in series colours
-      </button>
-      <Modal open={open} onClose={() => !busy && setOpen(false)} title={`Link picture for ${series.name}`} size="xl"
+      {/* Outside the modal: the page variant opens the picker before the modal. */}
+      <input aria-label={page ? `Photo for ${label}` : "Background photo"} ref={bgFileRef} type="file"
+        accept="image/png,image/jpeg,image/webp" className="hidden" onChange={pickBackground} />
+      {page ? (
+        <button type="button" className="btn-secondary" onClick={start}
+          title="Pick a photo; the series' words and logo are drawn on top of it">
+          Own photo + text
+        </button>
+      ) : (
+        <button type="button" className="btn-primary" onClick={start}
+          title="Draws a picture in this series' colour, logo and name">
+          Generate in series colours
+        </button>
+      )}
+      <Modal open={open} onClose={() => !busy && setOpen(false)} title={page ? `Link picture for ${label}` : `Link picture for ${series.name}`} size="xl"
         description="Drawn in the series' colour and logo. Change anything below; the preview follows."
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
             <button type="button" className="btn-primary" disabled={busy || !!drawError} onClick={save}>
-              {busy ? "Saving…" : "Use as default for all pages"}
+              {busy ? "Saving…" : page ? `Use for ${label}` : "Use as default for all pages"}
             </button>
           </div>
         }
@@ -474,8 +491,6 @@ function SharePictureGenerator({ series, onSaved, onError }) {
               <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
                 className="h-8 w-10 cursor-pointer rounded-lg border border-border bg-transparent" />
             </label>
-            <input aria-label="Background photo" ref={bgFileRef} type="file" accept="image/png,image/jpeg,image/webp"
-              className="hidden" onChange={pickBackground} />
             <button type="button" className="btn-secondary" onClick={() => bgFileRef.current?.click()}>Own background photo</button>
             {background !== "/hero.jpg" && (
               <button type="button" className="btn-secondary" onClick={() => setBackground("/hero.jpg")}>Default photo</button>
