@@ -475,7 +475,6 @@ function GridToFlag({ grid, finish, field }) {
   const at = (p) => ((field - p) / Math.max(1, field - 1)) * 100;
   const from = at(grid);
   const to = at(finish);
-  const lo = Math.min(from, to);
   const w = Math.abs(to - from);
   const step = field > 30 ? 10 : field > 12 ? 5 : 1;
   const ticks = [];
@@ -489,7 +488,18 @@ function GridToFlag({ grid, finish, field }) {
           <div className="mt-1 font-mono text-[10px] font-bold tabular-nums text-faint">P{p}</div>
         </div>
       ))}
-      <div className="recap-sweep-trail absolute top-[19px] h-[3px]" style={{ left: `${lo}%`, "--w": `${w}%`, background: "var(--recap-team)", opacity: 0.6 }} />
+      {/* The trail is pinned to the GRID slot and grows towards the finish:
+          from the left when places were gained, from the right when they
+          were lost, so it follows the car instead of filling in backwards. */}
+      <div
+        className="recap-sweep-trail absolute top-[19px] h-[3px]"
+        style={{
+          ...(to >= from ? { left: `${from}%` } : { right: `${100 - from}%` }),
+          "--w": `${w}%`,
+          background: "var(--recap-team)",
+          opacity: 0.6,
+        }}
+      />
       <div className="absolute top-5 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-card" style={{ left: `${from}%` }} title={`Grid P${grid}`} />
       <div className="recap-sweep-dot absolute top-5 -translate-x-1/2 -translate-y-1/2" style={{ "--from": `${from}%`, "--to": `${to}%`, left: `${to}%` }}>
         <div className="h-4 w-4 rounded-full ring-4 ring-card" style={{ background: "var(--recap-team)" }} />
@@ -1047,9 +1057,16 @@ function RatingCard({ rating: r, card }) {
                 <div className="relative mt-3 h-2 w-full rounded-full bg-surface2">
                   <div className="bar-fill absolute left-0 top-0 h-2 rounded-full bg-brand" style={{ "--w": `${Math.max(2, lo)}%`, "--bar-delay": `${i * 90}ms` }} />
                   {change >= 0.5 && (
+                    // Grows out of the old mark: right for a gain, left for
+                    // a loss, so a drop reads as the bar giving ground.
                     <div
-                      className="bar-fill absolute top-0 h-2 rounded-r-full"
-                      style={{ left: `${lo}%`, "--w": `${change}%`, background: gained ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))", "--bar-delay": `${800 + i * 90}ms` }}
+                      className={`bar-fill absolute top-0 h-2 ${gained ? "rounded-r-full" : "rounded-l-full"}`}
+                      style={{
+                        ...(gained ? { left: `${base}%` } : { right: `${100 - base}%` }),
+                        "--w": `${change}%`,
+                        background: gained ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))",
+                        "--bar-delay": `${800 + i * 90}ms`,
+                      }}
                     />
                   )}
                   {/* the mark where it stood, when it moved */}
