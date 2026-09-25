@@ -1241,10 +1241,6 @@ export default function Tokens() {
   const earning = data.earning !== false;
   return (
     <div className="space-y-5">
-      <Notice kind="info">
-        A trial. Prices are a first guess, orders are filled by hand in the league office, and the rules can
-        still change.
-      </Notice>
       {!earning && (
         <Notice kind="warn">
           Not counting yet. Have a look around and see what things cost. Nothing you do is being paid for until
