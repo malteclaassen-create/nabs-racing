@@ -645,6 +645,119 @@ function TuningPanel({ d, busy, onSave, onReset }) {
   );
 }
 
+// Everybody's Discord activity in the current window: since the last F1
+// briefing, the numbers each member's multiplier is built from. Read only; the
+// bot fills it every five minutes, so it reloads on the same beat.
+function fmtBriefing(t) {
+  if (!t) return null;
+  return new Date(t).toLocaleString(undefined, {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ActivityPanel() {
+  const data = useApi(useCallback(() => api.tokenActivity(), []));
+  const reload = data.reload;
+  useEffect(() => {
+    const id = setInterval(() => reload(), 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [reload]);
+  const [query, setQuery] = useState("");
+
+  if (data.error) return <ErrorBox message={data.error} onRetry={reload} />;
+  if (!data.data) return null;
+  const d = data.data;
+  const q = query.trim().toLowerCase();
+  const members = (d.members || []).filter((m) => !q || m.name.toLowerCase().includes(q));
+  const active = (d.members || []).filter((m) => m.chatMessages > 0 || m.vcMinutes > 0).length;
+  const x = (n) => `${Number(n || 1).toFixed(2)}x`;
+  const hours = (min) => `${(Number(min || 0) / 60).toFixed(1)} h`;
+
+  return (
+    <div className="space-y-4">
+      <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
+        <div>
+          <div className="font-semibold text-dark">
+            {d.since ? `Since the briefing on ${fmtBriefing(d.since)}` : `Last ${d.windowDays || 7} days (no briefing yet)`}
+          </div>
+          <div className="mt-0.5 text-xs text-light">
+            {d.next ? `Starts again at the next F1 briefing, ${fmtBriefing(d.next)}. ` : ""}
+            {active} of {(d.members || []).length} members active. Updates every five minutes.
+          </div>
+        </div>
+        <button type="button" className="btn-secondary px-3 py-1.5 text-[13px]" onClick={reload}>
+          Refresh
+        </button>
+      </div>
+
+      {!d.botConnected && (
+        <Notice kind="warn">The Discord bot has not reported anything yet, so everybody is on 1.00x.</Notice>
+      )}
+
+      {(d.members || []).length ? (
+        <div className="card overflow-hidden">
+          <div className="border-b border-border px-5 py-3">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search a member"
+              className="input w-full max-w-xs text-sm"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-faint">
+                  <th className="px-5 py-2 font-semibold">Member</th>
+                  <th className="px-3 py-2 text-right font-semibold">Chat</th>
+                  <th className="px-3 py-2 text-right font-semibold">Voice</th>
+                  <th className="px-3 py-2 text-right font-semibold">Chat x</th>
+                  <th className="px-3 py-2 text-right font-semibold">Voice x</th>
+                  <th className="px-5 py-2 text-right font-semibold">Multiplier</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {members.map((m) => (
+                  <tr key={m.discordId}>
+                    <td className="px-5 py-2">
+                      <span className="flex items-center gap-2">
+                        {m.avatarUrl ? (
+                          <img src={m.avatarUrl} alt="" className="h-6 w-6 shrink-0 rounded-full" />
+                        ) : (
+                          <span className="h-6 w-6 shrink-0 rounded-full bg-surface2" />
+                        )}
+                        <span className="truncate text-dark">{m.name}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-medium">
+                      {m.chatMessages}
+                      {d.ranges?.chat ? <span className="text-faint"> / {d.ranges.chat.max}</span> : null}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-medium">
+                      {hours(m.vcMinutes)}
+                      {d.ranges?.voice ? <span className="text-faint"> / {Math.round(d.ranges.voice.max / 60)} h</span> : null}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-light">{x(m.multiplier?.chat)}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums text-light">{x(m.multiplier?.voice)}</td>
+                    <td className="px-5 py-2 text-right font-mono font-bold tabular-nums text-dark">{x(m.multiplier?.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <EmptyState title="Nobody has an account yet" hint="Members show up here once they have a points account." />
+      )}
+    </div>
+  );
+}
+
 export default function AdminTokens({ jumpView = null, jumpKey = null }) {
   const data = useApi(useCallback(() => api.adminTokens(), []));
   const [view, setView] = useJumpView(jumpView, jumpKey, "orders");
@@ -729,6 +842,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
         items={[
           { key: "orders", label: waiting ? `Orders (${waiting})` : "Orders" },
           { key: "members", label: "Balances" },
+          { key: "activity", label: "Activity" },
           { key: "rules", label: "Rules and prices" },
           { key: "bot", label: "Discord bot" },
         ]}
@@ -812,6 +926,8 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
             hint="One is created the first time a member signs in while the tokens are switched on."
           />
         ))}
+
+      {view === "activity" && <ActivityPanel />}
 
       {view === "bot" && <BotPanel />}
 

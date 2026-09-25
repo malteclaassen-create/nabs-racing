@@ -887,6 +887,9 @@ export const api = {
   // The key the league's Discord bot signs with. Minted the first time it is
   // asked for, so this is also what creates it.
   tokenBotKey: () => request("/admin/tokens/activity-key", { auth: true }),
+  // Everybody's Discord activity since the last F1 briefing, with the
+  // multiplier it adds up to.
+  tokenActivity: () => request("/admin/tokens/activity", { auth: true }),
   setTokensEarning: (on) => request("/admin/tokens/earning", { method: "POST", body: { on }, auth: true }),
   setTokensMode: (mode) => request("/admin/tokens/enabled", { method: "POST", body: { mode }, auth: true }),
   setTokensEnabled: (enabled) =>
