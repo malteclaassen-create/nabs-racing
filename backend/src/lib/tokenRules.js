@@ -43,9 +43,11 @@
 //
 // --- over what period -------------------------------------------------------
 //
-// The last SEVEN DAYS, counted afresh every day — not calendar months. So the
-// multiplier is what somebody has been doing lately, and a quiet week lets it
-// fall back on its own. That is also why the site keeps one row per member per
+// From one BRIEFING to the next: the window opens at the last round's briefing
+// and starts again from nothing after every one (activityTotals in
+// lib/tokens.js). So the multiplier is what somebody did for this round, and a
+// quiet week lets it fall back on its own. Before the league's first briefing
+// there is nothing to count from, and the last seven days stand in. That is also why the site keeps one row per member per
 // DAY rather than a running total: a total can only ever grow, and the thing
 // being measured has to be able to shrink.
 //
@@ -57,8 +59,9 @@
 // bot connected every multiplier is 1.0x and the maths below just sits there.
 // ---------------------------------------------------------------------------
 
-// How far back the multiplier looks, in days, counted in the league's own
-// timezone so a day is a day for the people in it.
+// How far back the multiplier looks when there has been no briefing yet, in
+// days, counted in the league's own timezone so a day is a day for the people
+// in it.
 export const ACTIVITY_WINDOW_DAYS = 7;
 
 // The board on the points page looks back further than the multiplier does.
