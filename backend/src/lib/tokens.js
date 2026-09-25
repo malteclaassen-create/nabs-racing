@@ -989,69 +989,107 @@ export async function recordActivity(prisma, discordId, { day, messages = 0, min
 
 // When rounds start (the briefing), as instants, for the league days they fall
 // on. Held a few minutes: the bot reports every five.
-let roundStarts = { at: 0, byDay: new Map() };
-async function roundStartsOn(prisma, day) {
+//
+// `briefings` is the same thing as one sorted list, minus the sprint halves: a
+// sprint weekend has one briefing, the main race's, and that is where the
+// multiplier's window turns over.
+let roundStarts = { at: 0, byDay: new Map(), briefings: [] };
+async function loadRoundStarts(prisma) {
   if (Date.now() - roundStarts.at > 5 * 60 * 1000) {
     const rows = await prisma
-      .$queryRawUnsafe(`SELECT "date" FROM "Race" WHERE "date" IS NOT NULL AND "isSpecialEvent" = 0`)
+      .$queryRawUnsafe(`SELECT "date", "parentRaceId" FROM "Race" WHERE "date" IS NOT NULL AND "isSpecialEvent" = 0`)
       .catch(() => []);
     const byDay = new Map();
+    const briefings = new Set();
     for (const r of rows) {
       const start = raceKickoff(new Date(Number(r.date)));
       if (!start) continue;
       const key = leagueDay(start.getTime());
       byDay.set(key, [...(byDay.get(key) || []), start.getTime()]);
+      if (!r.parentRaceId) briefings.add(start.getTime());
     }
-    roundStarts = { at: Date.now(), byDay };
+    roundStarts = { at: Date.now(), byDay, briefings: [...briefings].sort((a, b) => a - b) };
   }
-  return roundStarts.byDay.get(day) || [];
+  return roundStarts;
+}
+async function roundStartsOn(prisma, day) {
+  return (await loadRoundStarts(prisma)).byDay.get(day) || [];
 }
 
-// What this member has done in the window that counts: the last seven days.
-// Older rows simply fall out of the sum, which is how a multiplier earned in a
-// busy week fades again in a quiet one.
+// The last briefing strictly before `t`, or null when there has been none.
+async function briefingBefore(prisma, t) {
+  const { briefings } = await loadRoundStarts(prisma);
+  let found = null;
+  for (const b of briefings) {
+    if (b >= t) break;
+    found = b;
+  }
+  return found;
+}
+
+// What this member has done in the window that counts: from one briefing to
+// the next. The window opens at the last round's briefing and everything before
+// it drops out at once, so every race week starts again from nothing and the
+// multiplier is what somebody did for THIS round.
 //
-// With `until` (a round's start) the window is the seven days up to that
-// moment instead of up to now: the six days before, plus the race day as it
-// stood at the briefing.
+// With `until` (a round's start) the window is the one that closed at that
+// briefing: from the briefing before it up to it. Without, it runs from the
+// latest briefing up to now.
+//
+// Activity is stored per day, so the two briefing days are split with the cut
+// taken at the briefing (TokenActivityCut): the opening day counts only what
+// came after its briefing, the closing day only what came before. No cut means
+// nothing was reported after that briefing, so the day's row is still the day
+// as it stood then.
+//
+// Before the first briefing of all there is nothing to count from, and the
+// window falls back to the last seven days.
 export async function activityTotals(prisma, discordId, until = null) {
   try {
-    if (!until) {
-      const rows = await prisma.$queryRawUnsafe(
-        `SELECT COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
-           FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ?`,
-        discordId,
-        activityWindowStart()
-      );
-      return { chatMessages: Number(rows[0]?.m || 0), vcMinutes: Number(rows[0]?.v || 0) };
-    }
-    const lastDay = leagueDay(until);
-    const before = await prisma.$queryRawUnsafe(
-      `SELECT COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
-         FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ? AND "day" < ?`,
-      discordId,
-      activityWindowStart(until),
-      lastDay
-    );
-    const cut = await prisma
-      .$queryRawUnsafe(
-        `SELECT "messages" AS m, "minutes" AS v FROM "TokenActivityCut" WHERE "discordId" = ? AND "cutAt" = ?`,
-        discordId,
-        until
-      )
-      .catch(() => []);
-    // No cut means nothing was reported after the start, so the day's row is
-    // still the day as it stood then.
-    const raceDay = cut.length
-      ? cut
-      : await prisma.$queryRawUnsafe(
+    const sum = (rows) => ({ m: Number(rows[0]?.m || 0), v: Number(rows[0]?.v || 0) });
+    const dayRow = async (day) =>
+      sum(
+        await prisma.$queryRawUnsafe(
           `SELECT "messages" AS m, "minutes" AS v FROM "TokenActivity" WHERE "discordId" = ? AND "day" = ?`,
           discordId,
-          lastDay
-        );
+          day
+        )
+      );
+    // A day as it stood at a briefing on it.
+    const atBriefing = async (t, day) => {
+      const cut = await prisma
+        .$queryRawUnsafe(
+          `SELECT "messages" AS m, "minutes" AS v FROM "TokenActivityCut" WHERE "discordId" = ? AND "cutAt" = ?`,
+          discordId,
+          t
+        )
+        .catch(() => []);
+      return cut.length ? sum(cut) : dayRow(day);
+    };
+
+    const end = until ?? Date.now();
+    const opened = await briefingBefore(prisma, end);
+    const firstDay = opened != null ? leagueDay(opened) : activityWindowStart(end);
+    const lastDay = leagueDay(end);
+
+    // The days in between, whole (the closing day is handled below).
+    const middle = sum(
+      await prisma.$queryRawUnsafe(
+        `SELECT COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
+           FROM "TokenActivity" WHERE "discordId" = ? AND "day" >= ? AND "day" < ?`,
+        discordId,
+        firstDay,
+        lastDay
+      )
+    );
+    // The closing day: up to the briefing, or all of today so far.
+    const closing = until ? await atBriefing(until, lastDay) : await dayRow(lastDay);
+    // Less what the opening day held before its briefing.
+    const before = opened != null ? await atBriefing(opened, firstDay) : { m: 0, v: 0 };
     return {
-      chatMessages: Number(before[0]?.m || 0) + Number(raceDay[0]?.m || 0),
-      vcMinutes: Number(before[0]?.v || 0) + Number(raceDay[0]?.v || 0),
+      chatMessages: Math.max(0, middle.m + closing.m - before.m),
+      vcMinutes: Math.max(0, middle.v + closing.v - before.v),
+      since: opened,
     };
   } catch {
     // No table yet (a database from before the trial): nobody has any activity,
@@ -1203,7 +1241,7 @@ export async function rulesForDisplay(prisma) {
     r.key === "activity" && connected
       ? {
           ...r,
-          hint: `Multiplies what racing earns, up to ${MULTIPLIER.total}x. Counted over your last ${ACTIVITY_WINDOW_DAYS} days on Discord, fresh every day.`,
+          hint: `Multiplies what racing earns, up to ${MULTIPLIER.total}x. Counted on Discord from one briefing to the next, starting again after every briefing.`,
         }
       : r
   );

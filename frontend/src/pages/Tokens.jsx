@@ -285,7 +285,10 @@ function MultiplierBar({ a }) {
   ];
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="mb-2 text-xs text-light">Discord activity, last {a.windowDays || 7} days</div>
+      <div className="mb-2 text-xs text-light">
+        {/* Counted from the last briefing; the seven days only before the first one. */}
+        {a.since ? "Discord activity since the last briefing" : `Discord activity, last ${a.windowDays || 7} days`}
+      </div>
       {/* ONE grid for all three rows, fixed row height, same bar thickness:
           the bars line up left and right and sit the same distance apart. */}
       <div className="grid grid-cols-[3rem_1fr_auto] auto-rows-[1.25rem] items-center gap-x-3 gap-y-2 text-xs">
