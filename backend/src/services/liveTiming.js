@@ -1160,6 +1160,10 @@ function createRelay(server) {
     upstream = new WebSocket(server.ws, {
       headers: { Origin: server.origin },
       perMessageDeflate: false,
+      // Without this a handshake that never completes leaves the socket in
+      // CONNECTING forever: no heartbeat runs until "open", so nothing would
+      // ever notice. On timeout ws emits error + close, and close reconnects.
+      handshakeTimeout: 15000,
     });
 
     upstream.on("open", () => {
@@ -1244,16 +1248,36 @@ function createRelay(server) {
         const probed = upstream; // the socket this verdict is about — if the
         // connection dies and reconnects while the probe is in flight, the
         // result must not touch its successor.
-        fetchUpstream(server.origin, 5000).then((body) => {
+        // The leaderboard, not the front page: "the website answers" is not
+        // enough on its own. On 2026-09-25 the socket to nabs1 went dead in
+        // the middle of a qualifying while the website kept answering, so
+        // the probe kept vouching for it and the Live page said "No session
+        // running" over a full grid. The leaderboard tells us whether anyone
+        // is connected, and a connected driver streams telemetry nonstop —
+        // silence on the socket while drivers are on the server means the
+        // socket is lying, and it gets replaced.
+        fetchUpstream(`${server.origin}/api/live-timings/leaderboard.json`, 10000).then((body) => {
           probing = false;
+          let drivers = 0;
           if (body != null) {
+            try {
+              drivers = (JSON.parse(body)?.ConnectedDrivers || []).length;
+            } catch {
+              drivers = 0;
+            }
+          }
+          if (body != null && drivers === 0) {
             // Server is up, the socket is just silent (empty track, and the
             // manager doesn't do pongs). Counts as proof of life.
             lastAliveAt = Date.now();
             return;
           }
           if (upstream !== probed) return;
-          console.log(`${tag} upstream unresponsive for ${Math.round((Date.now() - lastAliveAt) / 1000)}s and HTTP is down too; dropping it`);
+          console.log(
+            body != null
+              ? `${tag} upstream silent for ${Math.round((Date.now() - lastAliveAt) / 1000)}s with ${drivers} driver(s) on the server; reconnecting`
+              : `${tag} upstream unresponsive for ${Math.round((Date.now() - lastAliveAt) / 1000)}s and HTTP is down too; dropping it`
+          );
           try {
             upstream.terminate();
           } catch {
