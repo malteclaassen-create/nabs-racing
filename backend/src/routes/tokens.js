@@ -52,6 +52,7 @@ import {
   tunedReferralLimit,
   tunedPracticeServers,
   tunedMultiplier,
+  activityBoard,
   FLAIRS,
   CUSTOM_FLAIR_MAX,
   hallOfFameWall,
@@ -468,6 +469,16 @@ adminRouter.delete("/tuning", async (req, res, next) => {
     const tuning = await resetTuning(prisma);
     if (before.startDay) return res.json({ ok: true, tuning: await saveTuning(prisma, { startDay: before.startDay }) });
     res.json({ ok: true, tuning });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/tokens/activity — every member's Discord activity since the
+// last F1 briefing, with the multiplier it adds up to.
+adminRouter.get("/activity", async (req, res, next) => {
+  try {
+    res.json(await activityBoard(prisma));
   } catch (e) {
     next(e);
   }

@@ -1117,6 +1117,75 @@ export async function activityTotals(prisma, discordId, until = null) {
   }
 }
 
+// Everybody's activity in the current window, for the admin: since the last
+// F1 briefing, the same numbers each member's own multiplier is built from
+// (activityTotals above), counted for the whole league in four queries rather
+// than five per member.
+export async function activityBoard(prisma) {
+  const now = Date.now();
+  const opened = await briefingBefore(prisma, now);
+  const { briefings } = await loadRoundStarts(prisma);
+  const next = briefings.find((b) => b > now) ?? null;
+  const firstDay = opened != null ? leagueDay(opened) : activityWindowStart(now);
+  const lastDay = leagueDay(now);
+  const q = (sql, ...args) => prisma.$queryRawUnsafe(sql, ...args).catch(() => []);
+
+  const [accounts, sums, cuts, openingDay] = await Promise.all([
+    q(
+      `SELECT a."discordId", a."discordName", m."username", m."displayName", m."avatarUrl",
+              (SELECT d."name" FROM "Driver" d WHERE d."discordUserId" = a."discordId" LIMIT 1) AS "driverName"
+         FROM "TokenAccount" a
+         LEFT JOIN "MemberAccount" m ON m."discordId" = a."discordId"`
+    ),
+    q(
+      `SELECT "discordId", COALESCE(SUM("messages"),0) AS m, COALESCE(SUM("minutes"),0) AS v
+         FROM "TokenActivity" WHERE "day" >= ? AND "day" <= ? GROUP BY "discordId"`,
+      firstDay,
+      lastDay
+    ),
+    opened != null
+      ? q(`SELECT "discordId", "messages" AS m, "minutes" AS v FROM "TokenActivityCut" WHERE "cutAt" = ?`, opened)
+      : [],
+    opened != null
+      ? q(`SELECT "discordId", "messages" AS m, "minutes" AS v FROM "TokenActivity" WHERE "day" = ?`, firstDay)
+      : [],
+  ]);
+  const byId = (rows) => new Map(rows.map((r) => [r.discordId, { m: Number(r.m || 0), v: Number(r.v || 0) }]));
+  const sumBy = byId(sums);
+  const cutBy = byId(cuts);
+  const dayBy = byId(openingDay);
+  const tuning = tunedMultiplier();
+
+  const members = accounts.map((a) => {
+    const total = sumBy.get(a.discordId) || { m: 0, v: 0 };
+    // What the opening day held at the briefing: the cut, or with no cut the
+    // day's row, which then has not moved since.
+    const before = opened != null ? cutBy.get(a.discordId) || dayBy.get(a.discordId) || { m: 0, v: 0 } : { m: 0, v: 0 };
+    const totals = { chatMessages: Math.max(0, total.m - before.m), vcMinutes: Math.max(0, total.v - before.v) };
+    return {
+      discordId: a.discordId,
+      name: pickName(a) || a.discordId,
+      avatarUrl: a.avatarUrl || null,
+      ...totals,
+      multiplier: activityMultiplier(totals, tuning),
+    };
+  });
+  members.sort(
+    (x, y) =>
+      y.multiplier.total - x.multiplier.total ||
+      y.chatMessages + y.vcMinutes - (x.chatMessages + x.vcMinutes) ||
+      x.name.localeCompare(y.name)
+  );
+  return {
+    since: opened,
+    next,
+    windowDays: opened == null ? ACTIVITY_WINDOW_DAYS : null,
+    botConnected: await botConnected(prisma),
+    ranges: { chat: tuning.chat, voice: tuning.voice, max: MULTIPLIER.total },
+    members,
+  };
+}
+
 // The multiplier this member carries, now or at a round's start. 1.0 for
 // everybody until the Discord bot is reporting, see lib/tokenRules.js.
 export async function multiplierFor(prisma, discordId, until = null) {
