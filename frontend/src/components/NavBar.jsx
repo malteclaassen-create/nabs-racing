@@ -65,21 +65,18 @@ function TokenPill({ mobile = false, segment = false }) {
   const { pathname } = useLocation();
   const recapSettled = useRecapSettled();
   const ready = recapSettled && !/\/recap\//.test(pathname);
-  // The light running round the outside of the capsule: "ok" (green) while
-  // news plays, "spend" (the league pink, once round) after a purchase.
+  // The capsule's edge lighting up: "ok" (green, twice) while news plays,
+  // "spend" (the league pink, once) after a purchase.
   const [run, setRun] = useState(null);
-  // Which look the running light has. DEVELOPMENT ONLY: ?runfx=1..5 picks one
-  // while the league decides; a built site always has the first.
   // The demo number, so the pill can make room for it before it plays.
   const demoN = import.meta.env.DEV ? Number(new URLSearchParams(window.location.search).get("tokendemo")) || 0 : 0;
   const demoPlayed = useRef(false);
   // The widest the number's slot has been this visit. It never narrows again
   // until the next page load, so the capsule does not shrink after a show.
   const widest = useRef(0);
-  const runFx = (import.meta.env.DEV && Number(new URLSearchParams(window.location.search).get("runfx"))) || 1;
 
-  // Spending: the number glides DOWN to the new total and the pink light goes
-  // round once. Rises are not handled here, they arrive as news below.
+  // Spending: the number glides DOWN to the new total and the pink edge lights
+  // up once. Rises are not handled here, they arrive as news below.
   const [gliding, setGliding] = useState(null);
   const glideFrom = useRef(null);
   const lastShown = useRef(null);
@@ -205,7 +202,7 @@ function TokenPill({ mobile = false, segment = false }) {
           ? // the right half of the identity capsule: shares its border with the chip
             "border-l border-border bg-brand/10 py-1.5 pl-2.5 pr-3 text-dark hover:bg-brand/20"
           : `rounded-lg border border-border px-2.5 py-1.5 text-dark hover:bg-surface2 ${mobile ? "" : "ml-1"}`
-      } ${segment ? "" : "nav-pill-solo"} ${play ? "token-pill-celebrating" : ""} ${run ? `token-run-${run} run-v${runFx}` : ""}`}
+      } ${segment ? "" : "nav-pill-solo"} ${play ? "token-pill-celebrating" : ""} ${run ? `token-run-${run}` : ""}`}
     >
       {/* The coin catches the light now and then. See .nav-coin in index.css. */}
       <span className="nav-coin" style={{ "--coin-mask": "url(/nabs-star.webp)" }}>
