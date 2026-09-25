@@ -228,19 +228,41 @@ function lapsByGuid(json) {
   return byGuid;
 }
 
-// Position of every driver at the end of every lap, from cumulative race
-// times: at lap n, everyone who has completed n laps is ranked by their
-// cumulative time; drivers already out keep no slot (they simply stop
-// appearing — the classification below is what the results page shows).
-function positionsPerLap(byGuid) {
+// Server timestamps come in seconds or milliseconds depending on the build.
+const tsMs = (t) => (Number.isFinite(t) && t > 0 ? (t < 1e11 ? t * 1000 : t) : null);
+
+// Position of every driver at the end of every lap: at lap n, everyone who has
+// completed n laps is ranked by WHEN they crossed the line (the lap's server
+// timestamp), cumulative lap time only as the tiebreak or where a file has no
+// timestamps. Summed lap times alone drift: they ignore the gap from the grid
+// and a lap missing from the file, so a race winner could end the chart in
+// P4. Crossing order is also what the laps-led stat counts, so the two agree.
+//
+// The final lap follows the classification (`Result`, winner first): that is
+// where post-race time penalties live, and the chart must end where the
+// results table does. Drivers already out keep no slot (they simply stop
+// appearing).
+function positionsPerLap(byGuid, result = []) {
   const maxLaps = Math.max(0, ...[...byGuid.values()].map((l) => l.length));
   const posByGuid = new Map([...byGuid.keys()].map((g) => [g, []]));
+  const classified = new Map();
+  (result || []).forEach((r, i) => {
+    if (r?.DriverGuid && !classified.has(String(r.DriverGuid))) classified.set(String(r.DriverGuid), i);
+  });
   for (let n = 1; n <= maxLaps; n++) {
     const finishers = [];
     for (const [guid, laps] of byGuid) {
-      if (laps.length >= n) finishers.push({ guid, cum: laps[n - 1]._cumMs });
+      if (laps.length >= n) finishers.push({ guid, ts: tsMs(laps[n - 1].Timestamp), cum: laps[n - 1]._cumMs });
     }
-    finishers.sort((a, b) => a.cum - b.cum);
+    finishers.sort((a, b) => {
+      if (n === maxLaps) {
+        const ca = classified.get(String(a.guid)) ?? Infinity;
+        const cb = classified.get(String(b.guid)) ?? Infinity;
+        if (ca !== cb) return ca - cb;
+      }
+      if (a.ts != null && b.ts != null && a.ts !== b.ts) return a.ts - b.ts;
+      return a.cum - b.cum;
+    });
     finishers.forEach((f, i) => posByGuid.get(f.guid).push({ lap: n, position: i + 1 }));
   }
   return posByGuid;
@@ -265,7 +287,7 @@ function positionsPerLap(byGuid) {
 export function lapChartFrom(json) {
   const byGuid = lapsByGuid(json);
   if (!byGuid.size) return null;
-  const posByGuid = positionsPerLap(byGuid);
+  const posByGuid = positionsPerLap(byGuid, json?.Result);
   const maxLap = Math.max(0, ...[...byGuid.values()].map((l) => l.length));
   if (maxLap < 2) return null; // one lap is a start, not a story
 
@@ -313,7 +335,7 @@ export function analyzeRaceFor(json, guid) {
   const own = byGuid.get(String(guid));
   if (!own || !own.length) return null;
 
-  const posByGuid = positionsPerLap(byGuid);
+  const posByGuid = positionsPerLap(byGuid, json?.Result);
 
   // Field baseline per lap (25th percentile of real laps) — the same idea the
   // pit detector uses: a lap far above the field's pace of THAT lap is a pit
@@ -450,7 +472,7 @@ export function raceInsightsFor(json, guid) {
   const ownPace = paceIdx >= 0 ? paces[paceIdx].pace : cleanPace(own);
 
   // Position at the end of lap 1 (the start, in one number).
-  const posByGuid = positionsPerLap(byGuid);
+  const posByGuid = positionsPerLap(byGuid, json?.Result);
   const lap1Pos = posByGuid.get(String(guid))?.[0]?.position ?? null;
 
   // Tyre-stint degradation: segment the own laps on compound changes, then a
