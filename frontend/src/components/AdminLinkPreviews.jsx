@@ -48,7 +48,9 @@ export default function AdminLinkPreviews() {
           Each page of the series can have its own picture, title and description. A page without its own picture
           uses the series default, and without that the NABS picture; without its own text it uses the automatic
           one. Best at <span className="font-semibold text-medium">1200×630</span>, JPG or PNG.
-          Links already posted on Discord keep their old picture; new pastes show the new one.
+          Messages already posted on Discord keep their old preview. After a change, use{" "}
+          <span className="font-semibold text-medium">Copy fresh link</span>: Discord caches previews per link, and
+          the fresh one shows the current preview right away.
         </p>
         {data?.series && (
           <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
@@ -151,6 +153,7 @@ function PageCard({ seriesId, preview, onSaved, onError }) {
         </form>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
+          <CopyFreshLink path={preview.path} />
           <button type="button" className="btn-secondary" onClick={startEdit}>Edit text</button>
           {customText && (
             <button type="button" className="btn-secondary" disabled={busy}
@@ -183,6 +186,35 @@ function DiscordEmbed({ preview }) {
         <img src={preview.image} alt="" loading="lazy" className="mt-3 aspect-[1200/630] w-full rounded object-cover" />
       </div>
     </div>
+  );
+}
+
+// Copies the page's link with a fresh ?v=<stamp> on it. Discord caches a
+// link's preview per URL, so after a change the plain link can keep showing
+// the old one for hours; a URL it has never seen is fetched right away. The
+// site ignores the parameter (and the canonical tag drops it, lib/seo.js),
+// so the page opens exactly as without it.
+function CopyFreshLink({ path }) {
+  const [state, setState] = useState(null); // null | "copied" | "failed"
+  async function copy() {
+    const url = `${window.location.origin}${path}?v=${Math.floor(Date.now() / 1000).toString(36)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+    } catch {
+      // No clipboard (insecure context, denied permission): show the link so
+      // it can still be copied by hand.
+      window.prompt("Copy this link:", url);
+      setState(null);
+      return;
+    }
+    setTimeout(() => setState(null), 2000);
+  }
+  return (
+    <button type="button" className="btn-primary" onClick={copy}
+      title="Copies the link with a new ?v= so Discord shows the current preview right away">
+      {state === "copied" ? "Copied!" : "Copy fresh link"}
+    </button>
   );
 }
 
