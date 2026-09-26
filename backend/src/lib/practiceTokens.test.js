@@ -414,6 +414,20 @@ describe("training laps", () => {
     await saveTuning(prisma, {});
   });
 
+  it("pays a series' own training numbers when it has them (half, say)", async () => {
+    const prisma = db();
+    await saveTuning(prisma, { seriesRules: { nabs: { practice_20: { points: 5 }, practice_50: { points: 10 } } } });
+    try {
+      await drive(prisma, 50);
+      expect([...prisma.ledger.values()].map((r) => [r.rule, r.delta])).toEqual([
+        ["practice_20", 5],
+        ["practice_50", 10],
+      ]);
+    } finally {
+      await saveTuning(prisma, {});
+    }
+  });
+
   it("files laps under the week rather than the round when the calendar is empty", async () => {
     const prisma = db({ race: false });
     await drive(prisma, 20);

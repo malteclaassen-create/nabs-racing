@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
-// The league's overrides for the token numbers: what a rule pays, what a shop
-// entry costs, the referral cap, the multiplier thresholds. One Setting blob,
+// The league's overrides for the token numbers: what a rule pays (for the
+// whole league, and per series where one pays differently), what a shop entry
+// costs, the referral cap, the multiplier thresholds. One Setting blob,
 // edited from Admin -> Tokens -> Rules and prices. The code keeps the defaults;
 // this file keeps only what the league changed, so a default that moves in the
 // code still moves for everybody who never touched that field.
@@ -86,6 +87,35 @@ export function cleanTuning(body, allowed) {
   if (r?.error) return r;
   r = section("studio", ["cost"]);
   if (r?.error) return r;
+
+  // A series' own numbers, on top of the league's: { "gt-sunday": {
+  // race_finish: { points: 25 }, practice_20: { points: 5 } } }. Same fields
+  // and the same "empty means inherit" as the rules above, one level deeper.
+  // `allowed.series` names the series that exist and `allowed.seriesRules`
+  // the rules a series can change.
+  if (body?.seriesRules && typeof body.seriesRules === "object") {
+    const all = {};
+    for (const slug of allowed.series || []) {
+      const src = body.seriesRules[slug];
+      if (!src || typeof src !== "object") continue;
+      const dst = {};
+      for (const key of allowed.seriesRules || []) {
+        const row = src[key];
+        if (!row || typeof row !== "object") continue;
+        const clean = {};
+        if ("active" in row && row.active !== "" && row.active != null) clean.active = !!row.active;
+        for (const f of ["points", "laps"]) {
+          if (!(f in row)) continue;
+          const n = int(row[f]);
+          if (Number.isNaN(n)) return bad(`${slug} ${key} ${f}: whole number, 0 or more`);
+          if (n != null) clean[f] = n;
+        }
+        if (Object.keys(clean).length) dst[key] = clean;
+      }
+      if (Object.keys(dst).length) all[slug] = dst;
+    }
+    if (Object.keys(all).length) out.seriesRules = all;
+  }
 
   // The day the tokens started counting: races before it pay nothing.
   if (body?.startDay !== undefined) {

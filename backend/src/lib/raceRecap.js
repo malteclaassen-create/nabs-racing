@@ -557,7 +557,11 @@ async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = fal
   // priced the way the payout will price it (the league's own numbers, at
   // the rate stamped for this round) — one per clean race still open.
   const pending = [];
-  const cleanRule = tunedRules().find((r) => r.key === "clean_race");
+  // The series' own numbers where it has them (the Sunday league pays half).
+  const seriesSlug = race.season?.seriesId
+    ? (await getSeriesById(prisma, race.season.seriesId).catch(() => null))?.slug || null
+    : null;
+  const cleanRule = tunedRules(seriesSlug).find((r) => r.key === "clean_race");
   const cleanOn = !!cleanRule && cleanRule.active !== false;
   const paidClean = (h) => rows.some((r) => r.refKey === `clean:${h.raceId}:${rowId}`);
   if (earning && cleanOn && !stewardingClosed(race.date)) {
@@ -568,7 +572,7 @@ async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = fal
   }
   let hypothetical = false;
   if (demo && !entries.length && !pending.length && races.some((h) => h.own.finished)) {
-    const finishRule = tunedRules().find((r) => r.key === "race_finish");
+    const finishRule = tunedRules(seriesSlug).find((r) => r.key === "race_finish");
     for (const h of races) {
       if (!h.own.finished) continue;
       if (finishRule && finishRule.active !== false) {

@@ -573,6 +573,17 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
             ) : (
               <div className="text-[11px] uppercase tracking-wider text-light">{r.unit}</div>
             )}
+            {/* A series that pays this one differently (the Sunday league at
+                half, say), so nobody is promised the wrong price. */}
+            {(r.bySeries || []).map((se) => (
+              <div key={se.series} className="mt-0.5 text-[11px] text-light">
+                {se.name}{" "}
+                <span className="font-mono font-bold tabular-nums text-dark">
+                  {se.active ? `+${fmt(se.points)}` : "none"}
+                </span>
+                {se.active && se.laps != null && se.laps !== r.laps && <> at {se.laps} laps</>}
+              </div>
+            ))}
           </div>
           </li>
         ))}

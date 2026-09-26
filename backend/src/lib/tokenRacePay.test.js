@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { payRace, recordActivity } from "./tokens.js";
+import { saveTuning, resetTuning } from "./tokenTuning.js";
 
 // A prisma stand-in for one saved round. It answers the three queries payRace
 // asks and records every ledger insert, so a test can see what was paid, what
 // it was filed under, and what happened the second time the same round is
 // saved (which is what a correction or a penalty fix does).
-function db({ results, rates = {}, earning = "1", discord = {} }) {
+function db({ results, rates = {}, earning = "1", discord = {}, series = "f1" }) {
   const ledger = new Map(); // refKey -> row, the same uniqueness the real index has
   const rateRows = new Map(Object.entries(rates));
   const settings = new Map([["tokens_earning", earning]]);
@@ -30,6 +31,7 @@ function db({ results, rates = {}, earning = "1", discord = {} }) {
           raceId: "round5",
           track: "Spa",
           date: new Date("2026-01-09T18:00:00Z"),
+          series,
           rate: rateRows.has(r.driverId) ? Number(rateRows.get(r.driverId)) : null,
         }));
     }
@@ -127,6 +129,22 @@ describe("paying a round when it is imported", () => {
     expect(out.stamped).toBe(1);
     expect(out.paid).toBe(0);
     expect(d.ledger.size).toBe(0);
+  });
+
+  it("pays a series its own numbers: the Sunday league at half", async () => {
+    const noSave = { setting: { async upsert() {}, async deleteMany() {} } };
+    await saveTuning(noSave, { seriesRules: { "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 } } } });
+    try {
+      const sunday = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 2 }, series: "gt-sunday" });
+      await payRace(sunday, "round5");
+      expect(sunday.ledger.get("race:round5:ayrton_s8").delta).toBe(50); // 25 at 2x
+      expect(sunday.ledger.get("clean:round5:ayrton_s8").delta).toBe(20); // 10 at 2x
+      const friday = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 2 } });
+      await payRace(friday, "round5");
+      expect(friday.ledger.get("race:round5:ayrton_s8").delta).toBe(100); // the league's 50 at 2x
+    } finally {
+      await resetTuning(noSave);
+    }
   });
 
   it("skips a driver who has never signed in, and pays the rest", async () => {

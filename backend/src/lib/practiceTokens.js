@@ -48,9 +48,11 @@ import { boardScopes } from "./liveBestLaps.js";
 
 const STEAM_RE = /^\d{10,20}$/;
 
-// The milestones, as the league has them set: lowest first.
-export function practiceTiers() {
-  return tunedRules()
+// The milestones, as the league has them set: lowest first. A series can pay
+// its own (the Sunday league at half the Friday price, say), so the week's
+// series is passed wherever there is one.
+export function practiceTiers(series = null) {
+  return tunedRules(series)
     .filter((r) => Number(r.laps) > 0)
     .map((r) => ({
       key: r.key,
@@ -352,7 +354,7 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // Everything below is the payout, and most laps are nowhere near a
   // milestone. The row's own count is one cheap read that decides whether the
   // rest of it is worth doing at all.
-  const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
+  const tiers = practiceTiers(slug).filter((t) => t.active && t.points > 0);
   if (!tiers.length) return;
   // THIS server's laps in this week, which is what the milestones are counted
   // against. The other server's week is its own.
@@ -463,7 +465,7 @@ async function payingNow(prisma) {
 // Safe to call as often as you like: the ledger drops the second attempt.
 export async function payPractice(prisma, discordId, { series, period, server = "", laps = 0 } = {}) {
   if (!discordId || !period || !laps) return 0;
-  const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
+  const tiers = practiceTiers(series).filter((t) => t.active && t.points > 0);
   if (!tiers.length) return 0;
   if (!(await payingNow(prisma))) return 0;
 
@@ -507,8 +509,7 @@ export async function payPractice(prisma, discordId, { series, period, server = 
 // has turned a lap on yet falls back to its assignment, and then to the first
 // active series, so it still has an empty bar to fill.
 export async function practiceProgress(prisma, discordId, { prefer = null } = {}) {
-  const tiers = practiceTiers().filter((t) => t.active && t.points > 0);
-  if (!tiers.length || !discordId) return null;
+  if (!discordId) return null;
   // No Steam id on file means the race server cannot tell this member's laps
   // from anybody else's, so there is nothing to draw.
   const steamIds = await steamIdsFor(prisma, discordId);
@@ -524,7 +525,6 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
 
   const paying = await payingNow(prisma);
   const publicPages = await tokensPublic(prisma);
-  const target = tiers[tiers.length - 1].laps;
   const servers = countingServers();
   if (!servers.length || !seriesRows.length) return null;
 
@@ -566,6 +566,11 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
       const slug = await seriesForServer(prisma, srv.key);
       on = periods.find((p) => p.slug === slug) || periods[0];
     }
+    // The milestones of the series this server's week belongs to. A series
+    // that pays nothing for training has no bar to fill.
+    const tiers = practiceTiers(on.slug).filter((t) => t.active && t.points > 0);
+    if (!tiers.length) continue;
+    const target = tiers[tiers.length - 1].laps;
     const laps = mine[0]?.laps || 0;
     if (laps) await payPractice(prisma, discordId, { series: on.slug, period: on.period, server: srv.key, laps });
 
@@ -603,6 +608,7 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
     });
   }
 
+  if (!weeks.length) return null;
   // The one a page should lead with: the server showing the series it asked
   // for, else the fullest bar.
   const mineFirst = prefer ? weeks.filter((w) => w.series === prefer) : [];
