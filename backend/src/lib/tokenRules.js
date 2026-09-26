@@ -137,7 +137,7 @@ export const EARN_RULES = [
   {
     key: "clean_race",
     label: "Finish it without a penalty",
-    hint: "On top of the 50. Paid on the Tuesday after the round, once the stewards have been through the reports.",
+    hint: "On top of the finish. Paid on the Tuesday after the round, once the stewards have been through the reports.",
     points: 20,
     unit: "per clean race",
     boosted: true,
@@ -155,7 +155,7 @@ export const EARN_RULES = [
   {
     key: "practice_50",
     label: "50 training laps",
-    hint: "On top of the 10, same week. Every lap counts, quick or not.",
+    hint: "On top of the 20 laps, same week. Every lap counts, quick or not.",
     points: 20,
     laps: 50,
     unit: "per race week",

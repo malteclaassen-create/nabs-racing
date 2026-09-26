@@ -1362,13 +1362,21 @@ export async function botConnected(prisma) {
 // The rules as the page should show them today: the activity line reads
 // differently once the bot is actually feeding numbers.
 //
-// A series that pays differently is listed under the rule it differs on
-// (`bySeries`), so the page can say "Sunday +25" next to the league's +50
-// rather than promising the Sunday grid the Friday price.
+// Once any series pays differently, the racing and training rules carry a
+// price per series (`bySeries`, every public series with a running season,
+// in the league's order), so the page can put them side by side as columns
+// rather than promising the Sunday grid the Friday price. `points` is the
+// series' own number, `now` what it pays today: the two differ while a start
+// day is still ahead, and the page says "from 27 Sep".
 export async function rulesForDisplay(prisma) {
   const connected = await botConnected(prisma);
-  const differs = await seriesWithOwnRules(prisma);
-  return tunedRules().map((r) => {
+  const series = await priceListSeries(prisma);
+  const now = Date.now();
+  const league = tunedRules();
+  const differs = series.some((se) =>
+    tunedRules(se.slug).some((own, i) => SERIES_RULE_KEYS.includes(own.key) && !sameRule(own, league[i]))
+  );
+  return league.map((r) => {
     const out =
       r.key === "activity" && connected
         ? {
@@ -1376,40 +1384,38 @@ export async function rulesForDisplay(prisma) {
             hint: `Multiplies what racing earns, up to ${MULTIPLIER.total}x. Counted on Discord from one briefing to the next, starting again after every briefing.`,
           }
         : { ...r };
-    const bySeries = [];
-    for (const se of differs) {
-      const own = tunedRule(r.key, se.slug);
-      if (!own) continue;
-      if (own.points === r.points && own.laps === r.laps && own.active === r.active) continue;
-      bySeries.push({
-        series: se.slug,
-        name: se.name,
-        points: own.points,
-        laps: own.laps ?? null,
-        active: own.active !== false,
-        // The day it starts, so the page can say "from 28 September" while
-        // the old price still holds.
-        from: seriesRulesFrom(se.slug, r.laps == null ? "race" : "practice"),
+    if (differs && SERIES_RULE_KEYS.includes(r.key)) {
+      out.bySeries = series.map((se) => {
+        const own = tunedRule(r.key, se.slug);
+        const today = tunedRule(r.key, se.slug, now);
+        return {
+          series: se.slug,
+          name: se.name,
+          points: own.points,
+          laps: own.laps ?? null,
+          active: own.active !== false,
+          now: { points: today.points, laps: today.laps ?? null, active: today.active !== false },
+          from: seriesRulesFrom(se.slug, r.laps == null ? "race" : "practice"),
+        };
       });
     }
-    if (bySeries.length) out.bySeries = bySeries;
     return out;
   });
 }
 
-// The series the league has given numbers of their own, with their names. A
-// series that no longer exists is left out: nothing of it can be paid. So is
-// one that is still hidden from the public, whose name the members' page
-// would otherwise give away.
-async function seriesWithOwnRules(prisma) {
-  const slugs = Object.keys(overrides().seriesRules || {});
-  if (!slugs.length) return [];
+const sameRule = (a, b) => a.points === b.points && a.laps === b.laps && a.active === b.active;
+
+// The series a member can race in right now, for the price list's columns:
+// public (or the primary one) and with a season running. A hidden series
+// stays out, since the page would otherwise give its name away.
+async function priceListSeries(prisma) {
+  if (!Object.keys(overrides().seriesRules || {}).length) return [];
   const rows = await prisma
     .$queryRawUnsafe(
-      `SELECT "slug","name" FROM "Series"
-        WHERE "slug" IN (${slugs.map(() => "?").join(",")}) AND (COALESCE("isPublic", 1) <> 0 OR "isActive" = 1)
-        ORDER BY "order" ASC`,
-      ...slugs
+      `SELECT DISTINCT se."slug" AS "slug", se."name" AS "name", se."order" AS "order"
+         FROM "Series" se JOIN "Season" s ON s."seriesId" = se."id"
+        WHERE s."isActive" = 1 AND (COALESCE(se."isPublic", 1) <> 0 OR se."isActive" = 1)
+        ORDER BY se."order" ASC`
     )
     .catch(() => []);
   return rows.map((r) => ({ slug: String(r.slug), name: String(r.name || r.slug) }));

@@ -527,70 +527,140 @@ function InviteCard({ code, name, earning = true }) {
   );
 }
 
-// What earns tokens. A quiet list rather than a grid of cards: it is a price
-// list, and a price list is read down the left and across to the right.
+// What earns tokens. A price list, read down the left and across to the
+// right, in three short groups rather than one long list: racing, training,
+// bringing people in. The Discord multiplier is not a line of its own but the
+// strip on top, because it is not something you earn, it is what racing is
+// multiplied by. When series pay differently, each gets a column.
+const EARN_GROUPS = [
+  { key: "racing", label: "Racing", rules: ["race_finish", "clean_race"] },
+  { key: "training", label: "Training", rules: ["practice_20", "practice_50"] },
+  { key: "invites", label: "Bringing people in", rules: ["referral_join", "referral_race"] },
+];
+
+const shortDay = (day) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const stillAhead = (day) => !!day && new Date(`${day}T00:00:00`) > new Date();
+
+// One price: today's, and underneath what it turns into on a day still ahead.
+function Price({ now, later = null, from = null }) {
+  return (
+    <div className="text-right">
+      <div className={`font-mono text-sm font-bold tabular-nums ${now.active ? "text-brand" : "text-light"}`}>
+        {now.active ? `+${fmt(now.points)}` : "none"}
+      </div>
+      {later && (
+        <div className="whitespace-nowrap text-[10px] leading-tight text-light">
+          {later.active ? `+${fmt(later.points)}` : "none"} from {shortDay(from)}
+        </div>
+      )}
+      {now.active && now.laps != null && now.lapsDiffer && (
+        <div className="whitespace-nowrap text-[10px] leading-tight text-light">at {now.laps} laps</div>
+      )}
+    </div>
+  );
+}
+
 function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
-  const boosted = rules.some((r) => r.boosted);
+  const byKey = new Map(rules.map((r) => [r.key, r]));
+  const activity = byKey.get("activity");
+  const grouped = new Set(EARN_GROUPS.flatMap((g) => g.rules));
+  const groups = [
+    ...EARN_GROUPS.map((g) => ({ ...g, rows: g.rules.map((k) => byKey.get(k)).filter(Boolean) })),
+    // Anything the league adds later still shows up, at the bottom.
+    { key: "other", label: "Other", rows: rules.filter((r) => r.key !== "activity" && !grouped.has(r.key)) },
+  ].filter((g) => g.rows.length);
+  const x = `x${(multiplier || 1).toFixed(1)}`;
+
   return (
     <div className="card reveal px-5 py-4">
       <Heading>Earning tokens</Heading>
-      {boosted && (
-        <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
-          The marked lines are multiplied by how active you are on Discord, chat and voice together, up to 3x.
-          Yours is {(multiplier || 1).toFixed(1)}x right now.
-        </p>
-      )}
       {earning && startDay && (
-        <p className="mb-1 mt-1 text-xs leading-relaxed text-light">
+        <p className="mt-1 text-xs text-light">
           Counting since{" "}
           {new Date(`${startDay}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}.
           Races before that are not paid.
         </p>
       )}
-      <ul className="divide-y divide-border">
-      {rules.map((r) => (
-        <li key={r.key} className="flex items-baseline justify-between gap-4 py-3">
-          <div className="min-w-0">
-            <div className={`flex items-center gap-1.5 text-sm font-semibold ${r.active ? "text-dark" : "text-light"}`}>
-              {r.label}
-              {r.boosted && (
-                <span
-                  className="rounded bg-ok/15 px-1 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-ok"
-                  title="Multiplied by your Discord activity"
-                >
-                  x{(multiplier || 1).toFixed(1)}
-                </span>
-              )}
-            </div>
-            <div className="text-xs leading-relaxed text-light">{r.hint}</div>
-          </div>
-          <div className="shrink-0 text-right">
-            {r.active ? (
-              <>
-                <div className="font-mono text-sm font-bold tabular-nums text-brand">+{fmt(r.points)}</div>
-                <div className="text-[11px] uppercase tracking-wider text-light">{r.unit}</div>
-              </>
-            ) : (
-              <div className="text-[11px] uppercase tracking-wider text-light">{r.unit}</div>
-            )}
-            {/* A series that pays this one differently (the Sunday league at
-                half, say), so nobody is promised the wrong price. */}
-            {(r.bySeries || []).map((se) => (
-              <div key={se.series} className="mt-0.5 text-[11px] text-light">
-                {se.name}{" "}
-                <span className="font-mono font-bold tabular-nums text-dark">
-                  {se.active ? `+${fmt(se.points)}` : "none"}
-                </span>
-                {se.active && se.laps != null && se.laps !== r.laps && <> at {se.laps} laps</>}
-                {se.from && new Date(`${se.from}T23:59:59`) > new Date() && (
-                  <> from {new Date(`${se.from}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</>
+
+      {/* The multiplier, once, where it applies to everything below it. */}
+      {activity && (
+        <div className="mt-3 flex items-center gap-3 rounded-lg bg-surface2 px-3 py-2.5">
+          <span className="shrink-0 rounded bg-ok/15 px-1.5 py-0.5 font-mono text-xs font-bold text-ok">{x}</span>
+          <p className="min-w-0 text-xs leading-relaxed text-light">
+            {activity.active
+              ? `Your Discord multiplier right now. Everything under Racing is paid ${x}. ${activity.hint}`
+              : activity.hint}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-2 space-y-1">
+        {groups.map((g) => {
+          // A column per series once any of them pays differently, the same
+          // columns for every group so the prices line up down the card.
+          const cols = g.rows.find((r) => r.bySeries?.length)?.bySeries || null;
+          return (
+            <section key={g.key}>
+              <div className="flex items-end justify-between gap-3 border-b border-border pb-1.5 pt-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-medium">
+                  {g.label}
+                  {g.key === "racing" && activity?.active && <span className="ml-1.5 font-mono text-ok">{x}</span>}
+                </div>
+                {cols && (
+                  <div className="flex shrink-0 gap-2 sm:gap-3">
+                    {cols.map((c) => (
+                      <div
+                        key={c.series}
+                        title={c.name}
+                        className="line-clamp-2 w-16 text-right text-[9px] font-semibold uppercase leading-tight tracking-wider text-light sm:w-20 sm:text-[10px]"
+                      >
+                        {c.name}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-          </li>
-        ))}
-      </ul>
+              <ul className="divide-y divide-border">
+                {g.rows.map((r) => (
+                  <li key={r.key} className="flex items-start justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className={`text-sm font-semibold ${r.active ? "text-dark" : "text-light"}`}>{r.label}</div>
+                      <div className="text-xs leading-relaxed text-light">
+                        {r.unit && <span className="font-semibold text-medium">{r.unit[0].toUpperCase() + r.unit.slice(1)}. </span>}
+                        {r.hint}
+                      </div>
+                    </div>
+                    {cols ? (
+                      <div className="flex shrink-0 gap-2 sm:gap-3">
+                        {(r.bySeries || []).map((c) => {
+                          const later =
+                            stillAhead(c.from) && (c.points !== c.now.points || c.active !== c.now.active)
+                              ? { points: c.points, active: c.active }
+                              : null;
+                          return (
+                            <div key={c.series} className="w-16 sm:w-20">
+                              <Price
+                                now={{ ...c.now, lapsDiffer: c.now.laps !== r.laps }}
+                                later={later}
+                                from={c.from}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="shrink-0">
+                        <Price now={{ points: r.points, active: r.active }} />
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1299,8 +1369,49 @@ function Collection({ orders }) {
   );
 }
 
-// Where every token came from and went. Plain rows, newest first: this is the
-// page a member opens when they think the number is wrong.
+// Where every token came from and went, newest first, one block per day with
+// the day's total: this is the page a member opens when they think the number
+// is wrong, and "what did Friday pay" is the question they come with. Each
+// line says what kind of thing it was, so a race, a training week and a
+// purchase read as different things at a glance.
+const HISTORY_KINDS = {
+  race_finish: "Race",
+  clean_race: "Race",
+  practice_20: "Training",
+  practice_50: "Training",
+  referral_join: "Invite",
+  referral_race: "Invite",
+  redeem: "Shop",
+  card_design: "Shop",
+  studio: "Shop",
+  refund: "Refund",
+  admin: "League",
+};
+const kindOf = (e) => HISTORY_KINDS[e.rule] || (String(e.rule || "").startsWith("practice") ? "Training" : e.delta < 0 ? "Shop" : "League");
+
+function localDay(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function dayLabel(day) {
+  const today = localDay(new Date().toISOString());
+  const yesterday = localDay(new Date(Date.now() - 86400000).toISOString());
+  if (day === today) return "Today";
+  if (day === yesterday) return "Yesterday";
+  const d = new Date(`${day}T12:00:00`);
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+const signed = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n))}`;
+
 function History({ ledger }) {
   if (!ledger.length) {
     return (
@@ -1310,31 +1421,50 @@ function History({ ledger }) {
       />
     );
   }
+  const days = [];
+  for (const e of ledger) {
+    const day = localDay(e.createdAt);
+    let block = days[days.length - 1];
+    if (!block || block.day !== day) {
+      block = { day, rows: [], total: 0 };
+      days.push(block);
+    }
+    block.rows.push(e);
+    block.total += Number(e.delta) || 0;
+  }
   // Capped and scrolling rather than however tall a career happens to be: a
   // driver with seventy races had a page whose last two thirds were one list.
   return (
     <div className="card reveal px-5 py-4">
       <Heading>Your history</Heading>
-      <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto scrollbar-slim">
-      {ledger.map((e) => (
-        <li key={e.id} className="flex items-baseline justify-between gap-4 py-2.5">
-          <div className="min-w-0">
-            <div className="truncate text-sm text-dark">{e.title}</div>
-            <div className="truncate text-xs text-light">
-              {[e.detail, fmtWhen(e.createdAt)].filter(Boolean).join(" . ")}
+      <div className="mt-1 max-h-[26rem] overflow-y-auto scrollbar-slim">
+        {days.map((b) => (
+          <section key={b.day || "undated"}>
+            <div className="sticky top-0 z-[1] flex items-baseline justify-between gap-3 border-b border-border bg-card pb-1.5 pt-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-medium">{b.day ? dayLabel(b.day) : "Earlier"}</div>
+              <div className="font-mono text-[11px] tabular-nums text-light">{signed(b.total)}</div>
             </div>
-          </div>
-          <span
-            className={`shrink-0 font-mono text-sm font-bold tabular-nums ${
-              e.delta >= 0 ? "text-brand" : "text-light"
-            }`}
-          >
-            {e.delta >= 0 ? "+" : ""}
-            {fmt(e.delta)}
-          </span>
-          </li>
+            <ul className="divide-y divide-border">
+              {b.rows.map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-3 py-2">
+                  <span className="w-16 shrink-0 rounded bg-surface2 px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider text-light">
+                    {kindOf(e)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-dark">{e.title}</div>
+                    {e.detail && <div className="truncate text-xs text-light">{e.detail}</div>}
+                  </div>
+                  <span
+                    className={`shrink-0 font-mono text-sm font-bold tabular-nums ${e.delta >= 0 ? "text-brand" : "text-light"}`}
+                  >
+                    {signed(e.delta)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
