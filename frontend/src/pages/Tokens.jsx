@@ -338,6 +338,7 @@ function Balance({ data, goal, onClearGoal }) {
         </div>
       </div>
       {s.activity && <MultiplierBar a={s.activity} />}
+      {s.locked?.length > 0 && <LockedRounds rounds={s.locked} />}
       <Goal item={goal} balance={data.balance} onClear={onClearGoal} />
     </div>
   );
@@ -397,6 +398,27 @@ function MultiplierBar({ a }) {
         Recounted every day. Chat starts counting at {fmt(a.chatRange?.min || 50)} messages, voice at{" "}
         {Math.round((a.voiceRange?.min || 300) / 60)} hours. The two halves add up: total = chat + voice, minus one.
       </p>
+    </div>
+  );
+}
+
+// Sunday rounds still to come this week. They pay what you had at Friday's
+// briefing, not the live number above, which started again on Friday.
+function LockedRounds({ rounds }) {
+  return (
+    <div className="mt-4 space-y-1.5 border-t border-border pt-4 text-xs">
+      {rounds.map((r) => (
+        <div key={r.raceId} className="flex items-center justify-between gap-3">
+          <span className="min-w-0 text-light">
+            <span className="font-semibold text-dark">{r.series || "Next race"}</span>
+            {r.track ? ` at ${r.track}` : ""},{" "}
+            {new Date(r.at).toLocaleDateString("en-GB", { weekday: "long" })}. Locked in at Friday's briefing
+          </span>
+          <span className="shrink-0 rounded bg-ok/15 px-1.5 py-0.5 font-mono font-bold text-ok">
+            x{(Number(r.multiplier) || 1).toFixed(1)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

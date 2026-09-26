@@ -1355,6 +1355,43 @@ async function hasRacedBefore(prisma, discordId) {
   return rows.length > 0;
 }
 
+// Rounds of another series (the Sunday one) still to come this week, with the
+// multiplier they will pay. That one was fixed at the last F1 briefing, so the
+// live number on the page, which started again from zero on Friday, is not it.
+// Only series this member actually has a seat in.
+async function lockedRounds(prisma, discordId) {
+  try {
+    const now = Date.now();
+    const opened = await briefingBefore(prisma, now);
+    if (opened == null) return [];
+    const { briefings } = await loadRoundStarts(prisma);
+    const next = briefings.find((b) => b > now) ?? Infinity;
+    const ids = await driverIdsFor(prisma, discordId);
+    if (!ids.length) return [];
+    const ph = ids.map(() => "?").join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT r."id", r."track", r."date", se."name" AS "series", se."isActive" AS "primary"
+         FROM "Race" r
+         JOIN "Season" s ON s."id" = r."seasonId"
+         JOIN "Series" se ON se."id" = s."seriesId"
+        WHERE r."isCompleted" = 0 AND r."isSpecialEvent" = 0 AND r."parentRaceId" IS NULL
+          AND r."seasonId" IN (SELECT "seasonId" FROM "Driver" WHERE "id" IN (${ph}))`,
+      ...ids
+    );
+    const out = [];
+    for (const r of rows) {
+      if (Number(r.primary) === 1 || r.primary === true) continue;
+      const start = r.date == null ? null : raceKickoff(new Date(Number(r.date)))?.getTime();
+      if (!start || start <= opened || start >= next) continue;
+      const m = await multiplierFor(prisma, discordId, start);
+      out.push({ raceId: r.id, track: r.track || null, series: r.series || null, at: start, multiplier: m.total });
+    }
+    return out.sort((a, b) => a.at - b.at);
+  } catch {
+    return [];
+  }
+}
+
 // How this member is doing, in the numbers the page prints above the fold.
 export async function tokenStats(prisma, discordId) {
   const mine = await racesFinished(prisma, discordId);
@@ -1369,6 +1406,7 @@ export async function tokenStats(prisma, discordId) {
     invited: invited.length,
     invitedRacing,
     multiplier: activity.total,
+    locked: await lockedRounds(prisma, discordId),
     // The parts behind that number, for the bar on the Tokens page.
     activity: { ...activity, max: MULTIPLIER.total, chatRange: tunedMultiplier().chat, voiceRange: tunedMultiplier().voice },
   };
