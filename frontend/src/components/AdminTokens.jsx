@@ -641,13 +641,15 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                     }
                     return next;
                   });
-                const from = t?.seriesFrom?.[se.slug] || "";
-                const setFrom = (v) =>
+                const fromOf = (kind) => t?.seriesFrom?.[se.slug]?.[kind] || "";
+                const setFrom = (kind, v) =>
                   setT((prev) => {
                     const next = JSON.parse(JSON.stringify(prev || {}));
                     next.seriesFrom ||= {};
-                    if (v) next.seriesFrom[se.slug] = v;
-                    else delete next.seriesFrom[se.slug];
+                    next.seriesFrom[se.slug] ||= {};
+                    if (v) next.seriesFrom[se.slug][kind] = v;
+                    else delete next.seriesFrom[se.slug][kind];
+                    if (!Object.keys(next.seriesFrom[se.slug]).length) delete next.seriesFrom[se.slug];
                     if (!Object.keys(next.seriesFrom).length) delete next.seriesFrom;
                     return next;
                   });
@@ -672,17 +674,30 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                         )}
                       </div>
                     </div>
-                    {/* The day these numbers start. A round before it, and
-                        the training week leading up to it, keep the league's
-                        numbers, so a change made mid-week leaves the round
-                        that is about to be raced alone. */}
+                    {/* The days these numbers start, one for racing and one
+                        for training. A round before its day keeps the league's
+                        numbers, and so does a training week whose round is
+                        before the training day: a change made on a Saturday
+                        can halve Sunday's race while the week already driven
+                        for it keeps its price. */}
                     {own && (
-                      <label className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-light">
-                        <span className="min-w-0">
-                          Starts with the rounds from this day on, and their training week. Empty = straight away.
-                        </span>
-                        <input type="date" className="input !w-auto font-mono" value={from} onChange={(e) => setFrom(e.target.value)} />
-                      </label>
+                      <div className="mt-3 space-y-2 text-xs text-light">
+                        <div>Starts with the rounds on or after these days. Empty = straight away.</div>
+                        {[
+                          ["race", "Races from"],
+                          ["practice", "Training from the round on"],
+                        ].map(([kind, label]) => (
+                          <label key={kind} className="flex flex-wrap items-center justify-between gap-2">
+                            <span>{label}</span>
+                            <input
+                              type="date"
+                              className="input !w-auto font-mono"
+                              value={fromOf(kind)}
+                              onChange={(e) => setFrom(kind, e.target.value)}
+                            />
+                          </label>
+                        ))}
+                      </div>
                     )}
                     <ul className="mt-2 divide-y divide-border">
                       {defaults.seriesRules.map((key) => {

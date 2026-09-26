@@ -152,12 +152,12 @@ describe("paying a round when it is imported", () => {
     const seriesRules = { "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 } } };
     try {
       // the round is on 9 January 2026
-      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": "2026-01-10" } });
+      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": { race: "2026-01-10" } } });
       const before = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 1 }, series: "gt-sunday" });
       await payRace(before, "round5");
       expect(before.ledger.get("race:round5:ayrton_s8").delta).toBe(50);
       expect(before.ledger.get("clean:round5:ayrton_s8").delta).toBe(20);
-      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": "2026-01-09" } });
+      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": { race: "2026-01-09" } } });
       const onTheDay = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 1 }, series: "gt-sunday" });
       await payRace(onTheDay, "round5");
       expect(onTheDay.ledger.get("race:round5:ayrton_s8").delta).toBe(25);

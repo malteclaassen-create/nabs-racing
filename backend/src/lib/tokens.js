@@ -348,16 +348,19 @@ export const SHOP_BY_KEY = new Map(SHOP_ITEMS.map((i) => [i.key, i]));
 // follows the league's switch and lap counts for everything else, and a series
 // nobody has touched pays exactly the league's numbers.
 //
-// A series' numbers can start on a day (seriesFrom): a round raced before it
-// still pays the league's numbers, and so does the training week leading up
-// to it, so a change made on a Saturday leaves the Sunday round and its week
-// alone. `at` is the round's date; without one (a price list) the series'
-// numbers are shown.
+// A series' numbers can start on a day, one for racing and one for training
+// (seriesFrom[slug].race / .practice): a round raced before its day still pays
+// the league's numbers, and so does a training week whose round is before
+// the training day. Two days because the league changes them at different
+// moments: on a Saturday it halved Sunday's race straight away, but the
+// training week before it had already been driven at the full price. `at` is
+// the round's date; without one (a price list) the series' numbers are shown.
 export function tunedRules(series = null, at = null) {
   const o = overrides().rules || {};
-  const s = (series && seriesRulesApply(series, at) && overrides().seriesRules?.[String(series)]) || {};
+  const s = (series && overrides().seriesRules?.[String(series)]) || {};
   return EARN_RULES.map((r) => {
-    const own = SERIES_RULE_KEYS.includes(r.key) ? s[r.key] || {} : {};
+    const kind = r.laps == null ? "race" : "practice";
+    const own = SERIES_RULE_KEYS.includes(r.key) && seriesRulesApply(series, at, kind) ? s[r.key] || {} : {};
     return {
       ...r,
       points: own.points ?? o[r.key]?.points ?? r.points,
@@ -368,14 +371,16 @@ export function tunedRules(series = null, at = null) {
   });
 }
 
-// The day a series' own numbers start, "YYYY-MM-DD", or null for "always".
-export const seriesRulesFrom = (series) => overrides().seriesFrom?.[String(series || "")] || null;
+// The day a series' own numbers start for racing or for training
+// ("YYYY-MM-DD"), or null for "always".
+export const seriesRulesFrom = (series, kind = "race") =>
+  overrides().seriesFrom?.[String(series || "")]?.[kind] || null;
 
 // Does a round on `at` get its series' own numbers? Race dates come back from
 // the database as a Date, epoch milliseconds or a string, depending on the
 // query, so all three are read.
-export function seriesRulesApply(series, at = null) {
-  const from = leagueDayStart(seriesRulesFrom(series));
+export function seriesRulesApply(series, at = null, kind = "race") {
+  const from = leagueDayStart(seriesRulesFrom(series, kind));
   if (from == null || at == null) return true;
   const t = at instanceof Date ? at.getTime() : /^\d+$/.test(String(at)) ? Number(at) : Date.parse(at);
   return !Number.isFinite(t) || t >= from;
@@ -1384,7 +1389,7 @@ export async function rulesForDisplay(prisma) {
         active: own.active !== false,
         // The day it starts, so the page can say "from 28 September" while
         // the old price still holds.
-        from: seriesRulesFrom(se.slug),
+        from: seriesRulesFrom(se.slug, r.laps == null ? "race" : "practice"),
       });
     }
     if (bySeries.length) out.bySeries = bySeries;

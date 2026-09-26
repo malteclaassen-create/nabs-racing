@@ -86,11 +86,14 @@ describe("cleanTuning", () => {
     expect(cleanTuning({ seriesRules: { f1: { clean_race: { active: "" } } } }, ALLOWED).tuning).toEqual({});
   });
 
-  it("takes the day a series' numbers start, for series it knows only", () => {
-    expect(cleanTuning({ seriesFrom: { "gt-sunday": "2026-09-28", ghost: "2026-01-01", f1: "" } }, ALLOWED).tuning).toEqual({
-      seriesFrom: { "gt-sunday": "2026-09-28" },
-    });
-    expect(cleanTuning({ seriesFrom: { f1: "next week" } }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
+  it("takes the days a series' numbers start, for series it knows only", () => {
+    expect(
+      cleanTuning(
+        { seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" }, ghost: { race: "2026-01-01" }, f1: { race: "" } } },
+        ALLOWED
+      ).tuning
+    ).toEqual({ seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" } } });
+    expect(cleanTuning({ seriesFrom: { f1: { race: "next week" } } }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
   });
 
   it("wants the multiplier's upper number above the lower one", () => {
@@ -158,6 +161,26 @@ describe("the numbers the site actually uses", () => {
     expect(tunedRules("f1").find((r) => r.key === "clean_race").active).toBe(false);
     // a referral is about a person, not a series: a series cannot change it
     expect(tunedRules("f1").find((r) => r.key === "referral_join").points).toBe(50);
+  });
+
+  it("can halve Sunday's race at once and leave the training week already driven for it", async () => {
+    await saveTuning(fakePrisma, {
+      seriesRules: { "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 }, practice_20: { points: 5 } } },
+      seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" } },
+    });
+    const pick = (rules, key) => rules.find((r) => r.key === key).points;
+    const saturday = Date.parse("2026-09-26T17:00:00Z");
+    const sunday = Date.parse("2026-09-27T17:00:00Z");
+    const nextSunday = Date.parse("2026-10-04T17:00:00Z");
+    // a round the day before: the league's numbers throughout
+    expect(pick(tunedRules("gt-sunday", saturday), "race_finish")).toBe(50);
+    // Sunday's round: half for the race, full for the week that led up to it
+    expect(pick(tunedRules("gt-sunday", sunday), "race_finish")).toBe(25);
+    expect(pick(tunedRules("gt-sunday", sunday), "clean_race")).toBe(10);
+    expect(pick(tunedRules("gt-sunday", sunday), "practice_20")).toBe(10);
+    // the round after: half for both
+    expect(pick(tunedRules("gt-sunday", nextSunday), "race_finish")).toBe(25);
+    expect(pick(tunedRules("gt-sunday", nextSunday), "practice_20")).toBe(5);
   });
 
   it("go back to the defaults on reset", async () => {
