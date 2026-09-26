@@ -53,6 +53,9 @@ export default function TrainingCue() {
   const week = usePracticeWeek(0);
   const [shown, setShown] = useState(null);
   const timer = useRef(null);
+  // Keys shown in this visit. `due` only reads localStorage when the week
+  // changes, so without this a closed line came straight back.
+  const done = useRef(new Set());
 
   // The freshest milestone that has paid, is recent, and has not been shown in
   // this browser yet.
@@ -81,12 +84,19 @@ export default function TrainingCue() {
   }, [week]);
 
   useEffect(() => {
-    if (!due || shown) return undefined;
+    if (!due || shown || done.current.has(due.key)) return undefined;
+    done.current.add(due.key);
     remember(due.key); // written when it appears, so a reload mid-show is not a second show
     setShown(due);
+    return undefined;
+  }, [due, shown]);
+
+  // Its own effect: in the one above, showing the line cleared the timer.
+  useEffect(() => {
+    if (!shown) return undefined;
     timer.current = setTimeout(() => setShown(null), SHOW_MS);
     return () => clearTimeout(timer.current);
-  }, [due, shown]);
+  }, [shown]);
 
   if (!shown) return null;
 
