@@ -14,6 +14,10 @@
 //   your referral                50
 //   That person finishes a race  30   for their first 12 races, then it stops
 //
+// Those are the league's numbers. A series can pay the racing and training
+// ones differently (SERIES_RULE_KEYS below, set in the admin per series), the
+// Sunday league at half, say; tunedRules(series) in lib/tokens.js applies it.
+//
 // --- the training laps ------------------------------------------------------
 //
 // The training server runs the week's track and car and sits there between one
@@ -133,7 +137,7 @@ export const EARN_RULES = [
   {
     key: "clean_race",
     label: "Finish it without a penalty",
-    hint: "On top of the 50. Paid on the Tuesday after the round, once the stewards have been through the reports.",
+    hint: "On top of the finish. Paid on the Tuesday after the round, once the stewards have been through the reports.",
     points: 20,
     unit: "per clean race",
     boosted: true,
@@ -151,7 +155,7 @@ export const EARN_RULES = [
   {
     key: "practice_50",
     label: "50 training laps",
-    hint: "On top of the 10, same week. Every lap counts, quick or not.",
+    hint: "On top of the 20 laps, same week. Every lap counts, quick or not.",
     points: 20,
     laps: 50,
     unit: "per race week",
@@ -184,6 +188,12 @@ export const EARN_RULES = [
 ];
 
 export const RULE_BY_KEY = new Map(EARN_RULES.map((r) => [r.key, r]));
+
+// The rules a SERIES can pay differently from the rest of the league: the ones
+// that are about racing in it and training for it. The referral rules are
+// about a person, not a series, and the multiplier is one number per member,
+// so those stay league-wide.
+export const SERIES_RULE_KEYS = ["race_finish", "clean_race", "practice_20", "practice_50"];
 export const pointsFor = (key) => RULE_BY_KEY.get(key)?.points || 0;
 
 // How many of an invited driver's races still pay the person who brought them

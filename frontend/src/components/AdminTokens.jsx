@@ -410,8 +410,34 @@ function TuningPanel({ d, busy, onSave, onReset }) {
       if (!Object.keys(next[section][key]).length) delete next[section][key];
       return next;
     });
+  // A series' own numbers sit one level deeper: seriesRules[slug][rule][field].
+  const getS = (slug, key, field) => t?.seriesRules?.[slug]?.[key]?.[field];
+  const setS = (slug, key, field, value) =>
+    setT((prev) => {
+      const next = JSON.parse(JSON.stringify(prev || {}));
+      next.seriesRules ||= {};
+      next.seriesRules[slug] ||= {};
+      next.seriesRules[slug][key] ||= {};
+      if (value === "" || value == null) delete next.seriesRules[slug][key][field];
+      else next.seriesRules[slug][key][field] = value;
+      if (!Object.keys(next.seriesRules[slug][key]).length) delete next.seriesRules[slug][key];
+      if (!Object.keys(next.seriesRules[slug]).length) delete next.seriesRules[slug];
+      if (!Object.keys(next.seriesRules).length) delete next.seriesRules;
+      return next;
+    });
   const defaults = d.defaults || {};
   const defRule = (key) => defaults.rules?.find((r) => r.key === key) || {};
+  // What the whole league pays for a rule as the form stands, which is what a
+  // series falls back to for every field it leaves empty.
+  const leagueRule = (key) => {
+    const r = defRule(key);
+    const num = (v, fallback) => (v === "" || v == null ? fallback : Number(v));
+    return {
+      points: num(get("rules", key, "points"), r.points),
+      laps: r.laps == null ? null : num(get("rules", key, "laps"), r.laps),
+      active: get("rules", key, "active") ?? r.active,
+    };
+  };
   const defItem = (key) => defaults.shop?.find((i) => i.key === key) || {};
   const defCard = (key) => defaults.cards?.find((c) => c.key === key) || {};
   const changed = JSON.stringify(t || {}) !== JSON.stringify(d.tuning || {});
@@ -589,6 +615,128 @@ function TuningPanel({ d, busy, onSave, onReset }) {
             ))}
           </ul>
         </div>
+
+        {(defaults.series || []).length > 0 && (defaults.seriesRules || []).length > 0 && (
+          <div className="card p-5 lg:col-span-2">
+            <Head>Per series</Head>
+            <p className="mt-1 text-xs leading-relaxed text-light">
+              A series can pay racing and training differently from the rest of the league, the Sunday league at half,
+              say. Empty field = what the whole league pays (shown greyed, from "What earns tokens" above). A new series
+              shows up here as soon as it is created. Races already paid keep what they were paid.
+            </p>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              {defaults.series.map((se) => {
+                const own = t?.seriesRules?.[se.slug];
+                const halve = () =>
+                  defaults.seriesRules.forEach((key) => {
+                    const league = leagueRule(key);
+                    setS(se.slug, key, "points", String(Math.round(league.points / 2)));
+                  });
+                const clear = () =>
+                  setT((prev) => {
+                    const next = JSON.parse(JSON.stringify(prev || {}));
+                    for (const k of ["seriesRules", "seriesFrom"]) {
+                      if (next[k]) delete next[k][se.slug];
+                      if (next[k] && !Object.keys(next[k]).length) delete next[k];
+                    }
+                    return next;
+                  });
+                const fromOf = (kind) => t?.seriesFrom?.[se.slug]?.[kind] || "";
+                const setFrom = (kind, v) =>
+                  setT((prev) => {
+                    const next = JSON.parse(JSON.stringify(prev || {}));
+                    next.seriesFrom ||= {};
+                    next.seriesFrom[se.slug] ||= {};
+                    if (v) next.seriesFrom[se.slug][kind] = v;
+                    else delete next.seriesFrom[se.slug][kind];
+                    if (!Object.keys(next.seriesFrom[se.slug]).length) delete next.seriesFrom[se.slug];
+                    if (!Object.keys(next.seriesFrom).length) delete next.seriesFrom;
+                    return next;
+                  });
+                return (
+                  <div key={se.slug} className="rounded-lg border border-border p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-dark">
+                          {se.name}
+                          {!se.isPublic && <span className="ml-2 text-[11px] font-normal uppercase tracking-wider text-light">hidden</span>}
+                        </div>
+                        <div className="text-xs text-light">{own ? "Own numbers" : "Same as the league"}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="btn-secondary !px-2.5 !py-1 !text-xs" onClick={halve}>
+                          Half points
+                        </button>
+                        {own && (
+                          <button type="button" className="btn-secondary !px-2.5 !py-1 !text-xs" onClick={clear}>
+                            Same as league
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* The days these numbers start, one for racing and one
+                        for training. A round before its day keeps the league's
+                        numbers, and so does a training week whose round is
+                        before the training day: a change made on a Saturday
+                        can halve Sunday's race while the week already driven
+                        for it keeps its price. */}
+                    {own && (
+                      <div className="mt-3 space-y-2 text-xs text-light">
+                        <div>Starts with the rounds on or after these days. Empty = straight away.</div>
+                        {[
+                          ["race", "Races from"],
+                          ["practice", "Training from the round on"],
+                        ].map(([kind, label]) => (
+                          <label key={kind} className="flex flex-wrap items-center justify-between gap-2">
+                            <span>{label}</span>
+                            <input
+                              type="date"
+                              className="input !w-auto font-mono"
+                              value={fromOf(kind)}
+                              onChange={(e) => setFrom(kind, e.target.value)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <ul className="mt-2 divide-y divide-border">
+                      {defaults.seriesRules.map((key) => {
+                        const r = defRule(key);
+                        const league = leagueRule(key);
+                        const on = getS(se.slug, key, "active") ?? league.active;
+                        return (
+                          <li key={key} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                            <div className={`min-w-0 text-sm font-semibold ${on ? "text-dark" : "text-light"}`}>{r.label}</div>
+                            <div className="flex shrink-0 items-center gap-3">
+                              <OnOff checked={!!on} onChange={(v) => setS(se.slug, key, "active", v === league.active ? "" : v)} />
+                              {league.laps != null && (
+                                <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-light">
+                                  at
+                                  <NumberField
+                                    className="!w-16"
+                                    value={getS(se.slug, key, "laps")}
+                                    placeholder={league.laps}
+                                    onChange={(v) => setS(se.slug, key, "laps", v)}
+                                  />
+                                  laps
+                                </label>
+                              )}
+                              <NumberField
+                                value={getS(se.slug, key, "points")}
+                                placeholder={league.points}
+                                onChange={(v) => setS(se.slug, key, "points", v)}
+                              />
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="card p-5">
           <Head>Activity multiplier</Head>

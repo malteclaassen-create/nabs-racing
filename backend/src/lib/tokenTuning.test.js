@@ -17,6 +17,8 @@ const ALLOWED = {
   rules: EARN_RULES.map((r) => r.key),
   shop: SHOP_ITEMS.map((i) => i.key),
   cards: ["concepts", "spectrum", "velocity", "signature"],
+  series: ["f1", "gt-sunday"],
+  seriesRules: ["race_finish", "clean_race", "practice_20", "practice_50"],
 };
 
 // A prisma stand-in: the tuning module only ever upserts and deletes one row.
@@ -64,6 +66,36 @@ describe("cleanTuning", () => {
     expect(out.tuning).toEqual({});
   });
 
+  it("takes a series' own numbers, for series and rules it knows only", () => {
+    const out = cleanTuning(
+      {
+        seriesRules: {
+          "gt-sunday": { race_finish: { points: "25" }, practice_20: { points: 5, laps: "" }, referral_join: { points: 1 } },
+          ghost: { race_finish: { points: 1 } },
+          f1: { clean_race: { points: "" } },
+        },
+      },
+      ALLOWED
+    );
+    expect(out.tuning).toEqual({ seriesRules: { "gt-sunday": { race_finish: { points: 25 }, practice_20: { points: 5 } } } });
+    expect(cleanTuning({ seriesRules: { f1: { race_finish: { points: -1 } } } }, ALLOWED).error).toMatch(/whole number/);
+    // "off for this series" is kept, "same as the league" (empty) is not
+    expect(cleanTuning({ seriesRules: { f1: { clean_race: { active: false } } } }, ALLOWED).tuning).toEqual({
+      seriesRules: { f1: { clean_race: { active: false } } },
+    });
+    expect(cleanTuning({ seriesRules: { f1: { clean_race: { active: "" } } } }, ALLOWED).tuning).toEqual({});
+  });
+
+  it("takes the days a series' numbers start, for series it knows only", () => {
+    expect(
+      cleanTuning(
+        { seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" }, ghost: { race: "2026-01-01" }, f1: { race: "" } } },
+        ALLOWED
+      ).tuning
+    ).toEqual({ seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" } } });
+    expect(cleanTuning({ seriesFrom: { f1: { race: "next week" } } }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
+  });
+
   it("wants the multiplier's upper number above the lower one", () => {
     expect(cleanTuning({ multiplier: { chat: { min: 500, max: 50 } } }, ALLOWED).error).toMatch(/above/);
     expect(cleanTuning({ multiplier: { voice: { min: 60, max: 600 } } }, ALLOWED).tuning).toEqual({
@@ -107,6 +139,48 @@ describe("the numbers the site actually uses", () => {
     await saveTuning(fakePrisma, { rules: { activity: { active: true, points: 100 } } });
     const a = tunedRules().find((r) => r.key === "activity");
     expect(a.active).toBe(false);
+  });
+
+  it("pay a series its own numbers, and the league's where it set none", async () => {
+    await saveTuning(fakePrisma, {
+      rules: { race_finish: { points: 60 }, practice_50: { laps: 40 } },
+      seriesRules: {
+        "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 }, practice_20: { points: 5 }, practice_50: { points: 10 } },
+        f1: { clean_race: { active: false }, referral_join: { points: 1 } },
+      },
+    });
+    const sunday = tunedRules("gt-sunday");
+    expect(sunday.find((r) => r.key === "race_finish").points).toBe(25);
+    expect(sunday.find((r) => r.key === "clean_race").points).toBe(10);
+    expect(sunday.find((r) => r.key === "practice_20")).toMatchObject({ points: 5, laps: 20 });
+    // the lap count the league moved still applies, only the points are Sunday's
+    expect(sunday.find((r) => r.key === "practice_50")).toMatchObject({ points: 10, laps: 40 });
+    // the league's numbers for everybody else
+    expect(tunedRules().find((r) => r.key === "race_finish").points).toBe(60);
+    expect(tunedRules("f3").find((r) => r.key === "race_finish").points).toBe(60);
+    expect(tunedRules("f1").find((r) => r.key === "clean_race").active).toBe(false);
+    // a referral is about a person, not a series: a series cannot change it
+    expect(tunedRules("f1").find((r) => r.key === "referral_join").points).toBe(50);
+  });
+
+  it("can halve Sunday's race at once and leave the training week already driven for it", async () => {
+    await saveTuning(fakePrisma, {
+      seriesRules: { "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 }, practice_20: { points: 5 } } },
+      seriesFrom: { "gt-sunday": { race: "2026-09-27", practice: "2026-09-28" } },
+    });
+    const pick = (rules, key) => rules.find((r) => r.key === key).points;
+    const saturday = Date.parse("2026-09-26T17:00:00Z");
+    const sunday = Date.parse("2026-09-27T17:00:00Z");
+    const nextSunday = Date.parse("2026-10-04T17:00:00Z");
+    // a round the day before: the league's numbers throughout
+    expect(pick(tunedRules("gt-sunday", saturday), "race_finish")).toBe(50);
+    // Sunday's round: half for the race, full for the week that led up to it
+    expect(pick(tunedRules("gt-sunday", sunday), "race_finish")).toBe(25);
+    expect(pick(tunedRules("gt-sunday", sunday), "clean_race")).toBe(10);
+    expect(pick(tunedRules("gt-sunday", sunday), "practice_20")).toBe(10);
+    // the round after: half for both
+    expect(pick(tunedRules("gt-sunday", nextSunday), "race_finish")).toBe(25);
+    expect(pick(tunedRules("gt-sunday", nextSunday), "practice_20")).toBe(5);
   });
 
   it("go back to the defaults on reset", async () => {

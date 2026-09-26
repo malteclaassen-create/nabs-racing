@@ -414,6 +414,40 @@ describe("training laps", () => {
     await saveTuning(prisma, {});
   });
 
+  it("pays a series' own training numbers when it has them (half, say)", async () => {
+    const prisma = db();
+    await saveTuning(prisma, { seriesRules: { nabs: { practice_20: { points: 5 }, practice_50: { points: 10 } } } });
+    try {
+      await drive(prisma, 50);
+      expect([...prisma.ledger.values()].map((r) => [r.rule, r.delta])).toEqual([
+        ["practice_20", 5],
+        ["practice_50", 10],
+      ]);
+    } finally {
+      await saveTuning(prisma, {});
+    }
+  });
+
+  it("keeps the league's training numbers for a week whose round is before the series' start day", async () => {
+    // The round this week leads up to is on 7 June; Sunday's half training
+    // points start with the round on the 8th, so this week still pays in full.
+    const races = [{ id: "race9", track: "Spa", number: 5, date: Date.parse("2099-06-07T12:00:00Z"), isCompleted: 0 }];
+    const halves = { nabs: { practice_20: { points: 5 }, practice_50: { points: 10 } } };
+    const before = db({ races });
+    await saveTuning(before, { seriesRules: halves, seriesFrom: { nabs: { practice: "2099-06-08" } } });
+    try {
+      await drive(before, 20);
+      expect([...before.ledger.values()].map((r) => [r.rule, r.delta])).toEqual([["practice_20", 10]]);
+      __clearCaches();
+      const after = db({ races });
+      await saveTuning(after, { seriesRules: halves, seriesFrom: { nabs: { practice: "2099-06-07" } } });
+      await drive(after, 20);
+      expect([...after.ledger.values()].map((r) => [r.rule, r.delta])).toEqual([["practice_20", 5]]);
+    } finally {
+      await saveTuning(before, {});
+    }
+  });
+
   it("files laps under the week rather than the round when the calendar is empty", async () => {
     const prisma = db({ race: false });
     await drive(prisma, 20);

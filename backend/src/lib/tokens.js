@@ -46,6 +46,7 @@ import {
   MULTIPLIER,
   RULE_BY_KEY,
   REFERRAL_RACE_LIMIT,
+  SERIES_RULE_KEYS,
   activityMultiplier,
   activityWindowStart,
   boardWindowStart,
@@ -57,7 +58,7 @@ import {
   withMultiplier,
 } from "./tokenRules.js";
 
-export { ACTIVITY_WINDOW_DAYS, BOARD_WINDOW_DAYS, EARN_RULES, RULE_BY_KEY, REFERRAL_RACE_LIMIT, activityMultiplier };
+export { ACTIVITY_WINDOW_DAYS, BOARD_WINDOW_DAYS, EARN_RULES, RULE_BY_KEY, REFERRAL_RACE_LIMIT, SERIES_RULE_KEYS, activityMultiplier };
 
 // The one switch. Stored as a Setting so it can be flipped in the admin without
 // a deploy; absent means "whatever this machine's default is", which is ON for
@@ -340,19 +341,54 @@ export const SHOP_BY_KEY = new Map(SHOP_ITEMS.map((i) => [i.key, i]));
 
 // --- the numbers as the league has set them (Admin -> Tokens -> Rules and
 // prices), falling back to the code's defaults field by field.
-export function tunedRules() {
+//
+// With a series, that series' own numbers go on top (Admin -> Tokens -> Rules
+// and prices -> Per series): the Sunday league pays half of what Friday pays,
+// say. Field by field again, so a series that only changed the points still
+// follows the league's switch and lap counts for everything else, and a series
+// nobody has touched pays exactly the league's numbers.
+//
+// A series' numbers can start on a day, one for racing and one for training
+// (seriesFrom[slug].race / .practice): a round raced before its day still pays
+// the league's numbers, and so does a training week whose round is before
+// the training day. Two days because the league changes them at different
+// moments: on a Saturday it halved Sunday's race straight away, but the
+// training week before it had already been driven at the full price. `at` is
+// the round's date; without one (a price list) the series' numbers are shown.
+export function tunedRules(series = null, at = null) {
   const o = overrides().rules || {};
-  return EARN_RULES.map((r) => ({
-    ...r,
-    points: o[r.key]?.points ?? r.points,
-    // Only the training rules have one, and only they can have it moved.
-    ...(r.laps == null ? {} : { laps: o[r.key]?.laps ?? r.laps }),
-    active: r.key === "activity" ? r.active : (o[r.key]?.active ?? r.active),
-  }));
+  const s = (series && overrides().seriesRules?.[String(series)]) || {};
+  return EARN_RULES.map((r) => {
+    const kind = r.laps == null ? "race" : "practice";
+    const own = SERIES_RULE_KEYS.includes(r.key) && seriesRulesApply(series, at, kind) ? s[r.key] || {} : {};
+    return {
+      ...r,
+      points: own.points ?? o[r.key]?.points ?? r.points,
+      // Only the training rules have one, and only they can have it moved.
+      ...(r.laps == null ? {} : { laps: own.laps ?? o[r.key]?.laps ?? r.laps }),
+      active: r.key === "activity" ? r.active : (own.active ?? o[r.key]?.active ?? r.active),
+    };
+  });
 }
-const tunedRule = (key) => tunedRules().find((r) => r.key === key);
-const tunedPoints = (key) => tunedRule(key)?.points ?? 0;
-const ruleOn = (key) => tunedRule(key)?.active !== false;
+
+// The day a series' own numbers start for racing or for training
+// ("YYYY-MM-DD"), or null for "always".
+export const seriesRulesFrom = (series, kind = "race") =>
+  overrides().seriesFrom?.[String(series || "")]?.[kind] || null;
+
+// Does a round on `at` get its series' own numbers? Race dates come back from
+// the database as a Date, epoch milliseconds or a string, depending on the
+// query, so all three are read.
+export function seriesRulesApply(series, at = null, kind = "race") {
+  const from = leagueDayStart(seriesRulesFrom(series, kind));
+  if (from == null || at == null) return true;
+  const t = at instanceof Date ? at.getTime() : /^\d+$/.test(String(at)) ? Number(at) : Date.parse(at);
+  return !Number.isFinite(t) || t >= from;
+}
+
+const tunedRule = (key, series = null, at = null) => tunedRules(series, at).find((r) => r.key === key);
+const tunedPoints = (key, series = null, at = null) => tunedRule(key, series, at)?.points ?? 0;
+const ruleOn = (key, series = null, at = null) => tunedRule(key, series, at)?.active !== false;
 
 export function tunedShop() {
   const o = overrides().shop || {};
@@ -809,9 +845,11 @@ export async function payRace(prisma, raceId) {
       `SELECT r."driverId" AS "driverId", r."penaltySeconds" AS "penaltySeconds",
               r."gamePenalties" AS "gamePenalties",
               ra."id" AS "raceId", ra."track" AS "track", ra."date" AS "date",
-              rate."rate" AS "rate"
+              se."slug" AS "series", rate."rate" AS "rate"
          FROM "RaceResult" r
          JOIN "Race" ra ON ra."id" = r."raceId"
+         LEFT JOIN "Season" s ON s."id" = ra."seasonId"
+         LEFT JOIN "Series" se ON se."id" = s."seriesId"
          LEFT JOIN "TokenRaceRate" rate ON rate."raceId" = ra."id" AND rate."driverId" = r."driverId"
         WHERE r."raceId" = ? AND ra."isCompleted" = 1 AND r."status" = 'FINISHED'
           ${from == null ? "" : `AND ra."date" >= ?`}`,
@@ -826,10 +864,10 @@ export async function payRace(prisma, raceId) {
     if (!discordId) continue; // never signed in: nothing to pay it into yet
     await ensureTokenAccount(prisma, discordId);
     const rate = Number(r.rate) || 1;
-    if (ruleOn("race_finish")) {
+    if (ruleOn("race_finish", r.series, r.date)) {
       const wrote = await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("race_finish"), rate),
+        delta: withMultiplier(tunedPoints("race_finish", r.series, r.date), rate),
         rule: "race_finish",
         title: "Finished a race",
         detail: r.track || null,
@@ -840,10 +878,10 @@ export async function payRace(prisma, raceId) {
     }
     // Usually still open on the night: the bonus waits for the stewards and is
     // picked up by syncEarned on the Tuesday, at the rate stamped above.
-    if (ruleOn("clean_race") && raceWasClean(r) && stewardingClosed(r.date)) {
+    if (ruleOn("clean_race", r.series, r.date) && raceWasClean(r) && stewardingClosed(r.date)) {
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("clean_race"), rate),
+        delta: withMultiplier(tunedPoints("clean_race", r.series, r.date), rate),
         rule: "clean_race",
         title: "Clean race, no penalties",
         detail: r.track || null,
@@ -1214,10 +1252,10 @@ export async function syncEarned(prisma, discordId) {
   for (const r of await racesFinished(prisma, discordId)) {
     // The two are switched separately: the league can keep the clean-race bonus
     // while paying nothing for a plain finish.
-    if (ruleOn("race_finish"))
+    if (ruleOn("race_finish", r.series, r.date))
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("race_finish"), rateOf(r)),
+        delta: withMultiplier(tunedPoints("race_finish", r.series, r.date), rateOf(r)),
         rule: "race_finish",
         title: "Finished a race",
         detail: r.track || null,
@@ -1227,10 +1265,10 @@ export async function syncEarned(prisma, discordId) {
     // The bonus for a round nobody was penalised in, once the stewards are done
     // with it. Before that it is not decided, and a token paid out early cannot
     // be taken back on the Monday without it looking like a mistake.
-    if (ruleOn("clean_race") && raceWasClean(r) && stewardingClosed(r.date)) {
+    if (ruleOn("clean_race", r.series, r.date) && raceWasClean(r) && stewardingClosed(r.date)) {
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("clean_race"), rateOf(r)),
+        delta: withMultiplier(tunedPoints("clean_race", r.series, r.date), rateOf(r)),
         rule: "clean_race",
         title: "Clean race, no penalties",
         detail: r.track || null,
@@ -1323,16 +1361,64 @@ export async function botConnected(prisma) {
 
 // The rules as the page should show them today: the activity line reads
 // differently once the bot is actually feeding numbers.
+//
+// Once any series pays differently, the racing and training rules carry a
+// price per series (`bySeries`, every public series with a running season,
+// in the league's order), so the page can put them side by side as columns
+// rather than promising the Sunday grid the Friday price. `points` is the
+// series' own number, `now` what it pays today: the two differ while a start
+// day is still ahead, and the page says "from 27 Sep".
 export async function rulesForDisplay(prisma) {
   const connected = await botConnected(prisma);
-  return tunedRules().map((r) =>
-    r.key === "activity" && connected
-      ? {
-          ...r,
-          hint: `Multiplies what racing earns, up to ${MULTIPLIER.total}x. Counted on Discord from one briefing to the next, starting again after every briefing.`,
-        }
-      : r
+  const series = await priceListSeries(prisma);
+  const now = Date.now();
+  const league = tunedRules();
+  const differs = series.some((se) =>
+    tunedRules(se.slug).some((own, i) => SERIES_RULE_KEYS.includes(own.key) && !sameRule(own, league[i]))
   );
+  return league.map((r) => {
+    const out =
+      r.key === "activity" && connected
+        ? {
+            ...r,
+            hint: `Multiplies what racing earns, up to ${MULTIPLIER.total}x. Counted on Discord from one briefing to the next, starting again after every briefing.`,
+          }
+        : { ...r };
+    if (differs && SERIES_RULE_KEYS.includes(r.key)) {
+      out.bySeries = series.map((se) => {
+        const own = tunedRule(r.key, se.slug);
+        const today = tunedRule(r.key, se.slug, now);
+        return {
+          series: se.slug,
+          name: se.name,
+          points: own.points,
+          laps: own.laps ?? null,
+          active: own.active !== false,
+          now: { points: today.points, laps: today.laps ?? null, active: today.active !== false },
+          from: seriesRulesFrom(se.slug, r.laps == null ? "race" : "practice"),
+        };
+      });
+    }
+    return out;
+  });
+}
+
+const sameRule = (a, b) => a.points === b.points && a.laps === b.laps && a.active === b.active;
+
+// The series a member can race in right now, for the price list's columns:
+// public (or the primary one) and with a season running. A hidden series
+// stays out, since the page would otherwise give its name away.
+async function priceListSeries(prisma) {
+  if (!Object.keys(overrides().seriesRules || {}).length) return [];
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT DISTINCT se."slug" AS "slug", se."name" AS "name", se."order" AS "order"
+         FROM "Series" se JOIN "Season" s ON s."seriesId" = se."id"
+        WHERE s."isActive" = 1 AND (COALESCE(se."isPublic", 1) <> 0 OR se."isActive" = 1)
+        ORDER BY se."order" ASC`
+    )
+    .catch(() => []);
+  return rows.map((r) => ({ slug: String(r.slug), name: String(r.name || r.slug) }));
 }
 
 // ---------------------------------------------------------------------------

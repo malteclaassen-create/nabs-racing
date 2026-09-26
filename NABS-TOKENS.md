@@ -49,6 +49,21 @@ quiet. The "who is ahead" board on the members' page is a different question and
 still looks back 30 days. That needs the Discord bot, see 5. Without it
 everybody is on 1.0x, which is fine.
 
+**Per series.** Under "Rules and prices" -> "Per series" every series can pay
+racing and training differently from the rest of the league: finishing, the
+clean-race bonus and the two training milestones (points and lap counts). The
+"Half points" button fills in half of the league's numbers in one go (the
+Sunday league: 25 for a finish, 10 for a clean race, 5 and 10 for the training
+laps), "Same as league" clears it again. The two date fields under the buttons say
+when the series' numbers start, one for the races and one for the training
+weeks: a round raced before the race day still pays the league's numbers, and
+so does a training week whose round is before the training day. So on a
+Saturday you can halve Sunday's race at once (races from Sunday) and leave the
+training week already driven for it alone (training from Monday, i.e. from the
+next round on). Empty means straight away. A new series appears there the moment
+it is created. The members' page shows the series' own price next to the
+league's, and the race recap pays and shows the series' number.
+
 Every number on that page is editable. Empty field = the default. Numbers raised
 pay out backwards (a race already driven gets the difference), numbers lowered
 leave what was paid.

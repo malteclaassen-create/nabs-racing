@@ -15,7 +15,8 @@
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import { ensureTuning, overrides, cleanTuning, saveTuning, resetTuning } from "../lib/tokenTuning.js";
-import { EARN_RULES as RULE_DEFAULTS, MULTIPLIER, REFERRAL_RACE_LIMIT } from "../lib/tokenRules.js";
+import { EARN_RULES as RULE_DEFAULTS, MULTIPLIER, REFERRAL_RACE_LIMIT, SERIES_RULE_KEYS } from "../lib/tokenRules.js";
+import { dbListSeries } from "../lib/series.js";
 import { CARD_COLLECTIONS } from "../lib/cardShop.js";
 import multer from "multer";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -356,6 +357,15 @@ adminRouter.get("/", async (req, res, next) => {
         // The race servers, for the "which of these do training laps count
         // on" switches. Nothing said about one means it counts.
         servers: LIVE_SERVERS.map((s) => ({ key: s.key, name: s.name })),
+        // Every series, for "Per series": the ones a series can pay
+        // differently, and the series themselves, a new one included the
+        // moment it is created.
+        seriesRules: SERIES_RULE_KEYS,
+        series: (await dbListSeries(prisma, { includePrivate: true })).map((s) => ({
+          slug: s.slug,
+          name: s.name,
+          isPublic: s.isPublic !== false,
+        })),
       },
       cards: CARD_COLLECTIONS.map((c) => ({ ...c, cost: overrides().cards?.[c.key]?.cost ?? c.cost })),
       // The studio's per-type prices: the catalogue's own number per slot
@@ -447,6 +457,8 @@ adminRouter.put("/tuning", async (req, res, next) => {
       cards: CARD_COLLECTIONS.map((c) => c.key),
       studio: [...new Set(STUDIO_SLOTS)],
       servers: LIVE_SERVERS.map((s) => s.key),
+      series: (await dbListSeries(prisma, { includePrivate: true })).map((s) => s.slug),
+      seriesRules: SERIES_RULE_KEYS,
     });
     if (out.error) return res.status(400).json({ error: out.error });
     // The start day is stamped by the earning switch, not typed into this form.
