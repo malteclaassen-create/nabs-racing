@@ -386,6 +386,58 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   for (const t of reached) memo.add(`${discordId}:${from}:${t.key}`);
 }
 
+// ---- Surviving a restart ------------------------------------------------------
+//
+// The relay counts the difference in the server's lap counter, and after a
+// deploy it has nothing to take the difference from: the first sighting was
+// only a starting point, so every lap since the last snapshot before the
+// restart was lost. Three deploys in one afternoon cost somebody ten laps.
+// So the count is kept here too, and a relay that comes back to the same
+// session carries on from it.
+
+// Same session: same key, and started at the same moment give or take (the
+// start is worked out from the elapsed clock, which wanders a little). A
+// session restarted in place keeps its key but not its start.
+const SAME_START_MS = 10 * 60 * 1000;
+
+// How many laps were driven while the relay was away, or 0 if the saved count
+// is from another session (or there is none).
+export function lapsSinceMark(mark, { session, startedAt, numLaps }) {
+  if (!mark || !session || String(mark.session) !== String(session)) return 0;
+  if (!(Number(startedAt) > 0) || Math.abs(Number(mark.startedAt) - Number(startedAt)) > SAME_START_MS) return 0;
+  const missed = Number(numLaps) - Number(mark.numLaps);
+  return missed > 0 ? missed : 0;
+}
+
+export async function readLapMark(prisma, server, steamId) {
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT "session","startedAt","numLaps" FROM "TokenLapMark" WHERE "server" = ? AND "steamId" = ?`,
+      String(server || ""),
+      String(steamId || "")
+    )
+    .catch(() => []);
+  return rows[0] || null;
+}
+
+export async function writeLapMark(prisma, { server, steamId, session, startedAt, numLaps }) {
+  if (!STEAM_RE.test(String(steamId || "")) || !session) return;
+  await prisma
+    .$executeRawUnsafe(
+      `INSERT INTO "TokenLapMark" ("server","steamId","session","startedAt","numLaps","updatedAt")
+       VALUES (?,?,?,?,?,CURRENT_TIMESTAMP)
+       ON CONFLICT("server","steamId") DO UPDATE SET
+         "session" = excluded."session", "startedAt" = excluded."startedAt",
+         "numLaps" = excluded."numLaps", "updatedAt" = CURRENT_TIMESTAMP`,
+      String(server || ""),
+      String(steamId),
+      String(session).slice(0, 200),
+      Math.round(Number(startedAt) || 0),
+      Math.round(Number(numLaps) || 0)
+    )
+    .catch(() => {});
+}
+
 // What this process has already paid, for the week it is in. One week at a
 // time: when the round changes the old set goes, so this cannot grow.
 const paidByPeriod = new Map();

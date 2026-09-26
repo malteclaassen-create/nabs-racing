@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { notePracticeLap, practiceWritesSettled, practiceProgress, settleThisWeek, currentPeriod, __clearCaches } from "./practiceTokens.js";
+import { notePracticeLap, practiceWritesSettled, practiceProgress, settleThisWeek, currentPeriod, __clearCaches, lapsSinceMark, readLapMark, writeLapMark } from "./practiceTokens.js";
 import { saveTuning } from "./tokenTuning.js";
 
 // A prisma stand-in with the three tables this touches: the lap tally, the
@@ -453,5 +453,43 @@ describe("training laps", () => {
     await drive(prisma, 20);
     const [key] = [...prisma.ledger.keys()];
     expect(key).toMatch(/^practice:practice_20:nabs:week:\d{4}-\d{2}-\d{2}:nabs2$/);
+  });
+});
+
+describe("lap count across a restart", () => {
+  const mark = { session: "rs_tor_poznanl|laser|Practice|0", startedAt: 1_000_000_000, numLaps: 44 };
+
+  it("counts the laps driven while the relay was away", () => {
+    expect(lapsSinceMark(mark, { ...mark, startedAt: mark.startedAt + 3000, numLaps: 54 })).toBe(10);
+  });
+
+  it("counts nothing for another session or a restart in place", () => {
+    expect(lapsSinceMark(mark, { ...mark, session: "other|x|Practice|0", numLaps: 54 })).toBe(0);
+    expect(lapsSinceMark(mark, { ...mark, startedAt: mark.startedAt + 60 * 60 * 1000, numLaps: 54 })).toBe(0);
+  });
+
+  it("counts nothing without a saved count, or when the count went back", () => {
+    expect(lapsSinceMark(null, { ...mark, numLaps: 54 })).toBe(0);
+    expect(lapsSinceMark(mark, { ...mark, numLaps: 40 })).toBe(0);
+  });
+
+  it("keeps one saved count per server and driver", async () => {
+    const rows = new Map();
+    const prisma = {
+      $executeRawUnsafe: async (_sql, server, steamId, session, startedAt, numLaps) => {
+        rows.set(`${server}|${steamId}`, { session, startedAt, numLaps });
+        return 1;
+      },
+      $queryRawUnsafe: async (_sql, server, steamId) => {
+        const r = rows.get(`${server}|${steamId}`);
+        return r ? [r] : [];
+      },
+    };
+    await writeLapMark(prisma, { server: "nabs2", steamId: "76561100000000001", ...mark });
+    await writeLapMark(prisma, { server: "nabs2", steamId: "76561100000000001", ...mark, numLaps: 50 });
+    expect((await readLapMark(prisma, "nabs2", "76561100000000001")).numLaps).toBe(50);
+    expect(await readLapMark(prisma, "nabs1", "76561100000000001")).toBe(null);
+    // A broken database is never the relay's problem.
+    await writeLapMark({ $executeRawUnsafe: () => Promise.reject(new Error("x")) }, { server: "nabs2", steamId: "76561100000000001", ...mark });
   });
 });

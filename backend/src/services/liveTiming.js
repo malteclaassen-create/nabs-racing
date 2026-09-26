@@ -34,7 +34,7 @@ import * as pitRecorder from "./pitRecorder.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
-import { notePracticeLap as noteTrainingLap } from "../lib/practiceTokens.js";
+import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
 import { resolveSeason } from "./seasonService.js";
@@ -750,33 +750,61 @@ function createRelay(server) {
     // and those are not this minute's. After that it is the difference, so a
     // gap in the feed costs nothing. A count that went BACKWARDS is the
     // session having started again, which is a new baseline and not a lap.
+    //
+    // Except after a restart of this process: the count from before it is in
+    // the database (TokenLapMark), and if it is the same session the laps
+    // driven while the relay was down are counted after all.
     const nowLaps = Number(car?.NumLaps ?? 0) || 0;
     const seenLaps = tokenLapsByGuid.get(guid);
-    if (seenLaps == null || nowLaps < seenLaps) {
+    const mark = {
+      server: server.key,
+      steamId: guid,
+      session: practiceKeyOf(si),
+      startedAt: Date.now() - (Number(si?.ElapsedMilliseconds) || 0),
+      numLaps: nowLaps,
+    };
+    const hand = (laps) => {
+      if (looksLikeSafetyCar(ci?.CarSkin, ci?.CarModel)) return;
+      // Which series this lap counts for is NOT decided here. A server with no
+      // series assigned to it is the normal state of the second one, and a lap
+      // on it is still a lap; lib/practiceTokens.js works it out from the
+      // assignment, the track and the driver.
+      noteTrainingLap(prisma, {
+        serverKey: server.key,
+        scopes: boardScopes(server.key),
+        steamId: guid,
+        car: ci?.CarModel || "",
+        trackKey: trackKeyOf(si?.Track || "", si?.TrackConfig || ""),
+        at: sec,
+        // Capped, because one wrong number out of the upstream must not be
+        // able to pay somebody a season's worth of training in a single tick.
+        laps: Math.min(50, Math.max(1, laps)),
+      });
+    };
+    if (seenLaps == null) {
       tokenLapsByGuid.set(guid, nowLaps);
       tokenLapAtByGuid.set(guid, sec);
+      readLapMark(prisma, server.key, guid)
+        .then((saved) => {
+          const missed = lapsSinceMark(saved, mark);
+          if (missed > 0) hand(missed);
+          return writeLapMark(prisma, mark);
+        })
+        .catch(() => {});
+      return;
+    }
+    if (nowLaps < seenLaps) {
+      tokenLapsByGuid.set(guid, nowLaps);
+      tokenLapAtByGuid.set(guid, sec);
+      writeLapMark(prisma, mark).catch(() => {});
       return;
     }
     if (sec <= (tokenLapAtByGuid.get(guid) || 0)) return;
-    // Capped, because one wrong number out of the upstream must not be able
-    // to pay somebody a season's worth of training in a single tick.
-    const laps = Math.min(50, Math.max(1, nowLaps - seenLaps));
+    const laps = nowLaps - seenLaps;
     tokenLapsByGuid.set(guid, nowLaps);
     tokenLapAtByGuid.set(guid, sec);
-    if (looksLikeSafetyCar(ci?.CarSkin, ci?.CarModel)) return;
-    // Which series this lap counts for is NOT decided here. A server with no
-    // series assigned to it is the normal state of the second one, and a lap
-    // on it is still a lap; lib/practiceTokens.js works it out from the
-    // assignment, the track and the driver.
-    noteTrainingLap(prisma, {
-      serverKey: server.key,
-      scopes: boardScopes(server.key),
-      steamId: guid,
-      car: ci?.CarModel || "",
-      trackKey: trackKeyOf(si?.Track || "", si?.TrackConfig || ""),
-      at: sec,
-      laps,
-    });
+    writeLapMark(prisma, mark).catch(() => {});
+    hand(laps);
   }
 
   // The best lap of every driver in the session on file, in the shape a lap is

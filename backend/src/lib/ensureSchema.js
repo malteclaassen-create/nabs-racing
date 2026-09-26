@@ -793,6 +793,18 @@ export async function ensureAppSchema(prisma) {
     `CREATE INDEX IF NOT EXISTS "TokenPractice_period_idx" ON "TokenPractice"("series","period")`
   );
 
+  // The live relay's last lap count per driver and server, so a restart picks
+  // up where it left off instead of starting from zero (practiceTokens.js).
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenLapMark" (
+    "server" TEXT NOT NULL,
+    "steamId" TEXT NOT NULL,
+    "session" TEXT NOT NULL,
+    "startedAt" INTEGER NOT NULL DEFAULT 0,
+    "numLaps" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("server", "steamId")
+  )`);
+
   // Profile studio: what each member has put on their profile page.
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "ProfileStyle" (
     "discordId" TEXT NOT NULL PRIMARY KEY,
