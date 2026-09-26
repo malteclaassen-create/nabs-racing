@@ -582,6 +582,9 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
                   {se.active ? `+${fmt(se.points)}` : "none"}
                 </span>
                 {se.active && se.laps != null && se.laps !== r.laps && <> at {se.laps} laps</>}
+                {se.from && new Date(`${se.from}T23:59:59`) > new Date() && (
+                  <> from {new Date(`${se.from}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</>
+                )}
               </div>
             ))}
           </div>

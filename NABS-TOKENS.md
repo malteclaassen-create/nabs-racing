@@ -54,7 +54,12 @@ racing and training differently from the rest of the league: finishing, the
 clean-race bonus and the two training milestones (points and lap counts). The
 "Half points" button fills in half of the league's numbers in one go (the
 Sunday league: 25 for a finish, 10 for a clean race, 5 and 10 for the training
-laps), "Same as league" clears it again. A new series appears there the moment
+laps), "Same as league" clears it again. The date field under the buttons is
+the day the series' numbers start: a round raced before that day, and the
+training week leading up to it, still pay the league's numbers. So a change on
+a Saturday with the date set to the Monday leaves Sunday's round and its
+training week as they were, and the next round pays the new numbers. Empty
+means straight away. A new series appears there the moment
 it is created. The members' page shows the series' own price next to the
 league's, and the race recap pays and shows the series' number.
 

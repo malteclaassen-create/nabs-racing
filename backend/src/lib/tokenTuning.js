@@ -117,6 +117,20 @@ export function cleanTuning(body, allowed) {
     if (Object.keys(all).length) out.seriesRules = all;
   }
 
+  // The day a series' own numbers start: { "gt-sunday": "2026-09-28" }. A
+  // round before it, and the training week leading up to it, still pays the
+  // league's numbers. Empty = from the start.
+  if (body?.seriesFrom && typeof body.seriesFrom === "object") {
+    const m = {};
+    for (const slug of allowed.series || []) {
+      const d = String(body.seriesFrom[slug] || "").trim();
+      if (!d) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return bad(`${slug} from: YYYY-MM-DD`);
+      m[slug] = d;
+    }
+    if (Object.keys(m).length) out.seriesFrom = m;
+  }
+
   // The day the tokens started counting: races before it pay nothing.
   if (body?.startDay !== undefined) {
     const d = String(body.startDay || "").trim();

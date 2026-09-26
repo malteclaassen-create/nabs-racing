@@ -635,8 +635,20 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                 const clear = () =>
                   setT((prev) => {
                     const next = JSON.parse(JSON.stringify(prev || {}));
-                    if (next.seriesRules) delete next.seriesRules[se.slug];
-                    if (next.seriesRules && !Object.keys(next.seriesRules).length) delete next.seriesRules;
+                    for (const k of ["seriesRules", "seriesFrom"]) {
+                      if (next[k]) delete next[k][se.slug];
+                      if (next[k] && !Object.keys(next[k]).length) delete next[k];
+                    }
+                    return next;
+                  });
+                const from = t?.seriesFrom?.[se.slug] || "";
+                const setFrom = (v) =>
+                  setT((prev) => {
+                    const next = JSON.parse(JSON.stringify(prev || {}));
+                    next.seriesFrom ||= {};
+                    if (v) next.seriesFrom[se.slug] = v;
+                    else delete next.seriesFrom[se.slug];
+                    if (!Object.keys(next.seriesFrom).length) delete next.seriesFrom;
                     return next;
                   });
                 return (
@@ -660,6 +672,18 @@ function TuningPanel({ d, busy, onSave, onReset }) {
                         )}
                       </div>
                     </div>
+                    {/* The day these numbers start. A round before it, and
+                        the training week leading up to it, keep the league's
+                        numbers, so a change made mid-week leaves the round
+                        that is about to be raced alone. */}
+                    {own && (
+                      <label className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-light">
+                        <span className="min-w-0">
+                          Starts with the rounds from this day on, and their training week. Empty = straight away.
+                        </span>
+                        <input type="date" className="input !w-auto font-mono" value={from} onChange={(e) => setFrom(e.target.value)} />
+                      </label>
+                    )}
                     <ul className="mt-2 divide-y divide-border">
                       {defaults.seriesRules.map((key) => {
                         const r = defRule(key);

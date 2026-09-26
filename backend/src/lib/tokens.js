@@ -347,9 +347,15 @@ export const SHOP_BY_KEY = new Map(SHOP_ITEMS.map((i) => [i.key, i]));
 // say. Field by field again, so a series that only changed the points still
 // follows the league's switch and lap counts for everything else, and a series
 // nobody has touched pays exactly the league's numbers.
-export function tunedRules(series = null) {
+//
+// A series' numbers can start on a day (seriesFrom): a round raced before it
+// still pays the league's numbers, and so does the training week leading up
+// to it, so a change made on a Saturday leaves the Sunday round and its week
+// alone. `at` is the round's date; without one (a price list) the series'
+// numbers are shown.
+export function tunedRules(series = null, at = null) {
   const o = overrides().rules || {};
-  const s = (series && overrides().seriesRules?.[String(series)]) || {};
+  const s = (series && seriesRulesApply(series, at) && overrides().seriesRules?.[String(series)]) || {};
   return EARN_RULES.map((r) => {
     const own = SERIES_RULE_KEYS.includes(r.key) ? s[r.key] || {} : {};
     return {
@@ -361,9 +367,23 @@ export function tunedRules(series = null) {
     };
   });
 }
-const tunedRule = (key, series = null) => tunedRules(series).find((r) => r.key === key);
-const tunedPoints = (key, series = null) => tunedRule(key, series)?.points ?? 0;
-const ruleOn = (key, series = null) => tunedRule(key, series)?.active !== false;
+
+// The day a series' own numbers start, "YYYY-MM-DD", or null for "always".
+export const seriesRulesFrom = (series) => overrides().seriesFrom?.[String(series || "")] || null;
+
+// Does a round on `at` get its series' own numbers? Race dates come back from
+// the database as a Date, epoch milliseconds or a string, depending on the
+// query, so all three are read.
+export function seriesRulesApply(series, at = null) {
+  const from = leagueDayStart(seriesRulesFrom(series));
+  if (from == null || at == null) return true;
+  const t = at instanceof Date ? at.getTime() : /^\d+$/.test(String(at)) ? Number(at) : Date.parse(at);
+  return !Number.isFinite(t) || t >= from;
+}
+
+const tunedRule = (key, series = null, at = null) => tunedRules(series, at).find((r) => r.key === key);
+const tunedPoints = (key, series = null, at = null) => tunedRule(key, series, at)?.points ?? 0;
+const ruleOn = (key, series = null, at = null) => tunedRule(key, series, at)?.active !== false;
 
 export function tunedShop() {
   const o = overrides().shop || {};
@@ -839,10 +859,10 @@ export async function payRace(prisma, raceId) {
     if (!discordId) continue; // never signed in: nothing to pay it into yet
     await ensureTokenAccount(prisma, discordId);
     const rate = Number(r.rate) || 1;
-    if (ruleOn("race_finish", r.series)) {
+    if (ruleOn("race_finish", r.series, r.date)) {
       const wrote = await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("race_finish", r.series), rate),
+        delta: withMultiplier(tunedPoints("race_finish", r.series, r.date), rate),
         rule: "race_finish",
         title: "Finished a race",
         detail: r.track || null,
@@ -853,10 +873,10 @@ export async function payRace(prisma, raceId) {
     }
     // Usually still open on the night: the bonus waits for the stewards and is
     // picked up by syncEarned on the Tuesday, at the rate stamped above.
-    if (ruleOn("clean_race", r.series) && raceWasClean(r) && stewardingClosed(r.date)) {
+    if (ruleOn("clean_race", r.series, r.date) && raceWasClean(r) && stewardingClosed(r.date)) {
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("clean_race", r.series), rate),
+        delta: withMultiplier(tunedPoints("clean_race", r.series, r.date), rate),
         rule: "clean_race",
         title: "Clean race, no penalties",
         detail: r.track || null,
@@ -1227,10 +1247,10 @@ export async function syncEarned(prisma, discordId) {
   for (const r of await racesFinished(prisma, discordId)) {
     // The two are switched separately: the league can keep the clean-race bonus
     // while paying nothing for a plain finish.
-    if (ruleOn("race_finish", r.series))
+    if (ruleOn("race_finish", r.series, r.date))
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("race_finish", r.series), rateOf(r)),
+        delta: withMultiplier(tunedPoints("race_finish", r.series, r.date), rateOf(r)),
         rule: "race_finish",
         title: "Finished a race",
         detail: r.track || null,
@@ -1240,10 +1260,10 @@ export async function syncEarned(prisma, discordId) {
     // The bonus for a round nobody was penalised in, once the stewards are done
     // with it. Before that it is not decided, and a token paid out early cannot
     // be taken back on the Monday without it looking like a mistake.
-    if (ruleOn("clean_race", r.series) && raceWasClean(r) && stewardingClosed(r.date)) {
+    if (ruleOn("clean_race", r.series, r.date) && raceWasClean(r) && stewardingClosed(r.date)) {
       await dbAward(prisma, {
         discordId,
-        delta: withMultiplier(tunedPoints("clean_race", r.series), rateOf(r)),
+        delta: withMultiplier(tunedPoints("clean_race", r.series, r.date), rateOf(r)),
         rule: "clean_race",
         title: "Clean race, no penalties",
         detail: r.track || null,
@@ -1356,7 +1376,16 @@ export async function rulesForDisplay(prisma) {
       const own = tunedRule(r.key, se.slug);
       if (!own) continue;
       if (own.points === r.points && own.laps === r.laps && own.active === r.active) continue;
-      bySeries.push({ series: se.slug, name: se.name, points: own.points, laps: own.laps ?? null, active: own.active !== false });
+      bySeries.push({
+        series: se.slug,
+        name: se.name,
+        points: own.points,
+        laps: own.laps ?? null,
+        active: own.active !== false,
+        // The day it starts, so the page can say "from 28 September" while
+        // the old price still holds.
+        from: seriesRulesFrom(se.slug),
+      });
     }
     if (bySeries.length) out.bySeries = bySeries;
     return out;

@@ -50,9 +50,12 @@ const STEAM_RE = /^\d{10,20}$/;
 
 // The milestones, as the league has them set: lowest first. A series can pay
 // its own (the Sunday league at half the Friday price, say), so the week's
-// series is passed wherever there is one.
-export function practiceTiers(series = null) {
-  return tunedRules(series)
+// series is passed wherever there is one, and the week's round with it: a
+// series' numbers can start on a day, and a training week belongs to the
+// round it leads up to (a week whose round is before that day pays the
+// league's numbers). A week with no round ahead counts as now.
+export function practiceTiers(series = null, period = null) {
+  return tunedRules(series, period ? period.date ?? Date.now() : null)
     .filter((r) => Number(r.laps) > 0)
     .map((r) => ({
       key: r.key,
@@ -354,7 +357,7 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // Everything below is the payout, and most laps are nowhere near a
   // milestone. The row's own count is one cheap read that decides whether the
   // rest of it is worth doing at all.
-  const tiers = practiceTiers(slug).filter((t) => t.active && t.points > 0);
+  const tiers = practiceTiers(slug, period).filter((t) => t.active && t.points > 0);
   if (!tiers.length) return;
   // THIS server's laps in this week, which is what the milestones are counted
   // against. The other server's week is its own.
@@ -465,7 +468,7 @@ async function payingNow(prisma) {
 // Safe to call as often as you like: the ledger drops the second attempt.
 export async function payPractice(prisma, discordId, { series, period, server = "", laps = 0 } = {}) {
   if (!discordId || !period || !laps) return 0;
-  const tiers = practiceTiers(series).filter((t) => t.active && t.points > 0);
+  const tiers = practiceTiers(series, period).filter((t) => t.active && t.points > 0);
   if (!tiers.length) return 0;
   if (!(await payingNow(prisma))) return 0;
 
@@ -568,7 +571,7 @@ export async function practiceProgress(prisma, discordId, { prefer = null } = {}
     }
     // The milestones of the series this server's week belongs to. A series
     // that pays nothing for training has no bar to fill.
-    const tiers = practiceTiers(on.slug).filter((t) => t.active && t.points > 0);
+    const tiers = practiceTiers(on.slug, on.period).filter((t) => t.active && t.points > 0);
     if (!tiers.length) continue;
     const target = tiers[tiers.length - 1].laps;
     const laps = mine[0]?.laps || 0;

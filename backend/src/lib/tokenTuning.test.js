@@ -86,6 +86,13 @@ describe("cleanTuning", () => {
     expect(cleanTuning({ seriesRules: { f1: { clean_race: { active: "" } } } }, ALLOWED).tuning).toEqual({});
   });
 
+  it("takes the day a series' numbers start, for series it knows only", () => {
+    expect(cleanTuning({ seriesFrom: { "gt-sunday": "2026-09-28", ghost: "2026-01-01", f1: "" } }, ALLOWED).tuning).toEqual({
+      seriesFrom: { "gt-sunday": "2026-09-28" },
+    });
+    expect(cleanTuning({ seriesFrom: { f1: "next week" } }, ALLOWED).error).toMatch(/YYYY-MM-DD/);
+  });
+
   it("wants the multiplier's upper number above the lower one", () => {
     expect(cleanTuning({ multiplier: { chat: { min: 500, max: 50 } } }, ALLOWED).error).toMatch(/above/);
     expect(cleanTuning({ multiplier: { voice: { min: 60, max: 600 } } }, ALLOWED).tuning).toEqual({

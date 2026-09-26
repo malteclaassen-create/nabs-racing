@@ -147,6 +147,25 @@ describe("paying a round when it is imported", () => {
     }
   });
 
+  it("pays a round before the series' start day at the league's numbers", async () => {
+    const noSave = { setting: { async upsert() {}, async deleteMany() {} } };
+    const seriesRules = { "gt-sunday": { race_finish: { points: 25 }, clean_race: { points: 10 } } };
+    try {
+      // the round is on 9 January 2026
+      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": "2026-01-10" } });
+      const before = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 1 }, series: "gt-sunday" });
+      await payRace(before, "round5");
+      expect(before.ledger.get("race:round5:ayrton_s8").delta).toBe(50);
+      expect(before.ledger.get("clean:round5:ayrton_s8").delta).toBe(20);
+      await saveTuning(noSave, { seriesRules, seriesFrom: { "gt-sunday": "2026-01-09" } });
+      const onTheDay = db({ results: [finisher("ayrton_s8")], discord: { ayrton_s8: "111" }, rates: { ayrton_s8: 1 }, series: "gt-sunday" });
+      await payRace(onTheDay, "round5");
+      expect(onTheDay.ledger.get("race:round5:ayrton_s8").delta).toBe(25);
+    } finally {
+      await resetTuning(noSave);
+    }
+  });
+
   it("skips a driver who has never signed in, and pays the rest", async () => {
     const d = db({
       results: [finisher("ayrton_s8"), finisher("ghost_s8")],
