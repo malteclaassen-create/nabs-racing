@@ -550,15 +550,30 @@ function Price({ now, later = null, from = null }) {
         {now.active ? `+${fmt(now.points)}` : "none"}
       </div>
       {later && (
-        <div className="whitespace-nowrap text-[10px] leading-tight text-light">
+        <div className="mt-0.5 text-[10px] leading-tight text-light">
           {later.active ? `+${fmt(later.points)}` : "none"} from {shortDay(from)}
         </div>
       )}
       {now.active && now.laps != null && now.lapsDiffer && (
-        <div className="whitespace-nowrap text-[10px] leading-tight text-light">at {now.laps} laps</div>
+        <div className="text-[10px] leading-tight text-light">at {now.laps} laps</div>
       )}
     </div>
   );
+}
+
+// A rule's price in each series: what it pays today, and what it turns into
+// on a day still ahead.
+function seriesPrices(rule) {
+  return (rule.bySeries || []).map((c) => ({
+    series: c.series,
+    name: c.name,
+    from: c.from,
+    now: { ...c.now, lapsDiffer: c.now.laps !== rule.laps },
+    later:
+      stillAhead(c.from) && (c.points !== c.now.points || c.active !== c.now.active)
+        ? { points: c.points, active: c.active }
+        : null,
+  }));
 }
 
 function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
@@ -608,12 +623,12 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
                   {g.key === "racing" && activity?.active && <span className="ml-1.5 font-mono text-ok">{x}</span>}
                 </div>
                 {cols && (
-                  <div className="flex shrink-0 gap-2 sm:gap-3">
+                  <div className="hidden shrink-0 gap-3 sm:flex">
                     {cols.map((c) => (
                       <div
                         key={c.series}
                         title={c.name}
-                        className="line-clamp-2 w-16 text-right text-[9px] font-semibold uppercase leading-tight tracking-wider text-light sm:w-20 sm:text-[10px]"
+                        className="w-24 break-words text-right text-[10px] font-semibold uppercase leading-tight tracking-wider text-light"
                       >
                         {c.name}
                       </div>
@@ -623,36 +638,58 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
               </div>
               <ul className="divide-y divide-border">
                 {g.rows.map((r) => (
-                  <li key={r.key} className="flex items-start justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <div className={`text-sm font-semibold ${r.active ? "text-dark" : "text-light"}`}>{r.label}</div>
-                      <div className="text-xs leading-relaxed text-light">
-                        {r.unit && <span className="font-semibold text-medium">{r.unit[0].toUpperCase() + r.unit.slice(1)}. </span>}
-                        {r.hint}
+                  <li key={r.key} className="py-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className={`text-sm font-semibold ${r.active ? "text-dark" : "text-light"}`}>{r.label}</div>
+                        <div className="text-xs leading-relaxed text-light">
+                          {r.unit && <span className="font-semibold text-medium">{r.unit[0].toUpperCase() + r.unit.slice(1)}. </span>}
+                          {r.hint}
+                        </div>
                       </div>
-                    </div>
-                    {cols ? (
-                      <div className="flex shrink-0 gap-2 sm:gap-3">
-                        {(r.bySeries || []).map((c) => {
-                          const later =
-                            stillAhead(c.from) && (c.points !== c.now.points || c.active !== c.now.active)
-                              ? { points: c.points, active: c.active }
-                              : null;
-                          return (
-                            <div key={c.series} className="w-16 sm:w-20">
-                              <Price
-                                now={{ ...c.now, lapsDiffer: c.now.laps !== r.laps }}
-                                later={later}
-                                from={c.from}
-                              />
+                      {cols ? (
+                        // Wide enough for columns: one per series, under the
+                        // names in the group's heading.
+                        <div className="hidden shrink-0 gap-3 sm:flex">
+                          {seriesPrices(r).map((c) => (
+                            <div key={c.series} className="w-24">
+                              <Price now={c.now} later={c.later} from={c.from} />
                             </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="shrink-0">
-                        <Price now={{ points: r.points, active: r.active }} />
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="shrink-0">
+                          <Price now={{ points: r.points, active: r.active }} />
+                        </div>
+                      )}
+                    </div>
+                    {/* A phone has no room for columns: each series gets a
+                        line of its own under the rule, name on the left and
+                        price on the right, so nothing is cut off. */}
+                    {cols && (
+                      <ul className="mt-2 space-y-1 sm:hidden">
+                        {seriesPrices(r).map((c) => (
+                          <li
+                            key={c.series}
+                            className="flex items-baseline justify-between gap-3 rounded-md bg-surface2 px-2.5 py-1.5"
+                          >
+                            <span className="min-w-0 text-xs text-light">{c.name}</span>
+                            <span className="shrink-0 text-right">
+                              <span className={`font-mono text-sm font-bold tabular-nums ${c.now.active ? "text-brand" : "text-light"}`}>
+                                {c.now.active ? `+${fmt(c.now.points)}` : "none"}
+                              </span>
+                              {c.now.active && c.now.lapsDiffer && c.now.laps != null && (
+                                <span className="ml-1 text-[11px] text-light">at {c.now.laps} laps</span>
+                              )}
+                              {c.later && (
+                                <span className="block text-[11px] leading-tight text-light">
+                                  {c.later.active ? `+${fmt(c.later.points)}` : "none"} from {shortDay(c.from)}
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </li>
                 ))}
