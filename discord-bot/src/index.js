@@ -2,8 +2,8 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, missingSettings } from "./config.js";
 import { leagueDay } from "./day.js";
 import { inviteUsed, snapshotFrom } from "./invites.js";
-import { sendActivity, sendNames, sendReferrals, ping } from "./site.js";
-import { bumpMessages, bumpMinutes, forgetOldDays, load, markSent, pendingActivity, save } from "./store.js";
+import { fetchDay, sendActivity, sendNames, sendReferrals, ping } from "./site.js";
+import { bootSnapshot, bumpMessages, bumpMinutes, forgetOldDays, load, markSent, pendingActivity, save, seedFromSite } from "./store.js";
 
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
 
@@ -15,6 +15,30 @@ if (missing.length) {
 
 const state = load();
 let dirty = false;
+
+// the day as this process found it, taken before anything is counted. the
+// site's totals for today are laid under it once (seedToday), so a restart
+// that lost state.json does not start the day again from zero.
+const bootDay = leagueDay();
+const boot = bootSnapshot(state, bootDay);
+let seeded = false;
+
+async function seedToday() {
+  if (seeded) return;
+  if (leagueDay() !== bootDay) {
+    seeded = true; // a new day started from zero on its own, nothing to catch up
+    return;
+  }
+  try {
+    const rows = await fetchDay(bootDay);
+    const changed = seedFromSite(state, bootDay, rows, boot);
+    seeded = true;
+    if (changed) dirty = true;
+    log(`<- today's totals from the website (${rows.length} members, ${changed} caught up)`);
+  } catch (e) {
+    log(`! could not read today's totals (${e.message}), will try again`);
+  }
+}
 
 // no MessageContent intent on purpose, counting doesn't need it
 const client = new Client({
@@ -194,6 +218,8 @@ async function flush() {
   if (sending) return;
   sending = true;
   try {
+    // until the site's totals are in, what we would send is too low
+    await seedToday();
     const entries = pendingActivity(state);
     if (entries.length) {
       const done = await sendActivity(entries);

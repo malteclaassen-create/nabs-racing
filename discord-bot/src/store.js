@@ -71,3 +71,32 @@ export function forgetOldDays(state, now = Date.now()) {
   }
   return dropped;
 }
+
+// what this process started the day with, per user, before counting anything
+export function bootSnapshot(state, day = leagueDay()) {
+  const out = {};
+  for (const [id, row] of Object.entries(state.days[day] || {})) {
+    out[id] = { messages: row.messages || 0, minutes: row.minutes || 0 };
+  }
+  return out;
+}
+
+// carry on from what the site already has for the day. without this a restart
+// that lost state.json starts the day at zero, the site keeps the higher number
+// it already stored, and everything counted until the bot catches up is lost.
+// the base is the higher of what we started with and what the site has, and
+// whatever was counted since the start goes on top of it.
+export function seedFromSite(state, day, siteRows, boot = {}) {
+  let changed = 0;
+  for (const s of siteRows || []) {
+    if (!s?.discordId) continue;
+    const row = rowFor(state, day, s.discordId);
+    const at = boot[s.discordId] || { messages: 0, minutes: 0 };
+    const messages = Math.max(at.messages, Number(s.messages) || 0) + (row.messages - at.messages);
+    const minutes = Math.max(at.minutes, Number(s.minutes) || 0) + (row.minutes - at.minutes);
+    if (messages !== row.messages || minutes !== row.minutes) changed++;
+    row.messages = messages;
+    row.minutes = minutes;
+  }
+  return changed;
+}

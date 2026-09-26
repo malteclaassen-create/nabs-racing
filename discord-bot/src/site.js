@@ -37,5 +37,8 @@ export const sendActivity = (entries) => sendChunked("/api/tokens/activity", ent
 export const sendReferrals = (entries) => sendChunked("/api/tokens/referral", entries);
 export const sendNames = (entries) => sendChunked("/api/tokens/names", entries);
 
+// what the site already has for one day, so a restart carries on from there
+export const fetchDay = async (day) => (await post("/api/tokens/activity/day", { day })).entries || [];
+
 // empty list = writes nothing, still checks the key
 export const ping = () => post("/api/tokens/activity", { entries: [] });

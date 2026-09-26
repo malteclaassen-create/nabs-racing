@@ -71,7 +71,7 @@ New service in the same project, same GitHub repo, then in Settings:
 
 Variables: `DISCORD_TOKEN`, `GUILD_ID`, `SITE_URL` (the website's public address, no trailing slash), `TOKEN_KEY`.
 
-Railway wipes the disk on every deploy, so the bot loses `state.json` and starts the day again from zero. The website takes the higher of the two figures for a day, so nothing is lost either way, but if you want it to survive properly: add a Volume mounted at `/data` and set `STATE_PATH=/data/state.json`.
+Railway wipes the disk on every deploy, so without a volume the bot loses `state.json`. On startup it reads today's totals back from the website and carries on from there, so a restart no longer loses what was counted. Still worth keeping its notes properly: add a Volume mounted at `/data` and set `STATE_PATH=/data/state.json` (the volume alone is not enough, the bot writes wherever `STATE_PATH` says). And set the service's watch paths to `discord-bot/**`, so a website deploy does not restart the bot.
 
 The bot can run before the points are switched on for members. Good idea actually: start it a month early and the multipliers are already filled when the feature goes live. It can't count backwards.
 
