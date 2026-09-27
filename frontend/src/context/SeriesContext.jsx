@@ -39,6 +39,18 @@ export function slugFromPath(pathname) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+// the sticky pick survives a reload of this tab (refresh on /profile used to
+// drop back to the primary series). sessionStorage on purpose: a fresh visit
+// to the site still starts on the primary one.
+const STICKY_KEY = "nabs_series";
+function readStickySeries() {
+  try {
+    return sessionStorage.getItem(STICKY_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 export function SeriesProvider({ children }) {
   const location = useLocation();
   const urlSlug = slugFromPath(location.pathname);
@@ -53,12 +65,23 @@ export function SeriesProvider({ children }) {
   // brought the new one — two renders for one navigation, with the old series'
   // colour and logo painted in between. Everything keyed on the slug (the
   // season subtree, the page) was built once for each.
-  const [sticky, setSticky] = useState(urlSlug);
-  const slug = urlSlug || sticky;
+  const [sticky, setSticky] = useState(() => urlSlug || readStickySeries());
+  // a remembered series that's gone (deleted, made private) is just dropped,
+  // only a bad URL counts as unknown and gets redirected
+  const stickyGone = loaded && !!sticky && !urlSlug && !seriesList.some((s) => s.slug === sticky);
+  const slug = urlSlug || (stickyGone ? null : sticky);
 
   useEffect(() => {
     if (urlSlug && urlSlug !== sticky) setSticky(urlSlug);
   }, [urlSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    try {
+      if (sticky) sessionStorage.setItem(STICKY_KEY, sticky);
+    } catch {
+      /* private mode, nothing to keep */
+    }
+  }, [sticky]);
 
   useEffect(() => {
     const load = () =>
