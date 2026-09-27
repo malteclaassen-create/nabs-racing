@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareWithRoom, setBriefingRoom, getBriefingRoom } from "./briefingRoom.js";
+import { compareWithRoom, setBriefingRoom, getBriefingRoom, inBriefingWindow } from "./briefingRoom.js";
 
 const d = (name, discordUserId) => ({ driverId: name, name, discordUserId });
 
@@ -28,10 +28,26 @@ describe("setBriefingRoom", () => {
       1000
     );
     expect(getBriefingRoom()).toEqual({
+      watching: true,
       channelId: "5",
       channelName: "Briefing",
       members: [{ discordId: "123456789", name: "A" }],
       at: 1000,
     });
+  });
+});
+
+describe("inBriefingWindow", () => {
+  const start = "2026-10-02T17:30:00.000Z";
+  const at = (min) => Date.parse(start) + min * 60_000;
+  it("opens 5 min before the start and closes an hour after", () => {
+    expect(inBriefingWindow([start], at(-6))).toBe(false);
+    expect(inBriefingWindow([start], at(-5))).toBe(true);
+    expect(inBriefingWindow([start], at(60))).toBe(true);
+    expect(inBriefingWindow([start], at(61))).toBe(false);
+  });
+  it("any of the races will do, junk is ignored", () => {
+    expect(inBriefingWindow([null, "nope", start], at(0))).toBe(true);
+    expect(inBriefingWindow([], at(0))).toBe(false);
   });
 });

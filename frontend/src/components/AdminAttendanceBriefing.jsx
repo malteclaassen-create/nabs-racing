@@ -108,6 +108,9 @@ export default function AdminAttendanceBriefing() {
 
   const race = races.find((r) => r.id === raceId) || null;
   const room = data?.room || null;
+  const watching = !!room?.watching;
+  const win = data?.window || { beforeMin: 5, afterMin: 60 };
+  const opensAt = race?.kickoff ? new Date(race.kickoff).getTime() - win.beforeMin * 60_000 : null;
   const channel = room?.channelName ? `#${room.channelName}` : "the briefing channel";
   const pingable = race ? race.missing.filter((d) => d.discordUserId) : [];
 
@@ -119,7 +122,10 @@ export default function AdminAttendanceBriefing() {
       </p>
       <HelpNote label="Where this comes from">
         <ul className="space-y-1">
-          <li>The Discord bot reports who sits in the briefing channel, only while somebody is in it.</li>
+          <li>
+            The Discord bot looks at the briefing channel from {win.beforeMin} minutes before a race&rsquo;s start until{" "}
+            {win.afterMin} minutes after, and not at all the rest of the week.
+          </li>
           <li>&ldquo;In for the race&rdquo; means they pressed Accept on the attendance page (or you did it for them).</li>
           <li>One briefing channel for every series, so the list covers the next races of all of them.</li>
           <li>Somebody with no Discord login linked can&rsquo;t be matched, they show up under &ldquo;Can&rsquo;t check&rdquo;.</li>
@@ -129,21 +135,27 @@ export default function AdminAttendanceBriefing() {
       {error && <ErrorBox message={error} onRetry={load} />}
       {!data && !error && <p className="text-sm text-light">Loading…</p>}
 
-      {data && (
+      {data && !watching && (
         <p className="text-sm text-medium">
-          {!room ? (
-            "The bot hasn't reported the briefing channel yet. It will as soon as somebody joins it."
-          ) : room.count === 0 ? (
+          The bot isn&rsquo;t looking at the briefing channel right now. It starts {win.beforeMin} minutes before a
+          race&rsquo;s start
+          {opensAt && opensAt > now ? <>, for this race at <span className="font-semibold text-dark">{when(new Date(opensAt).toISOString())}</span></> : null}
+          .
+        </p>
+      )}
+      {data && watching && (
+        <p className="text-sm text-medium">
+          {room.count === 0 ? (
             <>Nobody in {channel} right now.</>
           ) : (
             <>
               <span className="font-semibold text-dark">{room.count}</span> in {channel}
             </>
           )}
-          {room && <span className="text-light"> · bot update {ago(room.at, now)}</span>}
+          <span className="text-light"> · bot update {ago(room.at, now)}</span>
         </p>
       )}
-      {room?.stale && room.count > 0 && (
+      {watching && room.stale && room.count > 0 && (
         <Notice kind="warn">
           The bot has gone quiet for a few minutes. It may be offline, so this list could be out of date.
         </Notice>
@@ -182,12 +194,21 @@ export default function AdminAttendanceBriefing() {
       {race && (
         <>
           <p className="text-sm text-medium">
-            <span className="font-semibold text-dark">
-              {race.present.length} of {race.onGrid}
-            </span>{" "}
-            on the grid are in the briefing.
+            {watching ? (
+              <>
+                <span className="font-semibold text-dark">
+                  {race.present.length} of {race.onGrid}
+                </span>{" "}
+                on the grid are in the briefing.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-dark">{race.onGrid}</span> in for this race.
+              </>
+            )}
           </p>
 
+          {watching && (
           <div className="border-t border-border pt-4">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
@@ -232,6 +253,7 @@ export default function AdminAttendanceBriefing() {
               </ul>
             )}
           </div>
+          )}
 
           {race.unlinked.length > 0 && (
             <div className="border-t border-border pt-4">
@@ -249,7 +271,7 @@ export default function AdminAttendanceBriefing() {
             </div>
           )}
 
-          {(race.present.length > 0 || race.extras.length > 0) && (
+          {watching && (race.present.length > 0 || race.extras.length > 0) && (
             <div className="space-y-1 border-t border-border pt-4 text-sm">
               {race.present.length > 0 && (
                 <p className="text-light">

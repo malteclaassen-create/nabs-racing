@@ -1,6 +1,7 @@
 // Who is in the briefing, and who from the grid isn't.
-// One briefing channel for every series. The bot reports it only while people
-// are in it (joins, leaves, once a minute), and once more when it empties.
+// One briefing channel for every series. The bot only looks at it from 5 min
+// before a race's start till an hour after (BRIEFING_WINDOW), and reports on
+// joins/leaves and once a minute while people are in it.
 // Memory only, a restart just waits for the next report.
 import { getPersonGroups, discordIdsForDrivers } from "./persons.js";
 import { collapseByPerson, byNewestAnswer } from "./onePerPerson.js";
@@ -21,6 +22,7 @@ export function setBriefingRoom(body, now = Date.now()) {
     .map((m) => ({ discordId: String(m?.discordId || ""), name: m?.name ? String(m.name).slice(0, 80) : null }))
     .filter((m) => /^\d{5,25}$/.test(m.discordId));
   room = {
+    watching: body?.watching !== false,
     channelId: body?.channelId ? String(body.channelId) : null,
     channelName: body?.channelName ? String(body.channelName).slice(0, 100) : null,
     members,
@@ -33,6 +35,16 @@ export const getBriefingRoom = () => room;
 
 // bot repeats itself every minute while the room is busy, 3 min quiet = bot down
 export const STALE_MS = 3 * 60 * 1000;
+
+// when the bot looks at the briefing channel, around each race's start
+export const BRIEFING_WINDOW = { beforeMin: 5, afterMin: 60 };
+
+export function inBriefingWindow(kickoffs, now = Date.now(), win = BRIEFING_WINDOW) {
+  return (kickoffs || []).some((k) => {
+    const t = new Date(k).getTime();
+    return Number.isFinite(t) && now >= t - win.beforeMin * 60_000 && now <= t + win.afterMin * 60_000;
+  });
+}
 
 // two per series covers a Friday + Sunday weekend
 const PER_SERIES = 2;
@@ -57,8 +69,8 @@ export function compareWithRoom(grid, roomMembers) {
   return { missing, present, unlinked, extras };
 }
 
-// The next races of every series the public can see, with who accepted.
-export async function briefingRaces(prisma) {
+// The next races of every series the public can see.
+async function nextRaces(prisma) {
   const series = await dbListSeries(prisma);
   const priv = await getPrivateSeasonIds(prisma);
   const seasonToSeries = new Map();
@@ -93,8 +105,18 @@ export async function briefingRaces(prisma) {
     list.sort((a, b) => (a.kickoff?.getTime() ?? Infinity) - (b.kickoff?.getTime() ?? Infinity));
     races.push(...list.slice(0, PER_SERIES));
   }
+  return races.sort((a, b) => (a.kickoff?.getTime() ?? Infinity) - (b.kickoff?.getTime() ?? Infinity));
+}
+
+// start times only, for the bot
+export async function briefingKickoffs(prisma) {
+  return (await nextRaces(prisma)).filter((r) => r.kickoff).map((r) => r.kickoff.toISOString());
+}
+
+// the next races with who accepted
+export async function briefingRaces(prisma) {
+  const races = await nextRaces(prisma);
   if (!races.length) return [];
-  races.sort((a, b) => (a.kickoff?.getTime() ?? Infinity) - (b.kickoff?.getTime() ?? Infinity));
 
   const [rsvps, people] = await Promise.all([
     prisma.raceRsvp.findMany({

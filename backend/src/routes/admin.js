@@ -132,7 +132,7 @@ import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
-import { briefingRaces, compareWithRoom, getBriefingRoom, STALE_MS } from "../lib/briefingRoom.js";
+import { briefingRaces, compareWithRoom, getBriefingRoom, inBriefingWindow, BRIEFING_WINDOW, STALE_MS } from "../lib/briefingRoom.js";
 import {
   validateAnnouncement, resolveAudience, discordText, findDuplicate, readAnnouncementLog, appendAnnouncementLog,
   ANNOUNCE_AUDIENCES, ANNOUNCE_LIMITS,
@@ -6542,9 +6542,14 @@ router.get("/briefing", async (req, res, next) => {
   try {
     const room = getBriefingRoom();
     const races = await briefingRaces(prisma);
-    const members = room?.members || [];
+    // the bot says whether it's watching, the window has to agree too, in
+    // case the bot went away mid-briefing without saying so
+    const watching = !!room?.watching && inBriefingWindow(races.map((r) => r.kickoff));
+    const members = watching ? room.members : [];
     res.json({
+      window: BRIEFING_WINDOW,
       room: room && {
+        watching,
         channelName: room.channelName,
         at: new Date(room.at).toISOString(),
         stale: Date.now() - room.at > STALE_MS,

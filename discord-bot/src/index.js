@@ -2,7 +2,8 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, missingSettings } from "./config.js";
 import { leagueDay } from "./day.js";
 import { inviteUsed, snapshotFrom } from "./invites.js";
-import { fetchDay, sendActivity, sendBriefing, sendNames, sendReferrals, ping } from "./site.js";
+import { briefingOpen } from "./briefing.js";
+import { fetchBriefingTimes, fetchDay, sendActivity, sendBriefing, sendNames, sendReferrals, ping } from "./site.js";
 import { bootSnapshot, bumpMessages, bumpMinutes, forgetOldDays, load, markSent, pendingActivity, save, seedFromSite } from "./store.js";
 
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
@@ -88,8 +89,9 @@ function countVoiceMinute() {
 }
 
 // The briefing channel, for the admin's "who's missing" list on the site. Only
-// that one channel, and only reported while somebody is in it: on every join or
-// leave, then once a minute. Empty is sent once, then nothing till next time.
+// looked at around a race's start (the site says when: 5 min before till an
+// hour after). Inside that: reported on every join/leave and once a minute
+// while people are in it. Outside it the channel is left alone.
 function briefingChannel(guild) {
   if (config.briefingChannel) return guild.channels.cache.get(config.briefingChannel) || null;
   return guild.channels.cache.find((c) => c.isVoiceBased?.() && /briefing/i.test(c.name)) || null;
@@ -106,23 +108,37 @@ function briefingMembers(guild, channelId) {
   return out;
 }
 
-// true at start so the first look is always sent, the site may still hold
-// a room from before the restart
-let briefingBusy = true;
-let briefingSent = -1;
+let briefingTimes = null;
+async function refreshBriefingTimes() {
+  try {
+    briefingTimes = await fetchBriefingTimes();
+  } catch (e) {
+    log(`! could not read the race start times (${e.message}), will try again`);
+  }
+}
+
+let sentWatching = null; // null = nothing sent yet, the site may hold an old room
+let sentCount = 0;
 let briefingSoon = null;
 
 async function reportBriefing() {
   const guild = client.guilds.cache.get(config.guildId);
-  const channel = guild && briefingChannel(guild);
-  if (!channel) return;
-  const members = briefingMembers(guild, channel.id);
-  if (!members.length && !briefingBusy) return;
+  if (!guild) return;
+  const open = briefingOpen(briefingTimes);
+  const channel = open ? briefingChannel(guild) : null;
+  const members = channel ? briefingMembers(guild, channel.id) : [];
+  // outside the window: one "stopped watching" and then quiet. inside: once
+  // when it opens, then only while somebody is in there or just left
+  if (open === sentWatching && !members.length && !sentCount) return;
   try {
-    await sendBriefing({ channelId: channel.id, channelName: channel.name, members });
-    briefingBusy = members.length > 0;
-    if (members.length !== briefingSent) log(`-> briefing: ${members.length} in #${channel.name}`);
-    briefingSent = members.length;
+    await sendBriefing({ watching: open, channelId: channel?.id || null, channelName: channel?.name || null, members });
+    if (open !== sentWatching) {
+      if (open) log(channel ? `briefing: watching #${channel.name}` : "! briefing time, but no briefing channel found (set BRIEFING_CHANNEL)");
+      else if (sentWatching !== null) log("briefing: done");
+    }
+    if (open && channel && members.length !== sentCount) log(`-> briefing: ${members.length} in #${channel.name}`);
+    sentWatching = open;
+    sentCount = members.length;
   } catch (e) {
     log(`! could not send the briefing room (${e.message}), will try again`);
   }
@@ -130,6 +146,7 @@ async function reportBriefing() {
 
 client.on(Events.VoiceStateUpdate, (before, after) => {
   if (after.guild?.id !== config.guildId) return;
+  if (!briefingOpen(briefingTimes)) return;
   const channel = briefingChannel(after.guild);
   if (!channel || (before.channelId !== channel.id && after.channelId !== channel.id)) return;
   // a few people usually arrive at once, one report for all of them
@@ -332,6 +349,8 @@ async function startCounting(guild) {
 
   timers.push(setInterval(countVoiceMinute, 60 * 1000));
   timers.push(setInterval(reportBriefing, 60 * 1000));
+  // start times move now and then, half an hour is soon enough to notice
+  timers.push(setInterval(refreshBriefingTimes, 30 * 60 * 1000));
   timers.push(setInterval(flush, config.pushEveryMs));
   // People rename themselves, and somebody who joined while the bot was down
   // is not in any join we reported. Six hours is often enough for a label.
@@ -344,10 +363,8 @@ async function startCounting(guild) {
       }
     }, 6 * 3600 * 1000)
   );
-  const briefing = briefingChannel(guild);
-  if (briefing) log(`Briefing channel: #${briefing.name}`);
-  else log("no briefing channel yet, picked up by itself once one exists (or set BRIEFING_CHANNEL)");
   await flush();
+  await refreshBriefingTimes();
   await reportBriefing();
   await pushRoster();
 }
