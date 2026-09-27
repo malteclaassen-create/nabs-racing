@@ -16,3 +16,11 @@ describe("briefingOpen", () => {
     expect(briefingOpen({ kickoffs: [] }, at(0))).toBe(false);
   });
 });
+
+describe("Start now", () => {
+  it("opens it outside the race times till openUntil", () => {
+    const manual = { ...times, openUntil: new Date(at(-120)).toISOString() };
+    expect(briefingOpen(manual, at(-180))).toBe(true);
+    expect(briefingOpen(manual, at(-119))).toBe(false);
+  });
+});

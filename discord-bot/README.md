@@ -7,7 +7,7 @@ Small bot that sits on the league Discord and sends three things to the website:
 - what the people on the server are called, at startup and every six hours, so
   the NABS Tokens list in the admin has a name for somebody who was invited but
   has never opened the website
-- who sits in the briefing voice channel, but only from 5 min before a race's start till an hour after (the site tells it the start times, it asks every half hour). Inside that: on every join/leave and once a minute while people are in it. The admin's Attendance -> Briefing shows who is in for the race but not in there yet
+- who sits in the briefing voice channel, but only from 5 min before a race's start till an hour after (the site tells it the start times, it asks once a minute). An admin can also press "Start now" there, then it looks for the next hour. Inside that: on every join/leave and once a minute while people are in it. The admin's Attendance -> Briefing shows who is in for the race but not in there yet
 
 That's all it does. It doesn't read messages (doesn't even have the permission for it), doesn't post anything, doesn't touch roles. It just counts.
 

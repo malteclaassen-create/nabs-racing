@@ -27,7 +27,7 @@ import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwn
 import { practiceProgress } from "../lib/practiceTokens.js";
 import { LIVE_SERVERS } from "../lib/liveServers.js";
 import prisma from "../lib/prisma.js";
-import { setBriefingRoom, briefingKickoffs, BRIEFING_WINDOW } from "../lib/briefingRoom.js";
+import { setBriefingRoom, briefingKickoffs, readManualUntil, BRIEFING_WINDOW } from "../lib/briefingRoom.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
   SHOP_ITEMS,
@@ -366,13 +366,20 @@ router.post("/briefing", async (req, res, next) => {
 });
 
 // POST /api/tokens/briefing/times { key } -> when the bot should look at the
-// briefing channel: the next start times and the window around them.
+// briefing channel: the next start times and the window around them, plus a
+// manual start from the admin. The bot asks once a minute.
 router.post("/briefing/times", async (req, res, next) => {
   try {
     if (!(await activityKeyValid(prisma, req.body?.key))) {
       return res.status(401).json({ error: "Bad key" });
     }
-    res.json({ ...BRIEFING_WINDOW, kickoffs: await briefingKickoffs(prisma) });
+    const manual = await readManualUntil(prisma);
+    res.json({
+      ...BRIEFING_WINDOW,
+      kickoffs: await briefingKickoffs(prisma),
+      // an admin pressed "Start now": watch till then as well
+      openUntil: manual ? new Date(manual).toISOString() : null,
+    });
   } catch (e) {
     next(e);
   }

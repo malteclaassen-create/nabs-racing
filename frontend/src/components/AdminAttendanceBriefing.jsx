@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Play, Square } from "lucide-react";
 import { api } from "../api/client.js";
 import { CardHead, ErrorBox, HelpNote, Notice, TeamDot } from "./ui.jsx";
 import { copyText } from "../utils/copyText.js";
@@ -8,7 +8,10 @@ import { copyText } from "../utils/copyText.js";
 // in the briefing channel yet. The bot tells the site who sits in there, one
 // channel for every series, so this looks across all series.
 
-const REFRESH_MS = 10_000;
+// fast while the bot is watching (somebody joins, the list should move right
+// away), slow otherwise, just enough to notice the briefing starting
+const LIVE_MS = 3_000;
+const IDLE_MS = 15_000;
 
 const when = (iso) =>
   iso
@@ -16,6 +19,8 @@ const when = (iso) =>
     : "date TBA";
 
 const raceLabel = (r) => `${r.series.name} · ${r.type === "TRAINING" ? "Training" : `R${r.number}`} ${r.track} · ${when(r.kickoff)}`;
+
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 function ago(iso, now) {
   const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
@@ -67,6 +72,7 @@ export default function AdminAttendanceBriefing() {
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(null);
   const [fallbackText, setFallbackText] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -79,15 +85,16 @@ export default function AdminAttendanceBriefing() {
       .catch((e) => setError(e.message));
   }, []);
 
+  useEffect(load, [load]);
   // keeps itself fresh while the tab is open, pauses in a background tab
+  const live = !!data?.room?.watching || !!data?.manualUntil;
   useEffect(() => {
-    load();
     const t = setInterval(() => {
       if (document.visibilityState === "visible") load();
       else setNow(Date.now());
-    }, REFRESH_MS);
+    }, live ? LIVE_MS : IDLE_MS);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, live]);
 
   const races = useMemo(() => data?.races || [], [data]);
   useEffect(() => {
@@ -100,6 +107,19 @@ export default function AdminAttendanceBriefing() {
     return () => clearTimeout(t);
   }, [copied]);
 
+  async function setWatch(on) {
+    setBusy(true);
+    try {
+      const r = await api.adminBriefingWatch(on);
+      setData((d) => d && { ...d, manualUntil: r.manualUntil });
+      load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copy(text, what) {
     setFallbackText(null);
     if (await copyText(text)) setCopied(`Copied ${what} to the clipboard.`);
@@ -111,6 +131,10 @@ export default function AdminAttendanceBriefing() {
   const watching = !!room?.watching;
   const win = data?.window || { beforeMin: 5, afterMin: 60 };
   const opensAt = race?.kickoff ? new Date(race.kickoff).getTime() - win.beforeMin * 60_000 : null;
+  const manualUntil = data?.manualUntil || null;
+  const manualMin = data?.manualMin || 60;
+  // pressed a while ago and the bot still hasn't said anything
+  const botSilent = manualUntil && !watching && new Date(manualUntil).getTime() - manualMin * 60_000 < now - 2 * 60_000;
   const channel = room?.channelName ? `#${room.channelName}` : "the briefing channel";
   const pingable = race ? race.missing.filter((d) => d.discordUserId) : [];
 
@@ -126,6 +150,10 @@ export default function AdminAttendanceBriefing() {
             The Discord bot looks at the briefing channel from {win.beforeMin} minutes before a race&rsquo;s start until{" "}
             {win.afterMin} minutes after, and not at all the rest of the week.
           </li>
+          <li>
+            <strong className="font-semibold text-medium">Start now</strong> makes it look straight away, for the next{" "}
+            {manualMin} minutes. The bot notices within a minute.
+          </li>
           <li>&ldquo;In for the race&rdquo; means they pressed Accept on the attendance page (or you did it for them).</li>
           <li>One briefing channel for every series, so the list covers the next races of all of them.</li>
           <li>Somebody with no Discord login linked can&rsquo;t be matched, they show up under &ldquo;Can&rsquo;t check&rdquo;.</li>
@@ -135,25 +163,59 @@ export default function AdminAttendanceBriefing() {
       {error && <ErrorBox message={error} onRetry={load} />}
       {!data && !error && <p className="text-sm text-light">Loading…</p>}
 
-      {data && !watching && (
-        <p className="text-sm text-medium">
-          The bot isn&rsquo;t looking at the briefing channel right now. It starts {win.beforeMin} minutes before a
-          race&rsquo;s start
-          {opensAt && opensAt > now ? <>, for this race at <span className="font-semibold text-dark">{when(new Date(opensAt).toISOString())}</span></> : null}
-          .
-        </p>
-      )}
-      {data && watching && (
-        <p className="text-sm text-medium">
-          {room.count === 0 ? (
-            <>Nobody in {channel} right now.</>
+      {data && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <p className="min-w-0 text-sm text-medium">
+            {watching ? (
+              <>
+                {room.count === 0 ? (
+                  <>Nobody in {channel} right now.</>
+                ) : (
+                  <>
+                    <span className="font-semibold text-dark">{room.count}</span> in {channel}
+                  </>
+                )}
+                <span className="text-light"> · bot update {ago(room.at, now)}</span>
+                {manualUntil && <span className="text-light"> · started by hand, runs till {clock(manualUntil)}</span>}
+              </>
+            ) : manualUntil ? (
+              <>Starting. The bot picks it up within a minute.</>
+            ) : (
+              <>
+                The bot isn&rsquo;t looking at the briefing channel right now. It starts {win.beforeMin} minutes before a
+                race&rsquo;s start
+                {opensAt && opensAt > now ? (
+                  <>
+                    , for this race at <span className="font-semibold text-dark">{when(new Date(opensAt).toISOString())}</span>
+                  </>
+                ) : null}
+                .
+              </>
+            )}
+          </p>
+          {manualUntil ? (
+            <button type="button" className="btn-secondary inline-flex items-center gap-1.5 py-1.5 text-xs" disabled={busy} onClick={() => setWatch(false)}>
+              <Square className="h-3.5 w-3.5" aria-hidden="true" />
+              Stop
+            </button>
           ) : (
-            <>
-              <span className="font-semibold text-dark">{room.count}</span> in {channel}
-            </>
+            !watching && (
+              <button
+                type="button"
+                className="btn-secondary inline-flex items-center gap-1.5 py-1.5 text-xs"
+                disabled={busy}
+                title={`The bot looks at the briefing channel for the next ${manualMin} minutes`}
+                onClick={() => setWatch(true)}
+              >
+                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                Start now
+              </button>
+            )
           )}
-          <span className="text-light"> · bot update {ago(room.at, now)}</span>
-        </p>
+        </div>
+      )}
+      {botSilent && (
+        <Notice kind="warn">The bot hasn&rsquo;t picked it up yet. It may be offline or on an older version.</Notice>
       )}
       {watching && room.stale && room.count > 0 && (
         <Notice kind="warn">

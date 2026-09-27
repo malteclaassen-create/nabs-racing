@@ -132,7 +132,10 @@ import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
-import { briefingRaces, compareWithRoom, getBriefingRoom, inBriefingWindow, BRIEFING_WINDOW, STALE_MS } from "../lib/briefingRoom.js";
+import {
+  cachedBriefingRaces, compareWithRoom, getBriefingRoom, inBriefingWindow, readManualUntil, setManualUntil,
+  BRIEFING_WINDOW, MANUAL_MIN, STALE_MS,
+} from "../lib/briefingRoom.js";
 import {
   validateAnnouncement, resolveAudience, discordText, findDuplicate, readAnnouncementLog, appendAnnouncementLog,
   ANNOUNCE_AUDIENCES, ANNOUNCE_LIMITS,
@@ -6541,13 +6544,16 @@ router.get("/attendance-missing", async (req, res, next) => {
 router.get("/briefing", async (req, res, next) => {
   try {
     const room = getBriefingRoom();
-    const races = await briefingRaces(prisma);
+    const [races, manual] = await Promise.all([cachedBriefingRaces(prisma), readManualUntil(prisma)]);
     // the bot says whether it's watching, the window has to agree too, in
     // case the bot went away mid-briefing without saying so
-    const watching = !!room?.watching && inBriefingWindow(races.map((r) => r.kickoff));
+    const open = !!manual || inBriefingWindow(races.map((r) => r.kickoff));
+    const watching = !!room?.watching && open;
     const members = watching ? room.members : [];
     res.json({
       window: BRIEFING_WINDOW,
+      manualUntil: manual ? new Date(manual).toISOString() : null,
+      manualMin: MANUAL_MIN,
       room: room && {
         watching,
         channelName: room.channelName,
@@ -6557,6 +6563,17 @@ router.get("/briefing", async (req, res, next) => {
       },
       races: races.map(({ grid, ...race }) => ({ ...race, onGrid: grid.length, ...compareWithRoom(grid, members) })),
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/briefing/watch { on } -> "Start now" / "Stop". On = the bot
+// watches the briefing channel for the next hour, whatever the start times say.
+router.post("/briefing/watch", async (req, res, next) => {
+  try {
+    const until = req.body?.on ? await setManualUntil(prisma, Date.now() + MANUAL_MIN * 60_000) : await setManualUntil(prisma, null);
+    res.json({ manualUntil: until ? new Date(until).toISOString() : null });
   } catch (e) {
     next(e);
   }

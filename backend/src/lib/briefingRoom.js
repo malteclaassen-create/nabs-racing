@@ -46,6 +46,28 @@ export function inBriefingWindow(kickoffs, now = Date.now(), win = BRIEFING_WIND
   });
 }
 
+// "Start now" in the admin: the bot watches till this time, whatever the
+// start times say. Kept in Settings so a site restart mid-briefing keeps it.
+const MANUAL_KEY = "briefing_manual_until";
+export const MANUAL_MIN = 60;
+
+export async function readManualUntil(prisma, now = Date.now()) {
+  const row = await prisma.setting.findUnique({ where: { key: MANUAL_KEY } }).catch(() => null);
+  const until = Number(row?.value);
+  return until > now ? until : null;
+}
+
+// null stops it
+export async function setManualUntil(prisma, until) {
+  if (!until) {
+    await prisma.setting.deleteMany({ where: { key: MANUAL_KEY } });
+    return null;
+  }
+  const value = String(until);
+  await prisma.setting.upsert({ where: { key: MANUAL_KEY }, create: { key: MANUAL_KEY, value }, update: { value } });
+  return until;
+}
+
 // two per series covers a Friday + Sunday weekend
 const PER_SERIES = 2;
 
@@ -165,4 +187,14 @@ export async function briefingRaces(prisma) {
           a.name.localeCompare(b.name)
       ),
   }));
+}
+
+// the admin page asks every few seconds during a briefing. the room changes
+// that fast, the grid doesn't, so the grid is reused for a little while
+let cache = null;
+export async function cachedBriefingRaces(prisma, maxAgeMs = 20_000, now = Date.now()) {
+  if (cache && now - cache.at < maxAgeMs) return cache.races;
+  const races = await briefingRaces(prisma);
+  cache = { at: now, races };
+  return races;
 }

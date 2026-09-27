@@ -90,7 +90,7 @@ function countVoiceMinute() {
 
 // The briefing channel, for the admin's "who's missing" list on the site. Only
 // looked at around a race's start (the site says when: 5 min before till an
-// hour after). Inside that: reported on every join/leave and once a minute
+// hour after), or after an admin pressed Start now. Inside that: reported on every join/leave and once a minute
 // while people are in it. Outside it the channel is left alone.
 function briefingChannel(guild) {
   if (config.briefingChannel) return guild.channels.cache.get(config.briefingChannel) || null;
@@ -109,11 +109,15 @@ function briefingMembers(guild, channelId) {
 }
 
 let briefingTimes = null;
+let timesFailing = false; // asked every minute, so say it once, not 60 times an hour
 async function refreshBriefingTimes() {
   try {
     briefingTimes = await fetchBriefingTimes();
+    if (timesFailing) log("race start times readable again");
+    timesFailing = false;
   } catch (e) {
-    log(`! could not read the race start times (${e.message}), will try again`);
+    if (!timesFailing) log(`! could not read the race start times (${e.message}), will keep trying`);
+    timesFailing = true;
   }
 }
 
@@ -149,9 +153,10 @@ client.on(Events.VoiceStateUpdate, (before, after) => {
   if (!briefingOpen(briefingTimes)) return;
   const channel = briefingChannel(after.guild);
   if (!channel || (before.channelId !== channel.id && after.channelId !== channel.id)) return;
-  // a few people usually arrive at once, one report for all of them
+  // a few people often arrive at once, one report for all of them. short,
+  // the admins are watching the list live
   clearTimeout(briefingSoon);
-  briefingSoon = setTimeout(reportBriefing, 2000);
+  briefingSoon = setTimeout(reportBriefing, 1000);
 });
 
 // true once this process has read the invites itself. the snapshot restored
@@ -348,9 +353,14 @@ async function startCounting(guild) {
   persist();
 
   timers.push(setInterval(countVoiceMinute, 60 * 1000));
-  timers.push(setInterval(reportBriefing, 60 * 1000));
-  // start times move now and then, half an hour is soon enough to notice
-  timers.push(setInterval(refreshBriefingTimes, 30 * 60 * 1000));
+  // once a minute: is it briefing time (or did an admin press Start now)?
+  // a tiny request, the channel itself is only looked at when it is
+  timers.push(
+    setInterval(async () => {
+      await refreshBriefingTimes();
+      await reportBriefing();
+    }, 60 * 1000)
+  );
   timers.push(setInterval(flush, config.pushEveryMs));
   // People rename themselves, and somebody who joined while the bot was down
   // is not in any join we reported. Six hours is often enough for a label.

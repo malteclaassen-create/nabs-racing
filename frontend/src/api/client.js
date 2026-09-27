@@ -1502,6 +1502,8 @@ export const api = {
     request(`/admin/attendance-missing?raceId=${encodeURIComponent(raceId)}`, { auth: true }),
   // Who's in for the next races but not in the briefing channel (all series).
   adminBriefing: () => request("/admin/briefing", { auth: true }),
+  // "Start now" (on) / "Stop": the bot watches the channel for the next hour.
+  adminBriefingWatch: (on) => request("/admin/briefing/watch", { method: "POST", body: { on }, auth: true }),
   // The season read down the other way: every driver against every round, so a
   // roster that has quietly stopped racing can be seen at all (season-scoped).
   attendanceActivity: () => request(`/admin/attendance-activity${seasonQ()}`, { auth: true }),
