@@ -346,7 +346,7 @@ async function startCounting(guild) {
   );
   const briefing = briefingChannel(guild);
   if (briefing) log(`Briefing channel: #${briefing.name}`);
-  else log("! no briefing channel found (set BRIEFING_CHANNEL), the admin's Briefing list stays empty");
+  else log("no briefing channel yet, picked up by itself once one exists (or set BRIEFING_CHANNEL)");
   await flush();
   await reportBriefing();
   await pushRoster();

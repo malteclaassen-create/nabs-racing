@@ -39,7 +39,7 @@ SITE_URL=        the website address
 TOKEN_KEY=       Admin -> NABS Tokens -> Discord bot
 ```
 
-Optional: `BRIEFING_CHANNEL=` the briefing voice channel's id. Left empty the bot takes the first voice channel with "briefing" in its name. On startup it logs which one it watches. The bot has to be able to see that channel (View Channel), otherwise it can't tell who's in it.
+Optional: `BRIEFING_CHANNEL=` the briefing voice channel's id. Left empty the bot takes the first voice channel with "briefing" in its name. On startup it logs which one it watches. The bot has to be able to see that channel (View Channel), otherwise it can't tell who's in it. If the channel is locked or hidden for the rest of the week, give the bot's role View Channel on it for good. If it's deleted and made again every week, leave BRIEFING_CHANNEL empty, the new one has a new id.
 
 **4. Run**
 
@@ -84,5 +84,5 @@ The bot can run before the points are switched on for members. Good idea actuall
 - `could not read the invites` -> no Manage Server permission, rest still works
 - `website not reachable` -> site down, it retries
 - `Bad key` -> copy the key again from the admin
-- `no briefing channel found` -> nothing has "briefing" in its name, set BRIEFING_CHANNEL to the channel id
+- `no briefing channel yet` -> nothing has "briefing" in its name right now. Fine if the channel only gets made on race night, the bot looks again on every voice change. If it has another name, set BRIEFING_CHANNEL
 - `inviter unknown` -> two people joined at the same time, or via the public link, or it's the bot's first look at the invites after a restart. Not credited to anyone, on purpose
