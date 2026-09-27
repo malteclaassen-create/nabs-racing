@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSeries } from "../context/SeriesContext.jsx";
 
 // NABS logo — uses the real logo images. Two versions swap by theme:
@@ -42,6 +42,40 @@ function remember(slug, url) {
   }
 }
 
+// The picture itself, kept as a data: URL next to its address. An uploaded
+// series logo lives under /api/uploads, which the service worker leaves to the
+// network, so a reload showed an empty corner until the file came back (some
+// browsers re-check it on every F5). From here it paints with the page.
+const IMAGE_KEY = (slug) => `nabs_logo_img_${slug || "@primary"}`;
+const MAX_BYTES = 200_000;
+
+function rememberedImage(slug) {
+  try {
+    const v = JSON.parse(localStorage.getItem(IMAGE_KEY(slug)) || "null");
+    return v?.url && v?.data ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rememberImage(slug, url) {
+  try {
+    if (!url) return localStorage.removeItem(IMAGE_KEY(slug));
+    if (rememberedImage(slug)?.url === url) return;
+    const blob = await (await fetch(url)).blob();
+    if (!blob.type.startsWith("image/") || blob.size > MAX_BYTES) return;
+    const data = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+    localStorage.setItem(IMAGE_KEY(slug), JSON.stringify({ url, data }));
+  } catch {
+    /* full storage or offline: the plain address still works */
+  }
+}
+
 export default function Logo({ size = 40, className = "" }) {
   const { current, slug, loaded } = useSeries();
   // What this series' mark SHOULD be, once the list is in. Until then, whatever
@@ -51,13 +85,19 @@ export default function Logo({ size = 40, className = "" }) {
   // decoded: pointing an <img> at a file it does not have yet empties it first,
   // which is the blank beat between two series' logos.
   const [shown, setShown] = useState(wanted);
+  const stored = useMemo(() => rememberedImage(slug), [slug]);
+  const src = stored && stored.url === shown ? stored.data : shown;
 
   useEffect(() => {
-    if (loaded) remember(slug, current?.logoDarkUrl || null);
+    if (!loaded) return;
+    remember(slug, current?.logoDarkUrl || null);
+    rememberImage(slug, current?.logoDarkUrl || null);
   }, [loaded, slug, current?.logoDarkUrl]);
 
   useEffect(() => {
     if (wanted === shown) return;
+    // already here as a picture, nothing to wait for
+    if (stored?.url === wanted) return setShown(wanted);
     let alive = true;
     const pre = new Image();
     pre.onload = () => alive && setShown(wanted);
@@ -80,7 +120,7 @@ export default function Logo({ size = 40, className = "" }) {
         className={`block dark:hidden ${className}`}
       />
       <img
-        src={shown}
+        src={src}
         width={size}
         height={size}
         alt="NABS Racing"
