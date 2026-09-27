@@ -48,16 +48,26 @@ function Row({ d }) {
       <span className="hidden truncate text-xs text-light sm:inline">{d.team}</span>
       {d.discordName && <span className="font-mono text-xs text-medium">@{d.discordName}</span>}
       {d.discordUserId && (
-        <a
-          href={`https://discord.com/users/${d.discordUserId}`}
-          target="_blank"
-          rel="noreferrer"
-          title={`Open ${d.name} in Discord to send a DM`}
-          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-semibold text-link transition hover:border-[var(--c-primary)]"
-        >
-          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-          DM
-        </a>
+        <span className="inline-flex items-center gap-2">
+          {/* opens the Discord app on their profile, "Message" is one click from there */}
+          <a
+            href={`discord://-/users/${d.discordUserId}`}
+            title={`Open ${d.name} in the Discord app to send a DM`}
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-semibold text-link transition hover:border-[var(--c-primary)]"
+          >
+            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            DM
+          </a>
+          <a
+            href={`https://discord.com/users/${d.discordUserId}`}
+            target="_blank"
+            rel="noreferrer"
+            title="No Discord app on this computer? The same in the browser"
+            className="text-xs text-light hover:text-link hover:underline"
+          >
+            web
+          </a>
+        </span>
       )}
     </li>
   );
