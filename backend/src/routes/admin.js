@@ -132,6 +132,7 @@ import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
+import { briefingRaces, compareWithRoom, getBriefingRoom, STALE_MS } from "../lib/briefingRoom.js";
 import {
   validateAnnouncement, resolveAudience, discordText, findDuplicate, readAnnouncementLog, appendAnnouncementLog,
   ANNOUNCE_AUDIENCES, ANNOUNCE_LIMITS,
@@ -6528,6 +6529,28 @@ router.get("/attendance-missing", async (req, res, next) => {
         // they stay alphabetical, which is how you look a name up in a list.
         reserve: silent.filter(isReserveRow).map(shape),
       },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/briefing -> who is in the briefing channel (the bot reports
+// it) against the grid of the next races of every series. One briefing room
+// for all series, so this isn't scoped to the admin's current series.
+router.get("/briefing", async (req, res, next) => {
+  try {
+    const room = getBriefingRoom();
+    const races = await briefingRaces(prisma);
+    const members = room?.members || [];
+    res.json({
+      room: room && {
+        channelName: room.channelName,
+        at: new Date(room.at).toISOString(),
+        stale: Date.now() - room.at > STALE_MS,
+        count: members.length,
+      },
+      races: races.map(({ grid, ...race }) => ({ ...race, onGrid: grid.length, ...compareWithRoom(grid, members) })),
     });
   } catch (e) {
     next(e);

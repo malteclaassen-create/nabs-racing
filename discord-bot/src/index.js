@@ -2,7 +2,7 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, missingSettings } from "./config.js";
 import { leagueDay } from "./day.js";
 import { inviteUsed, snapshotFrom } from "./invites.js";
-import { fetchDay, sendActivity, sendNames, sendReferrals, ping } from "./site.js";
+import { fetchDay, sendActivity, sendBriefing, sendNames, sendReferrals, ping } from "./site.js";
 import { bootSnapshot, bumpMessages, bumpMinutes, forgetOldDays, load, markSent, pendingActivity, save, seedFromSite } from "./store.js";
 
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
@@ -86,6 +86,56 @@ function countVoiceMinute() {
   }
   if (counted) dirty = true;
 }
+
+// The briefing channel, for the admin's "who's missing" list on the site. Only
+// that one channel, and only reported while somebody is in it: on every join or
+// leave, then once a minute. Empty is sent once, then nothing till next time.
+function briefingChannel(guild) {
+  if (config.briefingChannel) return guild.channels.cache.get(config.briefingChannel) || null;
+  return guild.channels.cache.find((c) => c.isVoiceBased?.() && /briefing/i.test(c.name)) || null;
+}
+
+function briefingMembers(guild, channelId) {
+  const out = [];
+  for (const vs of guild.voiceStates.cache.values()) {
+    if (vs.channelId !== channelId) continue;
+    const user = vs.member?.user || client.users.cache.get(vs.id);
+    if (user?.bot) continue;
+    out.push({ discordId: vs.id, name: memberName(vs.member) });
+  }
+  return out;
+}
+
+// true at start so the first look is always sent, the site may still hold
+// a room from before the restart
+let briefingBusy = true;
+let briefingSent = -1;
+let briefingSoon = null;
+
+async function reportBriefing() {
+  const guild = client.guilds.cache.get(config.guildId);
+  const channel = guild && briefingChannel(guild);
+  if (!channel) return;
+  const members = briefingMembers(guild, channel.id);
+  if (!members.length && !briefingBusy) return;
+  try {
+    await sendBriefing({ channelId: channel.id, channelName: channel.name, members });
+    briefingBusy = members.length > 0;
+    if (members.length !== briefingSent) log(`-> briefing: ${members.length} in #${channel.name}`);
+    briefingSent = members.length;
+  } catch (e) {
+    log(`! could not send the briefing room (${e.message}), will try again`);
+  }
+}
+
+client.on(Events.VoiceStateUpdate, (before, after) => {
+  if (after.guild?.id !== config.guildId) return;
+  const channel = briefingChannel(after.guild);
+  if (!channel || (before.channelId !== channel.id && after.channelId !== channel.id)) return;
+  // a few people usually arrive at once, one report for all of them
+  clearTimeout(briefingSoon);
+  briefingSoon = setTimeout(reportBriefing, 2000);
+});
 
 // true once this process has read the invites itself. the snapshot restored
 // from state.json is from the last run and everything moved since then would
@@ -262,6 +312,7 @@ function persist() {
 const timers = [];
 function shutdown(code = 0) {
   for (const t of timers.splice(0)) clearInterval(t);
+  clearTimeout(briefingSoon);
   client.destroy();
   process.exitCode = code;
 }
@@ -280,6 +331,7 @@ async function startCounting(guild) {
   persist();
 
   timers.push(setInterval(countVoiceMinute, 60 * 1000));
+  timers.push(setInterval(reportBriefing, 60 * 1000));
   timers.push(setInterval(flush, config.pushEveryMs));
   // People rename themselves, and somebody who joined while the bot was down
   // is not in any join we reported. Six hours is often enough for a label.
@@ -292,7 +344,11 @@ async function startCounting(guild) {
       }
     }, 6 * 3600 * 1000)
   );
+  const briefing = briefingChannel(guild);
+  if (briefing) log(`Briefing channel: #${briefing.name}`);
+  else log("! no briefing channel found (set BRIEFING_CHANNEL), the admin's Briefing list stays empty");
   await flush();
+  await reportBriefing();
   await pushRoster();
 }
 

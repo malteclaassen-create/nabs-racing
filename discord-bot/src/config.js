@@ -42,6 +42,9 @@ export const config = {
   // open. Same for sitting in a channel alone.
   countMuted: String(process.env.COUNT_MUTED ?? "false") === "true",
   countAlone: String(process.env.COUNT_ALONE ?? "false") === "true",
+  // the voice channel of the pre-race briefing. empty = the first voice channel
+  // with "briefing" in its name
+  briefingChannel: process.env.BRIEFING_CHANNEL || "",
   pushEveryMs: Math.max(1, Number(process.env.PUSH_EVERY_MINUTES) || 5) * 60 * 1000,
   // Where the bot keeps its notes between restarts. On a host with no disk of
   // its own (Railway and friends wipe the filesystem on every deploy) point

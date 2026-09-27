@@ -7,6 +7,7 @@ Small bot that sits on the league Discord and sends three things to the website:
 - what the people on the server are called, at startup and every six hours, so
   the NABS Tokens list in the admin has a name for somebody who was invited but
   has never opened the website
+- who sits in the briefing voice channel, only while somebody is in it (on every join/leave, then once a minute, and once more when it's empty). The admin's Attendance -> Briefing shows who is in for the race but not in there yet
 
 That's all it does. It doesn't read messages (doesn't even have the permission for it), doesn't post anything, doesn't touch roles. It just counts.
 
@@ -37,6 +38,8 @@ GUILD_ID=        right-click the server -> Copy Server ID (needs developer mode 
 SITE_URL=        the website address
 TOKEN_KEY=       Admin -> NABS Tokens -> Discord bot
 ```
+
+Optional: `BRIEFING_CHANNEL=` the briefing voice channel's id. Left empty the bot takes the first voice channel with "briefing" in its name. On startup it logs which one it watches. The bot has to be able to see that channel (View Channel), otherwise it can't tell who's in it.
 
 **4. Run**
 
@@ -81,4 +84,5 @@ The bot can run before the points are switched on for members. Good idea actuall
 - `could not read the invites` -> no Manage Server permission, rest still works
 - `website not reachable` -> site down, it retries
 - `Bad key` -> copy the key again from the admin
+- `no briefing channel found` -> nothing has "briefing" in its name, set BRIEFING_CHANNEL to the channel id
 - `inviter unknown` -> two people joined at the same time, or via the public link, or it's the bot's first look at the invites after a restart. Not credited to anyone, on purpose

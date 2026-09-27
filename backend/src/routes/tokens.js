@@ -27,6 +27,7 @@ import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwn
 import { practiceProgress } from "../lib/practiceTokens.js";
 import { LIVE_SERVERS } from "../lib/liveServers.js";
 import prisma from "../lib/prisma.js";
+import { setBriefingRoom } from "../lib/briefingRoom.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
 import {
   SHOP_ITEMS,
@@ -344,6 +345,21 @@ router.post("/activity/day", async (req, res, next) => {
     const out = await activityForDay(prisma, req.body?.day);
     if (out.error) return res.status(400).json(out);
     res.json(out);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/tokens/briefing { key, channelId, channelName, members: [{ discordId, name }] }
+// the bot saying who sits in the briefing channel right now. Not about tokens,
+// it just uses the same bot key. Admin reads it at /api/admin/briefing.
+router.post("/briefing", async (req, res, next) => {
+  try {
+    if (!(await activityKeyValid(prisma, req.body?.key))) {
+      return res.status(401).json({ error: "Bad key" });
+    }
+    const room = setBriefingRoom(req.body);
+    res.json({ ok: true, members: room.members.length });
   } catch (e) {
     next(e);
   }

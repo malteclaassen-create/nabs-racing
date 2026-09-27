@@ -101,6 +101,7 @@ export const TAB_VIEWS = {
     signups: "Who can sign up",
     grid: "Grid & waiting list",
     missing: "Still to answer",
+    briefing: "Briefing",
     history: "Past sign-ups",
     activity: "Activity",
   },
@@ -227,6 +228,13 @@ export const ADMIN_INDEX = [
     title: "Open or close sign-up for a race",
     hint: "Force one round open or closed, hide a race from the attendance page, or send a reminder now.",
     keywords: "sign up signup open close closed lock gate hide eye reminder nudge ping rsvp attendance",
+  },
+  {
+    tab: "attendance",
+    view: "briefing",
+    title: "Who's missing from the briefing",
+    hint: "Everyone who's in for the race but not in the briefing voice channel yet, from the Discord bot.",
+    keywords: "briefing voice channel discord bot missing absent not there dm ping who to message race night drivers meeting",
   },
   {
     tab: "attendance",

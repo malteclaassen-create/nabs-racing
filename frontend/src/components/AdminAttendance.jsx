@@ -7,6 +7,7 @@ import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
 import AdminAttendanceMissing from "./AdminAttendanceMissing.jsx";
 import AdminAttendanceGrid from "./AdminAttendanceGrid.jsx";
 import AdminAttendanceActivity from "./AdminAttendanceActivity.jsx";
+import AdminAttendanceBriefing from "./AdminAttendanceBriefing.jsx";
 import { useAttendanceReminder, LastReminder } from "./AdminAttendanceReminder.jsx";
 import { fmtDateShort } from "../utils/format.js";
 
@@ -159,6 +160,7 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
           { key: "signups", label: "Who can sign up" },
           { key: "grid", label: "Grid & waiting list" },
           { key: "missing", label: "Still to answer" },
+          { key: "briefing", label: "Briefing" },
           { key: "history", label: "Past sign-ups" },
           { key: "activity", label: "Activity" },
         ]}
@@ -175,6 +177,8 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       {view === "history" && <AdminAttendanceHistory />}
 
       {view === "activity" && <AdminAttendanceActivity />}
+
+      {view === "briefing" && <AdminAttendanceBriefing />}
 
       {view === "missing" && (
         <AdminAttendanceMissing races={upcoming} racesError={events.error} onReloadRaces={events.reload} />
