@@ -33,7 +33,6 @@ export const CHANGELOG = [
       { tag: "new", text: "You can now pick a design in the settings: Classic, Carbon, Midnight, Ocean or Paddock. Works in light and dark mode." },
       { tag: "new", text: "Changelog page, so you can see what changed on the site." },
       { tag: "better", text: "Training points now show under the lap count (e.g. +10 under 20/50)." },
-      { tag: "better", text: "Light mode has a plain background now, without the colour gradients." },
     ],
   },
   {
