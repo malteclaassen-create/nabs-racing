@@ -28,7 +28,10 @@ export default {
           dark: "rgb(var(--c-brand-hover) / <alpha-value>)",
         },
         onbrand: "var(--c-on-brand)",
-        ink: "#0F172A", // intentional dark surface (hero, chips)
+        // Intentional dark surface (hero, chips, scrims). #0F172A by default,
+        // and each design in Settings brings its own (--c-ink in index.css), so
+        // the home hero on a black Midnight page is not a blue box.
+        ink: "rgb(var(--c-ink) / <alpha-value>)",
         gold: "#EAB308",
         silver: "#94A3B8",
         bronze: "#C2410C",

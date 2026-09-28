@@ -71,6 +71,9 @@
                             the label sat on its own amber/15 tint (4.1), and
                             warn carries DNF and the reserve "sub" chip */
   --c-fl: 112 26 175;    /* fastest-lap purple, 7.4:1 on white */
+  /* `ink` in tailwind.config: the dark surface the heroes and scrims are made
+     of, in BOTH themes. Raw RGB triple. The designs below bring their own. */
+  --c-ink: 15 23 42;
 }
 
 .dark {
@@ -109,50 +112,60 @@
    colours stay as measured above, so the cards stay close enough in brightness
    to the classic ones for those contrast figures to still hold.
    The light rules say :not(.dark) because html[data-design] outranks .dark and
-   would otherwise win in the dark theme too. */
-html[data-design="carbon"]:not(.dark) {
+   would otherwise win in the dark theme too.
+   None of it applies on a profile page whose owner picked a style of their
+   own (data-profile-theme, components/profileAppearance.css): the owner's page
+   sets its own text colours too, and the visitor's surfaces under them made
+   a light style's dark text sit on a dark card. */
+/* The dark surface (heroes, scrims) per design, in both themes: it is dark
+   in light mode too, so one value each. */
+html[data-design="carbon"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 20 20 23; }
+html[data-design="midnight"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 7 10 18; }
+html[data-design="ocean"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 8 27 48; }
+html[data-design="paddock"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 30 26 21; }
+html[data-design="carbon"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #e9e9eb;
   --c-card: #ffffff;
   --c-surface2: #f3f3f4;
   --c-border: #dddde1;
 }
-html.dark[data-design="carbon"] {
+html.dark[data-design="carbon"]:not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #0b0b0c;
   --c-card: #18181b;
   --c-surface2: #111113;
   --c-border: #2c2c31;
 }
-html[data-design="midnight"]:not(.dark) {
+html[data-design="midnight"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #dfe5ef;
   --c-card: #ffffff;
   --c-surface2: #eef2f8;
   --c-border: #d3dbe8;
 }
-html.dark[data-design="midnight"] {
+html.dark[data-design="midnight"]:not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #000000;
   --c-card: #0e1320;
   --c-surface2: #05080f;
   --c-border: #1d2638;
 }
-html[data-design="ocean"]:not(.dark) {
+html[data-design="ocean"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #dde8f3;
   --c-card: #ffffff;
   --c-surface2: #ecf3fa;
   --c-border: #cfdcea;
 }
-html.dark[data-design="ocean"] {
+html.dark[data-design="ocean"]:not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #061426;
   --c-card: #0e2138;
   --c-surface2: #09192d;
   --c-border: #1c3656;
 }
-html[data-design="paddock"]:not(.dark) {
+html[data-design="paddock"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #ece6dc;
   --c-card: #fffdf9;
   --c-surface2: #f6f1e9;
   --c-border: #e2d9ca;
 }
-html.dark[data-design="paddock"] {
+html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #12100d;
   --c-card: #201c17;
   --c-surface2: #181511;
