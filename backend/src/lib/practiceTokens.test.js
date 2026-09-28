@@ -308,6 +308,37 @@ describe("training laps", () => {
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
   });
 
+  it("a server lent to the other series for the week counts for that series", async () => {
+    // The Sunday league's server running the Friday league's next circuit (wet
+    // practice). The Sunday league races Singapore next, so these laps were
+    // being thrown away as off track.
+    const prisma = db({
+      seriesList: ["friday-f1", "sunday"],
+      nextRaceBySeries: { "friday-f1": "Interlagos", sunday: "Singapore" },
+    });
+    await drive(prisma, 20, {
+      serverKey: "nabs2",
+      scopes: [{ series: "sunday", season: 1 }],
+      trackKey: "vhe-interlagos--nabs-interlagos-2025-v2",
+    });
+    expect([...prisma.practice.keys()]).toEqual(["76561100000000001|friday-f1|race:race-friday-f1|nabs2"]);
+    expect([...prisma.practice.values()][0]).toMatchObject({ laps: 20 });
+    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:friday-f1:race:race-friday-f1:nabs2"]);
+  });
+
+  it("the server's own series keeps its laps on its own circuit", async () => {
+    const prisma = db({
+      seriesList: ["friday-f1", "sunday"],
+      nextRaceBySeries: { "friday-f1": "Interlagos", sunday: "Singapore" },
+    });
+    await drive(prisma, 3, {
+      serverKey: "nabs2",
+      scopes: [{ series: "sunday", season: 1 }],
+      trackKey: "ks_singapore--nabs-singapore",
+    });
+    expect([...prisma.practice.keys()][0]).toContain("|sunday|");
+  });
+
   it("with two series on one server, the track this week decides", async () => {
     const prisma = db({
       seriesList: ["f1", "gt"],

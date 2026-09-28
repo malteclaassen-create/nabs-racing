@@ -154,6 +154,12 @@ export function __clearCaches() {
 // does not decide it either (an unknown track name, a fun session somewhere
 // else), the DRIVER does: which series they actually race in this season.
 // Only if all three are silent does it fall back to the first candidate.
+//
+// And the assignment gives way when the track clearly says otherwise: the
+// server's own series is racing somewhere else next, while another series'
+// next round is on exactly this circuit. That is a server lent to the other
+// league for the week (the Friday league's wet practice on the Sunday server),
+// and before this every lap of it was thrown away as off track.
 const seriesCache = new Map(); // `${server}|${trackKey}|${steamId}` -> { at, slug }
 const SERIES_TTL_MS = 5 * 60 * 1000;
 
@@ -204,7 +210,16 @@ export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackK
   };
 
   const assigned = [...new Set((scopes || []).map((s) => String(s?.series || "")).filter(Boolean))];
-  if (assigned.length === 1) return remember(assigned[0]);
+  if (assigned.length === 1) {
+    const own = await currentPeriod(prisma, assigned[0]);
+    if (!offTrack(own?.track, trackKey)) return remember(assigned[0]);
+    const here = [];
+    for (const slug of await activeSeriesSlugs(prisma)) {
+      if (slug === assigned[0]) continue;
+      if (onTrackOf((await currentPeriod(prisma, slug))?.track, trackKey)) here.push(slug);
+    }
+    return remember(here.length === 1 ? here[0] : assigned[0]);
+  }
 
   const candidates = assigned.length ? assigned : await activeSeriesSlugs(prisma);
   if (!candidates.length) return remember(null);
@@ -250,6 +265,15 @@ export function offTrack(periodTrack, lapTrackKey) {
   const folder = String(lapTrackKey || "").split("--")[0];
   const got = trackKeyFor(folder.replace(/-/g, "_")) || trackKeyFor(folder);
   return !!(want && got && want !== got);
+}
+
+// The other side of offTrack: both names known, and the same circuit. Only a
+// clear match hands a lap to another league.
+function onTrackOf(periodTrack, lapTrackKey) {
+  const want = trackKeyFor(String(periodTrack || ""));
+  const folder = String(lapTrackKey || "").split("--")[0];
+  const got = trackKeyFor(folder.replace(/-/g, "_")) || trackKeyFor(folder);
+  return !!(want && got && want === got);
 }
 
 // A member's rows for the running weeks, summed per server, series and week,
