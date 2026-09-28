@@ -35,7 +35,7 @@ in its own SDK, which is why the app gets them from us.
 
 ## The game app
 
-`ac-apps/NABS_RaceControl_HUD` (v1.4) goes into
+`ac-apps/NABS_RaceControl_HUD` (v1.5, shown in the game as "NABS Race Control") goes into
 `assettocorsa/apps/lua/`. Open its window in the game, type the code from the
 race control page once. From then on every contact over the threshold opens
 the camera tiles for that car by itself. The window says whether it is

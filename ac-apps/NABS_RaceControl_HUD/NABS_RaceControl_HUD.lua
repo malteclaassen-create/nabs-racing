@@ -1,4 +1,4 @@
--- NABS Race Control HUD  v1.4
+-- NABS Race Control  v1.5
 -- Broadcast-style version of the race control picture-in-picture.
 -- Same detection as the full app (stopped cars, spins), with a small control window.
 -- Install for race control only. Don't run it together with NABS_RaceControl_PiP (you'd get the HUD twice).
@@ -18,6 +18,9 @@
 -- off track, stopped cars), and the Live tab lists everything happening right
 -- now, including what doesn't pop up, with a Show button for each. Off track
 -- comes from the website (the game can't judge it for other cars).
+--
+-- v1.5: called NABS Race Control now, with the league logo, and the chime has
+-- a volume.
 
 ---------------------------------------------------------------------------------------------------
 -- Settings (saved automatically)
@@ -47,6 +50,7 @@ local S = ac.storage({
   rcCode = '',          -- pairing code from Admin > Race control
   rcUrl = 'https://nabsracing.com',
   soundOn = true,       -- a short chime when a contact card pops up
+  soundVolume = 80,     -- percent
   pileups = true,       -- several cars crashing in one place = one card
   -- what comes on screen by itself (everything is listed in the window anyway)
   popContact = true,
@@ -72,7 +76,8 @@ local VIEWS = {
   { key = 'viewSide', name = 'Side', short = 'SIDE' },
   { key = 'viewTrack', name = 'TV camera', short = 'TV CAM' },
 }
-local APP_VERSION = '1.4'
+local APP_VERSION = '1.5'
+local LOGO = __dirname .. '/logo.png'
 local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL', pileup = 'PILE-UP', offtrack = 'OFF TRACK' }
 local OVER_LABEL = { stopped = 'MOVING AGAIN', offtrack = 'BACK ON TRACK' }
 local KIND_COLOR = {
@@ -250,12 +255,14 @@ local function playAlert(force)
   if not force and (not S.soundOn or clock - lastAlert < 1.5) then return end
   lastAlert = clock
   pcall(function()
+    local volume = math.max(0, math.min(100, S.soundVolume)) / 100
     if not alertPlayer then
       alertPlayer = ui.MediaPlayer(__dirname .. '/alert.wav', { use3D = false })
-      alertPlayer:setVolume(0.8)
+      alertPlayer:setVolume(volume)
       alertPlayer:setAutoPlay(true) -- the first time it plays once it has loaded
       return
     end
+    alertPlayer:setVolume(volume)
     alertPlayer:setCurrentTime(0)
     alertPlayer:play()
   end)
@@ -696,11 +703,11 @@ end
 
 local function drawTitleStrip(width)
   ui.drawRectFilled(vec2(0, 0), vec2(width, TITLE_H), rgbm(0.03, 0.035, 0.045, 0.9))
-  -- pulsing live dot
-  local pulse = 0.55 + 0.45 * math.sin(clock * 4)
-  ui.drawCircleFilled(vec2(12, TITLE_H / 2), 4, rgbm(0.9, 0.2, 0.22, pulse), 16)
+  -- the league logo where the live dot used to be
+  local okLogo = pcall(ui.drawImage, LOGO, vec2(4, 3), vec2(4 + TITLE_H - 6, TITLE_H - 3))
+  if not okLogo then ui.drawCircleFilled(vec2(12, TITLE_H / 2), 4, rgbm(0.9, 0.2, 0.22, 1), 16) end
   ui.pushFont(ui.Font.Small)
-  ui.setCursor(vec2(24, 4))
+  ui.setCursor(vec2(TITLE_H + 4, 4))
   ui.textColored('NABS', rgbm(1, 1, 1, 1))
   ui.sameLine(0, 6)
   ui.textColored('RACE CONTROL', TEXT_DIM)
@@ -908,6 +915,7 @@ local function tabAlerts()
   toggle('Play a sound on contacts', 'soundOn', 'A short chime when a contact or pile-up card pops up.')
   ui.sameLine()
   if ui.button('Test##sound') then playAlert(true) end
+  if S.soundOn then slider('##volume', 'soundVolume', 0, 100, '  volume %.0f %%') end
 
   ui.header('What pops up by itself')
   note('Ticked kinds come on screen by themselves. Everything else is still listed under Live, with a Show button.')
@@ -971,8 +979,11 @@ end
 function script.windowMain(dt)
   -- one line on top that says whether the website link works
   local text, col = connectionState()
+  pcall(ui.image, LOGO, vec2(18, 18))
+  ui.sameLine(0, 6)
   ui.pushFont(ui.Font.Small)
-  ui.textColored('NABS Race Control  v' .. APP_VERSION, TEXT_DIM)
+  ui.textColored('NABS Race Control', rgbm(1, 1, 1, 1))
+  hint('Version ' .. APP_VERSION)
   ui.sameLine(0, 12)
   ui.textColored('Website: ' .. text, col)
   ui.popFont()
