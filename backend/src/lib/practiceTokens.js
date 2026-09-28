@@ -155,11 +155,15 @@ export function __clearCaches() {
 // else), the DRIVER does: which series they actually race in this season.
 // Only if all three are silent does it fall back to the first candidate.
 //
-// And the assignment gives way when the track clearly says otherwise: the
-// server's own series is racing somewhere else next, while another series'
-// next round is on exactly this circuit. That is a server lent to the other
-// league for the week (the Friday league's wet practice on the Sunday server),
-// and before this every lap of it was thrown away as off track.
+// For ONE week only, the assignment gives way when the track clearly says
+// otherwise: the server's own series is racing somewhere else next, while
+// another series' next round is on exactly this circuit. The Sunday server is
+// lent to the Friday league for its wet practice before Interlagos, and every
+// lap of it was being thrown away as off track. From the Friday race's start
+// this is switched off by itself and the assignment decides again, exactly as
+// before. The Live page names the cars by the same answer (/api/live/driving-
+// series), so its team names go back with it.
+export const LENT_SERVER_UNTIL = Date.parse("2026-10-02T17:30:00Z");
 const seriesCache = new Map(); // `${server}|${trackKey}|${steamId}` -> { at, slug }
 const SERIES_TTL_MS = 5 * 60 * 1000;
 
@@ -211,6 +215,7 @@ export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackK
 
   const assigned = [...new Set((scopes || []).map((s) => String(s?.series || "")).filter(Boolean))];
   if (assigned.length === 1) {
+    if (Date.now() >= LENT_SERVER_UNTIL) return remember(assigned[0]);
     const own = await currentPeriod(prisma, assigned[0]);
     if (!offTrack(own?.track, trackKey)) return remember(assigned[0]);
     const here = [];
