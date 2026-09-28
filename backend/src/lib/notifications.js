@@ -469,6 +469,29 @@ export async function notifySeatFilled(prisma, { offerId, raceId, reserve }) {
   }
 }
 
+// The driver whose seat a reserve had been given can race after all and took
+// it back (lib/seatAuto.js). Not muteable: the reserve was told they are
+// driving, and somebody who does not hear this turns up for a car that is not
+// theirs any more.
+export async function notifySeatReclaimed(prisma, { race, reserve, openSeats = 0 }) {
+  try {
+    if (!reserve?.discordUserId || !race?.id) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    await dbCreateNotification(prisma, {
+      type: "MARKET",
+      title: `Your seat for ${roundName(race)} went back to its driver`,
+      body: openSeats
+        ? `They can race at ${race.track} after all. You're now down as interested in the ${openSeats === 1 ? "other open seat" : `${openSeats} other open seats`}.`
+        : `They can race at ${race.track} after all. No other seat is open right now; raise your hand if one comes up.`,
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId: reserve.discordUserId,
+      // No dedupe key: taken back twice is two things to hear about.
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // A seat came free and the front of the waiting list moved onto the grid. Not
 // muteable: it is the answer to a question they asked by joining the queue, and
 // somebody who does not hear it turns up to a race they think they are not in

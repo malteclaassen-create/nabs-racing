@@ -154,7 +154,9 @@ export default function Attendance() {
     setBusy(`${raceId}:${status}`);
     try {
       await api.rsvp(raceId, driverId, status);
-      await events.reload();
+      // The answer can move the market too: declining puts a full-time
+      // driver's seat up, saying yes again takes it back.
+      await Promise.all([events.reload(), market.reload()]);
     } catch (e) {
       setError(e.message);
     } finally {

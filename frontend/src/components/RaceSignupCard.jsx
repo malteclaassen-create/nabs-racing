@@ -211,10 +211,10 @@ export default function RaceSignupCard({
     (ev.rsvps[s] || []).some((r) => myIds.has(r.driverId))
   );
   // A seat handed to the Driver Market has answered the question already: the
-  // offer files a DECLINED with it (routes/market.js) and the server refuses
-  // anything else while it stands. So the buttons go quiet rather than pretend.
-  // CANCELLED offers never reach the page, and a FILLED one counts doubly —
-  // somebody else is in that car.
+  // offer files a DECLINED with it. Accept stays live, because saying yes takes
+  // the seat back (lib/seatAuto.js on the server); "maybe" and "clear" go quiet,
+  // the server refuses both while the seat is up. CANCELLED offers never reach
+  // the page, and a FILLED one means a reserve is in that car.
   const myOffer = (marketRace?.offers || []).find((o) => myIds.has(o.offeredBy.driverId));
   // The other side of the same coin: an offer somebody else made that I was
   // given. The buttons above cannot answer for it, so it gets its own way out.
@@ -262,6 +262,10 @@ export default function RaceSignupCard({
   const seatIsPrecious = myStatus === "ACCEPTED" && (waiting.length > 0 || gridFull);
   async function confirmLeavingTheGrid(how) {
     if (!seatIsPrecious) return true;
+    // A full-time driver's "no" puts their car up in the Driver Market rather
+    // than handing it to the queue, and Accept takes it back later. Not a
+    // one-way door, so no question.
+    if (how === "DECLINED" && meHere?.canOffer && marketRace) return true;
     const next = waiting[0];
     return ask({
       title: how === "clear" ? "Take your answer back?" : "Give up your seat?",
@@ -273,8 +277,19 @@ export default function RaceSignupCard({
     });
   }
   async function answer(status) {
+    if (myOffer && status === "ACCEPTED" && !(await confirmTakingSeatBack())) return;
     if (status !== "ACCEPTED" && !(await confirmLeavingTheGrid(status))) return;
     onSetStatus(ev.id, status);
+  }
+  // A reserve already picked for the seat loses it, and should not find out
+  // from the entry list. Only asked when there is somebody to lose it.
+  async function confirmTakingSeatBack() {
+    if (myOffer?.status !== "FILLED") return true;
+    return ask({
+      title: "Take your seat back?",
+      body: `${myOffer.filledBy?.name || "A reserve"} is down to drive your car. If you race after all, they lose the seat and are put down as interested in the other open seats for this race.`,
+      confirmLabel: "Yes, I'm racing",
+    });
   }
   async function clearAnswer() {
     if (!(await confirmLeavingTheGrid("clear"))) return;
@@ -380,7 +395,8 @@ export default function RaceSignupCard({
             {Object.entries(STATUS_UI)
               .filter(([status]) => visible.includes(status))
               .map(([status, ui]) =>
-                status === "ACCEPTED" && gridFull && myStatus !== "ACCEPTED"
+                // Not for a driver whose own seat is up: it was held for them.
+                status === "ACCEPTED" && gridFull && myStatus !== "ACCEPTED" && !myOffer
                   ? [WAITLIST, WAITLIST_UI]
                   : [status, ui]
               )
@@ -390,15 +406,21 @@ export default function RaceSignupCard({
                 <button
                   key={status}
                   onClick={() => answer(status)}
-                  disabled={!!myOffer || busy === `${ev.id}:${status}`}
+                  disabled={(!!myOffer && status !== "ACCEPTED") || busy === `${ev.id}:${status}`}
                   aria-pressed={active}
                   // The one it is stuck on keeps its colour, so the card still
                   // says what the answer IS. The other two go flat: greying the
                   // lot would leave the question looking unanswered.
-                  title={myOffer ? "Your seat is offered in the Driver Market" : undefined}
+                  title={
+                    myOffer
+                      ? status === "ACCEPTED"
+                        ? "Take your seat back"
+                        : "Your seat is up in the Driver Market"
+                      : undefined
+                  }
                   className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition sm:flex-none ${
                     active ? ui.active : ui.idle
-                  } ${myOffer ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
+                  } ${myOffer && status !== "ACCEPTED" ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
                 >
                   {ui.Icon ? (
                     <ui.Icon className={`h-4 w-4 ${active ? "" : ui.idleIcon}`} aria-hidden="true" />
@@ -429,8 +451,8 @@ export default function RaceSignupCard({
             )}
             {myOffer && (
               <p className="w-full text-sm leading-relaxed text-light sm:w-auto sm:max-w-[22rem]">
-                You offered your seat, so you&rsquo;re down as declined. Withdraw the offer below to
-                answer for yourself again.
+                Your seat is up in the Driver Market, so you&rsquo;re down as declined. Changed your
+                mind? Press Accept and the seat is yours again.
               </p>
             )}
             {/* A reserve who was GIVEN a seat is entered by somebody else, so

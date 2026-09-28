@@ -18,6 +18,7 @@ import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
+import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 
 const router = Router();
@@ -422,15 +423,20 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     }
     if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
-    // A seat given away in the Driver Market has already answered this question
-    // (routes/market.js files the DECLINED as part of the offer). Saying yes on
-    // top of it is a contradiction the admin would have to untangle when
-    // building the grid, so the answer is refused rather than recorded. The
-    // page greys the buttons out too; this is what makes that stick.
+    // A seat on the Driver Market has already answered this question (the
+    // offer files a DECLINED with it). Saying yes takes the seat back: the
+    // offer comes off the market, and a reserve already picked for it loses
+    // the car and is put down for the other open seats (lib/seatAuto.js). A
+    // "maybe" is still refused: taking a car away from a reserve for somebody
+    // who is not sure yet would be the worst of both.
+    let reclaimed = false;
     if (status !== "DECLINED" && (await standingSeatOffer(race.id, driver.id))) {
-      return res.status(409).json({
-        error: "You've offered your seat for this race. Withdraw the offer in the Driver Market to answer again",
-      });
+      if (status !== "ACCEPTED" && status !== WAITLIST) {
+        return res.status(409).json({
+          error: "Your seat is up in the Driver Market for this race. Press Accept to take it back, or withdraw the offer there",
+        });
+      }
+      reclaimed = (await reclaimSeat(prisma, race, driver.id)).reclaimed;
     }
 
     // The grid size is a rule, not a label. Accept is refused once the round is
@@ -438,8 +444,10 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // Somebody who is already in keeps their seat whatever the count says —
     // that matters for a round that was already over capacity before any of
     // this existed, where nobody is pushed out.
+    // Somebody taking their own seat back is not queueing for one: the car was
+    // held for them the whole time.
     const seats = await seatsFor(prisma, race, driver.id);
-    if (status === "ACCEPTED" && seats.mine !== "ACCEPTED" && !seats.free) {
+    if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free) {
       return res.status(409).json({
         error: `The grid is full (${seats.accepted}/${seats.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
         gridFull: true,
@@ -447,7 +455,8 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     }
     // And the other way round: a tab that has been open since the grid was full
     // must not put somebody in a queue that no longer exists.
-    const want = status === WAITLIST && (seats.free || seats.mine === "ACCEPTED") ? "ACCEPTED" : status;
+    const want =
+      status === WAITLIST && (reclaimed || seats.free || seats.mine === "ACCEPTED") ? "ACCEPTED" : status;
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting
     // list's queue position, so re-pressing the button you are already on would
@@ -462,6 +471,13 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
         update: { status: want },
         create: { raceId: race.id, driverId: driver.id, status: want },
       });
+    }
+    // A full-time driver who declines has their seat put up in the Driver
+    // Market (lib/seatAuto.js). Before the queue below moves: an open offer
+    // holds the car, so it goes to a reserve through the market rather than
+    // to whoever is waiting.
+    if (want === "DECLINED" && existing?.status !== "DECLINED") {
+      await offerSeatOnDecline(prisma, race, driver).catch(() => null);
     }
     // Giving up a seat hands it to whoever is at the front of the queue.
     if (existing?.status === "ACCEPTED" && want !== "ACCEPTED") {
