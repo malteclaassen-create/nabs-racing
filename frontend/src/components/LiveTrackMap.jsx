@@ -200,25 +200,27 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
   );
 }
 
-// A race control incident on the map (TV board, stewards only). A new one goes
-// off as a short burst, then stays as a small quiet dot with its tooltip.
-// Drawn under the cars, so the cars stay clickable on top.
+// A race control incident on the map (TV board, race control only). A new one
+// goes off with the same explosion the server manager's own map uses (its
+// splosion.gif, MIT, see public/race-control/), then stays as a small quiet
+// dot with its tooltip. Drawn under the cars, so the cars stay clickable.
+const SPLOSION = "/race-control/splosion.gif";
 function IncidentMark({ x, y, r, inc }) {
   const color = inc.type === "car" ? "#ef4444" : "#f59e0b";
-  const spikes = Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4);
+  const size = r * 6;
   return (
     <g transform={`translate(${x} ${y})`}>
       <title>{inc.title}</title>
       {inc.fresh && (
-        <g className="rc-burst" pointerEvents="none">
-          <circle r={r * 2.6} fill="none" stroke={color} strokeWidth={r * 0.3} className="rc-burst-ring" />
-          <g className="rc-burst-spikes" stroke="#fbbf24" strokeWidth={r * 0.28} strokeLinecap="round">
-            {spikes.map((a) => (
-              <line key={a} x1={Math.cos(a) * r * 1.1} y1={Math.sin(a) * r * 1.1} x2={Math.cos(a) * r * 2.3} y2={Math.sin(a) * r * 2.3} />
-            ))}
-          </g>
-          <circle r={r * 1.1} fill="#fde68a" className="rc-burst-core" />
-        </g>
+        <image
+          href={SPLOSION}
+          x={-size / 2}
+          y={-size / 2}
+          width={size}
+          height={size}
+          className="rc-burst"
+          pointerEvents="none"
+        />
       )}
       <circle r={r * 0.9} fill="transparent" />
       <circle r={r * 0.5} fill={color} fillOpacity={0.8} stroke="#111827" strokeOpacity={0.6} strokeWidth={r * 0.12} />
