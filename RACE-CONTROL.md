@@ -35,11 +35,25 @@ in its own SDK, which is why the app gets them from us.
 
 ## The game app
 
-`ac-apps/NABS_RaceControl_HUD` (v1.2) goes into
+`ac-apps/NABS_RaceControl_HUD` (v1.3) goes into
 `assettocorsa/apps/lua/`. Open its window in the game, type the code from the
 race control page once. From then on every contact over the threshold opens
 the camera tiles for that car by itself. The window says whether it is
 connected.
+
+The window has four tabs:
+
+- **Live**: the code, whether the website link works, and the cards open now.
+- **Alerts**: the sound on or off (with a test button), and what pops up at
+  all: car against car, car against wall (each from a speed you pick), stopped
+  cars, spins, and whether a pile-up becomes one card.
+- **Cameras**: which views each card shows, how many cards, how big, where.
+- **Picture**: brightness and quality of the camera views.
+
+A **pile-up** is several cars crashing within 60 m of each other inside 4 s.
+It becomes one purple PILE-UP card listing everybody, and the sound plays once.
+When all spots on screen are taken, the newest incident pushes the oldest card
+off the screen (it stays in the list in the window).
 
 The older `NABS_RaceControl_PiP` is in the repo too, unchanged. Don't run both.
 

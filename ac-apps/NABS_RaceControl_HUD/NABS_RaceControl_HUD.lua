@@ -1,4 +1,4 @@
--- NABS Race Control HUD  v1.2
+-- NABS Race Control HUD  v1.3
 -- Broadcast-style version of the race control picture-in-picture.
 -- Same detection as the full app (stopped cars, spins), with a small control window.
 -- Install for race control only. Don't run it together with NABS_RaceControl_PiP (you'd get the HUD twice).
@@ -8,6 +8,10 @@
 -- control) the app picks them up about half a second after they happen and
 -- opens the camera tiles for that car. The game can't see other cars' contacts
 -- itself, only the server can. Format: RACE-CONTROL.md.
+--
+-- v1.3: a sound on contacts (on/off), filters for what pops up, a crash with
+-- several cars in one place becomes one PILE-UP card, and the window is split
+-- into tabs with a short explanation on each.
 
 ---------------------------------------------------------------------------------------------------
 -- Settings (saved automatically)
@@ -37,22 +41,30 @@ local S = ac.storage({
   rcOn = true,          -- contacts from the website
   rcCode = '',          -- pairing code from Admin > Race control
   rcUrl = 'https://nabsracing.com',
+  soundOn = true,       -- a short chime when a contact card pops up
+  alertCars = true,     -- car against car
+  carMinKmh = 0,        -- ...only from this speed (0 = all the website sends)
+  alertWalls = true,    -- car against wall
+  wallMinKmh = 0,
+  alertStopped = true,
+  pileups = true,       -- several cars crashing in one place = one card
 }, 'nabsHud1_')
 
 local VIEWS = {
-  { key = 'viewTop', name = 'Von oben', short = 'TOP' },
-  { key = 'viewChase', name = 'Verfolger', short = 'CHASE' },
-  { key = 'viewSide', name = 'Seitlich', short = 'SIDE' },
-  { key = 'viewTrack', name = 'Streckenkamera', short = 'TV CAM' },
+  { key = 'viewTop', name = 'From above', short = 'TOP' },
+  { key = 'viewChase', name = 'Chase', short = 'CHASE' },
+  { key = 'viewSide', name = 'Side', short = 'SIDE' },
+  { key = 'viewTrack', name = 'TV camera', short = 'TV CAM' },
 }
-local APP_VERSION = '1.2'
-local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL' }
+local APP_VERSION = '1.3'
+local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL', pileup = 'PILE-UP' }
 local KIND_COLOR = {
   stopped = rgbm(0.9, 0.28, 0.3, 1),
   spin = rgbm(0.96, 0.65, 0.14, 1),
   test = rgbm(0.24, 0.61, 1, 1),
   contact = rgbm(0.94, 0.27, 0.27, 1),
   wall = rgbm(1, 0.52, 0.12, 1),
+  pileup = rgbm(0.78, 0.2, 0.62, 1),
 }
 local RESOLVED_COLOR = rgbm(0.3, 0.78, 0.5, 1)
 ---------------------------------------------------------------------------------------------------
@@ -166,15 +178,92 @@ local function localCarFor(carId, name)
   return nil
 end
 
+-- The chime. Loaded on first use; at most one every 1.5 s, a pile-up is one sound.
+local alertPlayer, lastAlert = nil, -10
+local function playAlert(force)
+  if not force and (not S.soundOn or clock - lastAlert < 1.5) then return end
+  lastAlert = clock
+  pcall(function()
+    if not alertPlayer then
+      alertPlayer = ui.MediaPlayer(__dirname .. '/alert.wav', { use3D = false })
+      alertPlayer:setVolume(0.8)
+      alertPlayer:setAutoPlay(true) -- the first time it plays once it has loaded
+      return
+    end
+    alertPlayer:setCurrentTime(0)
+    alertPlayer:play()
+  end)
+end
+
+-- A crash near a card that is still fresh joins that card instead of opening
+-- another one: several cars in one corner within a few seconds is one incident.
+local PILE_WINDOW = 4   -- seconds since the card's last hit
+local PILE_RADIUS = 60  -- metres
+
+local function nearbyCrash(pos)
+  if not pos or not pos.x then return nil end
+  for _, inc in pairs(incidents) do
+    if inc.crashPos and clock - (inc.lastHit or -99) <= PILE_WINDOW then
+      local dx, dz = inc.crashPos.x - pos.x, inc.crashPos.z - pos.z
+      if dx * dx + dz * dz <= PILE_RADIUS * PILE_RADIUS then return inc end
+    end
+  end
+  return nil
+end
+
+local function addNames(inc, ...)
+  inc.nameList = inc.nameList or {}
+  inc.names = inc.names or {}
+  for _, n in ipairs({ ... }) do
+    if n and n ~= '' and not inc.names[string.lower(n)] then
+      inc.names[string.lower(n)] = true
+      table.insert(inc.nameList, n)
+    end
+  end
+end
+
+local function shorten(text, max)
+  if #text <= max then return text end
+  return string.sub(text, 1, max - 3) .. '...'
+end
+
 local function onContact(ev)
+  local isCar = ev.kind == 'car'
+  if isCar and not S.alertCars then return end
+  if not isCar and not S.alertWalls then return end
+  local minKmh = isCar and S.carMinKmh or S.wallMinKmh
+  if ev.kmh and minKmh > 0 and ev.kmh < minKmh then return end
   if get(ac.getSim(), 'isReplayActive', false) then return end
   local i, car = localCarFor(ev.carId, ev.driver)
   if i == nil or not car then return end
   if S.ignoreOwn and i == 0 then return end
+
+  if S.pileups then
+    local inc = nearbyCrash(ev.pos)
+    if inc then
+      addNames(inc, ev.driver, isCar and ev.other or nil)
+      inc.lastHit = clock
+      if #inc.nameList >= 3 then
+        if inc.kind ~= 'pileup' then addLog('Pile-up: ' .. table.concat(inc.nameList, ', ')) end
+        inc.kind = 'pileup'
+        inc.detail = shorten(#inc.nameList .. ' cars: ' .. table.concat(inc.nameList, ', '), 60)
+      end
+      return
+    end
+  end
+
   local kmh = ev.kmh and string.format('%d km/h', math.floor(ev.kmh + 0.5)) or nil
   local detail = kmh
-  if ev.kind == 'car' and ev.other then detail = (kmh and (kmh .. ', ') or '') .. 'with ' .. ev.other end
-  raise(i, ev.kind == 'car' and 'contact' or 'wall', car, detail)
+  if isCar and ev.other then detail = (kmh and (kmh .. ', ') or '') .. 'with ' .. ev.other end
+  raise(i, isCar and 'contact' or 'wall', car, detail)
+  local inc = incidents[i]
+  if inc then
+    inc.crashPos = ev.pos
+    inc.lastHit = clock
+    inc.nameList, inc.names = nil, nil
+    addNames(inc, ev.driver or driverName(i), isCar and ev.other or nil)
+  end
+  playAlert()
 end
 
 local function pollWebsite()
@@ -262,7 +351,7 @@ local function trackCar(i, car, dt)
   -- Stehendes Auto
   if st.moved and speed < S.stopKmh then
     st.stopT = st.stopT + dt
-    if st.stopT >= S.holdSec then raise(i, 'stopped', car) end
+    if st.stopT >= S.holdSec and S.alertStopped then raise(i, 'stopped', car) end
   else
     st.stopT = 0
   end
@@ -435,6 +524,19 @@ local function updateSlots()
     if slots[k] == nil and #waiting > 0 then
       slots[k] = table.remove(waiting, 1).car
     end
+  end
+
+  -- All spots taken and something newer is waiting: it takes the spot of the
+  -- oldest card on screen, so the latest crash is always visible. The older
+  -- card stays in the list in the window.
+  while #waiting > 0 do
+    local oldestK, oldestSince = nil, math.huge
+    for k = 1, maxPip do
+      local inc = slots[k] ~= nil and incidents[slots[k]] or nil
+      if inc and inc.since < oldestSince then oldestK, oldestSince = k, inc.since end
+    end
+    if not oldestK or waiting[1].since <= oldestSince then break end
+    slots[oldestK] = table.remove(waiting, 1).car
   end
 end
 
@@ -621,63 +723,38 @@ local function slider(label, key, min, max, format, power)
   if v ~= S[key] then S[key] = v end
 end
 
-function script.windowMain(dt)
+-- A tooltip for the control drawn just before.
+local function hint(text)
+  if ui.itemHovered() then ui.setTooltip(text) end
+end
+
+local function toggle(label, key, tip)
+  if ui.checkbox(label, S[key]) then S[key] = not S[key] end
+  if tip then hint(tip) end
+end
+
+local function note(text)
   ui.pushFont(ui.Font.Small)
-  ui.textColored('NABS Race Control HUD  v' .. APP_VERSION, TEXT_DIM)
+  ui.textWrapped(text)
   ui.popFont()
+end
 
-  -- open incidents
-  local list = {}
-  for _, inc in pairs(incidents) do table.insert(list, inc) end
-  table.sort(list, function(a, b) return a.since > b.since end)
+local GOOD = rgbm(0.3, 0.78, 0.5, 1)
+local BAD = rgbm(0.95, 0.38, 0.35, 1)
 
-  if #list == 0 then
-    ui.textColored('No open incidents', TEXT_DIM)
-  end
-  for _, inc in ipairs(list) do
-    if ui.button('x##close' .. inc.car, vec2(22, 0)) then clearIncident(inc.car) end
-    ui.sameLine()
-    local col = inc.resolved and RESOLVED_COLOR or (KIND_COLOR[inc.kind] or rgbm(1, 1, 1, 1))
-    ui.textColored(inc.resolved and 'MOVING' or (KIND_LABEL[inc.kind] or ''), col)
-    ui.sameLine()
-    ui.text(driverName(inc.car))
-  end
-  if #list > 1 and ui.button('Clear all') then
-    for i in pairs(incidents) do clearIncident(i) end
-  end
-  if #list > math.floor(S.maxPip) then
-    ui.textColored('+' .. (#list - math.floor(S.maxPip)) .. ' waiting', TEXT_DIM)
-  end
+-- Where the connection to the website stands, in words and a colour.
+local function connectionState()
+  if not S.rcOn then return 'Off', TEXT_DIM end
+  if S.rcCode == '' then return 'No code yet', TEXT_DIM end
+  if net.status == 'connected' then return 'Connected', GOOD end
+  if net.status == 'connecting' or net.status == 'off' then return 'Connecting...', TEXT_DIM end
+  return net.status:sub(1, 1):upper() .. net.status:sub(2), BAD
+end
 
-  ui.separator()
-
-  -- camera tiles as toggle buttons
-  for i, view in ipairs(VIEWS) do
-    if i > 1 then ui.sameLine(0, 4) end
-    local label = (S[view.key] and '* ' or '') .. view.short
-    if ui.button(label .. '##view' .. i) then S[view.key] = not S[view.key] end
-  end
-
-  if ui.button('Test: next car') then
-    local count = get(ac.getSim(), 'carsCount', 1)
-    testCursor = (testCursor + 1) % math.max(count, 1)
-    local car = ac.getCar(testCursor)
-    if car then
-      clearIncident(testCursor)
-      raise(testCursor, 'test', car)
-    end
-  end
-  ui.sameLine()
-  if ui.checkbox('Ignore own car', S.ignoreOwn) then S.ignoreOwn = not S.ignoreOwn end
-
-  slider('##exposure', 'exposure', 0.2, 4, 'Exposure %.2fx', 2)
-  slider('##shadowLift', 'shadowLift', 0, 1, 'Shadow lift %.2f')
-  if ui.checkbox('Own shadows per tile (costs fps)', S.ownShadows) then S.ownShadows = not S.ownShadows end
-  slider('##posX', 'posX', 0, 3000, 'HUD X %.0f', true)
-  slider('##posY', 'posY', 0, 2000, 'HUD Y %.0f', true)
-
-  ui.separator()
-  if ui.checkbox('Contacts from nabsracing.com', S.rcOn) then S.rcOn = not S.rcOn end
+local function tabLive()
+  ui.header('Website')
+  toggle('Get contacts from nabsracing.com', 'rcOn',
+    'The race server reports every collision to the website, and the website passes it on to this app within about half a second.')
   local okInput, value = pcall(ui.inputText, 'Pairing code', S.rcCode)
   if okInput and type(value) == 'string' then
     local clean = string.upper(value):gsub('[^A-Z0-9]', '')
@@ -687,13 +764,113 @@ function script.windowMain(dt)
       net.status = clean == '' and 'off' or 'connecting'
     end
   end
-  local statusText
-  if not S.rcOn then
-    statusText = 'Off'
-  elseif S.rcCode == '' then
-    statusText = 'Enter the code from Admin > Race control'
-  else
-    statusText = net.status .. (net.lastAt and ('  (last contact ' .. net.lastAt .. ')') or '')
+  hint('Six characters. You find it on nabsracing.com under Admin > Race control.')
+  local text, col = connectionState()
+  ui.textColored(text .. (net.lastAt and ('   last contact ' .. net.lastAt) or ''), col)
+  if S.rcCode == '' then
+    note('Get your code on nabsracing.com under Admin > Race control and type it in above. You only do this once, it is kept.')
   end
-  ui.textColored(statusText, net.status == 'connected' and RESOLVED_COLOR or TEXT_DIM)
+
+  -- open incidents
+  local list = {}
+  for _, inc in pairs(incidents) do table.insert(list, inc) end
+  table.sort(list, function(a, b) return a.since > b.since end)
+
+  ui.header('On screen now' .. (#list > 0 and (' (' .. #list .. ')') or ''))
+  if #list == 0 then
+    note('Nothing right now. New incidents pop up by themselves as camera cards on your screen.')
+  end
+  for _, inc in ipairs(list) do
+    if ui.button('x##close' .. inc.car, vec2(22, 0)) then clearIncident(inc.car) end
+    hint('Close this card')
+    ui.sameLine()
+    local col2 = inc.resolved and RESOLVED_COLOR or (KIND_COLOR[inc.kind] or rgbm(1, 1, 1, 1))
+    ui.textColored(inc.resolved and 'MOVING' or (KIND_LABEL[inc.kind] or ''), col2)
+    ui.sameLine()
+    ui.text(driverName(inc.car))
+    if inc.detail then
+      ui.sameLine()
+      ui.textColored(inc.detail, TEXT_DIM)
+    end
+  end
+  if #list > 1 and ui.button('Close all') then
+    for i in pairs(incidents) do clearIncident(i) end
+  end
+  if #list > math.floor(S.maxPip) then
+    ui.textColored((#list - math.floor(S.maxPip)) .. ' older ' .. ((#list - math.floor(S.maxPip)) == 1 and 'card is' or 'cards are') .. ' off screen, the newest are shown', TEXT_DIM)
+  end
+end
+
+local function tabAlerts()
+  ui.header('Sound')
+  toggle('Play a sound on contacts', 'soundOn', 'A short chime when a contact or pile-up card pops up.')
+  ui.sameLine()
+  if ui.button('Test##sound') then playAlert(true) end
+
+  ui.header('What pops up')
+  toggle('Car against car', 'alertCars')
+  if S.alertCars then slider('##carMin', 'carMinKmh', 0, 150, S.carMinKmh < 1 and '  from any speed' or '  from %.0f km/h') end
+  toggle('Car against wall', 'alertWalls')
+  if S.alertWalls then slider('##wallMin', 'wallMinKmh', 0, 200, S.wallMinKmh < 1 and '  from any speed' or '  from %.0f km/h') end
+  toggle('Stopped cars', 'alertStopped', 'A car standing on track (not in the pit lane) for a few seconds.')
+  if S.alertStopped then slider('##hold', 'holdSec', 1, 10, '  standing for %.0f s') end
+  toggle('Spins', 'detectSpins', 'A car pointing well away from where it is going.')
+  toggle('One card for a pile-up', 'pileups',
+    'Several cars crashing in the same spot within a few seconds become one PILE-UP card instead of one card each.')
+  toggle('Ignore my own car', 'ignoreOwn')
+  note('The website already drops tiny contacts for everyone (the km/h setting on the TV board). The sliders here only filter more.')
+end
+
+local function tabCameras()
+  ui.header('Views on each card')
+  for _, view in ipairs(VIEWS) do toggle(view.name, view.key) end
+  note('Each card shows the selected views side by side. At least one is always on.')
+
+  ui.header('Cards')
+  slider('##maxPip', 'maxPip', 1, 3, 'Up to %.0f cards on screen')
+  slider('##width', 'width', 240, 640, 'Each view %.0f px wide')
+  slider('##fps', 'fps', 5, 60, 'Refresh %.0f times a second')
+  hint('Lower is easier on your frame rate.')
+  slider('##posX', 'posX', 0, 3000, 'Left edge at %.0f px', true)
+  slider('##posY', 'posY', 0, 2000, 'Top edge at %.0f px', true)
+  if ui.button('Show a test card') then
+    local count = get(ac.getSim(), 'carsCount', 1)
+    testCursor = (testCursor + 1) % math.max(count, 1)
+    local car = ac.getCar(testCursor)
+    if car then
+      clearIncident(testCursor)
+      raise(testCursor, 'test', car)
+    end
+  end
+  hint('Opens a card for the next car, to check where the cards sit.')
+end
+
+local function tabPicture()
+  ui.header('Brightness')
+  toggle('Automatic exposure', 'autoExposure', 'Adjusts each picture like a camera would.')
+  slider('##exposure', 'exposure', 0.2, 4, 'Exposure %.2fx', 2)
+  slider('##shadowLift', 'shadowLift', 0, 1, 'Brighter shadows %.2f')
+  toggle('Gamma correction', 'gamma')
+  ui.header('Quality')
+  if ui.checkbox('Fast (simpler shading, more fps)', math.floor(S.quality) == 2) then
+    S.quality = math.floor(S.quality) == 2 and 1 or 2
+  end
+  toggle('Own shadows per view (costs fps)', 'ownShadows')
+end
+
+function script.windowMain(dt)
+  -- one line on top that says whether the website link works
+  local text, col = connectionState()
+  ui.pushFont(ui.Font.Small)
+  ui.textColored('NABS Race Control  v' .. APP_VERSION, TEXT_DIM)
+  ui.sameLine(0, 12)
+  ui.textColored('Website: ' .. text, col)
+  ui.popFont()
+
+  ui.tabBar('nabsRcTabs', function()
+    ui.tabItem('Live', tabLive)
+    ui.tabItem('Alerts', tabAlerts)
+    ui.tabItem('Cameras', tabCameras)
+    ui.tabItem('Picture', tabPicture)
+  end)
 end
