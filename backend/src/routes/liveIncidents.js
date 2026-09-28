@@ -1,9 +1,10 @@
-// Race control on the live page: the incident list, the stopped-car count and
-// the contact threshold. Stewards and admins only (lib/stewards.js).
+// Race control on the live page: contacts for the map, the stopped cars, who is
+// off track and the contact threshold. Race control and admins only
+// (lib/raceControl.js).
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
-import { isSteward } from "../lib/stewards.js";
+import { isRaceControl } from "../lib/raceControl.js";
 import { resolveServerKey } from "../lib/liveServers.js";
 import { publicDriverId, getDemoIncidents } from "../services/liveTiming.js";
 import {
@@ -20,12 +21,12 @@ const router = Router();
 
 async function allowed(req) {
   if (isAdminRequest(req)) return true;
-  return !!req.user?.discordId && (await isSteward(prisma, req.user.discordId).catch(() => false));
+  return !!req.user?.discordId && (await isRaceControl(prisma, req.user.discordId).catch(() => false));
 }
 
 async function gate(req, res, next) {
   if (await allowed(req)) return next();
-  res.status(403).json({ error: "Race control is for stewards" });
+  res.status(403).json({ error: "This is for race control" });
 }
 
 function who(req) {
@@ -46,11 +47,22 @@ router.get("/", optionalUser, gate, async (req, res, next) => {
       if (d) return res.json({ ok: true, demo: true, minKmh, ...d });
     }
     const serverKey = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
-    const incidents = await listIncidents(serverKey);
+    // After the first load the board only asks for what changed since its
+    // last answer (`after`, the cursor it was given), so a long race does not
+    // mean re-sending every contact of the evening every two seconds.
+    const after = Number(req.query.after);
+    const changedAfter = Number.isFinite(after) && after > 0 ? after : null;
+    // Five seconds of overlap: rows are written a moment after they are
+    // stamped, and one landing between our read and the stamp would otherwise
+    // be skipped for good. The page merges by id, so a repeat costs nothing.
+    const cursor = Date.now() - 5000;
+    const incidents = await listIncidents(serverKey, { changedAfter });
     res.json({
       ok: true,
       serverKey,
       minKmh,
+      cursor,
+      partial: changedAfter != null,
       session: sessionOf(serverKey),
       // Public pseudonyms only, the same ids the board uses, so the page can
       // tie an incident to a car on the map.

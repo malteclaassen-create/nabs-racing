@@ -944,6 +944,7 @@ model Incident {
   status       String  @default("open")
   resolvedBy   String?
   createdAtMs  Float
+  updatedAtMs  Float?
 
   @@index([server, sessionKey, atMs], map: "Incident_session_idx")
 }

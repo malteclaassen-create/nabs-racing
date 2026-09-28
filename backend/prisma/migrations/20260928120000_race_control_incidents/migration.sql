@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS "Incident" (
     "endedAt" REAL,
     "status" TEXT NOT NULL DEFAULT 'open',
     "resolvedBy" TEXT,
-    "createdAtMs" REAL NOT NULL
+    "createdAtMs" REAL NOT NULL,
+    "updatedAtMs" REAL
 );
 CREATE INDEX IF NOT EXISTS "Incident_session_idx" ON "Incident"("server","sessionKey","atMs");

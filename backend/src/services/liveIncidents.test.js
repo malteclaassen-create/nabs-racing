@@ -164,3 +164,29 @@ describe("off track", () => {
     expect(inc.offTrackNow(S)).toHaveLength(0);
   });
 });
+
+describe("the collision feed", () => {
+  it("hands a new collision to a waiting app at once, with the car's server number", async () => {
+    const start = inc.feedCursor();
+    const waiting = inc.waitForFeed(start, 5000);
+    await onCollision(
+      S,
+      { ID: "f1", Type: "with other car", Speed: 50, DriverGUID: "a", OtherDriverGUID: "b", WorldPos: { X: 1, Y: 2, Z: 3 } },
+      { now: 2_000_000, carIdForGuid: (g) => (g === "a" ? 4 : 9) }
+    );
+    const events = await waiting;
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "car", carId: 4, otherCarId: 9, driver: "Alice", other: "Bob", kmh: 50, pos: { x: 1, y: 2, z: 3 } });
+    expect(inc.feedAfter(events[0].seq)).toHaveLength(0);
+  });
+
+  it("gives up empty-handed after the wait, and merged repeats are not sent twice", async () => {
+    const start = inc.feedCursor();
+    await onCollision(S, { ID: "w1", Type: "with environment", Speed: 60, DriverGUID: "a" }, { now: 2_000_000 });
+    await onCollision(S, { ID: "w2", Type: "with environment", Speed: 70, DriverGUID: "a" }, { now: 2_001_000 });
+    expect(inc.feedAfter(start)).toHaveLength(1);
+    const t = Date.now();
+    expect(await inc.waitForFeed(inc.feedCursor(), 50)).toEqual([]);
+    expect(Date.now() - t).toBeGreaterThanOrEqual(40);
+  });
+});

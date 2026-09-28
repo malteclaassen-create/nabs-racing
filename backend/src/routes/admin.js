@@ -114,6 +114,7 @@ import {
 import { linkPreviews } from "../lib/pageMeta.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
+import { getRaceControlIds, setRaceControl } from "../lib/raceControl.js";
 import {
   notifyResultsSaved, notifyRacePhotosAdded, notifyDownloadAdded, notifySeatFilled, notifyCardUnlocksForSeason,
   readNotifySettings, writeNotifySettings, NOTIFY_DEFAULTS, REMINDER_OFFSETS,
@@ -3594,7 +3595,7 @@ router.post("/drivers/bulk-delete", async (req, res, next) => {
 //   unclaimed = active-season drivers nobody has logged in as yet.
 router.get("/members", async (req, res, next) => {
   try {
-    const [rows, drivers, activeSeasons, primarySeason, adminIds, stewardIds] = await Promise.all([
+    const [rows, drivers, activeSeasons, primarySeason, adminIds, stewardIds, raceControlIds] = await Promise.all([
       dbListMembers(prisma),
       prisma.driver.findMany({ include: { team: true, season: true } }),
       // One active season PER SERIES since the series model — a roster row on
@@ -3607,6 +3608,7 @@ router.get("/members", async (req, res, next) => {
       ),
       getAdminDiscordIds(prisma),
       getStewardDiscordIds(prisma),
+      getRaceControlIds(prisma),
     ]);
     const activeIds = new Set(activeSeasons.map((s) => s.id));
     // Whether the Steam ID has actually reached the roster row (raw column, so
@@ -3639,6 +3641,7 @@ router.get("/members", async (req, res, next) => {
         driver: shapeDriver(driver),
         isAdmin: adminIds.has(String(m.discordId)),
         isSteward: stewardIds.has(String(m.discordId)),
+        isRaceControl: raceControlIds.has(String(m.discordId)),
       };
     });
     // Drivers an account can be linked to: no stored Discord ID, OR an ID that
@@ -3934,6 +3937,21 @@ router.post("/members/:discordId/steward", async (req, res, next) => {
     const on = !!req.body?.isSteward;
     await setSteward(prisma, req.params.discordId, on);
     res.json({ ok: true, isSteward: on });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/race-control { isRaceControl }
+// Race control watches the race live: the TV board's race control view and a
+// pairing code for the game app, in an admin area that holds only that.
+router.post("/members/:discordId/race-control", async (req, res, next) => {
+  try {
+    const existing = await dbGetMember(prisma, req.params.discordId);
+    if (!existing) return res.status(404).json({ error: "Account not found" });
+    const on = !!req.body?.isRaceControl;
+    await setRaceControl(prisma, req.params.discordId, on);
+    res.json({ ok: true, isRaceControl: on });
   } catch (e) {
     next(e);
   }

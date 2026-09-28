@@ -1,0 +1,34 @@
+NABS Race Control PiP  (v0.1)
+==============================
+
+Was die App macht
+-----------------
+- Erkennt Autos, die auf der Strecke stehen (nicht in der Boxengasse) und Dreher.
+- Blendet das betroffene Auto automatisch als kleines Bild-im-Bild ein (oben links).
+- Rahmenfarbe: rot = steht, orange = Dreher, blau = Test.
+- Kameras: "Von oben" (Drohnenblick), "Verfolger" oder "Streckenkamera" (nächste TV-Kamera).
+
+Installation
+------------
+1. Den Ordner "NABS_RaceControl_PiP" nach
+   ...\steamapps\common\assettocorsa\apps\lua\
+   kopieren (so dass dort ...\apps\lua\NABS_RaceControl_PiP\manifest.ini liegt).
+2. Voraussetzung: Custom Shaders Patch (CSP), möglichst eine aktuelle Version.
+3. Spiel starten. Die Erkennung läuft automatisch im Hintergrund.
+   Das Einstellungsfenster "NABS Race Control" findest du in der App-Leiste rechts.
+
+Im Singleplayer testen
+----------------------
+- Einfach: Training starten, losfahren, dann auf der Strecke anhalten.
+  Nach 3 Sekunden geht das Fenster mit deinem eigenen Auto auf.
+- Mit KI-Autos: Rennen oder Training mit KI-Gegnern starten und im Fenster
+  "Nächstes Auto zeigen" drücken. Dann wird 12 Sekunden lang ein KI-Auto eingeblendet.
+- Dreher: Mit etwas Tempo in eine Kurve fahren und das Heck bewusst rauslassen.
+
+Hinweise
+--------
+- Jedes Bild-im-Bild kostet etwas FPS. Wenn es ruckelt: Bildrate oder Breite runter.
+- Wenn das Bild zu hell/dunkel aussieht: "Farbkorrektur (HDR)" umschalten.
+- Ein Auto wird erst gemeldet, wenn es vorher schneller als 40 km/h war
+  (damit die Startaufstellung nicht alles auslöst).
+- Einstellungen werden automatisch gespeichert.

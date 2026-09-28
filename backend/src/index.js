@@ -28,6 +28,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportsRoutes from "./routes/reports.js";
 import liveIncidentsRoutes from "./routes/liveIncidents.js";
+import raceControlRoutes from "./routes/raceControl.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
@@ -284,6 +285,8 @@ app.get("/api/live/map.png", async (req, res) => {
 
 // Race control: incidents (collisions, stopped cars) for stewards.
 app.use("/api/live/incidents", liveIncidentsRoutes);
+// Race control: pairing code and the game app's collision line.
+app.use("/api/race-control", raceControlRoutes);
 
 // Live championship projection: standings as if the RUNNING race ended in the
 // current order. Only active while a league race is on (see the service's

@@ -50,7 +50,7 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // Whether StatusPills has anything to say. A linked, unbanned, ordinary member
 // has none of them, and the row must not keep an empty line's worth of margin
 // for the pills that aren't there.
-const hasPills = (m) => !!(m.isAdmin || m.isSteward || m.banned || !m.driver || !m.driver.isActiveSeason);
+const hasPills = (m) => !!(m.isAdmin || m.isSteward || m.isRaceControl || m.banned || !m.driver || !m.driver.isActiveSeason);
 
 // The chips over "All login accounts". Each is one of the questions this list
 // gets asked ("who is banned?", "who are the stewards?"), answered from what
@@ -61,6 +61,7 @@ const steamDiffers = (m) => !!(m.steamId && m.driver?.steamId && m.steamId !== m
 const MEMBER_FILTERS = [
   { key: "banned", label: "Banned", test: (m) => !!m.banned },
   { key: "steward", label: "Stewards", test: (m) => !!m.isSteward && !m.isAdmin },
+  { key: "racecontrol", label: "Race control", test: (m) => !!m.isRaceControl && !m.isAdmin },
   { key: "admin", label: "Admins", test: (m) => !!m.isAdmin },
   { key: "nodriver", label: "Without driver", test: (m) => !m.driver },
   { key: "steam", label: "Steam differs", test: steamDiffers },
@@ -89,6 +90,14 @@ function StatusPills({ m }) {
           title="Can read and answer every incident report. No other admin access."
         >
           steward
+        </span>
+      )}
+      {m.isRaceControl && !m.isAdmin && (
+        <span
+          className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-warn"
+          title="Watches races live: race control on the TV board and a pairing code for the game app. No other admin access."
+        >
+          race control
         </span>
       )}
       {m.banned && (
@@ -256,6 +265,25 @@ export default function AdminMembers() {
         });
     if (!ok) return;
     act(m.discordId, () => api.setMemberSteward(m.discordId, next));
+  }
+
+  async function toggleRaceControl(m) {
+    const next = !m.isRaceControl;
+    const name = m.displayName || m.username;
+    const ok = next
+      ? await ask({
+          title: `Make "${name}" race control?`,
+          body: "They get race control on the TV board (contacts, off track, stopped cars) and an admin area with only their pairing code for the game app in it. Nothing else: no results, no settings, no reports.",
+          confirmLabel: "Make race control",
+        })
+      : await ask({
+          title: `Take race control away from "${name}"?`,
+          body: "Their pairing code stops working and the game app gets nothing more. Takes effect immediately.",
+          danger: true,
+          confirmLabel: "Remove race control",
+        });
+    if (!ok) return;
+    act(m.discordId, () => api.setMemberRaceControl(m.discordId, next));
   }
 
   async function toggleAdmin(m) {
@@ -562,6 +590,21 @@ export default function AdminMembers() {
                           }
                         >
                           {m.isSteward ? "Remove steward" : "Make steward"}
+                        </button>
+                      )}
+                      {/* Admins are race control already. */}
+                      {!m.isAdmin && (
+                        <button
+                          className={`py-1.5 text-sm font-semibold ${m.isRaceControl ? "text-light hover:text-link" : "text-link hover:underline"}`}
+                          disabled={busy === m.discordId}
+                          onClick={() => toggleRaceControl(m)}
+                          title={
+                            m.isRaceControl
+                              ? "Stop them watching races as race control"
+                              : "Race control on the TV board and a pairing code for the game app, nothing else"
+                          }
+                        >
+                          {m.isRaceControl ? "Remove race control" : "Make race control"}
                         </button>
                       )}
                       {m.driver && (

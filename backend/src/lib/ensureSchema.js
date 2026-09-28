@@ -818,11 +818,14 @@ export async function ensureAppSchema(prisma) {
     "endedAt" REAL,
     "status" TEXT NOT NULL DEFAULT 'open',
     "resolvedBy" TEXT,
-    "createdAtMs" REAL NOT NULL
+    "createdAtMs" REAL NOT NULL,
+    "updatedAtMs" REAL
   )`);
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "Incident_session_idx" ON "Incident"("server","sessionKey","atMs")`
   );
+  // When a row last changed, so the TV board can ask for changes only.
+  await addColumn(prisma, "Incident", "updatedAtMs", "REAL");
 
   // The live relay's last lap count per driver and server, so a restart picks
   // up where it left off instead of starting from zero (practiceTokens.js).

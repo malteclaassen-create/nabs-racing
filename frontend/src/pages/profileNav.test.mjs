@@ -67,3 +67,11 @@ test("?tab= stays valid while the token balance is still loading", () => {
   assert.ok(sectionKeys(COCKPIT).includes("tokens"));
   assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "career", "tokens", "tools", "settings"]);
 });
+
+test("race control members get a way to their page, admins already have theirs", () => {
+  const rc = profileNav({ raceControl: true, cockpitTabs: COCKPIT });
+  assert.ok(rc.elsewhere.some((e) => e.key === "racecontrol" && e.to === "/admin"));
+  const admin = profileNav({ raceControl: true, isAdmin: true, cockpitTabs: COCKPIT });
+  assert.ok(!admin.elsewhere.some((e) => e.key === "racecontrol"));
+  assert.ok(admin.elsewhere.some((e) => e.key === "admin"));
+});

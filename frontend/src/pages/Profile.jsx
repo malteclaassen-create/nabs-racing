@@ -27,6 +27,7 @@ import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import { NO_VALUE } from "../utils/format.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { pickedLeague } from "./viewedLeague.mjs";
+import { useRaceControlAccess } from "../components/RaceControl.jsx";
 
 // The public profile shows at most this many stat tiles.
 const MAX_TILES = 9;
@@ -827,6 +828,7 @@ function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const tokenBalance = useTokenBalance();
+  const raceControlAccess = useRaceControlAccess();
   // `current` rather than `slug`: the Personal Area sits outside the /s/<slug>
   // URLs, so on a cold load here there is no slug at all — while the header
   // still names a series (the active one). Following the header is the rule,
@@ -931,6 +933,7 @@ function MyProfile() {
       <ProfileNav
         nav={profileNav({
           isAdmin: !!user?.isAdmin,
+          raceControl: raceControlAccess,
           tokens: tokenBalance,
           reportsOpen: REPORTS_OPEN_TO_MEMBERS,
           cockpitTabs: COCKPIT_TABS,

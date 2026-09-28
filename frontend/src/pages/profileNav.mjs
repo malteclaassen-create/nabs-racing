@@ -17,7 +17,7 @@
 // `kind` drives the renderer: "section" swaps the panel and owns ?tab=,
 // "panel" opens an overlay, "page" is a real navigation and is drawn as a link
 // (middle-click, open-in-new-tab, and the right announcement).
-export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false, cockpitTabs = [] } = {}) {
+export function profileNav({ isAdmin = false, raceControl = false, tokens = null, reportsOpen = false, cockpitTabs = [] } = {}) {
   return {
     sections: [
       { kind: "section", key: "profile", label: "Edit Profile", icon: "profile" },
@@ -52,6 +52,11 @@ export function profileNav({ isAdmin = false, tokens = null, reportsOpen = false
       // notification lands and a notification has to have somewhere to land.
       ...(reportsOpen ? [{ kind: "page", key: "reports", label: "My reports", icon: "reports", to: "/reports" }] : []),
       ...(isAdmin ? [{ kind: "page", key: "admin", label: "Admin", icon: "admin", to: "/admin" }] : []),
+      // Race control's own admin area (the pairing code). Admins have it as a
+      // tab behind the link above.
+      ...(raceControl && !isAdmin
+        ? [{ kind: "page", key: "racecontrol", label: "Race control", icon: "racecontrol", to: "/admin" }]
+        : []),
     ],
   };
 }

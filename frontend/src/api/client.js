@@ -533,13 +533,17 @@ export const api = {
   // Race control (stewards + admins): does this viewer get the button, the
   // incidents of the session on air, and the two things a steward changes.
   raceControlAccess: () => request("/live/incidents/access", { auth: true }),
-  raceControlIncidents: (server = null, demo = null) => {
+  raceControlIncidents: (server = null, demo = null, after = null) => {
     const parts = [];
     if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
     if (server) parts.push(`server=${encodeURIComponent(server)}`);
     if (demo) parts.push(`demo=${encodeURIComponent(demo)}`);
+    if (after) parts.push(`after=${encodeURIComponent(after)}`);
     return request(`/live/incidents${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
   },
+  // The pairing code for the game app, and whether the app is on the line.
+  raceControlMe: () => request("/race-control/me", { userAuth: true }),
+  newRaceControlCode: () => request("/race-control/code", { method: "POST", userAuth: true }),
   setRaceControlMinKmh: (minKmh) =>
     request("/live/incidents/settings", { method: "PUT", body: { minKmh }, auth: true }),
 
@@ -1274,6 +1278,8 @@ export const api = {
   setMemberAdmin: (discordId, isAdmin) =>
     request(`/admin/members/${discordId}/admin`, { method: "POST", body: { isAdmin }, auth: true }),
   // Reads every incident report, and nothing else.
+  setMemberRaceControl: (discordId, isRaceControl) =>
+    request(`/admin/members/${discordId}/race-control`, { method: "POST", body: { isRaceControl }, auth: true }),
   setMemberSteward: (discordId, isSteward) =>
     request(`/admin/members/${discordId}/steward`, { method: "POST", body: { isSteward }, auth: true }),
   createDriverFromMember: (discordId, body) =>

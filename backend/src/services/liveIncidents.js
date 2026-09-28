@@ -140,7 +140,7 @@ export function onTelemetry(serverKey, { guid, carId, kmh, pos, spline, inPits, 
         c.slowSince = null;
         c.movingSince = null;
         prisma
-          .$executeRawUnsafe(`UPDATE "Incident" SET "endedAt" = ? WHERE "id" = ?`, now, id)
+          .$executeRawUnsafe(`UPDATE "Incident" SET "endedAt" = ?, "updatedAtMs" = ? WHERE "id" = ?`, now, Date.now(), id)
           .catch(() => {});
       }
     } else {
@@ -174,7 +174,7 @@ export function onTelemetry(serverKey, { guid, carId, kmh, pos, spline, inPits, 
 // Collisions (ET108). Field names as the server manager's own client reads
 // them; the fallbacks are there because we have not seen one on our socket
 // yet and the Go side might spell a field differently.
-export async function onCollision(serverKey, m, { guidForCar, splineForGuid, now = Date.now() } = {}) {
+export async function onCollision(serverKey, m, { guidForCar, carIdForGuid, splineForGuid, now = Date.now() } = {}) {
   if (!m || typeof m !== "object") return;
   const st = stateFor(serverKey);
   if (!st.sessionKey) return;
@@ -193,7 +193,7 @@ export async function onCollision(serverKey, m, { guidForCar, splineForGuid, now
   const withCar = typeText.includes("car") || m.Type === 10 || !!other || !!m.OtherDriverName;
   if (!guid) return;
   const wp = m.WorldPos || m.WorldPosition || m.Pos || null;
-  const pos = wp ? { X: Number(wp.X ?? wp.x) || 0, Z: Number(wp.Z ?? wp.z) || 0 } : null;
+  const pos = wp ? { X: Number(wp.X ?? wp.x) || 0, Y: Number(wp.Y ?? wp.y) || 0, Z: Number(wp.Z ?? wp.z) || 0 } : null;
   const at = m.Time ? Date.parse(m.Time) || now : now;
 
   // Same pair (either way round), or the same car on the same wall, just now.
@@ -205,7 +205,7 @@ export async function onCollision(serverKey, m, { guidForCar, splineForGuid, now
     if (kmh > prev.kmh) {
       prev.kmh = kmh;
       prisma
-        .$executeRawUnsafe(`UPDATE "Incident" SET "speedKmh" = ? WHERE "id" = ?`, round1(kmh), prev.id)
+        .$executeRawUnsafe(`UPDATE "Incident" SET "speedKmh" = ?, "updatedAtMs" = ? WHERE "id" = ?`, round1(kmh), Date.now(), prev.id)
         .catch(() => {});
     }
     return;
@@ -215,20 +215,87 @@ export async function onCollision(serverKey, m, { guidForCar, splineForGuid, now
   if (st.recent.size > 200) {
     for (const [k, v] of st.recent) if (at - v.at > MERGE_ENV_MS) st.recent.delete(k);
   }
+  const carId = m.CarID ?? carIdForGuid?.(guid) ?? null;
+  const otherCarId = withCar ? m.OtherCarID ?? (other ? carIdForGuid?.(other) : null) ?? null : null;
+  const driverName = st.names.get(guid) || null;
+  const otherName = withCar ? m.OtherDriverName || (other ? st.names.get(other) : null) || null : null;
+  // Straight out to whoever waits for collisions (the game app), before the
+  // database: the app wants it within a second, the table can take its time.
+  publish({
+    id,
+    server: serverKey,
+    track: String(st.sessionKey).split("|")[0] || null,
+    kind: withCar ? "car" : "env",
+    carId,
+    driver: driverName,
+    otherCarId,
+    other: otherName,
+    kmh: round1(kmh),
+    pos: pos ? { x: round1(pos.X), y: round1(pos.Y), z: round1(pos.Z) } : null,
+    at,
+    raceMs: raceMsOf(st, at),
+  });
   insert({
     id,
     server: serverKey,
     st,
     type: withCar ? "car" : "env",
     driverGuid: guid,
-    carId: m.CarID ?? null,
+    carId,
     otherGuid: withCar ? other : null,
-    otherName: withCar ? m.OtherDriverName || null : null,
-    otherCarId: m.OtherCarID ?? null,
+    otherName,
+    otherCarId,
     at,
     pos,
     spline: splineForGuid?.(guid) ?? null,
     kmh,
+  });
+}
+
+// ---- the collision feed -----------------------------------------------------
+// The last few hundred collisions from every server, numbered, in memory. The
+// game app asks "anything after N?" and, if not, waits here until there is
+// (routes/raceControl.js, long polling). A restart starts the numbers again;
+// an app holding a higher number is told the new one and carries on.
+const FEED_MAX = 300;
+const feed = [];
+let feedSeq = 0;
+const waiters = new Set();
+
+function publish(ev) {
+  ev.seq = ++feedSeq;
+  feed.push(ev);
+  if (feed.length > FEED_MAX) feed.shift();
+  for (const w of [...waiters]) w();
+}
+
+export function feedCursor() {
+  return feedSeq;
+}
+
+export function feedAfter(after) {
+  return feed.filter((e) => e.seq > after);
+}
+
+// Resolves with the events after `after` as soon as there are any, or with
+// none after `ms`. `onGone` lets the caller drop the wait when its client leaves.
+export function waitForFeed(after, ms, onGone) {
+  const now = feedAfter(after);
+  if (now.length || after > feedSeq) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    let timer = null;
+    const done = () => {
+      waiters.delete(wake);
+      clearTimeout(timer);
+      resolve(feedAfter(after));
+    };
+    const wake = () => done();
+    waiters.add(wake);
+    timer = setTimeout(done, ms);
+    onGone?.(() => {
+      waiters.delete(wake);
+      clearTimeout(timer);
+    });
   });
 }
 
@@ -239,8 +306,8 @@ function insert({ id, server, st, type, driverGuid, carId = null, otherGuid = nu
   const oName = otherName || (otherGuid ? st.names.get(otherGuid) : null) || null;
   prisma
     .$executeRawUnsafe(
-      `INSERT INTO "Incident" ("id","server","sessionKey","sessionType","sessionStart","type","driverGuid","driverName","carId","otherGuid","otherName","otherCarId","atMs","raceMs","x","z","spline","speedKmh","status","createdAtMs")
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?)`,
+      `INSERT INTO "Incident" ("id","server","sessionKey","sessionType","sessionStart","type","driverGuid","driverName","carId","otherGuid","otherName","otherCarId","atMs","raceMs","x","z","spline","speedKmh","status","createdAtMs","updatedAtMs")
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?)`,
       id,
       server,
       st.sessionKey,
@@ -259,6 +326,7 @@ function insert({ id, server, st, type, driverGuid, carId = null, otherGuid = nu
       pos ? round1(pos.Z) : null,
       spline == null ? null : Math.round(spline * 10000) / 10000,
       kmh == null ? null : round1(kmh),
+      Date.now(),
       Date.now()
     )
     .catch((e) => console.warn(`[incidents] insert failed: ${e.message}`));
@@ -322,15 +390,20 @@ export function sessionOf(serverKey) {
 
 // This session's incidents, newest first. A restart in place of the same
 // session gets a new start time, so anything from before it drops out.
-export async function listIncidents(serverKey, limit = 150) {
+// `changedAfter` (ms) returns only what is new or changed since then, which is
+// what the TV board asks for after its first load.
+export async function listIncidents(serverKey, { limit = 150, changedAfter = null } = {}) {
   const s = sessionOf(serverKey);
   if (!s) return [];
   const from = s.startedAt ? s.startedAt - 60_000 : Date.now() - 6 * 3600_000;
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT * FROM "Incident" WHERE "server" = ? AND "sessionKey" = ? AND "atMs" >= ? ORDER BY "atMs" DESC LIMIT ?`,
+    `SELECT * FROM "Incident" WHERE "server" = ? AND "sessionKey" = ? AND "atMs" >= ?${
+      changedAfter != null ? ` AND "updatedAtMs" > ?` : ""
+    } ORDER BY "atMs" DESC LIMIT ?`,
     serverKey,
     s.key,
     from,
+    ...(changedAfter != null ? [changedAfter] : []),
     limit
   );
   return rows.map((r) => ({
@@ -356,9 +429,10 @@ export async function listIncidents(serverKey, limit = 150) {
 export async function setIncidentStatus(id, status, by) {
   if (!["open", "done"].includes(status)) throw new Error("Unknown status");
   return prisma.$executeRawUnsafe(
-    `UPDATE "Incident" SET "status" = ?, "resolvedBy" = ? WHERE "id" = ?`,
+    `UPDATE "Incident" SET "status" = ?, "resolvedBy" = ?, "updatedAtMs" = ? WHERE "id" = ?`,
     status,
     status === "done" ? by || null : null,
+    Date.now(),
     id
   );
 }

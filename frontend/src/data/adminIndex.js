@@ -25,6 +25,9 @@ export const TAB_GROUPS = [
       // everything a finished round is turned into.
       { id: "content", label: "Content" },
       { id: "photos", label: "Photos & Videos" },
+      // The pairing code for the game app. Members with the race control role
+      // get an admin area with nothing else in it.
+      { id: "racecontrol", label: "Race control" },
     ],
   },
   {

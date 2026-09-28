@@ -68,6 +68,7 @@ const TAB_CHUNKS = {
   AdminReports: () => import("../components/AdminReports.jsx"),
   AdminDiscordConnections: () => import("../components/AdminDiscordConnections.jsx"),
   AdminTransfers: () => import("../components/AdminTransfers.jsx"),
+  RaceControlDesk: () => import("../components/RaceControlDesk.jsx"),
 };
 const AdminImport = lazy(TAB_CHUNKS.AdminImport);
 const AdminRatings = lazy(TAB_CHUNKS.AdminRatings);
@@ -90,6 +91,7 @@ const AdminTokens = lazy(TAB_CHUNKS.AdminTokens);
 const AdminReports = lazy(TAB_CHUNKS.AdminReports);
 const AdminDiscordConnections = lazy(TAB_CHUNKS.AdminDiscordConnections);
 const AdminTransfers = lazy(TAB_CHUNKS.AdminTransfers);
+const RaceControlDesk = lazy(TAB_CHUNKS.RaceControlDesk);
 
 // Warm the tab chunks one after another while the browser is idle. The import
 // is cached, so a tab opened later renders without a loading state. Failures
@@ -425,6 +427,37 @@ export default function Admin() {
     return () => window.removeEventListener("nabs-admin-unauthorized", onUnauth);
   }, []);
 
+  // Race control members are not admins but get an admin area of their own
+  // with only their page in it. Asked only for a signed-in non-admin.
+  const [rcOnly, setRcOnly] = useState(null);
+  useEffect(() => {
+    if (authed || !user?.discordId) {
+      setRcOnly(false);
+      return undefined;
+    }
+    let alive = true;
+    api
+      .raceControlMe()
+      .then((r) => alive && setRcOnly(!!r?.canPair))
+      .catch(() => alive && setRcOnly(false));
+    return () => {
+      alive = false;
+    };
+  }, [authed, user?.discordId]);
+
+  if (!authed && user?.discordId && rcOnly === null) return <TabSkeleton />;
+  if (!authed && rcOnly)
+    return (
+      <div className="content-in">
+        <div className="mb-4 sm:mb-6">
+          <PageHeader eyebrow="League Office" title="Race control" />
+        </div>
+        <Suspense fallback={<TabSkeleton />}>
+          <RaceControlDesk />
+        </Suspense>
+      </div>
+    );
+
   if (!authed)
     return (
       <Login
@@ -544,6 +577,7 @@ export default function Admin() {
           {tab === "drivers" && <Drivers />}
           {tab === "transfers" && <AdminTransfers />}
           {tab === "members" && <AdminMembers />}
+          {tab === "racecontrol" && <RaceControlDesk />}
           {tab === "reports" && <AdminReports />}
           {tab === "feedback" && <AdminFeedback />}
           {tab === "tokens" && <AdminTokens jumpView={viewFor("tokens")} jumpKey={jump?.n} />}

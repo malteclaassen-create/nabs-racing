@@ -39,19 +39,38 @@ export function useRaceControl({ on, server, demo }) {
   const [data, setData] = useState(null);
   const seenRef = useRef(null); // ids we already had, null until the first load
   const freshRef = useRef(new Map()); // id -> fresh until (ms)
+  // After the first answer only changes are asked for; the list is kept here.
+  const cursorRef = useRef(null);
+  const listRef = useRef([]);
+  const sessionRef = useRef(null);
   const resetKey = `${server || ""}|${demo || ""}`;
 
   useEffect(() => {
     seenRef.current = null;
     freshRef.current = new Map();
+    cursorRef.current = null;
+    listRef.current = [];
+    sessionRef.current = null;
     setData(null);
   }, [resetKey]);
 
   useVisiblePoll(
     async (alive) => {
-      const d = await api.raceControlIncidents(server, demo).catch(() => null);
+      const d = await api.raceControlIncidents(server, demo, cursorRef.current).catch(() => null);
       if (!alive() || !d?.ok) return;
       const now = Date.now();
+      // A new session starts the list from nothing.
+      const sessionKey = d.session?.key ?? null;
+      if (d.partial && sessionKey === sessionRef.current) {
+        const byId = new Map(listRef.current.map((i) => [i.id, i]));
+        for (const i of d.incidents || []) byId.set(i.id, i);
+        listRef.current = [...byId.values()].sort((a, b) => b.at - a.at).slice(0, 300);
+      } else {
+        listRef.current = d.incidents || [];
+      }
+      sessionRef.current = sessionKey;
+      cursorRef.current = d.cursor ?? null;
+      d.incidents = listRef.current;
       const ids = (d.incidents || []).map((i) => i.id);
       // Only what shows up WHILE we watch gets the burst; opening the board
       // mid-race should not set off every old contact at once.

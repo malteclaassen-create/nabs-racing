@@ -1406,6 +1406,7 @@ function createRelay(server) {
     liveIncidents
       .onCollision(server.key, m, {
         guidForCar: (id) => carIdToGuid.get(id) || null,
+        carIdForGuid: (guid) => status?.ConnectedDrivers?.Drivers?.[guid]?.CarInfo?.CarID ?? null,
         splineForGuid: (guid) => {
           const id = status?.ConnectedDrivers?.Drivers?.[guid]?.CarInfo?.CarID;
           return id == null ? null : liveByCar.get(id)?.NormalisedSplinePos ?? null;

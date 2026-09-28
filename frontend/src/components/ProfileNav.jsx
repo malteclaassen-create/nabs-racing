@@ -6,6 +6,7 @@ import {
   History,
   MessageSquare,
   Shield,
+  ShieldAlert,
   SlidersHorizontal,
   TrendingUp,
   Trophy,
@@ -37,6 +38,7 @@ const ICONS = {
   career: History,
   reports: TriangleAlert,
   admin: Shield,
+  racecontrol: ShieldAlert,
 };
 
 // The points wear the league's own mark rather than a generic coin: the same
