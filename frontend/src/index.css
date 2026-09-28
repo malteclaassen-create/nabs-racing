@@ -230,36 +230,9 @@ body {
   transition: background-color var(--t-base) var(--e-soft), color var(--t-base) var(--e-soft);
 }
 
-/* Living "aurora" backdrop — three soft brand-coloured blooms that drift slowly
-   behind the whole site. Fixed + below the app content (z-index -1), so it
-   shows through the gaps between cards and the page margins without ever
-   sitting on top of anything interactive. Kept faint, more so in light mode. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: -25%;
-  z-index: -1;
-  pointer-events: none;
-  /* No filter: blur() here on purpose — a live 30px blur over a 150%-viewport
-     fixed layer made mobile scrolling/zooming stutter. The gradients carry the
-     softness themselves (they already fade to transparent over a long run). */
-  background:
-    radial-gradient(44% 48% at 18% 22%, rgb(var(--c-brand) / 0.26), transparent 74%),
-    radial-gradient(48% 52% at 82% 14%, rgba(66, 81, 168, 0.19), transparent 74%),
-    radial-gradient(52% 54% at 72% 84%, rgba(56, 189, 248, 0.14), transparent 76%);
-  animation: aurora-drift 26s ease-in-out infinite alternate;
-  will-change: transform;
-}
-/* Dark mode keeps a clean, solid background (no drifting blooms) — the aurora
-   stays in light mode only. */
-.dark body::before {
-  display: none;
-}
-@keyframes aurora-drift {
-  0%   { transform: translate3d(0, 0, 0) scale(1); }
-  50%  { transform: translate3d(2%, 1.5%, 0) scale(1.06); }
-  100% { transform: translate3d(-2%, -1%, 0) scale(1.03); }
-}
+/* The page background is the plain --c-bg colour in both themes. Light mode
+   used to have drifting brand-coloured blooms (the "aurora") behind every page;
+   they were removed so the background matches the chosen design. */
 
 @layer components {
   .container-page {
@@ -1298,7 +1271,6 @@ body::before {
   .fade-out { animation: none !important; opacity: 1; }
   .lift:hover { transform: none; }
 
-  body::before { animation: none; }
   .cascade > * { opacity: 1; animation: none !important; }
   .bar-fill { width: var(--w, 0) !important; animation: none !important; }
   .bar-rise { height: var(--h, 0) !important; animation: none !important; }
@@ -1380,7 +1352,6 @@ body::before {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-.fx-lite body::before { display: none !important; }
 .fx-lite .reveal { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .chart-line { animation: none !important; stroke-dashoffset: 0; }
 .fx-lite .wipe-ltr, .fx-lite .wipe-rtl { clip-path: none !important; animation: none !important; }
