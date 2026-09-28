@@ -1028,6 +1028,23 @@ const FEATURE_ANNOUNCEMENTS = [
     // Lands on the card itself: Tools scrolls to #telemetry once it is drawn.
     link: "/tools#telemetry",
   },
+  // Two entries for one release, so each can open its own page: a bell entry
+  // is one button with one link. The bell lists newest first, so the second
+  // one here is the one on top.
+  {
+    dedupeKey: "feature:changelog",
+    type: "NEWS",
+    title: "New: What's new",
+    body: "See everything that changed on the site since June.",
+    link: "/changelog",
+  },
+  {
+    dedupeKey: "feature:designs",
+    type: "NEWS",
+    title: "New: designs",
+    body: "Pick a design for the site in your settings.",
+    link: "/profile?tab=settings",
+  },
 ];
 
 // The track editor's announcement goes to the members, not to the admins,
