@@ -35,7 +35,7 @@ in its own SDK, which is why the app gets them from us.
 
 ## The game app
 
-`ac-apps/NABS_RaceControl_HUD` (v1.5, shown in the game as "NABS Race Control") goes into
+`ac-apps/NABS_RaceControl_HUD` (v1.6, shown in the game as "NABS Race Control") goes into
 `assettocorsa/apps/lua/`. Open its window in the game, type the code from the
 race control page once. From then on every contact over the threshold opens
 the camera tiles for that car by itself. The window says whether it is
@@ -52,7 +52,11 @@ The window has four tabs:
   it). Stopped cars and off track count from the moment they are over (driving
   again, back on the tarmac). Contacts and wall hits can pop up only from a
   speed you pick. Off track is off by default, it happens a lot.
-- **Cameras**: which views each card shows, how many cards, how big, where.
+- **Cameras**: which views each card shows (from above, chase, side, the
+  track's TV cameras, onboard, from the front, helicopter, and the crash scene,
+  which stays on the spot), how many cards, how big, where. The cameras follow
+  the car's direction of travel, smoothed, so they go round corners with it but
+  don't whip round in a spin.
 - **Picture**: brightness and quality of the camera views.
 
 A **pile-up** is several cars crashing within 60 m of each other inside 4 s.

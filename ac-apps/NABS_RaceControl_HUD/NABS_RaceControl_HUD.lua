@@ -1,4 +1,4 @@
--- NABS Race Control  v1.5
+-- NABS Race Control  v1.6
 -- Broadcast-style version of the race control picture-in-picture.
 -- Same detection as the full app (stopped cars, spins), with a small control window.
 -- Install for race control only. Don't run it together with NABS_RaceControl_PiP (you'd get the HUD twice).
@@ -21,6 +21,10 @@
 --
 -- v1.5: called NABS Race Control now, with the league logo, and the chime has
 -- a volume.
+--
+-- v1.6: the cameras follow the car round corners (they used to keep the
+-- direction from the moment of the incident), and four more views: onboard,
+-- from the front, helicopter, and the crash scene, which stays on the spot.
 
 ---------------------------------------------------------------------------------------------------
 -- Settings (saved automatically)
@@ -34,6 +38,11 @@ local S = ac.storage({
   viewChase = false,
   viewSide = false,
   viewTrack = true,
+  viewTcam = false,
+  viewFront = false,
+  viewHeli = false,
+  viewScene = false,
+  chaseDist = 8,        -- metres behind the car for the chase view
   stopKmh = 8,          -- below this a car counts as stopped
   holdSec = 3,          -- how long it has to stand before it's reported
   ignoreOwn = false,
@@ -70,13 +79,18 @@ local S = ac.storage({
   keepStopped = 5,
 }, 'nabsHud1_')
 
+-- The order matters: aimShot picks the camera by this number.
 local VIEWS = {
-  { key = 'viewTop', name = 'From above', short = 'TOP' },
-  { key = 'viewChase', name = 'Chase', short = 'CHASE' },
-  { key = 'viewSide', name = 'Side', short = 'SIDE' },
-  { key = 'viewTrack', name = 'TV camera', short = 'TV CAM' },
+  { key = 'viewTop', name = 'From above', short = 'TOP', tip = 'Like a drone behind and above the car.' },
+  { key = 'viewChase', name = 'Chase', short = 'CHASE', tip = 'Behind the car, follows it round the corners.' },
+  { key = 'viewSide', name = 'Side', short = 'SIDE', tip = 'Next to the car, at its height.' },
+  { key = 'viewTrack', name = 'TV camera', short = 'TV CAM', tip = 'The track\'s own TV cameras, as in a replay.' },
+  { key = 'viewTcam', name = 'Onboard', short = 'ONBOARD', tip = 'Just above the driver, looking where the car points (turns with a spin).' },
+  { key = 'viewFront', name = 'From the front', short = 'FRONT', tip = 'Ahead of the car looking back at it: front wing, what is behind.' },
+  { key = 'viewHeli', name = 'Helicopter', short = 'HELI', tip = 'High and far back: the cars around it, the whole corner.' },
+  { key = 'viewScene', name = 'Crash scene', short = 'SCENE', tip = 'Stays where it happened, even when the car drives away. Good for pile-ups.' },
 }
-local APP_VERSION = '1.5'
+local APP_VERSION = '1.6'
 local LOGO = __dirname .. '/logo.png'
 local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL', pileup = 'PILE-UP', offtrack = 'OFF TRACK' }
 local OVER_LABEL = { stopped = 'MOVING AGAIN', offtrack = 'BACK ON TRACK' }
@@ -178,9 +192,11 @@ local function raise(i, kind, car, detail, pop)
   -- A card already on screen for this car stays there with the new news.
   if inc and inc.show and not inc.resolved then show = true end
   local hx, hz = heading(car)
+  local cp = car.position
   inc = {
     car = i, kind = kind, since = clock, lastSeen = clock, hx = hx, hz = hz, detail = detail,
     show = show or kind == 'test', manual = kind == 'test',
+    startPos = { x = cp.x, y = cp.y, z = cp.z },
   }
   incidents[i] = inc
   addLog(driverName(i) .. '  ' .. (KIND_LABEL[kind] or kind) .. (detail and ('  ' .. detail) or ''))
@@ -631,45 +647,86 @@ local function updateSlots()
   end
 end
 
+-- Where the cameras look along: the way the car is going, smoothed. It swings
+-- round a corner with the car, and doesn't whip round in a spin, because a
+-- spinning car keeps sliding the same way. Standing still keeps the last one.
+local function followHeading(inc, car)
+  local v = car.velocity
+  local vl = math.sqrt(v.x * v.x + v.z * v.z)
+  local fx, fz = inc.fx or inc.hx, inc.fz or inc.hz
+  if vl > 3 then
+    local dt = math.max(0, clock - (inc.fT or clock))
+    local k = 1 - math.exp(-dt * 3)
+    fx, fz = fx + (v.x / vl - fx) * k, fz + (v.z / vl - fz) * k
+    local l = math.sqrt(fx * fx + fz * fz)
+    if l > 0.001 then fx, fz = fx / l, fz / l end
+  end
+  inc.fx, inc.fz, inc.fT = fx, fz, clock
+  return fx, fz
+end
+
 local function aimShot(shot, inc, view)
   local car = ac.getCar(inc.car)
   if not car then return end
   local p = car.position
 
-  -- Bei Test-Vorfaellen der aktuellen Fahrtrichtung folgen, sonst die Richtung beim Vorfall festhalten
-  local hx, hz = inc.hx, inc.hz
-  if inc.kind == 'test' then hx, hz = heading(car) end
-
   if view == 4 then
     local ok = pcall(function() shot:updateWithTrackCamera(inc.car) end)
     if ok then return end
-    view = 2 -- falls die CSP-Version das nicht kann: Verfolger
+    view = 2 -- a CSP without track cameras: chase instead
   end
 
+  local hx, hz = followHeading(inc, car)
+  local up = vec3(0, 1, 0)
   local cx, cy, cz, tx, ty, tz, fov
   if view == 1 then
-    -- schraeg von oben, wie eine Drohne ueber dem Auto
+    -- above and behind, like a drone
     cx, cy, cz = p.x - hx * 10, p.y + 24, p.z - hz * 10
     tx, ty, tz = p.x, p.y, p.z
     fov = 45
   elseif view == 3 then
-    -- seitlich, auf Hoehe des Autos (rechts neben dem Auto)
+    -- beside the car, at its height (on its right)
     local sx, sz = hz, -hx
     cx, cy, cz = p.x + sx * 9, p.y + 1.6, p.z + sz * 9
     tx, ty, tz = p.x, p.y + 0.6, p.z
     fov = 55
+  elseif view == 5 and get(car, 'look', nil) and get(car, 'up', nil) then
+    -- onboard: just above and behind the driver, along the car itself
+    local lk, u = car.look, car.up
+    cx, cy, cz = p.x - lk.x * 0.6 + u.x * 1.25, p.y - lk.y * 0.6 + u.y * 1.25, p.z - lk.z * 0.6 + u.z * 1.25
+    tx, ty, tz = cx + lk.x * 10, cy + lk.y * 10, cz + lk.z * 10
+    up = vec3(u.x, u.y, u.z)
+    fov = 70
+  elseif view == 6 then
+    -- ahead of the car, looking back at it
+    cx, cy, cz = p.x + hx * 9, p.y + 1.8, p.z + hz * 9
+    tx, ty, tz = p.x, p.y + 0.6, p.z
+    fov = 50
+  elseif view == 7 then
+    -- helicopter: high and far back, the corner and the cars around
+    cx, cy, cz = p.x - hx * 35, p.y + 45, p.z - hz * 35
+    tx, ty, tz = p.x + hx * 10, p.y, p.z + hz * 10
+    fov = 50
+  elseif view == 8 then
+    -- the crash scene: fixed where it happened, from behind and to the side
+    local sp = inc.crashPos or inc.startPos or p
+    local sy = sp.y or p.y
+    cx, cy, cz = sp.x - inc.hx * 18 + inc.hz * 10, sy + 12, sp.z - inc.hz * 18 - inc.hx * 10
+    tx, ty, tz = sp.x, sy, sp.z
+    fov = 50
   else
-    -- hinter dem Auto
-    cx, cy, cz = p.x - hx * 8, p.y + 3.2, p.z - hz * 8
+    -- chase: behind the car
+    local d = math.max(3, S.chaseDist)
+    cx, cy, cz = p.x - hx * d, p.y + d * 0.4, p.z - hz * d
     tx, ty, tz = p.x, p.y + 0.8, p.z
     fov = 55
   end
 
   local dx, dy, dz = tx - cx, ty - cy, tz - cz
   local l = math.sqrt(dx * dx + dy * dy + dz * dz)
-  shot:update(vec3(cx, cy, cz), vec3(dx / l, dy / l, dz / l), vec3(0, 1, 0), fov)
+  if l < 0.001 then return end
+  shot:update(vec3(cx, cy, cz), vec3(dx / l, dy / l, dz / l), up, fov)
 end
-
 
 ---------------------------------------------------------------------------------------------------
 -- Broadcast HUD
@@ -941,8 +998,9 @@ end
 
 local function tabCameras()
   ui.header('Views on each card')
-  for _, view in ipairs(VIEWS) do toggle(view.name, view.key) end
-  note('Each card shows the selected views side by side. At least one is always on.')
+  for _, view in ipairs(VIEWS) do toggle(view.name, view.key, view.tip) end
+  if S.viewChase then slider('##chaseDist', 'chaseDist', 4, 20, '  chase camera %.0f m behind') end
+  note('Each card shows the ticked views side by side, so more views make the cards wider. At least one is always on.')
 
   ui.header('Cards')
   slider('##maxPip', 'maxPip', 1, 4, 'Up to %.0f cards on screen')
