@@ -540,8 +540,6 @@ export const api = {
     if (demo) parts.push(`demo=${encodeURIComponent(demo)}`);
     return request(`/live/incidents${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
   },
-  setIncidentStatus: (id, status) =>
-    request(`/live/incidents/${encodeURIComponent(id)}`, { method: "PATCH", body: { status }, auth: true }),
   setRaceControlMinKmh: (minKmh) =>
     request("/live/incidents/settings", { method: "PUT", body: { minKmh }, auth: true }),
 

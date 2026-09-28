@@ -13,6 +13,14 @@
 import { randomUUID } from "node:crypto";
 import prisma from "../lib/prisma.js";
 
+// Off track, estimated from the map (lib/trackMask.js): the car's centre this
+// far beyond the painted tarmac is about "four wheels out". Held a moment
+// either way so a kerb or a bump of the reading does not flicker it.
+export const OFF_M = 2.5;
+const BACK_ON_M = 1.5;
+const OFF_HOLD_MS = 800;
+const ON_HOLD_MS = 1000;
+
 export const STOP_KMH = 8;
 export const STOP_HOLD_MS = 3000;
 export const ARM_KMH = 40;
@@ -97,15 +105,16 @@ function raceMsOf(st, at) {
 }
 
 // Every ET53. `inPits` is the de-flickered pit flag from the relay.
-export function onTelemetry(serverKey, { guid, carId, kmh, pos, spline, inPits, now = Date.now() }) {
+export function onTelemetry(serverKey, { guid, carId, kmh, pos, spline, inPits, offM = null, now = Date.now() }) {
   if (!guid || kmh == null) return;
   const st = stateFor(serverKey);
   if (!st.sessionKey) return;
   let c = st.cars.get(guid);
   if (!c) {
-    c = { armed: false, slowSince: null, incidentId: null, movingSince: null, last: null };
+    c = { armed: false, slowSince: null, incidentId: null, movingSince: null, last: null, off: null };
     st.cars.set(guid, c);
   }
+  trackOff(c, inPits ? null : offM, now);
   // A jump across the map is a teleport (back to pits, reset): start over.
   if (pos && c.last && Math.hypot(pos.X - c.last.X, pos.Z - c.last.Z) > TELEPORT_M) {
     c.slowSince = null;
@@ -253,6 +262,46 @@ function insert({ id, server, st, type, driverGuid, carId = null, otherGuid = nu
       Date.now()
     )
     .catch((e) => console.warn(`[incidents] insert failed: ${e.message}`));
+}
+
+function trackOff(c, offM, now) {
+  const o = (c.off ??= { since: null, candidate: null, backSince: null, metres: 0 });
+  if (offM == null) {
+    // In the pits, or no map to judge by: not off.
+    o.since = o.candidate = o.backSince = null;
+    return;
+  }
+  if (o.since != null) {
+    o.metres = Math.max(o.metres, offM);
+    if (offM < BACK_ON_M) {
+      o.backSince ??= now;
+      if (now - o.backSince >= ON_HOLD_MS) o.since = o.backSince = null;
+    } else {
+      o.backSince = null;
+    }
+    return;
+  }
+  if (offM > OFF_M) {
+    o.candidate ??= now;
+    if (now - o.candidate >= OFF_HOLD_MS) {
+      o.since = o.candidate;
+      o.candidate = null;
+      o.metres = offM;
+    }
+  } else {
+    o.candidate = null;
+  }
+}
+
+// Cars off the tarmac right now, longest out first.
+export function offTrackNow(serverKey) {
+  const st = states.get(serverKey);
+  if (!st) return [];
+  const out = [];
+  for (const [guid, c] of st.cars) {
+    if (c.off?.since != null) out.push({ guid, name: st.names.get(guid) || null, since: c.off.since, metres: Math.round(c.off.metres * 10) / 10 });
+  }
+  return out.sort((a, b) => a.since - b.since);
 }
 
 // Cars stopped on track right now (reported and not moving again).

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, RotateCcw, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { api } from "../api/client.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
+import { useNow } from "../hooks/useNow.js";
 
-// Race control inside the TV board: collisions and stopped cars from the
-// backend (services/liveIncidents.js), for stewards and admins only.
+// Race control inside the TV board: collisions (bursts on the map), stopped
+// cars and who is off track, from services/liveIncidents.js. Stewards and
+// admins only.
 
 const POLL_MS = 2000;
 // How long a new collision counts as "just happened" (the burst on the map).
@@ -69,28 +71,13 @@ export function useRaceControl({ on, server, demo }) {
 
   const isFresh = useCallback((id) => (freshRef.current.get(id) || 0) > Date.now(), []);
 
-  const setStatus = useCallback(
-    async (id, status) => {
-      setData((d) => d && { ...d, incidents: d.incidents.map((i) => (i.id === id ? { ...i, status } : i)) });
-      if (demo) return;
-      try {
-        await api.setIncidentStatus(id, status);
-      } catch {
-        setData((d) =>
-          d && { ...d, incidents: d.incidents.map((i) => (i.id === id ? { ...i, status: status === "done" ? "open" : "done" } : i)) }
-        );
-      }
-    },
-    [demo]
-  );
-
   const setMinKmh = useCallback(async (v) => {
     const r = await api.setRaceControlMinKmh(v);
     setData((d) => d && { ...d, minKmh: r.minKmh });
     return r.minKmh;
   }, []);
 
-  return { data, isFresh, setStatus, setMinKmh };
+  return { data, isFresh, setMinKmh };
 }
 
 // Session clock: 1:02:03 or 12:34.
@@ -101,10 +88,6 @@ export function fmtRaceClock(ms) {
   const m = Math.floor((s % 3600) / 60);
   const ss = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
-}
-
-function wallClock(at) {
-  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function incidentNames(inc, match) {
@@ -137,40 +120,26 @@ export function RaceControlToggle({ on, onChange, className = "" }) {
   );
 }
 
-function Row({ inc, match, onStatus }) {
-  const meta = INCIDENT_META[inc.type] || INCIDENT_META.car;
-  const { a, b } = incidentNames(inc, match);
-  const done = inc.status === "done";
-  const clock = fmtRaceClock(inc.raceMs) || wallClock(inc.at);
-  let detail = null;
-  if (inc.type === "stopped") {
-    detail = inc.endedAt ? `Moving again after ${Math.max(1, Math.round((inc.endedAt - inc.at) / 1000))} s` : "Still stopped";
-  } else if (inc.speedKmh != null) {
-    detail = `${Math.round(inc.speedKmh)} km/h`;
-  }
+// One car off the tarmac, with a clock on how long it has been out.
+function OffRow({ car, match }) {
+  const now = useNow();
+  const m = match ? match(car.name) : null;
+  const secs = Math.max(0, Math.floor((now - car.since) / 1000));
   return (
-    <li className={`flex items-center gap-3 px-4 py-2 transition-opacity ${done ? "opacity-45" : ""}`}>
-      <span className="w-14 shrink-0 font-mono text-xs tabular-nums text-light">{clock}</span>
-      <span className={`w-[4.25rem] shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[10px] font-bold uppercase tracking-wider ${meta.chip}`}>
-        {meta.label}
-      </span>
+    <li className="flex items-center gap-3 px-4 py-2">
+      <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: m?.teamColor || "var(--c-border)" }} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-dark">
-          {a}
-          {b && <span className="font-normal text-light"> with </span>}
-          {b}
+        <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+          {m?.nabsName || car.name || "Unknown"}
         </span>
-        {detail && <span className="block truncate font-mono text-[11px] text-light">{detail}</span>}
+        {m?.teamName && <span className="block truncate text-[11px] text-light">{m.teamName}</span>}
       </span>
-      <button
-        type="button"
-        onClick={() => onStatus(inc.id, done ? "open" : "done")}
-        title={done ? "Open again" : "Mark as handled"}
-        aria-label={done ? "Open again" : "Mark as handled"}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border text-light transition hover:bg-surface2 hover:text-dark"
-      >
-        {done ? <RotateCcw className="h-4 w-4" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-      </button>
+      <span className="shrink-0 font-mono text-[11px] text-light" title="How far off the tarmac at most">
+        {Math.round(car.metres)} m
+      </span>
+      <span className="w-12 shrink-0 text-right font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-400">
+        {secs} s
+      </span>
     </li>
   );
 }
@@ -193,7 +162,7 @@ function Threshold({ value, onSave }) {
   };
   return (
     <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-light">
-      Ignore contacts under
+      Bursts from
       <input
         type="number"
         inputMode="numeric"
@@ -211,19 +180,19 @@ function Threshold({ value, onSave }) {
   );
 }
 
-// The list, newest first, with the stopped cars on top.
+// Who is off the tarmac right now (an estimate off the track map), with the
+// stopped cars on top. Collisions are on the map as bursts, not in here.
 export function RaceControlPanel({ rc, match, className = "" }) {
-  const { data, setStatus, setMinKmh } = rc;
-  const incidents = data?.incidents || [];
+  const { data, setMinKmh } = rc;
+  const off = data?.offTrack || [];
   const stopped = data?.stopped || [];
-  const open = incidents.filter((i) => i.status !== "done").length;
   const nm = (n) => (n && match ? match(n)?.nabsName : null) || n || "Unknown";
   return (
     <section className={`flex flex-col overflow-hidden rounded-2xl border border-border bg-card ${className}`}>
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Incidents</span>
+        <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Off track</span>
         <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-          {data ? `${open} open` : "Loading"}
+          {data ? `${off.length} now` : "Loading"}
         </span>
       </div>
       <div
@@ -235,22 +204,23 @@ export function RaceControlPanel({ rc, match, className = "" }) {
           ? "No cars stopped"
           : `${stopped.length} ${stopped.length === 1 ? "car" : "cars"} stopped: ${stopped.map((s) => nm(s.name)).join(", ")}`}
       </div>
-      {incidents.length ? (
+      {off.length ? (
         <ul className="scrollbar-slim min-h-0 flex-1 divide-y divide-border overflow-y-auto">
-          {incidents.map((i) => (
-            <Row key={i.id} inc={i} match={match} onStatus={setStatus} />
+          {off.map((c) => (
+            <OffRow key={c.guid} car={c} match={match} />
           ))}
         </ul>
       ) : (
         <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-6 text-center">
           <p className="font-mono text-[11px] uppercase tracking-wider text-light">
-            {data ? "Nothing yet this session" : "Loading incidents"}
+            {data ? "Everybody on the tarmac" : "Loading"}
           </p>
         </div>
       )}
       {data && (
-        <div className="shrink-0 border-t border-border px-4 py-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-4 py-2">
           <Threshold value={data.minKmh} onSave={setMinKmh} />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Off track is estimated from the map</span>
         </div>
       )}
     </section>

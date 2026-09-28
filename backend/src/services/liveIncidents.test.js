@@ -127,3 +127,40 @@ describe("one crash along a wall", () => {
     expect(inserts()).toHaveLength(2);
   });
 });
+
+describe("off track", () => {
+  const drive = (t, offM, extra = {}) =>
+    onTelemetry(S, { guid: "a", carId: 0, kmh: 150, pos: { X: 0, Z: 0 }, spline: 0.5, inPits: false, offM, now: t, ...extra });
+
+  it("a moment over the line is not off track, staying out is", () => {
+    drive(0, 0);
+    drive(100, 4);
+    drive(500, 0.5); // just a kerb
+    drive(900, 0);
+    expect(inc.offTrackNow(S)).toHaveLength(0);
+    drive(1000, 5);
+    drive(1500, 6);
+    drive(1900, 6);
+    expect(inc.offTrackNow(S).map((o) => o.guid)).toEqual(["a"]);
+    expect(inc.offTrackNow(S)[0].metres).toBe(6);
+  });
+
+  it("comes back on after a second on the tarmac", () => {
+    drive(0, 5);
+    drive(1000, 5);
+    expect(inc.offTrackNow(S)).toHaveLength(1);
+    drive(1200, 0.4);
+    drive(1800, 0.2);
+    expect(inc.offTrackNow(S)).toHaveLength(1);
+    drive(2300, 0);
+    expect(inc.offTrackNow(S)).toHaveLength(0);
+  });
+
+  it("the pit lane and a missing map never count", () => {
+    drive(0, 8, { inPits: true });
+    drive(2000, 8, { inPits: true });
+    drive(2100, null);
+    drive(4000, null);
+    expect(inc.offTrackNow(S)).toHaveLength(0);
+  });
+});

@@ -32,6 +32,7 @@ import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import * as liveIncidents from "./liveIncidents.js";
+import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
@@ -555,6 +556,25 @@ function createRelay(server) {
       };
     }
     return base;
+  }
+
+  // How far a position is from the tarmac painted on the map, in metres, for
+  // the off-track estimate. The mask is built once per track and calibration.
+  let maskCache = { sig: null, fn: null };
+  function offRoadMetres(pos) {
+    if (!pos || !trackMap?.png) return null;
+    const calib = currentMapCalib(status?.SessionInfo || {}, status?.TrackMapData);
+    if (!calib) return null;
+    const sig = `${trackMap.key}|${calib.scaleFactor}|${calib.xOffset}|${calib.zOffset}|${calib.padding}`;
+    if (maskCache.sig !== sig) {
+      try {
+        maskCache = { sig, fn: buildTrackMask(trackMap.png, calib) };
+      } catch (e) {
+        maskCache = { sig, fn: null };
+        console.warn(`${tag} no off-track mask for ${trackMap.key}: ${e.message}`);
+      }
+    }
+    return maskCache.fn ? maskCache.fn(pos.X, pos.Z) : null;
   }
 
   // ---- Tyre stint history ---------------------------------------------------
@@ -1369,6 +1389,7 @@ function createRelay(server) {
       pos: live.Pos,
       spline: live.NormalisedSplinePos,
       inPits,
+      offM: offRoadMetres(live.Pos),
     });
     // Fast lane: followers of THIS car get its cockpit numbers now, not at the
     // next 700ms board tick.
@@ -2413,9 +2434,18 @@ export function getDemoIncidents(kind = "race") {
     });
   }
   const s = cars[Math.floor(now / 60000) % cars.length];
+  // One or two cars out at a time, a new one every ten seconds.
+  const tick = Math.floor(now / 10000);
+  const offTrack = [cars[tick % cars.length], ...(tick % 3 === 0 ? [cars[(tick + 5) % cars.length]] : [])].map((c, i) => ({
+    guid: c.guid,
+    name: c.name,
+    since: tick * 10000 - i * 3000,
+    metres: 3 + ((tick + i) % 9),
+  }));
   return {
     session: board.session,
     stopped: [{ guid: s.guid, name: s.name, since: now - 7000 }],
+    offTrack,
     incidents,
   };
 }

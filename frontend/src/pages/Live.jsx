@@ -2968,8 +2968,8 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
   // behind the board on any stray wheel event.
   useScrollLock(true);
 
-  // Race control: stewards and admins get a button that adds the incidents
-  // (bursts on the map, the stopped count, the list). Remembered per browser.
+  // Race control: stewards and admins get a button that adds contacts (bursts
+  // on the map), stopped cars and who is off track. Remembered per browser.
   const [rcPref, setRcPref] = useState(() => {
     try {
       return localStorage.getItem("nabs_live_rc") === "1";
@@ -2990,9 +2990,9 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
   const rc = useRaceControl({ on: rcOn, server, demo: rcDemo });
   // Board, list and map side by side need a big screen (the board alone is
   // ~850px of fixed columns). Below 2xl they take turns in three tabs.
-  // On a phone the board itself is too wide to read, so the list comes first.
+  // On a phone the board itself is too wide to read, so off track comes first.
   const [rcTab, setRcTab] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches ? "incidents" : "board"
+    typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches ? "offtrack" : "board"
   );
   const rcSide = rcOn && rcTab !== "board";
   const mapIncidents = useMemo(
@@ -3188,6 +3188,15 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               </TvStat>
               {rcOn && (
                 <div className="hidden sm:block">
+                  <TvStat label="Off track">
+                    <span className={(rc.data?.offTrack || []).length ? "text-amber-600 dark:text-amber-400" : undefined}>
+                      {(rc.data?.offTrack || []).length}
+                    </span>
+                  </TvStat>
+                </div>
+              )}
+              {rcOn && (
+                <div className="hidden sm:block">
                   <TvStat label="Stopped">
                     <span className={(rc.data?.stopped || []).length ? "text-sky-600 dark:text-sky-400" : undefined}>
                       {(rc.data?.stopped || []).length}
@@ -3231,13 +3240,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               pillClassName="rounded-md bg-brand"
               items={[
                 { key: "board", label: "Board" },
-                {
-                  key: "incidents",
-                  label: `Incidents${(() => {
-                    const n = (rc.data?.incidents || []).filter((i) => i.status !== "done").length;
-                    return n ? ` (${n})` : "";
-                  })()}`,
-                },
+                { key: "offtrack", label: "Off track" },
                 ...(hasMap && cars.length > 0 ? [{ key: "map", label: "Map" }] : []),
               ]}
               value={rcTab}
@@ -3355,11 +3358,11 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               </div>
             )}
             {rcOn ? (
-              // Race control swaps the sectors and the pit lane for the list.
+              // Race control swaps the sectors and the pit lane for who is off track.
               <RaceControlPanel
                 rc={rc}
                 match={match}
-                className={`min-h-0 shrink-0 ${rcTab === "incidents" ? "flex-1" : "hidden 2xl:flex"} 2xl:h-[46%] 2xl:flex-none`}
+                className={`min-h-0 shrink-0 ${rcTab === "offtrack" ? "flex-1" : "hidden 2xl:flex"} 2xl:h-[46%] 2xl:flex-none`}
               />
             ) : (
               <>
@@ -3836,7 +3839,7 @@ export default function Live() {
                   }
                   enterTv();
                 }}
-                title="Incidents for race control"
+                title="Race control: off track, stopped cars, contacts"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark sm:hidden"
               >
                 <ShieldAlert className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />

@@ -9,6 +9,7 @@ import { publicDriverId, getDemoIncidents } from "../services/liveTiming.js";
 import {
   listIncidents,
   stoppedNow,
+  offTrackNow,
   sessionOf,
   setIncidentStatus,
   getMinKmh,
@@ -54,6 +55,7 @@ router.get("/", optionalUser, gate, async (req, res, next) => {
       // Public pseudonyms only, the same ids the board uses, so the page can
       // tie an incident to a car on the map.
       stopped: stoppedNow(serverKey).map((s) => ({ ...s, guid: publicDriverId(s.guid) })),
+      offTrack: offTrackNow(serverKey).map((o) => ({ ...o, guid: publicDriverId(o.guid) })),
       incidents: incidents.map((i) => ({
         ...i,
         driverGuid: publicDriverId(i.driverGuid),
