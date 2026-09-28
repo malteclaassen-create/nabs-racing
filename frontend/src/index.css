@@ -71,6 +71,9 @@
                             the label sat on its own amber/15 tint (4.1), and
                             warn carries DNF and the reserve "sub" chip */
   --c-fl: 112 26 175;    /* fastest-lap purple, 7.4:1 on white */
+  /* `ink` in tailwind.config: the dark surface the heroes and scrims are made
+     of, in BOTH themes. Raw RGB triple. The designs below bring their own. */
+  --c-ink: 15 23 42;
 }
 
 .dark {
@@ -110,6 +113,12 @@
    to the classic ones for those contrast figures to still hold.
    The light rules say :not(.dark) because html[data-design] outranks .dark and
    would otherwise win in the dark theme too. */
+/* The dark surface (heroes, scrims) per design, in both themes: it is dark
+   in light mode too, so one value each. */
+html[data-design="carbon"] { --c-ink: 20 20 23; }
+html[data-design="midnight"] { --c-ink: 7 10 18; }
+html[data-design="ocean"] { --c-ink: 8 27 48; }
+html[data-design="paddock"] { --c-ink: 30 26 21; }
 html[data-design="carbon"]:not(.dark) {
   --c-bg: #e9e9eb;
   --c-card: #ffffff;
