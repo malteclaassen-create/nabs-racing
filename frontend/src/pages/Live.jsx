@@ -3415,7 +3415,22 @@ export default function Live() {
   // control in the header and the "cars are out over there" line under it.
   const liveServers = useLiveServers();
   const { shown: board, gap } = useHeldBoard(feed);
-  const { data: teams } = useApi(useCallback(() => api.teams(), []));
+  // Named by the teams of the league actually driving on this board, which is
+  // the page's own except in a week a server is lent to the other series (the
+  // Friday league's wet practice on the Sunday server). One chain, so the page
+  // never draws the wrong league's teams first and swaps them a moment later.
+  const boardTrack = board?.session?.trackKey || "";
+  const { data: teams } = useApi(
+    useCallback(
+      () =>
+        api
+          .liveDrivingSeries(serverKey)
+          .catch(() => null)
+          .then((d) => api.teamsOf(d?.series || null)),
+      // boardTrack: a new circuit on the server can mean a different league.
+      [serverKey, boardTrack]
+    )
+  );
   const match = useMemo(() => makeDriverMatcher(teams), [teams]);
   // Admin-configured external buttons (server-manager live timing + CM join).
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));

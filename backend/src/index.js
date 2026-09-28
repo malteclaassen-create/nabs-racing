@@ -38,6 +38,8 @@ import changelogRoutes from "./routes/changelog.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
+import { seriesForLap } from "./lib/practiceTokens.js";
+import { boardScopes } from "./lib/liveBestLaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
@@ -268,6 +270,27 @@ app.get("/api/live/servers", async (req, res) => {
   } catch {
     // A switch that cannot answer should disappear, not break the page.
     res.json({ defaultKey: null, servers: [] });
+  }
+});
+
+// Which league is actually driving on this board this week: the series whose
+// drivers and teams the page should name the cars by. Normally the page's own.
+// Not when a server is lent to the other league for the week (the Friday
+// league's wet practice on the Sunday server): the cars on it are the Friday
+// league's, and naming them by their Sunday teams put a Williams driver in AIX
+// Racing. Same rule the training points use (lib/practiceTokens.js), so the
+// board and the points agree on whose week it is.
+app.get("/api/live/driving-series", async (req, res) => {
+  try {
+    const key = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
+    const trackKey = String(getBoard(key)?.session?.trackKey || "");
+    const series = trackKey
+      ? await seriesForLap(prisma, { serverKey: key, scopes: boardScopes(key), trackKey, steamId: "" })
+      : null;
+    res.json({ series: series || null });
+  } catch {
+    // The page keeps its own series' names, which is what it did before.
+    res.json({ series: null });
   }
 });
 
