@@ -37,7 +37,7 @@ export default function Changelog() {
       <PageHeader
         eyebrow="Changelog"
         title="What's new"
-        subtitle="Everything that changes on the site, newest first."
+        subtitle="Recent updates to the site."
       />
 
       <ol className="relative space-y-6 border-l border-border pl-5 sm:pl-7">

@@ -198,7 +198,7 @@ export default function SettingsSections() {
 
         <Setting
           title="Design"
-          hint={`${DESIGNS.find((d) => d.value === design)?.hint || ""} Works with both Light and Dark.`}
+          hint={DESIGNS.find((d) => d.value === design)?.hint}
         >
           <DesignPicker value={design} theme={theme} onChange={setDesign} />
         </Setting>
