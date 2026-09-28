@@ -114,7 +114,23 @@ export function onTelemetry(serverKey, { guid, carId, kmh, pos, spline, inPits, 
     c = { armed: false, slowSince: null, incidentId: null, movingSince: null, last: null, off: null };
     st.cars.set(guid, c);
   }
-  trackOff(c, inPits ? null : offM, now);
+  const offChange = trackOff(c, inPits ? null : offM, now);
+  if (offChange) {
+    // Off track goes out on the same line as the contacts, for the game app
+    // (it only gets them when it asks for them, see routes/raceControl.js).
+    publish({
+      kind: "offtrack",
+      ended: offChange === "end",
+      server: serverKey,
+      track: String(st.sessionKey).split("|")[0] || null,
+      carId: carId ?? null,
+      driver: st.names.get(guid) || null,
+      metres: Math.round((c.off?.metres || offM || 0) * 10) / 10,
+      pos: pos ? { x: round1(pos.X), y: round1(pos.Y ?? 0), z: round1(pos.Z) } : null,
+      at: now,
+      raceMs: raceMsOf(st, now),
+    });
+  }
   // A jump across the map is a teleport (back to pits, reset): start over.
   if (pos && c.last && Math.hypot(pos.X - c.last.X, pos.Z - c.last.Z) > TELEPORT_M) {
     c.slowSince = null;
@@ -332,22 +348,27 @@ function insert({ id, server, st, type, driverGuid, carId = null, otherGuid = nu
     .catch((e) => console.warn(`[incidents] insert failed: ${e.message}`));
 }
 
+// Returns "start" or "end" when the car goes off or comes back, else null.
 function trackOff(c, offM, now) {
   const o = (c.off ??= { since: null, candidate: null, backSince: null, metres: 0 });
   if (offM == null) {
     // In the pits, or no map to judge by: not off.
+    const was = o.since != null;
     o.since = o.candidate = o.backSince = null;
-    return;
+    return was ? "end" : null;
   }
   if (o.since != null) {
     o.metres = Math.max(o.metres, offM);
     if (offM < BACK_ON_M) {
       o.backSince ??= now;
-      if (now - o.backSince >= ON_HOLD_MS) o.since = o.backSince = null;
+      if (now - o.backSince >= ON_HOLD_MS) {
+        o.since = o.backSince = null;
+        return "end";
+      }
     } else {
       o.backSince = null;
     }
-    return;
+    return null;
   }
   if (offM > OFF_M) {
     o.candidate ??= now;
@@ -355,10 +376,12 @@ function trackOff(c, offM, now) {
       o.since = o.candidate;
       o.candidate = null;
       o.metres = offM;
+      return "start";
     }
   } else {
     o.candidate = null;
   }
+  return null;
 }
 
 // Cars off the tarmac right now, longest out first.

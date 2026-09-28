@@ -86,10 +86,13 @@ router.get("/app/next", async (req, res, next) => {
     );
     if (gone || res.writableEnded) return;
     markAppSeen(discordId);
+    // Off track only for an app that asks for it (&with=offtrack, app 1.4 on):
+    // an older app would take an unknown kind for a wall hit.
+    const withOff = String(req.query.with || "").split(",").includes("offtrack");
     res.json({
       ok: true,
       cursor: events.length ? events[events.length - 1].seq : Math.max(after, feedCursor()),
-      collisions: events,
+      collisions: withOff ? events : events.filter((e) => e.kind !== "offtrack"),
     });
   } catch (e) {
     next(e);

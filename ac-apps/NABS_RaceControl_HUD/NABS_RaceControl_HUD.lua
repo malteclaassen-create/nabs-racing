@@ -1,4 +1,4 @@
--- NABS Race Control HUD  v1.3
+-- NABS Race Control HUD  v1.4
 -- Broadcast-style version of the race control picture-in-picture.
 -- Same detection as the full app (stopped cars, spins), with a small control window.
 -- Install for race control only. Don't run it together with NABS_RaceControl_PiP (you'd get the HUD twice).
@@ -12,6 +12,12 @@
 -- v1.3: a sound on contacts (on/off), filters for what pops up, a crash with
 -- several cars in one place becomes one PILE-UP card, and the window is split
 -- into tabs with a short explanation on each.
+--
+-- v1.4: cards close by themselves (how long is set per kind, 0 = until you
+-- close it), what pops up by itself is set per kind (contacts, walls, spins,
+-- off track, stopped cars), and the Live tab lists everything happening right
+-- now, including what doesn't pop up, with a Show button for each. Off track
+-- comes from the website (the game can't judge it for other cars).
 
 ---------------------------------------------------------------------------------------------------
 -- Settings (saved automatically)
@@ -19,7 +25,7 @@
 
 local S = ac.storage({
   enabled = true,
-  maxPip = 2,           -- incidents on screen at once
+  maxPip = 2,           -- cards on screen at once (1 to 4)
   width = 400,          -- width of one camera tile in pixels
   viewTop = true,       -- camera tiles per incident, side by side
   viewChase = false,
@@ -27,7 +33,6 @@ local S = ac.storage({
   viewTrack = true,
   stopKmh = 8,          -- below this a car counts as stopped
   holdSec = 3,          -- how long it has to stand before it's reported
-  detectSpins = true,
   ignoreOwn = false,
   posX = 40,            -- HUD position on screen
   posY = 140,
@@ -42,12 +47,23 @@ local S = ac.storage({
   rcCode = '',          -- pairing code from Admin > Race control
   rcUrl = 'https://nabsracing.com',
   soundOn = true,       -- a short chime when a contact card pops up
-  alertCars = true,     -- car against car
-  carMinKmh = 0,        -- ...only from this speed (0 = all the website sends)
-  alertWalls = true,    -- car against wall
-  wallMinKmh = 0,
-  alertStopped = true,
   pileups = true,       -- several cars crashing in one place = one card
+  -- what comes on screen by itself (everything is listed in the window anyway)
+  popContact = true,
+  carMinKmh = 0,        -- ...only from this speed (0 = all the website sends)
+  popWall = true,
+  wallMinKmh = 0,
+  popSpin = true,
+  popOfftrack = false,  -- happens a lot; listed, shown on request
+  popStopped = true,
+  -- seconds a card stays (0 = until you close it). Stopped and off track count
+  -- from the moment it is over (driving again, back on the tarmac).
+  keepContact = 20,
+  keepPileup = 30,
+  keepWall = 15,
+  keepSpin = 10,
+  keepOfftrack = 3,
+  keepStopped = 5,
 }, 'nabsHud1_')
 
 local VIEWS = {
@@ -56,8 +72,9 @@ local VIEWS = {
   { key = 'viewSide', name = 'Side', short = 'SIDE' },
   { key = 'viewTrack', name = 'TV camera', short = 'TV CAM' },
 }
-local APP_VERSION = '1.3'
-local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL', pileup = 'PILE-UP' }
+local APP_VERSION = '1.4'
+local KIND_LABEL = { stopped = 'CAR STOPPED', spin = 'SPIN', test = 'TEST', contact = 'CONTACT', wall = 'WALL', pileup = 'PILE-UP', offtrack = 'OFF TRACK' }
+local OVER_LABEL = { stopped = 'MOVING AGAIN', offtrack = 'BACK ON TRACK' }
 local KIND_COLOR = {
   stopped = rgbm(0.9, 0.28, 0.3, 1),
   spin = rgbm(0.96, 0.65, 0.14, 1),
@@ -65,6 +82,7 @@ local KIND_COLOR = {
   contact = rgbm(0.94, 0.27, 0.27, 1),
   wall = rgbm(1, 0.52, 0.12, 1),
   pileup = rgbm(0.78, 0.2, 0.62, 1),
+  offtrack = rgbm(0.98, 0.8, 0.2, 1),
 }
 local RESOLVED_COLOR = rgbm(0.3, 0.78, 0.5, 1)
 ---------------------------------------------------------------------------------------------------
@@ -116,32 +134,80 @@ local function clearIncident(i)
   incidents[i] = nil
 end
 
-local function raise(i, kind, car, detail)
+-- What comes on screen by itself, and how long a card stays. Everything is
+-- detected and listed in the window either way; these only decide the screen.
+local POP_KEY = { contact = 'popContact', pileup = 'popContact', wall = 'popWall', spin = 'popSpin', offtrack = 'popOfftrack', stopped = 'popStopped' }
+local KEEP_KEY = { contact = 'keepContact', pileup = 'keepPileup', wall = 'keepWall', spin = 'keepSpin', offtrack = 'keepOfftrack', stopped = 'keepStopped' }
+-- One entry per car; when something new happens to a car that already has one,
+-- the more important of the two wins.
+local RANK = { test = 0, offtrack = 1, spin = 2, wall = 3, contact = 4, pileup = 5, stopped = 6 }
+
+local function popsUp(kind)
+  local key = POP_KEY[kind]
+  return key == nil or S[key] == true
+end
+
+-- `pop` overrides the per-kind setting (a contact under the speed filter is
+-- listed but doesn't pop up). Returns the car's entry.
+local function raise(i, kind, car, detail, pop)
   local inc = incidents[i]
-  -- A contact is news even when the car already has a card: it replaces it.
-  if inc and (kind == 'contact' or kind == 'wall') then
-    incidents[i] = nil
-    inc = nil
-  end
-  if inc and inc.resolved and kind ~= 'test' then
-    -- Auto war schon wieder unterwegs und hat einen neuen Vorfall: Eintrag neu starten
-    incidents[i] = nil
-    inc = nil
-  end
-  if inc then
-    inc.lastSeen = clock
-    -- ein Dreher, der mit einem stehenden Auto endet, wird zu "steht"
+  if inc and not inc.resolved and kind ~= 'test' and inc.kind ~= 'test' then
     if kind == 'stopped' and inc.kind == 'spin' then
+      -- A spin that ends standing still becomes "stopped" on the same card.
       inc.kind = 'stopped'
-      addLog(driverName(i) .. ' steht nach Dreher')
+      inc.lastSeen = clock
+      inc.detail = nil
+      if popsUp('stopped') then inc.show = true end
+      addLog(driverName(i) .. ' stopped after a spin')
+      return inc
     end
-    return
+    if kind == inc.kind or (RANK[kind] or 0) < (RANK[inc.kind] or 0) then
+      -- Still the same thing, or something smaller: the entry stays, it's alive.
+      inc.lastSeen = clock
+      if kind == inc.kind and detail then inc.detail = detail end
+      return inc
+    end
   end
+  local show
+  if pop == nil then show = popsUp(kind) else show = pop end
+  -- A card already on screen for this car stays there with the new news.
+  if inc and inc.show and not inc.resolved then show = true end
   local hx, hz = heading(car)
-  incidents[i] = { car = i, kind = kind, since = clock, lastSeen = clock, hx = hx, hz = hz, detail = detail }
-  local what = kind == 'stopped' and ' steht auf der Strecke' or kind == 'spin' and ' dreht sich'
-    or kind == 'contact' and ' Kontakt' or kind == 'wall' and ' Mauer' or ' (Test)'
-  addLog(driverName(i) .. what .. (detail and ('  ' .. detail) or ''))
+  inc = {
+    car = i, kind = kind, since = clock, lastSeen = clock, hx = hx, hz = hz, detail = detail,
+    show = show or kind == 'test', manual = kind == 'test',
+  }
+  incidents[i] = inc
+  addLog(driverName(i) .. '  ' .. (KIND_LABEL[kind] or kind) .. (detail and ('  ' .. detail) or ''))
+  return inc
+end
+
+-- Over: a stopped car driving again, an off track back on the tarmac.
+local function resolve(inc)
+  if inc and not inc.resolved then
+    inc.resolved = true
+    inc.resolvedAt = clock
+  end
+end
+
+-- Cards close by themselves once their time is up (0 = stays until closed).
+-- Stopped cars and off tracks count from the moment they are over; a card
+-- opened by hand stays until it is hidden or closed by hand.
+local function expireIncidents()
+  for i, inc in pairs(incidents) do
+    if not inc.manual then
+      local keep = S[KEEP_KEY[inc.kind] or ''] or 0
+      if keep > 0 then
+        local from
+        if inc.kind == 'stopped' or inc.kind == 'offtrack' then
+          from = inc.resolved and inc.resolvedAt or nil
+        else
+          from = math.max(inc.lastHit or inc.since, inc.lastSeen or inc.since)
+        end
+        if from and clock - from > keep then incidents[i] = nil end
+      end
+    end
+  end
 end
 
 ---------------------------------------------------------------------------------------------------
@@ -229,14 +295,12 @@ end
 
 local function onContact(ev)
   local isCar = ev.kind == 'car'
-  if isCar and not S.alertCars then return end
-  if not isCar and not S.alertWalls then return end
-  local minKmh = isCar and S.carMinKmh or S.wallMinKmh
-  if ev.kmh and minKmh > 0 and ev.kmh < minKmh then return end
   if get(ac.getSim(), 'isReplayActive', false) then return end
   local i, car = localCarFor(ev.carId, ev.driver)
   if i == nil or not car then return end
   if S.ignoreOwn and i == 0 then return end
+  local minKmh = isCar and S.carMinKmh or S.wallMinKmh
+  local pop = (isCar and S.popContact or (not isCar and S.popWall)) and not (ev.kmh and minKmh > 0 and ev.kmh < minKmh)
 
   if S.pileups then
     local inc = nearbyCrash(ev.pos)
@@ -244,7 +308,13 @@ local function onContact(ev)
       addNames(inc, ev.driver, isCar and ev.other or nil)
       inc.lastHit = clock
       if #inc.nameList >= 3 then
-        if inc.kind ~= 'pileup' then addLog('Pile-up: ' .. table.concat(inc.nameList, ', ')) end
+        if inc.kind ~= 'pileup' then
+          addLog('Pile-up: ' .. table.concat(inc.nameList, ', '))
+          if S.popContact and not inc.show then
+            inc.show = true
+            playAlert()
+          end
+        end
         inc.kind = 'pileup'
         inc.detail = shorten(#inc.nameList .. ' cars: ' .. table.concat(inc.nameList, ', '), 60)
       end
@@ -255,15 +325,28 @@ local function onContact(ev)
   local kmh = ev.kmh and string.format('%d km/h', math.floor(ev.kmh + 0.5)) or nil
   local detail = kmh
   if isCar and ev.other then detail = (kmh and (kmh .. ', ') or '') .. 'with ' .. ev.other end
-  raise(i, isCar and 'contact' or 'wall', car, detail)
-  local inc = incidents[i]
-  if inc then
+  local inc = raise(i, isCar and 'contact' or 'wall', car, detail, pop)
+  if inc and (inc.kind == 'contact' or inc.kind == 'wall') then
     inc.crashPos = ev.pos
     inc.lastHit = clock
     inc.nameList, inc.names = nil, nil
     addNames(inc, ev.driver or driverName(i), isCar and ev.other or nil)
   end
-  playAlert()
+  if pop then playAlert() end
+end
+
+-- Off track, judged by the website from the track map.
+local function onOfftrack(ev)
+  if get(ac.getSim(), 'isReplayActive', false) then return end
+  local i, car = localCarFor(ev.carId, ev.driver)
+  if i == nil or not car then return end
+  if S.ignoreOwn and i == 0 then return end
+  if ev.ended then
+    local inc = incidents[i]
+    if inc and inc.kind == 'offtrack' then resolve(inc) end
+    return
+  end
+  raise(i, 'offtrack', car, ev.metres and string.format('%d m off the tarmac', math.floor(ev.metres + 0.5)) or nil)
 end
 
 local function pollWebsite()
@@ -273,7 +356,7 @@ local function pollWebsite()
     return
   end
   local url = S.rcUrl .. '/api/race-control/app/next?code=' .. S.rcCode
-  if net.cursor ~= nil then url = url .. '&after=' .. net.cursor .. '&wait=20' end
+  if net.cursor ~= nil then url = url .. '&after=' .. net.cursor .. '&wait=20&with=offtrack' end
   net.busy = true
   local ok = pcall(web.get, url, function(err, response)
     net.busy = false
@@ -305,7 +388,7 @@ local function pollWebsite()
     net.status = 'connected'
     net.cursor = data.cursor or net.cursor
     for _, ev in ipairs(data.collisions or {}) do
-      pcall(onContact, ev)
+      pcall(ev.kind == 'offtrack' and onOfftrack or onContact, ev)
       net.lastAt = timeStamp()
     end
     net.retryAt = clock -- straight back to listening
@@ -351,20 +434,20 @@ local function trackCar(i, car, dt)
   -- Stehendes Auto
   if st.moved and speed < S.stopKmh then
     st.stopT = st.stopT + dt
-    if st.stopT >= S.holdSec and S.alertStopped then raise(i, 'stopped', car) end
+    if st.stopT >= S.holdSec then raise(i, 'stopped', car) end
   else
     st.stopT = 0
   end
 
   -- Dreher: Auto zeigt deutlich in eine andere Richtung, als es faehrt
-  if S.detectSpins and speed > 20 then
+  if speed > 15 then
     local v = car.velocity
     local vl = math.sqrt(v.x * v.x + v.z * v.z)
     local hx, hz = heading(car)
     if vl > 0.1 then
       local cosAngle = (v.x * hx + v.z * hz) / vl
       if cosAngle < 0.34 then st.spinT = st.spinT + dt else st.spinT = 0 end  -- mehr als ca. 70 Grad
-      if st.spinT > 0.25 then raise(i, 'spin', car) end
+      if st.spinT > 0.2 then raise(i, 'spin', car) end
     end
   else
     st.spinT = 0
@@ -376,8 +459,8 @@ local function trackCar(i, car, dt)
     if speed > S.stopKmh + 10 then
       inc.clearT = (inc.clearT or 0) + dt
       if inc.clearT > 3 then
-        inc.resolved = true
-        addLog(driverName(i) .. ' faehrt weiter')
+        resolve(inc)
+        addLog(driverName(i) .. ' moving again')
       end
     else
       inc.clearT = 0
@@ -388,6 +471,7 @@ end
 function script.update(dt)
   clock = clock + dt
   pollWebsite() -- keeps listening in a pause or a replay too
+  expireIncidents()
   local sim = ac.getSim()
   if get(sim, 'isPaused', false) or get(sim, 'isReplayActive', false) then return end
 
@@ -508,15 +592,15 @@ end
 -- Zeilen stabil belegen: Autos bleiben in ihrer Zeile, neue Vorfaelle fuellen freie Zeilen
 local function updateSlots()
   local maxPip = math.floor(S.maxPip)
-  for k = 1, 3 do
-    if k > maxPip or (slots[k] ~= nil and not incidents[slots[k]]) then slots[k] = nil end
+  for k = 1, 4 do
+    if k > maxPip or (slots[k] ~= nil and not (incidents[slots[k]] and incidents[slots[k]].show)) then slots[k] = nil end
   end
   local shown = {}
   for k = 1, maxPip do if slots[k] ~= nil then shown[slots[k]] = true end end
 
   local waiting = {}
   for i, inc in pairs(incidents) do
-    if not shown[i] then table.insert(waiting, inc) end
+    if inc.show and not shown[i] then table.insert(waiting, inc) end
   end
   table.sort(waiting, function(a, b) return a.since > b.since end)
 
@@ -636,7 +720,7 @@ local function drawCard(y, inc, k, views, w, h, cardW)
   ui.drawRectFilled(vec2(0, y), vec2(ACCENT_W, y + cardH), accent)
 
   -- tag pill
-  local tag = resolved and 'MOVING AGAIN' or (KIND_LABEL[inc.kind] or '')
+  local tag = resolved and (OVER_LABEL[inc.kind] or 'OVER') or (KIND_LABEL[inc.kind] or '')
   ui.pushFont(ui.Font.Small)
   local tagW = textWidth(tag, 7) + 14
   ui.drawRectFilled(vec2(ACCENT_W + 10, y + 8), vec2(ACCENT_W + 10 + tagW, y + HEADER_H - 8), col, 3)
@@ -771,34 +855,52 @@ local function tabLive()
     note('Get your code on nabsracing.com under Admin > Race control and type it in above. You only do this once, it is kept.')
   end
 
-  -- open incidents
+  -- everything happening right now, on screen or not
   local list = {}
   for _, inc in pairs(incidents) do table.insert(list, inc) end
   table.sort(list, function(a, b) return a.since > b.since end)
+  local onScreen = 0
+  for _, inc in ipairs(list) do if inc.show then onScreen = onScreen + 1 end end
 
-  ui.header('On screen now' .. (#list > 0 and (' (' .. #list .. ')') or ''))
+  ui.header('Happening now' .. (#list > 0 and (' (' .. #list .. ')') or ''))
   if #list == 0 then
-    note('Nothing right now. New incidents pop up by themselves as camera cards on your screen.')
+    note('Nothing right now. Everything the app spots is listed here, and what you picked under Pop-ups also comes on screen by itself.')
   end
   for _, inc in ipairs(list) do
     if ui.button('x##close' .. inc.car, vec2(22, 0)) then clearIncident(inc.car) end
-    hint('Close this card')
+    hint('Remove it from the list')
+    ui.sameLine()
+    if ui.button((inc.show and 'Hide' or 'Show') .. '##vis' .. inc.car, vec2(46, 0)) then
+      inc.show = not inc.show
+      inc.manual = inc.show -- opened by hand: stays until you hide or close it
+    end
+    hint(inc.show and 'Take the camera card off the screen. It stays in this list.' or 'Put the camera card for this car on screen.')
     ui.sameLine()
     local col2 = inc.resolved and RESOLVED_COLOR or (KIND_COLOR[inc.kind] or rgbm(1, 1, 1, 1))
-    ui.textColored(inc.resolved and 'MOVING' or (KIND_LABEL[inc.kind] or ''), col2)
+    ui.textColored(inc.resolved and (OVER_LABEL[inc.kind] or 'OVER') or (KIND_LABEL[inc.kind] or ''), col2)
     ui.sameLine()
-    ui.text(driverName(inc.car))
+    if inc.show then ui.text(driverName(inc.car)) else ui.textColored(driverName(inc.car), TEXT_DIM) end
     if inc.detail then
       ui.sameLine()
       ui.textColored(inc.detail, TEXT_DIM)
     end
   end
-  if #list > 1 and ui.button('Close all') then
+  if #list > 1 and ui.button('Clear the list') then
     for i in pairs(incidents) do clearIncident(i) end
   end
-  if #list > math.floor(S.maxPip) then
-    ui.textColored((#list - math.floor(S.maxPip)) .. ' older ' .. ((#list - math.floor(S.maxPip)) == 1 and 'card is' or 'cards are') .. ' off screen, the newest are shown', TEXT_DIM)
+  if #list > 0 then
+    local maxPip = math.floor(S.maxPip)
+    local text = onScreen .. ' of these on screen'
+    if onScreen > maxPip then text = text .. ', room for ' .. maxPip .. ' (the newest win)' end
+    ui.textColored(text, TEXT_DIM)
   end
+end
+
+-- One kind: does it pop up by itself, and how long does its card stay.
+local function kindRow(label, popKey, keepKey, keepText, tip)
+  toggle(label, popKey, tip)
+  local k = S[keepKey]
+  slider('##' .. keepKey, keepKey, 0, 120, k < 1 and '  card stays until you close it' or keepText)
 end
 
 local function tabAlerts()
@@ -807,18 +909,26 @@ local function tabAlerts()
   ui.sameLine()
   if ui.button('Test##sound') then playAlert(true) end
 
-  ui.header('What pops up')
-  toggle('Car against car', 'alertCars')
-  if S.alertCars then slider('##carMin', 'carMinKmh', 0, 150, S.carMinKmh < 1 and '  from any speed' or '  from %.0f km/h') end
-  toggle('Car against wall', 'alertWalls')
-  if S.alertWalls then slider('##wallMin', 'wallMinKmh', 0, 200, S.wallMinKmh < 1 and '  from any speed' or '  from %.0f km/h') end
-  toggle('Stopped cars', 'alertStopped', 'A car standing on track (not in the pit lane) for a few seconds.')
-  if S.alertStopped then slider('##hold', 'holdSec', 1, 10, '  standing for %.0f s') end
-  toggle('Spins', 'detectSpins', 'A car pointing well away from where it is going.')
+  ui.header('What pops up by itself')
+  note('Ticked kinds come on screen by themselves. Everything else is still listed under Live, with a Show button.')
+  kindRow('Car against car', 'popContact', 'keepContact', '  card closes %.0f s after the hit')
+  if S.popContact then slider('##carMin', 'carMinKmh', 0, 150, S.carMinKmh < 1 and '  from any speed' or '  only from %.0f km/h') end
+  kindRow('Car against wall', 'popWall', 'keepWall', '  card closes %.0f s after the hit')
+  if S.popWall then slider('##wallMin', 'wallMinKmh', 0, 200, S.wallMinKmh < 1 and '  from any speed' or '  only from %.0f km/h') end
+  kindRow('Spins', 'popSpin', 'keepSpin', '  card closes %.0f s after the spin',
+    'A car pointing well away from where it is going.')
+  kindRow('Off track', 'popOfftrack', 'keepOfftrack', '  card closes %.0f s after it is back',
+    'All four wheels about off the tarmac, judged by the website from the track map. Happens a lot, so it is off by default.')
+  kindRow('Stopped cars', 'popStopped', 'keepStopped', '  card closes %.0f s after it drives on',
+    'A car standing on track (not in the pit lane).')
+  slider('##hold', 'holdSec', 1, 10, '  counts as stopped after %.0f s')
+
+  ui.header('More')
   toggle('One card for a pile-up', 'pileups',
     'Several cars crashing in the same spot within a few seconds become one PILE-UP card instead of one card each.')
+  if S.pileups then slider('##keepPile', 'keepPileup', 0, 120, S.keepPileup < 1 and '  pile-up card stays until you close it' or '  pile-up card closes %.0f s after the last hit') end
   toggle('Ignore my own car', 'ignoreOwn')
-  note('The website already drops tiny contacts for everyone (the km/h setting on the TV board). The sliders here only filter more.')
+  note('The website already drops tiny contacts for everyone (the km/h setting on the TV board).')
 end
 
 local function tabCameras()
@@ -827,7 +937,7 @@ local function tabCameras()
   note('Each card shows the selected views side by side. At least one is always on.')
 
   ui.header('Cards')
-  slider('##maxPip', 'maxPip', 1, 3, 'Up to %.0f cards on screen')
+  slider('##maxPip', 'maxPip', 1, 4, 'Up to %.0f cards on screen')
   slider('##width', 'width', 240, 640, 'Each view %.0f px wide')
   slider('##fps', 'fps', 5, 60, 'Refresh %.0f times a second')
   hint('Lower is easier on your frame rate.')
@@ -869,7 +979,7 @@ function script.windowMain(dt)
 
   ui.tabBar('nabsRcTabs', function()
     ui.tabItem('Live', tabLive)
-    ui.tabItem('Alerts', tabAlerts)
+    ui.tabItem('Pop-ups', tabAlerts)
     ui.tabItem('Cameras', tabCameras)
     ui.tabItem('Picture', tabPicture)
   end)

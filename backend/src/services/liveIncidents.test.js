@@ -190,3 +190,18 @@ describe("the collision feed", () => {
     expect(Date.now() - t).toBeGreaterThanOrEqual(40);
   });
 });
+
+describe("off track on the feed", () => {
+  it("going off and coming back each put one event out, with the car's server slot", () => {
+    const start = inc.feedCursor();
+    const drive = (t, offM) => onTelemetry(S, { guid: "a", carId: 4, kmh: 150, pos: { X: 1, Y: 0, Z: 2 }, spline: 0.5, inPits: false, offM, now: t });
+    drive(0, 5);
+    drive(1000, 7);
+    drive(1500, 7);
+    drive(2000, 0);
+    drive(3200, 0);
+    const events = inc.feedAfter(start).filter((e) => e.kind === "offtrack");
+    expect(events.map((e) => e.ended)).toEqual([false, true]);
+    expect(events[0]).toMatchObject({ carId: 4, driver: "Alice", metres: 7 });
+  });
+});

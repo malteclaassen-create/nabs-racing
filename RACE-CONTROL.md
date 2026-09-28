@@ -35,7 +35,7 @@ in its own SDK, which is why the app gets them from us.
 
 ## The game app
 
-`ac-apps/NABS_RaceControl_HUD` (v1.3) goes into
+`ac-apps/NABS_RaceControl_HUD` (v1.4) goes into
 `assettocorsa/apps/lua/`. Open its window in the game, type the code from the
 race control page once. From then on every contact over the threshold opens
 the camera tiles for that car by itself. The window says whether it is
@@ -43,10 +43,15 @@ connected.
 
 The window has four tabs:
 
-- **Live**: the code, whether the website link works, and the cards open now.
-- **Alerts**: the sound on or off (with a test button), and what pops up at
-  all: car against car, car against wall (each from a speed you pick), stopped
-  cars, spins, and whether a pile-up becomes one card.
+- **Live**: the code, whether the website link works, and **Happening now**:
+  everything the app knows about right now (contacts, walls, pile-ups, spins,
+  off track, stopped cars), on screen or not. Each line has **Show** / **Hide**
+  for its camera card. A card opened by hand stays until you hide or close it.
+- **Pop-ups**: the sound on or off (with a test button), and per kind whether it
+  comes on screen by itself and how long its card stays (0 = until you close
+  it). Stopped cars and off track count from the moment they are over (driving
+  again, back on the tarmac). Contacts and wall hits can pop up only from a
+  speed you pick. Off track is off by default, it happens a lot.
 - **Cameras**: which views each card shows, how many cards, how big, where.
 - **Picture**: brightness and quality of the camera views.
 
@@ -70,6 +75,9 @@ GET https://nabsracing.com/api/race-control/app/next?code=HHN6GB
 
 Without `after`: answered straight away with where the feed stands now. Old
 contacts are not sent.
+
+Add `&with=offtrack` (app 1.4 does) to also get off track, which the website
+estimates from the track map. Older apps don't ask and never get it.
 
 ```json
 { "ok": true, "cursor": 41, "collisions": [] }
@@ -111,7 +119,9 @@ can also go in a header, `X-Race-Control-Code: HHN6GB`, instead of the URL.
 | Field | Meaning |
 | --- | --- |
 | `cursor` | Send it back as `after` next time. |
-| `kind` | `car` (car against car) or `env` (wall, barrier, anything else). |
+| `kind` | `car` (car against car), `env` (wall, barrier, anything else), or with `with=offtrack` also `offtrack`. |
+| `ended` | Off track only: `false` when the car goes off, `true` when it is back on the tarmac. |
+| `metres` | Off track only: how far off the tarmac, at most. |
 | `carId` / `otherCarId` | The server slot, which CSP calls `sessionID`. `ac.getCar.serverSlot(carId)` finds the car. `otherCarId` is null for `env`. |
 | `driver` / `other` | Names as the server has them. The app checks the name too, so a contact from the league's other server never lands on the wrong car. |
 | `kmh` | Impact speed. |
