@@ -200,30 +200,17 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
   );
 }
 
-// A race control incident on the map (TV board, race control only). A new one
-// goes off with the same explosion the server manager's own map uses (its
-// splosion.gif, MIT, see public/race-control/), then stays as a small quiet
-// dot with its tooltip. Drawn under the cars, so the cars stay clickable.
+// A contact on the map (TV board, race control only), for the few seconds
+// after it happened: the same explosion the server manager's own map uses
+// (its splosion.gif, MIT, see public/race-control/), and then nothing. Drawn
+// under the cars, so the cars stay clickable.
 const SPLOSION = "/race-control/splosion.gif";
 function IncidentMark({ x, y, r, inc }) {
-  const color = inc.type === "car" ? "#ef4444" : "#f59e0b";
   const size = r * 6;
   return (
     <g transform={`translate(${x} ${y})`}>
       <title>{inc.title}</title>
-      {inc.fresh && (
-        <image
-          href={SPLOSION}
-          x={-size / 2}
-          y={-size / 2}
-          width={size}
-          height={size}
-          className="rc-burst"
-          pointerEvents="none"
-        />
-      )}
-      <circle r={r * 0.9} fill="transparent" />
-      <circle r={r * 0.5} fill={color} fillOpacity={0.8} stroke="#111827" strokeOpacity={0.6} strokeWidth={r * 0.12} />
+      <image href={SPLOSION} x={-size / 2} y={-size / 2} width={size} height={size} className="rc-burst" />
     </g>
   );
 }

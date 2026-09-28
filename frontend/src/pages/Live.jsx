@@ -2999,8 +2999,9 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
     () =>
       rcOn
         ? (rc.data?.incidents || [])
-            .filter((i) => i.type !== "stopped")
-            .map((i) => ({ id: i.id, type: i.type, x: i.x, z: i.z, spline: i.spline, fresh: rc.isFresh(i.id), title: incidentTitle(i, match) }))
+            // Only the contact that just happened: it goes off and is gone.
+            .filter((i) => i.type !== "stopped" && rc.isFresh(i.id))
+            .map((i) => ({ id: i.id, type: i.type, x: i.x, z: i.z, spline: i.spline, title: incidentTitle(i, match) }))
         : null,
     [rcOn, rc, match]
   );

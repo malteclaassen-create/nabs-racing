@@ -938,9 +938,10 @@ body {
   }
 }
 
-/* Race control: a fresh collision shows the server manager's explosion gif for
-   three seconds and fades at the end, exactly like its own map does. Then only
-   the quiet dot under it stays. Lite mode and reduced motion skip it. */
+/* Race control: a contact shows the server manager's explosion gif for three
+   seconds and fades at the end, exactly like its own map does, then the map is
+   clean again. Lite mode and reduced motion skip the fade, not the explosion:
+   it is the only sign of the contact, and it leaves with the next update. */
 .rc-burst {
   animation: rc-splode 3s forwards;
 }
@@ -948,9 +949,9 @@ body {
   0%, 90% { opacity: 1; }
   100% { opacity: 0; }
 }
-.fx-lite .rc-burst { display: none; }
+.fx-lite .rc-burst { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .rc-burst { display: none; }
+  .rc-burst { animation: none; }
 }
 
 /* --- Odometer digits ----------------------------------------------- */
