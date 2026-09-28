@@ -1,30 +1,8 @@
--- NABS Race Control  v1.6
--- Broadcast-style version of the race control picture-in-picture.
--- Same detection as the full app (stopped cars, spins), with a small control window.
--- Install for race control only. Don't run it together with NABS_RaceControl_PiP (you'd get the HUD twice).
---
--- v1.2: contacts from the website. The race server reports every collision
--- (car or wall) to nabsracing.com, and with your pairing code (Admin > Race
--- control) the app picks them up about half a second after they happen and
--- opens the camera tiles for that car. The game can't see other cars' contacts
--- itself, only the server can. Format: RACE-CONTROL.md.
---
--- v1.3: a sound on contacts (on/off), filters for what pops up, a crash with
--- several cars in one place becomes one PILE-UP card, and the window is split
--- into tabs with a short explanation on each.
---
--- v1.4: cards close by themselves (how long is set per kind, 0 = until you
--- close it), what pops up by itself is set per kind (contacts, walls, spins,
--- off track, stopped cars), and the Live tab lists everything happening right
--- now, including what doesn't pop up, with a Show button for each. Off track
--- comes from the website (the game can't judge it for other cars).
---
--- v1.5: called NABS Race Control now, with the league logo, and the chime has
--- a volume.
---
--- v1.6: the cameras follow the car round corners (they used to keep the
--- direction from the moment of the incident), and four more views: onboard,
--- from the front, helicopter, and the crash scene, which stays on the spot.
+-- NABS Race Control
+-- Camera cards for race control: contacts, pile-ups, spins, off tracks and
+-- stopped cars. Contacts and off tracks come from nabsracing.com (pairing code
+-- under Admin > Race control), spins and stopped cars are spotted in the game.
+-- Don't run it together with NABS_RaceControl_PiP.
 
 ---------------------------------------------------------------------------------------------------
 -- Settings (saved automatically)
@@ -53,15 +31,15 @@ local S = ac.storage({
   autoExposure = true,
   exposure = 1,
   gamma = true,
-  shadowLift = 0.35,    -- dunkle Bereiche (z.B. Reifen im Schatten) aufhellen, 0 = aus
-  ownShadows = false,   -- eigene Schattenberechnung je Fenster (genauer, kostet Leistung)
+  shadowLift = 0.35,    -- lifts dark areas (tyres in the shade), 0 = off
+  ownShadows = false,   -- own shadows per view (nicer, costs fps)
   rcOn = true,          -- contacts from the website
   rcCode = '',          -- pairing code from Admin > Race control
   rcUrl = 'https://nabsracing.com',
   soundOn = true,       -- a short chime when a contact card pops up
   soundVolume = 80,     -- percent
   pileups = true,       -- several cars crashing in one place = one card
-  -- what comes on screen by itself (everything is listed in the window anyway)
+  -- what pops up by itself (everything is listed in the window anyway)
   popContact = true,
   carMinKmh = 0,        -- ...only from this speed (0 = all the website sends)
   popWall = true,
@@ -69,8 +47,7 @@ local S = ac.storage({
   popSpin = true,
   popOfftrack = false,  -- happens a lot; listed, shown on request
   popStopped = true,
-  -- seconds a card stays (0 = until you close it). Stopped and off track count
-  -- from the moment it is over (driving again, back on the tarmac).
+  -- seconds a card stays, 0 = until closed. Stopped and off track count from when it's over
   keepContact = 20,
   keepPileup = 30,
   keepWall = 15,
@@ -79,7 +56,7 @@ local S = ac.storage({
   keepStopped = 5,
 }, 'nabsHud1_')
 
--- The order matters: aimShot picks the camera by this number.
+-- order matters, aimShot picks the camera by index
 local VIEWS = {
   { key = 'viewTop', name = 'From above', short = 'TOP', tip = 'Like a drone behind and above the car.' },
   { key = 'viewChase', name = 'Chase', short = 'CHASE', tip = 'Behind the car, follows it round the corners.' },
@@ -105,10 +82,10 @@ local KIND_COLOR = {
 }
 local RESOLVED_COLOR = rgbm(0.3, 0.78, 0.5, 1)
 ---------------------------------------------------------------------------------------------------
--- Hilfsfunktionen
+-- Helpers
 ---------------------------------------------------------------------------------------------------
 
--- Liest ein Feld sicher aus (falls ein Feld in einer CSP-Version fehlt, gibt es den Standardwert)
+-- reads a field safely, older CSP builds miss some
 local function get(obj, key, default)
   local ok, v = pcall(function() return obj[key] end)
   if ok and v ~= nil then return v end
@@ -118,7 +95,7 @@ end
 local function driverName(i)
   local ok, n = pcall(ac.getDriverName, i)
   if ok and n and n ~= '' then return n end
-  return 'Auto ' .. (i + 1)
+  return 'Car ' .. (i + 1)
 end
 
 local function timeStamp()
@@ -126,7 +103,7 @@ local function timeStamp()
   return ok and t or ''
 end
 
--- Horizontale Blickrichtung eines Autos (normalisiert)
+-- which way the car points, flat
 local function heading(car)
   local f = car.look
   local l = math.sqrt(f.x * f.x + f.z * f.z)
@@ -135,7 +112,7 @@ local function heading(car)
 end
 
 ---------------------------------------------------------------------------------------------------
--- Erkennung
+-- Incidents
 ---------------------------------------------------------------------------------------------------
 
 local clock = 0
@@ -153,12 +130,10 @@ local function clearIncident(i)
   incidents[i] = nil
 end
 
--- What comes on screen by itself, and how long a card stays. Everything is
--- detected and listed in the window either way; these only decide the screen.
+-- pop-up switch and card time per kind
 local POP_KEY = { contact = 'popContact', pileup = 'popContact', wall = 'popWall', spin = 'popSpin', offtrack = 'popOfftrack', stopped = 'popStopped' }
 local KEEP_KEY = { contact = 'keepContact', pileup = 'keepPileup', wall = 'keepWall', spin = 'keepSpin', offtrack = 'keepOfftrack', stopped = 'keepStopped' }
--- One entry per car; when something new happens to a car that already has one,
--- the more important of the two wins.
+-- one entry per car, the bigger thing wins
 local RANK = { test = 0, offtrack = 1, spin = 2, wall = 3, contact = 4, pileup = 5, stopped = 6 }
 
 local function popsUp(kind)
@@ -166,13 +141,12 @@ local function popsUp(kind)
   return key == nil or S[key] == true
 end
 
--- `pop` overrides the per-kind setting (a contact under the speed filter is
--- listed but doesn't pop up). Returns the car's entry.
+-- pop overrides the per-kind switch (e.g. a contact under the speed filter)
 local function raise(i, kind, car, detail, pop)
   local inc = incidents[i]
   if inc and not inc.resolved and kind ~= 'test' and inc.kind ~= 'test' then
     if kind == 'stopped' and inc.kind == 'spin' then
-      -- A spin that ends standing still becomes "stopped" on the same card.
+      -- spin that ends standing still: same card, now stopped
       inc.kind = 'stopped'
       inc.lastSeen = clock
       inc.detail = nil
@@ -181,7 +155,7 @@ local function raise(i, kind, car, detail, pop)
       return inc
     end
     if kind == inc.kind or (RANK[kind] or 0) < (RANK[inc.kind] or 0) then
-      -- Still the same thing, or something smaller: the entry stays, it's alive.
+      -- same thing or something smaller: keep the entry alive
       inc.lastSeen = clock
       if kind == inc.kind and detail then inc.detail = detail end
       return inc
@@ -189,7 +163,7 @@ local function raise(i, kind, car, detail, pop)
   end
   local show
   if pop == nil then show = popsUp(kind) else show = pop end
-  -- A card already on screen for this car stays there with the new news.
+  -- a card already on screen stays on screen
   if inc and inc.show and not inc.resolved then show = true end
   local hx, hz = heading(car)
   local cp = car.position
@@ -203,7 +177,7 @@ local function raise(i, kind, car, detail, pop)
   return inc
 end
 
--- Over: a stopped car driving again, an off track back on the tarmac.
+-- over: driving again / back on the tarmac
 local function resolve(inc)
   if inc and not inc.resolved then
     inc.resolved = true
@@ -211,9 +185,7 @@ local function resolve(inc)
   end
 end
 
--- Cards close by themselves once their time is up (0 = stays until closed).
--- Stopped cars and off tracks count from the moment they are over; a card
--- opened by hand stays until it is hidden or closed by hand.
+-- close cards whose time is up. Cards opened by hand stay
 local function expireIncidents()
   for i, inc in pairs(incidents) do
     if not inc.manual then
@@ -232,7 +204,7 @@ local function expireIncidents()
 end
 
 ---------------------------------------------------------------------------------------------------
--- Contacts from the website (long polling: the site answers as soon as there is one)
+-- Contacts from the website (long polling)
 ---------------------------------------------------------------------------------------------------
 
 local net = { busy = false, cursor = nil, retryAt = 0, status = 'off', lastAt = nil, fails = 0 }
@@ -241,9 +213,7 @@ local function sameName(a, b)
   return a ~= nil and b ~= nil and string.lower(a) == string.lower(b)
 end
 
--- The server numbers cars by their slot (CarID); CSP calls that sessionID.
--- The driver name has to match too, so a contact from the league's other
--- server never lands on whoever sits in the same slot here.
+-- server slot = CSP sessionID. Name must match too (other server, same slot)
 local function localCarFor(carId, name)
   if carId ~= nil and ac.getCar.serverSlot then
     local ok, car = pcall(ac.getCar.serverSlot, carId)
@@ -265,7 +235,7 @@ local function localCarFor(carId, name)
   return nil
 end
 
--- The chime. Loaded on first use; at most one every 1.5 s, a pile-up is one sound.
+-- the chime, at most one every 1.5 s
 local alertPlayer, lastAlert = nil, -10
 local function playAlert(force)
   if not force and (not S.soundOn or clock - lastAlert < 1.5) then return end
@@ -284,8 +254,7 @@ local function playAlert(force)
   end)
 end
 
--- A crash near a card that is still fresh joins that card instead of opening
--- another one: several cars in one corner within a few seconds is one incident.
+-- crashes close together in place and time go on one card
 local PILE_WINDOW = 4   -- seconds since the card's last hit
 local PILE_RADIUS = 60  -- metres
 
@@ -358,7 +327,7 @@ local function onContact(ev)
   if pop then playAlert() end
 end
 
--- Off track, judged by the website from the track map.
+-- off track, estimated by the website from the track map
 local function onOfftrack(ev)
   if get(ac.getSim(), 'isReplayActive', false) then return end
   local i, car = localCarFor(ev.carId, ev.driver)
@@ -435,7 +404,7 @@ local function trackCar(i, car, dt)
   local connected = get(car, 'isConnected', true)
   local inPit = get(car, 'isInPitlane', false) or get(car, 'isInPit', false)
 
-  -- Teleport (z.B. zurueck in die Box gesetzt): Erkennung zuruecksetzen (Fenster bleibt offen)
+  -- teleport (back to pits etc): start over
   if st.lastPos then
     local dx, dy, dz = pos.x - st.lastPos.x, pos.y - st.lastPos.y, pos.z - st.lastPos.z
     if dx * dx + dy * dy + dz * dz > 3600 then
@@ -444,17 +413,16 @@ local function trackCar(i, car, dt)
   end
   st.lastPos = vec3(pos.x, pos.y, pos.z)
 
-  -- Boxengasse, nicht verbunden oder eigenes Auto (falls ignoriert): nichts Neues melden
+  -- pit lane, disconnected, or own car when ignored: nothing new
   if not connected or inPit or (S.ignoreOwn and i == 0) then
     st.moved, st.stopT, st.spinT = false, 0, 0
     return
   end
 
-  -- Erst melden, wenn das Auto seit dem Start schon einmal richtig gefahren ist
-  -- (verhindert Meldungen in der Startaufstellung)
+  -- only once the car has really moved, so the grid doesn't count
   if speed > 40 then st.moved = true end
 
-  -- Stehendes Auto
+  -- stopped
   if st.moved and speed < S.stopKmh then
     st.stopT = st.stopT + dt
     if st.stopT >= S.holdSec then raise(i, 'stopped', car) end
@@ -462,7 +430,7 @@ local function trackCar(i, car, dt)
     st.stopT = 0
   end
 
-  -- Dreher: Auto zeigt deutlich in eine andere Richtung, als es faehrt
+  -- spin: pointing well away from where it's going
   if speed > 15 then
     local v = car.velocity
     local vl = math.sqrt(v.x * v.x + v.z * v.z)
@@ -476,7 +444,7 @@ local function trackCar(i, car, dt)
     st.spinT = 0
   end
 
-  -- Faehrt ein stehendes Auto wieder, nur markieren (Fenster bleibt offen, bis es geschlossen wird)
+  -- stopped car driving again
   local inc = incidents[i]
   if inc and inc.kind == 'stopped' and not inc.resolved then
     if speed > S.stopKmh + 10 then
@@ -506,7 +474,7 @@ function script.update(dt)
 end
 
 ---------------------------------------------------------------------------------------------------
--- Bild-im-Bild
+-- Camera views
 ---------------------------------------------------------------------------------------------------
 
 local slots = {}          -- slots[k] = Autoindex, der in Zeile k gezeigt wird
@@ -519,7 +487,7 @@ local function pipSize()
   return w, math.floor(w * 9 / 16)
 end
 
--- Liste der eingeschalteten Ansichten (mindestens eine)
+-- ticked views, at least one
 local function activeViews()
   local list = {}
   for v, view in ipairs(VIEWS) do
@@ -534,8 +502,7 @@ local function mipCount(w, h)
 end
 
 local function makeShot(w, h)
-  -- Bild in voller Helligkeitsaufloesung (Float) mit MIPs berechnen: so wird Weiss nicht abgeschnitten,
-  -- und die kleinste MIP-Stufe liefert die Durchschnittshelligkeit fuer die automatische Belichtung.
+  -- float + mips: no clipped whites, smallest mip = average brightness for auto exposure
   local shaders = math.floor(S.quality) == 2 and render.ShadersType.SimplifiedWithLights or render.ShadersType.Main
   local shot = ac.GeometryShot(ac.findNodes('sceneRoot:yes'), vec2(w, h), mipCount(w, h), false,
     render.AntialiasingMode.None, render.TextureFormat.R16G16B16A16.Float)
@@ -551,7 +518,7 @@ local function makeShot(w, h)
   return shot
 end
 
--- Belichtung + Tonemapping (ACES) + Gamma, damit das Bild aussieht wie mit einer echten Kamera
+-- exposure + ACES tonemap + gamma
 local TONEMAP_SHADER = [[
 float3 acesFilm(float3 x) {
   return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
@@ -612,7 +579,7 @@ local function getShot(k, v)
   return shots[k][v]
 end
 
--- Zeilen stabil belegen: Autos bleiben in ihrer Zeile, neue Vorfaelle fuellen freie Zeilen
+-- cars keep their row, new ones fill free rows
 local function updateSlots()
   local maxPip = math.floor(S.maxPip)
   for k = 1, 4 do
@@ -633,9 +600,7 @@ local function updateSlots()
     end
   end
 
-  -- All spots taken and something newer is waiting: it takes the spot of the
-  -- oldest card on screen, so the latest crash is always visible. The older
-  -- card stays in the list in the window.
+  -- full: the newest pushes the oldest card off screen (it stays in the list)
   while #waiting > 0 do
     local oldestK, oldestSince = nil, math.huge
     for k = 1, maxPip do
@@ -647,9 +612,7 @@ local function updateSlots()
   end
 end
 
--- Where the cameras look along: the way the car is going, smoothed. It swings
--- round a corner with the car, and doesn't whip round in a spin, because a
--- spinning car keeps sliding the same way. Standing still keeps the last one.
+-- direction of travel, smoothed: follows corners, doesn't whip round in a spin
 local function followHeading(inc, car)
   local v = car.velocity
   local vl = math.sqrt(v.x * v.x + v.z * v.z)
@@ -760,7 +723,7 @@ end
 
 local function drawTitleStrip(width)
   ui.drawRectFilled(vec2(0, 0), vec2(width, TITLE_H), rgbm(0.03, 0.035, 0.045, 0.9))
-  -- the league logo where the live dot used to be
+  -- logo
   local okLogo = pcall(ui.drawImage, LOGO, vec2(4, 3), vec2(4 + TITLE_H - 6, TITLE_H - 3))
   if not okLogo then ui.drawCircleFilled(vec2(12, TITLE_H / 2), 4, rgbm(0.9, 0.2, 0.22, 1), 16) end
   ui.pushFont(ui.Font.Small)
@@ -871,7 +834,7 @@ local function slider(label, key, min, max, format, power)
   if v ~= S[key] then S[key] = v end
 end
 
--- A tooltip for the control drawn just before.
+-- tooltip for the last control
 local function hint(text)
   if ui.itemHovered() then ui.setTooltip(text) end
 end
@@ -890,7 +853,7 @@ end
 local GOOD = rgbm(0.3, 0.78, 0.5, 1)
 local BAD = rgbm(0.95, 0.38, 0.35, 1)
 
--- Where the connection to the website stands, in words and a colour.
+-- website link state
 local function connectionState()
   if not S.rcOn then return 'Off', TEXT_DIM end
   if S.rcCode == '' then return 'No code yet', TEXT_DIM end
@@ -960,7 +923,7 @@ local function tabLive()
   end
 end
 
--- One kind: does it pop up by itself, and how long does its card stay.
+-- one kind: pop-up switch + card time
 local function kindRow(label, popKey, keepKey, keepText, tip)
   toggle(label, popKey, tip)
   local k = S[keepKey]
@@ -1035,7 +998,7 @@ local function tabPicture()
 end
 
 function script.windowMain(dt)
-  -- one line on top that says whether the website link works
+  -- top line
   local text, col = connectionState()
   pcall(ui.image, LOGO, vec2(18, 18))
   ui.sameLine(0, 6)
