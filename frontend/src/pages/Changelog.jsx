@@ -1,15 +1,16 @@
 import { useEffect } from "react";
 import { PageHeader } from "../components/ui.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { CHANGELOG, CHANGELOG_COMMITS } from "../data/changelog.js";
-import { markChangelogSeen } from "../hooks/useChangelogSeen.js";
+import { useChangelog, markChangelogSeen } from "../hooks/useChangelogSeen.js";
 
 // ---------------------------------------------------------------------------
 // /changelog — what changed on the site, newest first.
 //
 // The site changes most days, and until now the only way to find out what had
-// was to stumble on it. The list itself is data/changelog.js; this page only
-// draws it. Opening it clears the "New" mark in Settings.
+// was to stumble on it. The list is the hand-written history in
+// data/changelog.js plus the merged pull requests that carry a "## Changelog"
+// section, which the server reads off GitHub (hooks/useChangelogSeen.js). This
+// page only draws it. Opening it clears the "New" mark in Settings.
 //
 // Public and login-free: a visitor deciding whether the league is alive is as
 // much a reader of this as a member is.
@@ -39,7 +40,10 @@ const fmtNumber = (n) => new Intl.NumberFormat(undefined).format(n);
 
 export default function Changelog() {
   useSpecificTitle("What's new · NABS Racing League");
-  useEffect(() => markChangelogSeen(), []);
+  const { entries, commits, latest } = useChangelog();
+  // Seen once the page is open, and again if the feed brings a newer entry
+  // while it is.
+  useEffect(() => markChangelogSeen(latest), [latest]);
 
   return (
     <div className="content-in mx-auto max-w-3xl">
@@ -49,9 +53,9 @@ export default function Changelog() {
         subtitle="Recent updates to the site."
         rightInline
         right={
-          CHANGELOG_COMMITS > 0 && (
+          commits > 0 && (
             <div className="shrink-0 text-right">
-              <div className="font-mono text-2xl font-bold tabular-nums text-dark">#{fmtNumber(CHANGELOG_COMMITS)}</div>
+              <div className="font-mono text-2xl font-bold tabular-nums text-dark">#{fmtNumber(commits)}</div>
               <div className="text-xs text-light">commits so far</div>
             </div>
           )
@@ -59,8 +63,8 @@ export default function Changelog() {
       />
 
       <ol className="relative space-y-6 border-l border-border pl-5 sm:pl-7">
-        {CHANGELOG.map((entry, i) => (
-          <li key={entry.date} className="relative">
+        {entries.map((entry, i) => (
+          <li key={entry.id || entry.date} className="relative">
             {/* The dot on the timeline. The newest one is filled in. */}
             <span
               className={`absolute -left-[26px] top-1.5 h-3 w-3 rounded-full border-2 border-bg sm:-left-[34px] ${

@@ -1,27 +1,20 @@
 // ---------------------------------------------------------------------------
-// What changed on the site, newest first — the list /changelog shows.
+// The site's history up to the day the changelog went up, newest first.
 //
-// Written for the drivers, not for the code: what you will notice, in a
-// sentence, not how it was built. One entry per day something shipped, with
-// the changes of that day as its items. A new day goes on TOP.
+// This file is FINISHED. Updates after it come in by themselves: a merged pull
+// request whose description has a "## Changelog" section becomes an entry on
+// /changelog, and the site's number is read off GitHub (see
+// backend/src/lib/changelogFeed.js and .github/pull_request_template.md).
+// Only touch this file to correct what is already in it.
 //
-// `tag` sorts an item into one of the small coloured labels on the page:
+// Written for the drivers, not for the code. `tag` is one of:
 //   "new"      something that was not there before
 //   "better"   something that was there, and now works or reads better
 //   "fixed"    something that was wrong
 //
-// `from` is optional: an entry that covers several days has the first day in
-// `from` and the last in `date`. The older history is summed up per few days
-// rather than per day, or the page would be endless.
-//
-// `commits` is how many commits the site had on main by the end of that entry
-// (git rev-list --count main). The page shows it as the entry's number, and the
-// newest one as the site's current number. Give a new entry the count it will
-// have once it is merged.
-//
-// The newest entry's `date` is also what the "New" mark in Settings compares
-// against, so adding an entry here is all it takes to light it up for everyone
-// who has not opened the page since.
+// `from` is optional: an entry covering several days has the first day in
+// `from` and the last in `date`. `commits` is how many commits main had by the
+// end of the entry (git rev-list --count main), shown as the entry's number.
 // ---------------------------------------------------------------------------
 
 export const CHANGELOG = [
@@ -424,9 +417,3 @@ export const CHANGELOG = [
     ],
   },
 ];
-
-// The newest entry's date, which is what "have you seen it" compares against.
-export const CHANGELOG_LATEST = CHANGELOG[0]?.date || "";
-
-// The site's current commit number, as of the newest entry.
-export const CHANGELOG_COMMITS = CHANGELOG[0]?.commits || 0;

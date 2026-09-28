@@ -1532,6 +1532,9 @@ export const api = {
   saveRaceInfo: (content) => request("/admin/race-info", { method: "PUT", body: { content }, auth: true }),
 
   // Privacy page: who is responsible, and the app's name (public read + admin edit)
+  // The changelog's commit count and the entries of merged pull requests,
+  // read off GitHub by the server (the hand-written history is in the bundle).
+  changelog: () => request("/changelog"),
   privacyInfo: () => request("/settings/privacy"),
   adminPrivacyInfo: () => request("/admin/privacy-info", { auth: true }),
   savePrivacyInfo: (info) => request("/admin/privacy-info", { method: "PUT", body: { info }, auth: true }),
