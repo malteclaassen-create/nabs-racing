@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { PageHeader } from "../components/ui.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { CHANGELOG } from "../data/changelog.js";
+import { CHANGELOG, CHANGELOG_COMMITS } from "../data/changelog.js";
 import { markChangelogSeen } from "../hooks/useChangelogSeen.js";
 
 // ---------------------------------------------------------------------------
@@ -21,12 +21,21 @@ const TAGS = {
   fixed: { label: "Fixed", className: "bg-ok/10 text-ok" },
 };
 
-function formatDate(iso) {
-  // Noon, so no time zone can push the day over the edge either way.
-  const d = new Date(`${iso}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+// Noon, so no time zone can push the day over the edge either way.
+const day = (iso) => new Date(`${iso}T12:00:00`);
+const DATE_FMT = { day: "numeric", month: "long", year: "numeric" };
+
+// One day, or a few days as a range ("15 – 17 September 2026").
+function formatDate(from, to) {
+  const end = day(to);
+  if (Number.isNaN(end.getTime())) return to;
+  const fmt = new Intl.DateTimeFormat(undefined, DATE_FMT);
+  const start = from ? day(from) : null;
+  if (!start || Number.isNaN(start.getTime()) || from === to) return fmt.format(end);
+  return typeof fmt.formatRange === "function" ? fmt.formatRange(start, end) : `${fmt.format(start)} – ${fmt.format(end)}`;
 }
+
+const fmtNumber = (n) => new Intl.NumberFormat(undefined).format(n);
 
 export default function Changelog() {
   useSpecificTitle("What's new · NABS Racing League");
@@ -38,6 +47,15 @@ export default function Changelog() {
         eyebrow="Changelog"
         title="What's new"
         subtitle="Recent updates to the site."
+        rightInline
+        right={
+          CHANGELOG_COMMITS > 0 && (
+            <div className="shrink-0 text-right">
+              <div className="font-mono text-2xl font-bold tabular-nums text-dark">#{fmtNumber(CHANGELOG_COMMITS)}</div>
+              <div className="text-xs text-light">commits so far</div>
+            </div>
+          )
+        }
       />
 
       <ol className="relative space-y-6 border-l border-border pl-5 sm:pl-7">
@@ -50,9 +68,17 @@ export default function Changelog() {
               }`}
               aria-hidden="true"
             />
-            <time dateTime={entry.date} className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
-              {formatDate(entry.date)}
-            </time>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <time dateTime={entry.date} className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">
+                {formatDate(entry.from, entry.date)}
+              </time>
+              {/* The commit count by the end of this entry, as its number. */}
+              {entry.commits > 0 && (
+                <span className="font-mono text-[11px] font-bold tabular-nums text-faint" title={`${entry.commits} commits by then`}>
+                  #{fmtNumber(entry.commits)}
+                </span>
+              )}
+            </div>
             <div className="card mt-2 px-5 py-4">
               {entry.title && (
                 <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{entry.title}</h2>
