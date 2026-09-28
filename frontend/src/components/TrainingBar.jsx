@@ -74,15 +74,9 @@ export default function TrainingBar({ week, variant = "card", label = "Your trai
   if (variant === "stacked") {
     return (
       <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-light" title={label}>
-            {label}
-          </span>
-          {/* What this server's week has paid, while the league is paying. */}
-          {earning && week.earned > 0 && (
-            <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-ok">+{fmt(week.earned)}</span>
-          )}
-        </div>
+        <span className="block min-w-0 truncate font-mono text-[10px] font-bold uppercase tracking-wider text-light" title={label}>
+          {label}
+        </span>
         <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_4rem] items-center gap-3">
           <div className="relative h-2 overflow-hidden rounded-full bg-surface2">
             <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${fill * 100}%` }} />
@@ -92,6 +86,14 @@ export default function TrainingBar({ week, variant = "card", label = "Your trai
             {laps}
             <span className="font-normal text-light">/{target}</span>
           </span>
+          {/* What this server's week has paid, while the league is paying:
+              right under the count it came from, so the two read as one fact
+              (it used to sit up by the server's name, a whole column away). */}
+          {earning && week.earned > 0 && (
+            <span className="col-start-2 -mt-2 text-right font-mono text-[11px] font-bold tabular-nums text-ok">
+              +{fmt(week.earned)}
+            </span>
+          )}
         </div>
       </div>
     );
