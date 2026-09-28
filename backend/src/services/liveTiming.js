@@ -31,6 +31,7 @@ import { parkLaps, markNotified } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
+import * as liveIncidents from "./liveIncidents.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
@@ -1127,6 +1128,12 @@ function createRelay(server) {
       // reports zero elapsed — anchoring only on the session change would have
       // meant never anchoring at all.
       if (sessionStartedAt == null && elapsed > 0) sessionStartedAt = Date.now() - elapsed;
+      liveIncidents.onSession(server.key, {
+        sessionKey: key,
+        sessionType: si.Type ?? null,
+        startedAt: sessionStartedAt,
+        drivers: status?.ConnectedDrivers?.Drivers,
+      });
     }
     {
       // The reset watch's own bookkeeping: which practice session is on air and
@@ -1231,7 +1238,11 @@ function createRelay(server) {
         case 53: // per-car telemetry
           ingestTelemetry(msg.Message);
           break;
+        case 108: // a collision (car vs car or car vs wall), for race control
+          ingestCollision(msg.Message);
+          break;
         default:
+          noteUnknownEvent(msg);
           break;
       }
     });
@@ -1351,9 +1362,45 @@ function createRelay(server) {
     const guid = carIdToGuid.get(live.CarID);
     const inPits = guid ? pitFilter.read(guid, live.IsInPits, speedKmhOf(live)) : undefined;
     pitRecorder.onTelemetry(server.key, guid, live, inPits);
+    liveIncidents.onTelemetry(server.key, {
+      guid,
+      carId: live.CarID,
+      kmh: speedKmhOf(live),
+      pos: live.Pos,
+      spline: live.NormalisedSplinePos,
+      inPits,
+    });
     // Fast lane: followers of THIS car get its cockpit numbers now, not at the
     // next 700ms board tick.
     relayFollowedTelemetry(server.key, guid, live);
+  }
+
+  // Collisions go to the race control watch. The spline comes from the car's
+  // own telemetry, for the outline map when there is no real one.
+  let collisionsSeen = 0;
+  function ingestCollision(m) {
+    lastMessageAt = Date.now();
+    collisionsSeen++;
+    if (collisionsSeen === 1) console.log(`${tag} first collision event: ${JSON.stringify(m).slice(0, 400)}`);
+    liveIncidents
+      .onCollision(server.key, m, {
+        guidForCar: (id) => carIdToGuid.get(id) || null,
+        splineForGuid: (guid) => {
+          const id = status?.ConnectedDrivers?.Drivers?.[guid]?.CarInfo?.CarID;
+          return id == null ? null : liveByCar.get(id)?.NormalisedSplinePos ?? null;
+        },
+      })
+      .catch((e) => console.warn(`${tag} collision: ${e.message}`));
+  }
+
+  // Every other event type is dropped, but once per type we say what it looked
+  // like, so the logs show what else the server manager sends.
+  const unknownSeen = new Set();
+  function noteUnknownEvent(msg) {
+    const et = msg?.EventType;
+    if (et == null || et === 57 || unknownSeen.has(et) || unknownSeen.size > 40) return;
+    unknownSeen.add(et);
+    console.log(`${tag} event ${et}: ${JSON.stringify(msg.Message ?? null).slice(0, 300)}`);
   }
 
   function buildEntry(guid, d, onTrack) {
@@ -2039,6 +2086,7 @@ function createRelay(server) {
       raceRoster: raceRosterByGuid.size,
       resultHold: !!finishedRace,
       trackMapKb: trackMap?.png ? Math.round(trackMap.png.length / 1024) : 0,
+      collisionsSeen,
     }),
     // Test hooks (state is per-relay, so tests drive an unconnected instance).
     __accumulateStints: accumulateStints,
@@ -2046,6 +2094,7 @@ function createRelay(server) {
     __ingest: ingestSnapshot,
     __mapKey: () => trackMapKey,
     __telemetry: ingestTelemetry,
+    __collision: ingestCollision,
     __getBoard: getBoard,
     __reset() {
       stintsByGuid.clear();
@@ -2325,6 +2374,50 @@ function demoCurrentSectors(lapMs, spline) {
   return [0, 1, 2].map((i) =>
     i < done ? { ms: Math.round(lapMs * cut[i]), best: false, driversBest: false, cuts: 0 } : null
   );
+}
+
+// Made-up race control incidents for the demo board, so the markers and the
+// list can be looked at on a Tuesday. A new one every 15 seconds.
+export function getDemoIncidents(kind = "race") {
+  if (!DEMO_ENABLED) return null;
+  const board = getDemoBoard(kind);
+  const cars = board.entries || [];
+  if (!cars.length) return { session: board.session, stopped: [], incidents: [] };
+  const STEP = 15000;
+  const now = Date.now();
+  const start = demoState?.startedAt || now;
+  const last = Math.floor(now / STEP);
+  const incidents = [];
+  for (let b = last; b > last - 10; b--) {
+    const a = cars[b % cars.length];
+    const o = cars[(b * 7 + 3) % cars.length];
+    const type = ["car", "env", "car", "stopped"][b % 4];
+    const at = b * STEP;
+    incidents.push({
+      id: `demo-${b}`,
+      type,
+      driverGuid: a.guid,
+      driverName: a.name,
+      carId: b % cars.length,
+      otherGuid: type === "car" && o.guid !== a.guid ? o.guid : null,
+      otherName: type === "car" && o.guid !== a.guid ? o.name : null,
+      otherCarId: null,
+      at,
+      raceMs: Math.max(0, at - start),
+      x: null,
+      z: null,
+      spline: ((b * 0.137) % 1 + 1) % 1,
+      speedKmh: type === "stopped" ? null : 16 + ((b * 13) % 70),
+      endedAt: type === "stopped" && b < last - 2 ? at + 20000 : null,
+      status: b < last - 5 ? "done" : "open",
+    });
+  }
+  const s = cars[Math.floor(now / 60000) % cars.length];
+  return {
+    session: board.session,
+    stopped: [{ guid: s.guid, name: s.name, since: now - 7000 }],
+    incidents,
+  };
 }
 
 function getDemoBoard(kind = "race") {

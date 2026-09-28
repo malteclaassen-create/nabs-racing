@@ -530,6 +530,20 @@ export const api = {
     if (simulate) parts.push("simulate=1");
     return request(`/live/championship${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
   },
+  // Race control (stewards + admins): does this viewer get the button, the
+  // incidents of the session on air, and the two things a steward changes.
+  raceControlAccess: () => request("/live/incidents/access", { auth: true }),
+  raceControlIncidents: (server = null, demo = null) => {
+    const parts = [];
+    if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
+    if (server) parts.push(`server=${encodeURIComponent(server)}`);
+    if (demo) parts.push(`demo=${encodeURIComponent(demo)}`);
+    return request(`/live/incidents${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
+  },
+  setIncidentStatus: (id, status) =>
+    request(`/live/incidents/${encodeURIComponent(id)}`, { method: "PATCH", body: { status }, auth: true }),
+  setRaceControlMinKmh: (minKmh) =>
+    request("/live/incidents/settings", { method: "PUT", body: { minKmh }, auth: true }),
 
   // events / RSVP (public; scoped to the viewed season, default active)
   // Attendance is about UPCOMING races, so these deliberately ignore the

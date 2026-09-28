@@ -917,3 +917,33 @@ model TokenRedemption {
 
   @@index([discordId])
 }
+
+// Race control: a collision or a stopped car, spotted live on the Emperor feed
+// (services/liveIncidents.js). Read and written with raw SQL; times are epoch
+// ms. type = car | env | stopped, status = open | done.
+model Incident {
+  id           String  @id
+  server       String
+  sessionKey   String
+  sessionType  Int?
+  sessionStart Float?
+  type         String
+  driverGuid   String?
+  driverName   String?
+  carId        Int?
+  otherGuid    String?
+  otherName    String?
+  otherCarId   Int?
+  atMs         Float
+  raceMs       Float?
+  x            Float?
+  z            Float?
+  spline       Float?
+  speedKmh     Float?
+  endedAt      Float?
+  status       String  @default("open")
+  resolvedBy   String?
+  createdAtMs  Float
+
+  @@index([server, sessionKey, atMs], map: "Incident_session_idx")
+}

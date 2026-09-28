@@ -938,6 +938,35 @@ body {
   }
 }
 
+/* Race control: a fresh collision goes off on the map three times, then only
+   the quiet dot under it stays. Lite mode and reduced motion skip the burst. */
+.rc-burst-ring,
+.rc-burst-core,
+.rc-burst-spikes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: 0.9s var(--e-out) 3 both;
+}
+.rc-burst-ring { animation-name: rc-ring; }
+.rc-burst-core { animation-name: rc-core; }
+.rc-burst-spikes { animation-name: rc-spikes; }
+@keyframes rc-ring {
+  from { transform: scale(0.2); opacity: 1; }
+  to   { transform: scale(1); opacity: 0; }
+}
+@keyframes rc-core {
+  0%   { transform: scale(0.3); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+@keyframes rc-spikes {
+  from { transform: scale(0.45) rotate(0deg); opacity: 1; }
+  to   { transform: scale(1.15) rotate(22deg); opacity: 0; }
+}
+.fx-lite .rc-burst { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rc-burst { display: none; }
+}
+
 /* --- Odometer digits ----------------------------------------------- */
 /* Countdown numerals roll to their value instead of hard-swapping (RollingNumber
    in ui.jsx). Each digit is a clipped 1em window over a 0–9 column that slides. */

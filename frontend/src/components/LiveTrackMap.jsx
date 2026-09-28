@@ -200,6 +200,32 @@ function CarDot({ d, r, fs, zoom, focused, isFocusTarget, counterRotate, onFocus
   );
 }
 
+// A race control incident on the map (TV board, stewards only). A new one goes
+// off as a short burst, then stays as a small quiet dot with its tooltip.
+// Drawn under the cars, so the cars stay clickable on top.
+function IncidentMark({ x, y, r, inc }) {
+  const color = inc.type === "car" ? "#ef4444" : "#f59e0b";
+  const spikes = Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4);
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <title>{inc.title}</title>
+      {inc.fresh && (
+        <g className="rc-burst" pointerEvents="none">
+          <circle r={r * 2.6} fill="none" stroke={color} strokeWidth={r * 0.3} className="rc-burst-ring" />
+          <g className="rc-burst-spikes" stroke="#fbbf24" strokeWidth={r * 0.28} strokeLinecap="round">
+            {spikes.map((a) => (
+              <line key={a} x1={Math.cos(a) * r * 1.1} y1={Math.sin(a) * r * 1.1} x2={Math.cos(a) * r * 2.3} y2={Math.sin(a) * r * 2.3} />
+            ))}
+          </g>
+          <circle r={r * 1.1} fill="#fde68a" className="rc-burst-core" />
+        </g>
+      )}
+      <circle r={r * 0.9} fill="transparent" />
+      <circle r={r * 0.5} fill={color} fillOpacity={0.8} stroke="#111827" strokeOpacity={0.6} strokeWidth={r * 0.12} />
+    </g>
+  );
+}
+
 // Direction of travel per car, from how its map position moved between two
 // updates. Tiny jitters (a stationary car) keep the last known heading, so
 // parked cars don't spin. `store` persists across renders (a ref's Map).
@@ -243,7 +269,7 @@ function projectDot(car, map, matchFn) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap }) {
+function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
@@ -332,6 +358,11 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
                 </g>;
               })}
             </g>
+            {(incidents || []).map((inc) => {
+              if (inc.x == null || inc.z == null) return null;
+              const p = projectDot({ pos: { x: inc.x, z: inc.z } }, map, null);
+              return <IncidentMark key={inc.id} x={p.x} y={p.y} r={r / (focusGuid ? Math.sqrt(zoom) : 1)} inc={inc} />;
+            })}
             {dots.map((d) => (
               <CarDot
                 key={d.guid}
@@ -358,7 +389,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
 // Known, accepted approximation: the stored path's start point and winding
 // direction aren't guaranteed to match the real start/finish or driving
 // direction, so the positions are indicative. Unknown tracks render nothing.
-function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFocus, className = "" }) {
+function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFocus, className = "", incidents = null }) {
   // The same resolver the card around this map uses to decide there IS an
   // outline to show. It used to be the plain lookup, which knows "Most" but
   // not "NABS Autodrom Most (no chicane)" — so the card promised a map and
@@ -443,6 +474,13 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
           vectorEffect="non-scaling-stroke"
           opacity="0.6"
         />
+        {len > 0 &&
+          pathRef.current &&
+          (incidents || []).map((inc) => {
+            if (inc.spline == null) return null;
+            const pt = pathRef.current.getPointAtLength((((inc.spline % 1) + 1) % 1) * len);
+            return <IncidentMark key={inc.id} x={pt.x} y={pt.y} r={r / (focusGuid ? Math.sqrt(zoom) : 1)} inc={inc} />;
+          })}
         {dots.map((d) => (
           <CarDot
             key={d.guid}
@@ -513,7 +551,7 @@ function CockpitReadout({ car, onCarTelemetry }) {
 // caller's `absolute` are the same property and the stylesheet, not the class
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned — the controls inside are absolute against it.
-export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "" }) {
+export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "", incidents = null }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   const [mapMode, setMapMode] = useState("track");
@@ -574,6 +612,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           onFocus={setFocusGuid}
           server={server}
           className={className}
+          incidents={incidents}
           onImageError={() => { setImageFailed(true); setMapMode("track"); setAerialLoaded(false); setLoadAerial(false); }}
         />
       ) : (
@@ -586,6 +625,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           zoom={zoom}
           onFocus={setFocusGuid}
           className={className}
+          incidents={incidents}
         />
       )}
       {imageFailed && <p role="status" className="absolute bottom-2 left-2 rounded bg-black/80 px-2 py-1 text-xs text-white">Satellite image unavailable. Showing track map.</p>}

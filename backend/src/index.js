@@ -27,6 +27,7 @@ import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportsRoutes from "./routes/reports.js";
+import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
@@ -280,6 +281,9 @@ app.get("/api/live/map.png", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=300");
   res.send(png);
 });
+
+// Race control: incidents (collisions, stopped cars) for stewards.
+app.use("/api/live/incidents", liveIncidentsRoutes);
 
 // Live championship projection: standings as if the RUNNING race ended in the
 // current order. Only active while a league race is on (see the service's

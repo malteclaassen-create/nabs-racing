@@ -793,6 +793,37 @@ export async function ensureAppSchema(prisma) {
     `CREATE INDEX IF NOT EXISTS "TokenPractice_period_idx" ON "TokenPractice"("series","period")`
   );
 
+  // Race control: collisions and stopped cars spotted live (services/
+  // liveIncidents.js, migration race_control_incidents). Times are epoch ms
+  // as REAL, so raw reads come back as plain numbers.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Incident" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "server" TEXT NOT NULL,
+    "sessionKey" TEXT NOT NULL,
+    "sessionType" INTEGER,
+    "sessionStart" REAL,
+    "type" TEXT NOT NULL,
+    "driverGuid" TEXT,
+    "driverName" TEXT,
+    "carId" INTEGER,
+    "otherGuid" TEXT,
+    "otherName" TEXT,
+    "otherCarId" INTEGER,
+    "atMs" REAL NOT NULL,
+    "raceMs" REAL,
+    "x" REAL,
+    "z" REAL,
+    "spline" REAL,
+    "speedKmh" REAL,
+    "endedAt" REAL,
+    "status" TEXT NOT NULL DEFAULT 'open',
+    "resolvedBy" TEXT,
+    "createdAtMs" REAL NOT NULL
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "Incident_session_idx" ON "Incident"("server","sessionKey","atMs")`
+  );
+
   // The live relay's last lap count per driver and server, so a restart picks
   // up where it left off instead of starting from zero (practiceTokens.js).
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TokenLapMark" (

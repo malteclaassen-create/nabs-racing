@@ -13,6 +13,14 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
+import { ShieldAlert } from "lucide-react";
+import {
+  useRaceControlAccess,
+  useRaceControl,
+  RaceControlToggle,
+  RaceControlPanel,
+  incidentTitle,
+} from "../components/RaceControl.jsx";
 import { useLiveServers, LiveServerSwitch } from "../components/LiveServerSwitch.jsx";
 import TyreStrategy, { TyreBadge } from "../components/TyreStrategy.jsx";
 import { CIRCUITS, circuitForLive, canonicalTrack, circuitFor, trackKey } from "../data/circuits.js";
@@ -2955,10 +2963,47 @@ function TvPitLane({ entries, match, className = "" }) {
   );
 }
 
-function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen }) {
+function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
   // The page underneath is still mounted, and without this it scrolls away
   // behind the board on any stray wheel event.
   useScrollLock(true);
+
+  // Race control: stewards and admins get a button that adds the incidents
+  // (bursts on the map, the stopped count, the list). Remembered per browser.
+  const [rcPref, setRcPref] = useState(() => {
+    try {
+      return localStorage.getItem("nabs_live_rc") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setRc = useCallback((v) => {
+    setRcPref(v);
+    try {
+      localStorage.setItem("nabs_live_rc", v ? "1" : "0");
+    } catch {
+      /* private mode, it just is not remembered */
+    }
+  }, []);
+  const rcOn = rcAllowed && rcPref;
+  const rcDemo = new URLSearchParams(window.location.search).get("demo");
+  const rc = useRaceControl({ on: rcOn, server, demo: rcDemo });
+  // Board, list and map side by side need a big screen (the board alone is
+  // ~850px of fixed columns). Below 2xl they take turns in three tabs.
+  // On a phone the board itself is too wide to read, so the list comes first.
+  const [rcTab, setRcTab] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches ? "incidents" : "board"
+  );
+  const rcSide = rcOn && rcTab !== "board";
+  const mapIncidents = useMemo(
+    () =>
+      rcOn
+        ? (rc.data?.incidents || [])
+            .filter((i) => i.type !== "stopped")
+            .map((i) => ({ id: i.id, type: i.type, x: i.x, z: i.z, spline: i.spline, fresh: rc.isFresh(i.id), title: incidentTitle(i, match) }))
+        : null,
+    [rcOn, rc, match]
+  );
 
   // Going in is a fade (`content-in`, the same one every page arrives with).
   // Coming out has to be asked for: the mode lives in the address, so dropping
@@ -3120,7 +3165,9 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-5 sm:gap-8">
           {session && (
-            <>
+            // No room for the numbers on a phone; there the header is only
+            // the way out (and race control, for a steward).
+            <div className="hidden items-center gap-5 sm:flex sm:gap-8">
               {lapNow != null ? (
                 <TvStat label="Lap">
                   {lapNow}
@@ -3139,9 +3186,19 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                 {session.onTrackCount}
                 <span className="text-light"> / {session.driverCount}</span>
               </TvStat>
-            </>
+              {rcOn && (
+                <div className="hidden sm:block">
+                  <TvStat label="Stopped">
+                    <span className={(rc.data?.stopped || []).length ? "text-sky-600 dark:text-sky-400" : undefined}>
+                      {(rc.data?.stopped || []).length}
+                    </span>
+                  </TvStat>
+                </div>
+              )}
+            </div>
           )}
           <div className="flex items-center gap-2">
+            {rcAllowed && <RaceControlToggle on={rcOn} onChange={setRc} className={btn} />}
             <button
               type="button"
               onClick={toggleFull}
@@ -3165,9 +3222,32 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
           <p className="font-mono text-sm uppercase tracking-[0.25em] text-light">Waiting for a session</p>
         </div>
       ) : (
+        <>
+        {rcOn && (
+          <div className="shrink-0 px-4 pt-3 sm:px-6 2xl:hidden">
+            <SlidingTabs
+              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
+              btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
+              pillClassName="rounded-md bg-brand"
+              items={[
+                { key: "board", label: "Board" },
+                {
+                  key: "incidents",
+                  label: `Incidents${(() => {
+                    const n = (rc.data?.incidents || []).filter((i) => i.status !== "done").length;
+                    return n ? ` (${n})` : "";
+                  })()}`,
+                },
+                ...(hasMap && cars.length > 0 ? [{ key: "map", label: "Map" }] : []),
+              ]}
+              value={rcTab}
+              onChange={setRcTab}
+            />
+          </div>
+        )}
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:px-6 xl:flex-row xl:gap-6">
           {/* ===== The order ===== */}
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className={`min-h-0 flex-1 flex-col ${rcSide ? "hidden 2xl:flex" : "flex"}`}>
             <div className="flex shrink-0 items-center gap-3 border-b border-border px-2 pb-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
               <span className={`${TV_W.num} text-right`}>Pos</span>
               <span className={TV_W.bar} />
@@ -3240,13 +3320,25 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                  The map keeps the card behind it, because the stylised outline
                  is stroked in the border colour: a visible line on a card, and
                  very nearly nothing on the darker page. ===== */}
-          <aside className={`hidden min-h-0 w-[34%] shrink-0 flex-col gap-4 xl:flex ${dealt}`}>
+          <aside
+            className={`min-h-0 flex-col gap-4 ${
+              rcSide
+                ? "flex flex-1 2xl:w-[34%] 2xl:flex-none 2xl:shrink-0"
+                : rcOn
+                  ? "hidden w-[34%] shrink-0 2xl:flex"
+                  : "hidden w-[34%] shrink-0 xl:flex"
+            } ${dealt}`}
+          >
             {hasMap && cars.length > 0 && (
               // The map takes what the other three leave. It is the one panel
               // that is better for being bigger, and the pit lane is the one
               // that is usually empty: fixing the map's share instead left a
               // half-metre of blank card under "Nobody in the pit lane".
-              <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
+              <div
+                className={`relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card ${
+                  rcOn && rcTab !== "map" ? "hidden 2xl:block" : ""
+                }`}
+              >
                 <LiveTrackMap
                   track={session.trackName || session.track}
               trackId={session.track}
@@ -3258,9 +3350,19 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                   server={server}
                   wrapClassName={mapFrame}
                   className={`${mapFit} text-medium`}
+                  incidents={mapIncidents}
                 />
               </div>
             )}
+            {rcOn ? (
+              // Race control swaps the sectors and the pit lane for the list.
+              <RaceControlPanel
+                rc={rc}
+                match={match}
+                className={`min-h-0 shrink-0 ${rcTab === "incidents" ? "flex-1" : "hidden 2xl:flex"} 2xl:h-[46%] 2xl:flex-none`}
+              />
+            ) : (
+              <>
             <TvSectors entries={entries} match={match} />
             {/* A FIXED share of the column, not "as tall as it needs". Sized
                 to what it holds, it grew every time somebody pitted and took
@@ -3268,8 +3370,11 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                 watching jumped about because two cars came in. It keeps its box
                 whatever happens and scrolls inside it. */}
             <TvPitLane entries={entries} match={match} className="h-[26%] shrink-0" />
+              </>
+            )}
           </aside>
         </div>
+        </>
       )}
 
       {/* ===== The strip along the bottom: the one lap time worth a line of its
@@ -3322,6 +3427,7 @@ export default function Live() {
   // than into the mode they just closed.
   const [searchParams, setSearchParams] = useSearchParams();
   const tv = searchParams.get("tv") === "1";
+  const rcAllowed = useRaceControlAccess();
   // A browser that has never been in there gets told, once: a badge on the way
   // in and a line of explanation on arrival. A browser with nothing to remember
   // with (private mode) counts as having seen it — a "new" badge that is new
@@ -3656,6 +3762,7 @@ export default function Live() {
     return (
       <TvMode
         onSeen={markTvSeen}
+        rcAllowed={rcAllowed}
         session={session}
         entries={entries}
         receivedAt={receivedAt}
@@ -3716,6 +3823,26 @@ export default function Live() {
                   and leaves you to guess what. */}
               {!tvSeen && <span className="pill bg-brand/30 text-[9px] text-dark">New</span>}
             </button>
+            {/* Stewards on a phone: straight into the TV board with race
+                control on, the one reason to open it there. */}
+            {rcAllowed && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("nabs_live_rc", "1");
+                  } catch {
+                    /* then they switch it on in there */
+                  }
+                  enterTv();
+                }}
+                title="Incidents for race control"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark sm:hidden"
+              >
+                <ShieldAlert className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+                Race control
+              </button>
+            )}
             {/* The board names its own server, so the switch shows where the
                 data actually comes from rather than what was last clicked. The
                 two only diverge briefly — a click before the answer lands, a
