@@ -2,12 +2,14 @@ import { Link } from "react-router-dom";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGraphics } from "../hooks/useGraphics.js";
+import { useDesign, DESIGNS } from "../hooks/useDesign.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useProfileHome } from "../hooks/useProfileHome.js";
+import { useChangelogUnseen } from "../hooks/useChangelogSeen.js";
 import { PROFILE_HOME_PERSONAL, PROFILE_HOME_PUBLIC } from "../hooks/profileHome.mjs";
 
 // ---------------------------------------------------------------------------
-// The settings themselves: theme, performance, where your own name in the bar
+// The settings themselves: theme, design, performance, where your own name in the bar
 // leads, and the way out of the account.
 //
 // They live in TWO places, which is why they are a component rather than a
@@ -97,6 +99,50 @@ function Segmented({ value, options, onChange }) {
   );
 }
 
+// The design picker: one tile per design, each showing its own page, card and
+// inset colours in the theme you are on, so you can see what you pick before
+// you pick it. A radio group underneath, because only one can be on.
+function DesignPicker({ value, theme, onChange }) {
+  return (
+    <div role="radiogroup" aria-label="Design" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {DESIGNS.map((d) => {
+        const [page, card, inset] = theme === "dark" ? d.dark : d.light;
+        const on = d.value === value;
+        return (
+          <button
+            key={d.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(d.value)}
+            title={d.hint}
+            className={`group rounded-xl border p-2 text-left transition ${
+              on ? "border-accent bg-accent/5 ring-1 ring-accent" : "border-border hover:border-accent/40"
+            }`}
+          >
+            {/* A tiny page: the background, a card on it, and an inset row
+                with the series colour in it, as the real pages are built. */}
+            <span className="block overflow-hidden rounded-lg border border-black/10" style={{ background: page }}>
+              <span className="m-2 block rounded-md p-1.5 shadow-sm" style={{ background: card }}>
+                <span className="block h-1.5 w-2/3 rounded-full bg-brand" />
+                <span className="mt-1.5 block h-2.5 rounded" style={{ background: inset }} />
+              </span>
+            </span>
+            <span className="mt-2 flex items-center justify-between gap-2 px-0.5">
+              <span className={`text-sm font-semibold ${on ? "text-dark" : "text-medium"}`}>{d.label}</span>
+              {on && (
+                <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // One setting: its name, the control, and — where it earns one — a line saying
 // what the choice actually does.
 function Setting({ title, hint, children }) {
@@ -125,8 +171,10 @@ function Card({ eyebrow, children }) {
 export default function SettingsSections() {
   const { theme, toggle } = useTheme();
   const { mode: fx, setMode: setFx } = useGraphics();
+  const { design, setDesign } = useDesign();
   const { user, isLoggedIn, logout } = useAuth();
   const { mode: profileHome, setMode: setProfileHome } = useProfileHome();
+  const changelogUnseen = useChangelogUnseen();
 
   return (
     // Capped: beside the profile editor the panel has the full column to fill,
@@ -149,6 +197,13 @@ export default function SettingsSections() {
         </Setting>
 
         <Setting
+          title="Design"
+          hint={`${DESIGNS.find((d) => d.value === design)?.hint || ""} Works with both Light and Dark.`}
+        >
+          <DesignPicker value={design} theme={theme} onChange={setDesign} />
+        </Setting>
+
+        <Setting
           title="Performance"
           hint="Lite turns off blur and animations for smoother performance on slower machines or when your browser’s hardware acceleration is off."
         >
@@ -160,6 +215,24 @@ export default function SettingsSections() {
               { value: "lite", label: "Lite", icon: <FeatherIcon /> },
             ]}
           />
+        </Setting>
+        <Setting title="What's new">
+          <Link
+            to="/changelog"
+            className="flex w-full items-center justify-between rounded-xl border border-border bg-surface2 px-4 py-3 text-sm font-semibold text-dark transition hover:border-accent/40"
+          >
+            <span className="flex items-center gap-2">
+              Changelog
+              {changelogUnseen && (
+                <span className="rounded-md bg-brand px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-onbrand">
+                  New
+                </span>
+              )}
+            </span>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-light" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </Link>
         </Setting>
       </Card>
 

@@ -56,6 +56,10 @@
           var s = localStorage.getItem("nabs_theme");
           var dark = s ? s === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
           if (dark) document.documentElement.classList.add("dark");
+          // The design (Settings -> Design), same reason. The list mirrors
+          // DESIGNS in src/hooks/useDesign.js; "classic" needs no attribute.
+          var d = localStorage.getItem("nabs_design");
+          if (d && /^(carbon|midnight|ocean|paddock)$/.test(d)) document.documentElement.setAttribute("data-design", d);
         } catch (e) {}
       })();
     </script>

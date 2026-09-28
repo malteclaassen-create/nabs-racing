@@ -101,6 +101,64 @@
   --c-fl: 192 132 252;    /* purple-400, 6.7:1 */
 }
 
+/* --- Designs -------------------------------------------------------------
+   Other sets of neutrals, picked in Settings -> Design (hooks/useDesign.js sets
+   data-design on <html>; "classic" is the plain :root/.dark above and has no
+   attribute). Each one has a light and a dark version, and only the page, card,
+   inset and border tones move: the text tones, the series accent and the status
+   colours stay as measured above, so the cards stay close enough in brightness
+   to the classic ones for those contrast figures to still hold.
+   The light rules say :not(.dark) because html[data-design] outranks .dark and
+   would otherwise win in the dark theme too. */
+html[data-design="carbon"]:not(.dark) {
+  --c-bg: #e9e9eb;
+  --c-card: #ffffff;
+  --c-surface2: #f3f3f4;
+  --c-border: #dddde1;
+}
+html.dark[data-design="carbon"] {
+  --c-bg: #0b0b0c;
+  --c-card: #18181b;
+  --c-surface2: #111113;
+  --c-border: #2c2c31;
+}
+html[data-design="midnight"]:not(.dark) {
+  --c-bg: #dfe5ef;
+  --c-card: #ffffff;
+  --c-surface2: #eef2f8;
+  --c-border: #d3dbe8;
+}
+html.dark[data-design="midnight"] {
+  --c-bg: #000000;
+  --c-card: #0e1320;
+  --c-surface2: #05080f;
+  --c-border: #1d2638;
+}
+html[data-design="ocean"]:not(.dark) {
+  --c-bg: #dde8f3;
+  --c-card: #ffffff;
+  --c-surface2: #ecf3fa;
+  --c-border: #cfdcea;
+}
+html.dark[data-design="ocean"] {
+  --c-bg: #061426;
+  --c-card: #0e2138;
+  --c-surface2: #09192d;
+  --c-border: #1c3656;
+}
+html[data-design="paddock"]:not(.dark) {
+  --c-bg: #ece6dc;
+  --c-card: #fffdf9;
+  --c-surface2: #f6f1e9;
+  --c-border: #e2d9ca;
+}
+html.dark[data-design="paddock"] {
+  --c-bg: #12100d;
+  --c-card: #201c17;
+  --c-surface2: #181511;
+  --c-border: #3a332a;
+}
+
 /* --- Motion scale ---------------------------------------------------------
    The site had grown 33 different durations and 10 easing curves, several of
    them accidental near-twins: `content-in` ran at both 0.22s and 0.3s,

@@ -43,6 +43,8 @@ const PAGES = [
     words: ["cards", "editions", "collection", "karten", "sammlung"] },
   { key: "install", label: "Add to phone", hint: "Install the site as an app", icon: "phone", where: "flat", path: "/app",
     words: ["app", "install", "phone", "home screen", "handy", "installieren"] },
+  { key: "changelog", label: "What's new", hint: "Everything that changed on the site", icon: "history", where: "flat", path: "/changelog",
+    words: ["changelog", "whats new", "what's new", "updates", "news", "release notes", "neu", "neuigkeiten", "aenderungen"] },
   { key: "privacy", label: "Privacy", hint: "What the site stores", icon: "shield", where: "flat", path: "/privacy",
     words: ["privacy", "data", "gdpr", "datenschutz"] },
 
@@ -58,7 +60,7 @@ const PAGES = [
     words: ["telemetry", "telemetrie", "my telemetry", "traces", "laps", "daten"] },
   { key: "points", label: "NABS Tokens", hint: "Balance, shop, how to earn", icon: "coin", where: "flat", path: "/profile?tab=tokens", needs: "points",
     words: ["points", "nabs tokens", "tokens", "shop", "balance", "punkte", "muenzen"] },
-  { key: "settings", label: "Settings", hint: "Theme, performance, account", icon: "sliders", where: "flat", path: "/profile?tab=settings", needs: "member",
+  { key: "settings", label: "Settings", hint: "Theme, design, performance, account", icon: "sliders", where: "flat", path: "/profile?tab=settings", needs: "member",
     words: ["settings", "theme", "dark mode", "light mode", "performance", "einstellungen", "design"] },
   { key: "feedback", label: "Feedback", hint: "Report a bug or an idea", icon: "message", where: "flat", path: "/feedback", needs: "member",
     words: ["feedback", "bug", "idea", "report a bug", "fehler", "idee", "vorschlag"] },

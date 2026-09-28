@@ -74,6 +74,8 @@ const Privacy = lazy(() => import("./pages/Privacy.jsx"));
 // handful of times per reader ever, and for a member it only redirects into
 // the profile — nothing that belongs in the first download.
 const Settings = lazy(() => import("./pages/Settings.jsx"));
+// What changed on the site. A page people open now and then, not on arrival.
+const Changelog = lazy(() => import("./pages/Changelog.jsx"));
 // The race recap: a member lands here once after each saved round, and can
 // come back from the race page. Never on a first page view of a visitor.
 const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
@@ -291,6 +293,8 @@ function AppRoutes() {
         {/* Public and login-free on purpose: members are not the only readers,
             an app store reviewer has to be able to open it too. */}
         <Route path="/privacy" element={<Privacy />} />
+        {/* What changed on the site, newest first (data/changelog.js). */}
+        <Route path="/changelog" element={<Changelog />} />
         <Route path="/delete-account" element={<DeleteAccount />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
@@ -372,6 +376,7 @@ function footerLinks(p) {
     // The install walkthrough. Its own announcement in the bell fires once and
     // is then read; this is the standing way back to it.
     { to: "/app", label: "Add to phone" },
+    { to: "/changelog", label: "What's new" },
   ];
 }
 
