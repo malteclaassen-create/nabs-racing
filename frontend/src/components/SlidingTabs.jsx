@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { motionOff } from "../hooks/motion.js";
 
 // ---------------------------------------------------------------------------
 // Segmented control with a SLIDING active pill. Instead of each button painting
@@ -28,6 +29,12 @@ export default function SlidingTabs({
   const wrapRef = useRef(null);
   const btnRefs = useRef({});
   const [pill, setPill] = useState(null); // { left, top, width, height }
+  // The value the strip was last scrolled for. A CHANGE of value glides the
+  // picked button to the middle; the first placement, and every re-measure
+  // caused by a resize or a font landing, stays instant (a re-measure mid-glide
+  // would otherwise cut it off).
+  const scrolledFor = useRef(undefined);
+  const glideUntil = useRef(0);
 
   useLayoutEffect(() => {
     const el = btnRefs.current[value];
@@ -44,7 +51,15 @@ export default function SlidingTabs({
       // for every bar that fits, which is all of them on desktop.
       if (wrap.scrollWidth > wrap.clientWidth + 1) {
         const centred = el.offsetLeft - (wrap.clientWidth - el.offsetWidth) / 2;
-        wrap.scrollLeft = Math.max(0, Math.min(centred, wrap.scrollWidth - wrap.clientWidth));
+        const left = Math.max(0, Math.min(centred, wrap.scrollWidth - wrap.clientWidth));
+        const changed = scrolledFor.current !== undefined && scrolledFor.current !== value;
+        scrolledFor.current = value;
+        if (changed && !motionOff()) {
+          wrap.scrollTo({ left, behavior: "smooth" });
+          glideUntil.current = performance.now() + 500;
+        } else if (performance.now() > glideUntil.current) {
+          wrap.scrollLeft = left;
+        }
       }
     };
     measure();

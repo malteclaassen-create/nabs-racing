@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
+import { useSwapClass } from "../hooks/motion.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
@@ -224,6 +225,9 @@ export default function Attendance() {
   // keeps the data it already has — so `loading` on its own is not a reason to
   // change what the page shows.
   const firstLoad = events.loading && !events.data;
+  // Picking another round swaps the block below the picker with a fade; the
+  // first render keeps the page's own entrance.
+  const swap = useSwapClass(ev?.id);
 
   return (
     <div className="content-in space-y-6">
@@ -282,7 +286,7 @@ export default function Attendance() {
       )}
 
       {ev && (
-        <>
+        <div key={ev.id} className={`space-y-6 ${swap}`}>
           {/* From here on the page is composed rather than written out: with a
               lap on file it splits in two — everything about the race and
               signing up on the left, the video on the right — and without one it
@@ -449,7 +453,7 @@ export default function Attendance() {
             </div>
           );
           })()}
-        </>
+        </div>
       )}
     </div>
   );

@@ -1027,7 +1027,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
             />
           )}
           {auto.length > 0 && (
-            <details className="card px-5 py-3">
+            <details className="anim-details card px-5 py-3">
               <summary className="cursor-pointer text-sm text-light">
                 Filled by the site ({auto.length}): card designs, flairs, wall entries. Nothing to do here, just the record.
               </summary>

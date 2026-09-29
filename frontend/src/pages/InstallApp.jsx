@@ -327,9 +327,9 @@ export default function InstallApp() {
         title={tab === "ios" ? "On an iPhone or iPad" : tab === "android" ? "On Android" : "On a computer"}
       />
 
-      <ol className="card divide-y divide-border overflow-hidden">
+      <ol className="cascade card divide-y divide-border overflow-hidden">
         {steps.map((s, i) => (
-          <li key={i} className="flex items-start gap-4 p-5">
+          <li key={i} className="flex items-start gap-4 p-5" style={{ "--i": i }}>
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 font-display text-base font-black tabular-nums text-eyebrow">
               {i + 1}
             </span>

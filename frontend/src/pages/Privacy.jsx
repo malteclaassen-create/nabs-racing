@@ -38,7 +38,7 @@ const LAST_UPDATED = "26 August 2026";
 
 function Section({ title, children }) {
   return (
-    <section className="border-t border-border py-6 first:border-t-0 first:pt-0 sm:py-8">
+    <section className="reveal border-t border-border py-6 first:border-t-0 first:pt-0 sm:py-8">
       <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
         {title}
       </h2>

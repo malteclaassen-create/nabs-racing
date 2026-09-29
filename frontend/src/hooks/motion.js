@@ -60,7 +60,9 @@ export function useTilt({ max = 7, lift = 6 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
-      if (fxLite()) return;
+      // A finger is not a cursor: on a phone a tap (or the start of a scroll)
+      // would fling the card to its full lean and leave it lifted.
+      if (fxLite() || e.pointerType === "touch") return;
       const r = el.getBoundingClientRect();
       const px = (e.clientX - r.left) / r.width - 0.5;
       const py = (e.clientY - r.top) / r.height - 0.5;
@@ -99,7 +101,7 @@ export function useMagnetic({ strength = 0.35 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
-      if (fxLite()) return;
+      if (fxLite() || e.pointerType === "touch") return;
       const r = el.getBoundingClientRect();
       const x = e.clientX - (r.left + r.width / 2);
       const y = e.clientY - (r.top + r.height / 2);
@@ -176,4 +178,77 @@ export function useParallax(speed = 0.15) {
     };
   }, [speed]);
   return ref;
+}
+
+// Slide-open / slide-shut for `<details class="anim-details">`, which otherwise
+// snap. One delegated listener for the whole site, installed once from App, so
+// an accordion only has to carry the class: the markup stays a real
+// <details>/<summary> (keyboard, screen readers, find-in-page), and where this
+// does nothing (reduced motion, Lite mode, no Web Animations) the browser's own
+// behaviour is left alone. A `<details>` whose click was already handled
+// (`defaultPrevented`, e.g. the FAQ on the join page, which does its own) is
+// skipped, and so is one without exactly one panel after the summary.
+//
+// Closing has to hold the element open until the animation ends, since
+// `open=false` hides the panel at once. The `finished` promise rather than the
+// event, for the same reason as the FAQ: it still resolves in a background tab.
+export function useAnimatedDetails() {
+  useEffect(() => {
+    const running = new WeakMap();
+    const onClick = (e) => {
+      if (e.defaultPrevented) return;
+      const summary = e.target.closest?.("summary");
+      const details = summary?.parentElement;
+      if (!details || details.tagName !== "DETAILS" || !details.classList.contains("anim-details")) return;
+      // A link or button inside the summary keeps its own click.
+      const inner = e.target.closest("a,button,input,select,textarea");
+      if (inner && summary.contains(inner)) return;
+      const panels = [...details.children].filter((c) => c !== summary);
+      if (panels.length !== 1 || motionOff() || typeof panels[0].animate !== "function") return;
+      const panel = panels[0];
+      e.preventDefault();
+      running.get(details)?.cancel();
+      const opening = !details.open;
+      if (opening) details.open = true; // has to be open to be measured
+      const cs = getComputedStyle(panel);
+      const rest = {
+        height: `${panel.scrollHeight + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)}px`,
+        paddingTop: cs.paddingTop,
+        paddingBottom: cs.paddingBottom,
+        borderTopWidth: cs.borderTopWidth,
+        borderBottomWidth: cs.borderBottomWidth,
+        opacity: "1",
+      };
+      const shut = { height: "0px", paddingTop: "0px", paddingBottom: "0px", borderTopWidth: "0px", borderBottomWidth: "0px", opacity: "0" };
+      panel.style.overflow = "hidden";
+      const anim = panel.animate(opening ? [shut, rest] : [rest, shut], {
+        duration: 220,
+        easing: "cubic-bezier(0.4, 0.1, 0.2, 1)",
+      });
+      running.set(details, anim);
+      anim.finished
+        .then(() => {
+          if (!opening) details.open = false;
+          running.delete(details);
+        })
+        .catch(() => {}) // a newer click cancelled this one and now owns the state
+        .finally(() => {
+          if (running.get(details) === undefined) panel.style.overflow = "";
+        });
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+}
+
+// "swap-in" once `key` has changed at least once, "" before that. For a panel
+// that is replaced when the viewer picks another tab/round/board (put a `key`
+// on the wrapper): the page's own entrance choreography (rows dealing in, bars
+// filling) belongs to ARRIVING, so it stays for the first render; a pick after
+// that swaps the panel with one short fade instead (`.swap-in` in index.css).
+export function useSwapClass(key) {
+  const first = useRef(key);
+  const swapped = useRef(false);
+  if (key !== first.current) swapped.current = true;
+  return swapped.current ? "swap-in" : "";
 }

@@ -395,7 +395,7 @@ export default function AdminAttendanceGrid({ races = [], racesError = null, onR
               open for, but a driver who declined and then asked in Discord to
               be put back has to be reachable from somewhere. */}
           {others.length > 0 && (
-            <details className="border-t border-border pt-4">
+            <details className="anim-details border-t border-border pt-4">
               <summary className="cursor-pointer font-display text-base font-extrabold uppercase tracking-tight text-dark">
                 Declined &amp; tentative <span className="text-light">({others.length})</span>
               </summary>

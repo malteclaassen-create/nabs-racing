@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useSwapClass } from "../hooks/motion.js";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -328,6 +329,10 @@ export default function HallOfFame() {
   const wall = useApi(useCallback(() => api.tokenWall(), []));
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
+  // Each switch below fades its panel over instead of rebuilding rows and bars
+  // from blank; the page's first arrival keeps its own entrance.
+  const champSwap = useSwapClass(champMode);
+  const listSwap = useSwapClass(listKey);
 
   if (loading)
     return (
@@ -383,11 +388,13 @@ export default function HallOfFame() {
               />
             }
           />
-          {champMode === "drivers" ? (
-            <DriverChampions champions={data.champions} />
-          ) : (
-            <TeamChampions champions={data.champions} />
-          )}
+          <div key={champMode} className={champSwap}>
+            {champMode === "drivers" ? (
+              <DriverChampions champions={data.champions} />
+            ) : (
+              <TeamChampions champions={data.champions} />
+            )}
+          </div>
         </section>
       )}
 
@@ -424,7 +431,9 @@ export default function HallOfFame() {
             value={activeListKey}
             onChange={setListKey}
           />
-          <TopListPanel key={activeListKey} lists={[activeList]} />
+          <div key={activeListKey} className={listSwap}>
+            <TopListPanel lists={[activeList]} />
+          </div>
         </section>
       )}
 

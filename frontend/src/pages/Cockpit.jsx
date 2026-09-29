@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motionOff } from "../hooks/motion.js";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -537,7 +538,7 @@ function RaceAnalysis({ raceId }) {
   const gain = d.result.grid != null && d.result.position != null && d.result.status === "FINISHED" ? d.result.grid - d.result.position : null;
 
   return (
-    <div>
+    <div className="content-in">
       {/* headline strip */}
       <div className="flex flex-wrap items-center gap-x-10 gap-y-5 border-t border-border py-6">
         <div className="flex items-center gap-3.5">
@@ -681,6 +682,16 @@ function RacesTab() {
   const q = useApi(useCallback(() => api.cockpitRaces(), []));
   const [seasonSel, setSeasonSel] = useState(null);
   const [selected, setSelected] = useState(null);
+  // A picked race chip glides to the middle of the strip (on a phone it could
+  // sit half off-screen). Only for a pick: `selected` is null until then.
+  const stripRef = useRef(null);
+  useEffect(() => {
+    const strip = stripRef.current;
+    const chip = strip?.querySelector('[data-active="true"]');
+    if (!selected || !strip || !chip || strip.scrollWidth <= strip.clientWidth) return;
+    const left = chip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
+    strip.scrollTo({ left: Math.max(0, left), behavior: motionOff() ? "auto" : "smooth" });
+  }, [selected]);
   if (q.loading) return <TableSkeleton rows={8} />;
   if (q.error) return <ErrorBox message={q.error} />;
   const races = q.data.races;
@@ -703,7 +714,7 @@ function RacesTab() {
           btnClassName="px-3 py-1.5 text-[13px]"
         />
       </div>
-      <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-3">
+      <div ref={stripRef} className="relative -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-3">
         {seasonRaces.map((r) => {
           const active = r.raceId === current;
           const podium = r.status === "FINISHED" && r.position != null && r.position <= 3;
@@ -712,6 +723,7 @@ function RacesTab() {
               key={r.raceId}
               type="button"
               onClick={() => setSelected(r.raceId)}
+              data-active={active}
               className={`w-28 shrink-0 rounded-xl border px-3 py-2.5 text-left transition ${
                 active ? "border-brand bg-brand/10 shadow-sm" : "border-border bg-card hover:border-brand/40"
               }`}

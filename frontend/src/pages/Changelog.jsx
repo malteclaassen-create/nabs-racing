@@ -62,12 +62,12 @@ export default function Changelog() {
         }
       />
 
-      <ol className="relative space-y-6 border-l border-border pl-5 sm:pl-7">
+      <ol className="cascade relative space-y-6 border-l border-border pl-5 sm:pl-7">
         {entries.map((entry, i) => (
-          <li key={entry.id || entry.date} className="relative">
+          <li key={entry.id || entry.date} className="relative" style={{ "--i": Math.min(i, 8) }}>
             {/* The dot on the timeline. The newest one is filled in. */}
             <span
-              className={`absolute -left-[26px] top-1.5 h-3 w-3 rounded-full border-2 border-bg sm:-left-[34px] ${
+              className={`timeline-dot absolute -left-[26px] top-1.5 h-3 w-3 rounded-full border-2 border-bg sm:-left-[34px] ${
                 i === 0 ? "bg-brand" : "bg-border"
               }`}
               aria-hidden="true"

@@ -7,7 +7,7 @@ import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { useNow } from "../hooks/useNow.js";
-import { motionOff } from "../hooks/motion.js";
+import { motionOff, useSwapClass } from "../hooks/motion.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
@@ -2025,6 +2025,8 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   // No stream link, no switch — the card is the map, exactly as before.
   const stream = useMemo(() => streamEmbed(streamUrl), [streamUrl]);
   const [view, setView] = useState("map");
+  // Map / stream / hotlap: the new one fades over the old instead of cutting.
+  const mapSwap = useSwapClass(view);
   const showStream = !!stream && view === "stream";
   // The circuit's hotlap is the third view, for a driver who wants the line
   // while the cars are out: swapping it in for the map keeps it at the top of
@@ -2057,6 +2059,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
           />
         </div>
       )}
+      <div key={view} className={mapSwap}>
       {showStream ? (
         <VideoEmbed embedUrl={stream.embedUrl} poster={false} title={stream.title} accent={stream.accent} />
       ) : showHotlap ? (
@@ -2094,6 +2097,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
         )}
       </div>
       )}
+      </div>
     </section>
   );
 }
@@ -3438,6 +3442,9 @@ export default function Live() {
   const social = useSocial();
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
+  // Timing / Strategy / Standings: one fade per switch; the strategy section's
+  // own rise is skipped after the first arrival (see .swap-in).
+  const viewSwap = useSwapClass(view);
 
   // TV mode lives in the ADDRESS (?tv=1), not in a piece of state: that way it
   // survives a reload, can be bookmarked on the machine that drives the telly,
@@ -4006,6 +4013,7 @@ export default function Live() {
             <ViewSwitch view={view} setView={setView} hasStandings={!!champ?.active} />
           </div>
 
+          <div key={view} className={viewSwap}>
           {view === "standings" && champ?.active ? (
             <ChampionshipProjection data={champ} />
           ) : view === "strategy" ? (
@@ -4017,6 +4025,7 @@ export default function Live() {
           ) : (
             bestTimes
           )}
+          </div>
           </>
           )}
 

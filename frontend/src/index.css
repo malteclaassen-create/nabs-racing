@@ -259,18 +259,28 @@ body {
   .lift {
     @apply transition duration-base;
   }
-  .lift:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--c-shadow-lift);
+  /* Hover only where there is a pointer to hover with: a tap on a phone leaves
+     :hover stuck on the card, which then sits lifted until the next tap
+     elsewhere. Touch gets a press instead (below). */
+  @media (hover: hover) {
+    .lift:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--c-shadow-lift);
+    }
+  }
+  @media (hover: none) {
+    .lift:active {
+      transform: scale(0.985);
+    }
   }
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-onbrand transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-onbrand transition hover:bg-primary-dark enabled:active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-medium transition hover:bg-border focus:outline-none focus:ring-2 focus:ring-border disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-medium transition hover:bg-border enabled:active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-border disabled:opacity-50;
   }
   .input {
-    @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
+    @apply w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-dark placeholder:text-light transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
   }
 
   /* Every dropdown on the site wore the operating system's own arrow: a
@@ -1344,6 +1354,134 @@ body {
   .live-dot-move { transition: none !important; }
   .tabs-pop { animation: none !important; }
 }
+
+/* --- Polish pass: skeletons, accordions, timelines ----------------------- */
+
+/* Loading placeholders shimmer instead of pulsing. The bars used to be
+   `bg-border/70`, which Tailwind cannot build for a colour that is a plain css
+   variable (see the note on .glass-bar), so they painted nothing at all and
+   "loading" was an empty page. A tinted base with a light band travelling
+   across it says "on its way" and is visible in both themes. */
+@keyframes skeleton-shimmer {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+.skeleton {
+  background-color: var(--c-border);
+  background-color: color-mix(in srgb, var(--c-border) 70%, transparent);
+  background-image: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--c-card) 75%, transparent) 50%, transparent 70%);
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.6s var(--e-soft) infinite;
+}
+
+/* <details class="anim-details"> opens and closes with a slide (the script is
+   useAnimatedDetails in hooks/motion.js). The chevron/plus already turned with
+   group-open; this is the panel. Nothing here runs without the script. */
+.anim-details > :not(summary) { will-change: height; }
+
+/* A timeline whose dots pop in as each entry rises (Changelog). */
+@keyframes timeline-dot {
+  from { transform: scale(0); }
+  to   { transform: none; }
+}
+.cascade.is-visible > * > .timeline-dot {
+  animation: timeline-dot var(--t-base) var(--e-pop) both;
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 45ms + 180ms);
+}
+.cascade:not(.is-visible) > * > .timeline-dot { transform: scale(0); }
+
+/* A cascade whose children are components that cannot take an inline --i
+   (the settings cards): the fan-out comes from their position instead. */
+.cascade-auto.is-visible > :nth-child(2) { --i: 1; }
+.cascade-auto.is-visible > :nth-child(3) { --i: 2; }
+.cascade-auto.is-visible > :nth-child(4) { --i: 3; }
+.cascade-auto.is-visible > :nth-child(5) { --i: 4; }
+.cascade-auto.is-visible > :nth-child(6) { --i: 5; }
+.cascade-auto.is-visible > :nth-child(n + 7) { --i: 6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none !important; background-image: none; }
+  .timeline-dot { animation: none !important; transform: none !important; }
+  .btn-primary:active, .btn-secondary:active { transform: none; }
+}
+.fx-lite .skeleton { animation: none !important; background-image: none; }
+.fx-lite .timeline-dot { animation: none !important; transform: none !important; }
+.fx-lite .btn-primary:active, .fx-lite .btn-secondary:active { transform: none; }
+
+/* --- Phones --------------------------------------------------------------- */
+
+/* The burger menu's rows deal in after the panel has dropped, top to bottom,
+   instead of arriving as one slab. Position rather than an inline --i because
+   the rows are components; a dozen steps is as many as fit on a screen, and
+   the last few share a beat so the whole menu is home in a third of a second. */
+@keyframes nav-item-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.nav-drop:not(.is-closing) > .container-page > * {
+  animation: nav-item-in var(--t-base) var(--e-out) both;
+  animation-delay: calc(60ms + var(--i, 0) * 22ms);
+}
+.nav-drop > .container-page > :nth-child(2)  { --i: 1; }
+.nav-drop > .container-page > :nth-child(3)  { --i: 2; }
+.nav-drop > .container-page > :nth-child(4)  { --i: 3; }
+.nav-drop > .container-page > :nth-child(5)  { --i: 4; }
+.nav-drop > .container-page > :nth-child(6)  { --i: 5; }
+.nav-drop > .container-page > :nth-child(7)  { --i: 6; }
+.nav-drop > .container-page > :nth-child(8)  { --i: 7; }
+.nav-drop > .container-page > :nth-child(9)  { --i: 8; }
+.nav-drop > .container-page > :nth-child(10) { --i: 9; }
+.nav-drop > .container-page > :nth-child(11) { --i: 10; }
+.nav-drop > .container-page > :nth-child(n + 12) { --i: 11; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-drop > .container-page > * { animation: none !important; }
+  .lift:active { transform: none; }
+}
+.fx-lite .nav-drop > .container-page > * { animation: none !important; }
+.fx-lite .lift:active { transform: none; }
+
+/* Switching rounds on the Races page. The panel is remounted per round, and its
+   cards are .reveal (hidden until the scroll pass shows them, then a staggered
+   rise), which on a swap meant a blank beat and a slow rebuild of something
+   already on screen a moment ago. After the first pick the cards are simply
+   there and the panel as a whole fades and settles in 8px, in step with the
+   height change (SmoothHeight, --t-base). Bars and charts inside still draw
+   themselves, which is the part worth watching. */
+@keyframes round-swap {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.round-swap,
+.swap-in {
+  animation: round-swap var(--t-base) var(--e-out) both;
+}
+/* Rows and sections that would deal in one by one are simply there; bars and
+   lines inside still draw themselves. */
+.round-swap .reveal,
+.round-swap .reveal.is-visible,
+.swap-in .reveal,
+.swap-in .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+.swap-in .cascade > *,
+.swap-in .cascade.is-visible > * {
+  opacity: 1;
+  animation: none;
+}
+/* A loaded result table already has its own cascade; it only needs the fade. */
+/* backwards, not both: holding opacity:1 afterwards would override the dim
+   the table wears while the next round loads. */
+.round-swap-soft {
+  animation: content-in var(--t-base) ease backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .round-swap, .swap-in, .round-swap-soft { animation: none !important; }
+}
+.fx-lite .round-swap, .fx-lite .swap-in, .fx-lite .round-swap-soft { animation: none !important; }
 
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a
