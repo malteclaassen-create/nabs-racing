@@ -624,32 +624,6 @@ export default function Races() {
   useEffect(() => setShowHighlights(false), [selectedId]);
   useEffect(() => setView("table"), [selectedId]);
 
-  // The lap-by-lap data, fetched only once somebody actually asks for that
-  // view: it is a point per car per lap, which is a lot of numbers to send to
-  // everyone who opens a round to read the result. Kept per round, so flipping
-  // back and forth costs one request; `alive` guards a slow answer for a round
-  // the visitor has already left, exactly like the detail fetch below.
-  const [laps, setLaps] = useState({ raceId: null, data: null, loading: false, error: null });
-  // Which round the fetch above has already been started for. A ref, not the
-  // state it writes: keeping it in the dependency list re-ran the effect the
-  // moment the request registered itself, and the re-run's cleanup declared
-  // the answer stale before it arrived — the panel sat on "Reading the laps…"
-  // for ever.
-  const lapsAsked = useRef(null);
-  useEffect(() => {
-    if (view !== "chart" || !selectedId || lapsAsked.current === selectedId) return;
-    lapsAsked.current = selectedId;
-    let alive = true;
-    setLaps({ raceId: selectedId, data: null, loading: true, error: null });
-    api
-      .raceLaps(selectedId)
-      .then((d) => alive && setLaps({ raceId: selectedId, data: d, loading: false, error: null }))
-      .catch((e) => alive && setLaps({ raceId: selectedId, data: null, loading: false, error: e.message }));
-    return () => {
-      alive = false;
-    };
-  }, [view, selectedId]);
-
   // The sprint classification of a sprint+feature weekend: its own hidden race
   // row, fetched through the same endpoint as any round, but only once the
   // Sprint tab is actually opened — same manners as the lap chart above.
@@ -672,6 +646,51 @@ export default function Races() {
   // The choice is sticky across rounds (see above) — a round without a sprint
   // shows its race table instead of an empty Sprint view.
   const shownSession = session === "sprint" && !sprintRaceId ? "race" : session;
+
+  // The lap-by-lap data, fetched only once somebody actually asks for that
+  // view: it is a point per car per lap, which is a lot of numbers to send to
+  // everyone who opens a round to read the result. Kept per race, so flipping
+  // back and forth costs one request; `alive` guards a slow answer for a round
+  // the visitor has already left, exactly like the detail fetch below.
+  //
+  // Which race: the feature (the round's own row) or, on the Sprint tab, the
+  // sprint's hidden race row. The endpoint answers for either — a sprint is
+  // archived under the event's number with a "-sprint" suffix and the server
+  // reads it back the same way — so the sprint has the same view as the race.
+  const lapsRaceId = shownSession === "sprint" ? sprintRaceId : selectedId;
+  const [laps, setLaps] = useState({ raceId: null, data: null, loading: false, error: null });
+  // Which race the fetch above has already been started for. A ref, not the
+  // state it writes: keeping it in the dependency list re-ran the effect the
+  // moment the request registered itself, and the re-run's cleanup declared
+  // the answer stale before it arrived — the panel sat on "Reading the laps…"
+  // for ever.
+  const lapsAsked = useRef(null);
+  useEffect(() => {
+    if (view !== "chart" || !lapsRaceId || lapsAsked.current === lapsRaceId) return;
+    lapsAsked.current = lapsRaceId;
+    let alive = true;
+    setLaps({ raceId: lapsRaceId, data: null, loading: true, error: null });
+    api
+      .raceLaps(lapsRaceId)
+      .then((d) => alive && setLaps({ raceId: lapsRaceId, data: d, loading: false, error: null }))
+      .catch((e) => alive && setLaps({ raceId: lapsRaceId, data: null, loading: false, error: e.message }));
+    return () => {
+      alive = false;
+    };
+  }, [view, lapsRaceId]);
+  // The chart (or what stands in for it while it loads / when there is none),
+  // shared by the feature's and the sprint's view. Keyed on the race so each
+  // one plays its own replay from lap 1.
+  const lapPanel =
+    laps.loading || laps.raceId !== lapsRaceId ? (
+      <div className="px-5 py-10 text-center text-sm text-light">Reading the laps…</div>
+    ) : laps.error ? (
+      <div className="px-5 py-10 text-center text-sm text-bad">{laps.error}</div>
+    ) : laps.data?.available ? (
+      <RaceLapChart key={lapsRaceId} data={laps.data} />
+    ) : (
+      <div className="px-5 py-10 text-center text-sm text-light">This round has no lap-by-lap data on file.</div>
+    );
 
   useEffect(() => {
     if (!selectedId) return;
@@ -1134,13 +1153,17 @@ export default function Races() {
                                 onChange={setSession}
                               />
                             )}
-                            {/* Table ⇄ lap chart. Only for the race (a
-                                qualifying classification has no laps to plot,
-                                a sprint has no archived file) and only where
-                                the round was archived with its raw result
-                                file — hasLapChart, a directory listing on the
-                                server, not a promise the chart can't keep. */}
-                            {!detailIsStale && shownSession === "race" && detail.race?.hasLapChart && (
+                            {/* Table ⇄ lap chart. For the feature race and for
+                                the sprint (a qualifying classification has no
+                                laps to plot), and only where that race was
+                                archived with its raw result file —
+                                hasLapChart, a directory listing on the
+                                server, not a promise the chart can't keep. The
+                                sprint's answer comes with its own results, so
+                                its switch appears once those have loaded. */}
+                            {!detailIsStale &&
+                              ((shownSession === "race" && detail.race?.hasLapChart) ||
+                                (shownSession === "sprint" && sprint.raceId === sprintRaceId && sprint.data?.race?.hasLapChart)) && (
                               <SlidingTabs
                                 className="order-2 shrink-0 sm:order-1"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
@@ -1200,24 +1223,18 @@ export default function Races() {
                         ) : sprint.error ? (
                           <div className="px-5 py-10 text-center text-sm text-bad">{sprint.error}</div>
                         ) : sprint.data?.results?.length ? (
-                          <RaceResults race={sprint.data.race} results={sprint.data.results} session="race" />
+                          view === "chart" && sprint.data.race?.hasLapChart ? (
+                            lapPanel
+                          ) : (
+                            <RaceResults race={sprint.data.race} results={sprint.data.results} session="race" />
+                          )
                         ) : (
                           <div className="px-5 py-10 text-center text-sm text-light">
                             The sprint classification hasn&apos;t been imported yet.
                           </div>
                         )
                       ) : view === "chart" && shownSession === "race" && detail.race?.hasLapChart ? (
-                        laps.loading || laps.raceId !== selectedId ? (
-                          <div className="px-5 py-10 text-center text-sm text-light">Reading the laps…</div>
-                        ) : laps.error ? (
-                          <div className="px-5 py-10 text-center text-sm text-bad">{laps.error}</div>
-                        ) : laps.data?.available ? (
-                          <RaceLapChart data={laps.data} />
-                        ) : (
-                          <div className="px-5 py-10 text-center text-sm text-light">
-                            This round has no lap-by-lap data on file.
-                          </div>
-                        )
+                        lapPanel
                       ) : (
                         <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={shownSession} />
                       )}

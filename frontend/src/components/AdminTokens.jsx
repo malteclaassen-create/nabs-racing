@@ -908,7 +908,7 @@ function ActivityPanel() {
 
 export default function AdminTokens({ jumpView = null, jumpKey = null }) {
   const data = useApi(useCallback(() => api.adminTokens(), []));
-  const [view, setView] = useJumpView(jumpView, jumpKey, "orders");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "orders", "tokens");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);

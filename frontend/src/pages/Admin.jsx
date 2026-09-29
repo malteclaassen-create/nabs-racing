@@ -130,7 +130,7 @@ function ViewSwitch({ items, value, onChange }) {
 // Ratings & Telemetry: the rating formula and the lap telemetry it is built
 // from. Two tabs of one card each before.
 function RatingsTab({ jumpView, jumpKey }) {
-  const [view, setView] = useJumpView(jumpView, jumpKey, "ratings");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "ratings", "ratings");
   return (
     <div className="space-y-5">
       <ViewSwitch
@@ -151,7 +151,7 @@ function RatingsTab({ jumpView, jumpKey }) {
 // Four tabs (Tracks, Race Info, Home FAQ, Privacy & app) and the social half of
 // the old "Social & Live" before.
 function SiteTexts({ jumpView, jumpKey }) {
-  const [view, setView] = useJumpView(jumpView, jumpKey, "tracks");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "tracks", "site");
   // Another view unmounts the form on screen, unsaved edits and all.
   const ask = useAsk();
   return (
@@ -187,7 +187,7 @@ function SiteTexts({ jumpView, jumpKey }) {
 // Health, Traffic and Change PIN were three tabs; the Discord connections were
 // spread over three others (components/AdminDiscordConnections.jsx).
 function SystemTab({ jumpView, jumpKey, onJump }) {
-  const [view, setView] = useJumpView(jumpView, jumpKey, "health");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "health", "system");
   return (
     <div className="space-y-5">
       <ViewSwitch

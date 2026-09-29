@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useJumpView } from "../hooks/useJumpView.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminRacePhotos from "./AdminRacePhotos.jsx";
 import AdminRaceHighlights from "./AdminRaceHighlights.jsx";
@@ -19,11 +19,7 @@ import AdminHotlapVideos from "./AdminHotlapVideos.jsx";
 // just "Photos & Videos"); `jumpKey` counts the jumps so searching the same
 // entry twice lands again instead of being ignored as an unchanged prop.
 export default function AdminMedia({ jumpView = null, jumpKey = null }) {
-  const [view, setView] = useState(jumpView || "photos");
-  useEffect(() => {
-    if (jumpView) setView(jumpView);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jumpView, jumpKey]);
+  const [view, setView] = useJumpView(jumpView, jumpKey, "photos", "photos");
 
   return (
     <div className="space-y-5">

@@ -6,6 +6,14 @@ import { CardBar } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import TelemetryCompare from "./TelemetryCompare.jsx";
 import { fmtLap } from "../utils/format.js";
+import { ChevronDown } from "lucide-react";
+
+// Whether the lap comparison was folded out, kept outside the component for the
+// same reason as `lastTab` in pages/Admin.jsx: switching the series in the admin
+// bar remounts the page, and somebody comparing laps of one league wants the
+// comparison still open on the other. A plain variable: it belongs to this page
+// load and is folded again after a reload.
+let compareOpen = false;
 
 // Downloads include browser visits and link previews. Only recorder check-ins
 // and lap posts show activity from the game. Those counters restart with the
@@ -167,6 +175,14 @@ export default function AdminTelemetry() {
   // so the whole tab answers for the other league. Only the "who may look"
   // switch at the bottom is one for the whole site.
   const { current: series } = useSeries();
+  // The comparison is the big part of this tab (track list, two lap pickers,
+  // charts) and most visits are about the recording status under it, so it
+  // starts folded. Not mounted while folded either, which also spares the
+  // track and lap requests until somebody asks for them.
+  const [showCompare, setShowCompare] = useState(compareOpen);
+  useEffect(() => {
+    compareOpen = showCompare;
+  }, [showCompare]);
 
   // Recording: is there a key, and what is it.
   const { data: telIngest, reload: reloadTelIngest } = useApi(useCallback(() => api.telemetryIngest(), []));
@@ -217,7 +233,35 @@ export default function AdminTelemetry() {
         <span>Recorded laps{series?.name ? ` of ${series.name}` : ""} · speed, pedal inputs and racing lines</span>
         <span className="pill bg-surface2 text-light">{isPublic ? "Visible to members" : "Admins only"}</span>
       </div>
-      <TelemetryCompare series={series?.slug || null} />
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setShowCompare((v) => !v)}
+          aria-expanded={showCompare}
+          className="card flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-surface2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-dark">
+              Lap comparison{series?.name ? ` · ${series.name}` : ""}
+            </span>
+            <span className="mt-0.5 block text-xs text-light">
+              Put two recorded laps side by side: speed, pedals and racing lines
+            </span>
+          </span>
+          <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-link">
+            {showCompare ? "Fold away" : "Open"}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-light transition-transform ${showCompare ? "rotate-180" : ""}`}
+            aria-hidden="true"
+          />
+        </button>
+        {showCompare && (
+          <div className="content-in">
+            <TelemetryCompare series={series?.slug || null} />
+          </div>
+        )}
+      </div>
       <IngestActivity configured={!!telIngest?.configured} />
       {/* RECORDING: the key, and the line the race server needs.
           This lived on the Reports tab until this tab existed, because it
