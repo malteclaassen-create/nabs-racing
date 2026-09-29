@@ -287,6 +287,22 @@ function AdminScope() {
 // this page load and must not still be there after a reload.
 let lastTab = null;
 
+// Rewrites the address bar's query without adding a history entry (and keeps the
+// router's own history state, as the To do card's jump below already does).
+//
+// The admin is opened by LINKS that carry instructions in the query — a
+// notification's /admin?tab=live&series=sunday&focus=training, the To do card's
+// jumps — and the page reads them when it mounts. It also remounts on every
+// switch of the series or the season, so a query that is left in the address is
+// read again each time: ?series= dragged the admin straight back to the series
+// in the link (the switchers looked dead), ?tab= re-opened the same tab whatever
+// tab you had moved on to, and ?focus= scrolled the card into view again. What a
+// link asked for is done once and then taken off.
+function replaceQuery(params) {
+  const q = params.toString();
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`);
+}
+
 export default function Admin() {
   // Two ways in: the PIN admin token, or a designated Discord admin (their user
   // login already carries admin rights, so no PIN screen). A 401 from any admin
@@ -330,12 +346,27 @@ export default function Admin() {
   // would open a card that is still on Friday and looks empty.
   const { seriesList, current: editingSeries, setSlug: setEditingSeries } = useSeries();
   useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get("series");
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get("series");
     if (!wanted || !seriesList.length) return;
+    // One-shot (see replaceQuery): taken off the address before anything else,
+    // because pointing the admin at the series remounts the page.
+    params.delete("series");
+    replaceQuery(params);
     if (!seriesList.some((s) => s.slug === wanted)) return;
     if (editingSeries?.slug === wanted) return;
     setEditingSeries(wanted);
   }, [seriesList, editingSeries?.slug, setEditingSeries]);
+  // A ?tab= in the address names the tab the page opens on, and stays a link you
+  // can reload or bookmark, so it follows the tab you are on rather than being
+  // removed: the remount a series switch causes then reopens THIS tab, not the
+  // one the notification named. Only where the address had one to begin with.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("tab") || params.get("tab") === tab) return;
+    params.set("tab", tab);
+    replaceQuery(params);
+  }, [tab]);
   // Where a search hit sent us. Some tabs are split into views of their own, so
   // a hit can name one; `n` counts the jumps, because searching the SAME hit
   // twice has to land twice — a plain view string would be unchanged the second
@@ -1566,6 +1597,11 @@ function TrainingBestLapsAdmin() {
     if (focused.current || !data) return;
     if (new URLSearchParams(window.location.search).get("focus") !== "training") return;
     focused.current = true;
+    // Asked for once: left in the address, a switch of the series (which
+    // remounts this card) would scroll it into view again.
+    const params = new URLSearchParams(window.location.search);
+    params.delete("focus");
+    replaceQuery(params);
     // Straight there, not a glide: the card sits twenty screens down, and a
     // smooth scroll over that distance is a blur that takes seconds. A link
     // that says "answer it here" should land on it.
