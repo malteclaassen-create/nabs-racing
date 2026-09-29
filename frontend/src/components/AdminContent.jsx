@@ -39,7 +39,7 @@ const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
 export default function AdminContent({ jumpView = null, jumpKey = null }) {
   const { data: races, error, reload } = useApi(useCallback(() => api.races(), []));
-  const [view, setView] = useJumpView(jumpView, jumpKey, "graphic");
+  const [view, setView] = useJumpView(jumpView, jumpKey, "graphic", "content");
   // Bumped whenever the poster's ingredients change on the Graphic side (a car
   // uploaded, a flag filled in). The message half draws its own copy of the
   // poster, and this is what tells it to go and fetch the new one — otherwise

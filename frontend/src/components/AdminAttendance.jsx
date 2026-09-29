@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useJumpView } from "../hooks/useJumpView.js";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice, CardHead, HelpNote, Field } from "./ui.jsx";
@@ -36,11 +37,7 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
   // attendance page can be put back, so it has to be able to see them.
   const events = useApi(useCallback(() => api.events(true), []));
 
-  const [view, setView] = useState(jumpView || "signups");
-  useEffect(() => {
-    if (jumpView) setView(jumpView);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jumpView, jumpKey]);
+  const [view, setView] = useJumpView(jumpView, jumpKey, "signups", "attendance");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
