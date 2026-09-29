@@ -259,9 +259,19 @@ body {
   .lift {
     @apply transition duration-base;
   }
-  .lift:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--c-shadow-lift);
+  /* Hover only where there is a pointer to hover with: a tap on a phone leaves
+     :hover stuck on the card, which then sits lifted until the next tap
+     elsewhere. Touch gets a press instead (below). */
+  @media (hover: hover) {
+    .lift:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--c-shadow-lift);
+    }
+  }
+  @media (hover: none) {
+    .lift:active {
+      transform: scale(0.985);
+    }
   }
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-onbrand transition hover:bg-primary-dark enabled:active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-50;
@@ -1398,6 +1408,39 @@ body {
 .fx-lite .skeleton { animation: none !important; background-image: none; }
 .fx-lite .timeline-dot { animation: none !important; transform: none !important; }
 .fx-lite .btn-primary:active, .fx-lite .btn-secondary:active { transform: none; }
+
+/* --- Phones --------------------------------------------------------------- */
+
+/* The burger menu's rows deal in after the panel has dropped, top to bottom,
+   instead of arriving as one slab. Position rather than an inline --i because
+   the rows are components; a dozen steps is as many as fit on a screen, and
+   the last few share a beat so the whole menu is home in a third of a second. */
+@keyframes nav-item-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.nav-drop:not(.is-closing) > .container-page > * {
+  animation: nav-item-in var(--t-base) var(--e-out) both;
+  animation-delay: calc(60ms + var(--i, 0) * 22ms);
+}
+.nav-drop > .container-page > :nth-child(2)  { --i: 1; }
+.nav-drop > .container-page > :nth-child(3)  { --i: 2; }
+.nav-drop > .container-page > :nth-child(4)  { --i: 3; }
+.nav-drop > .container-page > :nth-child(5)  { --i: 4; }
+.nav-drop > .container-page > :nth-child(6)  { --i: 5; }
+.nav-drop > .container-page > :nth-child(7)  { --i: 6; }
+.nav-drop > .container-page > :nth-child(8)  { --i: 7; }
+.nav-drop > .container-page > :nth-child(9)  { --i: 8; }
+.nav-drop > .container-page > :nth-child(10) { --i: 9; }
+.nav-drop > .container-page > :nth-child(11) { --i: 10; }
+.nav-drop > .container-page > :nth-child(n + 12) { --i: 11; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-drop > .container-page > * { animation: none !important; }
+  .lift:active { transform: none; }
+}
+.fx-lite .nav-drop > .container-page > * { animation: none !important; }
+.fx-lite .lift:active { transform: none; }
 
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a

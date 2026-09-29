@@ -261,7 +261,9 @@ export function Modal({
     // for scrolls its body instead of running off the bottom. The profile's
     // section list is nine rows and was losing its last one on a short phone.
     sheet: `relative mt-auto flex max-h-full w-full flex-col rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base sm:m-auto sm:max-w-md ${
-      show ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+      // On a phone the sheet rises from below the screen edge and drops back
+      // the same way; from sm up it is a centred dialog and only nudges.
+      show ? "translate-y-0 opacity-100" : "max-sm:translate-y-[110%] sm:translate-y-4 sm:opacity-0"
     }`,
     drawer: `relative ml-auto flex h-full w-80 max-w-[85vw] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-base ${
       show ? "translate-x-0" : "translate-x-full"

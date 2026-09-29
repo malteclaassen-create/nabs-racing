@@ -60,7 +60,9 @@ export function useTilt({ max = 7, lift = 6 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
-      if (fxLite()) return;
+      // A finger is not a cursor: on a phone a tap (or the start of a scroll)
+      // would fling the card to its full lean and leave it lifted.
+      if (fxLite() || e.pointerType === "touch") return;
       const r = el.getBoundingClientRect();
       const px = (e.clientX - r.left) / r.width - 0.5;
       const py = (e.clientY - r.top) / r.height - 0.5;
@@ -99,7 +101,7 @@ export function useMagnetic({ strength = 0.35 } = {}) {
     if (!el || prefersReduced()) return;
     let raf = 0;
     const onMove = (e) => {
-      if (fxLite()) return;
+      if (fxLite() || e.pointerType === "touch") return;
       const r = el.getBoundingClientRect();
       const x = e.clientX - (r.left + r.width / 2);
       const y = e.clientY - (r.top + r.height / 2);
