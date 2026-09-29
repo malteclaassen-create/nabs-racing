@@ -1442,6 +1442,37 @@ body {
 .fx-lite .nav-drop > .container-page > * { animation: none !important; }
 .fx-lite .lift:active { transform: none; }
 
+/* Switching rounds on the Races page. The panel is remounted per round, and its
+   cards are .reveal (hidden until the scroll pass shows them, then a staggered
+   rise), which on a swap meant a blank beat and a slow rebuild of something
+   already on screen a moment ago. After the first pick the cards are simply
+   there and the panel as a whole fades and settles in 8px, in step with the
+   height change (SmoothHeight, --t-base). Bars and charts inside still draw
+   themselves, which is the part worth watching. */
+@keyframes round-swap {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.round-swap {
+  animation: round-swap var(--t-base) var(--e-out) both;
+}
+.round-swap .reveal,
+.round-swap .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+/* A loaded result table already has its own cascade; it only needs the fade. */
+/* backwards, not both: holding opacity:1 afterwards would override the dim
+   the table wears while the next round loads. */
+.round-swap-soft {
+  animation: content-in var(--t-base) ease backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .round-swap, .round-swap-soft { animation: none !important; }
+}
+.fx-lite .round-swap, .fx-lite .round-swap-soft { animation: none !important; }
+
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a
    blur, not as readable text.

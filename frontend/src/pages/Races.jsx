@@ -16,6 +16,7 @@ import { RaceRecapButton } from "../components/RaceRecap.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
+import { motionOff } from "../hooks/motion.js";
 import CalendarSubscribe from "../components/CalendarSubscribe.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
@@ -175,8 +176,13 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
   // latest races are in view straight away, instead of forcing a long scroll
   // from round 1. No-op when the rail is the vertical sidebar (lg+), where the
   // strip doesn't overflow horizontally.
+  // The first placement is instant (nobody wants to watch the strip travel from
+  // round 1 on arrival); every pick after that glides the chip to the middle, so
+  // the strip follows your thumb instead of jumping under it.
+  const placed = useRef(false);
   useEffect(() => {
-    const centre = () => {
+    const first = !placed.current;
+    const centre = (behavior) => {
       const c = scrollerRef.current;
       const a = activeRef.current;
       if (!c || !a) return;
@@ -184,13 +190,16 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
       const cRect = c.getBoundingClientRect();
       const aRect = a.getBoundingClientRect();
       const delta = aRect.left - cRect.left - (c.clientWidth / 2 - a.clientWidth / 2);
-      c.scrollTo({ left: c.scrollLeft + delta, behavior: "auto" });
+      placed.current = true;
+      c.scrollTo({ left: c.scrollLeft + delta, behavior: first || motionOff() ? "auto" : behavior });
       syncEdges();
     };
-    // Twice: once after paint, once after the display font has loaded — the
-    // buttons widen with it, which used to leave the strip parked on round 1.
-    const raf = requestAnimationFrame(centre);
-    const t = setTimeout(centre, 350);
+    // Twice on arrival: once after paint, once after the display font has
+    // loaded — the buttons widen with it, which used to leave the strip parked
+    // on round 1. A later pick needs only the one glide; a second, instant
+    // correction 350ms in would cut it off halfway.
+    const raf = requestAnimationFrame(() => centre("smooth"));
+    const t = first ? setTimeout(() => centre("auto"), 350) : 0;
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(t);
@@ -244,7 +253,7 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
             style={{ "--i": i }}
-            className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition lg:w-full lg:shrink ${border}`}
+            className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition active:scale-[0.97] lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active || signup ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
               {r.number != null ? String(r.number).padStart(2, "0") : kindOf(r) === "TRAINING" ? "TR" : "SE"}
@@ -494,6 +503,10 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
 export default function Races() {
   const { data: races, loading, error, reload } = useApi(useCallback(() => api.races(), []));
   const [selectedId, setSelectedId] = useState(null);
+  // Set by the first pick on the rail. Until then the panel arrives with the
+  // page (its cards rise in one by one); after it, a pick swaps the panel with
+  // one short fade instead of blanking it and building it up again.
+  const [switched, setSwitched] = useState(false);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
@@ -713,6 +726,7 @@ export default function Races() {
       // got to would be nonsense.
       railTop: railTop != null && railTop >= 0 && railTop < window.innerHeight ? railTop : null,
     };
+    setSwitched(true);
     setSelectedId(id);
   }
 
@@ -946,12 +960,16 @@ export default function Races() {
                     rail is a horizontal strip and there is nothing to line up
                     with. */}
                 <div aria-hidden="true" className="mb-4 hidden h-8 lg:block" />
-                <UpcomingRacePanel
-                  key={selectedRace.id}
-                  race={selectedRace}
-                  ev={eventById.get(selectedRace.id) || null}
-                  canSignUp={signupIds.has(selectedRace.id)}
-                />
+                {/* The wrapper carries the swap fade (.round-swap); the key on
+                    the panel inside is what remounts it, and is kept. */}
+                <div key={selectedRace.id} className={switched ? "round-swap" : undefined}>
+                  <UpcomingRacePanel
+                    key={selectedRace.id}
+                    race={selectedRace}
+                    ev={eventById.get(selectedRace.id) || null}
+                    canSignUp={signupIds.has(selectedRace.id)}
+                  />
+                </div>
                 </>
               ) : (
                 <>
@@ -966,7 +984,7 @@ export default function Races() {
                     // Keyed on the race: the cascade entrance replays for each
                     // newly loaded round (the stale round keeps its layout
                     // until the new one is ready).
-                    <div key={detail.race.id} className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
+                    <div key={detail.race.id} className={`${switched ? "round-swap-soft " : ""}${detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}`}>
                       <div className="mb-3 sm:mb-4">
                         {/* One row from sm up. On phones the controls drop to
                             their own line so the round title gets the full
