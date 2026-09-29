@@ -240,3 +240,15 @@ export function useAnimatedDetails() {
     return () => document.removeEventListener("click", onClick);
   }, []);
 }
+
+// "swap-in" once `key` has changed at least once, "" before that. For a panel
+// that is replaced when the viewer picks another tab/round/board (put a `key`
+// on the wrapper): the page's own entrance choreography (rows dealing in, bars
+// filling) belongs to ARRIVING, so it stays for the first render; a pick after
+// that swaps the panel with one short fade instead (`.swap-in` in index.css).
+export function useSwapClass(key) {
+  const first = useRef(key);
+  const swapped = useRef(false);
+  if (key !== first.current) swapped.current = true;
+  return swapped.current ? "swap-in" : "";
+}

@@ -1453,13 +1453,23 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
-.round-swap {
+.round-swap,
+.swap-in {
   animation: round-swap var(--t-base) var(--e-out) both;
 }
+/* Rows and sections that would deal in one by one are simply there; bars and
+   lines inside still draw themselves. */
 .round-swap .reveal,
-.round-swap .reveal.is-visible {
+.round-swap .reveal.is-visible,
+.swap-in .reveal,
+.swap-in .reveal.is-visible {
   opacity: 1;
   transform: none;
+  animation: none;
+}
+.swap-in .cascade > *,
+.swap-in .cascade.is-visible > * {
+  opacity: 1;
   animation: none;
 }
 /* A loaded result table already has its own cascade; it only needs the fade. */
@@ -1469,9 +1479,9 @@ body {
   animation: content-in var(--t-base) ease backwards;
 }
 @media (prefers-reduced-motion: reduce) {
-  .round-swap, .round-swap-soft { animation: none !important; }
+  .round-swap, .swap-in, .round-swap-soft { animation: none !important; }
 }
-.fx-lite .round-swap, .fx-lite .round-swap-soft { animation: none !important; }
+.fx-lite .round-swap, .fx-lite .swap-in, .fx-lite .round-swap-soft { animation: none !important; }
 
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a

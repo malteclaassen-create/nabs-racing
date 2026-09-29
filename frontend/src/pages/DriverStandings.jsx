@@ -7,7 +7,7 @@ import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState, PosDelta } from "../components/ui.jsx";
 import { playStandingsReplay } from "../utils/standingsReplay.js";
-import { useTilt, motionOff } from "../hooks/motion.js";
+import { useTilt, motionOff, useSwapClass } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import StandingsTable from "../components/StandingsTable.jsx";
@@ -155,6 +155,9 @@ export default function DriverStandings() {
   // table the Constructors page uses); "cards" = the whole field as their
   // actual driver rating cards, in championship order.
   const [view, setView] = usePersistentState("nabs.standings.view", "list");
+  // The list below the switches fades over when either one changes; the first
+  // render keeps the page's own entrance (cascade / replay).
+  const swap = useSwapClass(`${view}:${tier}`);
   // Rating cards are a per-season switch (admin Seasons tab): the early seasons
   // were raced without the telemetry the ratings are built from, so their cards
   // would be guesswork. Off = the Cards option isn't offered at all here, and a
@@ -441,6 +444,7 @@ export default function DriverStandings() {
         )}
       </div>
 
+      <div key={`${activeView}:${activeTier}`} className={swap}>
       {rows.length === 0 ? (
         <EmptyState
           title="No drivers here"
@@ -565,6 +569,7 @@ export default function DriverStandings() {
           ))}
         </div>
       )}
+      </div>
 
       {/* The season total is NOT the sum of a driver's results: the lowest N
           rounds come off first. That was explained in exactly one place, the

@@ -11,6 +11,7 @@ import TokenIcon from "../components/TokenIcon.jsx";
 import TrainingBar from "../components/TrainingBar.jsx";
 import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
+import { useSwapClass } from "../hooks/motion.js";
 
 // ---------------------------------------------------------------------------
 // NABS Tokens: the member's own page. What they have, how it got there, how to
@@ -193,6 +194,8 @@ function Goal({ item, balance, onClear }) {
 function Leaderboard() {
   const board = useApi(useCallback(() => api.tokenLeaderboard(), []));
   const [tab, setTab] = useState("earned");
+  // Switching boards fades the new one over; the first arrival still deals in.
+  const swap = useSwapClass(tab);
   const d = board.data;
   if (!d || d.enabled === false) return null;
   const rows = tab === "earned" ? d.earned : tab === "voice" ? d.voice : d.chat;
@@ -242,8 +245,10 @@ function Leaderboard() {
         </div>
       )}
       {rows?.length ? (
-        // keyed on the tab so the rows deal in again when you switch boards.
-        <ol key={tab} className="cascade mt-3 divide-y divide-border">
+        // keyed on the tab so a switch swaps the board (one fade) rather than
+        // blanking it and dealing every row in again.
+        <div key={tab} className={swap}>
+        <ol className="cascade mt-3 divide-y divide-border">
           {rows.map((r, i) => {
             const mine = !!r.mine;
             return (
@@ -292,6 +297,7 @@ function Leaderboard() {
             );
           })}
         </ol>
+        </div>
       ) : (
         <p className="mt-3 text-sm text-light">
           {tab === "earned"
