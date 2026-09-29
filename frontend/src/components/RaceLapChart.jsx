@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motionOff } from "../hooks/motion.js";
 
 // ---------------------------------------------------------------------------
 // The round, lap by lap: one line per car, position down the y-axis, laps
@@ -30,9 +31,121 @@ const NEUTRAL = ["#94a3b8", "#64748b", "#a1a1aa", "#71717a"];
 // there, short enough that the chart stays the biggest thing on the card.
 const LEGEND_CAP = 12;
 
+// The replay: the race is played back lap by lap, the lines drawing themselves
+// left to right with a dot on each car's current place, so overtakes are seen
+// happening instead of reconstructed from a finished tangle. Takes as long as
+// it takes to follow (a few seconds however long the race), plays once when the
+// chart opens, and hands over to a scrubber the moment somebody wants to look
+// at a particular lap. Where motion is off (reduced motion, Lite mode) it opens
+// on the finished chart and only moves when somebody presses Play.
+const REPLAY_MIN_MS = 6000;
+const REPLAY_MAX_MS = 14000;
+const REPLAY_MS_PER_LAP = 300;
+
+// Where a car is at a (fractional) lap: its place, tweened between the two laps
+// either side. Null before its first lap; held at its last place after it stops.
+function placeAt(points, lap) {
+  const n = points.length;
+  if (!n || lap < points[0].lap) return null;
+  if (lap >= points[n - 1].lap) return points[n - 1].position;
+  let i = 0;
+  while (i < n - 2 && points[i + 1].lap <= lap) i += 1;
+  const a = points[i];
+  const b = points[i + 1];
+  const t = (lap - a.lap) / Math.max(1e-6, b.lap - a.lap);
+  return a.position + (b.position - a.position) * t;
+}
+
+// The lines themselves never change during a replay (the clip in front of them
+// does), so they sit in a memo and are not rebuilt sixty times a second.
+const Lines = memo(function Lines({ polys, maxLap, focus, stroke }) {
+  return (
+    <svg
+      viewBox={`0 0 ${maxLap - 1} 100`}
+      preserveAspectRatio="none"
+      className="absolute inset-0 h-full w-full overflow-visible"
+      aria-hidden="true"
+    >
+      {polys.map((d) => {
+        const dim = focus && focus !== d.id;
+        return (
+          <polyline
+            key={d.id}
+            points={d.pts}
+            fill="none"
+            stroke={d.color}
+            strokeWidth={focus === d.id ? stroke + 2 : stroke}
+            strokeDasharray={focus === d.id ? undefined : d.dash}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            // Dimmed, not erased: picking a driver should show where
+            // they were in the race, and a field faded to nothing
+            // leaves one line floating in an empty box with no
+            // traffic to have overtaken.
+            opacity={dim ? 0.28 : 1}
+            className="transition-opacity"
+          />
+        );
+      })}
+    </svg>
+  );
+});
+
 export default function RaceLapChart({ data, className = "" }) {
   const [focus, setFocus] = useState(null); // guid of the highlighted driver
   const [allNames, setAllNames] = useState(false);
+
+  // The replay position, in laps (fractional while playing). Starts at lap 1
+  // and plays, unless motion is off, in which case the chart opens finished.
+  const lastLap = data?.maxLap || 0;
+  const startPlaying = lastLap >= 2 && !motionOff();
+  const [lap, setLapState] = useState(startPlaying ? 1 : lastLap);
+  const [playing, setPlaying] = useState(startPlaying);
+  const lapRef = useRef(lap);
+  // The plot is wider than a phone, so the replay's front edge would run off the
+  // right of the screen: the strip follows it (and rewinds with a replay).
+  const scrollerRef = useRef(null);
+  const plotRef = useRef(null);
+  const go = useCallback((v) => {
+    lapRef.current = v;
+    setLapState(v);
+  }, []);
+  const msPerLap = Math.min(REPLAY_MAX_MS, Math.max(REPLAY_MIN_MS, lastLap * REPLAY_MS_PER_LAP)) / Math.max(1, lastLap - 1);
+  useEffect(() => {
+    const sc = scrollerRef.current;
+    const plot = plotRef.current;
+    if (!sc || !plot || lastLap < 2 || lap >= lastLap) return;
+    const sr = sc.getBoundingClientRect();
+    const pr = plot.getBoundingClientRect();
+    const headX = pr.left - sr.left + sc.scrollLeft + ((lap - 1) / (lastLap - 1)) * pr.width;
+    // Only move when the front edge leaves the comfortable middle of the view,
+    // so the strip glides in steps rather than juddering every frame.
+    if (headX > sc.scrollLeft + sc.clientWidth * 0.85 || headX < sc.scrollLeft + 70) {
+      sc.scrollLeft = Math.max(0, headX - sc.clientWidth * 0.6);
+    }
+  }, [lap, lastLap]);
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let prev = performance.now();
+    const tick = (now) => {
+      // A backgrounded tab stops calling this and then hands over one enormous
+      // gap; capped, the replay resumes where it was instead of jumping ahead.
+      const dt = Math.min(100, now - prev);
+      prev = now;
+      const next = lapRef.current + dt / msPerLap;
+      if (next >= lastLap) {
+        go(lastLap);
+        setPlaying(false);
+        return;
+      }
+      go(next);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, lastLap, msPerLap, go]);
 
   const { drivers, maxLap, maxPos } = useMemo(() => {
     const ds = (data?.drivers || []).filter((d) => (d.points || []).length > 0);
@@ -52,6 +165,19 @@ export default function RaceLapChart({ data, className = "" }) {
       return n === 1 ? undefined : n === 2 ? "7 4" : "2 3";
     });
   }, [data]);
+
+  const polys = useMemo(() => {
+    const yOf = (pos) => PLOT_TOP + ((pos - 1) / Math.max(1, maxPos - 1)) * (PLOT_BOTTOM - PLOT_TOP);
+    return drivers.map((d, i) => ({
+      // What identifies a line. NOT the file's GUID — that is a SteamID, and the
+      // endpoint deliberately doesn't hand those to the public — so a driver's
+      // own id, and their place in the field for anyone the league couldn't match.
+      id: d.driverId || `row-${i}`,
+      color: d.color || NEUTRAL[i % NEUTRAL.length],
+      dash: dashes[i],
+      pts: d.points.map((p) => `${(p.lap - 1).toFixed(2)},${yOf(p.position).toFixed(2)}`).join(" "),
+    }));
+  }, [drivers, maxPos, dashes]);
 
   // Every hook above this line, because the guard below returns early: a round
   // whose laps arrive a moment later would otherwise render a different number
@@ -91,6 +217,18 @@ export default function RaceLapChart({ data, className = "" }) {
   const idOf = (d, i) => d.driverId || `row-${i}`;
   const shownDrivers = allNames ? drivers : drivers.slice(0, LEGEND_CAP);
 
+  // Replay state for the render: the clip that uncovers the lines up to the
+  // current lap, and whether it has played out.
+  const done = lap >= maxLap;
+  const pct = Math.max(0, Math.min(100, ((lap - 1) / Math.max(1, maxLap - 1)) * 100));
+  const clip = done ? undefined : { clipPath: `inset(-8px ${(100 - pct).toFixed(2)}% -8px -8px)` };
+  // The leftmost lap of the slider is 1; pressing Play at the end starts over.
+  const onPlay = () => {
+    if (playing) return setPlaying(false);
+    if (done) go(1);
+    setPlaying(true);
+  };
+
   return (
     // Its own card, like the results table it stands in for — and the reason
     // the pinned axis can be bg-card: without the panel, the chart would sit
@@ -107,7 +245,7 @@ export default function RaceLapChart({ data, className = "" }) {
           had just disappeared behind. With the inset carried by the axis
           column (pl-5) and the right edge (pr-5), the pinned column starts at
           the scroll box's own edge and there is nowhere left to hide. */}
-      <div className="scrollbar-none w-full overflow-x-auto overflow-y-hidden overscroll-x-none pt-5">
+      <div ref={scrollerRef} className="scrollbar-none w-full overflow-x-auto overflow-y-hidden overscroll-x-none pt-5">
         <div style={{ minWidth: minW + 52 }} className="pr-5 sm:pr-6">
           <div className="flex items-stretch gap-2">
             {/* pinned position axis */}
@@ -125,7 +263,7 @@ export default function RaceLapChart({ data, className = "" }) {
               </div>
             </div>
 
-            <div className="relative flex-1" style={{ height: plotH }}>
+            <div ref={plotRef} className="relative flex-1" style={{ height: plotH }}>
               {ticks.map((p) => (
                 <span
                   key={p}
@@ -133,39 +271,35 @@ export default function RaceLapChart({ data, className = "" }) {
                   style={{ top: `${yPct(p)}%` }}
                 />
               ))}
-              <svg
-                viewBox={`0 0 ${maxLap - 1} 100`}
-                preserveAspectRatio="none"
-                className="absolute inset-0 h-full w-full overflow-visible"
-                aria-hidden="true"
-              >
-                {drivers.map((d, i) => {
-                  const pts = d.points
-                    .map((p) => `${(p.lap - 1).toFixed(2)},${yPct(p.position).toFixed(2)}`)
-                    .join(" ");
-                  const id = idOf(d, i);
-                  const dim = focus && focus !== id;
+              {/* The lines, clipped to the replay's current lap. Once it has
+                  played out the clip is dropped altogether and this is the
+                  plain finished chart. */}
+              <div className="absolute inset-0" style={clip}>
+                <Lines polys={polys} maxLap={maxLap} focus={focus} stroke={stroke} />
+              </div>
+              {/* A dot on every car's current place while the replay is on the
+                  way (or being scrubbed): HTML rather than SVG so it stays
+                  round in a plot that is stretched to fit. */}
+              {!done &&
+                drivers.map((d, i) => {
+                  const pos = placeAt(d.points, lap);
+                  if (pos == null) return null;
+                  const id = polys[i].id;
+                  const out = lap > d.points[d.points.length - 1].lap;
                   return (
-                    <polyline
+                    <span
                       key={id}
-                      points={pts}
-                      fill="none"
-                      stroke={colorOf(d, i)}
-                      strokeWidth={focus === id ? stroke + 2 : stroke}
-                      strokeDasharray={focus === id ? undefined : dashes[i]}
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      vectorEffect="non-scaling-stroke"
-                      // Dimmed, not erased: picking a driver should show where
-                      // they were in the race, and a field faded to nothing
-                      // leaves one line floating in an empty box with no
-                      // traffic to have overtaken.
-                      opacity={dim ? 0.28 : 1}
-                      className="transition-opacity"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card"
+                      style={{
+                        left: `${((lap - 1) / Math.max(1, maxLap - 1)) * 100}%`,
+                        top: `${yPct(pos)}%`,
+                        backgroundColor: polys[i].color,
+                        opacity: focus && focus !== id ? 0.25 : out ? 0.35 : 1,
+                      }}
                     />
                   );
                 })}
-              </svg>
             </div>
           </div>
 
@@ -199,6 +333,37 @@ export default function RaceLapChart({ data, className = "" }) {
           therefore off to one side of it. */}
       <div className="pb-1 pt-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
         Lap
+      </div>
+
+      {/* The replay's controls: play / pause / replay, a scrubber to any lap
+          (dragging it takes over from the playback), and where it is. */}
+      <div className="flex items-center gap-3 px-5 pb-1 pt-2 sm:px-6">
+        <button
+          type="button"
+          onClick={onPlay}
+          className="btn-secondary shrink-0 gap-1.5 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider"
+          aria-label={playing ? "Pause the replay" : done ? "Replay the race" : "Play the replay"}
+        >
+          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+            {playing ? <path d="M4 3h3v10H4zM9 3h3v10H9z" /> : done ? <path d="M8 2a6 6 0 1 0 5.7 4H12a4.4 4.4 0 1 1-1.3-2.7L9 5h5V0l-1.6 1.6A6 6 0 0 0 8 2z" /> : <path d="M4 2.5v11l9-5.5z" />}
+          </svg>
+          {playing ? "Pause" : done ? "Replay" : "Play"}
+        </button>
+        <input
+          type="range"
+          min={1}
+          max={maxLap}
+          step={0.01}
+          value={lap}
+          onPointerDown={() => setPlaying(false)}
+          onChange={(e) => go(Number(e.target.value))}
+          aria-label="Lap"
+          aria-valuetext={`Lap ${Math.floor(lap)} of ${maxLap}`}
+          className="h-1.5 min-w-0 flex-1 cursor-pointer accent-brand"
+        />
+        <span className="w-16 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-medium">
+          {Math.floor(lap)} / {maxLap}
+        </span>
       </div>
 
       {/* The legend is also the control: the lines are thin and many, so the
