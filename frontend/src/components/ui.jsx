@@ -613,7 +613,7 @@ export function Spinner({ label = "Loading…" }) {
 // mirrors the real layout it stands in for, so there's no shift on load.
 
 export function Skeleton({ className = "" }) {
-  return <div className={`animate-pulse rounded bg-border/70 ${className}`} aria-hidden="true" />;
+  return <div className={`skeleton rounded ${className}`} aria-hidden="true" />;
 }
 
 // Placeholder for the PageHeader (eyebrow + title + subtitle + hairline).
@@ -757,7 +757,7 @@ export function Notice({ kind = "success", children }) {
 // the text inside a closed one.
 export function HelpNote({ label = "What this does", children }) {
   return (
-    <details className="group">
+    <details className="anim-details group">
       <summary className="cursor-pointer list-none text-sm font-semibold text-link hover:underline">{label}</summary>
       <div className="mt-2 space-y-1 text-sm text-light">{children}</div>
     </details>

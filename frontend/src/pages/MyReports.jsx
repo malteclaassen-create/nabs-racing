@@ -846,7 +846,7 @@ function Section({ title, hint, rows, races, onOpen, empty, seriesTag }) {
                   </span>
                 </button>
                 {open && (
-                  <ul className="divide-y divide-border border-t border-border">
+                  <ul className="content-in divide-y divide-border border-t border-border">
                     {g.rows.map((r) => (
                       <ReportRow key={r.id} r={r} onOpen={onOpen} />
                     ))}

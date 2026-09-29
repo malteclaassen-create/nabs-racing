@@ -177,7 +177,7 @@ function TransferCentre({ data, teamById, driverById }) {
       {rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint={kind === "sub" ? "No reserve has filled in for a team this season." : "Nobody has changed team this season."} />
       ) : (
-        <div className="card overflow-hidden">
+        <div className="cascade card overflow-hidden">
           {/* Column heads, as a transfer page prints them */}
           <div className="hidden grid-cols-[minmax(0,21rem)_minmax(0,1fr)_8rem_9rem] gap-4 px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
             <div className="grid grid-cols-[1fr_1.75rem_1fr] gap-2"><span className="pl-2.5">From</span><span /><span className="pl-2.5">To</span></div>
@@ -185,11 +185,11 @@ function TransferCentre({ data, teamById, driverById }) {
             <span>Type</span>
             <span className="text-right">Round</span>
           </div>
-          {groups.map((g) => {
+          {groups.map((g, gi) => {
             const round = roundOf(g.round);
             const upcoming = round && !round.isCompleted;
             return (
-          <section key={g.round}>
+          <section key={g.round} style={{ "--i": Math.min(gi, 8) }}>
             {/* The round's own strip: number, track, flag, how many moves */}
             <div className={`flex items-center gap-2.5 border-y border-border px-4 py-2 ${upcoming ? "bg-brand/5" : "bg-surface2/60"}`}>
               <span className={`font-display text-sm font-extrabold uppercase tracking-tight ${upcoming ? "text-brand" : "text-dark"}`}>

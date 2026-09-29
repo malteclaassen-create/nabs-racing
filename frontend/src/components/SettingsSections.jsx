@@ -180,7 +180,7 @@ export default function SettingsSections() {
     // Capped: beside the profile editor the panel has the full column to fill,
     // and a segmented control stretched over a thousand pixels reads as a
     // banner rather than a switch. The standalone page is this wide anyway.
-    <div className="max-w-2xl space-y-6">
+    <div className="cascade cascade-auto max-w-2xl space-y-6">
       <Card eyebrow="The site">
         <Setting
           title="Appearance"

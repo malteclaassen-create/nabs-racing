@@ -147,7 +147,7 @@ function DownloadCard({ item, highlight = false }) {
 // Tracks / Cars / one folder per event). Same accordion pattern as the rulebook.
 function FolderSection({ name, description, items, index = 0, defaultOpen = false, highlightId = null }) {
   return (
-    <details className="group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
+    <details className="anim-details group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
           <Icon name="folder" className="h-[18px] w-[18px]" />
@@ -246,7 +246,7 @@ function Catalogue() {
 // Welcome-page FAQ, so the two read as one design family).
 function RuleGroup({ icon, subject, rules, defaultOpen = false, index = 0 }) {
   return (
-    <details className="group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
+    <details className="anim-details group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
           <Icon name={icon} className="h-[18px] w-[18px]" />
