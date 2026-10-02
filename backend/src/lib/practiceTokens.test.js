@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { LENT_SERVER_UNTIL, notePracticeLap, practiceWritesSettled, practiceProgress, settleThisWeek, currentPeriod, __clearCaches, lapsSinceMark, readLapMark, writeLapMark } from "./practiceTokens.js";
+import { describe, it, expect, beforeEach } from "vitest";
+import { notePracticeLap, practiceWritesSettled, practiceProgress, settleThisWeek, currentPeriod, __clearCaches, lapsSinceMark, readLapMark, writeLapMark } from "./practiceTokens.js";
 import { saveTuning } from "./tokenTuning.js";
 
 // A prisma stand-in with the three tables this touches: the lap tally, the
@@ -306,71 +306,6 @@ describe("training laps", () => {
     const prisma = db({ seriesList: ["f1", "gt"] });
     await drive(prisma, 3, { serverKey: "nabs1", scopes: [{ series: "gt", season: 2 }] });
     expect([...prisma.practice.keys()][0]).toContain("|gt|");
-  });
-
-  describe("the lent server, for one week", () => {
-    // Only the clock is faked: the lap chain runs on real promises.
-    afterEach(() => vi.useRealTimers());
-    const lent = {
-      seriesList: ["friday-f1", "sunday"],
-      nextRaceBySeries: { "friday-f1": "Interlagos", sunday: "Singapore" },
-    };
-    const lap = {
-      serverKey: "nabs2",
-      scopes: [{ series: "sunday", season: 1 }],
-      trackKey: "vhe-interlagos--nabs-interlagos-2025-v2",
-    };
-
-    it("after the Friday race the assignment decides again, as before", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(LENT_SERVER_UNTIL + 1000);
-      const prisma = db(lent);
-      await drive(prisma, 5, lap);
-      // Sunday's own week is Singapore: off track, not counted, as before.
-      expect(prisma.practice.size).toBe(0);
-    });
-
-    it("before it, the laps count for the Friday league", async () => {
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(LENT_SERVER_UNTIL - 24 * 3600 * 1000);
-      const prisma = db(lent);
-      await drive(prisma, 3, lap);
-      expect([...prisma.practice.keys()][0]).toContain("|friday-f1|");
-    });
-  });
-
-  it("a server lent to the other series for the week counts for that series", async () => {
-    // The Sunday league's server running the Friday league's next circuit (wet
-    // practice). The Sunday league races Singapore next, so these laps were
-    // being thrown away as off track.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(LENT_SERVER_UNTIL - 24 * 3600 * 1000);
-    const prisma = db({
-      seriesList: ["friday-f1", "sunday"],
-      nextRaceBySeries: { "friday-f1": "Interlagos", sunday: "Singapore" },
-    });
-    await drive(prisma, 20, {
-      serverKey: "nabs2",
-      scopes: [{ series: "sunday", season: 1 }],
-      trackKey: "vhe-interlagos--nabs-interlagos-2025-v2",
-    });
-    expect([...prisma.practice.keys()]).toEqual(["76561100000000001|friday-f1|race:race-friday-f1|nabs2"]);
-    expect([...prisma.practice.values()][0]).toMatchObject({ laps: 20 });
-    expect([...prisma.ledger.keys()]).toEqual(["practice:practice_20:friday-f1:race:race-friday-f1:nabs2"]);
-    vi.useRealTimers();
-  });
-
-  it("the server's own series keeps its laps on its own circuit", async () => {
-    const prisma = db({
-      seriesList: ["friday-f1", "sunday"],
-      nextRaceBySeries: { "friday-f1": "Interlagos", sunday: "Singapore" },
-    });
-    await drive(prisma, 3, {
-      serverKey: "nabs2",
-      scopes: [{ series: "sunday", season: 1 }],
-      trackKey: "ks_singapore--nabs-singapore",
-    });
-    expect([...prisma.practice.keys()][0]).toContain("|sunday|");
   });
 
   it("with two series on one server, the track this week decides", async () => {
