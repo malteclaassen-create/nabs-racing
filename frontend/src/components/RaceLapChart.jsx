@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, X } from "lucide-react";
 import { motionOff } from "../hooks/motion.js";
 
@@ -131,7 +131,9 @@ export default function RaceLapChart({ data, className = "" }) {
   const [playing, setPlaying] = useState(startPlaying);
   const lapRef = useRef(lap);
   // The plot is wider than a phone, so the replay's front edge would run off the
-  // right of the screen: the strip follows it (and rewinds with a replay).
+  // right of the screen. Instead the dots run in from the left, stop in the
+  // middle of the view and the race slides past underneath them; once the strip
+  // can't scroll any further they carry on to the right-hand end.
   const scrollerRef = useRef(null);
   const plotRef = useRef(null);
   const go = useCallback((v) => {
@@ -139,18 +141,21 @@ export default function RaceLapChart({ data, className = "" }) {
     setLapState(v);
   }, []);
   const msPerLap = Math.min(REPLAY_MAX_MS, Math.max(REPLAY_MIN_MS, lastLap * REPLAY_MS_PER_LAP)) / Math.max(1, lastLap - 1);
-  useEffect(() => {
+  // A layout effect, so the scroll lands in the same frame as the dots move:
+  // after paint, the dots would visibly twitch right and get pulled back.
+  useLayoutEffect(() => {
     const sc = scrollerRef.current;
     const plot = plotRef.current;
     if (!sc || !plot || lastLap < 2 || lap >= lastLap) return;
     const sr = sc.getBoundingClientRect();
     const pr = plot.getBoundingClientRect();
-    const headX = pr.left - sr.left + sc.scrollLeft + ((lap - 1) / (lastLap - 1)) * pr.width;
-    // Only move when the front edge leaves the comfortable middle of the view,
-    // so the strip glides in steps rather than juddering every frame.
-    if (headX > sc.scrollLeft + sc.clientWidth * 0.85 || headX < sc.scrollLeft + 70) {
-      sc.scrollLeft = Math.max(0, headX - sc.clientWidth * 0.6);
-    }
+    // Where the plot starts in the scrolled content, which is also how much of
+    // the view the pinned axis covers: the middle is the middle of what's left.
+    const plotLeft = pr.left - sr.left + sc.scrollLeft;
+    const headX = plotLeft + ((lap - 1) / (lastLap - 1)) * pr.width;
+    const middle = plotLeft + (sc.clientWidth - plotLeft) / 2;
+    const maxScroll = sc.scrollWidth - sc.clientWidth;
+    sc.scrollLeft = Math.max(0, Math.min(maxScroll, headX - middle));
   }, [lap, lastLap]);
   useEffect(() => {
     if (!playing) return;
