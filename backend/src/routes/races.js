@@ -350,6 +350,9 @@ router.get("/:id/laps", async (req, res, next) => {
           // read as two different people between the table and the chart.
           name: (d && (overrides.get(d.id)?.displayName || d.name)) || c.name || "?",
           color: d?.team?.color || null,
+          // 1 / 2 / 0 (reserve), so the chart can light up a whole tier at
+          // once. Null for a guest the league couldn't match.
+          tier: d ? d.tier : null,
           points: c.points,
         };
       }),

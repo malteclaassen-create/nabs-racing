@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pause, Play, RotateCcw, X } from "lucide-react";
 import { motionOff } from "../hooks/motion.js";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +59,15 @@ function placeAt(points, lap) {
 
 // The lines themselves never change during a replay (the clip in front of them
 // does), so they sit in a memo and are not rebuilt sixty times a second.
-const Lines = memo(function Lines({ polys, maxLap, focus, stroke }) {
+// `lit` is the set of highlighted lines, or null when nobody is picked.
+const Lines = memo(function Lines({ polys, maxLap, lit, stroke }) {
+  // One line picked loses its dash and gets a lot heavier; a whole tier picked
+  // keeps the dashes (team mates share a colour) and only gets a little heavier,
+  // or ten fat lines turn back into the tangle they were picked out of.
+  const solo = lit && lit.size === 1;
+  const bump = solo ? 2 : lit && lit.size <= 4 ? 1.5 : 1;
+  // The picked lines are drawn last so they run over the dimmed field.
+  const ordered = lit ? [...polys.filter((d) => !lit.has(d.id)), ...polys.filter((d) => lit.has(d.id))] : polys;
   return (
     <svg
       viewBox={`0 0 ${maxLap - 1} 100`}
@@ -66,16 +75,17 @@ const Lines = memo(function Lines({ polys, maxLap, focus, stroke }) {
       className="absolute inset-0 h-full w-full overflow-visible"
       aria-hidden="true"
     >
-      {polys.map((d) => {
-        const dim = focus && focus !== d.id;
+      {ordered.map((d) => {
+        const on = lit?.has(d.id);
+        const dim = lit && !on;
         return (
           <polyline
             key={d.id}
             points={d.pts}
             fill="none"
             stroke={d.color}
-            strokeWidth={focus === d.id ? stroke + 2 : stroke}
-            strokeDasharray={focus === d.id ? undefined : d.dash}
+            strokeWidth={on ? stroke + bump : stroke}
+            strokeDasharray={on && solo ? undefined : d.dash}
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
@@ -83,7 +93,7 @@ const Lines = memo(function Lines({ polys, maxLap, focus, stroke }) {
             // they were in the race, and a field faded to nothing
             // leaves one line floating in an empty box with no
             // traffic to have overtaken.
-            opacity={dim ? 0.28 : 1}
+            opacity={dim ? 0.22 : 1}
             className="transition-opacity"
           />
         );
@@ -93,8 +103,25 @@ const Lines = memo(function Lines({ polys, maxLap, focus, stroke }) {
 });
 
 export default function RaceLapChart({ data, className = "" }) {
-  const [focus, setFocus] = useState(null); // guid of the highlighted driver
+  // Who is highlighted. `pinned` is what was clicked and stays lit until it is
+  // clicked again; `hover` is the name under the mouse, lit only while it is
+  // there and on top of whatever is pinned.
+  const [pinned, setPinned] = useState(() => new Set());
+  const [hover, setHover] = useState(null);
   const [allNames, setAllNames] = useState(false);
+  const lit = useMemo(() => {
+    if (!pinned.size && !hover) return null;
+    const s = new Set(pinned);
+    if (hover) s.add(hover);
+    return s;
+  }, [pinned, hover]);
+  const togglePin = (id) =>
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // The replay position, in laps (fractional while playing). Starts at lap 1
   // and plays, unless motion is off, in which case the chart opens finished.
@@ -217,6 +244,38 @@ export default function RaceLapChart({ data, className = "" }) {
   const idOf = (d, i) => d.driverId || `row-${i}`;
   const shownDrivers = allNames ? drivers : drivers.slice(0, LEGEND_CAP);
 
+  // Whole groups at once: Tier 1, Tier 2, Reserve. Only offered when the field
+  // actually has more than one of them, a series without tiers gets no buttons.
+  const groups = [
+    { tier: 1, label: "Tier 1" },
+    { tier: 2, label: "Tier 2" },
+    { tier: 0, label: "Reserve" },
+  ]
+    .map((g) => ({ ...g, ids: drivers.map((d, i) => (d.tier === g.tier ? idOf(d, i) : null)).filter(Boolean) }))
+    .filter((g) => g.ids.length > 0);
+  const showGroups = groups.length > 1;
+  // A group button is on when all of its drivers are pinned. Pressing it then
+  // takes them off again; otherwise it adds them to whatever is already picked,
+  // so Tier 1 plus one reserve is two clicks.
+  const groupOn = (g) => g.ids.every((id) => pinned.has(id));
+  const toggleGroup = (g) =>
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (g.ids.every((id) => prev.has(id))) g.ids.forEach((id) => next.delete(id));
+      else g.ids.forEach((id) => next.add(id));
+      return next;
+    });
+  // Touch fires mouseenter on a tap and never the leave, which left a tapped
+  // name lit for good. Hover is a mouse thing; on a phone the tap pins.
+  const hoverIn = (id) => (e) => {
+    if (e.pointerType === "mouse") setHover(id);
+  };
+  const hoverOut = () => setHover(null);
+  const chip = (active) =>
+    `flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-[11px] font-bold uppercase tracking-tight transition ${
+      active ? "bg-surface2 text-dark ring-1 ring-border" : "text-medium hover:bg-surface2 hover:text-dark"
+    }`;
+
   // Replay state for the render: the clip that uncovers the lines up to the
   // current lap, and whether it has played out.
   const done = lap >= maxLap;
@@ -275,7 +334,7 @@ export default function RaceLapChart({ data, className = "" }) {
                   played out the clip is dropped altogether and this is the
                   plain finished chart. */}
               <div className="absolute inset-0" style={clip}>
-                <Lines polys={polys} maxLap={maxLap} focus={focus} stroke={stroke} />
+                <Lines polys={polys} maxLap={maxLap} lit={lit} stroke={stroke} />
               </div>
               {/* A dot on every car's current place while the replay is on the
                   way (or being scrubbed): HTML rather than SVG so it stays
@@ -295,7 +354,8 @@ export default function RaceLapChart({ data, className = "" }) {
                         left: `${((lap - 1) / Math.max(1, maxLap - 1)) * 100}%`,
                         top: `${yPct(pos)}%`,
                         backgroundColor: polys[i].color,
-                        opacity: focus && focus !== id ? 0.25 : out ? 0.35 : 1,
+                        opacity: lit && !lit.has(id) ? 0.25 : out ? 0.35 : 1,
+                        zIndex: lit?.has(id) ? 1 : undefined,
                       }}
                     />
                   );
@@ -344,9 +404,13 @@ export default function RaceLapChart({ data, className = "" }) {
           className="btn-secondary shrink-0 gap-1.5 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider"
           aria-label={playing ? "Pause the replay" : done ? "Replay the race" : "Play the replay"}
         >
-          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden="true">
-            {playing ? <path d="M4 3h3v10H4zM9 3h3v10H9z" /> : done ? <path d="M8 2a6 6 0 1 0 5.7 4H12a4.4 4.4 0 1 1-1.3-2.7L9 5h5V0l-1.6 1.6A6 6 0 0 0 8 2z" /> : <path d="M4 2.5v11l9-5.5z" />}
-          </svg>
+          {playing ? (
+            <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : done ? (
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <Play className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
           {playing ? "Pause" : done ? "Replay" : "Play"}
         </button>
         <input
@@ -372,14 +436,49 @@ export default function RaceLapChart({ data, className = "" }) {
           On a full grid it is also the longest thing on the card — 38 names is
           eight rows of chips under a chart people came to look AT — so it
           starts at the front of the field and opens on request. */}
-      <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-border px-5 py-4 sm:px-6">
+      {/* Groups first, then the names. Both pin: a click keeps the lines lit
+          until it is clicked again, and any number can be lit at once. */}
+      {(showGroups || pinned.size > 0) && (
+        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-border px-5 pt-4 sm:px-6">
+          {showGroups &&
+            groups.map((g) => {
+              const on = groupOn(g);
+              return (
+                <button
+                  key={g.tier}
+                  type="button"
+                  className={chip(on)}
+                  onClick={() => toggleGroup(g)}
+                  aria-pressed={on}
+                  title={on ? `Stop highlighting ${g.label}` : `Highlight every ${g.label} driver`}
+                >
+                  {g.label}
+                  <span className="font-mono text-[10px] text-faint">{g.ids.length}</span>
+                </button>
+              );
+            })}
+          {pinned.size > 0 && (
+            <button
+              type="button"
+              className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-link transition hover:underline"
+              onClick={() => setPinned(new Set())}
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+      <div
+        className={`flex flex-wrap items-center gap-1.5 px-5 pb-4 sm:px-6 ${
+          showGroups || pinned.size > 0 ? "pt-2" : "mt-4 border-t border-border pt-4"
+        }`}
+      >
         {shownDrivers.map((d, i) => {
           const id = idOf(d, i);
-          const active = focus === id;
+          const active = pinned.has(id);
           const dash = dashes[i];
-          const cls = `flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-[11px] font-bold uppercase tracking-tight transition ${
-            active ? "bg-surface2 text-dark ring-1 ring-border" : "text-medium hover:bg-surface2 hover:text-dark"
-          }`;
+          const cls = chip(active);
           return (
             // A plain button, and only a button. It used to carry a link to
             // the driver's profile inside it — an <a> in a <button>, which is
@@ -390,11 +489,11 @@ export default function RaceLapChart({ data, className = "" }) {
               key={id}
               type="button"
               className={cls}
-              onMouseEnter={() => setFocus(id)}
-              onMouseLeave={() => setFocus(null)}
-              onClick={() => setFocus(active ? null : id)}
+              onPointerEnter={hoverIn(id)}
+              onPointerLeave={hoverOut}
+              onClick={() => togglePin(id)}
               aria-pressed={active}
-              title={`${d.name}: tap to follow their line`}
+              title={active ? `${d.name}: click to let go of their line` : `${d.name}: click to keep their line highlighted`}
             >
               {/* The swatch repeats the line's dash pattern, or two lines of
                   the same colour would look like one entry in the key. */}
