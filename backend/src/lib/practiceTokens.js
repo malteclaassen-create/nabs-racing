@@ -43,7 +43,7 @@ import {
 import { leagueDay } from "./tokenRules.js";
 import { raceKickoff } from "./raceKickoff.js";
 import { groupKeyFor, trackKeyFor } from "./trackKeys.js";
-import { LIVE_SERVERS } from "./liveServers.js";
+import { LIVE_SERVERS, readLiveServerMap, serverAssignment } from "./liveServers.js";
 import { boardScopes } from "./liveBestLaps.js";
 
 const STEAM_RE = /^\d{10,20}$/;
@@ -154,16 +154,6 @@ export function __clearCaches() {
 // does not decide it either (an unknown track name, a fun session somewhere
 // else), the DRIVER does: which series they actually race in this season.
 // Only if all three are silent does it fall back to the first candidate.
-//
-// For ONE week only, the assignment gives way when the track clearly says
-// otherwise: the server's own series is racing somewhere else next, while
-// another series' next round is on exactly this circuit. The Sunday server is
-// lent to the Friday league for its wet practice before Interlagos, and every
-// lap of it was being thrown away as off track. From the Friday race's start
-// this is switched off by itself and the assignment decides again, exactly as
-// before. The Live page names the cars by the same answer (/api/live/driving-
-// series), so its team names go back with it.
-export const LENT_SERVER_UNTIL = Date.parse("2026-10-02T17:30:00Z");
 const seriesCache = new Map(); // `${server}|${trackKey}|${steamId}` -> { at, slug }
 const SERIES_TTL_MS = 5 * 60 * 1000;
 
@@ -214,17 +204,7 @@ export async function seriesForLap(prisma, { serverKey = "", scopes = [], trackK
   };
 
   const assigned = [...new Set((scopes || []).map((s) => String(s?.series || "")).filter(Boolean))];
-  if (assigned.length === 1) {
-    if (Date.now() >= LENT_SERVER_UNTIL) return remember(assigned[0]);
-    const own = await currentPeriod(prisma, assigned[0]);
-    if (!offTrack(own?.track, trackKey)) return remember(assigned[0]);
-    const here = [];
-    for (const slug of await activeSeriesSlugs(prisma)) {
-      if (slug === assigned[0]) continue;
-      if (onTrackOf((await currentPeriod(prisma, slug))?.track, trackKey)) here.push(slug);
-    }
-    return remember(here.length === 1 ? here[0] : assigned[0]);
-  }
+  if (assigned.length === 1) return remember(assigned[0]);
 
   const candidates = assigned.length ? assigned : await activeSeriesSlugs(prisma);
   if (!candidates.length) return remember(null);
@@ -270,15 +250,6 @@ export function offTrack(periodTrack, lapTrackKey) {
   const folder = String(lapTrackKey || "").split("--")[0];
   const got = trackKeyFor(folder.replace(/-/g, "_")) || trackKeyFor(folder);
   return !!(want && got && want !== got);
-}
-
-// The other side of offTrack: both names known, and the same circuit. Only a
-// clear match hands a lap to another league.
-function onTrackOf(periodTrack, lapTrackKey) {
-  const want = trackKeyFor(String(periodTrack || ""));
-  const folder = String(lapTrackKey || "").split("--")[0];
-  const got = trackKeyFor(folder.replace(/-/g, "_")) || trackKeyFor(folder);
-  return !!(want && got && want === got);
 }
 
 // A member's rows for the running weeks, summed per server, series and week,
@@ -756,4 +727,170 @@ export async function settleThisWeek(prisma) {
     });
   }
   return paid;
+}
+
+// ---- Moving the lent server's week over ---------------------------------------
+//
+// For the week before the Friday race at Interlagos (28 September to 2 October
+// 2026) a server with one series of its own filed its laps under the other
+// series whenever that series' next round was on the server's circuit: the
+// Sunday server's laps went to the Friday league, as a second Friday server
+// with milestones of its own. That rule is gone (the second server is the
+// Sunday league's), and the league decided the laps it filed still count, as
+// laps on the Friday league's own server. So, once: each such tally is added
+// to the same driver's week on the server its series follows, the payments the
+// borrowed server made are removed, and the combined count pays whatever it
+// reaches there. Nothing outside that week is touched, nor any server's laps
+// for its own series.
+const LENT_WEEK_FROM = Date.parse("2026-09-28T00:00:00Z");
+const LENT_WEEK_UNTIL = Date.parse("2026-10-03T00:00:00Z");
+const LENT_MOVED_MARKER = "practice_lent_server_moved_v1";
+
+// A timestamp as the database hands it back: SQLite's CURRENT_TIMESTAMP text
+// ("2026-09-30 18:04:11", UTC), an ISO string, epoch milliseconds or a Date.
+export function msOf(v) {
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "number" || typeof v === "bigint") return Number(v);
+  const s = String(v || "").trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  const iso = s.replace(" ", "T");
+  return Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(iso) ? iso : `${iso}Z`);
+}
+const inLentWeek = (v) => {
+  const ms = msOf(v);
+  return ms >= LENT_WEEK_FROM && ms < LENT_WEEK_UNTIL;
+};
+
+// The week a tally belongs to, rebuilt from its key: the round's circuit (for
+// the old-circuit rule) and its date (a series' prices can start on a day).
+async function periodFromKey(prisma, key) {
+  const period = { key, track: null, date: null };
+  const m = /^race:(.+)$/.exec(String(key || ""));
+  if (!m) return period;
+  const rows = await prisma
+    .$queryRawUnsafe(`SELECT "track","date" FROM "Race" WHERE "id" = ?`, m[1])
+    .catch(() => []);
+  if (rows[0]) {
+    period.track = rows[0].track || null;
+    period.date = rows[0].date == null ? null : Number(rows[0].date);
+  }
+  return period;
+}
+
+export async function moveLentServerLapsOnce(prisma) {
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: LENT_MOVED_MARKER } });
+    if (done) return null;
+
+    // Each server's own series, the way the board scopes see it: the lent
+    // rule only ever applied to a server with exactly one.
+    const map = await readLiveServerMap(prisma);
+    const slugs = await activeSeriesSlugs(prisma);
+    const own = new Map();
+    for (const srv of LIVE_SERVERS) {
+      const mine = slugs.filter((slug) => serverAssignment(map, slug).key === srv.key);
+      if (mine.length === 1) own.set(srv.key, mine[0]);
+    }
+    // Nothing to compare against (no series could be read): try again on the
+    // next start rather than marking it done.
+    if (!own.size) return null;
+    const lent = (server, series) => own.has(server) && own.get(server) !== series;
+
+    // 1. The borrowed server's payments go. "practice:<tier>:<series>:<period>:
+    //    <server>", where the period has a colon of its own ("race:<id>").
+    const ledger = await prisma.$queryRawUnsafe(
+      `SELECT "discordId","refKey","delta","createdAt" FROM "TokenLedger" WHERE "refKey" LIKE 'practice:%'`
+    );
+    let removedTokens = 0;
+    for (const r of ledger) {
+      const parts = String(r.refKey).split(":");
+      if (parts.length < 5 || !lent(parts[parts.length - 1], parts[2]) || !inLentWeek(r.createdAt)) continue;
+      const gone = await prisma.$executeRawUnsafe(
+        `DELETE FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" = ?`,
+        r.discordId,
+        r.refKey
+      );
+      if (Number(gone)) removedTokens += Number(r.delta) || 0;
+    }
+
+    // 2. Its laps join the driver's week on the series' own server.
+    const tallies = await prisma.$queryRawUnsafe(
+      `SELECT "steamId","series","period","server","laps","trackKey","car","lastAt","updatedAt" FROM "TokenPractice"`
+    );
+    const periods = new Map();
+    const touched = new Map(); // `${steamId}|${series}|${period}|${server}` -> laps
+    let moved = 0;
+    for (const r of tallies) {
+      const from = String(r.server || "");
+      const series = String(r.series || "");
+      if (!lent(from, series) || !inLentWeek(r.updatedAt)) continue;
+      const to = serverAssignment(map, series).key;
+      if (!to || to === from) continue;
+      if (!periods.has(r.period)) periods.set(r.period, await periodFromKey(prisma, r.period));
+      const period = periods.get(r.period);
+
+      const there = (
+        await prisma.$queryRawUnsafe(
+          `SELECT "laps","trackKey","car","lastAt" FROM "TokenPractice"
+            WHERE "steamId" = ? AND "series" = ? AND "period" = ? AND "server" = ?`,
+          r.steamId,
+          series,
+          r.period,
+          to
+        )
+      )[0];
+      // A tally from the old circuit is not practice for this round: the moved
+      // laps start it again, the way a lap on the right track would.
+      const keep = there && !offTrack(period.track, there.trackKey);
+      const laps = (keep ? Number(there.laps) || 0 : 0) + (Number(r.laps) || 0);
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "TokenPractice" ("steamId","series","period","server","laps","trackKey","car","lastAt","updatedAt")
+         VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+         ON CONFLICT("steamId","series","period","server") DO UPDATE SET
+           "laps" = excluded."laps", "trackKey" = excluded."trackKey", "car" = excluded."car",
+           "lastAt" = excluded."lastAt", "updatedAt" = CURRENT_TIMESTAMP`,
+        r.steamId,
+        series,
+        r.period,
+        to,
+        laps,
+        (keep && there.trackKey) || r.trackKey || null,
+        (keep && there.car) || r.car || null,
+        Math.max(Number(there?.lastAt) || 0, Number(r.lastAt) || 0)
+      );
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM "TokenPractice" WHERE "steamId" = ? AND "series" = ? AND "period" = ? AND "server" = ?`,
+        r.steamId,
+        series,
+        r.period,
+        from
+      );
+      touched.set(`${r.steamId}|${series}|${r.period}|${to}`, laps);
+      moved += Number(r.laps) || 0;
+    }
+
+    // 3. The combined count pays what it reaches on that server. A milestone
+    //    the server had already paid stays paid once (the ledger's own key).
+    let paid = 0;
+    for (const [key, laps] of touched) {
+      const [steamId, series, periodKey, server] = key.split("|");
+      const discordId = await discordForSteamIds(prisma, [steamId]);
+      if (!discordId) continue;
+      paid += await payPractice(prisma, discordId, { series, period: periods.get(periodKey), server, laps });
+    }
+
+    await prisma.setting.upsert({
+      where: { key: LENT_MOVED_MARKER },
+      update: {},
+      create: { key: LENT_MOVED_MARKER, value: new Date().toISOString() },
+    });
+    paidByPeriod.clear();
+    console.log(
+      `[tokens] lent server week moved: ${moved} laps in ${touched.size} tallies, ${removedTokens} tokens taken back, ${paid} paid on the combined count`
+    );
+    return { moved, tallies: touched.size, removedTokens, paid };
+  } catch (e) {
+    console.warn(`[tokens] moving the lent server week failed, will retry on the next start: ${e.message}`);
+    return null;
+  }
 }

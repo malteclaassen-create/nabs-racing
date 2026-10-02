@@ -515,14 +515,6 @@ export const api = {
   // page's switch can say which board is worth looking at. `server` is only
   // used to keep the reply about the same series; the list is always all of them.
   liveServers: () => request(`/live/servers${seriesQ()}`),
-  // The league actually driving on the board this week, which is not always
-  // the page's own: a server lent to the other series for a week carries that
-  // series' cars. The page names them by that series' teams.
-  liveDrivingSeries: (server = null) =>
-    request(`/live/driving-series${andQ(seriesQ(), server ? `server=${encodeURIComponent(server)}` : "")}`),
-  // The teams of another series' running season (or of the page's own, with
-  // none or the page's own named), for naming cars on a lent server.
-  teamsOf: (series = null) => request(`/teams${telemetryQ(series)}`, { auth: true }),
   // The files the race server checksums, with ITS hashes — the /content-check
   // page compares them against the driver's own copies in the browser.
   contentCheck: (server = null) =>
