@@ -93,7 +93,7 @@ const Lines = memo(function Lines({ polys, maxLap, lit, stroke }) {
             // they were in the race, and a field faded to nothing
             // leaves one line floating in an empty box with no
             // traffic to have overtaken.
-            opacity={dim ? 0.22 : 1}
+            opacity={dim ? 0.14 : 1}
             className="transition-opacity"
           />
         );
@@ -354,7 +354,7 @@ export default function RaceLapChart({ data, className = "" }) {
                         left: `${((lap - 1) / Math.max(1, maxLap - 1)) * 100}%`,
                         top: `${yPct(pos)}%`,
                         backgroundColor: polys[i].color,
-                        opacity: lit && !lit.has(id) ? 0.25 : out ? 0.35 : 1,
+                        opacity: lit && !lit.has(id) ? 0.16 : out ? 0.35 : 1,
                         zIndex: lit?.has(id) ? 1 : undefined,
                       }}
                     />
