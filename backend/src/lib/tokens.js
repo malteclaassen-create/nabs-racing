@@ -799,6 +799,10 @@ export async function stampRaceRates(prisma, raceId) {
     .catch(() => []);
   const ids = [...new Set(rows.map((r) => r.driverId).filter(Boolean))];
   if (!ids.length) return 0;
+  // The briefing times are held for a few minutes, and the save that brings us
+  // here may have just moved this round's start. Measured against the old one,
+  // the round found the briefing BEFORE it and was paid on the previous week.
+  forgetRoundStarts();
   // Measured up to the briefing, not up to the import: the race evening
   // itself does not count towards what the round is worth.
   const race = await prisma
@@ -1056,6 +1060,9 @@ export async function activityForDay(prisma, day) {
 // neither does a sprint half, since a sprint weekend has one briefing, the main
 // race's. With no primary series marked, every series' rounds count.
 let roundStarts = { at: 0, byDay: new Map(), briefings: [] };
+export function forgetRoundStarts() {
+  roundStarts = { at: 0, byDay: new Map(), briefings: [] };
+}
 async function loadRoundStarts(prisma) {
   if (Date.now() - roundStarts.at > 5 * 60 * 1000) {
     const rows = await prisma
@@ -2005,4 +2012,171 @@ export async function adminOverview(prisma) {
     invitedCount: accounts.filter((x) => x.referredBy === a.discordId).length,
     createdAt: a.createdAt,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Once: the start times the results import threw away, and what they cost.
+//
+// Until the import kept it (routes/admin.js, /races/commit), saving a round's
+// results overwrote its start with the bare day from the results file, so a
+// round set for 19:30 sat at the 19:00 fallback from the moment it was
+// imported. That moved its briefing after the fact, which did two things:
+//
+//   * the round was stamped at the PREVIOUS week's multiplier: the briefing
+//     times were held from before the save, the new 19:00 found the briefing
+//     before it, and the window that closed a week earlier was measured;
+//   * the new week opened at the import instead of the briefing: the activity
+//     kept at 19:30 was no longer the one looked up, a fresh cut was taken at
+//     19:00 when the bot next reported, and everything up to the import (the
+//     whole race evening in voice) dropped out of the next multiplier.
+//
+// So, once: every imported round of a running season that lost its time gets
+// its league time back, the time the season's other rounds are set for (19:30
+// on a Friday, 19:00 on a Sunday). With that the cuts taken at the real
+// briefing apply again and the race evenings are back in the weeks they belong
+// to. Then every round since the counting started is measured again, and where
+// the multiplier it should have had is HIGHER than the one stamped, the stamp
+// goes up and the difference is paid, for the finish and for a clean-race
+// bonus already paid. Nothing is taken back where it came out lower: what a
+// round paid stands, the same rule as a lowered price.
+// ---------------------------------------------------------------------------
+const RACE_TIMES_MARKER = "token_race_times_repaired_v1";
+const DAY_MS = 24 * 3600 * 1000;
+
+const berlinClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const clockOf = (ms) => berlinClock.format(new Date(ms));
+
+// The instant a day's "HH:MM" German time falls on, summer or winter.
+export function atLeagueClock(dayStartUtcMs, clock) {
+  const [h, m] = String(clock).split(":").map(Number);
+  for (const offset of [2, 1]) {
+    const t = dayStartUtcMs + ((h - offset) * 60 + m) * 60 * 1000;
+    if (clockOf(t) === clock) return t;
+  }
+  return null;
+}
+
+// The time a season's rounds are set for: the most common German clock time
+// among its rounds that still have one. A sprint keeps its own and counts too.
+function seasonClock(rows) {
+  const seen = new Map();
+  for (const r of rows) {
+    const ms = Number(r.date);
+    if (!Number.isFinite(ms) || ms % DAY_MS === 0) continue;
+    const c = clockOf(ms);
+    seen.set(c, (seen.get(c) || 0) + 1);
+  }
+  let best = null;
+  for (const [c, n] of seen) if (!best || n > best[1]) best = [c, n];
+  return best ? best[0] : null;
+}
+
+export async function repairImportedRaceTimesOnce(prisma) {
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: RACE_TIMES_MARKER } });
+    if (done) return null;
+
+    // 1. The start times back.
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT r."id", r."seasonId", r."date", r."isCompleted", r."parentRaceId", r."isSpecialEvent"
+         FROM "Race" r JOIN "Season" s ON s."id" = r."seasonId"
+        WHERE s."isActive" = 1 AND r."date" IS NOT NULL`
+    );
+    const bySeason = new Map();
+    for (const r of rows) bySeason.set(r.seasonId, [...(bySeason.get(r.seasonId) || []), r]);
+    const restored = [];
+    for (const list of bySeason.values()) {
+      const clock = seasonClock(list);
+      if (!clock) continue;
+      for (const r of list) {
+        const ms = Number(r.date);
+        if (ms % DAY_MS !== 0 || !Number(r.isCompleted) || r.parentRaceId || Number(r.isSpecialEvent)) continue;
+        const at = atLeagueClock(ms, clock);
+        if (at == null) continue;
+        await prisma.race.update({ where: { id: r.id }, data: { date: new Date(at) } });
+        restored.push(r.id);
+      }
+    }
+    forgetRoundStarts();
+
+    // 2. Every paid round measured again, raised where it came out short.
+    const from = startOfStartDay();
+    const now = Date.now();
+    const races = await prisma.$queryRawUnsafe(
+      `SELECT ra."id" AS "raceId", ra."track" AS "track", ra."date" AS "date", se."slug" AS "series"
+         FROM "Race" ra
+         LEFT JOIN "Season" s ON s."id" = ra."seasonId"
+         LEFT JOIN "Series" se ON se."id" = s."seriesId"
+        WHERE ra."isCompleted" = 1 AND ra."parentRaceId" IS NULL AND ra."date" IS NOT NULL
+          ${from == null ? "" : `AND ra."date" >= ?`}`,
+      ...(from == null ? [] : [from])
+    );
+    let raised = 0;
+    let tokens = 0;
+    for (const race of races) {
+      const start = raceKickoff(new Date(Number(race.date)))?.getTime();
+      if (!start || start > now) continue;
+      const stamps = await prisma.$queryRawUnsafe(
+        `SELECT "driverId","rate" FROM "TokenRaceRate" WHERE "raceId" = ?`,
+        race.raceId
+      );
+      if (!stamps.length) continue;
+      const accounts = await discordForDrivers(prisma, stamps.map((s) => s.driverId));
+      for (const s of stamps) {
+        const discordId = accounts.get(s.driverId);
+        if (!discordId) continue;
+        const was = Number(s.rate) || 1;
+        const right = (await multiplierFor(prisma, discordId, start)).total;
+        if (!(right > was + 0.001)) continue;
+        await prisma.$executeRawUnsafe(
+          `UPDATE "TokenRaceRate" SET "rate" = ? WHERE "raceId" = ? AND "driverId" = ?`,
+          right,
+          race.raceId,
+          s.driverId
+        );
+        raised++;
+        const r = { raceId: race.raceId, driverId: s.driverId };
+        for (const [rule, kind, fix] of [
+          ["race_finish", "race", "race-fix"],
+          ["clean_race", "clean", "clean-fix"],
+        ]) {
+          const paid = await prisma.$queryRawUnsafe(
+            `SELECT "delta" FROM "TokenLedger" WHERE "discordId" = ? AND "refKey" = ?`,
+            discordId,
+            raceKey(kind, r)
+          );
+          if (!paid.length) continue; // not paid yet: it will be, at the new stamp
+          const due = withMultiplier(tunedPoints(rule, race.series, race.date), right) - Number(paid[0].delta || 0);
+          if (due <= 0) continue;
+          const wrote = await dbAward(prisma, {
+            discordId,
+            delta: due,
+            rule,
+            title: "Multiplier correction",
+            detail: race.track || null,
+            refKey: raceKey(fix, r),
+          });
+          if (wrote) tokens += due;
+        }
+      }
+    }
+
+    await prisma.setting.upsert({
+      where: { key: RACE_TIMES_MARKER },
+      update: {},
+      create: { key: RACE_TIMES_MARKER, value: new Date().toISOString() },
+    });
+    console.log(
+      `[tokens] race times repaired: ${restored.length} start times back, ${raised} multipliers raised, ${tokens} tokens paid`
+    );
+    return { restored: restored.length, raised, tokens };
+  } catch (e) {
+    console.warn(`[tokens] repairing the race times failed, will retry on the next start: ${e.message}`);
+    return null;
+  }
 }

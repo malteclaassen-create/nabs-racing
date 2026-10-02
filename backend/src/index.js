@@ -68,6 +68,7 @@ import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
 import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
 import { moveLentServerLapsOnce } from "./lib/practiceTokens.js";
+import { repairImportedRaceTimesOnce } from "./lib/tokens.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
@@ -92,6 +93,10 @@ ensureAppSchema(prisma)
   // Once: the week Server 2 was lent to the Friday league, its laps join the
   // Friday server's week (lib/practiceTokens.js, flag-guarded).
   .then(() => moveLentServerLapsOnce(prisma))
+  // Once: imported rounds get their 19:30 back, and a multiplier that was
+  // stamped too low because of it is raised and the difference paid
+  // (lib/tokens.js, flag-guarded).
+  .then(() => repairImportedRaceTimesOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   .catch((e) => console.error("schema upkeep:", e));

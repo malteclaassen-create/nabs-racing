@@ -26,6 +26,7 @@ import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
+import { leagueDay } from "../lib/tokenRules.js";
 import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
@@ -698,9 +699,16 @@ router.post("/races/commit", async (req, res, next) => {
       await seedRaceCountry(prisma, race.id, race.track);
     } else if (!isSprint) {
       const renamed = track && track !== race.track;
+      // The results file only knows the DAY. A round that already has its start
+      // time on that day keeps it: overwriting it with a bare date put every
+      // imported round at the 19:00 fallback instead of the 19:30 the league
+      // set, which moved its briefing after the fact and with it the NABS
+      // Tokens multiplier's window (lib/tokens.js).
+      const keepTime =
+        race.date && /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) && leagueDay(new Date(race.date).getTime()) === date;
       race = await prisma.race.update({
         where: { id: race.id },
-        data: { track: track || race.track, date: date ? new Date(date) : race.date },
+        data: { track: track || race.track, date: date && !keepTime ? new Date(date) : race.date },
       });
       if (renamed) await seedRaceCountry(prisma, race.id, race.track);
     }
