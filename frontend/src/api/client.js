@@ -989,8 +989,10 @@ export const api = {
     request(`/admin/drivers/${id}/transfer`, { method: "POST", body: { teamId, fromRound, preview }, auth: true }),
   driverTransfers: (id) => request(`/admin/drivers/${id}/transfers`, { auth: true }),
   // Fold a duplicate row of the same driver into `keepId` (preview = dry run).
-  mergeDrivers: (keepId, dropId, preview = false) =>
-    request(`/admin/drivers/${keepId}/merge`, { method: "POST", body: { dropId, preview }, auth: true }),
+  // mainAccountId: the rows sit on two Discord accounts, join them as well
+  // with this one as the main account.
+  mergeDrivers: (keepId, dropId, preview = false, mainAccountId = null) =>
+    request(`/admin/drivers/${keepId}/merge`, { method: "POST", body: { dropId, preview, mainAccountId }, auth: true }),
   removeDriverTransfer: (id, changeId, preview = false) =>
     request(`/admin/drivers/${id}/transfers/${changeId}${preview ? "?preview=1" : ""}`, { method: "DELETE", auth: true }),
   // Remove one driver row from its season. Without force the backend answers
@@ -1275,6 +1277,11 @@ export const api = {
   linkMember: (discordId, driverId) =>
     request(`/admin/members/${discordId}/link`, { method: "POST", body: { driverId }, auth: true }),
   unlinkMember: (discordId) => request(`/admin/members/${discordId}/unlink`, { method: "POST", auth: true }),
+  // One driver, two Discord accounts: `discordId` signs in as `mainId` from now on.
+  setSecondAccount: (discordId, mainId) =>
+    request(`/admin/members/${discordId}/second-account`, { method: "POST", body: { mainId }, auth: true }),
+  clearSecondAccount: (discordId) =>
+    request(`/admin/members/${discordId}/second-account`, { method: "DELETE", auth: true }),
   setMemberAdmin: (discordId, isAdmin) =>
     request(`/admin/members/${discordId}/admin`, { method: "POST", body: { isAdmin }, auth: true }),
   // Reads every incident report, and nothing else.

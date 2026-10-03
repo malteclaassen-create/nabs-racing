@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
-import { isBanned } from "../lib/members.js";
+import { isBanned, mainAccountId } from "../lib/members.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
@@ -56,14 +56,40 @@ export async function optionalUser(req, res, next) {
   if (token) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      if (payload.role === "user" && !(await isBanned(prisma, payload.discordId))) {
-        req.user = payload;
+      if (payload.role === "user") {
+        const member = await memberSession(payload);
+        if (!member.banned) req.user = member.user;
       }
     } catch {
       /* ignore invalid token */
     }
   }
   next();
+}
+
+// The Discord account that actually signed in. A token issued through a
+// second account carries the main account as `discordId` and the account
+// itself as `loginDiscordId` (routes/discordAuth.js); older tokens only the
+// one id.
+export function loginDiscordId(payload) {
+  return payload?.loginDiscordId || payload?.discordId || null;
+}
+
+// Who a member token acts as, decided per request: a second account acts as
+// its main account (lib/accountLinks.js), so a link set or undone by an admin
+// takes hold on the next request, with no new login needed. Banned when
+// either account is. Admin rights are NOT looked up through this: those stay
+// on the login account (resolveAdminContext / requireAdmin below).
+export async function memberSession(payload) {
+  const login = loginDiscordId(payload);
+  if (!login) return { banned: false, user: payload };
+  const main = await mainAccountId(prisma, login);
+  const banned =
+    (await isBanned(prisma, login)) || (main !== String(login) && (await isBanned(prisma, main)));
+  const user = { ...payload, discordId: main };
+  if (main !== String(login)) user.loginDiscordId = String(login);
+  else delete user.loginDiscordId;
+  return { banned, user };
 }
 
 // Express middleware: requires a logged-in (Discord) member. Blocks otherwise.
@@ -80,14 +106,17 @@ export async function requireUser(req, res, next) {
   } catch {
     return res.status(401).json({ error: "Invalid or expired session" });
   }
+  let user = payload;
   try {
-    if (await isBanned(prisma, payload.discordId)) {
+    const member = await memberSession(payload);
+    if (member.banned) {
       return res.status(403).json({ error: "This account has been suspended by the league admins." });
     }
+    user = member.user;
   } catch {
     /* ban check must never take the site down */
   }
-  req.user = payload;
+  req.user = user;
   next();
 }
 
@@ -198,12 +227,13 @@ export async function resolveAdminContext(req, res, next) {
       // The isAdmin flag was baked in at login. Re-check it live, exactly like
       // requireAdmin does, so revoking admin or banning an account takes hold
       // immediately instead of after the token's 30 days. Both lookups are
-      // cached, so this costs nothing on repeat requests.
-      const [banned, stillAdmin] = await Promise.all([
-        isBanned(prisma, p.discordId).catch(() => false),
-        isDiscordAdmin(prisma, p.discordId).catch(() => false),
+      // cached, so this costs nothing on repeat requests. Asked of the account
+      // that signed in: admin never travels along a second-account link.
+      const [member, stillAdmin] = await Promise.all([
+        memberSession(p).catch(() => ({ banned: false })),
+        isDiscordAdmin(prisma, loginDiscordId(p)).catch(() => false),
       ]);
-      req.isAdminRequest = !banned && stillAdmin;
+      req.isAdminRequest = !member.banned && stillAdmin;
     }
   } catch {
     /* invalid or expired token -> not an admin */
@@ -239,9 +269,12 @@ export async function requireAdmin(req, res, next) {
   }
   if (payload.role === "user" && payload.discordId) {
     try {
-      if (!(await isBanned(prisma, payload.discordId)) && (await isDiscordAdmin(prisma, payload.discordId))) {
+      // Admin is asked of the account that signed in, never of a main account
+      // reached through a second-account link (lib/accountLinks.js).
+      const member = await memberSession(payload);
+      if (!member.banned && (await isDiscordAdmin(prisma, loginDiscordId(payload)))) {
         req.admin = payload;
-        req.user = payload;
+        req.user = member.user;
         return next();
       }
     } catch {

@@ -33,6 +33,9 @@ export function shapeMember(r) {
     // to the table but forgotten here would silently never show up.
     steamId: r.steamId ?? null,
     steamVerifiedAt: r.steamVerifiedAt ?? null,
+    // Set when this is a person's second Discord account: the main account's
+    // id (lib/accountLinks.js).
+    mainDiscordId: r.mainDiscordId ?? null,
   };
 }
 
@@ -204,4 +207,51 @@ export async function getBannedSet(prisma) {
 export async function isBanned(prisma, discordId) {
   if (!discordId) return false;
   return (await getBannedSet(prisma)).has(discordId);
+}
+
+// --- second accounts, with the same kind of cache -----------------------------
+// Map<second account's Discord id, main account's Discord id>. Read on every
+// signed-in request (middleware/auth.js), so it is cached like the ban list and
+// dropped the moment an admin changes a link (lib/accountLinks.js).
+let altCache = { map: null, at: 0 };
+
+export function invalidateAltCache() {
+  altCache = { map: null, at: 0 };
+}
+
+export async function getAltMap(prisma) {
+  const now = Date.now();
+  if (!altCache.map || now - altCache.at > BAN_CACHE_MS) {
+    try {
+      const rows = await prisma.$queryRaw`
+        SELECT "discordId", "mainDiscordId" FROM "MemberAccount" WHERE "mainDiscordId" IS NOT NULL`;
+      altCache = { map: new Map(rows.map((r) => [String(r.discordId), String(r.mainDiscordId)])), at: now };
+    } catch {
+      // Column not there yet (boot before ensureAppSchema): nobody has one.
+      altCache = { map: new Map(), at: now };
+    }
+  }
+  return altCache.map;
+}
+
+// The account a login acts as: the main account for a second account, else
+// the account itself. Links are kept one level deep (accountLinks.js points a
+// main's own second accounts on when it becomes a second account itself), so
+// one step is the answer; the loop only guards against a hand-edited chain.
+export function mainOf(map, discordId) {
+  if (!discordId) return discordId;
+  let id = String(discordId);
+  const seen = new Set([id]);
+  while (map.has(id)) {
+    const next = map.get(id);
+    if (seen.has(next)) break;
+    seen.add(next);
+    id = next;
+  }
+  return id;
+}
+
+export async function mainAccountId(prisma, discordId) {
+  if (!discordId) return discordId;
+  return mainOf(await getAltMap(prisma), discordId);
 }

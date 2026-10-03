@@ -547,6 +547,11 @@ model MemberAccount {
   // member_steam_id for production.
   steamId         String?   @unique
   steamVerifiedAt DateTime?
+  // Second account of the same person: the MAIN account's Discord id, set by
+  // an admin (Members tab, or the merge on the Transfers tab). A login through
+  // this account acts as the main one. Raw-SQL column (lib/ensureSchema.js,
+  // lib/accountLinks.js).
+  mainDiscordId   String?
 }
 
 // In-site notifications behind the nav-bar bell. recipientId null = broadcast
