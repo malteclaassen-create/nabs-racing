@@ -9,8 +9,9 @@ import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFile
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
 import { anchorReports } from "../lib/reportAnchor.js";
+import { discordIdsForGuids, linkInGameReporters } from "../lib/reportReporter.js";
 import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow.js";
-import { liveRaceSecond } from "../services/liveTiming.js";
+import { liveRaceSecond, liveGuidForName } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { clockNote } from "../lib/reportClock.js";
 import { withSprintRounds, readParentIds } from "../lib/sprintRaces.js";
@@ -328,7 +329,15 @@ router.get("/", optionalUser, async (req, res, next) => {
     // Read once, then narrow. Roles are worked out for the whole table in three
     // queries (lib/reports.js), so knowing what is behind the window costs
     // nothing and the button can say how much is there.
-    const readable = await dbReportsFor(prisma, me.discordId, await dbListReports(prisma));
+    // In-game presses that came in without an account (a driver racing under a
+    // name the roster does not know) are linked first, or they would never be
+    // "yours" in this list.
+    const all = await dbListReports(prisma);
+    const loose = all.filter((r) => r.source === "INGAME" && !r.reporterDiscordId);
+    const linked = loose.length
+      ? await linkInGameReporters(prisma, all, await racesForReports(loose)).catch(() => all)
+      : all;
+    const readable = await dbReportsFor(prisma, me.discordId, linked);
     const races = await racesForReports(readable);
     const reports =
       String(req.query.all || "") === "1"
@@ -585,6 +594,13 @@ router.post("/ingest", async (req, res, next) => {
       .map((c) => drivers.find((d) => norm(d.name) === norm(c) || norm(d.discordName) === norm(c)))
       .find(Boolean);
     const discordIds = hit ? await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map()) : new Map();
+    let reporterDiscordId = hit ? discordIds.get(hit.id) || null : null;
+    // No roster name matched: ask the live server whose car carries that name.
+    // The Steam GUID it answers with is on the roster even when the name is not.
+    if (!reporterDiscordId) {
+      const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
+      if (guid) reporterDiscordId = (await discordIdsForGuids(prisma, [guid]).catch(() => new Map())).get(guid) || null;
+    }
 
     // The round it belongs to: whatever race is currently live, or the most
     // recent one. Without this an in-game report lands under "no round given"
@@ -646,7 +662,7 @@ router.post("/ingest", async (req, res, next) => {
 
     const report = await dbCreateReport(prisma, {
       body,
-      reporterDiscordId: hit ? discordIds.get(hit.id) || null : null,
+      reporterDiscordId,
       reporterName: rawName,
       raceId,
       source: "INGAME",

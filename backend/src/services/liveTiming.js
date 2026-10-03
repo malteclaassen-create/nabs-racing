@@ -2089,11 +2089,26 @@ function createRelay(server) {
     return second >= 0 && second <= MAX_SESSION_S ? second : null;
   }
 
+  // The Steam GUIDs on this server racing under `name` right now. The in-game
+  // report button only knows the name the driver typed into Content Manager,
+  // which is often nothing like the one on the roster ("Urmaggedon" for urma),
+  // while the server knows exactly whose car that is.
+  function guidsForName(name) {
+    const want = normName(name);
+    if (!want || !lastSnapshotAt || Date.now() - lastSnapshotAt > STALE_MS) return [];
+    const out = [];
+    for (const [guid, d] of Object.entries(status?.ConnectedDrivers?.Drivers || {})) {
+      if (normName(d?.CarInfo?.DriverName) === want) out.push(guid);
+    }
+    return out;
+  }
+
   return {
     key: server.key,
     connect: connectUpstream,
     getBoard,
     raceSecond,
+    guidsForName,
     getTrackMapPng: () => trackMap?.png || null,
     // Size of every per-relay structure that can grow, for the memory
     // diagnostics. Counts only — the point is spotting the one that climbs.
@@ -2189,6 +2204,19 @@ export function liveRaceSecond(serverKey) {
   if (preferred != null) return preferred;
   const running = [...relays.values()].map((r) => r.raceSecond()).filter((s) => s != null);
   return running.length === 1 ? running[0] : null;
+}
+
+// Whose car is called `name` on a live server, as a Steam GUID, or null when no
+// server has it or two different people share it. Every server is asked: the
+// report does not say which one it came from.
+export function liveGuidForName(name) {
+  const found = new Set();
+  for (const relay of relays.values()) for (const g of relay.guidsForName(name)) found.add(g);
+  return found.size === 1 ? [...found][0] : null;
+}
+
+function normName(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 // Live-timing internals for the memory diagnostics (services/memoryDiagnostics

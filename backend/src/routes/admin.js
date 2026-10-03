@@ -132,6 +132,7 @@ import { writeHiddenRace } from "../lib/attendanceHidden.js";
 import { gridSizeFor, setGridSize, parseGridSize } from "../lib/gridSize.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
+import { linkInGameReporters } from "../lib/reportReporter.js";
 import { withContactSuggestions, withAccusedSuggestions } from "../lib/reportSuggest.js";
 import { collapseByPerson, personKey, byNewestAnswer } from "../lib/onePerPerson.js";
 import { stillToAnswer, isReserveRow, reachableDiscordIds } from "../lib/stillToAnswer.js";
@@ -7272,8 +7273,11 @@ router.put("/android-app", async (req, res, next) => {
 // the report then carries the moment exactly; most do not, and write "lap 32,
 // he hit me in the esses" instead. The file can still be asked, because the
 // report says a lap and usually a name.
-async function stewardView(reports, races) {
-  const guids = await reporterGuids(prisma, reports, races).catch(() => new Map());
+async function stewardView(rows, races) {
+  const guids = await reporterGuids(prisma, rows, races).catch(() => new Map());
+  // The same map also names the driver behind an in-game press that came in
+  // without an account, so the thread reaches them and it lands in their list.
+  const reports = await linkInGameReporters(prisma, rows, races, guids).catch(() => rows);
   // `withOther` only here: the matched contact's other car is what the desk
   // offers as "who this was probably about", and the member API deliberately
   // never carries it (lib/reportAnchor.js).
