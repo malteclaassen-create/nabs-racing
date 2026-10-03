@@ -2,6 +2,7 @@ import {useEffect, useId, useMemo, useRef, useState} from 'react';
 import FormulaCar, {FORMULA_CAR_HALF} from './FormulaCar.jsx';
 import {recordedPose} from '../utils/telemetryGeometry.js';
 import {maskFromPixels, trackPathFromMask} from '../utils/trackMask.js';
+import {fitRoad} from '../utils/roadFit.js';
 
 const METRES = [1,2,5,10,20,50,100,200,500,1000,2000];
 const path = (x,y,from=0,to=x.length-1) => x.slice(from,to+1).map((v,i)=>`${v},${y[from+i]}`).join(' ');
@@ -30,17 +31,36 @@ const roadEdges=(road)=>road?[road.track?.left,road.track?.right,road.pit?.left,
 // wherever a circuit crosses itself (Suzuka), while quads with a consistent
 // turn always union under the default nonzero rule. Their seams are hidden by
 // stroking the quads in the fill colour; the edges are drawn on top.
-function roadPaths(edge,projX,projY){
+//
+// `keep` (one flag per point) leaves out a stretch of road no lap drove on;
+// `show` ({left, right}, one flag per point) leaves out the stretches of edge
+// that lie on tarmac, where a patch from utils/roadFit.js meets the road.
+function roadPaths(edge,projX,projY,keep=null,show=edge.show){
   const P=(pt)=>`${projX(pt[0]*10).toFixed(1)} ${projY(pt[1]*10).toFixed(1)}`;
   const {left,right,closed}=edge;
   const n=Math.min(left.length,right.length);
   const quads=[];
   for(let i=0;i<(closed?n:n-1);i++){
     const j=(i+1)%n;
+    if(keep&&!(keep[i]&&keep[j])) continue;
     quads.push(`M${P(left[i])}L${P(left[j])}L${P(right[j])}L${P(right[i])}Z`);
   }
-  const line=(pts)=>`M${pts.slice(0,n).map(P).join('L')}${closed?'Z':''}`;
-  return {fill:quads.join(''),edges:`${line(left)}${line(right)}`};
+  const line=(pts,flags)=>{
+    const shown=(i)=>(!keep||keep[i])&&(!flags||flags[i]);
+    if(Array.from({length:n},(_,i)=>i).every(shown)) return `M${pts.slice(0,n).map(P).join('L')}${closed?'Z':''}`;
+    // Visible runs only, each its own subpath; on a loop, begun just after a
+    // hidden point so a run across the start is not cut in two.
+    let start=0;
+    if(closed){ for(let i=0;i<n;i++) if(!shown(i)){start=(i+1)%n;break;} }
+    let d='', open=false;
+    for(let s=0;s<n;s++){
+      const i=(start+s)%n;
+      if(!shown(i)){open=false;continue;}
+      d+=`${open?'L':'M'}${P(pts[i])}`; open=true;
+    }
+    return d;
+  };
+  return {fill:quads.join(''),edges:`${line(left,show?.left)}${line(right,show?.right)}`};
 }
 
 export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,onPick,onReset,mode='gain',zoom=1,track,colorA,colorB,sections=[],sectors=[],activeSection=null,onSection,markers,focusRange=null,exportRef=null}) {
@@ -63,7 +83,16 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
   // AI line drawn as one fat stroke, so it only ever says roughly where the
   // circuit runs, not where its edges are.
   const [shape,setShape]=useState(null); // {href,d,w,h}
-  const hasRoad=!!track?.road?.track;
+  // The road checked against the laps (utils/roadFit.js): patched where the
+  // AI line is from another version of the circuit, dropped when it is not
+  // this circuit at all.
+  const fit=useMemo(()=>{
+    const lane=track?.road?.track;
+    if(!lane||!lapA?.x||!lapA?.z) return null;
+    const metres=(lap)=>lap?.x&&lap?.z?lap.x.slice(0,n).map((v,i)=>[v/10,lap.z[i]/10]):null;
+    return fitRoad(lane,metres(lapA),[metres(lapB)].filter(Boolean));
+  },[track,lapA,lapB,n]);
+  const hasRoad=!!track?.road?.track&&!fit?.useless;
   useEffect(()=>{
     const href=track?.href;
     if(!href||hasRoad){setShape(null);return undefined;}
@@ -105,7 +134,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       const xs=lapA.x.map(v=>v/10), ys=lapA.z.map(v=>v/10);
       // The road reaches a few metres past the line on both sides; it has to
       // fit the frame too.
-      for(const edge of roadEdges(track?.road)) for(const [x,y] of edge){xs.push(x); ys.push(y);}
+      for(const edge of fit?.useless?[]:roadEdges(track?.road)) for(const [x,y] of edge){xs.push(x); ys.push(y);}
       const minX=Math.min(...xs), minY=Math.min(...ys);
       const spanX=Math.max(1,Math.max(...xs)-minX), spanY=Math.max(1,Math.max(...ys)-minY);
       // The margin has to hold the section numbers, which sit ~26 screen
@@ -125,12 +154,13 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
     // The tarmac, from the track's AI line: the real edges in the same world
     // metres the laps are in, so no calibration sits between line and road.
-    const road=track?.road?.track?{
-      lane:roadPaths(track.road.track,projX,projY),
+    const road=track?.road?.track&&!fit?.useless?{
+      lane:roadPaths(track.road.track,projX,projY,fit?.keep,fit?.show),
+      patches:(fit?.patches||[]).map(p=>roadPaths(p,projX,projY)),
       pit:track.road.pit?roadPaths(track.road.pit,projX,projY):null,
     }:null;
     return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor&&!road?track.href:null,imageBox,road};
-  },[lapA,lapB,n,track,size]);
+  },[lapA,lapB,n,track,size,fit]);
 
   const segments=useMemo(()=>{
     if(!geo) return [];
@@ -256,8 +286,8 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
             <path d={geo.road.pit.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
             <path d={geo.road.pit.edges} fill="none" stroke={EDGE} strokeOpacity={0.5} strokeWidth={1} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
           </g>}
-          <path d={geo.road.lane.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-          <path d={geo.road.lane.edges} fill="none" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+          {[geo.road.lane,...geo.road.patches].map((r,i)=><path key={i} d={r.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
+          {[geo.road.lane,...geo.road.patches].map((r,i)=><path key={i} d={r.edges} fill="none" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
         </g>}
         {traced&&(()=>{const sx=geo.imageBox.w/traced.w, sy=geo.imageBox.h/traced.h; return <g transform={`translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
           <path d={traced.d} fill={ASPHALT} fillRule="evenodd" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
