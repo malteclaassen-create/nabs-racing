@@ -42,6 +42,16 @@ import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
 import { discordIdsForDrivers, getPersonGroups } from "./persons.js";
 import { isSteward } from "./stewards.js";
+import { getAltMap, mainOf } from "./members.js";
+
+// The account a report's filer acts as now. Someone signing in through a second
+// Discord account is the main account to the site (lib/accountLinks.js), so a
+// report filed from either one belongs to the main one.
+async function reporterAccount(prisma, report) {
+  if (!report?.reporterDiscordId) return null;
+  const map = await getAltMap(prisma).catch(() => new Map());
+  return mainOf(map, String(report.reporterDiscordId));
+}
 
 // Where a report has got to. NEW is where everything starts; the last three are
 // endings, and only an admin can set them.
@@ -130,7 +140,10 @@ export async function accusedDiscordId(prisma, report) {
 // once rather than leaving them listed on old ones.
 export async function readersOf(prisma, report) {
   const out = new Set();
-  if (report.reporterDiscordId) out.add(String(report.reporterDiscordId));
+  if (report.reporterDiscordId) {
+    out.add(String(report.reporterDiscordId));
+    out.add(await reporterAccount(prisma, report));
+  }
   const accused = await accusedDiscordId(prisma, report);
   if (accused) out.add(String(accused));
   const extra = await prisma
@@ -173,7 +186,7 @@ export async function roleOn(prisma, report, discordId) {
   // No role at all, which is what takes the thread out of their list rather
   // than leaving it there as a door that refuses to open.
   if ((await blockedOn(prisma, report.id)).has(me)) return null;
-  if (String(report.reporterDiscordId || "") === me) return "REPORTER";
+  if (String(report.reporterDiscordId || "") === me || (await reporterAccount(prisma, report)) === me) return "REPORTER";
   const accused = await accusedDiscordId(prisma, report);
   if (accused && String(accused) === me) return "ACCUSED";
   const extra = await prisma
@@ -230,10 +243,13 @@ export async function dbRolesFor(prisma, reports, discordId) {
     .$queryRawUnsafe(`SELECT "reportId" FROM "ReportBlock" WHERE "discordId" = ?`, me)
     .catch(() => []);
   const blocked = new Set(blockedRows.map((b) => String(b.reportId)));
+  // Reports filed from a second account belong to the main one (reporterAccount).
+  const altMap = await getAltMap(prisma).catch(() => new Map());
+  const filedBy = (r) => (r.reporterDiscordId ? mainOf(altMap, String(r.reporterDiscordId)) : "");
 
   for (const r of reports) {
     if (blocked.has(String(r.id))) continue;
-    if (String(r.reporterDiscordId || "") === me) out.set(r.id, "REPORTER");
+    if (String(r.reporterDiscordId || "") === me || filedBy(r) === me) out.set(r.id, "REPORTER");
     else if (r.accusedDriverId && String(accused.get(r.accusedDriverId) || "") === me) out.set(r.id, "ACCUSED");
     else if (viewer.has(String(r.id))) out.set(r.id, "VIEWER");
     else if (steward) out.set(r.id, "STEWARD");

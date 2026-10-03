@@ -15,13 +15,16 @@ vi.mock("./persons.js", () => ({
 }));
 
 const { discordIdsForGuids, linkInGameReporters } = await import("./reportReporter.js");
+const { invalidateAltCache } = await import("./members.js");
 
 const RACE = { id: "race1", number: 9, season: { id: "s8", number: 8 } };
 
 let driverRows = []; // { id, steamId }
 let accountRows = []; // { discordId, steamId }
 let updates = [];
+let altRows = []; // { discordId, mainDiscordId }
 const prisma = {
+  $queryRaw: async () => altRows,
   driver: { findMany: async () => [] },
   $queryRawUnsafe: async (sql) => {
     if (sql.includes('FROM "Driver"')) return driverRows;
@@ -49,6 +52,8 @@ beforeEach(() => {
   driverRows = [];
   accountRows = [];
   updates = [];
+  altRows = [];
+  invalidateAltCache();
 });
 
 describe("in-game reports reach the driver who pressed the button", () => {
@@ -107,5 +112,18 @@ describe("Steam id to Discord account", () => {
       ["a_s8", "D_NEW"],
     ]);
     expect((await discordIdsForGuids(prisma, ["G"])).has("G")).toBe(false);
+  });
+
+  it("treats a second account as its main one", async () => {
+    driverRows = [
+      { id: "a_s7", steamId: "G" },
+      { id: "a_s8", steamId: "G" },
+    ];
+    driverDiscord = new Map([
+      ["a_s7", "D_OLD"],
+      ["a_s8", "D_NEW"],
+    ]);
+    altRows = [{ discordId: "D_NEW", mainDiscordId: "D_OLD" }];
+    expect((await discordIdsForGuids(prisma, ["G"])).get("G")).toBe("D_OLD");
   });
 });

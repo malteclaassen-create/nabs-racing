@@ -18,6 +18,7 @@
 
 import { discordIdsForDrivers } from "./persons.js";
 import { reporterGuids } from "./reportAnchor.js";
+import { getAltMap, mainOf } from "./members.js";
 
 // GUID -> Discord id, for the GUIDs that lead to exactly one account. The
 // roster is asked first (the league's own record of who raced under that
@@ -50,8 +51,12 @@ export async function discordIdsForGuids(prisma, guids) {
     .catch(() => []);
   for (const a of accounts) if (a.discordId) fromLogin.get(String(a.steamId))?.add(String(a.discordId));
 
+  // A second account counts as its main one (lib/accountLinks.js): the same
+  // person on two accounts is one answer, not two.
+  const altMap = await getAltMap(prisma).catch(() => new Map());
   for (const guid of ids) {
-    const set = fromRoster.get(guid).size ? fromRoster.get(guid) : fromLogin.get(guid);
+    const raw = fromRoster.get(guid).size ? fromRoster.get(guid) : fromLogin.get(guid);
+    const set = new Set([...raw].map((id) => mainOf(altMap, id)));
     if (set.size === 1) out.set(guid, [...set][0]);
   }
   return out;
