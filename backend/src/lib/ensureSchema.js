@@ -441,6 +441,11 @@ export async function ensureAppSchema(prisma) {
   // One id, not a list: the recap is only ever offered for the newest round,
   // so "seen the newest one" is the whole state. See lib/raceRecap.js.
   await addColumn(prisma, "MemberAccount", "recapSeenRaceId", "TEXT");
+  // Second account: the Discord id of this person's MAIN account, set by an
+  // admin when one driver logs in with two Discord accounts. A login through
+  // this account then acts as the main one (lib/accountLinks.js). Null for an
+  // ordinary account.
+  await addColumn(prisma, "MemberAccount", "mainDiscordId", "TEXT");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );

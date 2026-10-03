@@ -17,7 +17,9 @@ import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 // identities get managed:
 //   * see who logged in but is NOT linked to any driver (and link them by hand),
 //   * see which roster drivers never logged in at all,
-//   * ban an account (no more logins, running sessions stop working).
+//   * ban an account (no more logins, running sessions stop working),
+//   * join a driver's two Discord accounts: the second one signs in as the
+//     main one (backend lib/accountLinks.js).
 const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
 // The admin navigation puts the "logins with no driver" count on the Members
@@ -50,7 +52,8 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // Whether StatusPills has anything to say. A linked, unbanned, ordinary member
 // has none of them, and the row must not keep an empty line's worth of margin
 // for the pills that aren't there.
-const hasPills = (m) => !!(m.isAdmin || m.isSteward || m.isRaceControl || m.banned || !m.driver || !m.driver.isActiveSeason);
+const hasPills = (m) =>
+  !!(m.isAdmin || m.isSteward || m.isRaceControl || m.banned || m.mainDiscordId || m.seconds?.length || !m.driver || !m.driver.isActiveSeason);
 
 // The chips over "All login accounts". Each is one of the questions this list
 // gets asked ("who is banned?", "who are the stewards?"), answered from what
@@ -100,6 +103,22 @@ function StatusPills({ m }) {
           race control
         </span>
       )}
+      {m.mainDiscordId && (
+        <span
+          className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-600"
+          title="Signs in as its main account: same driver, sign-ups and tokens. The admin area stays with the account it was given to."
+        >
+          second account of {m.mainName || m.mainDiscordId}
+        </span>
+      )}
+      {m.seconds?.length > 0 && (
+        <span
+          className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-600"
+          title="These Discord accounts sign in as this one."
+        >
+          also signs in as {m.seconds.join(", ")}
+        </span>
+      )}
       {m.banned && (
         <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-bad" title={m.banReason || undefined}>
           banned{m.banReason ? ` · ${m.banReason}` : ""}
@@ -130,6 +149,9 @@ export default function AdminMembers() {
   const [busy, setBusy] = useState(null); // discordId of the row being changed
   const [msg, setMsg] = useState(null);
   const [linkChoice, setLinkChoice] = useState({}); // discordId -> driverId
+  // "Same person as…": which account's picker is open, and what it picked.
+  const [pairing, setPairing] = useState(null); // discordId | null
+  const [pairChoice, setPairChoice] = useState("");
   // "Create new driver" inline form: which account it's open for + its fields.
   const [creating, setCreating] = useState(null); // discordId | null
   const [createForm, setCreateForm] = useState({ name: "", teamId: "" });
@@ -141,12 +163,25 @@ export default function AdminMembers() {
 
   if (error) return <ErrorBox message={error} />;
 
-  const members = data?.members || [];
+  // Each main account learns which second accounts sign in as it.
+  const secondsByMain = new Map();
+  for (const m of data?.members || []) {
+    if (!m.mainDiscordId) continue;
+    if (!secondsByMain.has(m.mainDiscordId)) secondsByMain.set(m.mainDiscordId, []);
+    secondsByMain.get(m.mainDiscordId).push(m.displayName || m.username);
+  }
+  const members = (data?.members || []).map((m) => ({ ...m, seconds: secondsByMain.get(m.discordId) || [] }));
+  // Accounts another one can be joined to as its second account: ordinary
+  // accounts (a second account's own main is the one to pick).
+  const mainCandidates = members
+    .filter((m) => !m.mainDiscordId)
+    .sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username));
   const unclaimed = data?.unclaimed || [];
   // Accounts with a pending "I want to race" hand-raise float to the top —
-  // that's the most actionable item in the whole tab.
+  // that's the most actionable item in the whole tab. A second account has
+  // nothing waiting: it drives as its main account.
   const unlinked = members
-    .filter((m) => !m.driver)
+    .filter((m) => !m.driver && !m.mainDiscordId)
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   const requests = unlinked.filter((m) => m.raceRequestAt).length;
   const q = query.trim().toLowerCase();
@@ -246,6 +281,78 @@ export default function AdminMembers() {
     });
     if (!ok) return;
     act(m.discordId, () => api.unlinkMember(m.discordId));
+  }
+
+  function openPairing(m) {
+    setPairing(pairing === m.discordId ? null : m.discordId);
+    setPairChoice("");
+  }
+
+  // One driver, two Discord accounts: `m` becomes a second account of the
+  // picked one and signs in as it from now on.
+  async function pair(m, mainId) {
+    const main = members.find((x) => x.discordId === mainId);
+    if (!main) return;
+    const name = m.displayName || m.username;
+    const mainName = main.displayName || main.username;
+    const ok = await ask({
+      title: `Make "${name}" a second account of "${mainName}"?`,
+      body:
+        `Logging in as ${name} then counts as ${mainName}: same driver, same attendance sign-ups, driver market, tokens and notifications. ` +
+        (m.driver && !m.mainDiscordId
+          ? `${name}'s driver entry (${m.driver.name}) ${main.driver ? `is joined to ${mainName}'s as one person` : `moves to ${mainName}`}. `
+          : "") +
+        `Admin access is not shared. ${name}'s own token balance stays on that account. You can undo this here.`,
+      confirmLabel: "Join accounts",
+    });
+    if (!ok) return;
+    act(m.discordId, async () => {
+      await api.setSecondAccount(m.discordId, mainId);
+      setPairing(null);
+      setMsg({ ok: true, text: `${name} now signs in as ${mainName}.` });
+    });
+  }
+
+  async function unpair(m) {
+    const name = m.displayName || m.username;
+    const ok = await ask({
+      title: `Make "${name}" its own account again?`,
+      body: `It stops signing in as ${m.mainName || "its main account"} and has no driver of its own. Link it to a driver afterwards if it should have one.`,
+      danger: true,
+      confirmLabel: "Make independent",
+    });
+    if (!ok) return;
+    act(m.discordId, () => api.clearSecondAccount(m.discordId));
+  }
+
+  // The inline "Same person as…" picker under a row.
+  function pairingPanel(m) {
+    if (pairing !== m.discordId) return null;
+    const options = mainCandidates.filter((x) => x.discordId !== m.discordId);
+    return (
+      <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-surface2/60 p-3">
+        <div className="min-w-[14rem] flex-1">
+          <Field label="Main account (this one will sign in as it)">
+            <select className="input w-full py-1.5 text-sm" value={pairChoice} onChange={(e) => setPairChoice(e.target.value)}>
+              <option value="">Pick the main account…</option>
+              {options.map((x) => (
+                <option key={x.discordId} value={x.discordId}>
+                  {x.displayName || x.username} (@{x.username}){x.driver ? ` · ${x.driver.name}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <span className="flex items-center gap-2">
+          <button className="btn-primary py-1.5 text-sm disabled:opacity-50" disabled={!pairChoice || busy === m.discordId} onClick={() => pair(m, pairChoice)}>
+            Join
+          </button>
+          <button className="btn-secondary py-1.5 text-sm" onClick={() => setPairing(null)}>
+            Cancel
+          </button>
+        </span>
+      </div>
+    );
   }
 
   async function toggleSteward(m) {
@@ -402,6 +509,14 @@ export default function AdminMembers() {
                       >
                         New driver
                       </button>
+                      <button
+                        className="py-1.5 text-sm font-semibold text-link hover:underline"
+                        disabled={busy === m.discordId}
+                        onClick={() => openPairing(m)}
+                        title="A second Discord account of somebody who already has one here"
+                      >
+                        Same person as…
+                      </button>
                       {/* Pushed away from the two useful buttons: nobody should
                           hit Ban while reaching for New driver. */}
                       {m.banned ? (
@@ -502,6 +617,7 @@ export default function AdminMembers() {
                     </span>
                   </div>
                 )}
+                {pairingPanel(m)}
               </li>
               );
             })}
@@ -607,10 +723,26 @@ export default function AdminMembers() {
                           {m.isRaceControl ? "Remove race control" : "Make race control"}
                         </button>
                       )}
-                      {m.driver && (
-                        <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
-                          Unlink
+                      {m.mainDiscordId ? (
+                        <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unpair(m)}>
+                          Make independent
                         </button>
+                      ) : (
+                        <>
+                          {m.driver && (
+                            <button className="btn-secondary py-1.5 text-sm" disabled={busy === m.discordId} onClick={() => unlink(m)}>
+                              Unlink
+                            </button>
+                          )}
+                          <button
+                            className="py-1.5 text-sm font-semibold text-link hover:underline"
+                            disabled={busy === m.discordId}
+                            onClick={() => openPairing(m)}
+                            title="This is a second Discord account of somebody else here: it then signs in as them"
+                          >
+                            Same person as…
+                          </button>
+                        </>
                       )}
                       {m.banned ? (
                         <button className="btn-secondary ml-auto py-1.5 text-sm 2xl:ml-1" disabled={busy === m.discordId} onClick={() => unban(m)}>
@@ -686,6 +818,7 @@ export default function AdminMembers() {
                     </span>
                   </div>
                 </MemberRow>
+                {pairingPanel(m)}
               </li>
             ))}
           </ul>

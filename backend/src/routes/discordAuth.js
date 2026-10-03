@@ -12,7 +12,7 @@ import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
-import { dbRecordLogin, dbGetMember } from "../lib/members.js";
+import { dbRecordLogin, dbGetMember, mainAccountId, isBanned } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
@@ -117,6 +117,16 @@ router.post("/callback", async (req, res, next) => {
     if (account && Number(account.banned)) {
       return res.status(403).json({ error: "This account has been suspended by the league admins." });
     }
+    // A person's second Discord account (lib/accountLinks.js) signs in as
+    // their main account: same driver, same sign-ups, same tokens. Only the
+    // admin area is asked of the account that actually signed in (isAdmin
+    // below). `who` is the account the session acts as from here on; a ban on
+    // the main account stops the second one too.
+    const who = await mainAccountId(prisma, me.id);
+    const viaSecond = who !== String(me.id);
+    if (viaSecond && (await isBanned(prisma, who))) {
+      return res.status(403).json({ error: "This account has been suspended by the league admins." });
+    }
     // Record the login so the admin Members tab can see every account that has
     // ever signed in — including ones that never match a roster driver.
     await dbRecordLogin(prisma, {
@@ -136,7 +146,7 @@ router.post("/callback", async (req, res, next) => {
     // must not be able to break a login.
     let invite = null;
     try {
-      if (req.body?.invitedBy) invite = await attachReferralByName(prisma, me.id, req.body.invitedBy);
+      if (req.body?.invitedBy) invite = await attachReferralByName(prisma, who, req.body.invitedBy);
     } catch (e) {
       console.warn(`[tokens] invite not recorded: ${e.message}`);
     }
@@ -149,7 +159,7 @@ router.post("/callback", async (req, res, next) => {
     // explicit: the admin either links a logged-in account in the Members tab
     // or pre-fills the driver's Discord user id in the Drivers tab; the login
     // then connects by exact id. Unmatched logins simply stay unlinked.
-    let driver = await prisma.driver.findUnique({ where: { discordUserId: me.id } });
+    let driver = await prisma.driver.findUnique({ where: { discordUserId: who } });
     // The season handover below targets the series the member was VIEWING when
     // they logged in (the frontend sends its slug), falling back to the
     // primary series — so a GT member logging in on the GT pages lands on the
@@ -199,7 +209,7 @@ router.post("/callback", async (req, res, next) => {
           prisma.driver.update({
             where: { id: successor.id },
             data: {
-              discordUserId: me.id,
+              discordUserId: who,
               // Keep anything already set on the new row; otherwise inherit.
               country: successor.country ?? old.country,
               bio: successor.bio ?? old.bio,
@@ -215,7 +225,8 @@ router.post("/callback", async (req, res, next) => {
 
     // Nobody claimed this login. That is an admin job, and the admin area is
     // not a page anyone keeps open, so their bell gets told once per account.
-    if (!driver) {
+    // A second account is already taken care of: an admin linked it.
+    if (!driver && !viaSecond) {
       notifyAdminsUnlinkedLogin(prisma, {
         discordId: me.id,
         username: me.username,
@@ -232,7 +243,10 @@ router.post("/callback", async (req, res, next) => {
     // back then; Discord retires the old file when the picture changes, and
     // that profile showed an initial while the current season's showed the
     // face.
-    if (driver && avatarUrl) {
+    //
+    // Not through a second account: its picture is not the one the person
+    // shows under their main account.
+    if (driver && avatarUrl && !viaSecond) {
       const linked = await getLinkedDriverIds(prisma, driver.id).catch(() => [driver.id]);
       await prisma.driver.updateMany({
         where: { id: { in: [...new Set([driver.id, ...linked])] }, NOT: { discordAvatar: avatarUrl } },
@@ -241,7 +255,11 @@ router.post("/callback", async (req, res, next) => {
     }
 
     const profile = {
-      discordId: me.id,
+      // The account the session acts as (the main one for a second account),
+      // plus the one that signed in when they differ. middleware/auth.js works
+      // this out again on every request, so a link set later still applies.
+      discordId: who,
+      ...(viaSecond ? { loginDiscordId: String(me.id) } : {}),
       discordName: displayName,
       driverId: driver?.id || null,
       driverName: driver?.name || null,

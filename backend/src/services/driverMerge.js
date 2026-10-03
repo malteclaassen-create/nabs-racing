@@ -27,8 +27,9 @@
 // same plan for real, inside one transaction.
 // ---------------------------------------------------------------------------
 import { dbLinkDrivers, dbUnlinkDriver, discordIdsForDrivers } from "../lib/persons.js";
-import { dbGetMember } from "../lib/members.js";
+import { dbGetMember, getAltMap, mainOf } from "../lib/members.js";
 import { moveRacePayouts } from "../lib/tokens.js";
+import { linkAccounts } from "../lib/accountLinks.js";
 
 // Profile fields carried over when the kept row's own value is empty.
 const PROFILE_FIELDS = [
@@ -131,9 +132,37 @@ export async function planMerge(prisma, { keepId, dropId }) {
   k.inheritedDiscordUserId = !keep.discordUserId ? inherited.get(keep.id) || null : null;
   d.inheritedDiscordUserId = !drop.discordUserId ? inherited.get(drop.id) || null : null;
 
+  // Two different Discord accounts behind the two rows (their own, or the one
+  // their person signs in with). Merging the rows alone does not hold then:
+  // the next attendance sign-up from the account that lost its row puts the
+  // driver into the Reserve pool again. So the dialog offers to join the
+  // accounts too (lib/accountLinks.js), the admin picking the main one. Only
+  // accounts that have actually signed in can be joined.
+  let accounts = null;
+  const keepAcc = keep.discordUserId || k.inheritedDiscordUserId;
+  const dropAcc = drop.discordUserId || d.inheritedDiscordUserId;
+  if (keepAcc && dropAcc && keepAcc !== dropAcc) {
+    const altMap = await getAltMap(prisma);
+    if (mainOf(altMap, keepAcc) !== mainOf(altMap, dropAcc)) {
+      const [ka, da] = await Promise.all([keepAcc, dropAcc].map((id) => dbGetMember(prisma, id).catch(() => null)));
+      if (ka && da) {
+        const shape = (a, row) => ({
+          discordId: String(a.discordId),
+          name: a.displayName || a.username,
+          username: a.username,
+          firstLoginAt: a.firstLoginAt,
+          lastLoginAt: a.lastLoginAt,
+          row,
+        });
+        accounts = [shape(ka, keep.id), shape(da, drop.id)];
+      }
+    }
+  }
+
   return {
     keep: k,
     drop: d,
+    accounts,
     clashes,
     moves: {
       results: d.results,
@@ -151,8 +180,10 @@ export async function planMerge(prisma, { keepId, dropId }) {
   };
 }
 
-// Run the plan. Throws 409 when the plan is not clean.
-export async function mergeDrivers(prisma, { keepId, dropId }) {
+// Run the plan. Throws 409 when the plan is not clean. `mainAccountId`, when
+// the plan found two Discord accounts, joins them afterwards with that one as
+// the main account (the other signs in as it from then on).
+export async function mergeDrivers(prisma, { keepId, dropId, mainAccountId = null }) {
   const plan = await planMerge(prisma, { keepId, dropId });
   if (!plan.ok) {
     throw fail(
@@ -161,6 +192,8 @@ export async function mergeDrivers(prisma, { keepId, dropId }) {
         "Fix those rounds in Edit Results first (one of the two has to go), then merge."
     );
   }
+  const main = mainAccountId ? plan.accounts?.find((a) => a.discordId === String(mainAccountId)) : null;
+  if (mainAccountId && !main) throw fail(400, "That Discord account is not one of the two behind these rows");
   const { keep, drop } = await load(prisma, keepId, dropId);
 
   await prisma.$transaction(async (tx) => {
@@ -223,5 +256,12 @@ export async function mergeDrivers(prisma, { keepId, dropId }) {
     await tx.driver.delete({ where: { id: drop.id } });
   });
 
-  return { ...plan, merged: true };
+  // After the rows, so the link finds the row the merge left standing.
+  let joined = null;
+  if (main) {
+    const other = plan.accounts.find((a) => a.discordId !== main.discordId);
+    joined = await linkAccounts(prisma, { altId: other.discordId, mainId: main.discordId });
+  }
+
+  return { ...plan, merged: true, joined };
 }

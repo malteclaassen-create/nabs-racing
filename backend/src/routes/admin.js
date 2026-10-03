@@ -98,6 +98,7 @@ import { ensureReservePool } from "../lib/reservePool.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
 import { planMerge, mergeDrivers } from "../services/driverMerge.js";
+import { linkAccounts, unlinkAccount } from "../lib/accountLinks.js";
 import {
   dbLinkDrivers, dbUnlinkDriver, dbListPersons, getLinkedDriverIds, getPersonGroups,
   dbMergeDuplicateAnswers,
@@ -3384,15 +3385,16 @@ router.delete("/drivers/:id/transfers/:changeId", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/drivers/:id/merge  { dropId, preview? }
+// POST /api/admin/drivers/:id/merge  { dropId, preview?, mainAccountId? }
 //   Fold another row of the SAME driver (same season) into this one: results,
 //   answers, market entries, transfers, login, Steam id and empty profile
 //   fields move over, the other row is deleted. preview: true only reports
 //   what would move (services/driverMerge.js). 409 when both rows have a
-//   result in the same race.
+//   result in the same race. When the two rows sit on two Discord accounts,
+//   mainAccountId joins those as well (lib/accountLinks.js).
 router.post("/drivers/:id/merge", async (req, res, next) => {
   try {
-    const args = { keepId: req.params.id, dropId: req.body?.dropId };
+    const args = { keepId: req.params.id, dropId: req.body?.dropId, mainAccountId: req.body?.mainAccountId || null };
     res.json(req.body?.preview === true ? await planMerge(prisma, args) : await mergeDrivers(prisma, args));
   } catch (e) {
     next(e);
@@ -3634,9 +3636,14 @@ router.get("/members", async (req, res, next) => {
         isActiveSeason: activeIds.has(d.seasonId),
         steamId: d.steamId || null,
       };
+    const nameOf = new Map(rows.map((r) => [String(r.discordId), r.displayName || r.username]));
     const members = rows.map((r) => {
       const m = shapeMember(r);
-      const linked = drivers.filter((d) => d.discordUserId === m.discordId);
+      // A second account has no driver of its own: it acts as its main
+      // account (lib/accountLinks.js), so it shows the main's driver.
+      if (m.mainDiscordId) m.mainName = nameOf.get(String(m.mainDiscordId)) || null;
+      const owner = m.mainDiscordId || m.discordId;
+      const linked = drivers.filter((d) => d.discordUserId === owner);
       // Prefer the primary series' active row, then any active season's row,
       // else the most recent season's.
       const driver =
@@ -3684,7 +3691,8 @@ router.get("/members/pending", async (req, res, next) => {
       SELECT COUNT(*) AS n,
              SUM(CASE WHEN m."raceRequestAt" IS NOT NULL THEN 1 ELSE 0 END) AS r
       FROM "MemberAccount" m
-      WHERE NOT EXISTS (
+      WHERE m."mainDiscordId" IS NULL
+        AND NOT EXISTS (
         SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
       )`;
     res.json({ unlinked: Number(rows[0]?.n || 0), requests: Number(rows[0]?.r || 0) });
@@ -3758,6 +3766,7 @@ router.get("/todo", async (req, res, next) => {
       SELECT m."discordId", m."displayName", m."username", m."raceRequestText", m."raceRequestAt"
       FROM "MemberAccount" m
       WHERE m."raceRequestAt" IS NOT NULL
+        AND m."mainDiscordId" IS NULL
         AND NOT EXISTS (SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId")
       ORDER BY m."raceRequestAt" DESC`.catch(() => []);
     const requests = requestRows.map((m) => ({
@@ -3863,7 +3872,8 @@ router.get("/attention", async (req, res, next) => {
       prisma.$queryRaw`
         SELECT COUNT(*) AS n
         FROM "MemberAccount" m
-        WHERE NOT EXISTS (
+        WHERE m."mainDiscordId" IS NULL
+          AND NOT EXISTS (
           SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
         )`.catch(() => []),
       // A seat still on the market that somebody has actually put their hand up
@@ -3994,6 +4004,11 @@ router.post("/members/:discordId/link", async (req, res, next) => {
     ]);
     if (!account) return res.status(404).json({ error: "Account not found" });
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+    // Its logins act as the main account, so a driver on it would never be
+    // reached. The main account is the one to link.
+    if (account.mainDiscordId) {
+      return res.status(400).json({ error: "This is a second account. Link its main account to the driver instead, or make it stand on its own first." });
+    }
     await prisma.$transaction([
       prisma.driver.updateMany({
         where: { discordUserId: req.params.discordId },
@@ -4025,6 +4040,9 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
   try {
     const account = await dbGetMember(prisma, req.params.discordId);
     if (!account) return res.status(404).json({ error: "Account not found" });
+    if (account.mainDiscordId) {
+      return res.status(400).json({ error: "This is a second account. It drives as its main account and gets no driver of its own." });
+    }
     const { teamId } = req.body || {};
     if (!teamId) return res.status(400).json({ error: "teamId required" });
     const team = await prisma.team.findUnique({ where: { id: teamId } });
@@ -4059,6 +4077,29 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
     // account weeks ago, the driver row only exists now. Seed it here.
     const steam = await applyMemberSteamId(prisma, req.params.discordId, driver.id);
     res.status(201).json({ ok: true, driver, steam });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/second-account  { mainId }
+// One driver, two Discord accounts: this account becomes a second account of
+// `mainId` and from then on signs in as it (lib/accountLinks.js). Its driver
+// row moves to the main account, or joins the main's person when the main
+// already has one.
+router.post("/members/:discordId/second-account", async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await linkAccounts(prisma, { altId: req.params.discordId, mainId: req.body?.mainId })) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/members/:discordId/second-account
+// The account stands on its own again, without a driver.
+router.delete("/members/:discordId/second-account", async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await unlinkAccount(prisma, req.params.discordId)) });
   } catch (e) {
     next(e);
   }

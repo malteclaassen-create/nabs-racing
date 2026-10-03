@@ -72,6 +72,10 @@ export default function MergeDriversDialog({ rows, teamById, onClose, onDone }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [chosen, setChosen] = useState(false); // the admin clicked a card
+  // Two Discord accounts behind the rows: join them too (on by default), and
+  // which one is the main account (null = the older one, see mainDefault).
+  const [joinAccounts, setJoinAccounts] = useState(true);
+  const [mainAcc, setMainAcc] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -99,12 +103,23 @@ export default function MergeDriversDialog({ rows, teamById, onClose, onDone }) 
     };
   }, [keepId, dropId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The account that has been around longest is usually the one the driver's
+  // history hangs off, so it is the main account unless the admin says not.
+  const accounts = plan?.accounts || null;
+  const mainDefault = accounts
+    ? [...accounts].sort((a, b) => String(a.firstLoginAt).localeCompare(String(b.firstLoginAt)))[0].discordId
+    : null;
+  const mainId = accounts ? (accounts.some((a) => a.discordId === mainAcc) ? mainAcc : mainDefault) : null;
+  const mainName = accounts?.find((a) => a.discordId === mainId)?.name;
+  const secondName = accounts?.find((a) => a.discordId !== mainId)?.name;
+
   async function confirm() {
     setBusy(true);
     setError(null);
     try {
-      const out = await api.mergeDrivers(keepId, dropId, false);
-      onDone(`Merged: ${out.drop.name} is one row again (${out.keep.id}). ${out.moves.results} result(s) moved over.`);
+      const out = await api.mergeDrivers(keepId, dropId, false, accounts && joinAccounts ? mainId : null);
+      const joined = out.joined ? ` ${secondName} now signs in as ${mainName}.` : "";
+      onDone(`Merged: ${out.drop.name} is one row again (${out.keep.id}). ${out.moves.results} result(s) moved over.${joined}`);
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -168,6 +183,39 @@ export default function MergeDriversDialog({ rows, teamById, onClose, onDone }) 
             </div>
           )}
         </div>
+
+        {/* The rows sit on two Discord accounts. Merging the rows alone does
+            not hold: a sign-up from the account that lost its row puts the
+            driver into the Reserve pool again. Joining the accounts makes the
+            second one sign in as the main one (lib/accountLinks.js). */}
+        {!loading && plan?.ok && accounts && (
+          <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3">
+            <p className="font-semibold text-dark">Two Discord accounts</p>
+            <p className="text-medium">
+              These rows belong to two different Discord logins. If they stay apart, the next attendance sign-up from the
+              account without the row adds {name} to the Reserve pool again.
+            </p>
+            <label className="flex items-center gap-2 font-semibold text-dark">
+              <input type="checkbox" checked={joinAccounts} onChange={(e) => setJoinAccounts(e.target.checked)} />
+              Join the accounts: one driver, two logins
+            </label>
+            {joinAccounts && (
+              <div className="space-y-1 pl-6">
+                <p className="text-xs text-light">Main account (the other one signs in as it):</p>
+                {accounts.map((a) => (
+                  <label key={a.discordId} className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="merge-main-account" checked={a.discordId === mainId} onChange={() => setMainAcc(a.discordId)} />
+                    <span className="font-semibold text-dark">{a.name}</span>
+                    <span className="font-mono text-xs text-light">@{a.username} · since {String(a.firstLoginAt || "").slice(0, 10) || "?"}</span>
+                  </label>
+                ))}
+                <p className="text-xs text-light">
+                  Admin access stays with the account it was given to. Undo any time on the Members tab.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="font-semibold text-rose-500">{error}</p>}
 
