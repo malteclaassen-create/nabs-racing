@@ -26,16 +26,24 @@ import { getAltMap, mainOf } from "./members.js";
 // account for. Where either source names two different people the GUID is left
 // out rather than guessed at: a wrong link would show one driver another's
 // report. That happens for real: drivers move to a new Discord account.
-export async function discordIdsForGuids(prisma, guids) {
+//
+// `seasonId` is the season the report's round belongs to. The driver row of
+// THAT season is asked before all the others: it is who raced in that round
+// under that GUID. urma is the case: his Friday row is on his new account,
+// his Sunday row is joined with an old row on his old one, so across the
+// whole roster his GUID names two accounts, while in the Friday season it
+// names one.
+export async function discordIdsForGuids(prisma, guids, { seasonId = null } = {}) {
   const ids = [...new Set((guids || []).filter(Boolean).map(String))];
   const out = new Map();
   if (!ids.length) return out;
   const ph = ids.map(() => "?").join(",");
+  const fromSeason = new Map(ids.map((g) => [g, new Set()]));
   const fromRoster = new Map(ids.map((g) => [g, new Set()]));
   const fromLogin = new Map(ids.map((g) => [g, new Set()]));
 
   const drivers = await prisma
-    .$queryRawUnsafe(`SELECT "id", "steamId" FROM "Driver" WHERE "steamId" IN (${ph})`, ...ids)
+    .$queryRawUnsafe(`SELECT "id", "steamId", "seasonId" FROM "Driver" WHERE "steamId" IN (${ph})`, ...ids)
     .catch(() => []);
   const viaDriver = await discordIdsForDrivers(
     prisma,
@@ -43,7 +51,9 @@ export async function discordIdsForGuids(prisma, guids) {
   ).catch(() => new Map());
   for (const d of drivers) {
     const discord = viaDriver.get(d.id);
-    if (discord) fromRoster.get(String(d.steamId))?.add(String(discord));
+    if (!discord) continue;
+    fromRoster.get(String(d.steamId))?.add(String(discord));
+    if (seasonId && String(d.seasonId) === String(seasonId)) fromSeason.get(String(d.steamId))?.add(String(discord));
   }
 
   const accounts = await prisma
@@ -54,10 +64,15 @@ export async function discordIdsForGuids(prisma, guids) {
   // A second account counts as its main one (lib/accountLinks.js): the same
   // person on two accounts is one answer, not two.
   const altMap = await getAltMap(prisma).catch(() => new Map());
-  for (const guid of ids) {
-    const raw = fromRoster.get(guid).size ? fromRoster.get(guid) : fromLogin.get(guid);
+  const one = (raw) => {
     const set = new Set([...raw].map((id) => mainOf(altMap, id)));
-    if (set.size === 1) out.set(guid, [...set][0]);
+    return set.size === 1 ? [...set][0] : null;
+  };
+  for (const guid of ids) {
+    const found =
+      one(fromSeason.get(guid)) ||
+      (fromRoster.get(guid).size ? one(fromRoster.get(guid)) : one(fromLogin.get(guid)));
+    if (found) out.set(guid, found);
   }
   return out;
 }
@@ -72,15 +87,25 @@ export async function linkInGameReporters(prisma, reports, races = [], knownGuid
   const loose = (reports || []).filter((r) => r.source === "INGAME" && !r.reporterDiscordId && r.reporterName);
   if (!loose.length) return reports;
   const guids = knownGuids || (await reporterGuids(prisma, loose, races).catch(() => new Map()));
-  const accounts = await discordIdsForGuids(
-    prisma,
-    loose.map((r) => guids.get(r.id))
-  );
-  if (!accounts.size) return reports;
+  // Asked once per season, so each report is answered by its own season's
+  // roster first (see discordIdsForGuids).
+  const seasonOf = new Map((races || []).map((x) => [x.id, x.season?.id || null]));
+  const bySeason = new Map();
+  for (const r of loose) {
+    const guid = guids.get(r.id);
+    if (!guid) continue;
+    const season = seasonOf.get(r.raceId) || null;
+    if (!bySeason.has(season)) bySeason.set(season, new Set());
+    bySeason.get(season).add(String(guid));
+  }
+  const accounts = new Map();
+  for (const [season, set] of bySeason) {
+    accounts.set(season, await discordIdsForGuids(prisma, [...set], { seasonId: season }));
+  }
 
   const linked = new Map();
   for (const r of loose) {
-    const discord = accounts.get(String(guids.get(r.id) || ""));
+    const discord = accounts.get(seasonOf.get(r.raceId) || null)?.get(String(guids.get(r.id) || ""));
     if (!discord) continue;
     await prisma
       .$executeRawUnsafe(

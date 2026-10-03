@@ -595,17 +595,25 @@ router.post("/ingest", async (req, res, next) => {
       .find(Boolean);
     const discordIds = hit ? await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map()) : new Map();
     let reporterDiscordId = hit ? discordIds.get(hit.id) || null : null;
-    // No roster name matched: ask the live server whose car carries that name.
-    // The Steam GUID it answers with is on the roster even when the name is not.
-    if (!reporterDiscordId) {
-      const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
-      if (guid) reporterDiscordId = (await discordIdsForGuids(prisma, [guid]).catch(() => new Map())).get(guid) || null;
-    }
 
     // The round it belongs to: whatever race is currently live, or the most
     // recent one. Without this an in-game report lands under "no round given"
     // and an admin has to work out which evening it was from the timestamp.
     const raceId = await currentRaceId(prisma);
+
+    // No roster name matched: ask the live server whose car carries that name.
+    // The Steam GUID it answers with is on the roster even when the name is not,
+    // and the round's own season is asked first (see discordIdsForGuids).
+    if (!reporterDiscordId) {
+      const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
+      if (guid) {
+        const seasonId = raceId
+          ? (await prisma.race.findUnique({ where: { id: raceId }, select: { seasonId: true } }).catch(() => null))?.seasonId
+          : null;
+        reporterDiscordId =
+          (await discordIdsForGuids(prisma, [guid], { seasonId }).catch(() => new Map())).get(guid) || null;
+      }
+    }
 
     // The same press, relayed twice. Exactly one person in the lobby is meant
     // to have webPenalty's relay switched on, which makes the feature silently

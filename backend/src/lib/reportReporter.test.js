@@ -126,4 +126,34 @@ describe("Steam id to Discord account", () => {
     altRows = [{ discordId: "D_NEW", mainDiscordId: "D_OLD" }];
     expect((await discordIdsForGuids(prisma, ["G"])).get("G")).toBe("D_OLD");
   });
+
+  it("asks the report's own season first when the roster names two accounts", async () => {
+    // urma: the Friday row is on the new account, the Sunday row is joined
+    // with an old row on the old account.
+    driverRows = [
+      { id: "urma", steamId: "G", seasonId: "friday8" },
+      { id: "urma_sun", steamId: "G", seasonId: "sunday6" },
+    ];
+    driverDiscord = new Map([
+      ["urma", "D_NEW"],
+      ["urma_sun", "D_OLD"],
+    ]);
+    expect((await discordIdsForGuids(prisma, ["G"], { seasonId: "friday8" })).get("G")).toBe("D_NEW");
+    expect((await discordIdsForGuids(prisma, ["G"])).has("G")).toBe(false);
+  });
+
+  it("links each report through its own round's season", async () => {
+    fileNames = new Map([["urmaggedon", "G"]]);
+    driverRows = [
+      { id: "urma", steamId: "G", seasonId: "s8" },
+      { id: "urma_sun", steamId: "G", seasonId: "sunday6" },
+    ];
+    driverDiscord = new Map([
+      ["urma", "D_NEW"],
+      ["urma_sun", "D_OLD"],
+    ]);
+    const [r] = await linkInGameReporters(prisma, [press()], [RACE]);
+    expect(r.reporterDiscordId).toBe("D_NEW");
+  });
 });
+
