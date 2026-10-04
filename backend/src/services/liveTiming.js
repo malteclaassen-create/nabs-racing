@@ -1670,6 +1670,14 @@ function createRelay(server) {
       if (weekBest.some((ms, i) => ms != null && ms !== (live.bestSectors?.[i]?.ms ?? null))) {
         live.bestSectors = carriedSectors(weekBest, weekBest);
         live.potentialMs = potentialOfMs(weekBest);
+        // The server's green means "their best since the session started";
+        // with the week counted, a sector a carried lap beat is not their best
+        // any more and goes back to amber.
+        for (const row of [live.sectors, live.currentSectors]) {
+          row?.forEach((s, i) => {
+            if (s && weekBest[i] != null && s.ms > weekBest[i]) s.driversBest = false;
+          });
+        }
       }
 
       if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
@@ -1912,9 +1920,26 @@ function createRelay(server) {
     // "purple" against the session's actual best sector times (top-level
     // BestSplits, ordered by SplitIndex — see splitsByIndex); "green" (driver's
     // own best sector) keeps the IsDriversBest flag.
+    //
+    // The server's BestSplits only know the session it is in. A practice board
+    // also carries the week's imported laps, so the fastest sector on it is the
+    // quickest of the server's and every row's own best of that sector — or a
+    // carried 33.094 left the session's 33.179 purple right above it.
     const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp) =>
       sp ? nsToMs(sp.SplitTime) : null
     );
+    if (si.Type === 1) {
+      for (const e of entries) {
+        // The best lap's own splits too: a carried lap whose file had no
+        // per-sector bests still has its three sectors on the row.
+        for (const row of [e.bestSectors, e.sectors]) {
+          row?.forEach((s, i) => {
+            if (s?.ms == null || s.cuts) return;
+            if (sessionBestSectors[i] == null || s.ms < sessionBestSectors[i]) sessionBestSectors[i] = s.ms;
+          });
+        }
+      }
+    }
     for (const e of entries) {
       for (const row of [e.sectors, e.currentSectors]) {
         row.forEach((s, i) => {
