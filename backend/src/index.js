@@ -33,6 +33,7 @@ import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
+import shareRoutes from "./routes/share.js";
 import contentCheckRoutes from "./routes/contentCheck.js";
 import changelogRoutes from "./routes/changelog.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
@@ -53,8 +54,8 @@ import {
   applyShareImage,
   applyShareText,
   pageShareText,
-  pageShareImage,
 } from "./lib/pageMeta.js";
+import { shareImageFor } from "./lib/resultShareImage.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
@@ -342,6 +343,7 @@ app.use("/api/reports", reportsRoutes);
 // is treated as one.
 if (!IS_DEPLOYED) app.use("/api/dev", devLoginRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/share", shareRoutes);
 // The site's own changelog, from merged pull requests on GitHub.
 app.use("/api/changelog", changelogRoutes);
 // Server tokens — the reward currency. A trial feature: while its switch is off
@@ -607,9 +609,11 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       /* same rule */
     }
     // The picture on the unfurl: the page's or series' own, when one was
-    // uploaded (Site texts -> Link previews), else the shipped og-image.jpg.
+    // uploaded (Site texts -> Link previews), else for the results page the
+    // latest podium the server draws itself (lib/resultShareImage.js), else
+    // the series default or the shipped og-image.jpg.
     try {
-      html = applyShareImage(html, await pageShareImage(prisma, req.path, publicOrigin(req)));
+      html = applyShareImage(html, await shareImageFor(prisma, req.path, req.query, publicOrigin(req)));
       // And the admin's own wording for it (Site texts -> Link previews),
       // in the og:/twitter: tags only, never the page title.
       html = applyShareText(html, await pageShareText(prisma, req.path));

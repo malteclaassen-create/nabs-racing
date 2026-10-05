@@ -465,6 +465,11 @@ export const api = {
       { auth: true }
     ),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
+  // Version of the results page's link-preview picture (backend
+  // lib/resultShareImage.js): the latest round's, or the given round's.
+  // { version: "8-3fa2c" } or { version: null } when there is nothing to draw.
+  shareResultVersion: (raceId) =>
+    request(`/share/result-version${seasonQ(raceId ? `race=${encodeURIComponent(raceId)}` : "")}`),
   // The round's running order lap by lap, whole field — the "Lap by lap" view
   // of a classification. Only asked for when that view is opened: it is a
   // point per car per lap.

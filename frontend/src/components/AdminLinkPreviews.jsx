@@ -24,6 +24,9 @@ const DESCRIPTION_MAX = 400;
 
 const SOURCE_LABEL = {
   page: "Own picture",
+  // The results page draws its own from the latest round (backend
+  // lib/resultShareImage.js) until a picture is uploaded for it.
+  result: "Latest result",
   series: "Series default",
   default: "NABS picture",
 };

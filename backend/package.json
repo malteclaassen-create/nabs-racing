@@ -25,6 +25,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.10",
     "@prisma/client": "^5.22.0",
     "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",

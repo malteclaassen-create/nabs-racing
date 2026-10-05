@@ -541,6 +541,32 @@ export default function Races() {
     if (Number.isFinite(n) && n !== season) setSeason(n);
   }, [wantSeason, season, setSeason, searchParams, setSearchParams]);
 
+  // The link people copy from the address bar and paste in Discord after a
+  // round. Discord keeps a preview per address for a while, so the same
+  // address posted again next week (or after the stewards' penalties) could
+  // still show last week's podium. The address therefore carries the version
+  // of the picture the server draws for it (?result=8-3fa2c, backend
+  // lib/resultShareImage.js): a new result is a new address, fetched fresh.
+  // The page ignores the parameter, and the canonical tag drops it.
+  useEffect(() => {
+    if (!races || wantSeason) return;
+    let live = true;
+    api
+      .shareResultVersion(wantRaceId)
+      .then(({ version }) => {
+        if (!live) return;
+        const params = new URLSearchParams(window.location.search);
+        if ((params.get("result") || null) === (version || null)) return;
+        if (version) params.set("result", version);
+        else params.delete("result");
+        setSearchParams(params, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [races, wantRaceId, wantSeason, season, setSearchParams]);
+
   // Sign-up + attendance for upcoming rounds now lives on the /attendance page;
   // the Races page shows the UpcomingRacePanel (countdown, circuit, track record).
 
