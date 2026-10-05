@@ -1246,6 +1246,23 @@ describe("liveTiming carried training bests", () => {
     expect(row(board, "Alice").sectors.map((s) => s.best)).toEqual([false, true, false]);
   });
 
+  it("a carried sector that is quicker than the server's is still not purple when somebody did better on another lap", () => {
+    // Alice alone on the server: 30.000 S1, the server's session best. Cara's
+    // carried best lap opened with 29.500 — quicker than Alice, but Bob did a
+    // 29.200 S1 on a lap that was not his best. The fastest sector of the
+    // board is Bob's 29.2, which is on nobody's best lap, so no S1 is purple.
+    give([
+      [CARA, "Cara", 94_000, [29_500, 32_000, 32_500], { bestSectorsMs: [29_500, 32_000, 32_500] }],
+      [BOB, "Bob", 95_000, [30_500, 32_000, 32_500], { bestSectorsMs: [29_200, 32_000, 32_500] }],
+    ]);
+    const snap = bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } });
+    snap.BestSplits = [{ SplitIndex: 0, SplitTime: msToNs(30_000) }];
+    ingest(snap);
+
+    const board = getBoard();
+    for (const name of ["Alice", "Bob", "Cara"]) expect(row(board, name).sectors[0].best).toBe(false);
+  });
+
   it("a carried row with no per-sector bests still takes the purple with its lap's splits", () => {
     give([[CARA, "Cara", 94_000, [29_500, 32_000, 32_500]]]);
     const snap = bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } });
