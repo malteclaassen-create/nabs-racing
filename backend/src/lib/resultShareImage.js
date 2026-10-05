@@ -3,9 +3,10 @@
 //
 // The league posts the results link in Discord after every round. Discord
 // shows the page's og:image under the link, and that used to be the same
-// league picture every week. Now the server paints one itself: the round's
-// track, its photo, and the podium with times, the same classification the
-// results page shows (penalties applied).
+// league picture every week. Now the server paints one itself, in the look of
+// the Home page's hero card: the round's photo and track, and the podium
+// cards with medal colours and points, the same classification the results
+// page shows (penalties applied).
 //
 // Discord keeps a preview per ADDRESS for a while, both the page's and the
 // picture's. So the picture's address carries a version that changes whenever
@@ -29,6 +30,7 @@ import { seasonLabel } from "./seo.js";
 import { prettyTrack, themeColorOf, sharePageOf, resolveShareImage, pageShareImage } from "./pageMeta.js";
 import { readParentIds } from "./sprintRaces.js";
 import { readRaceCountries, staticCountryFor } from "./raceCountries.js";
+import { raceKickoff } from "./raceKickoff.js";
 import { readRaceHeroes } from "./raceHero.js";
 import { readRacePhotos, racePhotoUrl } from "./racePhotos.js";
 import { UPLOADS_DIR } from "./dataDirs.js";
@@ -37,7 +39,7 @@ const W = 1200;
 const H = 630;
 // Bump when the drawing itself changes, so every version string changes with
 // it and Discord fetches the new look instead of the cached old one.
-const DRAWING_REV = 1;
+const DRAWING_REV = 3;
 
 // The drawing library is a native module, loaded on first use: should it ever
 // fail to load on a host, only this picture is lost (the page falls back to
@@ -67,47 +69,41 @@ function uploadFile(urlPath) {
   return p.startsWith(UPLOADS_DIR + sep) && existsSync(p) ? p : null;
 }
 
-// A site address ("/api/uploads/…" or a static "/heroes/s8.jpg") as a file on
-// this machine, or null.
-function localFileOf(url) {
+// A site address ("/api/uploads/…" or a static "/heroes/s8.jpg") as a picture,
+// or null. Only files on this machine: the picture is drawn on request, and a
+// stored address must not be able to make the server call anywhere it likes.
+async function loadLocal(url) {
   if (typeof url !== "string" || !url.startsWith("/")) return null;
-  return url.startsWith("/api/uploads/") ? uploadFile(url) : staticFile(url);
-}
-
-// Driver photos are uploads or Discord avatars. Nothing else is fetched: the
-// picture is drawn on request, and a stored address must not be able to make
-// the server call anywhere it likes.
-const REMOTE_HOSTS = new Set(["cdn.discordapp.com", "media.discordapp.net"]);
-
-async function loadAny(url) {
-  if (!url) return null;
+  const file = url.startsWith("/api/uploads/") ? uploadFile(url) : staticFile(url);
+  if (!file) return null;
   try {
     const { loadImage } = await canvasModule();
-    const file = localFileOf(url);
-    if (file) return await loadImage(readFileSync(file));
-    const u = new URL(url);
-    if (u.protocol !== "https:" || !REMOTE_HOSTS.has(u.hostname)) return null;
-    const res = await fetch(u, { signal: AbortSignal.timeout(2500) });
-    if (!res.ok) return null;
-    return await loadImage(Buffer.from(await res.arrayBuffer()));
+    return await loadImage(readFileSync(file));
   } catch {
     return null;
   }
 }
 
+// The site's own faces (frontend/public/fonts), the latin-ext cut behind each
+// so a driver called Ondřej keeps his ř. They are variable fonts: one file
+// per family holds every weight, and the weight is picked with the wght axis
+// (setFont below). A weight in the font string alone is ignored, and the text
+// came out at the file's default weight.
+const FACES = { Display: "archivo-900", Body: "inter-400", Mono: "jetbrains-mono-500" };
 let fontsReady = false;
 function registerFonts(GlobalFonts) {
   if (fontsReady) return;
-  const faces = [
-    ["fonts/archivo-900-latin.woff2", "OgDisplay"],
-    ["fonts/archivo-800-latin.woff2", "OgLabel"],
-    ["fonts/jetbrains-mono-700-latin.woff2", "OgMono"],
-  ];
-  for (const [file, family] of faces) {
-    const p = staticFile(file);
-    if (p) GlobalFonts.registerFromPath(p, family);
+  for (const [name, file] of Object.entries(FACES)) {
+    for (const [cut, suffix] of [["latin", ""], ["latin-ext", "Ext"]]) {
+      const p = staticFile(`fonts/${file}-${cut}.woff2`);
+      if (p) GlobalFonts.registerFromPath(p, `Og${name}${suffix}`);
+    }
   }
   fontsReady = true;
+}
+function setFont(ctx, face, weight, size) {
+  ctx.font = `${size}px Og${face}, Og${face}Ext`;
+  ctx.fontVariationSettings = `"wght" ${weight}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,51 +146,23 @@ async function roundFor(prisma, series, query) {
     if ((await getPrivateSeasonIds(prisma)).has(race.seasonId)) return null;
     if ((await seasonSeriesId(prisma, race.seasonId)) !== series.id) return null;
     const season = await prisma.season.findUnique({ where: { id: race.seasonId } });
-    return season ? { race, season } : null;
+    return season ? { race, season, latest: false } : null;
   }
   const season = await resolveSeason(prisma, query?.season, { series: series.slug }).catch(() => null);
   if (!season || (await getPrivateSeasonIds(prisma)).has(season.id)) return null;
   const race = await latestRound(prisma, season.id);
-  return race ? { race, season } : null;
+  return race ? { race, season, latest: true } : null;
 }
 
-const adjustedMs = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
-
-function fmtDuration(ms) {
-  const total = Math.round(ms);
-  const h = Math.floor(total / 3600000);
-  const m = Math.floor((total % 3600000) / 60000);
-  const s = Math.floor((total % 60000) / 1000);
-  const milli = String(total % 1000).padStart(3, "0");
-  const ss = String(s).padStart(2, "0");
-  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}.${milli}` : `${m}:${ss}.${milli}`;
-}
-
-function fmtGap(ms) {
-  const total = Math.max(0, Math.round(ms));
-  const m = Math.floor(total / 60000);
-  const s = Math.floor((total % 60000) / 1000);
-  const milli = String(total % 1000).padStart(3, "0");
-  return m ? `+${m}:${String(s).padStart(2, "0")}.${milli}` : `+${s}.${milli}`;
-}
-
-// What stands at the right end of a podium row: the winner's race time, the
-// others' gap to it (laps down when they were lapped), or the points when the
-// round was scored from a sheet without times.
-export function podiumTimes(rows) {
-  const win = rows[0];
-  const winMs = win ? adjustedMs(win) : null;
-  return rows.map((r, i) => {
-    const ms = adjustedMs(r);
-    if (i === 0) return ms ? fmtDuration(ms) : r.points != null ? `${r.points} PTS` : "";
-    if (win?.laps != null && r.laps != null && r.laps < win.laps) {
-      const n = win.laps - r.laps;
-      return `+${n} LAP${n > 1 ? "S" : ""}`;
-    }
-    if (ms && winMs) return fmtGap(ms - winMs);
-    return r.points != null ? `${r.points} PTS` : "";
-  });
-}
+// "Friday, 2 October 2026" in league time, the way the Home hero dates a round.
+const fullDate = (d) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Berlin",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(raceKickoff(d) || new Date(d));
 
 async function backgroundFor(prisma, race, season) {
   const heroes = await readRaceHeroes(prisma, [race.id]);
@@ -217,14 +185,13 @@ export async function resultShareState(prisma, series, query = {}) {
   if (!series) return null;
   const found = await roundFor(prisma, series, query);
   if (!found) return null;
-  const { race, season } = found;
+  const { race, season, latest } = found;
   const detail = await raceDetailPayload(prisma, race);
   const top = (detail.results || [])
     .filter((r) => r.status === "FINISHED" && r.position != null)
     .sort((a, b) => a.position - b.position)
     .slice(0, 3);
   if (!top.length) return null;
-  const times = podiumTimes(top);
   const countries = await readRaceCountries(prisma, [race.id]);
   const state = {
     series: {
@@ -233,21 +200,26 @@ export async function resultShareState(prisma, series, query = {}) {
       logoDarkUrl: series.logoDarkUrl || null,
     },
     season: seasonLabel(season),
+    latest,
     race: {
       id: race.id,
       number: race.number,
       track: prettyTrack(race.track),
       country: countries.get(race.id) || staticCountryFor(race.track) || null,
-      laps: top[0].laps ?? null,
+      date: race.date ? fullDate(race.date) : null,
+      scores: !race.isSpecialEvent,
     },
-    podium: top.map((r, i) => ({
-      position: r.position,
-      name: r.name,
-      team: (r.effectiveTeam || r.team)?.name || "",
-      color: (r.effectiveTeam || r.team)?.color || "#888888",
-      photoUrl: r.photoUrl || null,
-      time: times[i],
-    })),
+    podium: top.map((r) => {
+      // A sub drives for the team they stood in for, as on the Home hero.
+      const team = (r.isSub && r.subForTeam) || r.team || {};
+      return {
+        position: r.position,
+        name: r.name,
+        country: r.country || null,
+        team: { name: team.name || "", color: team.color || null, logoUrl: team.logoUrl || null },
+        points: r.points ?? null,
+      };
+    }),
     background: await backgroundFor(prisma, race, season),
   };
   const hash = createHash("sha1").update(JSON.stringify([DRAWING_REV, state])).digest("hex").slice(0, 5);
@@ -298,17 +270,15 @@ export async function shareImageFor(prisma, pathname, query, origin) {
 }
 
 // ---------------------------------------------------------------------------
-// Drawing
+// Drawing: the Home hero card (pages/Home.jsx), at link-preview size.
 // ---------------------------------------------------------------------------
 
-function fit(ctx, text, family, max, min, width) {
-  let size = max;
-  for (; size > min; size -= 2) {
-    ctx.font = `${size}px ${family}`;
-    if (ctx.measureText(text).width <= width) break;
-  }
-  return size;
-}
+// The dark theme's tokens (frontend/src/index.css, tailwind.config.js).
+const PAGE_BG = "#080d18";
+const INK = [15, 23, 42];
+const ink = (a) => `rgba(${INK[0]}, ${INK[1]}, ${INK[2]}, ${a})`;
+const white = (a) => `rgba(255, 255, 255, ${a})`;
+const MEDAL = ["#eab308", "#94a3b8", "#c2410c"];
 
 function cover(ctx, img, x, y, w, h) {
   const s = Math.max(w / img.width, h / img.height);
@@ -317,59 +287,118 @@ function cover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
-function roundRect(ctx, x, y, w, h, r) {
+// Text in a box no wider than `width`: the largest size down to `min`, and
+// past that cut with an ellipsis, like the site's `truncate`.
+function fitText(ctx, text, face, weight, max, min, width) {
+  let size = max;
+  for (; size > min; size -= 1) {
+    setFont(ctx, face, weight, size);
+    if (ctx.measureText(text).width <= width) return text;
+  }
+  setFont(ctx, face, weight, min);
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > width) t = t.slice(0, -1);
+  return t === text ? t : `${t}…`;
+}
+
+function drawFlag(ctx, img, x, y, h, r = 3) {
+  const w = (img.width / img.height) * h;
+  ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
+  ctx.clip();
+  ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+  return w;
 }
 
-function initials(name) {
-  return String(name || "?").trim().slice(0, 2).toUpperCase();
-}
+const renderCache = new Map(); // race|version -> jpeg
 
-const renderCache = new Map(); // version|host -> jpeg
-
-export async function renderResultShareImage(state, { host } = {}) {
-  const key = `${state.race.id}|${state.version}|${host || ""}`;
+export async function renderResultShareImage(state) {
+  const key = `${state.race.id}|${state.version}`;
   if (renderCache.has(key)) return renderCache.get(key);
   const { createCanvas, GlobalFonts } = await canvasModule();
   registerFonts(GlobalFonts);
 
-  const [bg, mark, flag, ...faces] = await Promise.all([
-    loadAny(state.background).then((i) => i || loadAny("/hero.jpg")),
-    loadAny(state.series.logoDarkUrl || "/logo-dark.png"),
-    state.race.country ? loadAny(`/flags/w80/${state.race.country}.png`) : null,
-    ...state.podium.map((p) => loadAny(p.photoUrl)),
+  const flagOf = (cc) => (cc ? loadLocal(`/flags/w80/${cc}.png`) : null);
+  const [bg, mark, flag, ...rest] = await Promise.all([
+    loadLocal(state.background).then((i) => i || loadLocal("/hero.jpg")),
+    loadLocal(state.series.logoDarkUrl || "/logo-dark.png"),
+    flagOf(state.race.country),
+    ...state.podium.map((p) => flagOf(p.country)),
+    ...state.podium.map((p) => loadLocal(p.team.logoUrl)),
   ]);
+  const flags = rest.slice(0, state.podium.length);
+  const logos = rest.slice(state.podium.length);
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
   const accent = state.series.accent;
-  const MUTE = "#b8c4dd";
-  const DIM = "#8f9bb8";
+  ctx.textBaseline = "alphabetic";
 
-  // The photo, darkened so the words read on any of it, darker on the left
-  // where the words are.
-  ctx.fillStyle = "#0c0e18";
+  // The page around the card.
+  ctx.fillStyle = PAGE_BG;
   ctx.fillRect(0, 0, W, H);
-  if (bg) {
-    cover(ctx, bg, 0, 0, W, H);
-    ctx.fillStyle = "rgba(12, 14, 24, 0.55)";
-    ctx.fillRect(0, 0, W, H);
+
+  // The hero card: rounded, the photo filling it, the site's two scrims over
+  // it (bottom-left to top-right, then up from the bottom), and the hatching
+  // fading in at the right edge.
+  const C = { x: 24, y: 24, w: W - 48, h: H - 48, r: 36 };
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(C.x, C.y, C.w, C.h, C.r);
+  ctx.clip();
+  ctx.fillStyle = `rgb(${INK.join(",")})`;
+  ctx.fillRect(C.x, C.y, C.w, C.h);
+  if (bg) cover(ctx, bg, C.x, C.y, C.w, C.h);
+  const tr = ctx.createLinearGradient(C.x, C.y + C.h, C.x + C.w, C.y);
+  tr.addColorStop(0, ink(1));
+  tr.addColorStop(0.5, ink(0.75));
+  tr.addColorStop(1, ink(0));
+  ctx.fillStyle = tr;
+  ctx.fillRect(C.x, C.y, C.w, C.h);
+  const up = ctx.createLinearGradient(0, C.y + C.h, 0, C.y);
+  up.addColorStop(0, ink(0.95));
+  up.addColorStop(0.5, ink(0));
+  ctx.fillStyle = up;
+  ctx.fillRect(C.x, C.y, C.w, C.h);
+
+  const hatchW = Math.round(C.w * 0.18);
+  const hatch = createCanvas(hatchW, C.h);
+  const hc = hatch.getContext("2d");
+  hc.strokeStyle = white(0.06);
+  hc.lineWidth = 3;
+  for (let i = -C.h; i < hatchW + C.h; i += 16) {
+    hc.beginPath();
+    hc.moveTo(i, 0);
+    hc.lineTo(i + C.h, C.h);
+    hc.stroke();
   }
-  const shade = ctx.createLinearGradient(0, 0, W, 0);
-  shade.addColorStop(0, "rgba(12, 14, 24, 0.85)");
-  shade.addColorStop(0.55, "rgba(12, 14, 24, 0.45)");
-  shade.addColorStop(1, "rgba(12, 14, 24, 0.15)");
-  ctx.fillStyle = shade;
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = accent;
-  ctx.fillRect(0, 0, 12, H);
+  const fade = hc.createLinearGradient(hatchW, 0, 0, 0);
+  fade.addColorStop(0, "rgba(0,0,0,1)");
+  fade.addColorStop(0.35, "rgba(0,0,0,1)");
+  fade.addColorStop(1, "rgba(0,0,0,0)");
+  hc.globalCompositeOperation = "destination-in";
+  hc.fillStyle = fade;
+  hc.fillRect(0, 0, hatchW, C.h);
+  ctx.drawImage(hatch, C.x + C.w - hatchW, C.y);
+  ctx.restore();
+  ctx.strokeStyle = white(0.1);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(C.x + 1, C.y + 1, C.w - 2, C.h - 2, C.r - 1);
+  ctx.stroke();
 
-  // The mark: the series' own logo as it is, or the NABS mark in its colour.
-  const MARK = 76;
+  const L = C.x + 56;
+  const R = C.x + C.w - 56;
+
+  // Top: the brand as the nav bar has it (mark, name, series under it), and
+  // the season as the pill the site puts above the hero.
+  const MARK = 52;
+  const markY = C.y + 44;
   if (mark) {
     if (state.series.logoDarkUrl) {
-      ctx.drawImage(mark, 62, 46, MARK, MARK);
+      ctx.drawImage(mark, L, markY, MARK, MARK);
     } else {
       const off = createCanvas(MARK, MARK);
       const o = off.getContext("2d");
@@ -377,120 +406,152 @@ export async function renderResultShareImage(state, { host } = {}) {
       o.globalCompositeOperation = "source-in";
       o.fillStyle = accent;
       o.fillRect(0, 0, MARK, MARK);
-      ctx.drawImage(off, 62, 46);
+      ctx.drawImage(off, L, markY);
     }
   }
-  ctx.textBaseline = "middle";
   ctx.fillStyle = "#ffffff";
-  const series = state.series.name.toUpperCase();
-  ctx.font = "25px OgDisplay";
-  ctx.fillText(series, 160, 85);
-  const sw = ctx.measureText(series).width;
+  setFont(ctx, "Display", 800, 25);
+  ctx.letterSpacing = "0px";
+  ctx.fillText("NABS Racing League", L + MARK + 16, markY + 24);
+  ctx.fillStyle = white(0.55);
+  setFont(ctx, "Mono", 700, 14);
+  ctx.letterSpacing = "1.5px";
+  ctx.fillText(state.series.name.toUpperCase(), L + MARK + 17, markY + 46);
+
   if (state.season) {
-    ctx.fillStyle = MUTE;
-    ctx.font = "25px OgLabel";
-    ctx.fillText(`  ·  ${state.season.toUpperCase()}`, 160 + sw, 85);
-  }
-  if (host) {
-    ctx.fillStyle = DIM;
-    ctx.font = "21px OgMono";
-    ctx.textAlign = "right";
-    ctx.fillText(host, W - 58, 85);
-    ctx.textAlign = "left";
+    const label = state.season.toUpperCase();
+    setFont(ctx, "Mono", 700, 16);
+    ctx.letterSpacing = "2.5px";
+    const tw = ctx.measureText(label).width;
+    const pw = tw + 64;
+    const ph = 40;
+    const px = R - pw;
+    const py = markY + 6;
+    ctx.fillStyle = ink(0.6);
+    ctx.beginPath();
+    ctx.roundRect(px, py, pw, ph, ph / 2);
+    ctx.fill();
+    ctx.strokeStyle = white(0.15);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(px + 24, py + ph / 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(label, px + 40, py + ph / 2 + 6);
   }
 
-  // The track, with its flag.
-  ctx.textBaseline = "alphabetic";
-  let x = 72;
-  if (flag) {
-    const fh = 52;
-    const fw = (flag.width / flag.height) * fh;
-    ctx.save();
-    roundRect(ctx, x, 186, fw, fh, 4);
-    ctx.clip();
-    ctx.drawImage(flag, x, 186, fw, fh);
-    ctx.restore();
-    x += fw + 22;
-  }
-  const track = state.race.track.toUpperCase();
-  fit(ctx, track, "OgDisplay", 92, 48, W - 60 - x);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(track, x, 246);
-
-  const label = [
-    state.race.number != null ? `ROUND ${state.race.number}` : "SPECIAL EVENT",
-    "RESULT",
-    state.race.laps ? `${state.race.laps} LAPS` : null,
-  ]
-    .filter(Boolean)
-    .join("  ·  ");
+  // Eyebrow: flag, "Latest race", a short rule, the round.
+  let y = C.y + 268;
+  let x = L;
+  if (flag) x += drawFlag(ctx, flag, x, y - 21, 26) + 16;
+  setFont(ctx, "Mono", 700, 19);
+  ctx.letterSpacing = "3.8px";
   ctx.fillStyle = accent;
-  ctx.font = "24px OgLabel";
-  ctx.fillText(label, 74, 292);
+  const eyebrow = state.latest ? "LATEST RACE" : "RACE RESULT";
+  ctx.fillText(eyebrow, x, y);
+  x += ctx.measureText(eyebrow).width + 14;
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(x, y - 7, 44, 2);
+  ctx.globalAlpha = 1;
+  x += 44 + 18;
+  ctx.fillStyle = white(0.7);
+  ctx.fillText(state.race.number != null ? `ROUND ${state.race.number}` : "SPECIAL EVENT", x, y);
 
-  // The podium, one row per car.
-  const top = 318;
-  const rowH = 86;
+  // The track, big, then the date in the site's mono line.
+  y += 96;
+  ctx.fillStyle = "#ffffff";
+  ctx.letterSpacing = "-2.5px";
+  const track = fitText(ctx, state.race.track.toUpperCase(), "Display", 900, 104, 56, R - L);
+  ctx.fillText(track, L - 3, y);
+  if (state.race.date) {
+    y += 44;
+    ctx.fillStyle = white(0.65);
+    setFont(ctx, "Mono", 500, 20);
+    ctx.letterSpacing = "1px";
+    ctx.fillText(state.race.date.toUpperCase(), L, y);
+  }
+
+  // The podium cards: medal bar and tint, P1 in the medal colour, name and
+  // flag over team logo and team, the round's points on the right.
+  const gap = 14;
+  const cw = (R - L - gap * 2) / 3;
+  const ch = 92;
+  const cy = C.y + C.h - 48 - ch;
   state.podium.forEach((p, i) => {
-    const y = top + i * (rowH + 10);
-    ctx.fillStyle = "rgba(12, 14, 24, 0.68)";
-    ctx.fillRect(72, y, W - 132, rowH);
-    ctx.fillStyle = p.color;
-    ctx.fillRect(72, y, 6, rowH);
-
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = i === 0 ? accent : "#ffffff";
-    ctx.font = "52px OgDisplay";
-    ctx.textAlign = "center";
-    ctx.fillText(String(p.position), 122, y + rowH / 2 + 2);
-    ctx.textAlign = "left";
-
-    // The face in a ring of the team's colour, or the initials when there is
-    // no picture (or it could not be fetched in time).
-    const cx = 196;
-    const cy = y + rowH / 2;
-    const r = 31;
+    const cx = L + i * (cw + gap);
+    const medal = MEDAL[i] || MEDAL[2];
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.roundRect(cx, cy, cw, ch, 18);
     ctx.clip();
-    if (faces[i]) {
-      cover(ctx, faces[i], cx - r, cy - r, r * 2, r * 2);
-    } else {
-      ctx.fillStyle = "#2a2f40";
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "24px OgDisplay";
-      ctx.textAlign = "center";
-      ctx.fillText(initials(p.name), cx, cy + 1);
-      ctx.textAlign = "left";
-    }
+    ctx.fillStyle = white(0.07);
+    ctx.fillRect(cx, cy, cw, ch);
+    const tint = ctx.createLinearGradient(cx, 0, cx + cw * 0.55, 0);
+    tint.addColorStop(0, `${medal}26`);
+    tint.addColorStop(1, `${medal}00`);
+    ctx.fillStyle = tint;
+    ctx.fillRect(cx, cy, cw, ch);
+    ctx.fillStyle = medal;
+    ctx.fillRect(cx, cy, 6, ch);
     ctx.restore();
-    ctx.strokeStyle = p.color;
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = white(0.1);
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
+    ctx.roundRect(cx + 0.75, cy + 0.75, cw - 1.5, ch - 1.5, 17);
     ctx.stroke();
 
-    // Time first, so the name knows how much room is left.
-    ctx.font = "30px OgMono";
-    const tw = ctx.measureText(p.time).width;
-    ctx.fillStyle = i === 0 ? "#ffffff" : MUTE;
-    ctx.textAlign = "right";
-    ctx.fillText(p.time, W - 86, cy + 1);
-    ctx.textAlign = "left";
+    const mid = cy + ch / 2;
+    ctx.letterSpacing = "0px";
+    ctx.fillStyle = medal;
+    setFont(ctx, "Display", 900, 36);
+    ctx.fillText(`P${p.position}`, cx + 24, mid + 13);
+    const textX = cx + 24 + 62;
 
-    const nameX = 248;
-    const room = W - 86 - tw - 30 - nameX;
+    // Points first, so the name knows how much room is left.
+    let right = cx + cw - 22;
+    if (state.race.scores && p.points != null) {
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#ffffff";
+      setFont(ctx, "Display", 900, 30);
+      ctx.fillText(String(p.points), right, mid + 4);
+      const pw = Math.max(ctx.measureText(String(p.points)).width, 34);
+      ctx.fillStyle = white(0.5);
+      setFont(ctx, "Mono", 700, 11);
+      ctx.letterSpacing = "2.2px";
+      ctx.fillText("PTS", right + 2, mid + 24);
+      ctx.letterSpacing = "0px";
+      ctx.textAlign = "left";
+      right -= pw + 24;
+    }
+    const room = right - textX;
+
     ctx.fillStyle = "#ffffff";
-    fit(ctx, p.name, "OgDisplay", 34, 20, room);
-    ctx.fillText(p.name, nameX, cy - 10);
-    ctx.fillStyle = DIM;
-    ctx.font = "17px OgLabel";
-    ctx.fillText(p.team.toUpperCase(), nameX, cy + 22);
+    const name = fitText(ctx, p.name, "Body", 700, 25, 17, room - (flags[i] ? 36 : 0));
+    ctx.fillText(name, textX, mid - 5);
+    if (flags[i]) drawFlag(ctx, flags[i], textX + ctx.measureText(name).width + 9, mid - 22, 16, 2);
+
+    let teamX = textX;
+    if (logos[i]) {
+      const s = 22;
+      const k = Math.min(s / logos[i].width, s / logos[i].height);
+      const lw = logos[i].width * k;
+      const lh = logos[i].height * k;
+      ctx.drawImage(logos[i], teamX + (s - lw) / 2, mid + 8 + (s - lh) / 2, lw, lh);
+      teamX += s + 8;
+    } else if (p.team.color) {
+      ctx.fillStyle = p.team.color;
+      ctx.beginPath();
+      ctx.arc(teamX + 6, mid + 19, 6, 0, Math.PI * 2);
+      ctx.fill();
+      teamX += 20;
+    }
+    ctx.fillStyle = white(0.6);
+    ctx.fillText(fitText(ctx, p.team.name, "Body", 400, 18, 14, right - teamX), teamX, mid + 26);
   });
 
-  const jpeg = await canvas.encode("jpeg", 88);
+  const jpeg = await canvas.encode("jpeg", 90);
   renderCache.set(key, jpeg);
   if (renderCache.size > 30) renderCache.delete(renderCache.keys().next().value);
   return jpeg;

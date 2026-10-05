@@ -43,7 +43,7 @@ router.get("/result.jpg", async (req, res, next) => {
     const series = await seriesOf(req);
     const state = series ? await resultShareState(prisma, series, queryOf(req)) : null;
     if (!state) return res.status(404).json({ error: "No result to show" });
-    const jpeg = await renderResultShareImage(state, { host: req.get("host") });
+    const jpeg = await renderResultShareImage(state);
     res.type("jpeg");
     // The address already changes with what is drawn (the v parameter), so a
     // day of caching is safe for anyone holding the current one.
