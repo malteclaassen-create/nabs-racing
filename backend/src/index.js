@@ -55,7 +55,7 @@ import {
   applyShareText,
   pageShareText,
 } from "./lib/pageMeta.js";
-import { shareImageFor } from "./lib/resultShareImage.js";
+import { shareImageFor } from "./lib/sharePictures.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
@@ -609,9 +609,9 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       /* same rule */
     }
     // The picture on the unfurl: the page's or series' own, when one was
-    // uploaded (Site texts -> Link previews), else for the results page the
-    // latest podium the server draws itself (lib/resultShareImage.js), else
-    // the series default or the shipped og-image.jpg.
+    // uploaded (Site texts -> Link previews), else the picture the server
+    // draws for the page (lib/sharePictures.js), else the series default or
+    // the shipped og-image.jpg.
     try {
       html = applyShareImage(html, await shareImageFor(prisma, req.path, req.query, publicOrigin(req)));
       // And the admin's own wording for it (Site texts -> Link previews),

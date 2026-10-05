@@ -114,7 +114,7 @@ import {
   writeSeriesShareText,
 } from "../lib/series.js";
 import { linkPreviews } from "../lib/pageMeta.js";
-import { resultShareState, resultShareImagePath } from "../lib/resultShareImage.js";
+import { sharePictureState, sharePicturePath } from "../lib/sharePictures.js";
 import { getAdminDiscordIds, setDiscordAdmin } from "../lib/adminUsers.js";
 import { getStewardDiscordIds, setSteward } from "../lib/stewards.js";
 import { getRaceControlIds, setRaceControl } from "../lib/raceControl.js";
@@ -5045,17 +5045,19 @@ router.get("/series/:id/link-previews", async (req, res, next) => {
     const series = await getSeriesById(prisma, req.params.id);
     if (!series) return res.status(404).json({ error: "Series not found" });
     const pages = await linkPreviews(prisma, series);
-    // The results page draws its own picture from the latest round unless an
-    // admin uploaded one for it (lib/resultShareImage.js), so the card shows
-    // that drawing rather than the fallback the page would otherwise use.
-    const races = pages.find((p) => p.page === "races");
-    if (races && races.imageSource !== "page") {
-      const state = await resultShareState(prisma, series).catch(() => null);
-      if (state) {
-        races.image = resultShareImagePath(series, state);
-        races.imageSource = "result";
-      }
-    }
+    // A page without an uploaded picture of its own gets one the server draws
+    // (lib/sharePictures.js), so its card shows that drawing rather than the
+    // fallback the page would otherwise use.
+    await Promise.all(
+      pages.map(async (p) => {
+        if (p.imageSource === "page") return;
+        const state = await sharePictureState(prisma, p.path).catch(() => null);
+        if (state) {
+          p.image = sharePicturePath(state);
+          p.imageSource = "drawn";
+        }
+      })
+    );
     res.json({
       series: { id: series.id, name: series.name, slug: series.slug, shareImageUrl: series.shareImageUrl },
       pages,

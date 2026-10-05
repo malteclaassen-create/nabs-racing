@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation, useParams, useNavigationTyp
 import { useScrollReveal } from "./hooks/useScrollReveal.js";
 import { useAnimatedDetails } from "./hooks/motion.js";
 import { api } from "./api/client.js";
+import { useShareVersion } from "./hooks/useShareVersion.js";
 import { setTrackCountryOverrides } from "./data/circuits.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
@@ -204,6 +205,9 @@ function AppRoutes() {
       api.hit(location.pathname);
     }
   }, [location.pathname]);
+  // The link-preview picture's version in the address bar, so a link copied
+  // into Discord after a change is a fresh one (hooks/useShareVersion.js).
+  useShareVersion(location);
   // A /s/<slug> that doesn't resolve (typo, deleted series, private without
   // rights): hop to the same subpage of the active series — no white page.
   if (unknownSlug) {

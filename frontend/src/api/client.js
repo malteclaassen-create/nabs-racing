@@ -465,11 +465,19 @@ export const api = {
       { auth: true }
     ),
   raceResults: (id) => request(`/races/${id}/results`, { auth: true }),
-  // Version of the results page's link-preview picture (backend
-  // lib/resultShareImage.js): the latest round's, or the given round's.
-  // { version: "8-3fa2c" } or { version: null } when there is nothing to draw.
-  shareResultVersion: (raceId) =>
-    request(`/share/result-version${seasonQ(raceId ? `race=${encodeURIComponent(raceId)}` : "")}`),
+  // Version of a page's link-preview picture (backend lib/sharePictures.js),
+  // for the address bar (hooks/useShareVersion.js). Only the address's own
+  // parameters go along, not the season the switcher has selected: the
+  // version must name the picture Discord gets for exactly this address.
+  // { version: "3fa2c" } or { version: null } when the page has none.
+  shareVersion: (path, { race, season } = {}) =>
+    request(
+      `/share/version?${new URLSearchParams({
+        path,
+        ...(race ? { race } : {}),
+        ...(season ? { season } : {}),
+      })}`
+    ),
   // The round's running order lap by lap, whole field — the "Lap by lap" view
   // of a classification. Only asked for when that view is opened: it is a
   // point per car per lap.
