@@ -134,6 +134,11 @@ function edgeMask({ left, right }) {
 }
 
 function RoundRail({ races, selectedId, onSelect, signupIds }) {
+  // Before the page has picked a round (one render after the list lands) the
+  // rail is about to centre on the last finished one; fan out from there so the
+  // chips do not get re-timed halfway through their entrance.
+  const picked = races.findIndex((r) => r.id === selectedId);
+  const activeIdx = picked >= 0 ? picked : races.reduce((last, r, i) => (r.isCompleted ? i : last), -1);
   const scrollerRef = useRef(null);
   const activeRef = useRef(null);
   // Which sides can still be scrolled to — drives the edge fade above.
@@ -225,7 +230,12 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
       // other list on the site (standings rows, line-up cards). The container
       // picks up .is-visible from the global scroll-reveal pass and each child
       // fans out on its own --i.
-      className="cascade scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
+      // `rail-from-active`: on a phone the rail is scrolled to the selected
+      // round, so dealing the chips out from round 1 had the ones actually on
+      // screen (round 10 and its neighbours) arrive last, well after the table
+      // below them. There they fan out from the selected chip instead (--d,
+      // see index.css); the vertical sidebar keeps the top-down order.
+      className="cascade rail-from-active scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
     >
       {races.map((r, i) => {
         const flag = flagFor(r.track, r.country);
@@ -252,7 +262,7 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
             type="button"
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
-            style={{ "--i": i }}
+            style={{ "--i": i, "--d": activeIdx < 0 ? i : Math.abs(i - activeIdx) }}
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition active:scale-[0.97] lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active || signup ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
