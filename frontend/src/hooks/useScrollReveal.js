@@ -28,9 +28,12 @@ export function useScrollReveal() {
       // fans in top-to-bottom: sort by vertical position and hand each element
       // an increasing delay via --reveal-delay (read by .reveal/.cascade CSS).
       // Scroll-triggered reveals usually arrive one at a time and get 0ms.
+      // 45ms a step (it was 110): enough to read as a top-to-bottom build,
+      // quick enough that the whole first screen is in within ~0.6s of the
+      // tap instead of the last section still arriving after a second.
       due.sort((a, b) => a.top - b.top);
       due.forEach(({ el }, i) => {
-        el.style.setProperty("--reveal-delay", `${Math.min(i, 8) * 110}ms`);
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 7) * 45}ms`);
         el.classList.add("is-visible");
       });
     };
@@ -48,16 +51,26 @@ export function useScrollReveal() {
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
 
-    // Re-check immediately when content mounts (async loads) or the route
-    // changes. Only childList is observed, so our own class toggles (attribute
-    // changes) don't retrigger it.
-    const mo = new MutationObserver(reveal);
+    // Re-check when content mounts (async loads) or the route changes. Only
+    // childList is observed, so our own class toggles (attribute changes)
+    // don't retrigger it. Once per frame, not once per mutation: a page commit
+    // arrives as a burst of mutations, and measuring every hidden element after
+    // each one forced the browser to lay the whole new page out again and
+    // again in the middle of it — the main cost of a page switch on a phone.
+    let frame = 0;
+    const mo = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => {
+        frame = 0;
+        reveal();
+      });
+    });
     mo.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       mo.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, []);
 }

@@ -476,9 +476,18 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   };
   const pill = useSlidingHighlight(ref, [location.pathname, tapped]);
   // Profile is the one tab behind a lazy chunk; fetch it while the phone is
-  // idle so the first tap on it skips the loading skeleton.
+  // idle so the first tap on it skips the loading skeleton. The reads behind
+  // the other tabs go along too: once they are in the api client's memory
+  // (GET_CACHE), the first visit to Races or the standings opens with its
+  // content instead of an empty page waiting on the network. Small JSON, once
+  // per visit, and the pages ask for the very same addresses.
   useEffect(() => {
-    const warm = () => import("../pages/Profile.jsx").catch(() => {});
+    const warm = () => {
+      import("../pages/Profile.jsx").catch(() => {});
+      for (const read of [api.races, api.events, api.driverStandings, api.t1Standings, api.t2Standings, api.liveServers]) {
+        read().catch(() => {});
+      }
+    };
     if ("requestIdleCallback" in window) {
       const id = window.requestIdleCallback(warm, { timeout: 4000 });
       return () => window.cancelIdleCallback(id);

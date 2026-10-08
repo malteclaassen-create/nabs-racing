@@ -378,7 +378,11 @@ export function NoData({ label = "no value", className = "" }) {
 //
 // No entrance: on first render there is nothing to come from, so the box simply
 // is its height. This only smooths CHANGES.
-export function SmoothHeight({ children, duration = "var(--t-base)", onChange, className = "" }) {
+// `animate={false}` lets the box take its new height at once (the owner still
+// hears about it through onChange): for changes nobody asked for, like a page's
+// first content arriving, where a gliding height only drags everything below it
+// down the screen piece by piece.
+export function SmoothHeight({ children, duration = "var(--t-base)", onChange, className = "", animate = true }) {
   const box = useRef(null);
   const prev = useRef(null);
   const undo = useRef(null);
@@ -410,6 +414,7 @@ export function SmoothHeight({ children, duration = "var(--t-base)", onChange, c
     const visual = mid != null ? mid : from;
     if (Math.abs(to - visual) < 2) return;
     const still =
+      !animate ||
       document.hidden ||
       (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
       document.documentElement.classList.contains("fx-lite");

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
-import { api } from "../api/client.js";
+import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
@@ -134,6 +134,11 @@ function edgeMask({ left, right }) {
 }
 
 function RoundRail({ races, selectedId, onSelect, signupIds }) {
+  // Before the page has picked a round (one render after the list lands) the
+  // rail is about to centre on the last finished one; fan out from there so the
+  // chips do not get re-timed halfway through their entrance.
+  const picked = races.findIndex((r) => r.id === selectedId);
+  const activeIdx = picked >= 0 ? picked : races.reduce((last, r, i) => (r.isCompleted ? i : last), -1);
   const scrollerRef = useRef(null);
   const activeRef = useRef(null);
   // Which sides can still be scrolled to — drives the edge fade above.
@@ -225,7 +230,12 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
       // other list on the site (standings rows, line-up cards). The container
       // picks up .is-visible from the global scroll-reveal pass and each child
       // fans out on its own --i.
-      className="cascade scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
+      // `rail-from-active`: on a phone the rail is scrolled to the selected
+      // round, so dealing the chips out from round 1 had the ones actually on
+      // screen (round 10 and its neighbours) arrive last, well after the table
+      // below them. There they fan out from the selected chip instead (--d,
+      // see index.css); the vertical sidebar keeps the top-down order.
+      className="cascade rail-from-active scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
     >
       {races.map((r, i) => {
         const flag = flagFor(r.track, r.country);
@@ -252,7 +262,7 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
             type="button"
             onClick={() => onSelect(r.id)}
             aria-pressed={active}
-            style={{ "--i": i }}
+            style={{ "--i": i, "--d": activeIdx < 0 ? i : Math.abs(i - activeIdx) }}
             className={`group flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition active:scale-[0.97] lg:w-full lg:shrink ${border}`}
           >
             <span className={`font-display text-lg font-black leading-none tabular-nums ${active || signup ? "text-dark" : done ? "text-ok" : "text-faint group-hover:text-light"}`}>
@@ -502,7 +512,16 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
 
 export default function Races() {
   const { data: races, loading, error, reload } = useApi(useCallback(() => api.races(), []));
-  const [selectedId, setSelectedId] = useState(null);
+  // Picked on the very first render when the calendar is already in memory
+  // (see useApi), so the results panel is there from the first frame instead
+  // of arriving a render later and pushing everything under it down. A deep
+  // link is left to its own effect below, which also switches tab and scrolls.
+  const [selectedId, setSelectedId] = useState(() => {
+    if (!races?.length) return null;
+    const want = new URLSearchParams(window.location.search).get("race");
+    if (want && races.some((r) => r.id === want)) return null;
+    return pickDefaultRound(championshipRounds(races))?.id ?? null;
+  });
   // Set by the first pick on the rail. Until then the panel arrives with the
   // page (its cards rise in one by one); after it, a pick swaps the panel with
   // one short fade instead of blanking it and building it up again.
@@ -593,7 +612,9 @@ export default function Races() {
     }
   }, [wantRaceId, races]);
 
-  useEffect(() => {
+  // Layout effect: the pick lands before the first paint with the calendar, so
+  // no frame shows the page without its results panel.
+  useLayoutEffect(() => {
     if (!races || !races.length || selectedId) return;
     // A valid ?race=<id> is handled by the effect above; anything else opens on
     // the round pickDefaultRound chooses (the last one with a result in). The
@@ -698,12 +719,16 @@ export default function Races() {
     // a faster one for the round the visitor has since clicked: without it, the
     // old table would overwrite the new one and sit under the wrong heading.
     let alive = true;
-    setDetailLoading(true);
+    // A round already seen this visit shows its table at once (the api
+    // client's memory) while the fresh one is fetched.
+    const hit = peekCached(() => api.raceResults(selectedId));
+    if (hit) setDetail(hit.data);
+    setDetailLoading(!hit);
     setDetailError(null);
     api
       .raceResults(selectedId)
       .then((d) => alive && setDetail(d))
-      .catch((e) => alive && setDetailError(e.message))
+      .catch((e) => alive && !hit && setDetailError(e.message))
       .finally(() => alive && setDetailLoading(false));
     return () => {
       alive = false;
@@ -960,7 +985,9 @@ export default function Races() {
                 calendar underneath is carried between the two rather than cut:
                 a 37-row result and a sign-up panel are 1939px apart, and that
                 was happening in one frame. */}
-            <SmoothHeight className="min-w-0" onChange={onPanelResize}>
+            {/* Only a pick on the rail glides; the panel's first content
+                takes its height at once (see SmoothHeight's `animate`). */}
+            <SmoothHeight className="min-w-0" onChange={onPanelResize} animate={switched}>
               {selectedRace && !selectedRace.isCompleted ? (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
@@ -1265,8 +1292,10 @@ export default function Races() {
 
       {/* Full calendar — same session type as the explorer above (one shared
           switcher drives both), just as an at-a-glance grid instead of one
-          race at a time. */}
-      <div className="reveal space-y-5">
+          race at a time. `cv-auto`: it sits below the results, off screen
+          when the page opens, so the browser leaves its layout until it is
+          scrolled to (see index.css). */}
+      <div className="reveal cv-auto space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="section-title">Calendar · {tabLabel}</h3>
           {/* The feed carries the whole season, every session type, so it sits

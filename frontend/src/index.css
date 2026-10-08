@@ -548,16 +548,32 @@ body {
 /* Sections and cards rise + fade in on mount. Stagger with inline
    animation-delay. `both` keeps them hidden until their delay elapses. */
 @keyframes nabs-rise {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
+}
+/* The page sections' entrance, on the same spring as the glass menus and the
+   tab bar: the fade is quick and plain, the movement rises a little past its
+   place and settles back. Two animations rather than one keyframe set, so the
+   spring curve runs over the whole movement instead of being cut into
+   segments at a midway keyframe. */
+@keyframes nabs-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes nabs-spring-up {
+  from { transform: translateY(18px) scale(0.95); }
+  to   { transform: none; }
 }
 /* Hidden until scrolled into view (see useScrollReveal); then it rises in. */
 .reveal {
   opacity: 0;
   transform: translateY(14px);
 }
+/* Quick fade, springy rise (see nabs-spring-up): a page builds out of a dozen
+   of these, and the old 450ms ease had the last one still arriving a second
+   after the tap. */
 .reveal.is-visible {
-  animation: nabs-rise var(--t-slow) var(--e-out) both;
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
   /* --reveal-delay is handed out per element by useScrollReveal, sorted by
      vertical position, so a page builds itself top-to-bottom on load. */
   animation-delay: var(--reveal-delay, 0s);
@@ -644,9 +660,16 @@ body {
   opacity: 0;
 }
 .cascade.is-visible > * {
-  animation: nabs-rise var(--t-slow) var(--e-out) both;
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
   /* children inherit --reveal-delay from the container, then fan out on --i */
-  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 45ms);
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
+}
+/* A sideways rail scrolled to its selected item (the Races round rail) fans
+   out from that item, so what is on screen arrives first. */
+@media (max-width: 1023.98px) {
+  .rail-from-active.cascade.is-visible > * {
+    animation-delay: calc(var(--reveal-delay, 0s) + min(var(--d, 0), 6) * 35ms);
+  }
 }
 
 /* --- Growing bars -------------------------------------------------- */
@@ -825,15 +848,48 @@ body {
 }
 .scroll-cue { animation: scroll-cue 1.8s ease-in-out infinite; }
 
+/* Long sections that start off screen: the browser skips laying them out
+   and painting them until they come near the viewport, which takes a large
+   share of the work out of opening the page. The size is a placeholder until
+   the section has rendered once; after that "auto" keeps its real size. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1200px;
+}
+
 /* --- Page transition ----------------------------------------------- */
-/* Each route fades + lifts in on navigation (keyed on the pathname). */
+/* Each route fades + lifts in on navigation (keyed on the pathname). Short
+   and nearly flat: the sections inside rise on their own (.reveal/.cascade),
+   and a slow fade of the whole page on top of that made every navigation
+   start with a blank screen — 450ms of the page at low opacity while its
+   sections were still waiting their turn. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(8px); }
+  to   { transform: none; }
 }
 .page-in {
-  animation: page-in var(--t-slow) var(--e-out) both;
+  animation: nabs-fade-in 180ms ease-out both, page-in 480ms cubic-bezier(0.32, 1.32, 0.5, 1) both;
 }
+
+/* The page builds itself top to bottom even where its sections are not marked
+   .reveal: each block of the page (the children of its root element) comes in
+   one after another on the same spring, 45ms apart. Blocks that hold .reveal
+   or .cascade content are left to that system, so nothing animates twice.
+   `backwards`, not `both`: once a block has arrived it carries no transform,
+   so sticky bars and the like inside it behave as before. Blocks that mount
+   later (a banner, a loaded section) get the same entrance on arrival. */
+.page-in > * > :not(.reveal):not(.cascade):not(:has(.reveal, .reveal-chart, .cascade)) {
+  animation: nabs-fade-in 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+  animation-delay: calc(min(var(--pi, 0), 8) * 45ms);
+}
+.page-in > * > :nth-child(2) { --pi: 1; }
+.page-in > * > :nth-child(3) { --pi: 2; }
+.page-in > * > :nth-child(4) { --pi: 3; }
+.page-in > * > :nth-child(5) { --pi: 4; }
+.page-in > * > :nth-child(6) { --pi: 5; }
+.page-in > * > :nth-child(7) { --pi: 6; }
+.page-in > * > :nth-child(8) { --pi: 7; }
+.page-in > * > :nth-child(n + 9) { --pi: 8; }
 
 /* Content that replaces a loading skeleton fades in, so data arriving doesn't
    pop. Opacity only (no transform) so it never fights the reveal/cascade
@@ -1326,6 +1382,7 @@ body {
   .bar-rise { height: var(--h, 0) !important; animation: none !important; }
   .hero-anim, .hero-zoom, .gradient-anim, .glow-pulse, .float-bob,
   .scroll-cue, .page-in, .content-in { animation: none !important; opacity: 1; transform: none; }
+  .page-in > * > * { animation: none !important; }
   .recap-pop { animation: none !important; opacity: 1; transform: none; }
   .recap-reveal, .recap-reveal .recap-cascade > *, .recap-reveal .recap-tag { animation: none !important; opacity: 1; transform: none; }
   .recap-reveal .bar-fill { width: var(--w, 0) !important; animation: none !important; }
@@ -1745,6 +1802,7 @@ body {
 .fx-lite .hero-anim, .fx-lite .hero-zoom, .fx-lite .gradient-anim,
 .fx-lite .glow-pulse, .fx-lite .float-bob, .fx-lite .scroll-cue,
 .fx-lite .page-in, .fx-lite .content-in { animation: none !important; opacity: 1; transform: none; }
+.fx-lite .page-in > * > * { animation: none !important; }
 .fx-lite .recap-pop { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .recap-reveal, .fx-lite .recap-reveal .recap-cascade > *, .fx-lite .recap-reveal .recap-tag { animation: none !important; opacity: 1; transform: none; }
 .fx-lite .recap-reveal .bar-fill { width: var(--w, 0) !important; animation: none !important; }
