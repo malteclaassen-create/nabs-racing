@@ -877,9 +877,19 @@ body {
    or .cascade content are left to that system, so nothing animates twice.
    `backwards`, not `both`: once a block has arrived it carries no transform,
    so sticky bars and the like inside it behave as before. Blocks that mount
-   later (a banner, a loaded section) get the same entrance on arrival. */
-.page-in > * > :not(.reveal):not(.cascade):not(:has(.reveal, .reveal-chart, .cascade)) {
-  animation: nabs-fade-in 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+   later (a banner, a loaded section) get the same entrance on arrival.
+   The race recap's cards (.recap-reveal) are another such system: they start
+   hidden and rise in as they scroll into view. This rule used to take their
+   animation over and, once its own was done, left them at their hidden
+   starting point — the recap's header and half its cards never showed.
+   The keyframes only say where a block starts (nabs-block-fade has no `to`),
+   so the end is always the block's own opacity: a block that is meant to be
+   invisible stays invisible instead of flashing in and vanishing again. */
+@keyframes nabs-block-fade {
+  from { opacity: 0; }
+}
+.page-in > * > :not(.reveal):not(.cascade):not(.recap-reveal):not(:has(.reveal, .reveal-chart, .cascade, .recap-reveal)) {
+  animation: nabs-block-fade 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
   animation-delay: calc(min(var(--pi, 0), 8) * 45ms);
 }
 .page-in > * > :nth-child(2) { --pi: 1; }
