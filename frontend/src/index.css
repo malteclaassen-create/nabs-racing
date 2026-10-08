@@ -216,6 +216,16 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
   --z-tour: 70; /* the guided tour points AT overlays, so it sits over them */
 }
 
+/* Room the phone tab bar takes at the bottom edge (BottomNav in NavBar.jsx):
+   60px bar + 12px gap under it + 8px air above it, plus the iPhone home bar.
+   Zero from lg up, where there is no tab bar. The page's bottom padding and
+   every floating toast read it, so nothing ends up hidden behind the bar. */
+:root { --bnav: 0px; }
+@media (max-width: 1023.98px) {
+  :root { --bnav: calc(5rem + env(safe-area-inset-bottom)); }
+  body { padding-bottom: var(--bnav); }
+}
+
 /* The native scrollbar is hidden site-wide: the accent line under the nav
    doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
    No scrollbar also means no gutter, so the old scrollbar-gutter reservation
@@ -1505,6 +1515,85 @@ body {
    tinted bar without it is just a window onto the text underneath. */
 .fx-lite .glass-bar {
   background-color: var(--c-card);
+}
+
+/* --- Liquid glass tab bar (phones) -------------------------------------- */
+/* The phone tab bar (BottomNav in NavBar.jsx), in the look of iOS's own tab
+   bars: a thin sheet of glass the page scrolls under. Three layers do it —
+   a strongly blurred, colour-boosted see-through tint, a light rim (bright
+   along the top edge where the light catches it, faint along the bottom),
+   and a soft sheen across the upper half (::before). The active tab's pill
+   is a lens sitting in it: tinted with the league pink, with its own rim.
+
+   It is one small capsule, not a full-width bar, so the blur's per-frame cost
+   stays small — the reason the TOP bar goes solid on phones (.nav-backdrop)
+   does not carry over. Lite mode, and anyone whose system asks for less
+   transparency, get a solid bar instead. color-mix for the tint: see
+   .glass-bar above for why the Tailwind alpha modifier cannot do this. */
+.liquid-glass {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--c-card);
+  background-color: color-mix(in srgb, var(--c-card) 52%, transparent);
+  backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(190%) brightness(1.08);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow:
+    inset 0 1px 0.5px rgb(255 255 255 / 0.9),
+    inset 0 -1px 0.5px rgb(255 255 255 / 0.35),
+    0 8px 28px -6px rgb(15 23 42 / 0.28),
+    0 2px 6px rgb(15 23 42 / 0.08);
+}
+.dark .liquid-glass {
+  background-color: color-mix(in srgb, var(--c-card) 45%, transparent);
+  border-color: rgb(255 255 255 / 0.13);
+  box-shadow:
+    inset 0 1px 0.5px rgb(255 255 255 / 0.22),
+    inset 0 -1px 0.5px rgb(255 255 255 / 0.06),
+    0 10px 32px -6px rgb(0 0 0 / 0.65),
+    0 2px 8px rgb(0 0 0 / 0.3);
+}
+.liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 18% -20%, rgb(255 255 255 / 0.45), transparent 55%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.18), transparent 50%);
+}
+.dark .liquid-glass::before {
+  background:
+    radial-gradient(120% 90% at 18% -20%, rgb(255 255 255 / 0.12), transparent 55%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 50%);
+}
+.liquid-glass-lens {
+  background-color: rgb(var(--c-brand) / 0.22);
+  box-shadow:
+    inset 0 1px 0.5px rgb(255 255 255 / 0.5),
+    inset 0 0 0 1px rgb(var(--c-brand) / 0.45),
+    0 2px 10px -2px rgb(var(--c-brand) / 0.35);
+}
+.dark .liquid-glass-lens {
+  background-color: rgb(var(--c-brand) / 0.16);
+  box-shadow:
+    inset 0 1px 0.5px rgb(255 255 255 / 0.25),
+    inset 0 0 0 1px rgb(var(--c-brand) / 0.35),
+    0 2px 12px -2px rgb(var(--c-brand) / 0.3);
+}
+.fx-lite .liquid-glass {
+  background-color: var(--c-card);
+}
+.fx-lite .liquid-glass::before { display: none; }
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-glass {
+    background-color: var(--c-card) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .liquid-glass::before { display: none; }
 }
 
 /* --- Lite graphics mode (Settings panel) --------------------------------- */

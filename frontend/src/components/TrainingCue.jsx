@@ -104,7 +104,7 @@ export default function TrainingCue() {
   // transform for its entrance, and a transformed ancestor makes `fixed`
   // resolve against IT rather than against the window (see SeatCue.jsx).
   return createPortal(
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-chrome flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+var(--bnav))] z-chrome flex justify-center px-4">
       <div className="content-in pointer-events-auto flex items-center gap-3 rounded-2xl border border-ok/40 bg-card px-4 py-3 shadow-lg shadow-ink/20">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ok/15 text-ok">
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

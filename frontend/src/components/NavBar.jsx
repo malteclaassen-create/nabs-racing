@@ -428,6 +428,104 @@ function StandIcon({ d }) {
   return <svg viewBox="0 0 24 24" className="h-4 w-4 overflow-visible" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 }
 
+// The phone's tab bar: the five places a member goes on a race night, one tap
+// away at the bottom edge where the thumb already is, the way native apps do
+// it. Everything else (Attendance, Hall of Fame, Race Info, Feedback,
+// Stewarding) stays in the burger menu up top. Phones and tablets only — from
+// lg up the full nav is in the bar and this would only repeat it.
+//
+// Its height lives in --bnav (index.css), which the page's bottom padding and
+// every floating toast read, so nothing ends up hidden behind it. The glass
+// look (.liquid-glass) is in index.css, with why it can afford the blur the top
+// bar gives up on phones.
+function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
+  const location = useLocation();
+  const { user, isLoggedIn } = useAuth();
+  const { total, summary } = useAdminAttention();
+  const { pathFor } = useProfileHome();
+  const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
+  const ref = useRef(null);
+  const pill = useSlidingHighlight(ref, [location.pathname]);
+
+  const name = isLoggedIn ? user.driverName || user.discordName || "Profile" : "";
+  const profileTo = isLoggedIn ? pathFor(user.driverId) : "/profile";
+  const tabs = [
+    { key: "home", to: seriesPath(""), end: true, label: "Home", icon: NAV_ICONS.home, forced: location.pathname === "/" },
+    { key: "races", to: seriesPath("/races"), label: "Races", icon: NAV_ICONS.races },
+    {
+      key: "standings",
+      to: seriesPath("/drivers"),
+      label: "Standings",
+      icon: NAV_ICONS.records,
+      forced: STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p)),
+    },
+    { key: "live", to: seriesPath("/live"), label: "Live", icon: NAV_ICONS.live },
+    {
+      key: "me",
+      to: profileTo,
+      label: isLoggedIn ? "Profile" : "Sign in",
+      icon: NAV_ICONS.drivers,
+      forced: pathNoSeries.startsWith("/profile") || (isLoggedIn && location.pathname === profileTo),
+    },
+  ];
+
+  return (
+    <nav
+      aria-label="Main"
+      className="bottom-nav fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-chrome lg:hidden"
+    >
+      <div
+        ref={ref}
+        className="liquid-glass mx-auto flex h-[3.75rem] max-w-md items-stretch rounded-full p-1"
+      >
+        {pill && (
+          <span
+            aria-hidden
+            className="liquid-glass-lens absolute left-0 top-0 rounded-full transition-[transform,width] duration-base ease-out-soft"
+            style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
+          />
+        )}
+        {tabs.map((t) => (
+          <NavLink
+            key={t.key}
+            to={t.to}
+            end={t.end}
+            className={({ isActive }) =>
+              `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full transition-colors ${
+                isActive || t.forced ? "is-active text-accent" : "text-medium active:text-dark"
+              }`
+            }
+          >
+            <span className="relative flex h-6 items-center justify-center">
+              {t.key === "me" && isLoggedIn ? (
+                <>
+                  <DriverAvatar name={name} photoUrl={user.avatarUrl} color="#4251a8" size={24} />
+                  <AttentionDot total={total} summary={summary} className="absolute -right-1 -top-0.5" />
+                </>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-[22px] w-[22px] overflow-visible" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {t.icon}
+                </svg>
+              )}
+              {/* Same fact as the count on the desktop Live item: cars out right now. */}
+              {t.key === "live" && liveNow > 0 && (
+                <span className="absolute -right-3 -top-1 min-w-[1.1rem] rounded-full bg-brand px-1 text-center font-mono text-[10px] font-bold leading-[1.1rem] tabular-nums text-ink">
+                  {liveNow}
+                </span>
+              )}
+              {t.key === "live" && !liveNow && liveFeatureNew && (
+                <span className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-brand" />
+              )}
+            </span>
+            <span className="max-w-full truncate text-[11px] font-semibold leading-none">{t.label}</span>
+            {t.key === "live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 // "Standings" nav item: one entry that opens a flyout to Drivers / Constructors
 // on hover (and on click, for touch/keyboard). Highlighted while on either page.
 function StandingsNav({ seriesPath }) {
@@ -954,6 +1052,7 @@ export default function NavBar() {
   }, [onSeasonPage, menu]);
 
   return (
+    <>
     <header className="sticky top-0 z-30">
       {/* Blurred, tinted backdrop for the bar only. Its bottom edge is masked
           out (nav-fade) so the bar melts into the page with no hard line. The
@@ -1117,7 +1216,7 @@ export default function NavBar() {
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
             className={`nav-drop absolute inset-x-0 top-full z-30 h-[calc(100dvh-100%)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
           >
-            <div className="container-page flex flex-col py-3">
+            <div className="container-page flex flex-col pt-3 pb-[calc(0.75rem+var(--bnav))]">
               {/* You-stuff first, on ONE row: profile chip left, search right.
                   The chip keeps its natural width (name truncates via its own
                   max-w), the search field takes the rest of the line. */}
@@ -1205,5 +1304,7 @@ export default function NavBar() {
         </div>
       )}
     </header>
+    <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} />
+    </>
   );
 }
