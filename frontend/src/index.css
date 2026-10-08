@@ -217,12 +217,13 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
 }
 
 /* Room the phone tab bar takes at the bottom edge (BottomNav in NavBar.jsx):
-   60px bar + 12px gap under it + 8px air above it, plus the iPhone home bar.
+   62px bar + 8px air above it + the gap under it (21px, or the iPhone home
+   bar's safe area where that is larger).
    Zero from lg up, where there is no tab bar. The page's bottom padding and
    every floating toast read it, so nothing ends up hidden behind the bar. */
 :root { --bnav: 0px; }
 @media (max-width: 1023.98px) {
-  :root { --bnav: calc(5rem + env(safe-area-inset-bottom)); }
+  :root { --bnav: calc(70px + max(21px, env(safe-area-inset-bottom))); }
   body { padding-bottom: var(--bnav); }
 }
 
@@ -1583,6 +1584,38 @@ body {
     inset 0 0 0 1px rgb(var(--c-brand) / 0.35),
     0 2px 12px -2px rgb(var(--c-brand) / 0.3);
 }
+/* Tab bar motion. The lens springs to the tapped tab — a little past it and
+   back, like the system bars — and the glass inside it stretches wide and flat
+   while it travels, then settles round. The pressed tab dips under the thumb.
+   Reduced motion and lite mode keep a plain, short glide. */
+.bottom-nav-lens {
+  transition: transform 460ms cubic-bezier(0.34, 1.4, 0.5, 1), width 460ms cubic-bezier(0.34, 1.4, 0.5, 1);
+  will-change: transform;
+}
+.bottom-nav-lens-glass {
+  animation: lens-stretch 460ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+@keyframes lens-stretch {
+  0% { transform: scale(1, 1); }
+  30% { transform: scale(1.16, 0.88); }
+  65% { transform: scale(0.97, 1.04); }
+  100% { transform: scale(1, 1); }
+}
+.bottom-nav-press {
+  transition: transform 160ms var(--e-soft, ease-out);
+}
+.bottom-nav a:active .bottom-nav-press {
+  transform: scale(0.86);
+  transition-duration: 80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav-lens { transition-duration: 150ms; transition-timing-function: ease-out; }
+  .bottom-nav-lens-glass { animation: none; }
+  .bottom-nav a:active .bottom-nav-press { transform: none; }
+}
+.fx-lite .bottom-nav-lens { transition-duration: 150ms; transition-timing-function: ease-out; }
+.fx-lite .bottom-nav-lens-glass { animation: none; }
+
 .fx-lite .liquid-glass {
   background-color: var(--c-card);
 }

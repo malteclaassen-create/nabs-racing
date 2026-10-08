@@ -434,6 +434,9 @@ function StandIcon({ d }) {
 // Stewarding) stays in the burger menu up top. Phones and tablets only — from
 // lg up the full nav is in the bar and this would only repeat it.
 //
+// Placed where iOS puts its own tab bars (measured against one on an iPhone 15
+// Pro): 21px in from both sides and from the bottom edge, 62px tall.
+//
 // Its height lives in --bnav (index.css), which the page's bottom padding and
 // every floating toast read, so nothing ends up hidden behind it. The glass
 // look (.liquid-glass) is in index.css, with why it can afford the blur the top
@@ -445,7 +448,28 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   const { pathFor } = useProfileHome();
   const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
   const ref = useRef(null);
-  const pill = useSlidingHighlight(ref, [location.pathname]);
+  // The tab that was just tapped, ahead of the route. Navigation runs inside a
+  // React transition (v7_startTransition in main.jsx), so while a heavy page
+  // (the standings, Live) renders on a phone, NavLink still lights the old tab
+  // and the tap looks like it did nothing. The lens moves on the tap instead,
+  // and hands over to the real active state once the route lands.
+  const [tapped, setTapped] = useState(null);
+  useEffect(() => setTapped(null), [location.pathname]);
+  // Counts hops to another tab: the glass wobbles on a hop, not on page load
+  // or on the late re-measures useSlidingHighlight does while fonts settle.
+  const [hop, setHop] = useState(0);
+  const pill = useSlidingHighlight(ref, [location.pathname, tapped]);
+  // Profile is the one tab behind a lazy chunk; fetch it while the phone is
+  // idle so the first tap on it skips the loading skeleton.
+  useEffect(() => {
+    const warm = () => import("../pages/Profile.jsx").catch(() => {});
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(warm, { timeout: 4000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = setTimeout(warm, 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   const name = isLoggedIn ? user.driverName || user.discordName || "Profile" : "";
   const profileTo = isLoggedIn ? pathFor(user.driverId) : "/profile";
@@ -472,30 +496,43 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   return (
     <nav
       aria-label="Main"
-      className="bottom-nav fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-chrome lg:hidden"
+      className="bottom-nav fixed inset-x-[21px] bottom-[max(21px,env(safe-area-inset-bottom))] z-chrome lg:hidden"
     >
       <div
         ref={ref}
-        className="liquid-glass mx-auto flex h-[3.75rem] max-w-md items-stretch rounded-full p-1"
+        className="liquid-glass mx-auto flex h-[62px] max-w-md items-stretch rounded-full p-1"
       >
         {pill && (
+          // Outer span travels (springy, see .bottom-nav-lens); the inner one
+          // is the glass, and wobbles — wide and flat mid-flight, settling
+          // round — on each hop to another tab, which is what the key does.
           <span
             aria-hidden
-            className="liquid-glass-lens absolute left-0 top-0 rounded-full transition-[transform,width] duration-base ease-out-soft"
+            className="bottom-nav-lens absolute left-0 top-0"
             style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
-          />
+          >
+            <span key={hop} className={`liquid-glass-lens block h-full w-full rounded-full ${hop ? "bottom-nav-lens-glass" : ""}`} />
+          </span>
         )}
         {tabs.map((t) => (
           <NavLink
             key={t.key}
             to={t.to}
             end={t.end}
+            onClick={(e) => {
+              if (!e.currentTarget.classList.contains("is-active")) setHop((h) => h + 1);
+              setTapped(t.key);
+            }}
             className={({ isActive }) =>
-              `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full transition-colors ${
-                isActive || t.forced ? "is-active text-accent" : "text-medium active:text-dark"
+              `relative flex min-w-0 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-0.5 rounded-full transition-colors ${
+                (tapped ? tapped === t.key : isActive || t.forced) ? "is-active text-accent" : "text-medium"
               }`
             }
+            // touch-manipulation: no double-tap-to-zoom wait on the tap. The grey
+            // iOS tap flash goes too; the press dip below is the feedback.
+            style={{ WebkitTapHighlightColor: "transparent" }}
           >
+            <span className="bottom-nav-press flex flex-col items-center gap-0.5">
             <span className="relative flex h-6 items-center justify-center">
               {t.key === "me" && isLoggedIn ? (
                 <>
@@ -518,6 +555,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
               )}
             </span>
             <span className="max-w-full truncate text-[11px] font-semibold leading-none">{t.label}</span>
+            </span>
             {t.key === "live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
           </NavLink>
         ))}
