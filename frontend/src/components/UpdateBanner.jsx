@@ -112,7 +112,7 @@ export default function UpdateBanner() {
 
   if (!banner) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-chrome flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+var(--bnav))] z-chrome flex justify-center px-4">
       <div className="content-in pointer-events-auto flex items-center gap-3 rounded-2xl border border-brand/40 bg-card px-4 py-3 shadow-lg shadow-ink/20">
         <span className="text-sm text-medium">
           A new version of the site is ready.

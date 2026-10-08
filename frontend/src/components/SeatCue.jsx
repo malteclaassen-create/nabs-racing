@@ -73,7 +73,7 @@ export default function SeatCue({ count, target, onSeen }) {
   // In place, this rendered a screenful below the bottom of the page, where it
   // is worth nothing at all.
   return createPortal(
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-20 flex justify-center px-4 sm:bottom-6">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(1rem+var(--bnav))] z-20 flex justify-center px-4 lg:bottom-6">
       <button
         type="button"
         onClick={() =>

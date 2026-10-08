@@ -216,6 +216,16 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
   --z-tour: 70; /* the guided tour points AT overlays, so it sits over them */
 }
 
+/* Room the phone tab bar takes at the bottom edge (BottomNav in NavBar.jsx):
+   60px bar + 12px gap under it + 8px air above it, plus the iPhone home bar.
+   Zero from lg up, where there is no tab bar. The page's bottom padding and
+   every floating toast read it, so nothing ends up hidden behind the bar. */
+:root { --bnav: 0px; }
+@media (max-width: 1023.98px) {
+  :root { --bnav: calc(5rem + env(safe-area-inset-bottom)); }
+  body { padding-bottom: var(--bnav); }
+}
+
 /* The native scrollbar is hidden site-wide: the accent line under the nav
    doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
    No scrollbar also means no gutter, so the old scrollbar-gutter reservation

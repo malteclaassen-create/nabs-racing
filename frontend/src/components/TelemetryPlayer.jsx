@@ -37,7 +37,7 @@ function Shortcuts() {
 export default function TelemetryPlayer({ playing, onToggle, playLabel, at, n, sections, activeN, onPick, onJump, hasPrev, hasNext, rate, onRate, position, gapAt, colorA, colorB }) {
   const leader = gapAt == null || Math.abs(gapAt) < 0.0005 ? null : gapAt > 0 ? "A" : "B";
   return (
-    <div className="sticky bottom-0 z-20 order-last -mx-1 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 sm:bottom-auto sm:order-none sm:top-[var(--tel-top,84px)] sm:py-1.5">
+    <div className="sticky bottom-[var(--bnav)] z-20 order-last -mx-1 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 sm:bottom-auto sm:order-none sm:top-[var(--tel-top,84px)] sm:py-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-card/90 px-2 py-2 shadow-lift backdrop-blur sm:gap-x-3 sm:px-3">
         {/* Pause keeps the cursor where it is; Play resumes from there. Only a
             lap that has run to the flag (or has no cursor yet) starts over. */}
