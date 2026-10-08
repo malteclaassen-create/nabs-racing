@@ -14,7 +14,7 @@ import StandingsTable from "../components/StandingsTable.jsx";
 import DriverRow, { standingCaption } from "../components/DriverStandingsRow.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
-import { List as ListIcon, Grid3x3, IdCard, SlidersHorizontal } from "lucide-react";
+import { List as ListIcon, Grid3x3, IdCard } from "lucide-react";
 import { countryFor } from "../data/driverCountries.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
 
@@ -345,122 +345,31 @@ export default function DriverStandings() {
   // cards the admin switched off.
   const activeView = !hasRounds || (view === "cards" && !cardsEnabled) ? "list" : view;
 
-  // ---- MOCKUP ONLY (?mock=a|b|c): compact phone headers to compare ----
-  const mock = new URLSearchParams(window.location.search).get("mock");
+  // The three views, shared by the desktop's labelled switch and the phone's
+  // icon switch below.
   const viewItems = [
     { key: "list", label: "List", Icon: ListIcon },
     { key: "grid", label: "By round", Icon: Grid3x3 },
+    // Seasons without rating cards don't get the option at all, rather than
+    // an option that leads to an empty grid.
     ...(cardsEnabled ? [{ key: "cards", label: "Cards", Icon: IdCard }] : []),
   ];
-  const eyebrowLine = `${seasonName || "Season"} · Championship`;
-  const viewIcons = hasRounds && (
-    <div className="inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5">
-      {viewItems.map(({ key, label, Icon }) => (
-        <button
-          key={key}
-          type="button"
-          aria-label={label}
-          onClick={() => setView(key)}
-          className={`flex h-8 w-9 items-center justify-center rounded-md ${activeView === key ? "bg-brand text-ink" : "text-light"}`}
-        >
-          <Icon className="h-4 w-4" strokeWidth={2.25} />
-        </button>
-      ))}
-    </div>
-  );
-  const metaLine = (
-    <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-light">
-      <span><b className="text-dark">{rows.length}</b> {scopeLabel}</span>
-      <span aria-hidden>·</span>
-      <span><b className="text-dark">{hasRounds ? data.raceNumbers.length : "–"}</b> rounds</span>
-      {idleReserves > 0 && (
-        <>
-          <span aria-hidden>·</span>
-          <button type="button" onClick={() => setShowIdleReserves(!showIdleReserves)} className="underline decoration-dotted underline-offset-4">
-            {showIdleReserves ? "hide" : <><b className="text-dark">{idleReserves}</b> reserves hidden</>}
-          </button>
-        </>
-      )}
-    </div>
-  );
-  const compactTitle = (
-    <div className="mb-3">
-      <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrowLine}</div>
-      <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">Driver Standings</h1>
-    </div>
-  );
-  const chip = (on, label, onClick, key) => (
-    <button key={key} type="button" onClick={onClick} className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-bold ${on ? "border-brand bg-brand text-ink" : "border-border bg-card text-medium"}`}>
-      {label}
-    </button>
-  );
-  const mockHeader =
-    mock === "a" ? (
-      <>
-        {compactTitle}
-        <div className="mb-2 flex items-center justify-between gap-2">
-          {multiTier ? (
-            <SlidingTabs
-              items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
-              value={activeTier}
-              onChange={setTier}
-              btnClassName="px-2.5 py-1.5 text-[13px]"
-            />
-          ) : <span />}
-          {viewIcons}
-        </div>
-        <div className="flex items-start justify-between gap-2">
-          {metaLine}
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
-            <input type="checkbox" checked={onlyScoring} onChange={(e) => setOnlyScoring(e.target.checked)} className="h-3.5 w-3.5 rounded border-border" />
-            with points
-          </label>
-        </div>
-      </>
-    ) : mock === "b" ? (
-      <>
-        {compactTitle}
-        <div className="scrollbar-slim -mx-4 mb-2 flex gap-2 overflow-x-auto px-4 pb-1">
-          {multiTier && tierFilters.map((t) => chip(activeTier === t.id, t.label, () => setTier(t.id), t.id))}
-          <span className="mx-1 w-px shrink-0 self-stretch bg-border" />
-          {hasRounds && viewItems.map((it) => chip(activeView === it.key, it.label, () => setView(it.key), it.key))}
-          <span className="mx-1 w-px shrink-0 self-stretch bg-border" />
-          {chip(onlyScoring, "With points", () => setOnlyScoring(!onlyScoring), "pts")}
-        </div>
-        {metaLine}
-      </>
-    ) : mock === "c" ? (
-      <>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrowLine}</div>
-            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">Standings</h1>
-          </div>
-          {viewIcons}
-        </div>
-        <div className="mb-2 flex items-center gap-2">
-          {multiTier && (
-            <div className="min-w-0 flex-1">
-              <SlidingTabs
-                items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
-                value={activeTier}
-                onChange={setTier}
-                wrapClassName="flex w-full rounded-xl border border-border bg-card p-1"
-                btnClassName="flex-1 px-1 py-1.5 text-[13px]"
-              />
-            </div>
-          )}
-          <button type="button" aria-label="Filter" onClick={() => setOnlyScoring(!onlyScoring)} className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border ${onlyScoring ? "border-brand bg-brand/15 text-dark" : "border-border bg-card text-light"}`}>
-            <SlidersHorizontal className="h-4 w-4" strokeWidth={2.25} />
-          </button>
-        </div>
-        {metaLine}
-      </>
-    ) : null;
 
   return (
     <div className="content-in">
-      {mockHeader ? <div>{mockHeader}</div> : <PageHeader eyebrow="Championship" title={seasonHeading} />}
+      {/* Phones get a compact head (title on one line, filters on one row, the
+          counts on one small line) so the table starts about 200px higher —
+          three more drivers on the first screen. From sm up it is the full
+          header and controls below, unchanged. */}
+      <div className="mb-3 sm:hidden">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">
+          {seasonName ? `${seasonName} · Championship` : "Championship"}
+        </div>
+        <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">Driver Standings</h1>
+      </div>
+      <div className="hidden sm:block">
+        <PageHeader eyebrow="Championship" title={seasonHeading} />
+      </div>
 
       {top3.length > 0 && (
         // Phones skip the leader cards entirely — the same three drivers head
@@ -482,8 +391,97 @@ export default function DriverStandings() {
         </div>
       )}
 
-      {!mockHeader && (<>
-      <div data-tour="standings-views" className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {/* One wrapper for both layouts, so the newcomer tour's stop finds the
+          controls on whichever screen is in use. */}
+      <div data-tour="standings-views">
+      {/* Phone: tier switch and view icons on one row, then one line of counts
+          with the "with points" tick at its end. */}
+      <div className="sm:hidden">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {multiTier ? (
+            <SlidingTabs
+              items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
+              value={activeTier}
+              onChange={setTier}
+              btnClassName="px-2.5 py-1.5 text-[13px]"
+            />
+          ) : (
+            <span />
+          )}
+          {hasRounds && (
+            <div className="inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5" role="group" aria-label="View">
+              {viewItems.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-label={label}
+                  aria-pressed={activeView === key}
+                  title={label}
+                  onClick={() => setView(key)}
+                  className={`flex h-8 w-9 items-center justify-center rounded-md transition-colors ${
+                    activeView === key ? "bg-brand text-ink" : "text-light"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-light">
+            <span>
+              <b className="tabular-nums text-dark">{rows.length}</b> {scopeLabel}
+            </span>
+            <span aria-hidden>·</span>
+            {hasRounds ? (
+              <span>
+                <b className="tabular-nums text-dark">{data.raceNumbers.length}</b> rounds
+              </span>
+            ) : (
+              <span className="font-bold text-dark">Final standings</span>
+            )}
+            {hiddenCount > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <button type="button" onClick={() => setOnlyScoring(false)} className="underline decoration-dotted underline-offset-4">
+                  <b className="tabular-nums text-dark">{hiddenCount}</b> without points hidden
+                </button>
+              </>
+            )}
+            {idleReserves > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={() => setShowIdleReserves(!showIdleReserves)}
+                  className="underline decoration-dotted underline-offset-4"
+                >
+                  {showIdleReserves ? (
+                    <>hide {idleReserves} idle reserves</>
+                  ) : (
+                    <>
+                      <b className="tabular-nums text-dark">{idleReserves}</b> reserves hidden
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
+            <input
+              type="checkbox"
+              checked={onlyScoring}
+              onChange={(e) => setOnlyScoring(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border text-link focus:ring-accent/40"
+            />
+            With points
+          </label>
+        </div>
+      </div>
+
+      <div className="hidden sm:block">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {multiTier ? (
           <SlidingTabs
             items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
@@ -496,13 +494,7 @@ export default function DriverStandings() {
         <div className="flex flex-wrap items-center gap-3">
           {hasRounds && (
             <SlidingTabs
-              items={[
-                { key: "list", label: "List" },
-                { key: "grid", label: "By round" },
-                // Seasons without rating cards don't get the option at all,
-                // rather than an option that leads to an empty grid.
-                ...(cardsEnabled ? [{ key: "cards", label: "Cards" }] : []),
-              ]}
+              items={viewItems.map(({ key, label }) => ({ key, label }))}
               value={activeView}
               onChange={setView}
             />
@@ -559,7 +551,9 @@ export default function DriverStandings() {
         )}
       </div>
 
-      </>)}
+      </div>
+      </div>
+
       <div key={`${activeView}:${activeTier}`} className={swap}>
       {rows.length === 0 ? (
         <EmptyState
