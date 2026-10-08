@@ -484,9 +484,20 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   useEffect(() => {
     const warm = () => {
       import("../pages/Profile.jsx").catch(() => {});
-      for (const read of [api.races, api.events, api.driverStandings, api.t1Standings, api.t2Standings, api.liveServers]) {
+      for (const read of [api.events, api.driverStandings, api.t1Standings, api.t2Standings, api.liveServers]) {
         read().catch(() => {});
       }
+      // The calendar, and with it the result of the last round run: Home's
+      // hero shows that podium (and the sprint's, on a sprint weekend).
+      api
+        .races()
+        .then((list) => {
+          const done = (list || []).filter((r) => !r.isSpecialEvent && r.number != null && r.isCompleted);
+          const last = done[done.length - 1];
+          if (last) api.raceResults(last.id).catch(() => {});
+          if (last?.sprintRaceId) api.raceResults(last.sprintRaceId).catch(() => {});
+        })
+        .catch(() => {});
     };
     if ("requestIdleCallback" in window) {
       const id = window.requestIdleCallback(warm, { timeout: 4000 });
