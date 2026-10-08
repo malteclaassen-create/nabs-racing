@@ -551,16 +551,29 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
+/* The page sections' entrance, on the same spring as the glass menus and the
+   tab bar: the fade is quick and plain, the movement rises a little past its
+   place and settles back. Two animations rather than one keyframe set, so the
+   spring curve runs over the whole movement instead of being cut into
+   segments at a midway keyframe. */
+@keyframes nabs-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes nabs-spring-up {
+  from { transform: translateY(18px) scale(0.95); }
+  to   { transform: none; }
+}
 /* Hidden until scrolled into view (see useScrollReveal); then it rises in. */
 .reveal {
   opacity: 0;
   transform: translateY(14px);
 }
-/* 360ms rather than the page-entrance --t-slow: a page builds out of a dozen
-   of these, and at 450ms each the last one was still arriving a second after
-   the tap. */
+/* Quick fade, springy rise (see nabs-spring-up): a page builds out of a dozen
+   of these, and the old 450ms ease had the last one still arriving a second
+   after the tap. */
 .reveal.is-visible {
-  animation: nabs-rise 360ms var(--e-out) both;
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
   /* --reveal-delay is handed out per element by useScrollReveal, sorted by
      vertical position, so a page builds itself top-to-bottom on load. */
   animation-delay: var(--reveal-delay, 0s);
@@ -647,7 +660,7 @@ body {
   opacity: 0;
 }
 .cascade.is-visible > * {
-  animation: nabs-rise 360ms var(--e-out) both;
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
   /* children inherit --reveal-delay from the container, then fan out on --i */
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
@@ -835,11 +848,11 @@ body {
    start with a blank screen — 450ms of the page at low opacity while its
    sections were still waiting their turn. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(8px); }
+  to   { transform: none; }
 }
 .page-in {
-  animation: page-in 200ms var(--e-out) both;
+  animation: nabs-fade-in 180ms ease-out both, page-in 480ms cubic-bezier(0.32, 1.32, 0.5, 1) both;
 }
 
 /* Content that replaces a loading skeleton fades in, so data arriving doesn't
