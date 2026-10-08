@@ -877,9 +877,19 @@ body {
    or .cascade content are left to that system, so nothing animates twice.
    `backwards`, not `both`: once a block has arrived it carries no transform,
    so sticky bars and the like inside it behave as before. Blocks that mount
-   later (a banner, a loaded section) get the same entrance on arrival. */
-.page-in > * > :not(.reveal):not(.cascade):not(:has(.reveal, .reveal-chart, .cascade)) {
-  animation: nabs-fade-in 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+   later (a banner, a loaded section) get the same entrance on arrival.
+   The race recap's cards (.recap-reveal) are another such system: they start
+   hidden and rise in as they scroll into view. This rule used to take their
+   animation over and, once its own was done, left them at their hidden
+   starting point — the recap's header and half its cards never showed.
+   The keyframes only say where a block starts (nabs-block-fade has no `to`),
+   so the end is always the block's own opacity: a block that is meant to be
+   invisible stays invisible instead of flashing in and vanishing again. */
+@keyframes nabs-block-fade {
+  from { opacity: 0; }
+}
+.page-in > * > :not(.reveal):not(.cascade):not(.recap-reveal):not(:has(.reveal, .reveal-chart, .cascade, .recap-reveal)) {
+  animation: nabs-block-fade 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
   animation-delay: calc(min(var(--pi, 0), 8) * 45ms);
 }
 .page-in > * > :nth-child(2) { --pi: 1; }
@@ -1672,13 +1682,20 @@ body {
 .fx-lite .bottom-nav-lens { transition-duration: 150ms; transition-timing-function: ease-out; }
 .fx-lite .bottom-nav-lens-glass { animation: none; }
 
-/* Denser glass for menus that open over busy pictures (the Home hero): the
-   rows are text to read, not just icons, so less of the photo comes through. */
+/* Denser glass for the dropdown menus (season, series, standings, the live
+   table): the rows are text to read, not just icons. On a phone they open over
+   the menu's blurred scrim, so little shows through; on a desktop they open
+   straight over the page, and wherever the blur is weak or not drawn at all (a
+   desktop browser without graphics acceleration draws none) the page's text
+   showed through the rows. So: a heavier blur, and a tint dense enough to read
+   on without it. */
 .liquid-glass.glass-dense {
-  background-color: color-mix(in srgb, var(--c-card) 80%, transparent);
+  background-color: color-mix(in srgb, var(--c-card) 90%, transparent);
+  backdrop-filter: blur(32px) saturate(190%) brightness(1.08);
+  -webkit-backdrop-filter: blur(32px) saturate(190%) brightness(1.08);
 }
 .dark .liquid-glass.glass-dense {
-  background-color: color-mix(in srgb, var(--c-card) 74%, transparent);
+  background-color: color-mix(in srgb, var(--c-card) 88%, transparent);
 }
 /* Nearly solid, for a long list of results that opens over other text (search
    inside the phone menu): only the rim and a hint of colour stay glassy. */
@@ -1710,11 +1727,19 @@ body {
   transform: translateY(-8px) scale(0.96);
   transition: opacity 120ms ease-in, transform 160ms ease-in, background-color 150ms;
 }
+/* The stagger delays only the rows' arrival. It used to delay the hover
+   highlight too (up to 290ms on the lower rows, then a 150ms fade), so a mouse
+   moving quickly up and down the list left nothing marked at all. The
+   highlight now lands at once, as in a native menu, and fades out briefly as
+   the pointer leaves. */
 .glass-menu.is-open .glass-menu-item {
   opacity: 1;
   transform: none;
-  transition: opacity 260ms ease-out, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1), background-color 150ms;
-  transition-delay: calc(50ms + min(var(--i, 0), 8) * 30ms);
+  transition: opacity 260ms ease-out, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1), background-color 120ms ease-out;
+  transition-delay: calc(50ms + min(var(--i, 0), 8) * 30ms), calc(50ms + min(var(--i, 0), 8) * 30ms), 0ms;
+}
+.glass-menu.is-open .glass-menu-item:hover {
+  transition-duration: 260ms, 420ms, 0ms;
 }
 .glass-menu.is-open .glass-menu-item:active {
   transform: scale(0.97);
@@ -1770,7 +1795,8 @@ body {
 }
 .fx-lite .liquid-glass::before { display: none; }
 @media (prefers-reduced-transparency: reduce) {
-  .liquid-glass {
+  .liquid-glass,
+  .liquid-glass.glass-dense {
     background-color: var(--c-card) !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
