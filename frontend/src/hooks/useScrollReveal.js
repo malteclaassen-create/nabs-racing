@@ -51,16 +51,26 @@ export function useScrollReveal() {
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
 
-    // Re-check immediately when content mounts (async loads) or the route
-    // changes. Only childList is observed, so our own class toggles (attribute
-    // changes) don't retrigger it.
-    const mo = new MutationObserver(reveal);
+    // Re-check when content mounts (async loads) or the route changes. Only
+    // childList is observed, so our own class toggles (attribute changes)
+    // don't retrigger it. Once per frame, not once per mutation: a page commit
+    // arrives as a burst of mutations, and measuring every hidden element after
+    // each one forced the browser to lay the whole new page out again and
+    // again in the middle of it — the main cost of a page switch on a phone.
+    let frame = 0;
+    const mo = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => {
+        frame = 0;
+        reveal();
+      });
+    });
     mo.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
       mo.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, []);
 }

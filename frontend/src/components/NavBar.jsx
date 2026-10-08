@@ -484,7 +484,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   useEffect(() => {
     const warm = () => {
       import("../pages/Profile.jsx").catch(() => {});
-      for (const read of [api.races, api.events, api.driverStandings, api.t1Standings, api.t2Standings]) {
+      for (const read of [api.races, api.events, api.driverStandings, api.t1Standings, api.t2Standings, api.liveServers]) {
         read().catch(() => {});
       }
     };

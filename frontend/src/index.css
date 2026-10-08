@@ -848,6 +848,15 @@ body {
 }
 .scroll-cue { animation: scroll-cue 1.8s ease-in-out infinite; }
 
+/* Long sections that start off screen: the browser skips laying them out
+   and painting them until they come near the viewport, which takes a large
+   share of the work out of opening the page. The size is a placeholder until
+   the section has rendered once; after that "auto" keeps its real size. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1200px;
+}
+
 /* --- Page transition ----------------------------------------------- */
 /* Each route fades + lifts in on navigation (keyed on the pathname). Short
    and nearly flat: the sections inside rise on their own (.reveal/.cascade),

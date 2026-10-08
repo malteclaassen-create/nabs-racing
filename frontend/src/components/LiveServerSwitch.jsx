@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { api } from "../api/client.js";
+import { api, peekCached } from "../api/client.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,13 @@ const hasSession = (s) => !!s?.session;
 const shortName = (name) => String(name || "").replace(/^NABS\s+/i, "");
 
 export function useLiveServers() {
-  const [servers, setServers] = useState(null);
+  // Starts from the answer this tab already has (the api client's memory, and
+  // the tab bar fetches it on idle): arriving a round trip after the page, the
+  // switch pushed the whole Live page 38px down while it was coming in.
+  const [servers, setServers] = useState(() => {
+    const d = peekCached(() => api.liveServers())?.data;
+    return d?.servers?.length ? d : null;
+  });
 
   useVisiblePoll(
     useCallback((alive) => {
