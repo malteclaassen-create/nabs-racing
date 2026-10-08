@@ -548,7 +548,7 @@ body {
 /* Sections and cards rise + fade in on mount. Stagger with inline
    animation-delay. `both` keeps them hidden until their delay elapses. */
 @keyframes nabs-rise {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
 /* Hidden until scrolled into view (see useScrollReveal); then it rises in. */
@@ -556,8 +556,11 @@ body {
   opacity: 0;
   transform: translateY(14px);
 }
+/* 360ms rather than the page-entrance --t-slow: a page builds out of a dozen
+   of these, and at 450ms each the last one was still arriving a second after
+   the tap. */
 .reveal.is-visible {
-  animation: nabs-rise var(--t-slow) var(--e-out) both;
+  animation: nabs-rise 360ms var(--e-out) both;
   /* --reveal-delay is handed out per element by useScrollReveal, sorted by
      vertical position, so a page builds itself top-to-bottom on load. */
   animation-delay: var(--reveal-delay, 0s);
@@ -644,9 +647,9 @@ body {
   opacity: 0;
 }
 .cascade.is-visible > * {
-  animation: nabs-rise var(--t-slow) var(--e-out) both;
+  animation: nabs-rise 360ms var(--e-out) both;
   /* children inherit --reveal-delay from the container, then fan out on --i */
-  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 45ms);
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
 
 /* --- Growing bars -------------------------------------------------- */
@@ -826,13 +829,17 @@ body {
 .scroll-cue { animation: scroll-cue 1.8s ease-in-out infinite; }
 
 /* --- Page transition ----------------------------------------------- */
-/* Each route fades + lifts in on navigation (keyed on the pathname). */
+/* Each route fades + lifts in on navigation (keyed on the pathname). Short
+   and nearly flat: the sections inside rise on their own (.reveal/.cascade),
+   and a slow fade of the whole page on top of that made every navigation
+   start with a blank screen — 450ms of the page at low opacity while its
+   sections were still waiting their turn. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: none; }
 }
 .page-in {
-  animation: page-in var(--t-slow) var(--e-out) both;
+  animation: page-in 200ms var(--e-out) both;
 }
 
 /* Content that replaces a loading skeleton fades in, so data arriving doesn't

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { api, setSelectedSeries } from "../api/client.js";
+import { api, setSelectedSeries, setPrimarySeries } from "../api/client.js";
 import { deriveSeriesAccent } from "../utils/seriesColor.js";
 
 // Holds the racing SERIES the site is viewing — the level above SeasonContext,
@@ -113,6 +113,7 @@ export function SeriesProvider({ children }) {
   // list is still loading, trust the URL slug as-is.
   const effective = current?.slug || (!loaded && slug) || (unknownSlug ? active?.slug || null : slug) || null;
   setSelectedSeries(effective);
+  setPrimarySeries(active?.slug);
 
   // Stamp the slug onto <html> as [data-series="..."], same synchronous spot
   // as setSelectedSeries above (so the very first paint already carries it).

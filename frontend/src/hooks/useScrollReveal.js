@@ -28,9 +28,12 @@ export function useScrollReveal() {
       // fans in top-to-bottom: sort by vertical position and hand each element
       // an increasing delay via --reveal-delay (read by .reveal/.cascade CSS).
       // Scroll-triggered reveals usually arrive one at a time and get 0ms.
+      // 45ms a step (it was 110): enough to read as a top-to-bottom build,
+      // quick enough that the whole first screen is in within ~0.6s of the
+      // tap instead of the last section still arriving after a second.
       due.sort((a, b) => a.top - b.top);
       due.forEach(({ el }, i) => {
-        el.style.setProperty("--reveal-delay", `${Math.min(i, 8) * 110}ms`);
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 7) * 45}ms`);
         el.classList.add("is-visible");
       });
     };

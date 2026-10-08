@@ -54,7 +54,11 @@ export function useSocial() {
   return useApi(
     useCallback(() => {
       if (!socialPromise) {
-        socialPromise = api.socialLinks().catch((e) => {
+        const p = api.socialLinks();
+        // useApi peeks at the remembered answer by calling this with requests
+        // switched off; that stand-in never settles and must not be kept.
+        if (p.peek) return p;
+        socialPromise = p.catch((e) => {
           socialPromise = null; // let a later mount retry after a failure
           throw e;
         });

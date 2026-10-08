@@ -313,7 +313,51 @@ function humanHttpError(status) {
   return "That didn't work. Try again.";
 }
 
-async function request(path, { method = "GET", body, auth = false, userAuth = false, identityAuth = false, form = false } = {}) {
+// The last answer to every GET this tab has made, so a page opened a second
+// time can show what it had at once while the fresh read is on its way (see
+// useApi). Keyed on the path AND the credentials it went out with: an admin's
+// answer (private seasons included) is never served to the visitor the same
+// browser turns into after signing out. Any write empties it, so nothing that
+// was just changed is shown from memory. Memory only, gone on reload.
+const GET_CACHE = new Map();
+const GET_CACHE_MAX = 80;
+let PEEKING = false;
+
+// The primary series' slug (set by the SeriesProvider). A read with no
+// ?series= is answered for the primary series, so "/races" from the root page
+// and "/races?series=<primary>" from /s/<primary>/races are the same answer —
+// one cache entry, or the first tab switch off Home always missed.
+let PRIMARY_SERIES = null;
+export function setPrimarySeries(slug) {
+  PRIMARY_SERIES = slug || null;
+}
+function cacheKey(path, auth) {
+  const [base, query = ""] = path.split("?");
+  const params = new URLSearchParams(query);
+  if (PRIMARY_SERIES && params.get("series") === PRIMARY_SERIES) params.delete("series");
+  params.sort();
+  const q = params.toString();
+  return `${base}${q ? `?${q}` : ""}|${auth || ""}`;
+}
+
+// Runs a read function in "peek" mode: no request leaves, and the answer is the
+// remembered one if the read is a plain api call this tab has made before.
+// Anything else (a read that chains .then, combines several, or was never
+// made) peeks as null.
+export function peekCached(fn) {
+  PEEKING = true;
+  try {
+    const p = fn();
+    return p && Object.prototype.hasOwnProperty.call(p, "cached") ? { data: p.cached } : null;
+  } catch {
+    return null;
+  } finally {
+    PEEKING = false;
+  }
+}
+
+function request(path, opts = {}) {
+  const { method = "GET", auth = false, userAuth = false, identityAuth = false, form = false } = opts;
   const headers = {};
   if (!form) headers["Content-Type"] = "application/json";
   if (auth || identityAuth) {
@@ -324,6 +368,28 @@ async function request(path, { method = "GET", body, auth = false, userAuth = fa
     const ut = localStorage.getItem(USER_TOKEN_KEY);
     if (ut) headers["Authorization"] = `Bearer ${ut}`;
   }
+  const key = method === "GET" ? cacheKey(path, headers.Authorization) : null;
+  if (PEEKING) {
+    // A promise that never settles: whatever the read function chains onto it
+    // simply never runs, and only a bare call keeps the `cached` field.
+    const idle = new Promise(() => {});
+    idle.peek = true;
+    if (key && GET_CACHE.has(key)) idle.cached = GET_CACHE.get(key);
+    return idle;
+  }
+  return send(path, opts, headers).then((data) => {
+    if (key) {
+      GET_CACHE.delete(key);
+      GET_CACHE.set(key, data);
+      if (GET_CACHE.size > GET_CACHE_MAX) GET_CACHE.delete(GET_CACHE.keys().next().value);
+    } else {
+      GET_CACHE.clear();
+    }
+    return data;
+  });
+}
+
+async function send(path, { method = "GET", body, auth = false, userAuth = false, form = false } = {}, headers) {
   let res;
   try {
     res = await fetch(`${BASE}/api${path}`, {
