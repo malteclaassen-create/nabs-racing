@@ -500,7 +500,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
     >
       <div
         ref={ref}
-        className="liquid-glass mx-auto flex h-[62px] max-w-md items-stretch rounded-full p-1"
+        className="liquid-glass relative mx-auto flex h-[62px] max-w-md items-stretch rounded-full p-1"
       >
         {pill && (
           // Outer span travels (springy, see .bottom-nav-lens); the inner one
