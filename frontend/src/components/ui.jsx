@@ -238,6 +238,18 @@ export function readableInkOn(bgHex) {
 // try, best first, when the one above turns out to be a dead link — a Discord
 // avatar 404s as soon as the member changes their picture there, and only the
 // browser can tell. Callers without a chain pass nothing and nothing changes.
+// An uploaded profile picture at the size it is shown, not as uploaded (a
+// phone photo can be 4000px and several MB; see backend lib/avatarThumbs.js).
+// Three px per css px covers a retina phone; the server falls back to the
+// original for anything it cannot shrink.
+const AVATAR_THUMBS = [96, 192, 384];
+export function sizedAvatarUrl(url, size) {
+  if (!url || !url.startsWith("/api/uploads/avatars/")) return url;
+  const want = size * 3;
+  const w = AVATAR_THUMBS.find((t) => t >= want) || AVATAR_THUMBS[AVATAR_THUMBS.length - 1];
+  return `${url}${url.includes("?") ? "&" : "?"}w=${w}`;
+}
+
 export function DriverAvatar({ name, photoUrl, fallbacks, color = "#888", size = 44, className = "" }) {
   const [brokenPhotos, setBrokenPhotos] = useState([]);
   const initials = (name || "?")
@@ -261,10 +273,11 @@ export function DriverAvatar({ name, photoUrl, fallbacks, color = "#888", size =
     >
       {shownPhoto ? (
         <img
-          src={shownPhoto}
+          src={sizedAvatarUrl(shownPhoto, size)}
           alt={name}
           className="h-full w-full object-cover"
           loading="lazy"
+          decoding="async"
           // A dead picture link moves on to the next candidate, and once they
           // are all spent to the initials — rather than leaving an empty
           // coloured disc (hiding the <img> used to show nothing at all).
