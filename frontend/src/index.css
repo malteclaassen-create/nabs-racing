@@ -1720,11 +1720,19 @@ body {
   transform: translateY(-8px) scale(0.96);
   transition: opacity 120ms ease-in, transform 160ms ease-in, background-color 150ms;
 }
+/* The stagger delays only the rows' arrival. It used to delay the hover
+   highlight too (up to 290ms on the lower rows, then a 150ms fade), so a mouse
+   moving quickly up and down the list left nothing marked at all. The
+   highlight now lands at once, as in a native menu, and fades out briefly as
+   the pointer leaves. */
 .glass-menu.is-open .glass-menu-item {
   opacity: 1;
   transform: none;
-  transition: opacity 260ms ease-out, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1), background-color 150ms;
-  transition-delay: calc(50ms + min(var(--i, 0), 8) * 30ms);
+  transition: opacity 260ms ease-out, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1), background-color 120ms ease-out;
+  transition-delay: calc(50ms + min(var(--i, 0), 8) * 30ms), calc(50ms + min(var(--i, 0), 8) * 30ms), 0ms;
+}
+.glass-menu.is-open .glass-menu-item:hover {
+  transition-duration: 260ms, 420ms, 0ms;
 }
 .glass-menu.is-open .glass-menu-item:active {
   transform: scale(0.97);
