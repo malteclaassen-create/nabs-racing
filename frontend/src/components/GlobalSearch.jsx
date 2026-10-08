@@ -276,8 +276,8 @@ export default function GlobalSearch({ mobile = false, className = "", alignLeft
 
       {showPanel && (
         <div
-          className={`search-pop absolute top-full z-dropdown mt-2 overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-ink/20 ${
-            mobile ? "inset-x-0" : "right-0"
+          className={`liquid-glass glass-solid glass-pop absolute top-full z-dropdown mt-2 overflow-hidden rounded-[22px] ${
+            mobile ? "inset-x-0 origin-top" : "right-0 origin-top-right"
           }`}
           style={mobile ? undefined : { width: expandedW ? `${expandedW}px` : "15rem", maxWidth: "calc(100vw - 1.5rem)" }}
         >

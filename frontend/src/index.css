@@ -1623,6 +1623,12 @@ body {
 .dark .liquid-glass.glass-dense {
   background-color: color-mix(in srgb, var(--c-card) 74%, transparent);
 }
+/* Nearly solid, for a long list of results that opens over other text (search
+   inside the phone menu): only the rim and a hint of colour stay glassy. */
+.liquid-glass.glass-solid,
+.dark .liquid-glass.glass-solid {
+  background-color: color-mix(in srgb, var(--c-card) 94%, transparent);
+}
 
 /* Glass dropdown menus (season + series switchers), opening the way iOS menus
    do: the panel springs out of its button — from the corner it hangs off, a
@@ -1664,6 +1670,43 @@ body {
 }
 .fx-lite .glass-menu, .fx-lite .glass-menu.is-open { transform: none; }
 .fx-lite .glass-menu-item, .fx-lite .glass-menu.is-open .glass-menu-item { transform: none; transition-delay: 0ms; }
+
+/* The same spring for panels that mount when they open (the notification
+   bell, search results): out of their corner, a touch past full size and back.
+   They unmount on close, so there is no way out to animate. */
+@keyframes glass-pop-in {
+  0% { opacity: 0; transform: scale(0.5) translateY(-6px); }
+  45% { opacity: 1; }
+  70% { transform: scale(1.015); }
+  100% { opacity: 1; transform: none; }
+}
+.glass-pop {
+  animation: glass-pop-in 480ms cubic-bezier(0.3, 0.9, 0.4, 1) both;
+}
+
+/* Sliding highlights (segmented tabs, the desktop nav's pill) travel on the
+   tab bar's spring instead of a plain ease: a little past the target and back. */
+.spring-glide {
+  transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1), width 440ms cubic-bezier(0.34, 1.36, 0.5, 1),
+    height 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
+}
+
+/* A phone sheet rises on a spring (and drops back plainly — the class is only
+   on while it is showing). */
+@media (max-width: 639.98px) {
+  .sheet-rise {
+    transition: transform 540ms cubic-bezier(0.3, 1.22, 0.5, 1), opacity 200ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-pop { animation: none; }
+  .spring-glide { transition-duration: 150ms; transition-timing-function: ease-out; }
+  .sheet-rise { transition-timing-function: ease-out; transition-duration: 200ms; }
+}
+.fx-lite .glass-pop { animation: none; }
+.fx-lite .spring-glide { transition-duration: 150ms; transition-timing-function: ease-out; }
+.fx-lite .sheet-rise { transition-timing-function: ease-out; transition-duration: 200ms; }
 
 .fx-lite .liquid-glass {
   background-color: var(--c-card);

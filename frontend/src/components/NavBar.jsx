@@ -644,11 +644,13 @@ function StandingsNav({ seriesPath }) {
   // an icon badge (brand-filled while active), a display title, and a mono
   // sub-line, with the same accent active ring and check mark.
   const itemCls = ({ isActive }) =>
-    `flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
-      isActive ? "bg-accent/10 ring-1 ring-inset ring-accent/40" : "hover:bg-surface2"
+    `glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+      isActive ? "liquid-glass-lens" : "hover:bg-surface2"
     }`;
+  // `i` staggers the rows in as the menu springs open (see .glass-menu).
+  let i = 0;
   const row = (to, icon, title, sub, tour) => (
-    <NavLink to={to} role="menuitem" data-tour={tour} className={itemCls}>
+    <NavLink to={to} role="menuitem" data-tour={tour} className={itemCls} style={{ "--i": i++ }}>
       {({ isActive }) => (
         <>
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
@@ -692,9 +694,7 @@ function StandingsNav({ seriesPath }) {
         <div
           role="menu"
           data-tour="nav-standings-menu"
-          className={`w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
-            open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
-          }`}
+          className={`liquid-glass glass-dense glass-menu w-64 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
         >
           {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings", "nav-drivers")}
           {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
@@ -1179,7 +1179,7 @@ export default function NavBar() {
           {navPill && (
             <span
               aria-hidden
-              className="absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50 transition-[transform,width,height] duration-base ease-out-soft"
+              className="spring-glide absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50"
               style={{ transform: `translate(${navPill.left}px, ${navPill.top}px)`, width: navPill.width, height: navPill.height }}
             />
           )}
@@ -1291,7 +1291,12 @@ export default function NavBar() {
               {/* You-stuff first, on ONE row: profile chip left, search right.
                   The chip keeps its natural width (name truncates via its own
                   max-w), the search field takes the rest of the line. */}
-              <div className="flex items-center gap-2">
+              {/* relative z-20: every row of this menu slides in with its own
+                  transform (nav-item-in), which makes each one a layer of its
+                  own — and the search results, inside this row's layer, were
+                  painted underneath the rows that come after it. The season
+                  row below gets z-10 for its own menu, and stays under this. */}
+              <div className="relative z-20 flex items-center gap-2">
                 <AuthControl mobile={false} />
                 <div className="min-w-0 flex-1">
                   <GlobalSearch mobile />
@@ -1304,7 +1309,7 @@ export default function NavBar() {
               {menuSeason && (
                 <>
                   <MobileMenuLabel>Season</MobileMenuLabel>
-                  <div className="px-2 py-1">
+                  <div className="relative z-10 px-2 py-1">
                     <SeasonPicker onPick={closeMenu} />
                   </div>
                 </>
