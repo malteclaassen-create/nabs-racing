@@ -435,9 +435,9 @@ function StandIcon({ d }) {
 // lg up the full nav is in the bar and this would only repeat it.
 //
 // Its height lives in --bnav (index.css), which the page's bottom padding and
-// every floating toast read, so nothing ends up hidden behind it. Solid card
-// colour, no backdrop blur: same call as the top bar on phones (.nav-backdrop),
-// re-blurring the page on every scroll frame costs smoothness on mobile GPUs.
+// every floating toast read, so nothing ends up hidden behind it. The glass
+// look (.liquid-glass) is in index.css, with why it can afford the blur the top
+// bar gives up on phones.
 function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   const location = useLocation();
   const { user, isLoggedIn } = useAuth();
@@ -476,12 +476,12 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
     >
       <div
         ref={ref}
-        className="relative mx-auto flex h-[3.75rem] max-w-md items-stretch rounded-full border border-border bg-card p-1 shadow-xl shadow-ink/40"
+        className="liquid-glass mx-auto flex h-[3.75rem] max-w-md items-stretch rounded-full p-1"
       >
         {pill && (
           <span
             aria-hidden
-            className="absolute left-0 top-0 rounded-full bg-brand/20 ring-1 ring-inset ring-brand/40 transition-[transform,width] duration-base ease-out-soft"
+            className="liquid-glass-lens absolute left-0 top-0 rounded-full transition-[transform,width] duration-base ease-out-soft"
             style={{ transform: `translate(${pill.left}px, ${pill.top}px)`, width: pill.width, height: pill.height }}
           />
         )}
@@ -492,7 +492,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
             end={t.end}
             className={({ isActive }) =>
               `relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full transition-colors ${
-                isActive || t.forced ? "is-active text-brand" : "text-medium active:text-dark"
+                isActive || t.forced ? "is-active text-accent" : "text-medium active:text-dark"
               }`
             }
           >
