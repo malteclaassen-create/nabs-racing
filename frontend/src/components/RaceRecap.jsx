@@ -106,7 +106,9 @@ export default function RaceRecapHost() {
 // `session` is the tab it was pressed from. A sprint weekend's recap holds
 // both races, so pressing Recap on the Sprint tab should open it on the
 // sprint rather than make the reader find it again.
-export function RaceRecapButton({ raceId, ready, session = null }) {
+// `iconOnPhone`: just the icon below sm (the label stays for screen readers),
+// for a row that has to share its line with a title.
+export function RaceRecapButton({ raceId, ready, session = null, iconOnPhone = false }) {
   const { user } = useAuth();
   const enabled = useRaceRecapEnabled();
   const location = useLocation();
@@ -116,13 +118,15 @@ export function RaceRecapButton({ raceId, ready, session = null }) {
     <Link
       to={`${prefix}/recap/${raceId}${session === "sprint" ? "?session=sprint" : ""}`}
       title="Your recap of this round"
-      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-card font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark ${
+        iconOnPhone ? "px-2 py-1.5 sm:px-2.5 sm:py-1" : "px-2.5 py-1"
+      }`}
     >
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M7 15l3-4 3 3 4-6" />
       </svg>
-      Recap
+      <span className={iconOnPhone ? "max-sm:sr-only" : undefined}>Recap</span>
     </Link>
   );
 }

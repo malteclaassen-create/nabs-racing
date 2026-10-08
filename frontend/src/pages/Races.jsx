@@ -880,6 +880,16 @@ export default function Races() {
   // the instant you click, so the heading uses that and only the table waits.
   const detailIsStale = !!detail && detail.race.id !== selectedId;
   const head = (detailIsStale && selectedRace) || detail?.race || null;
+  // The round title's two view switches, each only when it has something to
+  // offer: the session switch (feature / sprint / quali) and table ⇄ lap chart.
+  // Worked out up here because the row holding them is left out on phones when
+  // neither is there.
+  const hasSessionSwitch = !!detail && !detailIsStale && (detail.quali?.length > 0 || !!sprintRaceId);
+  const hasLapSwitch =
+    !!detail &&
+    !detailIsStale &&
+    ((shownSession === "race" && !!detail.race?.hasLapChart) ||
+      (shownSession === "sprint" && sprint.raceId === sprintRaceId && !!sprint.data?.race?.hasLapChart));
 
   // The round's highlights cut, if the admin pasted one. A YouTube link gets an
   // id and plays on the page; anything else keeps its link and opens in a tab.
@@ -899,58 +909,75 @@ export default function Races() {
     setSelectedId((last || nextUp || list[0])?.id ?? null);
   }
 
+  // The session-type switch drives BOTH the explorer below (rail + detail) and
+  // the calendar grid further down, so picking a type shows every view of it.
+  // It is drawn twice: in the desktop header's top-right corner, and on phones
+  // beside the short title (see below), where the labels shorten to fit.
+  const sessionSwitch = (wrapClassName, btnClassName) => (
+    <SlidingTabs
+      wrapClassName={wrapClassName}
+      btnClassName={btnClassName}
+      items={[
+        { key: "rounds", label: <><span className="sm:hidden">Rounds</span><span className="hidden sm:inline">Championship</span><span className="ml-1.5 opacity-70">{rounds.length}</span></> },
+        // Training sessions get their own clearly-labelled group — the tab
+        // only appears once a session is scheduled, so a league without
+        // trainings keeps today's two-tab page.
+        ...(trainings.length > 0
+          ? [{
+              key: "training",
+              label: (
+                <>
+                  <span className="sm:hidden">Training</span>
+                  <span className="hidden sm:inline">Training / Sessions</span>
+                  <span className="ml-1.5 opacity-70">{trainings.length}</span>
+                </>
+              ),
+            }]
+          : []),
+        {
+          key: "se",
+          label: (
+            <>
+              <span className="sm:hidden">Special</span>
+              <span className="hidden sm:inline">Special Events</span>
+              <span className="ml-1.5 opacity-70">{specials.length}</span>
+            </>
+          ),
+        },
+      ]}
+      value={tab}
+      onChange={selectTab}
+    />
+  );
+
   return (
     // The one public page that arrived with no entrance at all: header, round
     // rail and detail panel simply appeared. Only the lower half (calendar grid)
     // was ever animated.
     <div className="content-in space-y-4 sm:space-y-12">
-      {/* Session-type switcher sits in the header's top-right corner: it drives
-          BOTH the explorer below (rail + detail) and the calendar grid further
-          down, so picking a type shows every view of it. */}
-      <PageHeader
-        eyebrow="Schedule & Results"
-        title={seasonHeading}
-        right={
-          // On phones the bar spans the full width and the buttons split it
-          // evenly (one tidy row of equal targets) instead of wrapping into a
-          // ragged two-line block; the long labels shorten to fit. From sm up
-          // it's the usual content-width pill group.
-          <SlidingTabs
-            wrapClassName="flex w-full rounded-xl border border-border bg-card p-1 sm:inline-flex sm:w-auto"
-            btnClassName="flex-1 whitespace-nowrap px-2 py-1.5 text-xs sm:flex-none sm:px-4 sm:py-2 sm:text-sm"
-            items={[
-              { key: "rounds", label: <>Championship<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
-              // Training sessions get their own clearly-labelled group — the tab
-              // only appears once a session is scheduled, so a league without
-              // trainings keeps today's two-tab page.
-              ...(trainings.length > 0
-                ? [{
-                    key: "training",
-                    label: (
-                      <>
-                        <span className="sm:hidden">Training</span>
-                        <span className="hidden sm:inline">Training / Sessions</span>
-                        <span className="ml-1.5 opacity-70">{trainings.length}</span>
-                      </>
-                    ),
-                  }]
-                : []),
-              {
-                key: "se",
-                label: (
-                  <>
-                    <span className="sm:hidden">Special</span>
-                    <span className="hidden sm:inline">Special Events</span>
-                    <span className="ml-1.5 opacity-70">{specials.length}</span>
-                  </>
-                ),
-              },
-            ]}
-            value={tab}
-            onChange={selectTab}
-          />
-        }
-      />
+      {/* Phones get a compact head: a short title with the session switch on
+          the same row (it drops under the title only when a third tab will not
+          fit), so the rounds and the results start about 140px higher. From
+          sm up it is the full header with the switch in its corner. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 sm:hidden">
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">
+            {seasonName || "Schedule & Results"}
+          </div>
+          <h1 className="font-display text-2xl font-extrabold uppercase leading-none tracking-tight text-dark">Races</h1>
+        </div>
+        {sessionSwitch(
+          "inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5",
+          "whitespace-nowrap px-2.5 py-1 text-xs"
+        )}
+      </div>
+      <div className="hidden sm:block">
+        <PageHeader
+          eyebrow="Schedule & Results"
+          title={seasonHeading}
+          right={sessionSwitch("inline-flex rounded-xl border border-border bg-card p-1", "whitespace-nowrap px-4 py-2 text-sm")}
+        />
+      </div>
 
       {/* Results explorer: race list (left), and on the right the selected
           race's results (completed) or sign-up + info (upcoming) — for
@@ -1032,29 +1059,48 @@ export default function Races() {
                     // until the new one is ready).
                     <div key={detail.race.id} className={`${switched ? "round-swap-soft " : ""}${detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}`}>
                       <div className="mb-3 sm:mb-4">
-                        {/* One row from sm up. On phones the controls drop to
-                            their own line so the round title gets the full
-                            width instead of being cut to "R12 I…". */}
+                        {/* One row from sm up. On phones the title shares its
+                            line with the date and the actions, which shrink to
+                            icons there; when a long track name leaves them no
+                            room they wrap under it rather than cut it to
+                            "R12 I…". */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:h-8 sm:flex-nowrap">
-                          {flagFor(head.track, head.country) && (
-                            <Flag
-                              code={flagFor(head.track, head.country).country}
-                              title={flagFor(head.track, head.country).countryName}
-                              w={26}
-                              h={19}
-                            />
+                          {/* Flag and title stay together: a long track name
+                              truncates beside its flag instead of leaving the
+                              flag alone on a line above it. */}
+                          <div className="flex min-w-0 max-w-full items-center gap-3">
+                            {flagFor(head.track, head.country) && (
+                              <Flag
+                                code={flagFor(head.track, head.country).country}
+                                title={flagFor(head.track, head.country).countryName}
+                                w={26}
+                                h={19}
+                              />
+                            )}
+                            <h2 className="min-w-0 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
+                              {head.number != null && <span className="text-light">R{head.number}</span>} {head.track}
+                            </h2>
+                          </div>
+                          {/* The date, on phones: beside the title instead of on
+                              a line of its own under the actions. */}
+                          {head.date && (
+                            <span
+                              className="ml-auto font-mono text-[11px] font-semibold tabular-nums text-light sm:hidden"
+                              title={fmtRaceTime(head.date)}
+                            >
+                              {fmtRaceDate(head.date)}
+                            </span>
                           )}
-                          <h2 className="min-w-0 truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
-                            {head.number != null && <span className="text-light">R{head.number}</span>} {head.track}
-                          </h2>
                           {/* What you can DO with this round, grouped together
                               on the left: watch the highlights, rewatch the
-                              race, report an incident. On phones they take a
-                              line of their own and leave the title its width. */}
-                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                              race, report an incident. On phones they are icon
+                              buttons at the end of the title line (the label
+                              stays for screen readers). */}
+                          <span className="flex items-center gap-1.5 sm:shrink-0 sm:gap-3">
                             {/* Your recap of this round, read again. The button
                                 decides for itself whether it is for you. */}
                             <RaceRecapButton
+                              iconOnPhone
                               raceId={selectedId}
                               session={shownSession}
                               ready={!detailIsStale && !!detail?.race?.isCompleted && (detail?.results?.length || 0) > 0}
@@ -1071,14 +1117,14 @@ export default function Races() {
                                   onClick={() => setShowHighlights((v) => !v)}
                                   aria-expanded={showHighlights}
                                   title="Watch the highlights of this round"
-                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-1 transition ${
                                     showHighlights
                                       ? "border-brand bg-brand/10 text-dark"
                                       : "border-border bg-card text-medium hover:border-brand/60 hover:text-dark"
                                   }`}
                                 >
                                   <HighlightsIcon />
-                                  Highlights
+                                  <span className="max-sm:sr-only">Highlights</span>
                                 </button>
                               ) : (
                                 <a
@@ -1086,10 +1132,10 @@ export default function Races() {
                                   target="_blank"
                                   rel="noreferrer"
                                   title="Watch the highlights of this round"
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-1 text-medium transition hover:border-brand/60 hover:text-dark"
                                 >
                                   <HighlightsIcon />
-                                  Highlights
+                                  <span className="max-sm:sr-only">Highlights</span>
                                 </a>
                               )
                             )}
@@ -1108,31 +1154,31 @@ export default function Races() {
                                 raceId: shownSession === "sprint" && sprintRaceId ? sprintRaceId : head.id,
                               })}
                               title="Report an incident from this round to the stewards"
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-1 text-medium transition hover:border-brand/60 hover:text-dark"
                             >
                               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-brand" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                 <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
                               </svg>
-                              Report
+                              <span className="max-sm:sr-only">Report</span>
                             </Link>
                             )}
                             {/* replay of this round, registered in the admin Downloads tab */}
                             {!detailIsStale && detail.race.replayDownloadId && (
                               <Link
                                 to={`/downloads?dl=${detail.race.replayDownloadId}`}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/60 hover:text-dark"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-1 text-medium transition hover:border-brand/60 hover:text-dark"
                                 title="Rewatch this race: opens the replay in the downloads"
                               >
                                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-brand" fill="currentColor" aria-hidden="true">
                                   <path d="M8 5.5v13l11-6.5-11-6.5z" />
                                 </svg>
-                                Replay
+                                <span className="max-sm:sr-only">Replay</span>
                               </Link>
                             )}
                           </span>
                           {/* Pushes the switch and the date to the right edge,
                               away from the buttons. Desktop only: on phones the
-                              groups are on their own lines already. */}
+                              switches are on a line of their own. */}
                           <span className="hidden flex-1 sm:block" />
                           {/* The two view switches — neither is an action on
                               the round, they are ways of looking at the table
@@ -1140,17 +1186,22 @@ export default function Races() {
                               rather than in among the buttons. Each appears
                               only when it has something to offer: a lap chart
                               on file, an imported qualifying. */}
-                          {/* On the phone line the group is full width: the
-                              switches pack left and the date is pushed to the
-                              right edge (ml-auto), the way the row reads on a
-                              desktop. Deliberately not justify-between: the
+                          {/* On phones the group is a full-width line of its
+                              own, the switches packed left (the date is up on
+                              the title line there), and the line is left out
+                              when neither switch is offered. Deliberately not
+                              justify-between: the
                               view switch comes and goes with the session
                               (below), and with three items spread across the
                               line the session switch floated to the middle on
                               the Feature tab and jumped to the left edge on
                               the Sprint and Quali tabs — under the thumb that
                               had just pressed it. */}
-                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                          <span
+                            className={`${
+                              hasSessionSwitch || hasLapSwitch ? "flex" : "hidden sm:flex"
+                            } w-full items-center gap-3 sm:w-auto sm:shrink-0`}
+                          >
                             {/* Two switches, one job each: the session switch
                                 picks which classification of the evening, the
                                 table ⇄ lap chart switch picks how to look at
@@ -1162,7 +1213,7 @@ export default function Races() {
                                 right-aligned group grows leftwards and only
                                 the OUTER item shifts. The view switch takes
                                 the spot that is allowed to come and go. */}
-                            {!detailIsStale && (detail.quali?.length > 0 || sprintRaceId) && (
+                            {hasSessionSwitch && (
                               <SlidingTabs
                                 className="order-1 shrink-0 sm:order-2"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
@@ -1188,9 +1239,7 @@ export default function Races() {
                                 server, not a promise the chart can't keep. The
                                 sprint's answer comes with its own results, so
                                 its switch appears once those have loaded. */}
-                            {!detailIsStale &&
-                              ((shownSession === "race" && detail.race?.hasLapChart) ||
-                                (shownSession === "sprint" && sprint.raceId === sprintRaceId && sprint.data?.race?.hasLapChart)) && (
+                            {hasLapSwitch && (
                               <SlidingTabs
                                 className="order-2 shrink-0 sm:order-1"
                                 wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5"
@@ -1206,7 +1255,7 @@ export default function Races() {
                             )}
                             {head.date && (
                               <span
-                                className="order-3 ml-auto text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
+                                className="order-3 ml-auto hidden text-right font-mono text-sm font-semibold tabular-nums text-light sm:block"
                                 title={fmtRaceTime(head.date)}
                               >
                                 {fmtDate(head.date)}
