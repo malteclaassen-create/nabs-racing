@@ -71,6 +71,7 @@ import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
 import { moveLentServerLapsOnce } from "./lib/practiceTokens.js";
 import { repairImportedRaceTimesOnce } from "./lib/tokens.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
+import { avatarThumbRoute } from "./lib/avatarThumbs.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
 // in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
@@ -180,6 +181,9 @@ app.post("/api/hit", (req, res) => {
 // shared preview build — see the comment in routes/me.js. Long cache is safe:
 // the stored URLs carry a ?v=<timestamp> that changes on every re-upload.
 const __dir = dirname(fileURLToPath(import.meta.url));
+// Small copies of profile pictures (?w=96|192|384) for the avatar discs; any
+// other request falls through to the originals below. See lib/avatarThumbs.js.
+app.get("/api/uploads/avatars/:file", avatarThumbRoute);
 app.use("/api/uploads", express.static(UPLOADS_DIR, {
   maxAge: "30d",
   immutable: true,
