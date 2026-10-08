@@ -824,6 +824,9 @@ function CopyProfileLink({ driverId }) {
   );
 }
 
+// MOCKUP (not for merge)
+const mock = new URLSearchParams(window.location.search).get("mock");
+
 function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
@@ -910,6 +913,35 @@ function MyProfile() {
           page is showing, the same one the preview at the bottom links to, so
           in a two-league account it lands on the page you were just editing
           rather than on whichever row the Discord login happens to sit on. */}
+      {/* MOCKUP (?mock=a|b|c, not for merge): compact phone heads. */}
+      {mock === "a" && (
+        <div className="flex items-end justify-between gap-3 sm:hidden">
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Your profile</div>
+            <h1 className="font-display text-2xl font-extrabold uppercase leading-tight tracking-tight text-dark">My Profile</h1>
+          </div>
+          {previewId && (
+            <Link to={`/drivers/${previewId}`} aria-label="Public profile" title="Public profile" className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+              </svg>
+              Public ↗
+            </Link>
+          )}
+        </div>
+      )}
+      {mock === "b" && (
+        <Link to={`/drivers/${previewId}`} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 sm:hidden">
+          <DriverAvatar name={editing.name} photoUrl={editing.photoUrl} color={editing.team?.color || "#888"} size={40} className="text-sm" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">{editing.name}</div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-light">View public profile</div>
+          </div>
+          <span aria-hidden="true" className="pr-1 text-light">↗</span>
+        </Link>
+      )}
+      <div className={mock ? "hidden sm:block" : undefined}>
       <PageHeader
         eyebrow="Your profile"
         title="My Profile"
@@ -928,8 +960,11 @@ function MyProfile() {
           ) : null
         }
       />
+      </div>
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
+      <div className={`${mock === "c" ? "max-sm:!mt-0 " : ""}flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8`}>
+      <div className={mock === "c" ? "flex items-stretch gap-2 lg:contents" : "contents"}>
+      <div className={mock === "c" ? "min-w-0 flex-1 lg:contents" : "contents"}>
       <ProfileNav
         nav={profileNav({
           isAdmin: !!user?.isAdmin,
@@ -943,6 +978,16 @@ function MyProfile() {
         attention={adminAttention}
         attentionSummary={adminSummary}
       />
+      </div>
+      {mock === "c" && previewId && (
+        <Link to={`/drivers/${previewId}`} aria-label="Public profile" title="Public profile" className="flex w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-medium lg:hidden">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+              </svg>
+        </Link>
+      )}
+      </div>
 
       {/* Keyed on the tab so the panel beside the nav fades in on every
           switch. Until now only the tab pill moved and the content underneath

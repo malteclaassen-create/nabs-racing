@@ -101,7 +101,7 @@ function stateLabel(s) {
 // The switch itself, sized to sit in the page header beside the external
 // buttons: full width on a phone like its neighbours there, shrink-to-content
 // from sm up so it stops stretching across the whole page.
-export function LiveServerSwitch({ servers, current, onSwitch }) {
+export function LiveServerSwitch({ servers, current, onSwitch, wrapClassName = "flex w-full items-center gap-1 rounded-xl border border-border bg-card p-1 sm:w-auto" }) {
   if (!servers) return null;
   const activeKey = activeKeyOf(servers, current);
 
@@ -109,7 +109,7 @@ export function LiveServerSwitch({ servers, current, onSwitch }) {
     <div
       role="group"
       aria-label="Race server"
-      className="flex w-full items-center gap-1 rounded-xl border border-border bg-card p-1 sm:w-auto"
+      className={wrapClassName}
     >
       {servers.servers.map((s) => {
         const active = s.key === activeKey;

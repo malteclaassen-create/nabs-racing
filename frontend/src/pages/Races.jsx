@@ -510,6 +510,9 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   );
 }
 
+// MOCKUP (not for merge)
+const mock = new URLSearchParams(window.location.search).get("mock");
+
 export default function Races() {
   const { data: races, loading, error, reload } = useApi(useCallback(() => api.races(), []));
   // Picked on the very first render when the calendar is already in memory
@@ -899,6 +902,49 @@ export default function Races() {
     setSelectedId((last || nextUp || list[0])?.id ?? null);
   }
 
+  // MOCKUP (?mock=a|b|c, not for merge): the session switch, so the phone
+  // variants can place it differently from the desktop header.
+  const sessionSwitch = (
+    wrapCls = "flex w-full rounded-xl border border-border bg-card p-1 sm:inline-flex sm:w-auto",
+    btnCls = "flex-1 whitespace-nowrap px-2 py-1.5 text-xs sm:flex-none sm:px-4 sm:py-2 sm:text-sm",
+    short = false
+  ) => (
+    <SlidingTabs
+      wrapClassName={wrapCls}
+      btnClassName={btnCls}
+      items={[
+        { key: "rounds", label: <>{short ? "Rounds" : "Championship"}<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
+        // Training sessions get their own clearly-labelled group — the tab
+        // only appears once a session is scheduled, so a league without
+        // trainings keeps today's two-tab page.
+        ...(trainings.length > 0
+          ? [{
+              key: "training",
+              label: (
+                <>
+                  <span className="sm:hidden">Training</span>
+                  <span className="hidden sm:inline">Training / Sessions</span>
+                  <span className="ml-1.5 opacity-70">{trainings.length}</span>
+                </>
+              ),
+            }]
+          : []),
+        {
+          key: "se",
+          label: (
+            <>
+              <span className="sm:hidden">Special</span>
+              <span className="hidden sm:inline">Special Events</span>
+              <span className="ml-1.5 opacity-70">{specials.length}</span>
+            </>
+          ),
+        },
+      ]}
+      value={tab}
+      onChange={selectTab}
+    />
+  );
+
   return (
     // The one public page that arrived with no entrance at all: header, round
     // rail and detail panel simply appeared. Only the lower half (calendar grid)
@@ -907,50 +953,34 @@ export default function Races() {
       {/* Session-type switcher sits in the header's top-right corner: it drives
           BOTH the explorer below (rail + detail) and the calendar grid further
           down, so picking a type shows every view of it. */}
-      <PageHeader
-        eyebrow="Schedule & Results"
-        title={seasonHeading}
-        right={
-          // On phones the bar spans the full width and the buttons split it
-          // evenly (one tidy row of equal targets) instead of wrapping into a
-          // ragged two-line block; the long labels shorten to fit. From sm up
-          // it's the usual content-width pill group.
-          <SlidingTabs
-            wrapClassName="flex w-full rounded-xl border border-border bg-card p-1 sm:inline-flex sm:w-auto"
-            btnClassName="flex-1 whitespace-nowrap px-2 py-1.5 text-xs sm:flex-none sm:px-4 sm:py-2 sm:text-sm"
-            items={[
-              { key: "rounds", label: <>Championship<span className="ml-1.5 opacity-70">{rounds.length}</span></> },
-              // Training sessions get their own clearly-labelled group — the tab
-              // only appears once a session is scheduled, so a league without
-              // trainings keeps today's two-tab page.
-              ...(trainings.length > 0
-                ? [{
-                    key: "training",
-                    label: (
-                      <>
-                        <span className="sm:hidden">Training</span>
-                        <span className="hidden sm:inline">Training / Sessions</span>
-                        <span className="ml-1.5 opacity-70">{trainings.length}</span>
-                      </>
-                    ),
-                  }]
-                : []),
-              {
-                key: "se",
-                label: (
-                  <>
-                    <span className="sm:hidden">Special</span>
-                    <span className="hidden sm:inline">Special Events</span>
-                    <span className="ml-1.5 opacity-70">{specials.length}</span>
-                  </>
-                ),
-              },
-            ]}
-            value={tab}
-            onChange={selectTab}
-          />
-        }
-      />
+      {mock === "a" && (
+        <div className="space-y-2.5 sm:hidden">
+          <div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">
+              {seasonName ? `${seasonName} · Schedule & Results` : "Schedule & Results"}
+            </div>
+            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark">Races</h1>
+          </div>
+          {sessionSwitch("flex w-full rounded-xl border border-border bg-card p-0.5", "flex-1 whitespace-nowrap px-2 py-1.5 text-[13px]")}
+        </div>
+      )}
+      {mock === "b" && (
+        <div className="sm:hidden">
+          {sessionSwitch("flex w-full rounded-xl border border-border bg-card p-0.5", "flex-1 whitespace-nowrap px-2 py-1.5 text-[13px]")}
+        </div>
+      )}
+      {mock === "c" && (
+        <div className="flex items-end justify-between gap-3 sm:hidden">
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">{seasonName || "Schedule"}</div>
+            <h1 className="font-display text-2xl font-extrabold uppercase leading-none tracking-tight text-dark">Races</h1>
+          </div>
+          {sessionSwitch("inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5", "whitespace-nowrap px-2.5 py-1 text-xs", true)}
+        </div>
+      )}
+      <div className={mock ? "hidden sm:block" : undefined}>
+        <PageHeader eyebrow="Schedule & Results" title={seasonHeading} right={sessionSwitch()} />
+      </div>
 
       {/* Results explorer: race list (left), and on the right the selected
           race's results (completed) or sign-up + info (upcoming) — for
@@ -1051,7 +1081,10 @@ export default function Races() {
                               on the left: watch the highlights, rewatch the
                               race, report an incident. On phones they take a
                               line of their own and leave the title its width. */}
-                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                          {mock && head.date && (
+                            <span className="ml-auto font-mono text-[11px] font-semibold tabular-nums text-light sm:hidden">{fmtDate(head.date)}</span>
+                          )}
+                          <span className={mock ? "flex items-center gap-1.5 sm:ml-0 sm:gap-3 sm:shrink-0 max-sm:[&_a]:gap-0 max-sm:[&_a]:px-2 max-sm:[&_a]:py-1.5 max-sm:[&_a]:text-[0px] max-sm:[&_button]:gap-0 max-sm:[&_button]:px-2 max-sm:[&_button]:py-1.5 max-sm:[&_button]:text-[0px] max-sm:[&_svg]:h-4 max-sm:[&_svg]:w-4" : "flex w-full items-center gap-3 sm:w-auto sm:shrink-0"}>
                             {/* Your recap of this round, read again. The button
                                 decides for itself whether it is for you. */}
                             <RaceRecapButton
@@ -1150,7 +1183,11 @@ export default function Races() {
                               the Feature tab and jumped to the left edge on
                               the Sprint and Quali tabs — under the thumb that
                               had just pressed it. */}
-                          <span className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                          <span className={`${
+                            mock && !(!detailIsStale && (detail.quali?.length > 0 || sprintRaceId || (shownSession === "race" && detail.race?.hasLapChart) || (shownSession === "sprint" && sprint.raceId === sprintRaceId && sprint.data?.race?.hasLapChart)))
+                              ? "hidden sm:flex"
+                              : "flex"
+                          } w-full items-center gap-3 sm:w-auto sm:shrink-0`}>
                             {/* Two switches, one job each: the session switch
                                 picks which classification of the evening, the
                                 table ⇄ lap chart switch picks how to look at
@@ -1206,7 +1243,7 @@ export default function Races() {
                             )}
                             {head.date && (
                               <span
-                                className="order-3 ml-auto text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm"
+                                className={`${mock ? "max-sm:hidden " : ""}order-3 ml-auto text-right font-mono text-xs font-semibold tabular-nums text-light sm:text-sm`}
                                 title={fmtRaceTime(head.date)}
                               >
                                 {fmtDate(head.date)}

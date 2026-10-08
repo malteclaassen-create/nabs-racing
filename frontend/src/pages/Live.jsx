@@ -3412,6 +3412,9 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
   );
 }
 
+// MOCKUP (not for merge)
+const mock = new URLSearchParams(window.location.search).get("mock");
+
 export default function Live() {
   const { isNew: liveFeatureNew, dismiss: dismissLiveFeature } = useLiveFeatureNotice();
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
@@ -3799,6 +3802,32 @@ export default function Live() {
           evening a week, and the tour has to have something to point at on the
           six days it isn't. */}
       <div data-tour="live-header">
+      {/* MOCKUP (?mock=a|b|c, not for merge): compact phone heads. */}
+      {(mock === "a" || mock === "c") && (
+        <div className="mb-3 flex items-end justify-between gap-3 sm:hidden">
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Real-time</div>
+            <h1 className="font-display text-2xl font-extrabold uppercase leading-tight tracking-tight text-dark">Live Timing</h1>
+          </div>
+          <LiveServerSwitch
+            servers={liveServers}
+            current={board?.serverKey || serverKey}
+            onSwitch={setServer}
+            wrapClassName="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-0.5"
+          />
+        </div>
+      )}
+      {mock === "b" && (
+        <div className="mb-3 sm:hidden">
+          <LiveServerSwitch
+            servers={liveServers}
+            current={board?.serverKey || serverKey}
+            onSwitch={setServer}
+            wrapClassName="flex w-full items-center gap-1 rounded-xl border border-border bg-card p-0.5"
+          />
+        </div>
+      )}
+      <div className={mock ? "hidden sm:block" : undefined}>
       <PageHeader
         eyebrow="Real-time"
         title="Live Timing"
@@ -3864,9 +3893,20 @@ export default function Live() {
         }
       />
       </div>
+      </div>
 
+      {liveFeatureNew && mock === "c" && (
+        <aside aria-label="New live timing feature" className="mb-3 flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/10 py-1 pl-2 pr-1 sm:hidden">
+          <span className="shrink-0 rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink">New</span>
+          <p className="min-w-0 flex-1 truncate text-xs text-dark">
+            <strong>Satellite map</strong>
+            <span className="text-light"> · pick Satellite, tap a car</span>
+          </p>
+          <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-light">×</button>
+        </aside>
+      )}
       {liveFeatureNew && (
-        <aside aria-label="New live timing feature" className="mb-6 flex items-start gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3">
+        <aside aria-label="New live timing feature" className={`${mock === "c" ? "hidden sm:flex" : "flex"} mb-6 items-start gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3`}>
           <span className="mt-0.5 shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">New</span>
           <p className="min-w-0 flex-1 text-sm text-dark">
             <strong>Satellite track map</strong>
