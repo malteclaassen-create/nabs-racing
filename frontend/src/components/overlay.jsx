@@ -260,7 +260,7 @@ export function Modal({
     // max-h-full + a column so a sheet holding more than the screen has room
     // for scrolls its body instead of running off the bottom. The profile's
     // section list is nine rows and was losing its last one on a short phone.
-    sheet: `relative mt-auto flex max-h-full w-full flex-col rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base sm:m-auto sm:max-w-md ${
+    sheet: `relative mt-auto flex max-h-full w-full flex-col rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base sm:m-auto sm:max-w-md ${show ? "sheet-rise" : ""} ${
       // On a phone the sheet rises from below the screen edge and drops back
       // the same way; from sm up it is a centred dialog and only nudges.
       show ? "translate-y-0 opacity-100" : "max-sm:translate-y-[110%] sm:translate-y-4 sm:opacity-0"
