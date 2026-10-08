@@ -434,6 +434,9 @@ function StandIcon({ d }) {
 // Stewarding) stays in the burger menu up top. Phones and tablets only — from
 // lg up the full nav is in the bar and this would only repeat it.
 //
+// Placed where iOS puts its own tab bars (measured against one on an iPhone 15
+// Pro): 21px in from both sides and from the bottom edge, 62px tall.
+//
 // Its height lives in --bnav (index.css), which the page's bottom padding and
 // every floating toast read, so nothing ends up hidden behind it. The glass
 // look (.liquid-glass) is in index.css, with why it can afford the blur the top
@@ -472,11 +475,11 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   return (
     <nav
       aria-label="Main"
-      className="bottom-nav fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-chrome lg:hidden"
+      className="bottom-nav fixed inset-x-[21px] bottom-[max(21px,env(safe-area-inset-bottom))] z-chrome lg:hidden"
     >
       <div
         ref={ref}
-        className="liquid-glass mx-auto flex h-[3.75rem] max-w-md items-stretch rounded-full p-1"
+        className="liquid-glass mx-auto flex h-[62px] max-w-md items-stretch rounded-full p-1"
       >
         {pill && (
           <span

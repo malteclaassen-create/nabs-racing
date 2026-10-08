@@ -217,12 +217,13 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
 }
 
 /* Room the phone tab bar takes at the bottom edge (BottomNav in NavBar.jsx):
-   60px bar + 12px gap under it + 8px air above it, plus the iPhone home bar.
+   62px bar + 8px air above it + the gap under it (21px, or the iPhone home
+   bar's safe area where that is larger).
    Zero from lg up, where there is no tab bar. The page's bottom padding and
    every floating toast read it, so nothing ends up hidden behind the bar. */
 :root { --bnav: 0px; }
 @media (max-width: 1023.98px) {
-  :root { --bnav: calc(5rem + env(safe-area-inset-bottom)); }
+  :root { --bnav: calc(70px + max(21px, env(safe-area-inset-bottom))); }
   body { padding-bottom: var(--bnav); }
 }
 
