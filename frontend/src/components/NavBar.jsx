@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
@@ -458,6 +458,22 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   // Counts hops to another tab: the glass wobbles on a hop, not on page load
   // or on the late re-measures useSlidingHighlight does while fonts settle.
   const [hop, setHop] = useState(0);
+
+  // Touch goes on the finger lifting, not on the browser's click. WebKit only
+  // turns a tap into a click when nothing visible changed on the page while
+  // the finger was down; if something did, it treats the tap as a hover and
+  // drops the click. While a new page fades and cascades in, something always
+  // has — so taps on the bar went nowhere until the page had settled. Native
+  // tab bars switch on touch-up, and so does this. The click that may still
+  // follow is swallowed below so the route is not pushed twice. Mouse and
+  // keyboard keep the ordinary click.
+  const navigate = useNavigate();
+  const touch = useRef(null); // { id, x, y } while a finger is on a tab
+  const touchNavAt = useRef(0);
+  const go = (el, t) => {
+    if (!el.classList.contains("is-active")) setHop((h) => h + 1);
+    setTapped(t.key);
+  };
   const pill = useSlidingHighlight(ref, [location.pathname, tapped]);
   // Profile is the one tab behind a lazy chunk; fetch it while the phone is
   // idle so the first tap on it skips the loading skeleton.
@@ -519,9 +535,26 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
             key={t.key}
             to={t.to}
             end={t.end}
+            onPointerDown={(e) => {
+              touch.current = e.pointerType === "touch" ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+            }}
+            // iOS takes the touch over for a scroll or a long press: no tap.
+            onPointerCancel={() => (touch.current = null)}
+            onPointerUp={(e) => {
+              const d = touch.current;
+              touch.current = null;
+              if (!d || d.id !== e.pointerId || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) return;
+              touchNavAt.current = Date.now();
+              go(e.currentTarget, t);
+              // Like a link: the page you are already on is replaced, not stacked.
+              navigate(t.to, { replace: location.pathname === t.to });
+            }}
             onClick={(e) => {
-              if (!e.currentTarget.classList.contains("is-active")) setHop((h) => h + 1);
-              setTapped(t.key);
+              if (Date.now() - touchNavAt.current < 800) {
+                e.preventDefault();
+                return;
+              }
+              go(e.currentTarget, t);
             }}
             className={({ isActive }) =>
               `relative flex min-w-0 flex-1 touch-manipulation select-none flex-col items-center justify-center gap-0.5 rounded-full transition-colors ${

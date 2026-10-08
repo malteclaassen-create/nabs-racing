@@ -121,7 +121,14 @@ export function useSlidingHighlight(ref, deps) {
       // wrapper (the Standings flyout does), which would skew offset* values.
       const wr = wrap.getBoundingClientRect();
       const er = el.getBoundingClientRect();
-      setPill({ left: er.left - wr.left, top: er.top - wr.top, width: er.width, height: er.height });
+      const next = { left: er.left - wr.left, top: er.top - wr.top, width: er.width, height: er.height };
+      // Same box, same object: this runs on every resize of <body> (each list
+      // or picture that lands while a page loads), and a fresh object each
+      // time re-rendered the whole NavBar for nothing — the hidden desktop
+      // pill on a phone included — right while the new page animates in.
+      setPill((p) =>
+        p && p.left === next.left && p.top === next.top && p.width === next.width && p.height === next.height ? p : next
+      );
     };
     measure();
     // Late re-measures: fonts settling and neighbours animating in (the docked
