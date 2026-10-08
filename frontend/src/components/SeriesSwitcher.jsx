@@ -127,14 +127,12 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
       {/* Menu — rendered from the /series list, so it scales to any number. */}
       <div
         role="menu"
-        className={`absolute left-0 top-full z-dropdown mt-2 w-64 origin-top-left rounded-2xl border border-border bg-card p-1.5 shadow-xl shadow-ink/10 transition-[opacity,transform,visibility] duration-quick ${
-          open ? "visible scale-100 opacity-100" : "invisible scale-[0.97] opacity-0"
-        }`}
+        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-64 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
       >
         {/* py-px so the highlighted entry's ring isn't shaved off at the
             list's own clipping edge (see SeasonPicker for the same fix). */}
         <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
-          {seriesList.map((s) => {
+          {seriesList.map((s, i) => {
             const viewing = current && s.slug === current.slug;
             return (
               <button
@@ -142,8 +140,9 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
                 role="menuitemradio"
                 aria-checked={viewing}
                 onClick={() => pick(s)}
-                className={`flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
-                  viewing ? "bg-accent/10 ring-1 ring-inset ring-accent/40" : "hover:bg-surface2"
+                style={{ "--i": i }}
+                className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+                  viewing ? "liquid-glass-lens" : "hover:bg-surface2"
                 }`}
               >
                 <span className="min-w-0 flex-1">

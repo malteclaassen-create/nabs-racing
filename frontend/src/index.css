@@ -1532,7 +1532,6 @@ body {
    transparency, get a solid bar instead. color-mix for the tint: see
    .glass-bar above for why the Tailwind alpha modifier cannot do this. */
 .liquid-glass {
-  position: relative;
   isolation: isolate;
   background-color: var(--c-card);
   background-color: color-mix(in srgb, var(--c-card) 52%, transparent);
@@ -1615,6 +1614,56 @@ body {
 }
 .fx-lite .bottom-nav-lens { transition-duration: 150ms; transition-timing-function: ease-out; }
 .fx-lite .bottom-nav-lens-glass { animation: none; }
+
+/* Denser glass for menus that open over busy pictures (the Home hero): the
+   rows are text to read, not just icons, so less of the photo comes through. */
+.liquid-glass.glass-dense {
+  background-color: color-mix(in srgb, var(--c-card) 80%, transparent);
+}
+.dark .liquid-glass.glass-dense {
+  background-color: color-mix(in srgb, var(--c-card) 74%, transparent);
+}
+
+/* Glass dropdown menus (season + series switchers), opening the way iOS menus
+   do: the panel springs out of its button — from the corner it hangs off, a
+   little past full size and back — and the rows follow one after another.
+   Closing folds it straight back into the button, quicker and without the
+   bounce. A pressed row dips like the tab bar's tabs. Visibility waits for the
+   fold to finish so the way out is seen; the rows cannot be tapped meanwhile. */
+.glass-menu {
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.45) translateY(-6px);
+  transition: opacity 170ms ease-in, transform 230ms cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 230ms;
+}
+.glass-menu.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 150ms ease-out, transform 520ms cubic-bezier(0.32, 1.32, 0.5, 1), visibility 0s;
+}
+.glass-menu-item {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
+  transition: opacity 120ms ease-in, transform 160ms ease-in, background-color 150ms;
+}
+.glass-menu.is-open .glass-menu-item {
+  opacity: 1;
+  transform: none;
+  transition: opacity 260ms ease-out, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1), background-color 150ms;
+  transition-delay: calc(50ms + min(var(--i, 0), 8) * 30ms);
+}
+.glass-menu.is-open .glass-menu-item:active {
+  transform: scale(0.97);
+  transition: transform 90ms ease-out;
+  transition-delay: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-menu, .glass-menu.is-open { transform: none; }
+  .glass-menu-item, .glass-menu.is-open .glass-menu-item { transform: none; transition-delay: 0ms; }
+}
+.fx-lite .glass-menu, .fx-lite .glass-menu.is-open { transform: none; }
+.fx-lite .glass-menu-item, .fx-lite .glass-menu.is-open .glass-menu-item { transform: none; transition-delay: 0ms; }
 
 .fx-lite .liquid-glass {
   background-color: var(--c-card);
