@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client.js";
+import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { finishesOf, startsOf } from "../utils/standingsRow.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -645,6 +645,14 @@ export default function Home() {
   // picker restarts them, and without it a slow answer for the season the
   // visitor just left could land last and overwrite the newer one (podium and
   // honours from the wrong season), plus set state after unmount.
+  // A result this tab already has (the api client's memory; the tab bar also
+  // fetches it on idle) goes in before the first paint, so the podium is part
+  // of the hero from its first frame instead of popping in under it.
+  useLayoutEffect(() => {
+    if (!lastRace?.id) return;
+    const hit = peekCached(() => api.raceResults(lastRace.id));
+    if (hit) setLatest(hit.data);
+  }, [lastRace?.id]);
   useEffect(() => {
     let alive = true;
     if (lastRace?.id) api.raceResults(lastRace.id).then((d) => alive && setLatest(d)).catch(() => {});
@@ -658,7 +666,8 @@ export default function Home() {
   const [latestSprint, setLatestSprint] = useState(null);
   useEffect(() => {
     let alive = true;
-    setLatestSprint(null);
+    const hit = lastRace?.sprintRaceId ? peekCached(() => api.raceResults(lastRace.sprintRaceId)) : null;
+    setLatestSprint(hit ? hit.data : null);
     if (lastRace?.sprintRaceId) {
       api.raceResults(lastRace.sprintRaceId).then((d) => alive && setLatestSprint(d)).catch(() => {});
     }
@@ -1311,6 +1320,26 @@ export default function Home() {
                   stagger: heroTabbed ? 0.05 : 0.14,
                 })}
               </>
+            ) : lastRace && !latest ? (
+              // The result is still on its way: hold the podium's place (three
+              // 60px cards, measured) so the buttons below do not jump down
+              // when it lands.
+              <div className="mt-8 max-w-4xl" aria-hidden="true">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="flex h-[60px] items-center gap-3 rounded-xl border border-black/10 bg-white/40 px-4 dark:border-white/10 dark:bg-white/[0.04]"
+                    >
+                      <span className="skeleton h-6 w-8 rounded" />
+                      <span className="flex-1 space-y-1.5">
+                        <span className="skeleton block h-3.5 w-28 max-w-full rounded" />
+                        <span className="skeleton block h-3 w-20 max-w-full rounded" />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               podiumStrip({ ...feature, podium: heroPodium }, { delay: 0.26 })
             )}
