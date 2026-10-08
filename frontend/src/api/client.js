@@ -321,6 +321,10 @@ function humanHttpError(status) {
 // was just changed is shown from memory. Memory only, gone on reload.
 const GET_CACHE = new Map();
 const GET_CACHE_MAX = 80;
+// Answers too big to keep around on a phone (telemetry laps, big exports):
+// they still load normally, they just are not remembered.
+const GET_CACHE_MAX_CHARS = 400_000;
+const TOO_BIG = new WeakSet();
 let PEEKING = false;
 
 // The primary series' slug (set by the SeriesProvider). A read with no
@@ -380,6 +384,7 @@ function request(path, opts = {}) {
   return send(path, opts, headers).then((data) => {
     if (key) {
       GET_CACHE.delete(key);
+      if (data && typeof data === "object" && TOO_BIG.has(data)) return data;
       GET_CACHE.set(key, data);
       if (GET_CACHE.size > GET_CACHE_MAX) GET_CACHE.delete(GET_CACHE.keys().next().value);
     } else {
@@ -415,6 +420,7 @@ async function send(path, { method = "GET", body, auth = false, userAuth = false
   } catch {
     data = null;
   }
+  if (text.length > GET_CACHE_MAX_CHARS && data && typeof data === "object") TOO_BIG.add(data);
   if (!res.ok) {
     // An expired/invalid admin token: drop it and let the admin UI bounce back
     // to the login screen instead of pretending we're still signed in. Discord
