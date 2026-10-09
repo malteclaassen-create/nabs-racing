@@ -38,6 +38,107 @@ function fmtSector(ms) {
   return `${s}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
+// Within this much of the session's best sector a split counts as "on the
+// pace" and shows green in the phone list.
+const NEAR_BEST_SECTOR_MS = 100;
+
+// Qualifying on a phone: the same row list as the race. Position, team colour,
+// flag and name (Pole on P1), then the lap's three sectors as a strip — purple
+// where it was the fastest split of the session, green within a tenth of it —
+// and on the right the lap time over the gap to pole.
+function MobileQuali({ rows, hasSectors, bestSector }) {
+  return (
+    <div className="card overflow-hidden md:hidden">
+      <div className="border-b border-border px-4 py-4">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Qualifying</div>
+        <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">
+          Grid order
+        </h3>
+      </div>
+      <ol className="cascade">
+        {rows.map((r, i) => {
+          const pole = r.position === 1 && isLap(r.bestLapMs);
+          const lap = fmtLap(r.bestLapMs);
+          const sectors = Array.isArray(r.sectors) && r.sectors.some((v) => v > 0) ? r.sectors : null;
+          return (
+            <li
+              key={`${r.position}-${r.name}`}
+              style={{ "--i": Math.min(i, 16) }}
+              className={`flex items-center gap-2.5 px-3.5 py-3.5 ${i === rows.length - 1 ? "" : "border-b border-border"} ${pole ? "bg-brand/10" : ""}`}
+            >
+              <span className="shrink-0">
+                {r.position <= 3 ? (
+                  <Rank position={r.position} />
+                ) : (
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-brand/10 font-display text-sm font-black tabular-nums text-dark">
+                    {r.position}
+                  </span>
+                )}
+              </span>
+              <span
+                className="w-1 shrink-0 self-stretch rounded-full"
+                style={{ backgroundColor: r.team?.color || "var(--c-border)" }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    {r.driverId && <Flag code={countryFor(r.driverId, r.country)} />}
+                    {r.driverId ? (
+                      <Link
+                        to={`/drivers/${r.driverId}`}
+                        className="truncate font-display text-base font-bold uppercase tracking-tight text-dark"
+                      >
+                        {r.name}
+                      </Link>
+                    ) : (
+                      <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark">{r.name}</span>
+                    )}
+                  </span>
+                  {pole && (
+                    <span className="pill bg-purple-500/15 text-fl" title="Pole position">
+                      Pole
+                    </span>
+                  )}
+                  {r.role === "safety" && <SafetyCarBadge compact />}
+                </div>
+                {hasSectors && sectors && (
+                  <div className="mt-2 flex max-w-[13rem] gap-1" aria-label={`Sectors ${sectors.map(fmtSector).filter(Boolean).join(", ")}`}>
+                    {[0, 1, 2].map((si) => {
+                      const v = sectors[si];
+                      const best = bestSector[si];
+                      const tone =
+                        !(v > 0) || best == null
+                          ? "bg-surface2"
+                          : v === best
+                            ? "bg-fl"
+                            : v - best <= NEAR_BEST_SECTOR_MS
+                              ? "bg-ok"
+                              : "bg-faint opacity-50";
+                      return <span key={si} className={`h-1.5 flex-1 rounded-full ${tone}`} title={fmtSector(v) || undefined} />;
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0 text-right font-mono tabular-nums leading-tight">
+                <div className={`text-sm ${pole ? "font-bold text-fl" : "text-dark"}`}>{lap || <NoData label="no lap set" />}</div>
+                {lap && (
+                  <div className="mt-1 text-xs text-light">{pole ? "pole" : r.gapMs != null ? fmtGap(r.gapMs) : null}</div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {hasSectors && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 font-mono text-[11px] text-light">
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-full bg-fl" /> Fastest sector</span>
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-3 rounded-full bg-ok" /> Within 0.1s</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QualiTable({ rows }) {
   // Sector columns only exist when the import carried them (older blobs
   // don't). The field's best time in each sector is tinted purple.
@@ -47,7 +148,10 @@ function QualiTable({ rows }) {
     return vals.length ? Math.min(...vals) : null;
   });
   return (
-    <div className="card overflow-hidden">
+    <>
+    <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} />
+    {/* From md up the full table; phones get the row list above. */}
+    <div className="card hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -161,6 +265,7 @@ function QualiTable({ rows }) {
         </table>
       </div>
     </div>
+    </>
   );
 }
 

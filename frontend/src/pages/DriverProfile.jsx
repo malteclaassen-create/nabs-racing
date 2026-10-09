@@ -21,6 +21,7 @@ import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import TrackStrengths from "../components/TrackStrengths.jsx";
+import PointsChart from "../components/PointsChart.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
@@ -448,6 +449,86 @@ function RatingBreakdown({ rating, stats, color }) {
 // its own. Two races of the same evening belong in one picture — a driver
 // reading the season wants to see the sprint that set up the feature race,
 // not switch views to find it.
+// The championship around this driver: their points line bold and labelled,
+// the two places either side of them faint behind it (the five nearest rows of
+// the table), and in one line under it how far ahead or behind the neighbours
+// they sit and how much the remaining rounds can still pay. Reuses the
+// constructors' chart: driver rows are mapped into its shape, keyed by driver.
+function RivalsProgression({ driverId, standingsData }) {
+  const rows = [...(standingsData?.standings || [])]
+    .filter((r) => r.position != null)
+    .sort((a, b) => a.position - b.position);
+  const idx = rows.findIndex((r) => r.driverId === driverId);
+  const raceNumbers = standingsData?.raceNumbers || [];
+  const completed = raceNumbers.filter((n) => rows.some((r) => r.perRace?.[n] != null));
+  if (idx < 0 || rows.length < 2 || completed.length < 2) return null;
+
+  const start = Math.max(0, Math.min(idx - 2, rows.length - 5));
+  const field = rows.slice(start, start + 5).map((r) => ({
+    teamId: r.driverId,
+    name: r.name,
+    color: r.team?.color || "var(--c-faint)",
+    total: r.total,
+    perRace: Object.fromEntries(Object.entries(r.perRace || {}).map(([n, v]) => [n, v?.points || 0])),
+    // A dropped round leaves the driver's total whole, so the line skips it too.
+    droppedPerRace: Object.fromEntries((r.droppedRounds || []).map((n) => [n, r.perRace?.[n]?.points || 0])),
+  }));
+
+  // What the rounds still to run can pay at most: each at the best single-race
+  // haul seen this season (its own table's P1 where it has one), twice over for
+  // a sprint weekend. Same reading as the title fight on the home page.
+  const done = new Set(completed);
+  const sprint = new Set(standingsData?.sprintRounds || []);
+  const custom = standingsData?.customPoints || {};
+  const maxRace = Math.max(
+    0,
+    ...rows.flatMap((r) =>
+      completed
+        .filter((n) => !custom[n]?.length)
+        .map((n) => (r.perRace?.[n]?.points || 0) / (sprint.has(n) ? 2 : 1))
+    )
+  );
+  const potential = raceNumbers
+    .filter((n) => !done.has(n))
+    .reduce((sum, n) => sum + (custom[n]?.[0] ?? maxRace) * (sprint.has(n) ? 2 : 1), 0);
+
+  const me = rows[idx];
+  const ahead = rows[idx - 1];
+  const behind = rows[idx + 1];
+  const note = (
+    <p className="mt-4 rounded-lg bg-surface2 px-3 py-2.5 text-sm text-medium">
+      {ahead && (
+        <>
+          <span className="font-mono font-bold text-bad">{ahead.total - me.total}</span> behind {ahead.name}
+        </>
+      )}
+      {ahead && behind && " · "}
+      {behind && (
+        <>
+          <span className="font-mono font-bold text-ok">+{me.total - behind.total}</span> ahead of {behind.name}
+        </>
+      )}
+      {potential > 0 && (
+        <>
+          {" · "}up to <span className="font-mono font-bold text-dark">{potential}</span> pts still on the table
+        </>
+      )}
+    </p>
+  );
+
+  return (
+    <PointsChart
+      standings={field}
+      completed={completed}
+      allRounds={raceNumbers}
+      highlight={driverId}
+      eyebrow="Championship progression"
+      title={`${me.name} vs. rivals`}
+      note={note}
+    />
+  );
+}
+
 function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = false }) {
   // Every round of the season, run or not: a round already raced brings its
   // result along, one still ahead is an empty slot that only carries its label.
@@ -2068,6 +2149,8 @@ export default function DriverProfile({ previewId, preview }) {
 
         <HeadToHead me={p} meRow={meRow} standings={standingsData.standings} />
       </div>
+
+      <RivalsProgression driverId={driver.id} standingsData={standingsData} />
 
       {/* Race by race + Team */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
