@@ -26,9 +26,11 @@ function niceNum(v, round) {
 // the full season calendar (incl. not-yet-run rounds), used in the footnote.
 // `dropMode` / `teamDropWorst` mirror the standings payload so the footnote
 // describes whichever drop rule is actually in force.
-// `highlight` = teamId drawn bold and labelled (team pages). `eyebrow` / `title`
-// give the card its own header row.
-export default function PointsChart({ standings = [], completed = [], allRounds = [], dropWorst = 3, dropMode = "driver", teamDropWorst = null, highlight = null, eyebrow = null, title = null }) {
+// `highlight` = teamId drawn bold and labelled (team and driver pages).
+// `eyebrow` / `title` give the card its own header row. `note` replaces the
+// footnote under the legend, which is written for the constructor tables
+// (a driver page plots drivers: rows in the same shape, keyed by driver id).
+export default function PointsChart({ standings = [], completed = [], allRounds = [], dropWorst = 3, dropMode = "driver", teamDropWorst = null, highlight = null, eyebrow = null, title = null, note = null }) {
   const [focus, setFocus] = useState(null); // hovered team
   const [pinned, setPinned] = useState(null); // clicked team
   const [hover, setHover] = useState(null); // { idx, x, w }
@@ -339,6 +341,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
         })}
       </div>
 
+      {note ?? (
       <p className="mt-3 text-xs text-light">
         Cumulative championship points after each round
         {dropMode === "teamRounds" && teamDropWorst > 0 ? (
@@ -362,6 +365,7 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
         ) : null}
         , so the line ends on the same total as the standings table.
       </p>
+      )}
     </div>
   );
 }
