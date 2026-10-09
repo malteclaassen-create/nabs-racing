@@ -164,6 +164,206 @@ function QualiTable({ rows }) {
   );
 }
 
+// The race in one thin strip: every stint a segment as long as its laps, in
+// its compound's colour, with a hair of gap where the car pitted. The strip is
+// scaled to the longest race in the field, so a retirement or a lapped car
+// visibly runs short. Medium (and any other near-white compound) gets a faint
+// outline, or it would vanish into a light card.
+function StintBar({ stints, totalLaps }) {
+  const driven = stints.reduce((s, x) => s + (x.laps || 0), 0);
+  const rest = Math.max(0, (totalLaps || driven) - driven);
+  return (
+    <span className="flex h-1.5 w-full max-w-[13rem] gap-[2px] overflow-hidden rounded-full bg-surface2">
+      {stints.map((s, idx) => {
+        const t = tyreCompound(s.tyre);
+        return (
+          <span
+            key={idx}
+            className="h-full"
+            style={{
+              flex: `${Math.max(1, s.laps || 0)} 1 0`,
+              backgroundColor: t.color,
+              boxShadow: t.light ? "inset 0 0 0 1px rgba(10,15,30,0.25)" : undefined,
+            }}
+          />
+        );
+      })}
+      {rest > 0 && <span className="h-full" style={{ flex: `${rest} 1 0` }} />}
+    </span>
+  );
+}
+
+// The race result on a phone: one row per car instead of a table squeezed to
+// three columns. Position, team colour, then the driver with their flag and
+// marks, a mono line with team · tier · grid (and places won or lost), and the
+// tyre strip; on the right the gap (or the winner's race time) over the best
+// lap, and the points. Tapping the strip folds out the stints with lap counts.
+function MobileClassification({ race, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
+  const eyebrow = race.parentRaceId ? "Sprint" : race.type === "TRAINING" ? "Training" : race.type === "SPECIAL" ? "Special event" : "Race";
+  const anyPenalty = results.some((r) => r.penaltySeconds > 0);
+  // The length the tyre strips are scaled to: the most laps anyone drove.
+  const totalLaps = Math.max(
+    0,
+    ...results.map((r) => r.laps || (Array.isArray(r.stints) ? r.stints.reduce((s, x) => s + (x.laps || 0), 0) : 0))
+  );
+  return (
+    <div className="card overflow-hidden md:hidden">
+      <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-4">
+        <div>
+          <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrow}</div>
+          <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">
+            Full classification
+          </h3>
+        </div>
+        {anyPenalty && hasTimes && (
+          <p className="max-w-[9.5rem] pt-1 text-right font-mono text-[11px] leading-snug text-light">
+            Gaps include time penalties
+          </p>
+        )}
+      </div>
+      <ol className="cascade">
+        {results.map((r, i) => {
+          const tier = r.tier ?? r.team?.tier;
+          const team = r.effectiveTeam || r.team;
+          const finished = isFin(r);
+          const classified = r.position != null && finished;
+          const winner = detailed && classified && r.position === 1;
+          const isFastest = r.driverId === fastestDriverId;
+          const gridDelta = r.grid != null && classified ? r.grid - r.position : null;
+          const hasStints = Array.isArray(r.stints) && r.stints.length > 0;
+          const stintsOpen = hasStints && openStints.has(r.driverId);
+          const time = detailed && hasTimes ? timeCell(r) : null;
+          const lap = isLap(r.bestLapMs) ? fmtLap(r.bestLapMs) : null;
+          const tierLabel = tier === 1 ? "T1" : tier === 2 ? "T2" : tier != null ? "RES" : null;
+          return (
+            <li
+              key={r.driverId}
+              style={{ "--i": Math.min(i, 16) }}
+              className={`${i === results.length - 1 ? "" : "border-b border-border"} ${winner ? "bg-brand/10" : ""}`}
+            >
+              <div className="flex items-center gap-2.5 px-3.5 py-3.5">
+                {detailed && (
+                  <span className="shrink-0">
+                    {!classified ? (
+                      <span className="inline-flex h-8 w-8 items-center justify-center">
+                        <NoData className="font-mono" />
+                      </span>
+                    ) : r.position <= 3 ? (
+                      <Rank position={r.position} />
+                    ) : (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-brand/10 font-display text-sm font-black tabular-nums text-dark">
+                        {r.position}
+                      </span>
+                    )}
+                  </span>
+                )}
+                <span
+                  className="w-1 shrink-0 self-stretch rounded-full"
+                  style={{ backgroundColor: team?.color || "var(--c-border)" }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Flag code={countryFor(r.driverId, r.country)} />
+                      <Link
+                        to={`/drivers/${r.driverId}`}
+                        className="truncate font-display text-base font-bold uppercase tracking-tight text-dark"
+                        title={r.formerName ? `Raced as ${r.formerName}` : undefined}
+                      >
+                        {r.name}
+                      </Link>
+                    </span>
+                    {isFastest && (
+                      <span className="pill bg-purple-500/15 text-fl" title="Fastest lap of the race">
+                        FL{r.fastestLap > 0 ? ` +${r.fastestLap}` : ""}
+                      </span>
+                    )}
+                    {r.driverId === dotdId && (
+                      <span className="pill bg-brand/20 text-eyebrow" title="Driver of the Day">
+                        DOTD
+                      </span>
+                    )}
+                    {r.role === "safety" && <SafetyCarBadge compact />}
+                    {r.penaltySeconds > 0 && (
+                      <span className="pill bg-warn/15 normal-case text-warn" title="Time penalty applied">
+                        +{r.penaltySeconds}s
+                      </span>
+                    )}
+                  </div>
+                  {/* the team name gives way first, so tier, grid and the
+                      places won or lost always stay readable */}
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-xs text-light">
+                    <span className="min-w-0 truncate">
+                      {team?.name}
+                      {r.isSub && r.subForTeam ? " (sub)" : ""}
+                    </span>
+                    {(tierLabel || (detailed && r.grid != null)) && (
+                      <span className="shrink-0">
+                        {tierLabel ? `· ${tierLabel}` : ""}
+                        {detailed && r.grid != null ? ` · P${r.grid}` : ""}
+                      </span>
+                    )}
+                    {gridDelta != null && gridDelta !== 0 && (
+                      <span className={`shrink-0 font-bold ${gridDelta > 0 ? "text-ok" : "text-bad"}`}>
+                        {gridDelta > 0 ? `▲${gridDelta}` : `▼${-gridDelta}`}
+                      </span>
+                    )}
+                  </div>
+                  {hasStints && (
+                    <button
+                      type="button"
+                      onClick={() => toggleStints(r.driverId)}
+                      aria-expanded={stintsOpen}
+                      aria-label={`${stintsOpen ? "Hide" : "Show"} tyre strategy of ${r.name}`}
+                      className="-my-1.5 flex w-full items-center py-1.5"
+                    >
+                      <StintBar stints={r.stints} totalLaps={totalLaps} />
+                    </button>
+                  )}
+                </div>
+                {(time || lap) && (
+                  <div className="shrink-0 text-right font-mono tabular-nums leading-tight">
+                    {time && <div className={`text-sm ${winner ? "font-bold text-dark" : "text-dark"}`}>{time}</div>}
+                    {lap && (
+                      <div className={`text-xs ${time ? "mt-1" : ""} ${isFastest ? "font-bold text-fl" : "text-light"}`}>{lap}</div>
+                    )}
+                  </div>
+                )}
+                <div className="w-9 shrink-0 text-right">
+                  {r.status && r.status !== "FINISHED" ? (
+                    <StatusPill status={r.status} />
+                  ) : scores ? (
+                    <span className="font-mono text-xl font-bold tabular-nums text-dark">{r.points}</span>
+                  ) : null}
+                </div>
+              </div>
+              {hasStints && (
+                <div className={`grid transition-[grid-template-rows] duration-base ease-out-soft ${stintsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-surface2/40 px-4 py-3">
+                      {r.stints.map((s, idx) => (
+                        <span key={idx} className="flex items-center gap-1.5">
+                          <TyreBadge t={tyreCompound(s.tyre)} size={20} />
+                          <span className="font-mono text-xs tabular-nums text-medium">
+                            {s.laps} {s.laps === 1 ? "lap" : "laps"}
+                          </span>
+                        </span>
+                      ))}
+                      <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+                        · {r.stints.length - 1} {r.stints.length - 1 === 1 ? "stop" : "stops"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 // `session` ("race" | "quali") is owned by the caller — the switcher lives in
 // the round header row on the Races page, not inside this component.
 export default function RaceResults({ race, results, quali = null, session = "race" }) {
@@ -230,7 +430,22 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
 
   return (
-    <div className="card overflow-hidden">
+    <>
+    <MobileClassification
+      race={race}
+      results={results}
+      scores={scores}
+      detailed={detailed}
+      hasTimes={hasTimes}
+      timeCell={timeCell}
+      isFin={isFin}
+      fastestDriverId={fastestDriverId}
+      dotdId={dotdId}
+      openStints={openStints}
+      toggleStints={toggleStints}
+    />
+    {/* From md up the full table; phones get the row list above. */}
+    <div className="card hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -540,5 +755,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
         </div>
       )}
     </div>
+    </>
   );
 }
