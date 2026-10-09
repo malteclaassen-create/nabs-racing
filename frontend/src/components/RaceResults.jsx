@@ -320,17 +320,17 @@ function StintBar({ stints, totalLaps }) {
 }
 
 // The race result on a phone: one row per car instead of a table squeezed to
-// three columns. Position, team colour, then the driver with their flag and
-// marks, a mono line with team · tier · grid (and places won or lost), and the
-// tyre strip; on the right the gap (or the winner's race time) over the best
-// lap, and the points. Tapping the strip folds out the stints with lap counts.
-function MobileClassification({ eyebrow, penaltyNote, totalLaps, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
+// three columns. Kept to what a glance down the list is for: position, team
+// colour, the driver with their marks, the team and the places won or lost,
+// and on the right the gap and the points. Everything else (grid slot, best
+// lap, tyre strategy) folds out when the row is tapped. A tyre strip and two
+// stacked times on every row made twenty rows read as noise.
+function MobileClassification({ eyebrow, penaltyNote, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
   return (
     <div className="card overflow-hidden md:hidden">
       <CardHead eyebrow={eyebrow} title="Full classification" note={penaltyNote} />
       <ol className="cascade">
         {results.map((r, i) => {
-          const tier = r.tier ?? r.team?.tier;
           const team = r.effectiveTeam || r.team;
           const finished = isFin(r);
           const classified = r.position != null && finished;
@@ -338,17 +338,35 @@ function MobileClassification({ eyebrow, penaltyNote, totalLaps, results, scores
           const isFastest = r.driverId === fastestDriverId;
           const gridDelta = r.grid != null && classified ? r.grid - r.position : null;
           const hasStints = Array.isArray(r.stints) && r.stints.length > 0;
-          const stintsOpen = hasStints && openStints.has(r.driverId);
           const time = detailed && hasTimes ? timeCell(r) : null;
           const lap = isLap(r.bestLapMs) ? fmtLap(r.bestLapMs) : null;
-          const tierLabel = tier === 1 ? "T1" : tier === 2 ? "T2" : tier != null ? "RES" : null;
+          const grid = detailed && r.grid != null ? r.grid : null;
+          const hasDetails = hasStints || !!lap || grid != null;
+          const open = hasDetails && openStints.has(r.driverId);
+          const toggle = () => toggleStints(r.driverId);
           return (
             <li
               key={r.driverId}
               style={{ "--i": Math.min(i, 16) }}
               className={`${i === results.length - 1 ? "" : "border-b border-border"} ${winner ? "bg-brand/10" : ""}`}
             >
-              <div className="flex items-center gap-2.5 px-3.5 py-3.5">
+              <div
+                role={hasDetails ? "button" : undefined}
+                tabIndex={hasDetails ? 0 : undefined}
+                aria-expanded={hasDetails ? open : undefined}
+                onClick={hasDetails ? toggle : undefined}
+                onKeyDown={
+                  hasDetails
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggle();
+                        }
+                      }
+                    : undefined
+                }
+                className={`flex items-center gap-2.5 px-3.5 py-3 ${hasDetails ? "cursor-pointer" : ""}`}
+              >
                 {detailed && (
                   <span className="shrink-0">
                     {!classified ? (
@@ -358,107 +376,91 @@ function MobileClassification({ eyebrow, penaltyNote, totalLaps, results, scores
                     ) : r.position <= 3 ? (
                       <Rank position={r.position} />
                     ) : (
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-brand/10 font-display text-sm font-black tabular-nums text-dark">
+                      <span className="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black tabular-nums text-medium">
                         {r.position}
                       </span>
                     )}
                   </span>
                 )}
                 <span
-                  className="w-1 shrink-0 self-stretch rounded-full"
+                  className="h-8 w-1 shrink-0 rounded-full"
                   style={{ backgroundColor: team?.color || "var(--c-border)" }}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Flag code={countryFor(r.driverId, r.country)} />
-                      <Link
-                        to={`/drivers/${r.driverId}`}
-                        className="truncate font-display text-base font-bold uppercase tracking-tight text-dark"
-                        title={r.formerName ? `Raced as ${r.formerName}` : undefined}
-                      >
-                        {r.name}
-                      </Link>
-                    </span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Flag code={countryFor(r.driverId, r.country)} />
+                    <Link
+                      to={`/drivers/${r.driverId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark"
+                      title={r.formerName ? `Raced as ${r.formerName}` : undefined}
+                    >
+                      {r.name}
+                    </Link>
                     {isFastest && (
-                      <span className="pill bg-purple-500/15 text-fl" title="Fastest lap of the race">
+                      <span className="pill shrink-0 bg-purple-500/15 text-fl" title="Fastest lap of the race">
                         FL{r.fastestLap > 0 ? ` +${r.fastestLap}` : ""}
                       </span>
                     )}
                     {r.driverId === dotdId && (
-                      <span className="pill bg-brand/20 text-eyebrow" title="Driver of the Day">
+                      <span className="pill shrink-0 bg-brand/20 text-eyebrow" title="Driver of the Day">
                         DOTD
                       </span>
                     )}
                     {r.role === "safety" && <SafetyCarBadge compact />}
-                    {r.penaltySeconds > 0 && (
-                      <span className="pill bg-warn/15 normal-case text-warn" title="Time penalty applied">
-                        +{r.penaltySeconds}s
-                      </span>
-                    )}
                   </div>
-                  {/* the team name gives way first, so tier, grid and the
-                      places won or lost always stay readable */}
-                  <div className="mt-1 flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-xs text-light">
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-light">
                     <span className="min-w-0 truncate">
                       {team?.name}
                       {r.isSub && r.subForTeam ? " (sub)" : ""}
                     </span>
-                    {(tierLabel || (detailed && r.grid != null)) && (
-                      <span className="shrink-0">
-                        {tierLabel ? `· ${tierLabel}` : ""}
-                        {detailed && r.grid != null ? ` · P${r.grid}` : ""}
-                      </span>
-                    )}
                     {gridDelta != null && gridDelta !== 0 && (
-                      <span className={`shrink-0 font-bold ${gridDelta > 0 ? "text-ok" : "text-bad"}`}>
+                      <span
+                        className={`shrink-0 font-mono font-bold ${gridDelta > 0 ? "text-ok" : "text-bad"}`}
+                        title={`Started P${r.grid}`}
+                      >
                         {gridDelta > 0 ? `▲${gridDelta}` : `▼${-gridDelta}`}
                       </span>
                     )}
-                  </div>
-                  {hasStints && (
-                    <button
-                      type="button"
-                      onClick={() => toggleStints(r.driverId)}
-                      aria-expanded={stintsOpen}
-                      aria-label={`${stintsOpen ? "Hide" : "Show"} tyre strategy of ${r.name}`}
-                      className="-my-1.5 flex w-full items-center py-1.5"
-                    >
-                      <StintBar stints={r.stints} totalLaps={totalLaps} />
-                    </button>
-                  )}
-                </div>
-                {(time || lap) && (
-                  <div className="shrink-0 text-right font-mono tabular-nums leading-tight">
-                    {time && <div className={`text-sm ${winner ? "font-bold text-dark" : "text-dark"}`}>{time}</div>}
-                    {lap && (
-                      <div className={`text-xs ${time ? "mt-1" : ""} ${isFastest ? "font-bold text-fl" : "text-light"}`}>{lap}</div>
+                    {r.penaltySeconds > 0 && (
+                      <span className="shrink-0 font-mono font-bold text-warn" title="Time penalty applied">
+                        +{r.penaltySeconds}s pen
+                      </span>
                     )}
                   </div>
+                </div>
+                {time && (
+                  <span className={`shrink-0 text-right font-mono text-sm tabular-nums ${winner ? "font-bold text-dark" : "text-medium"}`}>
+                    {time}
+                  </span>
                 )}
-                <div className="w-9 shrink-0 text-right">
+                <div className="w-8 shrink-0 text-right">
                   {r.status && r.status !== "FINISHED" ? (
                     <StatusPill status={r.status} />
                   ) : scores ? (
-                    <span className="font-mono text-xl font-bold tabular-nums text-dark">{r.points}</span>
+                    <span className="font-mono text-lg font-bold tabular-nums text-dark">{r.points}</span>
                   ) : null}
                 </div>
               </div>
-              {hasStints && (
-                <div className={`grid transition-[grid-template-rows] duration-base ease-out-soft ${stintsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+              {hasDetails && (
+                <div className={`grid transition-[grid-template-rows] duration-base ease-out-soft ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
                   <div className="min-h-0 overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-surface2/40 px-4 py-3">
-                      {r.stints.map((s, idx) => (
-                        <span key={idx} className="flex items-center gap-1.5">
-                          <TyreBadge t={tyreCompound(s.tyre)} size={20} />
-                          <span className="font-mono text-xs tabular-nums text-medium">
-                            {s.laps} {s.laps === 1 ? "lap" : "laps"}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border bg-surface2/40 px-4 py-3 font-mono text-xs tabular-nums text-medium">
+                      {grid != null && <span>Started P{grid}</span>}
+                      {lap && <span className={isFastest ? "font-bold text-fl" : ""}>Best lap {lap}</span>}
+                      {hasStints && (
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          {r.stints.map((s, idx) => (
+                            <span key={idx} className="flex items-center gap-1.5">
+                              <TyreBadge t={tyreCompound(s.tyre)} size={20} />
+                              {s.laps} {s.laps === 1 ? "lap" : "laps"}
+                            </span>
+                          ))}
+                          <span className="text-light">
+                            · {r.stints.length - 1} {r.stints.length - 1 === 1 ? "stop" : "stops"}
                           </span>
                         </span>
-                      ))}
-                      <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-                        · {r.stints.length - 1} {r.stints.length - 1 === 1 ? "stop" : "stops"}
-                      </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -551,7 +553,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
     <MobileClassification
       eyebrow={eyebrow}
       penaltyNote={penaltyNote}
-      totalLaps={totalLaps}
       results={results}
       scores={scores}
       detailed={detailed}
