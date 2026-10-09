@@ -10,18 +10,27 @@
 //
 // Written for the questions that keep landing in tickets and in the briefing
 // channel right before a race. Every answer should end with something to DO.
+//
+// The files themselves (tracks, skins, Custom Shaders Patch, Real Penalty,
+// replays) live in the league's Google Drive folder, not in the site's own
+// downloads, so the answers link there.
+const DRIVE = "https://drive.google.com/drive/folders/17CYMeD0rBS4ASviTa2Rlz3PHnpEyiRMy";
 export const HELP_DEFAULTS = {
   topics: [
     {
       title: "Getting on the server",
       items: [
         {
+          q: "Where do I get the tracks, skins and mods?",
+          a: `Everything is in the [NABS Google Drive](${DRIVE}): the tracks, the skins, Custom Shaders Patch, Real Penalty and the replays. Install them before race day, so you are not downloading while the briefing starts.`,
+        },
+        {
           q: "I get kicked with \"Checksum failed\"",
-          a: "One of your files is not the same version as the server's, usually the car, the track or a skin pack. You don't have to guess which one: the [Content Check](/content-check) compares your Assetto Corsa folder with the race server and names the file that doesn't match. It runs in your browser, nothing gets uploaded.\n\nThen grab that file again from the [Race Info downloads](/downloads) and install it over the old one.",
+          a: `One of your files is not the same version as the server's, usually the car, the track or a skin pack. You don't have to guess which one: the [Content Check](/content-check) compares your Assetto Corsa folder with the race server and names the file that doesn't match. It runs in your browser, nothing gets uploaded.\n\nThen grab that file again from the [NABS Google Drive](${DRIVE}) and install it over the old one.`,
         },
         {
           q: "I get kicked straight after joining, or it says the server needs Real Penalty",
-          a: "Real Penalty is **mandatory** on our servers. If the app isn't running when you join, the server removes you.\n\nInstall the Real Penalty version from the [Race Info downloads](/downloads), make sure the app is switched on in Content Manager, and check in-game that its window opens from the app bar on the right side of the screen.",
+          a: `Real Penalty is **mandatory** on our servers. If the app isn't running when you join, the server removes you.\n\nInstall the Real Penalty version from the [NABS Google Drive](${DRIVE}), make sure the app is switched on in Content Manager, and check in-game that its window opens from the app bar on the right side of the screen.`,
         },
         {
           q: "Real Penalty is installed but still won't connect",
@@ -71,7 +80,7 @@ export const HELP_DEFAULTS = {
         },
         {
           q: "Where do I find the replay?",
-          a: "Open the race on the [Races](/races) page. If a replay was uploaded, there is a Replay button next to the result.",
+          a: `All replays are in the [NABS Google Drive](${DRIVE}). You can also open the race on the [Races](/races) page: if a replay was uploaded there, a Replay button sits next to the result.`,
         },
       ],
     },
