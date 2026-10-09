@@ -22,4 +22,22 @@ describe("sanitizeHelpFaq", () => {
     const out = sanitizeHelpFaq({ topics: [{ title: "t", items: [{ q: "q", a: "a".repeat(5000) }] }] });
     expect(out.topics[0].items[0].a).toHaveLength(3000);
   });
+
+  it("keeps a YouTube video as its id and drops anything else", () => {
+    const out = sanitizeHelpFaq({
+      topics: [
+        {
+          title: "t",
+          items: [
+            { q: "a", a: "x", video: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+            { q: "b", a: "y", video: "https://example.com/clip" },
+          ],
+        },
+      ],
+    });
+    expect(out.topics[0].items).toEqual([
+      { q: "a", a: "x", video: "dQw4w9WgXcQ" },
+      { q: "b", a: "y" },
+    ]);
+  });
 });

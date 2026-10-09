@@ -6,6 +6,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { HELP_DEFAULTS } from "../data/helpDefaults.js";
+import { youtubeId } from "../utils/videoLinks.js";
 import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
 // Editor for the public Help & troubleshooting page (/help). Same pattern as
@@ -19,7 +20,7 @@ const addBtn = "rounded-lg bg-link/10 px-3 py-1.5 text-xs font-bold text-link tr
 
 function toForm(content) {
   const topics = content?.topics?.length ? content.topics : HELP_DEFAULTS.topics;
-  return topics.map((t) => ({ title: t.title || "", items: (t.items || []).map((x) => ({ q: x.q || "", a: x.a || "" })) }));
+  return topics.map((t) => ({ title: t.title || "", items: (t.items || []).map((x) => ({ q: x.q || "", a: x.a || "", video: x.video || "" })) }));
 }
 
 function fromForm(topics) {
@@ -27,7 +28,9 @@ function fromForm(topics) {
     topics: topics
       .map((t) => ({
         title: t.title.trim(),
-        items: t.items.map((x) => ({ q: x.q.trim(), a: x.a.trim() })).filter((x) => x.q && x.a),
+        items: t.items
+          .map((x) => ({ q: x.q.trim(), a: x.a.trim(), ...(x.video.trim() ? { video: x.video.trim() } : {}) }))
+          .filter((x) => x.q && x.a),
       }))
       .filter((t) => t.title && t.items.length),
   };
@@ -137,7 +140,8 @@ export default function AdminHelp() {
         (there is a <b>Copy link</b> button under each answer), so you can paste the exact answer in Discord. Writing
         tips: <code className="rounded bg-card px-1.5 py-0.5 text-xs">**words**</code> makes words bold,{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">[Content Check](/content-check)</code> makes a link,
-        and an empty line starts a new paragraph.{" "}
+        and an empty line starts a new paragraph. A YouTube video can go under any answer; it only loads when
+        somebody presses play.{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{answers}"}</code> becomes the sign-up answers
         members can give right now (set under Notifications), e.g. <b>Accepted</b> or <b>Declined</b>. Changing a
         question&rsquo;s wording changes its link.
@@ -181,17 +185,30 @@ export default function AdminHelp() {
               <Field label="Answer">
                 <textarea className="input" rows={4} value={it.a} onChange={(e) => setItem(ti, ii, "a", e.target.value)} />
               </Field>
+              <Field label="YouTube video (optional)">
+                <input
+                  className="input"
+                  value={it.video}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  onChange={(e) => setItem(ti, ii, "video", e.target.value)}
+                />
+                {it.video.trim() && !youtubeId(it.video) && (
+                  <p className="mt-1 text-xs font-medium text-bad">
+                    That is not a YouTube link. Only YouTube videos can be shown here.
+                  </p>
+                )}
+              </Field>
             </div>
           ))}
           {t.items.length === 0 && <p className="text-sm text-light">No questions yet. A topic without questions is not shown.</p>}
 
-          <button type="button" onClick={() => setItems(ti, (items) => [...items, { q: "", a: "" }])} className={addBtn}>
+          <button type="button" onClick={() => setItems(ti, (items) => [...items, { q: "", a: "", video: "" }])} className={addBtn}>
             Add question
           </button>
         </div>
       ))}
 
-      <button type="button" onClick={() => setForm([...form, { title: "", items: [{ q: "", a: "" }] }])} className={addBtn}>
+      <button type="button" onClick={() => setForm([...form, { title: "", items: [{ q: "", a: "", video: "" }] }])} className={addBtn}>
         Add topic
       </button>
 

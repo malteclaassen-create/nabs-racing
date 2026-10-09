@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Check, Link2, Search, X } from "lucide-react";
 import { PageHeader, SectionHeading } from "../components/ui.jsx";
 import { SocialIcon, useSocial } from "../components/SocialLinks.jsx";
+import VideoEmbed from "../components/VideoEmbed.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { useApi } from "../hooks/useApi.js";
 import { api } from "../api/client.js";
@@ -28,7 +29,9 @@ import { answerWords, fillHelp, helpSlugs, matchesHelp, parseHelp } from "./help
 // An answer on screen: paragraphs, **bold**, and [links](/somewhere).
 function Answer({ text }) {
   return parseHelp(text).map((para, i) => (
-    <p key={i}>
+    // pre-line: a single line break inside a paragraph stays one, so steps
+    // written one per line read as steps.
+    <p key={i} className="whitespace-pre-line">
       {para.map((piece, j) => {
         if (piece.bold != null) return <span key={j} className="font-semibold text-dark">{piece.bold}</span>;
         if (piece.link == null) return piece.text;
@@ -75,7 +78,7 @@ function CopyLink({ slug }) {
   );
 }
 
-function HelpItem({ slug, q, a, open, highlight }) {
+function HelpItem({ slug, q, a, video, open, highlight }) {
   return (
     <details
       id={slug}
@@ -94,6 +97,13 @@ function HelpItem({ slug, q, a, open, highlight }) {
         <div className="space-y-3 text-sm leading-relaxed text-medium">
           <Answer text={a} />
         </div>
+        {/* Still only a picture until somebody presses play (VideoEmbed), so a
+            page full of answers does not load a player per question. */}
+        {video && (
+          <div className="mt-4 max-w-xl overflow-hidden rounded-xl border border-border">
+            <VideoEmbed videoId={video} title={q} />
+          </div>
+        )}
         <div className="mt-4 flex justify-end">
           <CopyLink slug={slug} />
         </div>
@@ -120,7 +130,7 @@ export default function Help() {
     const tokens = { answers: answerWords(answers) };
     return rawTopics.map((t) => ({
       title: fillHelp(t.title, tokens),
-      items: t.items.map((it) => ({ q: fillHelp(it.q, tokens), a: fillHelp(it.a, tokens) })),
+      items: t.items.map((it) => ({ ...it, q: fillHelp(it.q, tokens), a: fillHelp(it.a, tokens) })),
     }));
   }, [rawTopics, answers]);
   const slugs = useMemo(() => helpSlugs(topics), [topics]);
@@ -196,6 +206,7 @@ export default function Help() {
                 slug={it.slug}
                 q={it.q}
                 a={it.a}
+                video={it.video}
                 open={!!q || it.slug === target}
                 highlight={it.slug === target}
               />

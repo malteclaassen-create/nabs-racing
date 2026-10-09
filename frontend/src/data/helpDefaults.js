@@ -6,7 +6,8 @@
 // Text conventions (also explained in the editor):
 //   **like this**       -> bold
 //   [label](/path)      -> a link; a path stays on the site, https:// opens a new tab
-//   a blank line        -> a new paragraph
+//   a blank line        -> a new paragraph (a single line break stays one)
+//   video               -> optional YouTube link shown under the answer
 //   {answers}           -> the sign-up answers that are switched on right now,
 //                          e.g. "**Accepted** or **Declined**"
 //
@@ -28,7 +29,18 @@ export const HELP_DEFAULTS = {
         },
         {
           q: "I get kicked with \"Checksum failed\"",
-          a: `One of your files is not the same version as the server's, usually the car, the track or a skin pack. You don't have to guess which one: the [Content Check](/content-check) compares your Assetto Corsa folder with the race server and names the file that doesn't match. It runs in your browser, nothing gets uploaded.\n\nThen grab that file again from the [NABS Google Drive](${DRIVE}) and install it over the old one.`,
+          a: `One of your files is not the same version as the server's, usually the car, the track or a skin pack. You don't have to guess which one: the [Content Check](/content-check) compares your Assetto Corsa folder with the race server and names the file that doesn't match. It runs in your browser, nothing gets uploaded.\n\nThen delete that car or track and install it fresh from the [NABS Google Drive](${DRIVE}). Installing over the old one can leave old files behind; the clean install question below shows how.`,
+        },
+        {
+          q: "How do I do a clean install of a car or track?",
+          a: `A clean install means the old files are completely gone before the new ones go in. Installing over the top can leave old files behind, and those are a common reason for "Checksum failed".
+
+1. Close Assetto Corsa and Content Manager.
+2. In Steam, right-click Assetto Corsa, then **Manage** and **Browse local files**.
+3. Open **content \\ cars** (or **content \\ tracks**) and delete the folder of that car or track.
+4. Download it fresh from the [NABS Google Drive](${DRIVE}) and install it again, for example by dragging the file into Content Manager.
+
+Not sure which file is the problem? The [Content Check](/content-check) tells you.`,
         },
         {
           q: "I get kicked straight after joining, or it says the server needs Real Penalty",

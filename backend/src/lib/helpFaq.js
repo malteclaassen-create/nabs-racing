@@ -3,9 +3,12 @@
 // nothing is saved the frontend shows its built-in questions
 // (frontend/src/data/helpDefaults.js).
 //
-// Shape: { topics: [{ title, items: [{ q, a }] }] }. Topics exist so the page
+// Shape: { topics: [{ title, items: [{ q, a, video? }] }] }. `video` is an
+// optional YouTube video shown under the answer, stored as the plain video id. Topics exist so the page
 // can be read as "Joining the server", "Race day", ... instead of one long list;
 // the admins asked for a place to point people at, so it has to be scannable.
+
+import { youtubeId } from "./videoLinks.js";
 
 export const HELP_FAQ_KEY = "help_faq_content";
 
@@ -25,7 +28,11 @@ export function sanitizeHelpFaq(input) {
       if (!it || typeof it !== "object") continue;
       const q = str(it.q, 200);
       const a = str(it.a, 3000);
-      if (q && a) items.push({ q, a });
+      if (!q || !a) continue;
+      // Anything that is not a YouTube video is dropped rather than refused:
+      // the answer still saves, and the editor already said it was not one.
+      const video = youtubeId(str(it.video, 300));
+      items.push(video ? { q, a, video } : { q, a });
     }
     if (title && items.length) out.push({ title, items });
   }
