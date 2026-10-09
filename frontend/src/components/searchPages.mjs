@@ -37,6 +37,10 @@ const PAGES = [
   // downloads page, which is what the nav calls "Race Info".
   { key: "raceinfo", label: "Race info", hint: "Rules, regulations and downloads", icon: "book", where: "flat", path: "/downloads",
     words: ["race info", "rules", "regulations", "sporting", "regeln", "reglement", "downloads", "files", "mods", "skins", "replays", "dateien"] },
+  { key: "help", label: "Help", hint: "Checksums, getting kicked, sign-up and more", icon: "help", where: "flat", path: "/help",
+    words: ["help", "faq", "troubleshooting", "problem", "checksum", "kicked", "kick", "real penalty", "cant join", "can't join", "server", "support", "ticket", "hilfe", "fehler", "geht nicht"] },
+  { key: "contentcheck", label: "Content Check", hint: "Find the file behind \"Checksum failed\"", icon: "alert", where: "flat", path: "/content-check",
+    words: ["content check", "checksum", "checksum failed", "files", "mods", "version", "pruefen", "dateien"] },
   { key: "tools", label: "Lap comparison", hint: "Compare telemetry laps", icon: "gauge", where: "flat", path: "/tools",
     words: ["tools", "telemetry", "telemetrie", "laps", "lap comparison", "compare", "data", "runden", "vergleich"] },
   { key: "cards", label: "Driver cards", hint: "Every card edition", icon: "cards", where: "flat", path: "/cards",

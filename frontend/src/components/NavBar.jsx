@@ -403,6 +403,7 @@ const NAV_ICONS = {
   attendance: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /><path d="M9 15l2 2 4-4" /></>,
   live: <><circle cx="12" cy="12" r="2.5" /><path d="M7.5 7.5a6.5 6.5 0 000 9M16.5 7.5a6.5 6.5 0 010 9" /><path d="M4.7 4.7a10.5 10.5 0 000 14.6M19.3 4.7a10.5 10.5 0 010 14.6" /></>,
   info: <><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
+  help: <><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></>,
   drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
   constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
   records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
@@ -1368,6 +1369,7 @@ export default function NavBar() {
 
               <MobileMenuLabel>More</MobileMenuLabel>
               <MobileRow to="/downloads" icon={NAV_ICONS.info} label="Race Info" sub="Rules & downloads" />
+              <MobileRow to="/help" icon={NAV_ICONS.help} label="Help" sub="Checksums, kicks, sign-up" />
               {/* The phone's way to the feedback panel: the floating button in
                   the corner is desktop-only, so this row is what opens it here. */}
               <MobileActionRow

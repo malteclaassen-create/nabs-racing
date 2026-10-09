@@ -479,6 +479,16 @@ export async function buildPageMeta(prisma, pathname, query = {}) {
           "How the NABS championship works: format, points, sporting regulations and the files you need to race on Assetto Corsa.",
       };
     }
+    // Help & troubleshooting (pages/Help.jsx). A link to one answer is
+    // /help#<slug>; the fragment never reaches the server, so every one of
+    // them previews as the page.
+    if (parts.length === 1 && parts[0] === "help") {
+      return {
+        title: `Help & troubleshooting · ${SITE}`,
+        description:
+          "Checksum failed, kicked from the server, Real Penalty, signing up and stewarding: the common problems and what to do about each.",
+      };
+    }
     // /career/<handle>: a person, not a season.
     if (parts[0] === "career" && parts[1]) return await careerMeta(prisma, decodeURIComponent(parts[1]));
     if (parts[0] !== "s" || !parts[1]) return null;

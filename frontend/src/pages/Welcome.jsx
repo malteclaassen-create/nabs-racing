@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
+import { answerWords } from "../utils/signupAnswers.mjs";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
@@ -810,7 +811,8 @@ export default function Welcome() {
               Discord and on the Race Info page.
             </Step>
             <Step n="3" title="Sign up for a round">
-              Each race you mark yourself Accepted, Tentative or Declined, right here on the site or in Discord.
+              Each race you mark yourself {answerWords(faq.data?.answers, { bold: false })}, right here on the site or in
+              Discord.
             </Step>
             <Step n="4" title="Go racing" last>
               Line up on the grid, race fair, and watch your name climb the standings after every round.
