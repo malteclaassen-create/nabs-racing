@@ -133,9 +133,11 @@ router.get("/live", async (req, res, next) => {
 
 // GET /api/settings/race-info -> the admin-edited Race Info page content, or
 // { content: null } while nothing has been saved (frontend uses its defaults).
+// `answers` = the sign-up answers switched on, for the {answers} placeholder.
 router.get("/race-info", async (req, res, next) => {
   try {
-    res.json({ content: await readRaceInfo(prisma) });
+    const [content, notify] = await Promise.all([readRaceInfo(prisma), readNotifySettings(prisma)]);
+    res.json({ content, answers: notify.attendanceShow });
   } catch (e) {
     next(e);
   }
@@ -155,9 +157,12 @@ router.get("/social-feed", async (req, res, next) => {
 
 // GET /api/settings/welcome-faq -> the admin-edited Welcome-page FAQ, or
 // { content: null } while nothing is saved (frontend uses its defaults).
+// `answers` rides along for the page's "Sign up for a round" step, which names
+// the sign-up buttons (see frontend utils/signupAnswers.mjs).
 router.get("/welcome-faq", async (req, res, next) => {
   try {
-    res.json({ content: await readWelcomeFaq(prisma) });
+    const [content, notify] = await Promise.all([readWelcomeFaq(prisma), readNotifySettings(prisma)]);
+    res.json({ content, answers: notify.attendanceShow });
   } catch (e) {
     next(e);
   }

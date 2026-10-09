@@ -46,5 +46,9 @@ test("{answers} names only the sign-up answers that are switched on", () => {
   assert.equal(answerWords(["ACCEPTED", "DECLINED"]), "**Accepted** or **Declined**");
   assert.equal(answerWords(["DECLINED", "TENTATIVE", "ACCEPTED"]), "**Accepted**, **Tentative** or **Declined**");
   assert.equal(answerWords(undefined), "**Accepted**, **Tentative** or **Declined**");
+  assert.equal(answerWords(["ACCEPTED", "DECLINED"], { bold: false }), "Accepted or Declined");
   assert.equal(fillHelp("Pick {answers}. {typo}", { answers: "A or B" }), "Pick A or B. {typo}");
+  // A list typed out before the placeholder existed follows the setting too.
+  assert.equal(fillHelp("Mark **Accepted**, **Tentative** or **Declined** now", { answers: "X" }), "Mark X now");
+  assert.equal(fillHelp("Accepted, Tentative, or Declined", { answers: "X" }), "X");
 });
