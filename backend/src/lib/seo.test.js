@@ -8,7 +8,7 @@
 // multiplies into endless near-duplicates; keep too little and a hundred race
 // results share one address. Hence the tests.
 import { describe, it, expect, vi } from "vitest";
-import { canonicalUrl, applyCanonical, legacyRedirects, seasonLabel } from "./seo.js";
+import { canonicalUrl, applyCanonical, legacyRedirects, seasonLabel, isKnownRoute } from "./seo.js";
 
 // Just enough Prisma for the two lookups canonicalUrl makes: the primary series
 // (to fold its home onto "/") and the active season number (to drop a parameter
@@ -285,5 +285,14 @@ describe("legacyRedirects", () => {
   it("leaves everything else alone", async () => {
     expect((await run("/join")).passed).toBe(true);
     expect((await run("/teams/porsche.png")).passed).toBe(true);
+  });
+});
+
+describe("isKnownRoute", () => {
+  it("answers 200 for the help page, its alias and the pages it links to", () => {
+    for (const p of ["/help", "/faq", "/content-check", "/changelog", "/privacy"]) {
+      expect(isKnownRoute(p), p).toBe(true);
+    }
+    expect(isKnownRoute("/helpx")).toBe(false);
   });
 });

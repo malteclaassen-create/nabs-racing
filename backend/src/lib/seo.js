@@ -133,6 +133,14 @@ const GLOBAL_SEGMENTS = new Set([
   // this list is checked by a third party quite so literally.
   "privacy",
   "delete-account",
+  // Help & troubleshooting, and the file check it sends people to. Admins
+  // paste /help#<answer> links in Discord, and a 404 there means no preview
+  // and a page search engines are told to forget. /faq redirects to /help.
+  "help",
+  "faq",
+  "content-check",
+  // What's new. The bell's announcement links here, and it answered 404.
+  "changelog",
   // A member's own feedback and report threads. The notification that tells
   // somebody the admins have answered links straight to /feedback?id=… and
   // /reports?id=…, and the server was answering both 404 (the app rendered the
