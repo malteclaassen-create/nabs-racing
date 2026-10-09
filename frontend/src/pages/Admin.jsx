@@ -1172,12 +1172,17 @@ function LiveLinksAdmin() {
     <div className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Buttons & stream" />
       <p className="text-sm text-light">
-        The two buttons at the top of{" "}
-        <b className="text-dark">{series?.name ? `${series.name}'s` : "this series'"}</b> Live page, plus the stream
-        player beside its track map. Every series has its own three, so the other league keeps whatever it has.
-        Leave the live-timing URL blank to fall back to the server manager default. Leave the Content Manager link
-        blank to hide that button until a race is up, and the stream link blank when nobody is broadcasting.
+        The two buttons and the stream on{" "}
+        <b className="text-dark">{series?.name ? `${series.name}'s` : "this series'"}</b> Live page.
       </p>
+      <HelpNote label="Leaving a field blank">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Live-timing URL: falls back to the server manager default.</li>
+          <li>Content Manager link: the button stays hidden until a race is up.</li>
+          <li>Stream: no player when nobody is broadcasting.</li>
+          <li>Every series has its own, so the other league keeps whatever it has.</li>
+        </ul>
+      </HelpNote>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="space-y-4">
@@ -1278,13 +1283,20 @@ function LiveServersAdmin() {
   return (
     <div className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Race server per series" />
-      <p className="text-sm text-light">
-        Which race server each series&rsquo; Live page opens on. Open live pages pick a change up on their next
-        reload. Visitors can switch to the other server themselves from the Live page, and the switch shows them
-        where cars are actually out on track. This stays the default everyone arrives on, and it is not remembered
-        between visits. Tick <b className="text-dark">Only this server</b> and that series loses the switch
-        entirely: its Live page shows its own board and nothing else.
-      </p>
+      <p className="text-sm text-light">Which race server each series&rsquo; Live page opens on.</p>
+      <HelpNote label="How it works">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Open Live pages pick a change up on their next reload.</li>
+          <li>
+            Visitors can still switch to the other server on the Live page. The choice is not remembered between
+            visits.
+          </li>
+          <li>
+            <b className="text-dark">Only this server</b> removes that switch: the series shows its own board and
+            nothing else.
+          </li>
+        </ul>
+      </HelpNote>
       {err && <Notice kind="error">{err}</Notice>}
       {saved && <Notice kind="success">Saved.</Notice>}
       <div className="space-y-3">
@@ -1699,41 +1711,41 @@ function TrainingBestLapsAdmin() {
     <div ref={cardRef} className="card space-y-5 p-5">
       <CardHead eyebrow="Live Timing" title="Training best times" />
       <p className="text-sm text-light">
-        The race server forgets a practice session every time it restarts, so the week&rsquo;s training times drop
-        off the Live page. The server manager does not: it writes a result JSON for every session, practice
-        included, with every lap and the server&rsquo;s own <b className="text-dark">sector times</b> in it.
-        Download the week&rsquo;s practice sessions from its Results page and drop them here — one or several. Each
-        file lands on the track it names, its fastest clean lap per driver is kept, and a second file for the
-        same evening only ever adds drivers and improves times. The board carries every lap of the{" "}
-        <b className="text-dark">same circuit, whatever the layout was called</b> that day — a track that was
-        &ldquo;nabs_baku_2025&rdquo; on Monday and &ldquo;nabs_baku&rdquo; on Wednesday is one Baku.
+        Keeps the week&rsquo;s practice times on the Live page when the race server restarts. After a reset the
+        site asks here whether to keep them; for anything it missed, drop the server manager&rsquo;s practice
+        result JSONs below.
       </p>
-      <p className="text-sm text-light">
-        Most of the time you will not have to. The site watches that session all week, so when the server resets
-        it still has the times and <b className="text-dark">asks you here</b> whether to keep them. It asks rather
-        than simply putting them back because the server is usually restarted to put a{" "}
-        <b className="text-dark">new version of the track</b> up, and a time set before a track-limits fix can be
-        one nobody can reach after it. The files below are for what it missed: a reset while the site itself was
-        down, or a session from before all this.
-      </p>
-      <p className="text-sm text-light">
-        On the board the <b className="text-dark">faster lap wins per driver</b>: somebody who goes quicker on the
-        server keeps their live lap, an identical time changes nothing, and a carried lap is drawn exactly like one
-        set in the session on screen. Carried laps appear in <b className="text-dark">practice sessions only</b> —
-        a qualifying board or a race classification is what happened in that session. Everything here is{" "}
-        <b className="text-dark">per season</b>: what is given now belongs to season {data.season}, and the day a new
-        season is switched on the board starts from nothing again — last season&rsquo;s Baku never comes back with
-        the calendar, and nobody has to delete it.
-      </p>
-      <p className="text-sm text-light">
-        A single time can be taken off with the <b className="text-dark">Remove</b> button beside it: a lap driven
-        on the old version of the track, in conditions nobody else had, in the wrong car. It comes off for good,
-        not until the next upload: the session file it came in will not put it back, and while the race server is
-        still sitting in the session that lap was set in the board leaves that driver&rsquo;s time blank rather
-        than showing it again. They are back on the board the moment they{" "}
-        <b className="text-dark">set a different time</b>. Everything removed is listed at the bottom of this card
-        and can be put back.
-      </p>
+      <HelpNote label="How it works">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <b className="text-dark">Uploads:</b> one or several JSONs from the server manager&rsquo;s Results page.
+            Each lands on the track it names; the fastest clean lap per driver is kept, and a second file only adds
+            drivers or improves times.
+          </li>
+          <li>
+            <b className="text-dark">Resets:</b> the site asks instead of putting the times straight back, because a
+            restart usually means a new track version, and a time from before a track-limits fix may be out of
+            reach after it.
+          </li>
+          <li>
+            <b className="text-dark">On the board:</b> the faster lap wins per driver, live or carried. Practice
+            only; qualifying and races show just their own session.
+          </li>
+          <li>
+            <b className="text-dark">Layouts:</b> one circuit is one board, whatever the layout was called that day
+            (nabs_baku_2025 and nabs_baku are both Baku).
+          </li>
+          <li>
+            <b className="text-dark">Per season:</b> everything here belongs to season {data.season}. A new season
+            starts from an empty board.
+          </li>
+          <li>
+            <b className="text-dark">Remove</b> takes one lap off for good, also while the server still holds it.
+            The driver is back once they set a different time, and removed laps can be put back at the bottom of
+            this card.
+          </li>
+        </ul>
+      </HelpNote>
 
       {err && <Notice kind="error">{err}</Notice>}
 
