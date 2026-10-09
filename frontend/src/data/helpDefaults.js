@@ -7,6 +7,8 @@
 //   **like this**       -> bold
 //   [label](/path)      -> a link; a path stays on the site, https:// opens a new tab
 //   a blank line        -> a new paragraph
+//   {answers}           -> the sign-up answers that are switched on right now,
+//                          e.g. "**Accepted** or **Declined**"
 //
 // Written for the questions that keep landing in tickets and in the briefing
 // channel right before a race. Every answer should end with something to DO.
@@ -51,7 +53,7 @@ export const HELP_DEFAULTS = {
       items: [
         {
           q: "How do I sign up for a race?",
-          a: "On the [Attendance](/attendance) page, pick **Accepted**, **Tentative** or **Declined** for the next round. Sign-up opens a few days before the race, and you can change your answer until then.",
+          a: "On the [Attendance](/attendance) page, pick {answers} for the next round. Sign-up opens a few days before the race, and you can change your answer until then.",
         },
         {
           q: "I can't make it this week",

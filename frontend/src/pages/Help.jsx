@@ -7,7 +7,7 @@ import { useSpecificTitle } from "../utils/pageTitle.js";
 import { useApi } from "../hooks/useApi.js";
 import { api } from "../api/client.js";
 import { HELP_DEFAULTS } from "../data/helpDefaults.js";
-import { helpSlugs, matchesHelp, parseHelp } from "./helpText.mjs";
+import { answerWords, fillHelp, helpSlugs, matchesHelp, parseHelp } from "./helpText.mjs";
 
 // ---------------------------------------------------------------------------
 // /help — Help & troubleshooting.
@@ -112,7 +112,17 @@ export default function Help() {
 
   // Saved content wins; until the request is back the defaults are on screen,
   // so a deep link has something to open even before the answer arrives.
-  const topics = saved.data?.content?.topics?.length ? saved.data.content.topics : HELP_DEFAULTS.topics;
+  const rawTopics = saved.data?.content?.topics?.length ? saved.data.content.topics : HELP_DEFAULTS.topics;
+  // Live placeholders filled before anything else, so search and slugs see
+  // the same words the reader does.
+  const answers = saved.data?.answers;
+  const topics = useMemo(() => {
+    const tokens = { answers: answerWords(answers) };
+    return rawTopics.map((t) => ({
+      title: fillHelp(t.title, tokens),
+      items: t.items.map((it) => ({ q: fillHelp(it.q, tokens), a: fillHelp(it.a, tokens) })),
+    }));
+  }, [rawTopics, answers]);
   const slugs = useMemo(() => helpSlugs(topics), [topics]);
   const target = decodeURIComponent((hash || "").replace(/^#/, ""));
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { helpSlugs, matchesHelp, parseHelp, slugify } from "./helpText.mjs";
+import { answerWords, fillHelp, helpSlugs, matchesHelp, parseHelp, slugify } from "./helpText.mjs";
 
 test("slugs read like the question and survive accents and quotes", () => {
   assert.equal(slugify('I get kicked with "Checksum failed"'), "i-get-kicked-with-checksum-failed");
@@ -40,4 +40,11 @@ test("only site paths and http(s) become links", () => {
   assert.deepEqual(parseHelp("[x](javascript:alert(1))")[0][0], { text: "x" });
   assert.deepEqual(parseHelp("[x](//evil.example)")[0], [{ text: "x" }]);
   assert.equal(parseHelp("[Discord](https://discord.gg/abc)")[0][0].kind, "external");
+});
+
+test("{answers} names only the sign-up answers that are switched on", () => {
+  assert.equal(answerWords(["ACCEPTED", "DECLINED"]), "**Accepted** or **Declined**");
+  assert.equal(answerWords(["DECLINED", "TENTATIVE", "ACCEPTED"]), "**Accepted**, **Tentative** or **Declined**");
+  assert.equal(answerWords(undefined), "**Accepted**, **Tentative** or **Declined**");
+  assert.equal(fillHelp("Pick {answers}. {typo}", { answers: "A or B" }), "Pick A or B. {typo}");
 });

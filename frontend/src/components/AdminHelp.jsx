@@ -137,7 +137,10 @@ export default function AdminHelp() {
         (there is a <b>Copy link</b> button under each answer), so you can paste the exact answer in Discord. Writing
         tips: <code className="rounded bg-card px-1.5 py-0.5 text-xs">**words**</code> makes words bold,{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">[Content Check](/content-check)</code> makes a link,
-        and an empty line starts a new paragraph. Changing a question&rsquo;s wording changes its link.
+        and an empty line starts a new paragraph.{" "}
+        <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{answers}"}</code> becomes the sign-up answers
+        members can give right now (set under Notifications), e.g. <b>Accepted</b> or <b>Declined</b>. Changing a
+        question&rsquo;s wording changes its link.
       </div>
 
       {form.map((t, ti) => (

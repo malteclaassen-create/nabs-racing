@@ -6,6 +6,7 @@ import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 import { readHelpFaq } from "../lib/helpFaq.js";
+import { readNotifySettings } from "../lib/notifications.js";
 import { readPrivacyInfo } from "../lib/privacyInfo.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
@@ -164,9 +165,13 @@ router.get("/welcome-faq", async (req, res, next) => {
 
 // GET /api/settings/help -> the admin-edited Help & troubleshooting page, or
 // { content: null } while nothing is saved (frontend uses its defaults).
+// `answers` is which sign-up answers are switched on (Admin -> Notifications,
+// "Answers members can give"), so the page's {answers} placeholder names the
+// buttons members actually have instead of one that was switched off.
 router.get("/help", async (req, res, next) => {
   try {
-    res.json({ content: await readHelpFaq(prisma) });
+    const [content, notify] = await Promise.all([readHelpFaq(prisma), readNotifySettings(prisma)]);
+    res.json({ content, answers: notify.attendanceShow });
   } catch (e) {
     next(e);
   }

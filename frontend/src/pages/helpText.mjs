@@ -40,6 +40,27 @@ export function matchesHelp(item, query) {
     .every((w) => hay.includes(w));
 }
 
+// The sign-up answers members can give, as words for the {answers}
+// placeholder: "**Accepted** or **Declined**". Follows the order of the buttons
+// on the Attendance page. Unknown (request not back yet, or failed) = all three.
+const ANSWER_LABELS = [
+  ["ACCEPTED", "Accepted"],
+  ["TENTATIVE", "Tentative"],
+  ["DECLINED", "Declined"],
+];
+export function answerWords(statuses) {
+  const on = Array.isArray(statuses) ? statuses : ANSWER_LABELS.map(([k]) => k);
+  const words = ANSWER_LABELS.filter(([k]) => on.includes(k)).map(([, l]) => `**${l}**`);
+  if (words.length <= 1) return words[0] || "**Accepted**";
+  return `${words.slice(0, -1).join(", ")} or ${words[words.length - 1]}`;
+}
+
+// Fill the live placeholders. Unknown ones stay as typed, so a typo shows up
+// on the page instead of silently vanishing.
+export function fillHelp(s, tokens) {
+  return String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null ? String(tokens[k]) : m));
+}
+
 // Where a [label](href) may point. A path stays on the site, http(s) leaves it;
 // anything else (javascript:, data:, ...) is shown as plain text.
 export function linkKind(href) {
