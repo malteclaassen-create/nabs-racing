@@ -86,12 +86,43 @@ describe("liveResetKeep", () => {
     expect(mine()[0].after.track).toBe("");
   });
 
-  it("a second reset replaces the first question for that board", () => {
+  it("a second reset folds the first question into one for that board", () => {
     park({ endedAt: new Date(Date.now() - 60_000).toISOString() });
-    park({ laps: [lap(A, 94_000, "Alice")] });
+    // The practice session hit its time limit again before anybody answered,
+    // and only Alice drove in the new one.
+    park({ laps: [{ ...lap(A, 94_000, "Alice"), lapStamps: [1_700_000_500] }] });
     const waiting = mine();
     expect(waiting.length).toBe(1);
-    expect(waiting[0].laps.length).toBe(1); // the newer session's times
+    // Bob drove only in the first session. His time is still part of the
+    // question, which is what "some of the times didn't carry over" was.
+    expect(waiting[0].laps.map((l) => [l.name, l.lapTimeMs])).toEqual([
+      ["Bob", 93_500],
+      ["Alice", 94_000], // her quicker lap of the two
+    ]);
+    // Her laps of both sessions, each counted once.
+    expect(waiting[0].laps.find((l) => l.name === "Alice").lapStamps).toEqual([1_700_000_000, 1_700_000_500]);
+  });
+
+  it("a slower lap in the newer session does not undo a quicker one", () => {
+    park({ endedAt: new Date(Date.now() - 60_000).toISOString() });
+    park({ laps: [lap(B, 96_000, "Bob")] });
+    expect(mine()[0].laps.find((l) => l.name === "Bob").lapTimeMs).toBe(93_500);
+  });
+
+  it("times of an older track version are not folded into the newer one", () => {
+    // Monday's version went off air with times on it; Wednesday's version
+    // then restarted too. Monday's times were not set on Wednesday's layout
+    // and must not be filed under it.
+    park({ after: side("nabs_baku", "nabs_baku"), endedAt: new Date(Date.now() - 60_000).toISOString() });
+    park({
+      before: side("nabs_baku", "nabs_baku"),
+      after: side("nabs_baku", "nabs_baku"),
+      laps: [lap(A, 94_000, "Alice")],
+    });
+    const waiting = mine();
+    expect(waiting.length).toBe(1);
+    expect(waiting[0].before.layout).toBe("nabs_baku");
+    expect(waiting[0].laps.map((l) => l.name)).toEqual(["Alice"]);
   });
 
   it("holds laps to the same bar a file's are held to", () => {

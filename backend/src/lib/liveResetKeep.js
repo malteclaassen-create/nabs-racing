@@ -105,32 +105,49 @@ function shapeSide(side) {
 // Anything without laps or without a series to file them under is dropped on
 // the spot: a question whose answer can change nothing is noise in the admin.
 export function parkLaps({ serverKey, scopes, before, after, laps, endedAt = new Date().toISOString() }) {
-  // Through the same sieve a file's laps go through, so a row that could
-  // never reach the board is not counted in the question either.
-  const clean = normaliseLaps(laps).slice(0, MAX_LAPS);
   const scopeList = (Array.isArray(scopes) ? scopes : [])
     .map((s) => ({ series: String(s?.series || ""), season: Number(s?.season) || 0 }))
     .filter((s) => s.series && s.season > 0);
-  if (!clean.length || !scopeList.length) return null;
+  if (!scopeList.length) return null;
 
   const from = shapeSide(before);
   const to = shapeSide(after);
   if (!from.trackKey) return null;
 
   // One waiting question per server: a second reset before anybody answered
-  // replaces the first. The times of the newer session are the ones that are
-  // still worth having, and two prompts for the same board would be a queue
-  // nobody asked for.
+  // takes the place of the first, and two prompts for the same board would be
+  // a queue nobody asked for.
+  //
+  // On the same track version it takes the first one's times WITH it. A
+  // practice session that hits its time limit is a reset too, so between two
+  // race weekends this happens every few hours, and the newer session only
+  // holds whoever drove in it. Dropping the older question meant the driver
+  // who set their time on Monday and did not turn up again before the next
+  // restart was simply gone by the time somebody pressed Keep. Merged the way
+  // two files of the same track are, the question holds the whole week:
+  // everybody's quickest, the laps of both counted once.
+  //
+  // On another version the older times stay behind: they were set on a layout
+  // the server has since moved off, which is the drop the question would have
+  // suggested for them anyway, and filing them under this version would put
+  // them on a track they were never driven on.
   //
   // The replacement inherits whether the admins have already been told. An
   // admin swapping a track version restarts the server a few times in a row,
   // and being rung for each of them is being rung for one thing three times.
   let notifiedAt = null;
+  const earlier = [];
   for (const old of listPending()) {
     if (old.serverKey !== serverKey) continue;
     notifiedAt = notifiedAt || old.notifiedAt;
+    if (old.before.trackKey === from.trackKey) earlier.push(...old.laps);
     discard(old.id);
   }
+
+  // Through the same sieve a file's laps go through, so a row that could
+  // never reach the board is not counted in the question either.
+  const clean = normaliseLaps([...earlier, ...(Array.isArray(laps) ? laps : [])]).slice(0, MAX_LAPS);
+  if (!clean.length) return null;
 
   const id = `${serverKey}-${Date.parse(endedAt) || Date.now()}`.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   const payload = {
