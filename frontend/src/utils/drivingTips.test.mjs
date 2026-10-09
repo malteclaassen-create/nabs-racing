@@ -88,3 +88,24 @@ test("without a measured brake point the tip says nothing about braking", () => 
   const measured = explain({ lostMs: 100, brakeLaterM: 1, throttleLaterM: 0, minMe: 92, minRef: 100, exitMe: 180, exitRef: 180, peakMe: 90, peakRef: 90 }, "Ref");
   assert.match(measured.say, /Braking is about the same/);
 });
+
+test("the metres in the sentence are the difference of the metres on the card", () => {
+  // Apex at slice 30. Throttle at 98.4 m and 79.4 m after it: the card shows
+  // 98 and 79, so the sentence has to say 19, not round(19.0) of the raw gap
+  // computed some other way.
+  const dist = Array.from({ length: 101 }, (_, i) => i * 10);
+  dist[40] = 300 + 98.4; // B, the slower lap
+  dist[38] = 300 + 79.4; // A
+  dist[25] = 300 - 116.4; // B brakes
+  dist[24] = 300 - 109.6; // A brakes
+  const out = buildTips([section({ gainMs: 170, brakeA: 24, brakeB: 25, gasA: 38, gasB: 40, throttleDeltaM: 18.99, minB: 100, minA: 95, exitB: 176, exitA: 180 })],
+    lap("Maltegoat", 80000, "1"), lap("suforr", 80530, "2"), { n: 101, dist });
+  const t = out.tips[0];
+  assert.equal(t.kind, "exit");
+  assert.deepEqual(t.facts.find((f) => f.label === "Full throttle after apex"), { label: "Full throttle after apex", me: "98 m", ref: "79 m" });
+  assert.match(t.say, /full throttle 19 m later/);
+  // 5 km/h quicker through the middle is said, not called "fine".
+  assert.match(t.say, /5 km\/h more\*\* through the slowest point/);
+  assert.match(t.try, /5 km\/h slower/);
+  assert.equal(t.brakeLaterM, -6); // 116 m against 110 m
+});

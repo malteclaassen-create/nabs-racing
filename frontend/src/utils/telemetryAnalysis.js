@@ -98,12 +98,35 @@ export const FULL_THROTTLE = 90; // % pedal that counts as "back on it"
 // the pedal came on. The first slice over 30% would do for most laps, but a
 // dab and release well before the corner (a bump, a lift for traffic) would
 // then read as a brake point a hundred metres early.
+//
+// The search starts where the car was last at speed before the apex, not at
+// the start of the window. Two corners close together (Singapore's T7 and T8)
+// are one slow section, and the hardest pedal in that window is the big stop
+// for the FIRST corner; the brake point then read 330 m before the second
+// one's apex. Walking back from the apex to where the speed stopped rising
+// keeps the search inside this corner's own approach. A run of corners with no
+// acceleration between them (T1 to T3) is still one braking zone, as it
+// should be.
+const APPROACH_DROP_KMH = 5; // the speed has to fall this far below its high for the walk to stop
+export function approachStart(lap, from, apex) {
+  const lo = Math.max(0, from);
+  let top = apex;
+  for (let i = apex - 1; i >= lo; i--) {
+    if (lap.speed[i] >= lap.speed[top]) top = i;
+    else if (lap.speed[i] < lap.speed[top] - APPROACH_DROP_KMH) break;
+  }
+  return top;
+}
+
 export function brakePoint(lap, from, apex, threshold = BRAKE_ON) {
+  // A couple of slices of slack: the pedal goes down at the very top of the
+  // speed, and the recorded peak can sit a slice after it.
+  const lo = Math.max(0, from, approachStart(lap, from, apex) - 2);
   let peak = -1, peakAt = null;
-  for (let i = Math.max(0, from); i <= apex; i++) if (lap.brake[i] > peak) { peak = lap.brake[i]; peakAt = i; }
+  for (let i = lo; i <= apex; i++) if (lap.brake[i] > peak) { peak = lap.brake[i]; peakAt = i; }
   if (peak < threshold) return null;
   let i = peakAt;
-  while (i > from && lap.brake[i - 1] >= threshold / 2) i--;
+  while (i > lo && lap.brake[i - 1] >= threshold / 2) i--;
   return i;
 }
 

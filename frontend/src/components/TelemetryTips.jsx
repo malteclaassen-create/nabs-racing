@@ -80,8 +80,13 @@ function MiniTrace({ me, other, row, colorMe, colorRef }) {
     for (let i = from; i <= to; i++) d += `${i === from ? "M" : "L"}${x(i).toFixed(1)},${y(lap.speed[i]).toFixed(1)}`;
     return d;
   };
+  // Brake points as thin solid lines with a dot on top: dashed ones read as a
+  // third lap next to the dashed reference trace.
   const marker = (idx, color) => (idx != null && idx >= from && idx <= to ? (
-    <line x1={x(idx)} x2={x(idx)} y1={pt} y2={H - pb} stroke={color} strokeWidth="1" strokeDasharray="3 3" />
+    <g>
+      <line x1={x(idx)} x2={x(idx)} y1={pt} y2={H - pb} stroke={color} strokeWidth="1" strokeOpacity="0.7" />
+      <circle cx={x(idx)} cy={pt} r="2.5" fill={color} />
+    </g>
   ) : null);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={`Speed through ${row.place}: slowest ${row.minMe} against ${row.minRef} km/h`}>
@@ -96,9 +101,12 @@ function MiniTrace({ me, other, row, colorMe, colorRef }) {
       )}
       {marker(row.brakeIdxRef, colorRef)}
       {marker(row.brakeIdxMe, colorMe)}
-      <path d={path(other)} fill="none" stroke={colorRef} strokeWidth="2" strokeDasharray="5 3" />
-      <path d={path(me)} fill="none" stroke={colorMe} strokeWidth="2.4" />
-      <text x={pl} y={H - 3} fontSize="9" className="font-mono" fill="var(--c-faint)">km/h · dashed lines: brake points</text>
+      {/* The quicker lap on top, dashed: where the two run together the
+          solid line shows through its gaps and both stay visible. Drawn
+          underneath, it vanished wherever the laps matched. */}
+      <path d={path(me)} fill="none" stroke={colorMe} strokeWidth="2" />
+      <path d={path(other)} fill="none" stroke={colorRef} strokeWidth="2" strokeDasharray="5 4" />
+      <text x={pl} y={H - 3} fontSize="9" className="font-mono" fill="var(--c-faint)">km/h · lines with a dot: brake points</text>
     </svg>
   );
 }

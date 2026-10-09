@@ -81,6 +81,16 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
     const brakeRef = student === "B" ? c.brakeA : c.brakeB;
     const gasMe = student === "B" ? c.gasB : c.gasA;
     const gasRef = student === "B" ? c.gasA : c.gasB;
+    const brakeAtMe = metresBefore(brakeMe, c.apex);
+    const brakeAtRef = metresBefore(brakeRef, c.apex);
+    const gasAtMe = metresAfter(gasMe, c.apex);
+    const gasAtRef = metresAfter(gasRef, c.apex);
+    // The difference as the two numbers on the card show it. Rounding each
+    // distance and the gap separately gave "18 m later" over 98 m against 79 m.
+    const brakeLaterM = brakeAtMe != null && brakeAtRef != null ? brakeAtRef - brakeAtMe
+      : c.brakeDeltaM == null ? null : sign * c.brakeDeltaM;
+    const throttleLaterM = gasAtMe != null && gasAtRef != null ? gasAtMe - gasAtRef
+      : c.throttleDeltaM == null ? null : sign * c.throttleDeltaM;
     return {
       n: c.n,
       start: c.start,
@@ -92,16 +102,16 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
       named: !!named,
       lostMs,
       // + = the slower lap brakes later / is back on the throttle later.
-      brakeLaterM: c.brakeDeltaM == null ? null : sign * c.brakeDeltaM,
-      throttleLaterM: c.throttleDeltaM == null ? null : sign * c.throttleDeltaM,
+      brakeLaterM,
+      throttleLaterM,
       minMe,
       minRef,
       exitMe,
       exitRef,
-      brakeAtMe: metresBefore(brakeMe, c.apex),
-      brakeAtRef: metresBefore(brakeRef, c.apex),
-      gasAtMe: metresAfter(gasMe, c.apex),
-      gasAtRef: metresAfter(gasRef, c.apex),
+      brakeAtMe,
+      brakeAtRef,
+      gasAtMe,
+      gasAtRef,
       peakMe: round(peakBrake(me, c.start, c.apex)),
       peakRef: round(peakBrake(ref, c.start, c.apex)),
       // Slice indices, for drawing the section.
@@ -200,8 +210,15 @@ export function explain(r, refName) {
     tryText = `Release the brake earlier and let the car carry more speed into the corner: ${refName} keeps ${midLoss} km/h more through it.`;
   } else if (kind === "exit") {
     if (throttleLate) {
-      say = `Your speed through the corner is ${midLoss >= 3 ? `${midLoss} km/h down` : "fine"}, but you are back on **full throttle ${throttleLate} m later**${exitNote}. That costs you all the way down the next straight.`;
-      tryText = `Get the car straight sooner so you can go to full throttle earlier: ${refName} is flat out ${throttleLate} m before you.`;
+      // Quicker through the middle and still slow out: say so, since that is
+      // the trade the quicker lap made the other way round.
+      const through = midLoss >= 3 ? `Your speed through the corner is ${midLoss} km/h down`
+        : midLoss <= -3 ? `You carry **${-midLoss} km/h more** through the slowest point${mid}`
+        : "Your speed through the corner is fine";
+      say = `${through}, but you are back on **full throttle ${throttleLate} m later**${exitNote}. That costs you all the way down the next straight.`;
+      tryText = midLoss <= -3
+        ? `Trade some of that corner speed for the exit: ${refName} goes through ${-midLoss} km/h slower, gets the car straight sooner and is flat out ${throttleLate} m before you.`
+        : `Get the car straight sooner so you can go to full throttle earlier: ${refName} is flat out ${throttleLate} m before you.`;
     } else {
       say = `You leave the corner **${exitLoss} km/h slower** than ${refName}, and that speed is missing all the way down the next straight.`;
       tryText = `Give up a little entry speed for a better exit: a later apex lets you go to full throttle earlier.`;
