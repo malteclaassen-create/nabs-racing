@@ -109,3 +109,17 @@ test("the metres in the sentence are the difference of the metres on the card", 
   assert.match(t.try, /5 km\/h slower/);
   assert.equal(t.brakeLaterM, -6); // 116 m against 110 m
 });
+
+test("an early stop for the first corner of a run is named after that corner", () => {
+  const dist = Array.from({ length: 101 }, (_, i) => i * 10);
+  const out = buildTips([section({
+    gainMs: 120, apex: 30, label: "T1–T3", named: true, brakeA: 26, brakeB: 26, brakeDeltaM: 0,
+    zones: [{ apex: 30, brakeA: 26, brakeB: 26, brakeDeltaM: 0 }, { apex: 22, brakeA: 18, brakeB: 17, brakeDeltaM: -10 }],
+  })], lap("Maltegoat", 80000, "1"), lap("suforr", 80120, "2"), { n: 101, dist, corners: [{ at: 22, turn: 1, name: "" }, { at: 30, turn: 3, name: "" }] });
+  const t = out.tips[0];
+  assert.equal(t.place, "T1–T3");
+  assert.equal(t.kind, "braking");
+  assert.match(t.say, /10 m earlier\*\* than Maltegoat into T1/);
+  assert.deepEqual(t.facts[0], { label: "Brakes before T1", me: "50 m", ref: "40 m" });
+  assert.equal(t.brakeIdxMe, 17);
+});

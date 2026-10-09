@@ -18,6 +18,7 @@ import { SectionsPanel } from "./TelemetrySections.jsx";
 import TelemetryOverview from "./TelemetryOverview.jsx";
 import TelemetryTips from "./TelemetryTips.jsx";
 import { buildTips } from "../utils/drivingTips.js";
+import { labelSections, lapNames } from "../utils/sectionNames.js";
 import TelemetryTrackMap from "./TelemetryTrackMap.jsx";
 import { fitTelemetryWindow } from "../utils/telemetryWindow.js";
 import { sampleAtTime } from "../utils/telemetryGeometry.js";
@@ -139,10 +140,27 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // series in the admin bar (`fixedSeries`), so the setup below the
   // comparison and the laps inside it are always about the same league. A
   // shared link names its series, so it opens on the right laps for everybody.
-  const { seriesList, slug: viewedSlug, active: activeSeries } = useSeries();
+  const { seriesList, slug: viewedSlug, active: activeSeries, setSlug: setViewedSeries } = useSeries();
   const linkParams = useRef(new URLSearchParams(window.location.search));
   const [pickedSeries, setPickedSeries] = useState(fixedSeries || linkParams.current.get(SERIES_PARAM) || null);
   const seriesSlug = fixedSeries || pickedSeries;
+  // The site's own series (the switcher in the header) and the card's go
+  // together on the members' page. A link to Sunday Championship laps opened
+  // while browsing F1 Friday used to leave "F1 Friday · Season 8" in the
+  // header above Season 6 laps of the other league. Picking here switches the
+  // site; switching the site switches the card. The admin card is pinned to
+  // the admin bar's series and stays out of it.
+  const seenViewed = useRef(viewedSlug);
+  useEffect(() => {
+    if (fixedSeries || !pickedSeries || !seriesList.some((x) => x.slug === pickedSeries)) return;
+    if (pickedSeries !== viewedSlug) setViewedSeries?.(pickedSeries);
+  }, [pickedSeries, seriesList]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const before = seenViewed.current;
+    seenViewed.current = viewedSlug;
+    if (fixedSeries || !viewedSlug || before === viewedSlug) return;
+    if (pickedSeries && pickedSeries !== viewedSlug) setPickedSeries(viewedSlug);
+  }, [viewedSlug]); // eslint-disable-line react-hooks/exhaustive-deps
   const tracks = useApi(useCallback(() => api.telemetryTracks(seriesSlug), [seriesSlug]));
   // What a shared link asked for, consumed by the first laps load and then
   // forgotten, so a later track switch behaves like any other.
@@ -155,6 +173,9 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const [aId, setAId] = useState("");
   const [bId, setBId] = useState("");
   const [laps, setLaps] = useState(null);   // meta list for the track
+  // The server's sector lines on this track, in percent of the lap, once the
+  // site has learned them (backend lib/sectorLines.js); null until then.
+  const [sectorLines, setSectorLines] = useState(null);
   const [lapA, setLapA] = useState(null);   // full channels
   const [lapBRaw, setLapB] = useState(null);
   const [cursor, setCursor] = useState(null); // slice index under the mouse
@@ -268,11 +289,16 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     if (!trackKey) return;
     let alive = true;
     setLoadError(null);
+    if (wanted.current && wanted.current.trackKey !== trackKey) wanted.current = null;
     const selected = wanted.current || selections.current;
-    wanted.current = null;
     api.telemetryLaps(trackKey, seriesSlug).then((d) => {
       if (!alive) return;
+      // The link is used up once its laps are on screen, not when they are
+      // asked for: a request that is cancelled (React runs effects twice in
+      // development) must leave it for the next one.
+      wanted.current = null;
       setLaps(d.laps);
+      setSectorLines(Array.isArray(d.sectorLines) ? d.sectorLines : null);
       if (!d.laps.length) { setAId(""); setBId(""); return; }
       const mine = !selected.aId && me.current ? d.laps.find((l) => l.driverId && l.driverId === me.current) : null;
       const a = findPick(d.laps, selected.aId) || mine || d.laps[0];
@@ -371,32 +397,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // Corners off lap A's speed trace, numbered in lap order; distance from its
   // recorded positions (metres), for "brakes 14 m later". Older laps recorded
   // before positions existed simply have no map and no metre figures.
-  const cornersRef = useRef([]);
-  const insightsRef = useRef([]);
-  const corners = useMemo(
-    () => (lapA ? detectCorners(lapA.speed.slice(0, n || lapA.n)).map((c, k) => ({ ...c, n: k + 1 })) : []),
-    [lapA, n]
-  );
-  cornersRef.current = corners;
-  const dist = useMemo(
-    () => (lapA?.x && lapA?.z ? cumulativeDist(lapA.x, lapA.z, n || lapA.n) : null),
-    [lapA, n]
-  );
-  const insights = useMemo(
-    () => (both && corners.length ? cornerInsights(lapA, lapB, corners, dist, n) : []),
-    [both, lapA, lapB, corners, dist, n]
-  );
-  insightsRef.current = insights;
-  // The sections everything points at: the insights when there are two laps,
-  // the bare windows when there is one.
-  const sections = useMemo(() => (insights.length ? insights : sectionWindows(corners, dist, n)), [insights, corners, dist, n]);
-  const markers = useMemo(
-    () => (lapA && corners.length ? { a: lapMarkers(lapA, corners, n), b: both ? lapMarkers(lapB, corners, n) : null } : null),
-    [lapA, lapB, both, corners, n]
-  );
-  const sectors = useMemo(() => (both ? sectorDeltas(lapA, lapB, dist, n) : null), [both, lapA, lapB, dist, n]);
-  // The circuit's named corners (admin Tracks tab), so a tip can say "T4
-  // Roggia" rather than "section 3". Asked by the AC folder name the laps
+  // The circuit's named corners (admin Tracks tab), so every part of
+  // the page can say "T4 Roggia" rather than "section 3". Asked by the AC folder name the laps
   // carry; the backend resolves it to the circuit. None is a normal answer.
   // The layout goes along: the default names only fit the Grand Prix one.
   const rawTrack = list.find((t) => t.trackKey === trackKey)?.track || "";
@@ -409,6 +411,39 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     api.trackProfile(rawTrack, rawLayout).then((d) => alive && setNamedCorners(d?.corners || [])).catch(() => {});
     return () => { alive = false; };
   }, [rawTrack, rawLayout]);
+  const cornersRef = useRef([]);
+  const insightsRef = useRef([]);
+  const corners = useMemo(
+    () => (lapA ? detectCorners(lapA.speed.slice(0, n || lapA.n)).map((c, k) => ({ ...c, n: k + 1 })) : []),
+    [lapA, n]
+  );
+  cornersRef.current = corners;
+  const dist = useMemo(
+    () => (lapA?.x && lapA?.z ? cumulativeDist(lapA.x, lapA.z, n || lapA.n) : null),
+    [lapA, n]
+  );
+  // Every section carries its name from here on (utils/sectionNames.js), so
+  // the tips, the map, the traces and the list all call it the same thing.
+  const insights = useMemo(
+    () => (both && corners.length ? labelSections(cornerInsights(lapA, lapB, corners, dist, n), namedCorners, n, lapA) : []),
+    [both, lapA, lapB, corners, dist, n, namedCorners]
+  );
+  insightsRef.current = insights;
+  // The sections everything points at: the insights when there are two laps,
+  // the bare windows when there is one.
+  const sections = useMemo(
+    () => (insights.length ? insights : labelSections(sectionWindows(corners, dist, n, lapA?.speed), namedCorners, n, lapA)),
+    [insights, corners, dist, n, namedCorners]
+  );
+  const markers = useMemo(
+    () => (lapA && corners.length ? { a: lapMarkers(lapA, corners, n), b: both ? lapMarkers(lapB, corners, n) : null } : null),
+    [lapA, lapB, both, corners, n]
+  );
+  const sectors = useMemo(() => (both ? sectorDeltas(lapA, lapB, dist, n, 3, sectorLines) : null), [both, lapA, lapB, dist, n, sectorLines]);
+  // What the two laps are called everywhere below: the drivers' names, or
+  // the lap times when both laps are one driver's.
+  const names = lapNames(lapA, lapB, formatLapTime);
+  const nameA = names.a, nameB = names.b;
   const tips = useMemo(
     () => (both && insights.length ? buildTips(insights, lapA, lapB, { corners: namedCorners, dist, n }) : null),
     [both, insights, lapA, lapB, namedCorners, dist, n]
@@ -551,7 +586,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const at = Math.max(0, Math.min(n - 1, cursor ?? 0));
   const gap = both ? (lapB.lapTimeMs - lapA.lapTimeMs) / 1000 : null;
   const active = sectionAt(sections, at);
-  const bands = useMemo(() => sections.map((s) => ({ n: s.n, start: s.start, end: s.end, active: s.n === active?.n })), [sections, active?.n]);
+  const bands = useMemo(() => sections.map((s) => ({ n: s.n, start: s.start, end: s.end, label: s.label, tag: s.tag, active: s.n === active?.n })), [sections, active?.n]);
   const applyChartRange = (next, index) => {
     setChartRange(next);
     pickCursor(Math.max(next[0], Math.min(next[1], index)));
@@ -576,7 +611,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     setBIdx(null); setMotionA(null); setCursor(from);
     setPlaying(true);
   };
-  const chartProps = { cursor: at, onPick: pickCursor, range: visibleRange, onSelectRange: selectChartRange, onResetRange: resetCharts, colorA, colorB, bands, onBand: selectSection };
+  const chartProps = { cursor: at, onPick: pickCursor, range: visibleRange, onSelectRange: selectChartRange, onResetRange: resetCharts, colorA, colorB, nameA, nameB, bands, onBand: selectSection };
   const error = tracks.error || loadError || aError || bError;
   const refresh = () => { tracks.reload(); setRevision((v) => v + 1); };
   // An admin taking a lap out of the store: a modded-car time, a lap from a
@@ -645,7 +680,15 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   }, []);
 
   const shareUrl = () => `${window.location.origin}/tools?${LINK_PARAM}=${encodeURIComponent(toLink(trackKey, aId, bId))}${effectiveSeries ? `&${SERIES_PARAM}=${encodeURIComponent(effectiveSeries)}` : ""}#telemetry`;
-  const trackName = (() => { const t = list.find((x) => x.trackKey === trackKey); return t ? `${readable(t.track)}${t.layout ? ` · ${readable(t.layout)}` : ""}` : trackKey; })();
+  // "Marina Bay" rather than "singapore 2020 · er singapore 2025". The layout
+  // is added only where it tells two entries apart, or where the site has no
+  // name for the circuit.
+  const trackLabel = (t) => {
+    const twins = list.filter((x) => x.track === t.track).length > 1;
+    const base = t.name || readable(t.track);
+    return !t.name || twins ? `${base}${t.layout ? ` · ${readable(t.layout)}` : ""}` : base;
+  };
+  const trackName = (() => { const t = list.find((x) => x.trackKey === trackKey); return t ? trackLabel(t) : trackKey; })();
   const fileStem = `${trackKey || "lap"}-${(lapA?.name || "A").replace(/[^\w-]+/g, "_")}${lapB ? `-vs-${lapB.name.replace(/[^\w-]+/g, "_")}` : ""}`;
   const copyText = async (text, what) => {
     try {
@@ -657,7 +700,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     }
   };
   const copyLink = () => copyText(shareUrl(), "link");
-  const copySummary = () => copyText(comparisonSummary({ trackName, season, lapA, lapB, gapMs: both ? lapB.lapTimeMs - lapA.lapTimeMs : 0, sectors, insights, idealMs, link: shareUrl() }), "summary");
+  const copySummary = () => copyText(comparisonSummary({ trackName, season, lapA, lapB, nameA, nameB, gapMs: both ? lapB.lapTimeMs - lapA.lapTimeMs : 0, sectors, insights, idealMs, link: shareUrl() }), "summary");
   const downloadCsv = () => downloadText(comparisonCsv({ lapA, lapB, dist, n, gA, gB }), `${fileStem}.csv`, "text/csv");
   const saveMap = () => exportSvgPng(mapSvg.current, { fileName: `${fileStem}-map.png`, background: getComputedStyle(document.documentElement).getPropertyValue("--c-card").trim() || "#fff" }).catch(() => {});
 
@@ -733,12 +776,12 @@ function TelemetryCompare({ series: fixedSeries = null }) {
         : list.length > 0 && <>
           <Field label="Track" className="sm:max-w-md">
             <select aria-label="Track" className="input min-w-0 w-full" value={trackKey} onChange={(e) => setTrackKey(e.target.value)}>
-              {list.map((t) => <option key={t.trackKey} value={t.trackKey}>{readable(t.track)}{t.layout ? ` · ${readable(t.layout)}` : ''} · {t.laps} laps</option>)}
+              {list.map((t) => <option key={t.trackKey} value={t.trackKey}>{trackLabel(t)} · {t.laps} laps</option>)}
             </select>
           </Field>
           {!error && laps?.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card px-4 py-6 text-center text-sm text-light">No laps are currently available for this track. Refresh or select another track.</p>}
           {laps?.length > 0 && (
-            <TelemetryDuel lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} pickerA={pickerA} pickerB={pickerB}
+            <TelemetryDuel lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} pickerA={pickerA} pickerB={pickerB}
               actionA={removeButton(lapA)} actionB={removeButton(lapB)} idealMs={idealMs} onSwap={() => { setAId(bId); setBId(aId); }}
               placeholderA={aError ? 'Could not load this lap.' : 'Loading lap…'}
               placeholderB={bId ? (bError ? 'Could not load this lap.' : 'Loading lap…') : 'Compare another driver or one of your own laps.'} />
@@ -746,9 +789,9 @@ function TelemetryCompare({ series: fixedSeries = null }) {
           {loadingChannels && <TelemetrySkeleton label="Loading lap channels…" compact={laps?.length > 0} />}
           {lapA && !loadingChannels && <>
             {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
-            {profileA && <TelemetryOverview sectors={sectors} insights={insights} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} dist={dist} n={n}
-              onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} onSection={selectSection} />}
-            {tips && <TelemetryTips tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB}
+            {profileA && <TelemetryOverview sectors={sectors} sectorsReal={!!sectorLines} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} dist={dist} n={n}
+              onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} />}
+            {tips && <TelemetryTips tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} road={track?.road}
               onSection={(s) => { selectSection(s); document.getElementById("telemetry-traces")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
             {/* Player, replay, traces and sections share one wrapper: the
                 player bar pins itself for as long as this block is on screen,
@@ -759,7 +802,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
               <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
                 onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
                 rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}
-                position={`${position(at)} of lap${active ? ` · §${active.n}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
+                position={`${position(at)} of lap${active ? ` · ${active.tag}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
               <Panel title="Replay" icon={MapIcon} note={hasMap ? null : "This lap was recorded before positions were, so there is no map."}
                 actions={hasMap && both && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
                   onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}>
@@ -782,19 +825,19 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                       </div>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
-                      <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />A{both && mapMode === 'gain' ? ' gains' : ''}</span>
-                      {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />B{mapMode === 'gain' ? ' gains, thicker for more' : ''}</span>}
+                      <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />{nameA}{both && mapMode === 'gain' ? ' quicker' : ''}</span>
+                      {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />{nameB}{mapMode === 'gain' ? ' quicker, thicker for more' : ''}</span>}
                       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
                       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
-                      <span>numbers: slow sections</span>
+                      <span>labels: corners</span>
                       <span className="ml-auto">{zoom>1?'Drag to pan, double-click to reset':'Select a point on the line'}</span>
                     </div>
                   </div>}
-                  <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} gA={gA} gB={gB} dist={dist} n={n} section={active?.n ?? null} />
+                  <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} gA={gA} gB={gB} dist={dist} n={n} section={active?.label ?? null} />
                 </div>
               </Panel>
               <Panel id="telemetry-traces" title="Lap traces" icon={ChartLine} style={{ scrollMarginTop: "var(--tel-top, 84px)" }}
-                note={<span className="inline-flex flex-wrap items-center gap-x-3"><span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2" style={{ borderColor: colorA }} />A solid</span>{both && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: colorB }} />B dashed</span>}</span>}
+                note={<span className="inline-flex flex-wrap items-center gap-x-3"><span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2" style={{ borderColor: colorA }} />{nameA}</span>{both && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: colorB }} />{nameB}</span>}</span>}
                 actions={<Segmented label="Position axis" value={dist ? axisMode : 'pct'} onChange={setAxisMode} items={[{ key: 'pct', label: '% of lap' }, ...(dist ? [{ key: 'dist', label: 'metres' }] : [])]} />}>
                 {/* The toolbar: zoom on the left, which stretch is showing and
                     the optional channels on the right. */}
@@ -819,8 +862,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                 </div>}
                 <div className="space-y-5 pt-4">
                   {both && delta && <div>
-                    <ChannelChart {...chartProps} title="Time delta" unit="s · B − A" a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
-                    <p className="ml-12 mt-2 text-[11px] text-light">+ A ahead · − B ahead. Rising: B loses time.</p>
+                    <ChannelChart {...chartProps} title="Time delta" unit={`s · ${nameB} against ${nameA}`} a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
+                    <p className="ml-12 mt-2 text-[11px] text-light">Above the line {nameA} is ahead, below it {nameB}. Rising: {nameB} loses time there.</p>
                   </div>}
                   <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={speedLo} hi={speedHi} height={150} />
                   <PedalChart {...chartProps} a={pedalsA} b={pedalsB} height={160} />
@@ -830,9 +873,9 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                   {shows('long') && gA && <ChannelChart {...chartProps} title="Longitudinal g" unit="g · + accelerating, − braking" a={gA.long} b={gB?.long || null} lo={-gRange.long} hi={gRange.long} format={(v) => v.toFixed(1)} height={100} />}
                   <ChartAxis visibleRange={visibleRange} n={n} dist={dist} mode={axisMode} zoomed={chartZoomed} />
                 </div>
-                <p className="mt-3 border-t border-border pt-2 text-[11px] text-light">Drag across a graph to zoom into that stretch. Double-click for the full lap. The shaded bands are the slow sections; their numbers zoom to them.</p>
+                <p className="mt-3 border-t border-border pt-2 text-[11px] text-light">Drag across a graph to zoom into that stretch. Double-click for the full lap. The shaded bands are the corners; their labels zoom to them.</p>
               </Panel>
-              {insights.length > 0 && <SectionsPanel insights={insights} activeN={active?.n ?? null} colorA={colorA} colorB={colorB} onSelect={selectSection} />}
+              {insights.length > 0 && <SectionsPanel insights={insights} activeN={active?.n ?? null} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} onSelect={selectSection} />}
             </div>
           </>}
         </>}

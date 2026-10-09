@@ -48,6 +48,19 @@ function peakBrake(lap, from, to) {
   return peak;
 }
 
+// The corner a braking zone is for: the first named corner after the brake
+// point, up to the zone's slowest point. Braking from 270 km/h for Singapore's
+// first corner is braking "into T1", even when the slowest point of that
+// stretch is the T2 apex right after it.
+function zonePlace(brakeIdx, apex, size, corners) {
+  const pct = (i) => (i / (size - 1)) * 100;
+  if (brakeIdx != null && corners?.length) {
+    const first = corners.filter((c) => c.at >= pct(brakeIdx) && c.at <= pct(apex) + 1).sort((a, b) => a.at - b.at)[0];
+    if (first) return first.turn != null ? `T${first.turn}` : first.name;
+  }
+  return cornerName(pct(apex), corners)?.label || null;
+}
+
 const KIND_LABEL = { braking: "Braking", entry: "Entry", speed: "Corner speed", exit: "Exit", line: "Line" };
 
 // Everything the Tips panel draws, out of the section insights of one
@@ -71,7 +84,10 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
 
   const rows = insights.map((c) => {
     const apexPct = (c.apex / (size - 1)) * 100;
-    const named = cornerName(apexPct, corners);
+    // The page names its sections once (utils/sectionNames.js) and hands the
+    // names in on the insights; without them, the corner nearest the apex.
+    const nearest = cornerName(apexPct, corners);
+    const named = c.label != null ? (c.named ? { label: c.label } : null) : nearest;
     const lostMs = sign * c.gainMs;
     const minMe = round(student === "B" ? c.minB : c.minA);
     const minRef = round(student === "B" ? c.minA : c.minB);
@@ -91,10 +107,29 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
       : c.brakeDeltaM == null ? null : sign * c.brakeDeltaM;
     const throttleLaterM = gasAtMe != null && gasAtRef != null ? gasAtMe - gasAtRef
       : c.throttleDeltaM == null ? null : sign * c.throttleDeltaM;
+    // Every braking zone of the section from the slower lap's side, first
+    // corner first, each with the metres before its own slowest point.
+    const zones = (c.zones || []).map((z) => {
+      const bMe = student === "B" ? z.brakeB : z.brakeA;
+      const bRef = student === "B" ? z.brakeA : z.brakeB;
+      const atMe = metresBefore(bMe, z.apex);
+      const atRef = metresBefore(bRef, z.apex);
+      return {
+        apex: z.apex,
+        main: z.apex === c.apex,
+        place: zonePlace(bMe ?? bRef, z.apex, size, corners),
+        brakeAtMe: atMe,
+        brakeAtRef: atRef,
+        brakeLaterM: atMe != null && atRef != null ? atRef - atMe : z.brakeDeltaM == null ? null : sign * z.brakeDeltaM,
+        brakeIdxMe: bMe ?? null,
+        brakeIdxRef: bRef ?? null,
+      };
+    }).reverse();
     return {
       n: c.n,
       start: c.start,
       end: c.end,
+      zones,
       apex: c.apex,
       apexPct,
       atM: c.atM ?? null,
@@ -173,7 +208,14 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
 // lap loses time in. `say` marks the numbers with **…** for the page to set
 // in bold; `try` is what the quicker lap did, as a suggestion.
 export function explain(r, refName) {
-  const early = r.brakeLaterM != null && r.brakeLaterM <= -5 ? -r.brakeLaterM : 0;
+  // The braking zone with the biggest early stop. Usually the section's own
+  // (its slowest corner); in a run of corners it can be the first one, and
+  // then the sentence says which.
+  const earlyOf = (z) => (z.brakeLaterM != null && z.brakeLaterM <= -5 ? -z.brakeLaterM : 0);
+  const mainZone = { brakeLaterM: r.brakeLaterM, brakeAtMe: r.brakeAtMe, brakeAtRef: r.brakeAtRef, main: true, place: null };
+  const zone = (r.zones || []).filter((z) => !z.main).reduce((best, z) => (earlyOf(z) > earlyOf(best) ? z : best), mainZone);
+  const into = zone.main ? "" : zone.place ? ` into ${zone.place}` : " into the first corner here";
+  const early = earlyOf(zone);
   const late = r.brakeLaterM != null && r.brakeLaterM >= 5 ? r.brakeLaterM : 0;
   const midLoss = r.minMe != null && r.minRef != null ? r.minRef - r.minMe : 0;
   const exitLoss = r.exitMe != null && r.exitRef != null ? r.exitRef - r.exitMe : 0;
@@ -195,9 +237,9 @@ export function explain(r, refName) {
   let say;
   let tryText;
   if (kind === "braking") {
-    say = `You brake **${early} m earlier** than ${refName}`
+    say = `You brake **${early} m earlier** than ${refName}${into}`
       + (midLoss >= 3 ? ` and still carry **${midLoss} km/h less** through the slowest point${mid}.` : ".");
-    tryText = `Brake later: ${refName} starts braking ${early} m after you do`
+    tryText = `Brake later${into}: ${refName} starts braking ${early} m after you do`
       + (softer ? `, and presses the pedal harder at first (peak ${r.peakRef}% against your ${r.peakMe}%).` : ".");
   } else if (kind === "entry") {
     say = `You brake **${late} m later** than ${refName}, but the corner is **${midLoss} km/h slower** at its slowest point${mid}. The late braking does not pay off here.`;
@@ -205,7 +247,12 @@ export function explain(r, refName) {
   } else if (kind === "speed") {
     // Only speak about the braking when it was measured: a lap recorded
     // before positions has no brake point in metres to compare.
-    const lead = r.brakeLaterM == null ? "You are" : `Braking is ${early || late ? "close" : "about the same"}, but you are`;
+    // Say the braking difference when there is one: "close" over a 12 m
+    // earlier stop undersold the number printed right under it.
+    const lead = r.brakeLaterM == null ? "You are"
+      : early ? `You brake **${early} m earlier**${into} and are`
+      : late ? `You brake ${late} m later, but are`
+      : "Braking is about the same, but you are";
     say = `${lead} **${midLoss} km/h slower** at the slowest point of the corner${mid}${exitNote}.`;
     tryText = `Release the brake earlier and let the car carry more speed into the corner: ${refName} keeps ${midLoss} km/h more through it.`;
   } else if (kind === "exit") {
@@ -229,14 +276,19 @@ export function explain(r, refName) {
   }
 
   const facts = [];
-  if (r.brakeAtMe != null && r.brakeAtRef != null) facts.push({ label: "Brakes before apex", me: `${r.brakeAtMe} m`, ref: `${r.brakeAtRef} m` });
+  // The braking fact is the zone the sentence talks about.
+  if (kind === "braking" && !zone.main && zone.brakeAtMe != null && zone.brakeAtRef != null) {
+    facts.push({ label: zone.place ? `Brakes before ${zone.place}` : "Brakes before 1st apex", me: `${zone.brakeAtMe} m`, ref: `${zone.brakeAtRef} m` });
+  } else if (r.brakeAtMe != null && r.brakeAtRef != null) facts.push({ label: "Brakes before apex", me: `${r.brakeAtMe} m`, ref: `${r.brakeAtRef} m` });
   else if (r.brakeLaterM != null && Math.abs(r.brakeLaterM) >= 3) facts.push({ label: "Brake point", me: `${Math.abs(r.brakeLaterM)} m ${r.brakeLaterM < 0 ? "earlier" : "later"}`, ref: null });
   if (r.minMe != null && r.minRef != null) facts.push({ label: "Min speed", me: `${r.minMe} km/h`, ref: `${r.minRef} km/h` });
   if (kind === "exit" && r.gasAtMe != null && r.gasAtRef != null) facts.push({ label: "Full throttle after apex", me: `${r.gasAtMe} m`, ref: `${r.gasAtRef} m` });
   else if (r.exitMe != null && r.exitRef != null) facts.push({ label: "Exit speed", me: `${r.exitMe} km/h`, ref: `${r.exitRef} km/h` });
   if (kind === "braking" && r.peakMe >= BRAKE_ON && r.peakRef >= BRAKE_ON) facts.push({ label: "Peak brake", me: `${r.peakMe}%`, ref: `${r.peakRef}%` });
 
-  return { kind, kindLabel: KIND_LABEL[kind], say, try: tryText, facts: facts.slice(0, 3) };
+  // Which brake points the small chart marks: the zone the tip is about.
+  const marks = kind === "braking" && !zone.main ? { me: zone.brakeIdxMe ?? null, ref: zone.brakeIdxRef ?? null } : null;
+  return { kind, kindLabel: KIND_LABEL[kind], say, try: tryText, facts: facts.slice(0, 3), ...(marks ? { brakeIdxMe: marks.me, brakeIdxRef: marks.ref } : {}) };
 }
 
 // A section the slower lap is QUICKER in: worth saying, briefly, with the one

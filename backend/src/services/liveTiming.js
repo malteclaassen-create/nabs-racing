@@ -36,6 +36,7 @@ import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
+import { noteBoard } from "../lib/sectorLines.js";
 import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
@@ -1831,6 +1832,14 @@ function createRelay(server) {
     if (si.Type === 1) {
       applyRemovedLaps(byGuid, si);
       carriedBestSectors = applyImportedBests(byGuid, si);
+    }
+    // Best laps with their splits are what the lap comparison learns the
+    // circuit's sector lines from (lib/sectorLines.js). Cheap per build: a
+    // split already seen is one map lookup.
+    try {
+      noteBoard(trackKeyOf(si.Track || "", si.TrackConfig || ""), byGuid);
+    } catch {
+      /* never worth a board build */
     }
 
     const entries = [...byGuid.values()];

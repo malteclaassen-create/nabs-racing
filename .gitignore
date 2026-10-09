@@ -51,6 +51,10 @@ backend/live-pits/
 backend/live-best-laps/
 backend/live-reset-keep/
 
+# Where each circuit's sector lines are, learned from laps (lib/sectorLines.js).
+# Runtime data like the rest; the server learns its own.
+backend/sector-lines.json
+
 # Logs
 *.log
 npm-debug.log*

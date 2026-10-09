@@ -34,6 +34,12 @@ export function smoothSeries(arr, w = 9) {
 // different set. They are numbered in lap order for pointing at ("section 4"),
 // and every place that shows the number also says how far into the lap it is,
 // which is measured rather than guessed.
+//
+// A slow stretch that holds several corners is cut into one section per
+// corner, at the top speed between them. On a street circuit almost nothing
+// gets back above the 80% line: Singapore's T7, T8 and T9 were one section,
+// and every number about it (the time lost, the brake point, the tip) was
+// about all three at once.
 export function detectCorners(speedRaw) {
   const speed = smoothSeries(speedRaw, 9);
   const vmax = Math.max(...speed);
@@ -60,14 +66,51 @@ export function detectCorners(speedRaw) {
   // the last section of the lap and again as a "section" at 0%, which is
   // only the exit of the same corner. Keep the one with the braking in it.
   if (merged.length > 1 && merged[0].start === 0 && merged[merged.length - 1].end === speed.length - 1) merged.shift();
-  return merged
+  const parts = [];
+  for (const r of merged) {
+    const dips = speedDips(speed, r.start, r.end);
+    let from = r.start;
+    for (let k = 0; k < dips.length - 1; k++) {
+      let peak = dips[k];
+      for (let i = dips[k]; i <= dips[k + 1]; i++) if (speed[i] > speed[peak]) peak = i;
+      parts.push({ start: from, end: peak });
+      from = peak;
+    }
+    parts.push({ start: from, end: r.end });
+  }
+  return parts
     .filter((r) => r.end - r.start >= 4)
-    .slice(0, 15)
+    .slice(0, 30)
     .map((r) => {
       let apex = r.start;
       for (let i = r.start; i <= r.end; i++) if (speed[i] < speed[apex]) apex = i;
       return { ...r, apex };
     });
+}
+
+// The corners inside a stretch of lap: every local minimum of the speed the
+// car climbs at least `rise` km/h out of on both sides before it goes slower
+// again. The ends of the stretch count as climbed out of. A wobble of a few
+// km/h in the middle of one long corner is not a corner of its own.
+export const DIP_KMH = 8;
+export function speedDips(speed, from, to, rise = DIP_KMH) {
+  const out = [];
+  const lo = Math.max(0, from), hi = Math.min(speed.length - 1, to);
+  for (let i = lo; i <= hi; i++) {
+    if ((i > lo && speed[i] > speed[i - 1]) || (i < hi && speed[i] > speed[i + 1])) continue;
+    const climb = (dir) => {
+      let top = speed[i];
+      for (let j = i + dir; j >= lo && j <= hi; j += dir) {
+        if (speed[j] < speed[i]) return top - speed[i];
+        if (speed[j] > top) top = speed[j];
+      }
+      return Infinity;
+    };
+    // A flat bottom is one corner, not several.
+    if (out.length && speed.slice(out[out.length - 1], i + 1).every((v) => v <= speed[i] + 0.5)) continue;
+    if (climb(-1) >= rise && climb(1) >= rise) out.push(i);
+  }
+  return out;
 }
 
 // Metres driven up to each slice, from the recorded world position (stored in
@@ -133,14 +176,33 @@ export function brakePoint(lap, from, apex, threshold = BRAKE_ON) {
 // A slow section widened into the window the comparison looks at: the
 // approach (where the braking happens) and the exit (where the throttle goes
 // back on). Positions in lap A's grid.
-export function sectionWindows(corners, dist, n) {
+//
+// Neighbouring windows never overlap: where two would, they meet at the
+// fastest point between the two corners (`speed`, lap A's), or half way
+// without a speed trace. Overlapping windows counted the same stretch of
+// track twice, and the time "lost in the corners" could add up to more than
+// the whole gap.
+export function sectionWindows(corners, dist, n, speed = null) {
+  const wins = corners.map((c) => ({ start: Math.max(0, c.start - 30), end: Math.min(n - 1, c.end + 12) }));
+  for (let k = 1; k < wins.length; k++) {
+    if (wins[k].start >= wins[k - 1].end) continue;
+    const a = corners[k - 1].end, b = corners[k].start;
+    let cut = Math.round((a + b) / 2);
+    if (speed) for (let i = a; i <= b; i++) if (speed[i] > speed[cut]) cut = i;
+    wins[k - 1].end = cut;
+    wins[k].start = cut;
+  }
   return corners.map((c, k) => {
-    const start = Math.max(0, c.start - 30);
-    const end = Math.min(n - 1, c.end + 12);
+    const { start, end } = wins[k];
     return {
       n: k + 1,
       start,
       end,
+      // The slow part itself, before the window was widened: what decides
+      // which of the circuit's corners the section holds (utils/
+      // sectionNames.js).
+      coreStart: c.start,
+      coreEnd: c.end,
       apex: c.apex,
       // Where this is in the lap, which is a fact — unlike a corner number,
       // which this file is in no position to know (see detectCorners).
@@ -150,13 +212,45 @@ export function sectionWindows(corners, dist, n) {
   });
 }
 
+// The braking zones inside one section, last first. Two corners close
+// together are one slow section, and each has its own stop: Singapore's T1
+// is a hard one from 270 km/h, T3 a small one after it. The section's brake
+// point (brakePoint) is the stop for its slowest corner; this finds the ones
+// before it, walking back from each corner's approach to the slowest point
+// before that, for as long as the car actually slowed for something there.
+// Positions in lap A's grid, which is also where B's channels are.
+const ZONE_DIP_KMH = 8; // an earlier corner has to be at least this much slower than the speed after it
+export function brakeZones(lapA, lapB, s, dist) {
+  const zones = [];
+  let apex = s.apex;
+  for (let guard = 0; guard < 4; guard++) {
+    const brakeA = brakePoint(lapA, s.start, apex);
+    const brakeB = brakePoint(lapB, s.start, apex);
+    zones.push({
+      apex,
+      brakeA,
+      brakeB,
+      // + = B brakes later than A.
+      brakeDeltaM: brakeA != null && brakeB != null && dist ? Math.round(dist[brakeB] - dist[brakeA]) : null,
+      minA: lapA.speed[apex],
+      minB: lapB.speed[apex],
+    });
+    const top = approachStart(lapA, s.start, apex);
+    let low = null;
+    for (let i = s.start; i < top; i++) if (low == null || lapA.speed[i] < lapA.speed[low]) low = i;
+    if (low == null || low <= s.start + 1 || lapA.speed[low] > lapA.speed[top] - ZONE_DIP_KMH) break;
+    apex = low;
+  }
+  return zones;
+}
+
 // The per-section story in numbers: who gains how much through it, who brakes
 // later (metres, when positions were recorded), who carries more mid-corner
 // speed, who exits faster, who is back on full throttle first. Numbers,
 // deliberately not coaching prose — "brake earlier next time" would be the
 // site guessing at causality.
 export function cornerInsights(lapA, lapB, corners, dist, n) {
-  return sectionWindows(corners, dist, n).map((s) => {
+  return sectionWindows(corners, dist, n, lapA.speed).map((s) => {
     // + = B lost time across the section = A gained.
     const gainMs = (lapB.t[s.end] - lapA.t[s.end]) - (lapB.t[s.start] - lapA.t[s.start]);
     const brakeA = brakePoint(lapA, s.start, s.apex);
@@ -183,6 +277,7 @@ export function cornerInsights(lapA, lapB, corners, dist, n) {
       exitA: lapA.speed[s.end],
       exitB: lapB.speed[s.end],
       exitDelta: lapB.speed[s.end] - lapA.speed[s.end], // + = B exits faster
+      zones: brakeZones(lapA, lapB, s, dist),
     };
   });
 }
@@ -191,7 +286,7 @@ export function cornerInsights(lapA, lapB, corners, dist, n) {
 // each per slow section where the pedal actually did that. Drawn on the map.
 export function lapMarkers(lap, corners, n) {
   const brake = [], gas = [];
-  for (const s of sectionWindows(corners, null, n)) {
+  for (const s of sectionWindows(corners, null, n, lap.speed)) {
     const b = brakePoint(lap, s.start, s.apex);
     if (b != null) brake.push(b);
     const g = firstAtOrAbove(lap.gas, s.apex, s.end, FULL_THROTTLE);
@@ -203,15 +298,25 @@ export function lapMarkers(lap, corners, n) {
 // The lap in `count` sectors of equal distance (equal slice count without
 // positions), each with B's time loss against A across it. The three add up
 // to the finish-line gap exactly.
-export function sectorDeltas(lapA, lapB, dist, n, count = 3) {
+//
+// `lines` are the server's own sector lines in percent of the lap (backend
+// lib/sectorLines.js), when the site has learned them for this circuit: then
+// the three times are the three a driver sees on the timing screen. Without
+// them the lap is cut into equal thirds by distance.
+export function sectorDeltas(lapA, lapB, dist, n, count = 3, lines = null) {
   const total = dist ? dist[n - 1] : n - 1;
   const bounds = [0];
+  const real = Array.isArray(lines) && lines.length === count - 1 && lines.every((p, k) => p > 0 && p < 100 && (k === 0 || p > lines[k - 1]));
   for (let s = 1; s < count; s++) {
-    const target = (total * s) / count;
     let i = 0;
-    if (dist) while (i < n - 2 && dist[i] < target) i++;
-    else i = Math.round(target);
-    bounds.push(i);
+    if (real) {
+      i = Math.round((lines[s - 1] / 100) * (n - 1));
+    } else {
+      const target = (total * s) / count;
+      if (dist) while (i < n - 2 && dist[i] < target) i++;
+      else i = Math.round(target);
+    }
+    bounds.push(Math.max(bounds[bounds.length - 1] + 1, Math.min(n - 2, i)));
   }
   bounds.push(n - 1);
   return Array.from({ length: count }, (_, s) => {

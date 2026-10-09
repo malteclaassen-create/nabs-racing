@@ -235,17 +235,20 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     {markers.a && markers.a.gas.map((i,k)=>marker(geo.a,i,colorA,'gas',`ag${k}`))}
   </g>;
 
-  // Section numbers sit just outside the line at each apex, pushed away from
+  // Section names sit just outside the line at each apex, pushed away from
   // the track's middle so they never sit on the tarmac. Click one to jump.
   const sectionLabel=(s)=>{
     const x=geo.a.x[s.apex], y=geo.a.y[s.apex];
     const dx=x-geo.centroid.x, dy=y-geo.centroid.y, d=Math.hypot(dx,dy)||1;
-    const off=16*localPixel, r=8*localPixel;
+    // The circuit's corner names where they are known ("T8", "T1–3"): a
+    // pill that grows with the text, a circle for a bare number.
+    const tag=String(s.tag||s.n);
+    const off=(16+Math.max(0,tag.length-2)*2.5)*localPixel, r=8*localPixel, w=Math.max(2*r,(tag.length*6.2+7)*localPixel);
     const active=s.n===activeSection;
-    return <g key={s.n} transform={`translate(${x+dx/d*off} ${y+dy/d*off})`} style={{cursor:'pointer'}} role="button" aria-label={`Slow section ${s.n}`}
+    return <g key={s.n} transform={`translate(${x+dx/d*off} ${y+dy/d*off})`} style={{cursor:'pointer'}} role="button" aria-label={`Zoom to ${s.label||`section ${s.n}`}`}
       onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();onSection?.(s);}}>
-      <circle r={r} fill={active?'rgb(var(--c-brand))':'var(--c-card)'} stroke={active?'rgb(var(--c-brand))':'var(--c-text3)'} strokeWidth={1.2*localPixel} />
-      <text textAnchor="middle" dominantBaseline="central" fontSize={9.5*localPixel} fontWeight="800" fill={active?'#0F172A':'var(--c-text)'} fontFamily="JetBrains Mono, ui-monospace, monospace">{s.n}</text>
+      <rect x={-w/2} y={-r} width={w} height={2*r} rx={r} fill={active?'rgb(var(--c-brand))':'var(--c-card)'} stroke={active?'rgb(var(--c-brand))':'var(--c-text3)'} strokeWidth={1.2*localPixel} />
+      <text textAnchor="middle" dominantBaseline="central" fontSize={9.5*localPixel} fontWeight="800" fill={active?'#0F172A':'var(--c-text)'} fontFamily="JetBrains Mono, ui-monospace, monospace">{tag}</text>
     </g>;
   };
   const gate=recordedPose(geo.a.x,geo.a.y,0);

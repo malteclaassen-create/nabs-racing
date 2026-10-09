@@ -75,7 +75,7 @@ function Bands({ bands, visible, span, onBand }) {
         {onBand && (
           <button type="button" className="pointer-events-auto absolute left-0.5 top-0.5 rounded px-1 font-mono text-[9px] font-bold leading-4 hover:bg-surface2"
             style={{ color: b.active ? "var(--c-text)" : "var(--c-text3)" }}
-            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onBand(b); }} aria-label={`Slow section ${b.n}`}>{b.n}</button>
+            onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onBand(b); }} aria-label={`Zoom to ${b.label || `section ${b.n}`}`}>{b.tag || b.n}</button>
         )}
       </div>
     );
@@ -117,7 +117,7 @@ function ChartHeader({ title, unit, children }) {
 
 // One channel, two laps, one shared track-position axis. `delta` draws the
 // time difference: the line is neutral and the area is tinted by who is ahead.
-export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, height = 116, format = Math.round, delta = false, bands, onBand }) {
+export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, nameA = "A", nameB = "B", height = 116, format = Math.round, delta = false, bands, onBand }) {
   const clip = useId();
   const paths = useMemo(() => ({ a: points(a, lo, hi), b: b ? points(b, lo, hi) : null }), [a, b, lo, hi]);
   const visible = range || [0, a.length - 1];
@@ -129,9 +129,9 @@ export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range,
     <div>
       <ChartHeader title={title} unit={unit}>
         {delta ? <span className="text-light">{signedSeconds(a[cursor] ?? 0)}</span> : <>
-          <span style={{ color: colorA }}>A {format(a[cursor] ?? 0)}</span>
-          {b && <span style={{ color: colorB }}>B {format(b[cursor] ?? 0)}</span>}
-          {b && <span className="text-light" title="A − B at the cursor">Δ {signedNumber(format((a[cursor] ?? 0) - (b[cursor] ?? 0)))}</span>}
+          <span className="inline-flex min-w-0 gap-1" style={{ color: colorA }}><span className="max-w-[5.5rem] truncate">{nameA}</span>{format(a[cursor] ?? 0)}</span>
+          {b && <span className="inline-flex min-w-0 gap-1" style={{ color: colorB }}><span className="max-w-[5.5rem] truncate">{nameB}</span>{format(b[cursor] ?? 0)}</span>}
+          {b && <span className="text-light" title={`${nameA} minus ${nameB} at the cursor`}>Δ {signedNumber(format((a[cursor] ?? 0) - (b[cursor] ?? 0)))}</span>}
         </>}
       </ChartHeader>
       <ChartFrame height={height} ticks={ticks} visible={visible} span={span} cursor={cursor} handlers={handlers} selection={selection} bands={bands} onBand={onBand} onResetRange={onResetRange} dashedMid={delta}>
@@ -158,7 +158,7 @@ function PedalMeter({ value, color, dashed = false }) {
 // rises from the middle, brake drops from it. The two pedals of one lap are
 // never both down, so the two halves never fight for the same space, and the
 // brake point sits right under the throttle lift that preceded it.
-export function PedalChart({ a, b, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, height = 150, bands, onBand }) {
+export function PedalChart({ a, b, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, nameA = "A", nameB = "B", height = 150, bands, onBand }) {
   const n = a.gas.length;
   const paths = useMemo(() => {
     const up = (values) => values.map((v, i) => `${i},${(50 - (v / 100) * 46).toFixed(2)}`).join(" ");
@@ -170,7 +170,7 @@ export function PedalChart({ a, b, cursor, onPick, range, onSelectRange, onReset
   const { handlers, selection } = useChartPointer(visible, onPick, onSelectRange);
   const readout = (lap, color, dashed) => (
     <span className="flex gap-3" style={{ color }}>
-      <span>{dashed ? "B" : "A"} thr {Math.round(lap.gas[cursor] ?? 0)}<PedalMeter value={lap.gas[cursor]} color={THROTTLE_COLOR} dashed={dashed} /></span>
+      <span><span className="inline-block max-w-[5.5rem] truncate align-bottom">{dashed ? nameB : nameA}</span> thr {Math.round(lap.gas[cursor] ?? 0)}<PedalMeter value={lap.gas[cursor]} color={THROTTLE_COLOR} dashed={dashed} /></span>
       <span>brk {Math.round(lap.brake[cursor] ?? 0)}<PedalMeter value={lap.brake[cursor]} color={BRAKE_COLOR} dashed={dashed} /></span>
     </span>
   );

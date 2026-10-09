@@ -126,7 +126,7 @@ function FrictionCircle({ gA, gB, iA, iB, colorA, colorB }) {
   );
 }
 
-export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB, gA, gB, dist, n, section }) {
+export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB, nameA = "A", nameB = "B", gA, gB, dist, n, section }) {
   const iA = clamp(Math.round(at), 0, n - 1);
   const iB = lapB ? clamp(Math.round(atB ?? at), 0, n - 1) : null;
   const gap = lapB ? (lapB.t[iA] - lapA.t[iA]) / 1000 : null; // + = A ahead
@@ -139,7 +139,7 @@ export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB
     <div className="min-w-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
         <h3 className="font-semibold text-dark">At cursor</h3>
-        <span className="font-mono tabular-nums text-light">{((iA / (n - 1)) * 100).toFixed(1)}% of lap{dist ? ` · ${Math.round(dist[iA]).toLocaleString("en-GB")} m` : ""}{section ? ` · section ${section}` : ""}</span>
+        <span className="font-mono tabular-nums text-light">{((iA / (n - 1)) * 100).toFixed(1)}% of lap{dist ? ` · ${Math.round(dist[iA]).toLocaleString("en-GB")} m` : ""}{section ? ` · ${section}` : ""}</span>
       </div>
       <div className={`mb-3 mt-3 grid gap-x-5 gap-y-4 ${lapB ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
         <Column lap={lapA} i={iA} color={colorA} side="A" g={gA} />
@@ -149,7 +149,7 @@ export default function TelemetryDashboard({ lapA, lapB, at, atB, colorA, colorB
         {lapB ? (
           <p className="text-xs text-light">
             <span className="block whitespace-nowrap">Gap <span className="font-mono text-base font-semibold tabular-nums" style={{ color: leader === "A" ? colorA : leader === "B" ? colorB : "var(--c-text)" }}>{Math.abs(gap).toFixed(3)} s</span></span>
-            <span className="block whitespace-nowrap">{leader ? `${leader} ahead` : "level"}{gaining ? ` · ${gaining} gaining` : ""}</span>
+            <span className="block">{leader ? `${leader === "A" ? nameA : nameB} ahead` : "level"}{gaining ? ` · ${gaining === "A" ? nameA : nameB} gaining` : ""}</span>
           </p>
         ) : <p className="text-xs text-light">Choose lap B to see the gap at this point.</p>}
         {circle}

@@ -31,15 +31,17 @@ export function comparisonCsv({ lapA, lapB, dist, n, gA, gB }) {
 }
 
 // The comparison as plain text, the way it would be typed into a chat.
-export function comparisonSummary({ trackName, season, lapA, lapB, gapMs, sectors, insights, idealMs, link }) {
-  const who = (ms) => (ms > 0 ? "A" : "B");
+// The laps are called by name (`nameA`/`nameB`, as on the page) and the
+// places by the circuit's corners when the insights carry their labels.
+export function comparisonSummary({ trackName, season, lapA, lapB, nameA = "A", nameB = "B", gapMs, sectors, insights, idealMs, link }) {
+  const who = (ms) => (ms > 0 ? nameA : nameB);
   const s = (ms) => (Math.abs(ms) / 1000).toFixed(3);
   const car = (lap) => (lap.car ? ` · ${String(lap.car).replaceAll("_", " ")}` : "");
   const team = (lap) => (lap.team?.name ? ` (${lap.team.name})` : "");
   const lines = [`Lap comparison · ${trackName}${season ? ` · Season ${season}` : ""}`];
-  lines.push(`A  ${lapA.name}${team(lapA)} · ${formatLapTime(lapA.lapTimeMs)}${car(lapA)}`);
+  lines.push(`${lapA.name}${team(lapA)} · ${formatLapTime(lapA.lapTimeMs)}${car(lapA)}`);
   if (lapB) {
-    lines.push(`B  ${lapB.name}${team(lapB)} · ${formatLapTime(lapB.lapTimeMs)}${car(lapB)}`);
+    lines.push(`${lapB.name}${team(lapB)} · ${formatLapTime(lapB.lapTimeMs)}${car(lapB)}`);
     const sectorText = sectors?.length ? " · " + sectors.map((x) => `S${x.n} ${Math.abs(x.deltaMs) < 5 ? "even" : `${who(x.deltaMs)} +${s(x.deltaMs)}`}`).join(" · ") : "";
     lines.push(`Gap: ${gapMs === 0 ? "level" : `${who(gapMs)} +${s(gapMs)} s`}${sectorText}`);
     if (idealMs) lines.push(`Best of both sectors: ${formatLapTime(idealMs)}`);
@@ -48,11 +50,13 @@ export function comparisonSummary({ trackName, season, lapA, lapB, gapMs, sector
     lines.push("Where the time goes:");
     for (const c of insights) {
       const facts = [];
-      if (c.brakeDeltaM != null && Math.abs(c.brakeDeltaM) >= 3) facts.push(`${c.brakeDeltaM > 0 ? "B" : "A"} brakes ${Math.abs(c.brakeDeltaM)} m later`);
-      if (Math.abs(c.midDelta) >= 2) facts.push(`${c.midDelta > 0 ? "B" : "A"} +${Math.abs(c.midDelta).toFixed(0)} km/h min`);
-      if (Math.abs(c.exitDelta) >= 2) facts.push(`${c.exitDelta > 0 ? "B" : "A"} +${Math.abs(c.exitDelta).toFixed(0)} km/h exit`);
+      const side = (bSide) => (bSide ? nameB : nameA);
+      if (c.brakeDeltaM != null && Math.abs(c.brakeDeltaM) >= 3) facts.push(`${side(c.brakeDeltaM > 0)} brakes ${Math.abs(c.brakeDeltaM)} m later`);
+      if (Math.abs(c.midDelta) >= 2) facts.push(`${side(c.midDelta > 0)} +${Math.abs(c.midDelta).toFixed(0)} km/h min`);
+      if (Math.abs(c.exitDelta) >= 2) facts.push(`${side(c.exitDelta > 0)} +${Math.abs(c.exitDelta).toFixed(0)} km/h exit`);
       const at = `${c.atPct}%${c.atM != null ? ` · ${c.atM} m` : ""}`;
-      lines.push(`${String(c.n).padStart(2, " ")}. ${at} · ${Math.abs(c.gainMs) < 10 ? "even" : `${who(c.gainMs)} +${s(c.gainMs)} s`}${facts.length ? ` — ${facts.join(", ")}` : ""}`);
+      const place = c.named ? `${c.label} (${at})` : `${String(c.n).padStart(2, " ")}. ${at}`;
+      lines.push(`${place} · ${Math.abs(c.gainMs) < 10 ? "even" : `${who(c.gainMs)} +${s(c.gainMs)} s`}${facts.length ? `, ${facts.join(", ")}` : ""}`);
     }
   }
   if (link) lines.push(link);

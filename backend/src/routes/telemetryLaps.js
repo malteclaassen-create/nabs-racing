@@ -21,6 +21,9 @@ import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKe
 import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap, ensureTrackRoad } from "../lib/trackMaps.js";
+import { sectorLinesFor, lapArrived, learnFromCarried } from "../lib/sectorLines.js";
+import { circuitBests } from "../lib/liveBestLaps.js";
+import { groupKeyFor, trackKeyFor, displayNameFor } from "../lib/trackKeys.js";
 import { resolveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
 import { isAdminRequest } from "../middleware/auth.js";
@@ -152,6 +155,7 @@ router.post("/ingest", async (req, res, next) => {
     parsed.lap.series = series;
     parsed.lap.season = await activeSeasonNumber(series);
     const result = keepIfFaster(parsed.lap);
+    if (result.kept) lapArrived(parsed.lap);
     // A lap that was too slow to keep is still a lap that ARRIVED, and the two
     // are counted apart for that reason: "not stored" is the recorder working,
     // not failing.
@@ -237,6 +241,24 @@ async function scopeAsked(req) {
   const wanted = Number(req.query?.season);
   const season = Number.isFinite(wanted) && wanted > 0 ? wanted : active;
   return { series: series.slug, seriesName: series.name, season, legacy: season === active };
+}
+
+function circuitName(track) {
+  try {
+    return trackKeyFor(track) ? displayNameFor(groupKeyFor(track)) : null;
+  } catch {
+    return null;
+  }
+}
+
+// The training laps carried onto the live board for this circuit, which may
+// carry the server's splits. Nothing rather than an error: they only help.
+function safeCarried(scope, trackKey) {
+  try {
+    return circuitBests(scope.series, scope.season, trackKey).laps || [];
+  } catch {
+    return [];
+  }
 }
 
 // League identity for a set of steamIds: current display name + profile link,
@@ -331,7 +353,9 @@ router.get("/", async (req, res, next) => {
       series: scope.series,
       seriesName: scope.seriesName,
       season: scope.season,
-      tracks: listTracks(scope.series, scope.season, scope.legacy),
+      // The circuit's own name beside the AC folder names ("Marina Bay" for
+      // singapore_2020), null for a track the site has no name for.
+      tracks: listTracks(scope.series, scope.season, scope.legacy).map((t) => ({ ...t, name: circuitName(t.track) })),
     });
   } catch (e) {
     next(e);
@@ -347,6 +371,12 @@ router.get("/:trackKey", async (req, res, next) => {
     const laps = listLaps(scope.series, scope.season, req.params.trackKey, scope.legacy);
     const known = await leagueNames(laps.map((l) => l.steamId), scope, req);
     res.json({
+      // Where the server's sector lines are, as percent of the lap, or null
+      // while no lap with known splits has been recorded here (lib/
+      // sectorLines.js). A practice file an admin uploaded can teach it too.
+      sectorLines: sectorLinesFor(req.params.trackKey)
+        || learnFromCarried(req.params.trackKey, safeCarried(scope, req.params.trackKey), laps,
+          (l) => readLap(scope.series, scope.season, req.params.trackKey, l.steamId, l.lapId, scope.legacy)),
       laps: laps.map((l) => ({
         ...l,
         driverId: known.get(l.steamId)?.driverId ?? null,

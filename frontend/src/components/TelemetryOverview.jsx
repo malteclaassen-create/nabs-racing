@@ -1,13 +1,17 @@
 import { Gauge } from "lucide-react";
-import { DivergingBar, fmt, who, sectionFacts } from "./TelemetrySections.jsx";
+import { DivergingBar, fmt, who } from "./TelemetrySections.jsx";
 import { Panel } from "./TelemetryUI.jsx";
 import { formatLapTime } from "../utils/telemetryAnalysis.js";
 
 // ---------------------------------------------------------------------------
 // The comparison at a glance, above the map and the traces: the three sectors
-// with both times, the places the two laps differ most, and what each lap was
-// made of. Everything here is a door into the detail below it: a sector or a
-// section zooms the traces to that stretch.
+// with both times, and what each lap was made of. Where the time goes corner
+// by corner is the Tips panel's job (TelemetryTips.jsx); it used to be here a
+// second time, numbered differently. A sector zooms the traces to it.
+//
+// The laps are called by their drivers' names and drawn in their colours, the
+// same as everywhere else on the page; a dot in the lap's colour stands for
+// the name where a tile has no room for it.
 // ---------------------------------------------------------------------------
 
 // "2,846–5,681 m" or "33–67%": one unit for the pair.
@@ -27,7 +31,19 @@ function PanelHeading({ title, note }) {
 
 // One sector: both times, the quicker one in its lap's colour, and the bar
 // that grows towards whoever gained. The three add up to the finish-line gap.
-function SectorCards({ sectors, colorA, colorB, dist, n, onSelect }) {
+const Dot = ({ color }) => <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />;
+
+// Who the two colours are, once per panel.
+function Legend({ nameA, nameB, colorA, colorB }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-medium">
+      <span className="flex min-w-0 items-center gap-1.5"><Dot color={colorA} /><span className="truncate">{nameA}</span></span>
+      {nameB && <span className="flex min-w-0 items-center gap-1.5"><Dot color={colorB} /><span className="truncate">{nameB}</span></span>}
+    </span>
+  );
+}
+
+function SectorCards({ sectors, colorA, colorB, nameA, nameB, dist, n, onSelect }) {
   const max = Math.max(50, ...sectors.map((s) => Math.abs(s.deltaMs)));
   return (
     <div className="grid grid-cols-3 gap-2">
@@ -37,8 +53,8 @@ function SectorCards({ sectors, colorA, colorB, dist, n, onSelect }) {
         const time = (lap, ms, color) => {
           const quicker = !even && side === lap;
           return (
-            <span className="flex items-baseline justify-between gap-1">
-              <span className="font-mono text-[10px] font-bold" style={{ color }}>{lap}</span>
+            <span className="flex items-center justify-between gap-1">
+              <Dot color={color} />
               <span className={`font-mono tabular-nums ${quicker ? "font-bold text-dark" : "text-light"}`}>{sectorTime(ms)}</span>
             </span>
           );
@@ -56,44 +72,20 @@ function SectorCards({ sectors, colorA, colorB, dist, n, onSelect }) {
               {time("B", s.timeB, colorB)}
             </span>
             <DivergingBar value={s.deltaMs} max={max} colorA={colorA} colorB={colorB} className="mt-2 h-1.5" />
-            <span className="mt-1 block truncate text-right font-mono text-[11px] font-semibold tabular-nums" style={{ color: even ? "var(--c-text3)" : side === "A" ? colorA : colorB }}>
-              {even ? "even" : `${side} +${fmt(s.deltaMs)} s`}
+            <span className="mt-1 flex min-w-0 items-baseline justify-end gap-1 text-[11px] font-semibold" style={{ color: even ? "var(--c-text3)" : side === "A" ? colorA : colorB }}
+              title={even ? "Level" : `${side === "A" ? nameA : nameB} is ${fmt(s.deltaMs)} s quicker here`}>
+              {even ? "even" : <>
+                {/* The name where a tile has room for it; on a phone's three
+                    across, the lap's dot, which says the same in its colour. */}
+                <span className="hidden min-w-0 truncate sm:inline">{side === "A" ? nameA : nameB}</span>
+                <span className="self-center sm:hidden"><Dot color={side === "A" ? colorA : colorB} /></span>
+                <span className="shrink-0 font-mono tabular-nums">−{fmt(s.deltaMs)}</span>
+              </>}
             </span>
           </button>
         );
       })}
     </div>
-  );
-}
-
-// The sections where the most time changes hands, biggest first, each with the
-// facts behind it. The same numbers as the full list at the bottom, sorted for
-// the question everybody opens the page with.
-function BiggestDifferences({ insights, colorA, colorB, onSelect }) {
-  const top = [...insights].filter((c) => Math.abs(c.gainMs) >= 10).sort((x, y) => Math.abs(y.gainMs) - Math.abs(x.gainMs)).slice(0, 3);
-  if (!top.length) return <p className="py-2 text-xs text-light">No slow section differs by more than a hundredth — these two laps are level through the corners.</p>;
-  return (
-    <ol className="space-y-1.5">
-      {top.map((c) => {
-        const color = who(c.gainMs) === "A" ? colorA : colorB;
-        const facts = sectionFacts(c);
-        return (
-          <li key={c.n}>
-            <button type="button" onClick={() => onSelect(c)} title={`Zoom the traces to section ${c.n}`}
-              className="flex w-full items-start gap-2.5 rounded-lg border border-border bg-surface2/40 px-3 py-2 text-left text-xs transition hover:border-medium hover:bg-surface2">
-              <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-[10px] font-bold text-dark">{c.n}</span>
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-baseline justify-between gap-x-2">
-                  <span className="font-mono text-[11px] tabular-nums text-light">{c.atPct}% of lap{c.atM != null ? ` · ${c.atM.toLocaleString("en-GB")} m` : ""}</span>
-                  <span className="font-mono font-bold tabular-nums" style={{ color }}>{who(c.gainMs)} +{fmt(c.gainMs)} s</span>
-                </span>
-                <span className="mt-0.5 block text-[11px] text-light">{facts.slice(0, 2).join(" · ") || "no large difference in the sampled inputs"}</span>
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -123,8 +115,8 @@ function LapProfile({ profileA, profileB, colorA, colorB }) {
         <div key={m.key} className="flex min-w-0 flex-col justify-between rounded-lg border border-border bg-surface2/40 px-2 py-2 sm:px-2.5" title={m.hint}>
           <dt className="text-[11px] leading-tight text-light">{m.label}{m.unit && <span className="text-faint"> {m.unit}</span>}</dt>
           <dd className="mt-1 space-y-0.5 font-mono text-xs tabular-nums">
-            <span className="flex items-baseline justify-between gap-1"><span className="text-[10px] font-bold" style={{ color: colorA }}>A</span><span className="truncate font-semibold text-dark">{value(profileA, m)}</span></span>
-            {profileB && <span className="flex items-baseline justify-between gap-1"><span className="text-[10px] font-bold" style={{ color: colorB }}>B</span><span className="truncate text-medium">{value(profileB, m)}</span></span>}
+            <span className="flex items-center justify-between gap-1"><Dot color={colorA} /><span className="truncate font-semibold text-dark">{value(profileA, m)}</span></span>
+            {profileB && <span className="flex items-center justify-between gap-1"><Dot color={colorB} /><span className="truncate text-medium">{value(profileB, m)}</span></span>}
           </dd>
         </div>
       ))}
@@ -132,20 +124,16 @@ function LapProfile({ profileA, profileB, colorA, colorB }) {
   );
 }
 
-export default function TelemetryOverview({ sectors, insights, profileA, profileB, colorA, colorB, dist, n, onSector, onSection }) {
+export default function TelemetryOverview({ sectors, sectorsReal, profileA, profileB, colorA, colorB, nameA, nameB, dist, n, onSector }) {
   const both = !!(sectors && profileB);
   return (
-    <Panel title="At a glance" icon={Gauge} note={both ? "Where the time goes, and what each lap was made of" : "What this lap was made of"} bodyClassName="space-y-4">
+    <Panel title="At a glance" icon={Gauge} note={both ? "Sectors, and what each lap was made of" : "What this lap was made of"} bodyClassName="space-y-4"
+      actions={<Legend nameA={nameA} nameB={both ? nameB : null} colorA={colorA} colorB={colorB} />}>
       {both && (
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="min-w-0">
-            <PanelHeading title="Sectors" note="Equal thirds of the lap · select one to zoom" />
-            <SectorCards sectors={sectors} colorA={colorA} colorB={colorB} dist={dist} n={n} onSelect={onSector} />
-          </div>
-          <div className="min-w-0">
-            <PanelHeading title="Biggest differences" note="Slow sections, most time first" />
-            <BiggestDifferences insights={insights} colorA={colorA} colorB={colorB} onSelect={onSection} />
-          </div>
+        <div className="min-w-0">
+          <PanelHeading title="Sectors"
+            note={sectorsReal ? "The server's sectors · select one to zoom" : "Equal thirds of the lap until the server's sector lines are known here · select one to zoom"} />
+          <SectorCards sectors={sectors} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} dist={dist} n={n} onSelect={onSector} />
         </div>
       )}
       <div className={both ? "border-t border-border pt-4" : ""}>

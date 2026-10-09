@@ -52,7 +52,7 @@ function DuelCard({ side, lap, color, picker, action, placeholder }) {
 
 // The middle column: the finish-line gap in the quicker lap's colour, what the
 // two could do together, and the swap.
-function GapColumn({ lapA, lapB, colorA, colorB, idealMs, onSwap }) {
+function GapColumn({ lapA, lapB, colorA, colorB, nameA, nameB, idealMs, onSwap }) {
   const gap = lapA && lapB ? (lapB.lapTimeMs - lapA.lapTimeMs) / 1000 : null;
   const color = gap == null || gap === 0 ? "var(--c-text)" : gap > 0 ? colorA : colorB;
   const best = lapA && lapB ? Math.min(lapA.lapTimeMs, lapB.lapTimeMs) : null;
@@ -61,7 +61,7 @@ function GapColumn({ lapA, lapB, colorA, colorB, idealMs, onSwap }) {
       <div>
         <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-light">Finish-line gap</p>
         <p className="font-display text-3xl font-extrabold tabular-nums" style={{ color }}>{gap == null ? "—" : `${Math.abs(gap).toFixed(3)} s`}</p>
-        <p className="text-xs text-light">{gap == null ? "Choose lap B to see the difference." : gap === 0 ? "Same recorded lap time" : `Lap ${gap > 0 ? "A" : "B"} is quicker`}</p>
+        <p className="text-xs text-light">{gap == null ? "Choose lap B to see the difference." : gap === 0 ? "Same recorded lap time" : `${gap > 0 ? nameA : nameB} is quicker`}</p>
       </div>
       {idealMs != null && best != null && idealMs < best - 1 && (
         <p className="text-[11px] text-light" title="The quicker of the two through each sector, added up">
@@ -78,7 +78,7 @@ function GapColumn({ lapA, lapB, colorA, colorB, idealMs, onSwap }) {
   );
 }
 
-export default function TelemetryDuel({ lapA, lapB, colorA, colorB, pickerA, pickerB, actionA, actionB, placeholderA, placeholderB, idealMs, onSwap }) {
+export default function TelemetryDuel({ lapA, lapB, colorA, colorB, nameA = "Lap A", nameB = "Lap B", pickerA, pickerB, actionA, actionB, placeholderA, placeholderB, idealMs, onSwap }) {
   return (
     // One column on a phone, A over the gap over B: side by side, the pickers
     // had room for "Malte ·" and nothing of the lap time that tells a
@@ -86,7 +86,7 @@ export default function TelemetryDuel({ lapA, lapB, colorA, colorB, pickerA, pic
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-3">
       <DuelCard side="A" lap={lapA} color={colorA} picker={pickerA} action={actionA} placeholder={placeholderA} />
       <div className="flex">
-        <GapColumn lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} idealMs={idealMs} onSwap={onSwap} />
+        <GapColumn lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} idealMs={idealMs} onSwap={onSwap} />
       </div>
       <DuelCard side="B" lap={lapB} color={colorB} picker={pickerB} action={actionB} placeholder={placeholderB} />
     </div>

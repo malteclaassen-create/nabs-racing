@@ -1,6 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { Lightbulb } from "lucide-react";
-import { Panel } from "./TelemetryUI.jsx";
+import { Panel, Segmented } from "./TelemetryUI.jsx";
 
 // ---------------------------------------------------------------------------
 // Tips: the comparison read out loud for the driver of the slower lap
@@ -111,8 +111,76 @@ function MiniTrace({ me, other, row, colorMe, colorRef }) {
   );
 }
 
-function TipCard({ t, index, me, other, colorMe, colorRef, onSection }) {
+// The corner from above: both lines through it, the road's edges when the
+// track has them, and where each started braking. What a "most likely the
+// line" tip needs, since the speed trace cannot show it. Positions are in
+// decimetres (lib/telemetryLaps.js), the road in metres, both in the same
+// world frame the big map uses.
+function MiniLine({ me, other, row, colorMe, colorRef, road }) {
+  // The bottom 16 units hold the scale and the caption, clear of the lines.
+  const W = 360, H = 150, pad = 12, plotH = H - 16;
+  if (!me.x || !me.z || !other.x || !other.z) return null;
+  const from = Math.max(0, row.start);
+  const to = Math.min(me.x.length - 1, row.end);
+  if (to - from < 3) return null;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const lap of [me, other]) {
+    for (let i = from; i <= to; i++) {
+      const x = lap.x[i] / 10, y = lap.z[i] / 10;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+  }
+  const scale = Math.min((W - 2 * pad) / Math.max(1, maxX - minX), (plotH - 2 * pad) / Math.max(1, maxY - minY));
+  const ox = (W - (maxX - minX) * scale) / 2, oy = (plotH - (maxY - minY) * scale) / 2;
+  const px = (x) => ox + (x - minX) * scale;
+  const py = (y) => oy + (y - minY) * scale;
+  const path = (lap) => {
+    let d = "";
+    for (let i = from; i <= to; i++) d += `${i === from ? "M" : "L"}${px(lap.x[i] / 10).toFixed(1)},${py(lap.z[i] / 10).toFixed(1)}`;
+    return d;
+  };
+  // The road's edges inside the frame, as runs of points: an edge leaves the
+  // frame and comes back, and joining across the gap would draw a chord.
+  const margin = 30 / scale;
+  // Clipped to the drawing area too: an edge that runs on past the corner
+  // would otherwise cross the caption.
+  const inside = ([x, y]) => x >= minX - margin && x <= maxX + margin && y >= minY - margin && y <= maxY + margin
+    && py(y) >= 2 && py(y) <= plotH && px(x) >= 2 && px(x) <= W - 2;
+  const edges = [];
+  for (const edge of [road?.track?.left, road?.track?.right].filter(Boolean)) {
+    let run = "";
+    for (const p of edge) {
+      if (inside(p)) run += `${run ? "L" : "M"}${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`;
+      else if (run) { edges.push(run); run = ""; }
+    }
+    if (run) edges.push(run);
+  }
+  const dot = (lap, idx, color) => (idx != null && idx >= from && idx <= to
+    ? <circle cx={px(lap.x[idx] / 10)} cy={py(lap.z[idx] / 10)} r="3.5" fill={color} stroke="var(--c-card)" strokeWidth="1.2" />
+    : null);
+  // A scale bar of a round length, so "a car's width" can be judged by eye.
+  const bar = [5, 10, 20, 50, 100].find((m) => m * scale >= 36) || 100;
+  const apexX = px(me.x[row.apex] / 10), apexY = py(me.z[row.apex] / 10);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={`Both racing lines through ${row.place}, seen from above`}>
+      {edges.map((d, i) => <path key={i} d={d} fill="none" stroke="var(--c-text3)" strokeOpacity="0.55" strokeWidth="1.2" />)}
+      <path d={path(me)} fill="none" stroke={colorMe} strokeWidth="2" strokeLinejoin="round" />
+      <path d={path(other)} fill="none" stroke={colorRef} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" />
+      {row.apex >= from && row.apex <= to && <circle cx={apexX} cy={apexY} r="5.5" fill="none" stroke="var(--c-text3)" strokeWidth="1" />}
+      {dot(other, row.brakeIdxRef, colorRef)}
+      {dot(me, row.brakeIdxMe, colorMe)}
+      <line x1={pad} x2={pad + bar * scale} y1={H - 6} y2={H - 6} stroke="var(--c-faint)" strokeWidth="1.5" />
+      <text x={pad + bar * scale + 4} y={H - 3} fontSize="9" className="font-mono" fill="var(--c-faint)">{bar} m · dots: brake points · ring: apex</text>
+    </svg>
+  );
+}
+
+function TipCard({ t, index, me, other, names, colorMe, colorRef, road, onSection }) {
   const c = severity(t.lostMs);
+  const hasLine = !!(me.x && me.z && other.x && other.z);
+  // A tip that blames the line opens on the line; the rest on the speed.
+  const [view, setView] = useState(hasLine && t.kind === "line" ? "line" : "speed");
   return (
     <article className="grid overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-[minmax(0,1fr)_23rem]">
       <div className="min-w-0 p-3.5 sm:p-4">
@@ -148,23 +216,28 @@ function TipCard({ t, index, me, other, colorMe, colorRef, onSection }) {
         </div>
       </div>
       <div className="border-t border-border bg-surface2/50 px-3 py-2.5 lg:border-l lg:border-t-0">
-        <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-medium">
-          <span className="font-mono uppercase tracking-wider text-light">Speed</span>
-          <span className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded-full" style={{ background: colorMe }} />{me.name}</span>
-            <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-2 border-dashed" style={{ borderColor: colorRef }} />{other.name}</span>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-medium">
+          {hasLine
+            ? <Segmented label="Chart" value={view} onChange={setView} items={[{ key: "speed", label: "Speed" }, { key: "line", label: "Line" }]} />
+            : <span className="font-mono uppercase tracking-wider text-light">Speed</span>}
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="flex min-w-0 items-center gap-1.5"><span className="h-0.5 w-3.5 shrink-0 rounded-full" style={{ background: colorMe }} /><span className="truncate">{names.me}</span></span>
+            <span className="flex min-w-0 items-center gap-1.5"><span className="w-3.5 shrink-0 border-t-2 border-dashed" style={{ borderColor: colorRef }} /><span className="truncate">{names.ref}</span></span>
           </span>
         </div>
-        <MiniTrace me={me} other={other} row={t} colorMe={colorMe} colorRef={colorRef} />
+        {view === "line" && hasLine
+          ? <MiniLine me={me} other={other} row={t} colorMe={colorMe} colorRef={colorRef} road={road} />
+          : <MiniTrace me={me} other={other} row={t} colorMe={colorMe} colorRef={colorRef} />}
       </div>
     </article>
   );
 }
 
-export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, onSection }) {
+export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA, nameB, road, onSection }) {
   if (!tips) return null;
   const me = tips.student === "A" ? lapA : lapB;
   const other = tips.student === "A" ? lapB : lapA;
+  const names = tips.student === "A" ? { me: nameA, ref: nameB } : { me: nameB, ref: nameA };
   const colorMe = tips.student === "A" ? colorA : colorB;
   const colorRef = tips.student === "A" ? colorB : colorA;
   const top = tips.tips.slice(0, 3);
@@ -226,7 +299,7 @@ export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, onSect
 
           <div className="space-y-3">
             {top.map((t, i) => (
-              <TipCard key={t.n} t={t} index={i} me={me} other={other} colorMe={colorMe} colorRef={colorRef} onSection={onSection} />
+              <TipCard key={t.n} t={t} index={i} me={me} other={other} names={names} colorMe={colorMe} colorRef={colorRef} road={road} onSection={onSection} />
             ))}
           </div>
 
