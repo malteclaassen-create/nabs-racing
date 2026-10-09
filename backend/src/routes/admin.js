@@ -82,6 +82,7 @@ import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
 import { readPrivacyInfo, writePrivacyInfo } from "../lib/privacyInfo.js";
 import { readAndroidApp, writeAndroidApp } from "../lib/androidApp.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
+import { readHelpFaq, writeHelpFaq } from "../lib/helpFaq.js";
 import {
   dbListFeedback,
   dbGetFeedback,
@@ -7225,6 +7226,27 @@ router.get("/welcome-faq", async (req, res, next) => {
 router.put("/welcome-faq", async (req, res, next) => {
   try {
     const content = await writeWelcomeFaq(prisma, req.body?.content ?? null);
+    res.json({ ok: true, content });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Help & troubleshooting page --------------------------------------------
+// /help, the page admins point people at instead of answering the same
+// question again. PUT { content: null } goes back to the built-in questions.
+
+router.get("/help", async (req, res, next) => {
+  try {
+    res.json({ content: await readHelpFaq(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/help", async (req, res, next) => {
+  try {
+    const content = await writeHelpFaq(prisma, req.body?.content ?? null);
     res.json({ ok: true, content });
   } catch (e) {
     next(e);

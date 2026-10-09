@@ -5,6 +5,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { readRaceInfo } from "../lib/raceInfo.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
+import { readHelpFaq } from "../lib/helpFaq.js";
 import { readPrivacyInfo } from "../lib/privacyInfo.js";
 import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
@@ -156,6 +157,16 @@ router.get("/social-feed", async (req, res, next) => {
 router.get("/welcome-faq", async (req, res, next) => {
   try {
     res.json({ content: await readWelcomeFaq(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/settings/help -> the admin-edited Help & troubleshooting page, or
+// { content: null } while nothing is saved (frontend uses its defaults).
+router.get("/help", async (req, res, next) => {
+  try {
+    res.json({ content: await readHelpFaq(prisma) });
   } catch (e) {
     next(e);
   }
