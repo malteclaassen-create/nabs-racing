@@ -313,17 +313,21 @@ export default function TeamProfile() {
         </div>
       </div>
 
-      {/* Cumulative progression (reuses the championship chart for this team).
-          Hidden on phones — the dense line chart doesn't read well there, same
-          as on the home page. */}
+      {/* Cumulative progression: the whole tier, this team's line bold and
+          labelled, the rivals faint behind it. With one line to follow it reads
+          on a phone too, so unlike the home page's version it is not hidden there. */}
       {teamRow && completedNumbers.length > 0 && (
-        // Phones sit this one out on purpose, same as on the home page.
-        <div className="hidden md:block">
-          <h2 className="mb-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
-            Championship Progression
-          </h2>
-          <PointsChart standings={[teamRow]} completed={completedNumbers} allRounds={raceNumbers} dropWorst={dropWorst} dropMode={standingsSet?.dropMode} teamDropWorst={standingsSet?.teamDropWorst} />
-        </div>
+        <PointsChart
+          standings={standingsSet.standings}
+          completed={completedNumbers}
+          allRounds={raceNumbers}
+          dropWorst={dropWorst}
+          dropMode={standingsSet?.dropMode}
+          teamDropWorst={standingsSet?.teamDropWorst}
+          highlight={teamRow.teamId}
+          eyebrow="Championship progression"
+          title={`${TIER_LABEL[team.tier]} · cumulative points`}
+        />
       )}
 
       <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} />
