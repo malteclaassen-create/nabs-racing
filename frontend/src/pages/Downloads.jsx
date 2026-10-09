@@ -7,6 +7,7 @@ import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonGameParts } from "../utils/seasonGame.js";
 import { PageHeader, SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
+import { answerWords, withLiveAnswers } from "../utils/signupAnswers.mjs";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Icon from "../components/InfoIcon.jsx";
 import { singularOne } from "../utils/format.js";
@@ -26,7 +27,7 @@ const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3
 // removal creates, and tidy a token that was the whole value ("{rounds} rounds"
 // with no number is not worth a line).
 function fill(s, tokens) {
-  return singularOne(String(s ?? "")
+  return singularOne(withLiveAnswers(s)
     .replace(/\{(\w+)\}/g, (m, k) => (tokens[k] != null && tokens[k] !== "" ? String(tokens[k]) : ""))
     .replace(/\s{2,}/g, " ")
     .trim());
@@ -401,6 +402,8 @@ export default function Downloads() {
     teamDrop: teamDrop != null && teamDrop > 0 ? teamDrop : "",
     platform: platform || "Assetto Corsa",
     era: era || "Formula 1",
+    // Only the sign-up buttons that exist (Admin -> Notifications).
+    answers: answerWords(info.data?.answers),
   };
 
   return (
@@ -436,11 +439,17 @@ export default function Downloads() {
             </div>
             <p className="mt-0.5 text-xs leading-relaxed text-light">
               The Content Check compares your files with the race server&rsquo;s and names the one that doesn&rsquo;t match.
+              Other problems getting on the server are on the help page.
             </p>
           </div>
-          <Link to="/content-check" className="btn-secondary shrink-0 px-4 py-1.5 text-xs">
-            Content Check
-          </Link>
+          <div className="flex shrink-0 gap-2">
+            <Link to="/help" className="btn-secondary px-4 py-1.5 text-xs">
+              Help
+            </Link>
+            <Link to="/content-check" className="btn-secondary px-4 py-1.5 text-xs">
+              Content Check
+            </Link>
+          </div>
         </div>
       </section>
     </div>

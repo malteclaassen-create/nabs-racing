@@ -72,6 +72,8 @@ const InstallApp = lazy(() => import("./pages/InstallApp.jsx"));
 // (an app store listing cannot be published without one), so it lives in its
 // own chunk rather than in everybody's first download.
 const Privacy = lazy(() => import("./pages/Privacy.jsx"));
+// Help & troubleshooting: the page admins point people at (see the file).
+const Help = lazy(() => import("./pages/Help.jsx"));
 // The settings for a visitor (theme, Lite mode). Opened from the bell a
 // handful of times per reader ever, and for a member it only redirects into
 // the profile — nothing that belongs in the first download.
@@ -291,6 +293,8 @@ function AppRoutes() {
         <Route path="/career/:key" element={<DriverCareer />} />
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/content-check" element={<ContentCheck />} />
+        <Route path="/help" element={<Help />} />
+        <Route path="/faq" element={<Navigate to="/help" replace />} />
         {/* How to put the site on a phone's home screen (Android, iOS and
             desktop). Linked from the footer and from the one-off announcement
             in the notification bell. */}
@@ -378,6 +382,7 @@ function footerLinks(p) {
     // which is what lets a search engine find it at all.
     { to: "/join", label: "How it works" },
     { to: "/downloads", label: "Race Info" },
+    { to: "/help", label: "Help" },
     // The install walkthrough. Its own announcement in the bell fires once and
     // is then read; this is the standing way back to it.
     { to: "/app", label: "Add to phone" },

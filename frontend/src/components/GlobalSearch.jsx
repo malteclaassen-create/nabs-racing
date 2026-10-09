@@ -11,7 +11,7 @@ import { useTokenBalance } from "../hooks/useTokenBalance.js";
 import {
   Home, Trophy, Users, Flag as FlagMark, CalendarDays, Activity, Crown, ArrowLeftRight, BookOpen,
   Gauge, IdCard, Smartphone, ShieldCheck, User, History, Medal, TrendingUp, Coins, SlidersHorizontal,
-  MessageSquare, TriangleAlert, ArrowRight,
+  MessageSquare, TriangleAlert, CircleHelp, ArrowRight,
 } from "lucide-react";
 
 // The catalogue's icon names, drawn the same size and weight as each other.
@@ -19,7 +19,7 @@ const PAGE_ICONS = {
   home: Home, trophy: Trophy, users: Users, flag: FlagMark, calendar: CalendarDays, activity: Activity,
   crown: Crown, arrows: ArrowLeftRight, book: BookOpen, gauge: Gauge, cards: IdCard, phone: Smartphone,
   shield: ShieldCheck, user: User, history: History, medal: Medal, trending: TrendingUp, coin: Coins,
-  sliders: SlidersHorizontal, message: MessageSquare, alert: TriangleAlert,
+  sliders: SlidersHorizontal, message: MessageSquare, alert: TriangleAlert, help: CircleHelp,
 };
 
 // The left-hand icon/mark for a result: a driver's avatar, a team logo/colour,

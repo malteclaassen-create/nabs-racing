@@ -10,6 +10,7 @@
 //   {drop}         -> how many rounds are dropped per driver
 //   {platform}     -> the sim platform (e.g. Assetto Corsa)
 //   {era}          -> the car era (e.g. F1 2007)
+//   {answers}      -> the sign-up answers switched on, e.g. **Accepted** or **Declined**
 
 export const RACE_INFO_DEFAULTS = {
   subtitle:
@@ -38,7 +39,7 @@ export const RACE_INFO_DEFAULTS = {
     {
       icon: "flag",
       title: "Race week",
-      text: "Mark yourself **Accepted**, **Tentative** or **Declined** for each round, either on the Attendance page or in Discord. Free seats go to reserves through the driver market.",
+      text: "Mark yourself {answers} for each round, either on the Attendance page or in Discord. Free seats go to reserves through the driver market.",
     },
     {
       icon: "clock",

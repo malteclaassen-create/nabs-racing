@@ -55,6 +55,7 @@ const TAB_CHUNKS = {
   AdminDownloads: () => import("../components/AdminDownloads.jsx"),
   AdminRaceInfo: () => import("../components/AdminRaceInfo.jsx"),
   AdminWelcomeFaq: () => import("../components/AdminWelcomeFaq.jsx"),
+  AdminHelp: () => import("../components/AdminHelp.jsx"),
   AdminPrivacy: () => import("../components/AdminPrivacy.jsx"),
   AdminTracks: () => import("../components/AdminTracks.jsx"),
   AdminAttendance: () => import("../components/AdminAttendance.jsx"),
@@ -78,6 +79,7 @@ const AdminContent = lazy(TAB_CHUNKS.AdminContent);
 const AdminDownloads = lazy(TAB_CHUNKS.AdminDownloads);
 const AdminRaceInfo = lazy(TAB_CHUNKS.AdminRaceInfo);
 const AdminWelcomeFaq = lazy(TAB_CHUNKS.AdminWelcomeFaq);
+const AdminHelp = lazy(TAB_CHUNKS.AdminHelp);
 const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
 const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
 const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
@@ -161,6 +163,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "tracks", label: "Tracks" },
           { key: "raceinfo", label: "Race Info" },
           { key: "faq", label: "Home FAQ" },
+          { key: "help", label: "Help" },
           { key: "social", label: "Social" },
           { key: "links", label: "Link previews" },
           { key: "privacy", label: "Privacy & app" },
@@ -171,6 +174,7 @@ function SiteTexts({ jumpView, jumpKey }) {
       {view === "tracks" && <AdminTracks />}
       {view === "raceinfo" && <AdminRaceInfo />}
       {view === "faq" && <AdminWelcomeFaq />}
+      {view === "help" && <AdminHelp />}
       {view === "social" && (
         <div className="space-y-4">
           <SocialAdmin />

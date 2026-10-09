@@ -1657,6 +1657,9 @@ export const api = {
   welcomeFaq: () => request("/settings/welcome-faq"),
   adminWelcomeFaq: () => request("/admin/welcome-faq", { auth: true }),
   saveWelcomeFaq: (content) => request("/admin/welcome-faq", { method: "PUT", body: { content }, auth: true }),
+  helpFaq: () => request("/settings/help"),
+  adminHelpFaq: () => request("/admin/help", { auth: true }),
+  saveHelpFaq: (content) => request("/admin/help", { method: "PUT", body: { content }, auth: true }),
 
   // season-scoped reads by explicit season number (used by the admin editor)
   teamsForSeason: (n) => request(`/teams${seasonParam(n)}`),

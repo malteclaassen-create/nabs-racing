@@ -151,8 +151,10 @@ export default function AdminRaceInfo() {
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{counted}"}</code>{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{drop}"}</code>{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{platform}"}</code>{" "}
-        <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{era}"}</code>. In the regulations, write
-        one rule per line.
+        <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{era}"}</code>, and{" "}
+        <code className="rounded bg-card px-1.5 py-0.5 text-xs">{"{answers}"}</code> becomes the sign-up answers
+        members can give right now (set under Notifications), e.g. <b>Accepted</b> or <b>Declined</b>. In the
+        regulations, write one rule per line.
       </div>
 
       {/* intro line */}
