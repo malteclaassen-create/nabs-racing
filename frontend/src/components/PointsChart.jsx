@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 // call sites wrap it in `hidden md:block`): a dozen equal lines do not read at
 // that width. A team page instead passes `highlight`: that team's line is drawn
 // bold with its name and total at the end, the rest of its tier stays behind it
-// as faint context. One line to follow reads fine on a phone, so in a narrow
-// card the chart switches to a viewBox as wide as the card itself — the axis
-// type then stays at its real size instead of shrinking with the drawing.
+// as faint context. One line to follow reads fine on a phone. At every width
+// the viewBox is as wide as the card itself, so the axis type keeps its real
+// size and the chart its height instead of both scaling with the drawing.
 
 // Combined points-progression chart: every team's cumulative points as lines in
 // one graph. Hover a round to read exact points; hover/click a team in the
@@ -76,10 +76,13 @@ export default function PointsChart({ standings = [], completed = [], allRounds 
   const step = niceNum(rawMax / 4, true);
   const maxY = Math.ceil(rawMax / step) * step;
 
-  // Narrow card: the viewBox is the card's own width, so 1 unit = 1px.
+  // The viewBox is the card's own width, so 1 unit = 1px: the axis type stays
+  // at its real size and the height stays put on a wide screen, instead of the
+  // whole drawing scaling up with the card (a 360-high chart grew to ~600px
+  // across a desktop). Before the first measurement the old fixed box is used.
   const compact = boxW != null && boxW < 560;
-  const W = compact ? Math.max(260, boxW) : 820;
-  const H = compact ? 260 : 360;
+  const W = boxW != null ? Math.max(260, boxW) : 820;
+  const H = compact ? 260 : boxW != null ? 320 : 360;
   const padL = compact ? 38 : 46, padR = compact ? 10 : 16, padT = 20, padB = compact ? 30 : 36;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;

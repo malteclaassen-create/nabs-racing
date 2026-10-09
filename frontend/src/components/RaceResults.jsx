@@ -38,6 +38,20 @@ function fmtSector(ms) {
   return `${s}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
+// The head of a results card: a mono eyebrow over the title, and an optional
+// note on the right. Phones and the desktop table share it.
+function CardHead({ eyebrow, title, note = null, className = "" }) {
+  return (
+    <div className={`flex items-start justify-between gap-4 border-b border-border px-4 py-4 ${className}`}>
+      <div>
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrow}</div>
+        <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">{title}</h3>
+      </div>
+      {note && <p className="max-w-[9.5rem] pt-1 text-right font-mono text-[11px] leading-snug text-light sm:max-w-none">{note}</p>}
+    </div>
+  );
+}
+
 // Within this much of the session's best sector a split counts as "on the
 // pace" and shows green in the phone list.
 const NEAR_BEST_SECTOR_MS = 100;
@@ -49,12 +63,7 @@ const NEAR_BEST_SECTOR_MS = 100;
 function MobileQuali({ rows, hasSectors, bestSector }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <div className="border-b border-border px-4 py-4">
-        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Qualifying</div>
-        <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">
-          Grid order
-        </h3>
-      </div>
+      <CardHead eyebrow="Qualifying" title="Grid order" />
       <ol className="cascade">
         {rows.map((r, i) => {
           const pole = r.position === 1 && isLap(r.bestLapMs);
@@ -152,6 +161,7 @@ function QualiTable({ rows }) {
     <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
+      <CardHead eyebrow="Qualifying" title="Grid order" className="px-5" />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -236,15 +246,26 @@ function QualiTable({ rows }) {
                     [0, 1, 2].map((si) => {
                       const v = r.sectors?.[si];
                       const isBest = v != null && bestSector[si] != null && v === bestSector[si];
+                      // Same reading as the phone strip: purple for the
+                      // session's best split, green within a tenth of it.
+                      const near = !isBest && v > 0 && bestSector[si] != null && v - bestSector[si] <= NEAR_BEST_SECTOR_MS;
                       return (
                         <td
                           key={si}
-                          className={`hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums lg:table-cell ${
-                            isBest ? "font-bold text-fl" : "text-light"
-                          }`}
-                          title={isBest ? "Fastest sector of the session" : undefined}
+                          className="hidden px-3 py-3.5 text-right font-mono text-sm tabular-nums lg:table-cell"
+                          title={isBest ? "Fastest sector of the session" : near ? "Within 0.1s of the fastest sector" : undefined}
                         >
-                          {fmtSector(v) || <NoData />}
+                          {fmtSector(v) ? (
+                            <span
+                              className={`inline-block rounded-md px-1.5 py-0.5 ${
+                                isBest ? "bg-fl/15 font-bold text-fl" : near ? "bg-ok/10 font-semibold text-ok" : "text-light"
+                              }`}
+                            >
+                              {fmtSector(v)}
+                            </span>
+                          ) : (
+                            <NoData />
+                          )}
                         </td>
                       );
                     })}
@@ -303,29 +324,10 @@ function StintBar({ stints, totalLaps }) {
 // marks, a mono line with team · tier · grid (and places won or lost), and the
 // tyre strip; on the right the gap (or the winner's race time) over the best
 // lap, and the points. Tapping the strip folds out the stints with lap counts.
-function MobileClassification({ race, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
-  const eyebrow = race.parentRaceId ? "Sprint" : race.type === "TRAINING" ? "Training" : race.type === "SPECIAL" ? "Special event" : "Race";
-  const anyPenalty = results.some((r) => r.penaltySeconds > 0);
-  // The length the tyre strips are scaled to: the most laps anyone drove.
-  const totalLaps = Math.max(
-    0,
-    ...results.map((r) => r.laps || (Array.isArray(r.stints) ? r.stints.reduce((s, x) => s + (x.laps || 0), 0) : 0))
-  );
+function MobileClassification({ eyebrow, penaltyNote, totalLaps, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-4">
-        <div>
-          <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrow}</div>
-          <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">
-            Full classification
-          </h3>
-        </div>
-        {anyPenalty && hasTimes && (
-          <p className="max-w-[9.5rem] pt-1 text-right font-mono text-[11px] leading-snug text-light">
-            Gaps include time penalties
-          </p>
-        )}
-      </div>
+      <CardHead eyebrow={eyebrow} title="Full classification" note={penaltyNote} />
       <ol className="cascade">
         {results.map((r, i) => {
           const tier = r.tier ?? r.team?.tier;
@@ -532,12 +534,24 @@ export default function RaceResults({ race, results, quali = null, session = "ra
     return gap > 0 ? fmtGap(gap) : fmtDuration(ms);
   }
 
+  // Card head wording, and the length the tyre strips are scaled to (the most
+  // laps anyone drove). Shared by the phone list and the desktop table.
+  const eyebrow = race.parentRaceId ? "Sprint" : race.type === "TRAINING" ? "Training" : race.type === "SPECIAL" ? "Special event" : "Race";
+  const penaltyNote = hasTimes && results.some((r) => r.penaltySeconds > 0) ? "Gaps include time penalties" : null;
+  const totalLaps = Math.max(
+    0,
+    ...results.map((r) => r.laps || (Array.isArray(r.stints) ? r.stints.reduce((s, x) => s + (x.laps || 0), 0) : 0))
+  );
+  const hasAnyStints = results.some((r) => Array.isArray(r.stints) && r.stints.length > 0);
+
   if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
 
   return (
     <>
     <MobileClassification
-      race={race}
+      eyebrow={eyebrow}
+      penaltyNote={penaltyNote}
+      totalLaps={totalLaps}
       results={results}
       scores={scores}
       detailed={detailed}
@@ -551,6 +565,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
     />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
+      <CardHead eyebrow={eyebrow} title="Full classification" note={penaltyNote} className="px-5" />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -564,6 +579,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                   column (those drivers score 0 anyway). */}
               {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
+              {hasAnyStints && <th className="hidden px-3 py-3 lg:table-cell">Tyres</th>}
               {detailed && scores && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
                   <span className="inline-flex items-center">
@@ -594,7 +610,8 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                 (detailed && hasGrid ? 1 : 0) +
                 (detailed && hasTimes ? 1 : 0) +
                 (detailed && hasLaps ? 1 : 0) +
-                (detailed && scores ? 1 : 0); // the Tier-2 column
+                (detailed && scores ? 1 : 0) + // the Tier-2 column
+                (hasAnyStints ? 1 : 0); // the tyre strip (lg+)
               return (
                 <Fragment key={r.driverId}>
                 <tr
@@ -687,8 +704,8 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                         <span className="pill bg-warn/15 text-warn">sub · {r.subForTeam.name}</span>
                       )}
                       {r.penaltySeconds > 0 && (
-                        <span className="pill bg-red-500/15 text-bad" title="Time penalty applied">
-                          +{r.penaltySeconds}s pen
+                        <span className="pill bg-warn/15 normal-case text-warn" title="Time penalty applied">
+                          +{r.penaltySeconds}s
                         </span>
                       )}
                     </div>
@@ -746,6 +763,12 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                       }`}
                     >
                       {fmtLap(r.bestLapMs) || <NoData label="no lap set" />}
+                    </td>
+                  )}
+
+                  {hasAnyStints && (
+                    <td className="hidden w-36 px-3 py-3.5 lg:table-cell">
+                      {hasStints ? <StintBar stints={r.stints} totalLaps={totalLaps} /> : <NoData className="font-mono" />}
                     </td>
                   )}
 
