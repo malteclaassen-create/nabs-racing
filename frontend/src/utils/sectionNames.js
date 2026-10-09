@@ -40,8 +40,12 @@ export function cornersIn(section, corners, n, lap = null) {
 
 // "T8", "T7 Memorial", "T1–T3", or null when the circuit's corners are not
 // known here. `lap` is lap A, whose speed trace the sections were found on.
-export function sectionLabel(section, corners, n, lap = null) {
-  const inside = cornersIn(section, corners, n, lap);
+export function sectionLabel(section, corners, n, lap = null, taken = null) {
+  // A corner names one section only. Two sections close together can both
+  // reach back over the same marked corner (Interlagos' T8 sat in the
+  // approach of the section after it, and both were called "T8 Laranjinha").
+  const free = taken ? corners.filter((c) => !taken.has(c)) : corners;
+  const inside = cornersIn(section, free, n, lap);
   const name = (c) => (c.turn != null ? `T${c.turn}${inside.length === 1 && c.name ? ` ${c.name}` : ""}` : c.name);
   if (inside.length === 1) return name(inside[0]);
   if (inside.length > 1) {
@@ -50,15 +54,24 @@ export function sectionLabel(section, corners, n, lap = null) {
     return `${name(first)} – ${name(last)}`;
   }
   // Nothing inside: the nearest corner to the apex, when it is close.
-  const near = cornerName((section.apex / (n - 1)) * 100, corners);
+  const near = cornerName((section.apex / (n - 1)) * 100, free);
   return near ? near.label : null;
 }
 
 // Every section with its `label` (the name, or "Section 4") and `tag` (what
 // fits in a small circle on the map: "T8", "T1–3", "4").
 export function labelSections(sections, corners, n, lap = null) {
+  // In lap order, each section keeping the corners it was named after.
+  const taken = new Set();
+  const all = corners || [];
   return sections.map((s) => {
-    const label = sectionLabel(s, corners, n, lap);
+    const label = sectionLabel(s, all, n, lap, taken);
+    const free = all.filter((c) => !taken.has(c));
+    for (const c of cornersIn(s, free, n, lap)) taken.add(c);
+    if (label && !cornersIn(s, free, n, lap).length) {
+      const near = cornerName((s.apex / (n - 1)) * 100, free);
+      if (near) for (const c of free) if (c.turn === near.turn && c.name === near.name) taken.add(c);
+    }
     const tag = label ? label.split(" ")[0].replace(/^T(\d+)–T(\d+)$/, "T$1–$2") : String(s.n);
     return { ...s, label: label || `Section ${s.n}`, tag, named: !!label };
   });

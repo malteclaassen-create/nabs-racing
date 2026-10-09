@@ -24,3 +24,11 @@ test("two laps of one driver are told apart by their times", () => {
   assert.deepEqual(lapNames({ name: "Neesh", steamId: "1" }, { name: "Malte", steamId: "2" }, fmt), { a: "Neesh", b: "Malte", same: false });
   assert.deepEqual(lapNames({ name: "Malte", steamId: "2", lapTimeMs: 1 }, { name: "Malte", steamId: "2", lapTimeMs: 2 }, fmt), { a: "1", b: "2", same: true });
 });
+
+test("a corner names one section only", () => {
+  const two = [{ at: 53, turn: 8, name: "Laranjinha" }, { at: 58.5, turn: 9, name: "Pinheirinho" }];
+  // The second section's slow part reaches back over T8's mark.
+  const [a, b] = labelSections([section(1, 520, 535, 530), section(2, 528, 570, 560)], two, 1001);
+  assert.equal(a.label, "T8 Laranjinha");
+  assert.equal(b.label, "T9 Pinheirinho");
+});
