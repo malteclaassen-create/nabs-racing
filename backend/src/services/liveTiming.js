@@ -1606,9 +1606,18 @@ function createRelay(server) {
   // shows the training one; one who is not on the server at all becomes a row
   // of their own, which is the whole point — the board is supposed to hold the
   // week, not the last two hours of it.
+  //
+  // Hands back the quickest of each sector among the carried laps, so purple
+  // can mean the board's best sector rather than only the session's.
   function applyImportedBests(byGuid, si) {
     const stored = currentBests(server.key, trackKeyOf(si.Track || "", si.TrackConfig || ""));
-    if (!stored.length) return;
+    const carriedBest = [null, null, null];
+    for (const lap of stored) {
+      (lap.bestSectorsMs || []).forEach((ms, i) => {
+        if (i < 3 && ms != null && (carriedBest[i] == null || ms < carriedBest[i])) carriedBest[i] = ms;
+      });
+    }
+    if (!stored.length) return carriedBest;
 
     // The laps a carried record contributes are the ones from BEFORE the
     // session the server is in: a file of that very session holds laps the
@@ -1672,7 +1681,16 @@ function createRelay(server) {
         live.potentialMs = potentialOfMs(weekBest);
       }
 
-      if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) continue;
+      if (live.bestLapMs != null && live.bestLapMs <= lap.lapTimeMs) {
+        // Their live lap stays the best one, but green on its sectors is the
+        // server's word for "their best of THIS session". A quicker sector of
+        // theirs from earlier in the week makes that one not their best, and
+        // the box says so.
+        live.sectors.forEach((s, i) => {
+          if (s && weekBest[i] != null) s.driversBest = s.ms === weekBest[i];
+        });
+        continue;
+      }
       live.bestLapMs = lap.lapTimeMs;
       live.imported = true;
       // Everything on the row that belongs to the best lap follows the lap:
@@ -1684,6 +1702,7 @@ function createRelay(server) {
       live.tyre = lap.tyre || live.tyre;
       live.topSpeed = null;
     }
+    return carriedBest;
   }
 
   // The sum of three best sectors, or null while any is unknown — the same
@@ -1808,9 +1827,10 @@ function createRelay(server) {
     // an imported lap is a lap like any other once it is on a row. Laps an
     // admin has removed come off first, so a carried lap can take the place of
     // a live one that was taken off the board.
+    let carriedBestSectors = [null, null, null];
     if (si.Type === 1) {
       applyRemovedLaps(byGuid, si);
-      applyImportedBests(byGuid, si);
+      carriedBestSectors = applyImportedBests(byGuid, si);
     }
 
     const entries = [...byGuid.values()];
@@ -1912,9 +1932,16 @@ function createRelay(server) {
     // "purple" against the session's actual best sector times (top-level
     // BestSplits, ordered by SplitIndex — see splitsByIndex); "green" (driver's
     // own best sector) keeps the IsDriversBest flag.
-    const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp) =>
-      sp ? nsToMs(sp.SplitTime) : null
-    );
+    //
+    // In practice the board also carries the week's imported laps, and their
+    // sectors are part of the board: the quickest S1 of the week is purple
+    // whether it was set an hour ago or on Monday. Without them a live sector
+    // went purple while a quicker one sat two rows up in green.
+    const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp, i) => {
+      const here = sp ? nsToMs(sp.SplitTime) : null;
+      const there = carriedBestSectors[i];
+      return here == null ? there : there == null ? here : Math.min(here, there);
+    });
     for (const e of entries) {
       for (const row of [e.sectors, e.currentSectors]) {
         row.forEach((s, i) => {
