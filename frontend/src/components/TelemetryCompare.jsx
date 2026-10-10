@@ -62,7 +62,11 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
         {actions}
       </div>
       <div className={`bg-surface2/50 p-3 sm:p-5 ${full ? "min-h-full" : ""}`}>
-        <div className={`space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
+        {/* cascade-auto: the card's sections (track, laps, overview, tips,
+            replay and traces) rise in one after another as the page opens,
+            and a section that arrives later (once its lap has loaded) rises
+            in on its own. */}
+        <div className={`cascade cascade-auto space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
       </div>
     </div>
   );

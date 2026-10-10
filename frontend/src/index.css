@@ -227,8 +227,9 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
   body { padding-bottom: var(--bnav); }
 }
 
-/* The native scrollbar is hidden site-wide: the accent line under the nav
-   doubles as the scroll indicator (see ScrollProgressLine in NavBar.jsx).
+/* The native scrollbar is hidden site-wide. It used to be stood in for by an
+   accent line above the nav that filled as you scrolled; that line has since
+   been taken out at the owner's request.
    No scrollbar also means no gutter, so the old scrollbar-gutter reservation
    against layout shift is no longer needed. Scrolling itself is untouched. */
 html {
@@ -683,6 +684,20 @@ body {
     animation-delay: calc(var(--reveal-delay, 0s) + min(var(--d, 0), 6) * 35ms);
   }
 }
+
+/* Telemetry traces draw themselves from the start of the lap to the end once
+   their chart has scrolled into view (the chart frame is a .reveal). A clip
+   rather than a stroke-dash: lap B's line is dashed already. */
+@keyframes tel-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+.reveal:not(.is-visible) .tel-draw { clip-path: inset(0 100% 0 0); }
+.reveal.is-visible .tel-draw { animation: tel-draw 900ms var(--e-out) 120ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .tel-draw { animation: none !important; clip-path: none !important; }
+}
+.fx-lite .tel-draw { animation: none !important; clip-path: none !important; }
 
 /* --- Growing bars -------------------------------------------------- */
 /* Points/progress bars that sweep out from zero to their real width when their
