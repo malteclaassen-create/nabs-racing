@@ -492,7 +492,7 @@ function ProfileEditor({ me, onDraftChange, leagues = [], scope = "all", onScope
     <div className="card overflow-hidden">
       {/* On a phone the section menu right above already says "Edit Profile" */}
       <CardBar title="Edit your profile" className="hidden sm:block" />
-      <div className="space-y-6 p-4 sm:p-6">
+      <div className="cascade cascade-auto space-y-6 p-4 sm:p-6">
         {error && <ErrorBox message={error} />}
 
         {/* Which league the edit is for. Hidden for a person who races in one
@@ -948,13 +948,13 @@ function MyProfile() {
           switch. Until now only the tab pill moved and the content underneath
           hard-swapped, which read as two different components rather than one
           control moving between views.
-          Every section enters the same way (swap-in: a fade and a short rise,
-          the cards inside simply there). Some sections also brought their own
-          card-by-card entrance and others none, so switching felt different
-          each time. SmoothHeight carries the page between a long section and
-          a short one; the drop in page height used to yank the sticky nav. */}
+          The panel itself only fades; what is inside builds from the top
+          down, every section the same way (its cards rise in one after
+          another, see the cascades in each section). SmoothHeight carries the
+          page between a long section and a short one; the drop in page
+          height used to yank the sticky nav. */}
       <SmoothHeight className="min-w-0 flex-1">
-      <div key={tab} className="swap-in">
+      <div key={tab} className="content-in">
       {tab === "settings" ? (
         <SettingsSections />
       ) : tab === "tools" ? (
@@ -976,7 +976,9 @@ function MyProfile() {
       ) : tab !== "profile" ? (
         <CockpitPanels tab={tab} onTab={setTab} />
       ) : (
-        <>
+        // Builds from the top down like the other sections: the editor, then
+        // the preview of the public page.
+        <div className="cascade cascade-auto space-y-6">
       <ProfileEditor
         // Keyed on the row being shown, not just the scope pill: switching
         // league — by the pill OR by the series switcher in the header —
@@ -1048,7 +1050,7 @@ function MyProfile() {
           />
         </div>
       </section>
-        </>
+        </div>
       )}
       </div>
       </SmoothHeight>
