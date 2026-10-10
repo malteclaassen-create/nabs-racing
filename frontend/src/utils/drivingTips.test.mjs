@@ -51,6 +51,14 @@ test("each kind of difference gets its own explanation", () => {
   assert.equal(explain(base, "Ref").kind, "line");
 });
 
+test("every tip has a one-line practice step with the number to aim for", () => {
+  const base = { place: "T1 Rettifilo", lostMs: 100, brakeLaterM: 0, throttleLaterM: 0, minMe: 100, minRef: 100, exitMe: 180, exitRef: 180, peakMe: 90, peakRef: 90 };
+  assert.equal(explain({ ...base, brakeLaterM: -12 }, "Ref").step, "Brake 12 m later into T1 Rettifilo");
+  assert.equal(explain({ ...base, minMe: 92 }, "Ref").step, "Carry 8 km/h more through T1 Rettifilo");
+  assert.equal(explain({ ...base, throttleLaterM: 24 }, "Ref").step, "Full throttle 24 m sooner out of T1 Rettifilo");
+  assert.equal(explain(base, "Ref").step, "Compare your line through T1 Rettifilo");
+});
+
 test("a soft first press of the brake pedal is mentioned with the braking tip", () => {
   const t = explain({ lostMs: 100, brakeLaterM: -15, throttleLaterM: 0, minMe: 96, minRef: 104, exitMe: 180, exitRef: 180, peakMe: 84, peakRef: 100 }, "Ref");
   assert.match(t.try, /84%/);

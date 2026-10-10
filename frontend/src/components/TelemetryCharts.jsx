@@ -71,7 +71,7 @@ function Bands({ bands, visible, span, onBand }) {
     const to = Math.min(b.end, visible[1]);
     return (
       <div key={b.n} className="pointer-events-none absolute inset-y-0" style={{ left: `${((from - visible[0]) / span) * 100}%`, width: `${((to - from) / span) * 100}%` }}>
-        <div className="absolute inset-0" style={{ background: b.active ? "rgb(var(--c-brand))" : "var(--c-text)", opacity: b.active ? 0.09 : 0.05 }} />
+        <div className="absolute inset-0" style={{ background: "rgb(var(--c-brand))", opacity: b.active ? 0.2 : 0.1 }} />
         {onBand && (
           <button type="button" className="pointer-events-auto absolute left-0.5 top-0.5 rounded px-1 font-mono text-[9px] font-bold leading-4 hover:bg-surface2"
             style={{ color: b.active ? "var(--c-text)" : "var(--c-text3)" }}
@@ -90,8 +90,8 @@ function ChartFrame({ height, ticks, visible, span, cursor, handlers, selection,
       <div className="relative w-10 shrink-0 font-mono text-[10px] tabular-nums text-light" aria-hidden="true">
         {ticks.map((t, i) => <span key={i} className="absolute right-0 -translate-y-1/2" style={{ top: `${4 + i * 46}%` }}>{t}</span>)}
       </div>
-      <div className="relative min-w-0 flex-1 cursor-crosshair select-none overflow-hidden rounded border border-border"
-        style={{ touchAction: "pan-y", background: "var(--c-bg)" }} {...handlers} onDoubleClick={onResetRange}>
+      <div className="relative min-w-0 flex-1 cursor-crosshair select-none overflow-hidden rounded-md border border-border bg-surface2/40"
+        style={{ touchAction: "pan-y" }} {...handlers} onDoubleClick={onResetRange}>
         <Bands bands={bands} visible={visible} span={span} onBand={onBand} />
         {[0, 25, 50, 75, 100].map((p) => <div key={p} className="pointer-events-none absolute inset-y-0 border-l border-border opacity-50" style={{ left: `${p}%` }} />)}
         {[4, 50, 96].map((p) => <div key={p} className={`pointer-events-none absolute inset-x-0 border-t border-border ${dashedMid && p === 50 ? "border-dashed" : "opacity-50"}`} style={{ top: `${p}%` }} />)}
@@ -100,7 +100,7 @@ function ChartFrame({ height, ticks, visible, span, cursor, handlers, selection,
         </svg>
         {overlay}
         {selection && <div className="pointer-events-none absolute inset-y-0 border-x border-primary bg-primary/15" style={{ left: `${((selection[0] - visible[0]) / span) * 100}%`, width: `${((selection[1] - selection[0]) / span) * 100}%` }} />}
-        {cursor >= visible[0] && cursor <= visible[1] && <div className="pointer-events-none absolute inset-y-0 border-l border-dark/60" style={{ left: `${((cursor - visible[0]) / span) * 100}%` }} />}
+        {cursor >= visible[0] && cursor <= visible[1] && <div className="pointer-events-none absolute inset-y-0 border-l-[1.5px] border-eyebrow" style={{ left: `${((cursor - visible[0]) / span) * 100}%` }} />}
       </div>
     </div>
   );
@@ -117,7 +117,7 @@ function ChartHeader({ title, unit, children }) {
 
 // One channel, two laps, one shared track-position axis. `delta` draws the
 // time difference: the line is neutral and the area is tinted by who is ahead.
-export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, nameA = "A", nameB = "B", height = 116, format = Math.round, delta = false, bands, onBand }) {
+export function ChannelChart({ title, unit, aside = null, a, b, lo, hi, cursor, onPick, range, onSelectRange, onResetRange, colorA = LAP_A_COLOR, colorB = LAP_B_COLOR, nameA = "A", nameB = "B", height = 116, format = Math.round, delta = false, bands, onBand }) {
   const clip = useId();
   const paths = useMemo(() => ({ a: points(a, lo, hi), b: b ? points(b, lo, hi) : null }), [a, b, lo, hi]);
   const visible = range || [0, a.length - 1];
@@ -128,6 +128,7 @@ export function ChannelChart({ title, unit, a, b, lo, hi, cursor, onPick, range,
   return (
     <div>
       <ChartHeader title={title} unit={unit}>
+        {aside}
         {delta ? <span className="text-light">{signedSeconds(a[cursor] ?? 0)}</span> : <>
           <span className="inline-flex min-w-0 gap-1" style={{ color: colorA }}><span className="max-w-[5.5rem] truncate">{nameA}</span>{format(a[cursor] ?? 0)}</span>
           {b && <span className="inline-flex min-w-0 gap-1" style={{ color: colorB }}><span className="max-w-[5.5rem] truncate">{nameB}</span>{format(b[cursor] ?? 0)}</span>}
@@ -192,6 +193,36 @@ export function PedalChart({ a, b, cursor, onPick, range, onSelectRange, onReset
         {paths.bg && <polyline points={paths.bg} fill="none" stroke={colorB} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
         {paths.bb && <polyline points={paths.bb} fill="none" stroke={colorB} strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
       </ChartFrame>
+    </div>
+  );
+}
+
+// The corners under the shared axis, each tag at its apex, so the bands in
+// the charts above can be read at a glance. A tag that would sit on top of
+// the one before it is left out rather than drawn over it; its band still
+// carries it. Each tag zooms the charts to its corner.
+export function CornerTicks({ bands, visibleRange, onBand }) {
+  const span = visibleRange[1] - visibleRange[0] || 1;
+  const shown = [];
+  let last = -Infinity;
+  for (const b of [...(bands || [])].sort((x, y) => (x.apex ?? x.start) - (y.apex ?? y.start))) {
+    const at = b.apex ?? (b.start + b.end) / 2;
+    if (at < visibleRange[0] || at > visibleRange[1]) continue;
+    const pct = Math.max(2, Math.min(98, ((at - visibleRange[0]) / span) * 100));
+    if (pct - last < 5) continue;
+    last = pct;
+    shown.push({ b, pct });
+  }
+  if (!shown.length) return null;
+  return (
+    <div className="relative ml-12 mt-1 h-5" role="group" aria-label="Corners">
+      {shown.map(({ b, pct }) => (
+        <button key={b.n} type="button" onClick={() => onBand?.(b)} aria-label={`Zoom to ${b.label || `section ${b.n}`}`}
+          className={`absolute top-0 -translate-x-1/2 whitespace-nowrap rounded px-1 font-mono text-[9px] font-bold leading-5 transition hover:bg-surface2 ${b.active ? "text-dark" : "text-eyebrow"}`}
+          style={{ left: `${pct}%` }}>
+          {b.tag || b.n}
+        </button>
+      ))}
     </div>
   );
 }
