@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
@@ -24,6 +24,25 @@ import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useToken
 import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
+import { useStandingsPreview } from "../hooks/useStandingsPreview.js";
+import { StandingsLeaderStrip, StandingsPreviewPanel } from "./StandingsPreview.jsx";
+import {
+  ArrowDownUp,
+  CalendarCheck,
+  Check,
+  ChevronRight,
+  CircleHelp,
+  FileText,
+  Flag,
+  House,
+  Mail,
+  MessageSquare,
+  Radio,
+  TriangleAlert,
+  Trophy,
+  User,
+  Users,
+} from "lucide-react";
 
 // The token count, sitting against the profile chip. Only there while the trial
 // is switched on (the hook returns null otherwise) and only for a signed-in
@@ -328,60 +347,100 @@ const desktopLinkClass = ({ isActive }) =>
     isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
   }`;
 
-// Mobile menu row: a quiet line-list item with a small stroke icon, so the
-// pages stop reading as one indistinguishable text column. Colour only with
-// meaning: the active page gets the usual brand tint, everything else is calm.
-// `alsoActiveOn` mirrors the desktop nav: the root and /s/<slug> are the same
-// page, so both have to light the Home row (see navLinks).
-function MobileRow({ to, end, icon, label, sub, alsoActiveOn, badge = null }) {
-  const { pathname } = useLocation();
-  const forced = alsoActiveOn === pathname;
+// The pages under "Standings", in menu order, for the desktop flyout and the
+// phone sheet alike. `preview` is what the panel beside the desktop menu shows
+// while that row is pointed at: the drivers' table, or the teams'. Transfers
+// and the Hall of Fame have no table of their own to preview, so they keep the
+// drivers' one up rather than blanking the panel.
+function standingsPages(seriesPath, transfers, multiTier) {
+  return [
+    { to: seriesPath("/drivers"), Icon: User, title: "Drivers", sub: "Driver standings", tour: "nav-drivers", preview: "drivers" },
+    {
+      to: seriesPath("/constructors"),
+      Icon: Users,
+      title: "Constructors",
+      sub: multiTier ? "Tier 1 & Tier 2" : "Constructor standings",
+      preview: "constructors",
+    },
+    transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "drivers" },
+    { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "drivers" },
+  ].filter(Boolean);
+}
+
+// The end of a standings row: a check on the page you are on, an arrow on the
+// others.
+function RowEnd({ active }) {
+  return active ? (
+    <Check className="h-4 w-4 shrink-0 text-eyebrow" strokeWidth={3} aria-hidden="true" />
+  ) : (
+    <ChevronRight className="h-4 w-4 shrink-0 text-faint" strokeWidth={2} aria-hidden="true" />
+  );
+}
+
+// A standings row in the phone sheet: icon tile, display title, one line on
+// what is behind it. The active page gets the usual brand tint.
+function SheetRow({ to, Icon, title, sub }) {
   return (
     <NavLink
       to={to}
-      end={end}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-2 py-2.5 transition ${
-          isActive || forced ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
+        `flex items-center gap-3 rounded-2xl px-2 py-2 transition ${
+          isActive ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
         }`
       }
     >
-      {({ isActive: active }) => {
-        const isActive = active || forced;
-        return (
+      {({ isActive }) => (
         <>
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
-            <StandIcon d={icon} />
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
+            <Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className={`block truncate text-sm font-semibold ${isActive ? "text-dark" : "text-medium"}`}>{label}</span>
-            {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
+            <span className="block truncate font-display text-sm font-extrabold uppercase tracking-tight text-dark">{title}</span>
+            <span className="mt-0.5 block truncate text-[12px] text-light">{sub}</span>
           </span>
-          {badge}
+          <RowEnd active={isActive} />
         </>
-        );
-      }}
+      )}
     </NavLink>
   );
 }
 
-// Same row, but it DOES something instead of going somewhere (the feedback
-// panel). Never "active", so it stays in the calm idle style.
-function MobileActionRow({ icon, label, sub, onClick }) {
+// One square in the sheet's grid: everything that is not a standings page.
+// Either a link, or (with onClick) something that happens in place, like the
+// feedback panel. `alsoActiveOn` mirrors the desktop nav: the root and
+// /s/<slug> are the same page, so both light the Home square (see navLinks).
+// `badge` sits on the icon's corner: cars on track, free seats.
+function SheetTile({ to, end, alsoActiveOn, Icon, label, hint, badge = null, onClick }) {
+  const { pathname } = useLocation();
+  const base = "flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-3 text-center text-xs font-semibold transition";
+  const idle = "bg-surface2 text-medium hover:text-dark";
+  const inner = (active) => (
+    <>
+      <span className={`relative flex h-8 w-8 items-center justify-center rounded-lg ${active ? "bg-brand text-ink" : ""}`}>
+        <Icon className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+        {badge}
+      </span>
+      <span className="max-w-full truncate">{label}</span>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} title={hint} className={`${base} ${idle}`}>
+        {inner(false)}
+      </button>
+    );
+  }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-surface2"
+    <NavLink
+      to={to}
+      end={end}
+      title={hint}
+      className={({ isActive }) =>
+        `${base} ${isActive || alsoActiveOn === pathname ? "bg-brand/20 text-dark ring-1 ring-inset ring-brand/50" : idle}`
+      }
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium">
-        <StandIcon d={icon} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-medium">{label}</span>
-        {sub && <span className="mt-0.5 block truncate font-mono text-[10px] text-light">{sub}</span>}
-      </span>
-    </button>
+      {({ isActive }) => inner(isActive || alsoActiveOn === pathname)}
+    </NavLink>
   );
 }
 
@@ -396,38 +455,18 @@ function MobileMenuLabel({ children }) {
   );
 }
 
-// Stroke icons for the mobile menu rows (24×24 viewBox, drawn by StandIcon).
+// Stroke icons for the phone's tab bar (24×24 viewBox).
 const NAV_ICONS = {
   home: <><path d="M3 10.5L12 3l9 7.5" /><path d="M5 9.5V21h5v-6h4v6h5V9.5" /></>,
   races: <><path d="M5 3v18" /><path d="M5 4h13l-3 4 3 4H5" /></>,
-  attendance: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /><path d="M9 15l2 2 4-4" /></>,
   live: <><circle cx="12" cy="12" r="2.5" /><path d="M7.5 7.5a6.5 6.5 0 000 9M16.5 7.5a6.5 6.5 0 010 9" /><path d="M4.7 4.7a10.5 10.5 0 000 14.6M19.3 4.7a10.5 10.5 0 010 14.6" /></>,
-  info: <><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h6" /></>,
-  help: <><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></>,
   drivers: <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>,
-  constructors: <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>,
   records: <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>,
-  transfers: <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>,
-  // Four rows at the bottom of the phone menu used to share this one speech
-  // bubble, which made them read as one thing said four times. They are four
-  // different errands, so they get four marks: say something, read a reply,
-  // report a crash, look up what was decided.
-  feedback: <><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></>,
-  messages: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3.5 7l8.5 6 8.5-6" /></>,
-  incident: <><path d="M10.3 3.9L1.9 18a2 2 0 001.7 3h16.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /><path d="M12 9.5v4M12 17.2h.01" /></>,
-  myReports: <><path d="M9 4H7a2 2 0 00-2 2v13a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-2" /><rect x="9" y="2.2" width="6" height="3.6" rx="1" /><path d="M9 13.5l2 2 4-4" /></>,
 };
 
-// The two pages the "Standings" item covers (matched with the series prefix
+// The pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
 const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
-
-function StandIcon({ d }) {
-  // overflow-visible so a stroke sitting right at the viewBox edge (the group
-  // icon's outer shoulder) is never clipped — not even mid-entrance-animation,
-  // when the menu card is briefly scaled/translated.
-  return <svg viewBox="0 0 24 24" className="h-4 w-4 overflow-visible" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
-}
 
 // The phone's tab bar: the five places a member goes on a race night, one tap
 // away at the bottom edge where the thumb already is, the way native apps do
@@ -618,8 +657,14 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   );
 }
 
-// "Standings" nav item: one entry that opens a flyout to Drivers / Constructors
-// on hover (and on click, for touch/keyboard). Highlighted while on either page.
+// How wide the Standings menu is: the rows on the left, the table on the right.
+const STANDINGS_MENU_W = 600;
+
+// "Standings" nav item: one entry that opens a menu of the standings pages on
+// hover (and on click, for touch/keyboard). Highlighted while on any of them.
+// Beside the rows sits the top of the table as it stands, so who is how far
+// ahead is there before you have picked a page: the drivers' table, or the
+// teams' while the Constructors row is pointed at.
 function StandingsNav({ seriesPath }) {
   const [open, setOpen] = useState(false);
   // The transfer market is held back from the public for now (hooks/useTransfersVisible.js).
@@ -638,6 +683,15 @@ function StandingsNav({ seriesPath }) {
   const { active: tourActive } = useTour();
   const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
   const active = STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p));
+  // Nothing is asked for until the menu opens for the first time.
+  const preview = useStandingsPreview(open);
+  // Which table the panel shows. Every open starts on the drivers', or on the
+  // teams' when that is the page you are on.
+  const onConstructors = pathNoSeries.startsWith("/constructors");
+  const [view, setView] = useState("drivers");
+  // Pulled left when the menu would run past the window's right edge (the
+  // nav sits at the right of the bar, so at narrower desktop widths it does).
+  const [shift, setShift] = useState(0);
 
   // Hover open with a short close delay, so slipping off the button on the way
   // down to the menu doesn't snap it shut (the transparent bridge below also
@@ -660,34 +714,23 @@ function StandingsNav({ seriesPath }) {
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
   }, [open, tourActive]);
+  // Measured before paint, so the menu never shows up half off screen.
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    setView(onConstructors ? "constructors" : "drivers");
+    const left = ref.current.getBoundingClientRect().left;
+    setShift(Math.min(0, document.documentElement.clientWidth - 16 - left - STANDINGS_MENU_W));
+  }, [open, onConstructors]);
 
-  // One flyout row, styled to match the series/season switcher menus exactly:
-  // an icon badge (brand-filled while active), a display title, and a mono
-  // sub-line, with the same accent active ring and check mark.
+  // One menu row, styled to match the series/season switcher menus: an icon
+  // badge (brand-filled while active), a display title, a sub-line, and the
+  // check mark on the page you are on. Pointing at a row (or tabbing to it)
+  // switches the table beside it.
   const itemCls = ({ isActive }) =>
     `glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
       isActive ? "liquid-glass-lens" : "hover:bg-surface2"
     }`;
-  // `i` staggers the rows in as the menu springs open (see .glass-menu).
-  let i = 0;
-  const row = (to, icon, title, sub, tour) => (
-    <NavLink to={to} role="menuitem" data-tour={tour} className={itemCls} style={{ "--i": i++ }}>
-      {({ isActive }) => (
-        <>
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
-            <StandIcon d={icon} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{title}</span>
-            <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
-          </span>
-          {isActive && (
-            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 6" /></svg>
-          )}
-        </>
-      )}
-    </NavLink>
-  );
+  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier);
 
   return (
     <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
@@ -711,16 +754,44 @@ function StandingsNav({ seriesPath }) {
           starts flush with the button (top-full) and carries the visual gap as
           TRANSPARENT padding, so the pointer never leaves the hover region on
           the way down to the card. */}
-      <div className={`absolute left-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
+      <div
+        className={`absolute top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}
+        style={{ left: shift }}
+      >
         <div
-          role="menu"
           data-tour="nav-standings-menu"
-          className={`liquid-glass glass-dense glass-menu w-64 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+          className={`liquid-glass glass-dense glass-menu grid grid-cols-[minmax(0,1fr)_260px] gap-1.5 rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+          // Springs out of the button even when the card has been pulled left.
+          style={{ width: STANDINGS_MENU_W, transformOrigin: `${24 - shift}px 0` }}
         >
-          {row(seriesPath("/drivers"), <><path d="M12 12a4 4 0 100-8 4 4 0 000 8z" /><path d="M4 21a8 8 0 0116 0" /></>, "Drivers", "Driver standings", "nav-drivers")}
-          {row(seriesPath("/constructors"), <><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M24 21v-2a4 4 0 00-3-3.87" /><path d="M18 3.13a4 4 0 010 7.75" /></>, "Constructors", "Constructor standings")}
-          {transfers && row(seriesPath("/transfers"), <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>, "Transfers", "Team changes, round by round")}
-          {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
+          <div role="menu" aria-label="Standings" className="flex flex-col gap-0.5">
+            {pages.map((pg, i) => (
+              <NavLink
+                key={pg.title}
+                to={pg.to}
+                role="menuitem"
+                data-tour={pg.tour}
+                className={itemCls}
+                style={{ "--i": i }}
+                onMouseEnter={() => setView(pg.preview)}
+                onFocus={() => setView(pg.preview)}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isActive ? "bg-brand text-ink" : "bg-surface2 text-medium"}`}>
+                      <pg.Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{pg.title}</span>
+                      <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{pg.sub}</span>
+                    </span>
+                    <RowEnd active={isActive} />
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+          <StandingsPreviewPanel preview={preview} view={view} />
         </div>
       </div>
     </div>
@@ -1143,6 +1214,43 @@ export default function NavBar() {
     setMenuSeason(onSeasonPage);
   }, [onSeasonPage, menu]);
 
+  // The top of the table for the sheet's leader strip, asked for the first
+  // time the menu opens (and shared with the desktop flyout's answer).
+  const sheetPreview = useStandingsPreview(open);
+  const sheetPages = standingsPages(seriesPath, transfersVisible, sheetPreview.data?.multiTier);
+
+  // Pulling the sheet down by its grip. It follows the finger straight, with
+  // no React render per frame; let go far enough down and it closes from where
+  // it is (its way-out animation has no start frame of its own, so it carries
+  // on from the finger), otherwise it springs back up.
+  const sheetRef = useRef(null);
+  const grab = useRef(null);
+  const grabStart = (e) => {
+    if (closing) return;
+    grab.current = { id: e.pointerId, y: e.clientY, dy: 0 };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const grabMove = (e) => {
+    const g = grab.current;
+    const sheet = sheetRef.current;
+    if (!g || g.id !== e.pointerId || !sheet) return;
+    g.dy = Math.max(0, e.clientY - g.y);
+    sheet.style.transition = "none";
+    sheet.style.transform = g.dy ? `translateY(${g.dy}px)` : "";
+  };
+  const grabEnd = () => {
+    const g = grab.current;
+    const sheet = sheetRef.current;
+    grab.current = null;
+    if (!g || !sheet) return;
+    if (g.dy > 90) {
+      closeMenu();
+      return;
+    }
+    sheet.style.transition = "transform var(--t-base) var(--e-out)";
+    sheet.style.transform = "";
+  };
+
   return (
     <>
     <header className="sticky top-0 z-30">
@@ -1288,11 +1396,13 @@ export default function NavBar() {
       </nav>
       </div>
 
-      {/* Mobile menu — a drop-down panel that OVERLAYS the page (absolute, so the
-          content underneath stays put) with a soft scrim. Tapping the scrim or a
-          link closes it. Both fade/slide in and back out again (see .nav-scrim /
-          .nav-drop and their .is-closing variants); `closing` is what keeps the
-          panel mounted long enough for the way out to be seen. */}
+      {/* Mobile menu: a sheet that comes up from the bottom edge and OVERLAYS
+          the page (fixed, so the content underneath stays put), with a soft
+          scrim above it. Tapping the scrim or a link closes it, and so does
+          pulling the sheet down by its top. Both slide/fade in and back out
+          again (see .nav-scrim / .nav-sheet and their .is-closing variants);
+          `closing` is what keeps the panel mounted long enough for the way out
+          to be seen. */}
       {menu !== "closed" && (
         <div className="lg:hidden">
           {/* pointer-events-none while closing: the fading scrim must not eat
@@ -1305,10 +1415,25 @@ export default function NavBar() {
             className={`nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm ${closing ? "is-closing pointer-events-none" : ""}`}
           />
           <div
+            ref={sheetRef}
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
-            className={`nav-drop absolute inset-x-0 top-full z-30 h-[calc(100dvh-100%)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
+            className={`nav-drop nav-sheet fixed inset-x-0 bottom-0 z-30 max-h-[calc(100dvh-96px)] overflow-y-auto overscroll-contain rounded-t-[28px] bg-card shadow-lift ${closing ? "is-closing pointer-events-none" : ""}`}
           >
-            <div className="container-page flex flex-col pt-3 pb-[calc(0.75rem+var(--bnav))]">
+            <div className="container-page flex flex-col pb-[calc(0.75rem+var(--bnav))]">
+              {/* The grip and the title stay put while the sheet scrolls, and
+                  are what you pull to send it away. touch-none: the finger
+                  moves the sheet here, not the page. */}
+              <div
+                className="sticky top-0 z-30 -mx-1 touch-none bg-card px-1 pb-1 pt-2"
+                onPointerDown={grabStart}
+                onPointerMove={grabMove}
+                onPointerUp={grabEnd}
+                onPointerCancel={grabEnd}
+              >
+                <div aria-hidden className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-border" />
+                <div className="px-1 font-display text-lg font-black uppercase tracking-tight text-dark">Menu</div>
+              </div>
+
               {/* You-stuff first, on ONE row: profile chip left, search right.
                   The chip keeps its natural width (name truncates via its own
                   max-w), the search field takes the rest of the line. */}
@@ -1317,7 +1442,7 @@ export default function NavBar() {
                   own — and the search results, inside this row's layer, were
                   painted underneath the rows that come after it. The season
                   row below gets z-10 for its own menu, and stays under this. */}
-              <div className="relative z-20 flex items-center gap-2">
+              <div className="relative z-20 mt-2 flex items-center gap-2">
                 <AuthControl mobile={false} />
                 <div className="min-w-0 flex-1">
                   <GlobalSearch mobile />
@@ -1336,67 +1461,81 @@ export default function NavBar() {
                 </>
               )}
 
+              <MobileMenuLabel>Standings</MobileMenuLabel>
+              {/* Who leads and by how much, before a page is even picked. Gone
+                  when there is nothing to show yet. */}
+              <div className="pb-1 empty:hidden">
+                <StandingsLeaderStrip preview={sheetPreview} to={seriesPath("/drivers")} />
+              </div>
+              {sheetPages.map((pg) => (
+                <SheetRow key={pg.title} to={pg.to} Icon={pg.Icon} title={pg.title} sub={pg.sub} />
+              ))}
+
               <MobileMenuLabel>League</MobileMenuLabel>
-              <MobileRow to={seriesPath("")} end alsoActiveOn="/" icon={NAV_ICONS.home} label="Home" />
-              <MobileRow to={seriesPath("/races")} icon={NAV_ICONS.races} label="Races" sub="Calendar & results" />
-              {attendanceOpen && (
-                <MobileRow
-                  to={seriesPath("/attendance")}
-                  icon={NAV_ICONS.attendance}
-                  label="Attendance"
-                  sub={seats.show ? (seats.openCount === 1 ? "A seat is free" : `${seats.openCount} seats are free`) : "Race sign-up"}
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <SheetTile to={seriesPath("")} end alsoActiveOn="/" Icon={House} label="Home" />
+                <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />
+                {attendanceOpen && (
+                  <SheetTile
+                    to={seriesPath("/attendance")}
+                    Icon={CalendarCheck}
+                    label="Attendance"
+                    hint={seats.show ? (seats.openCount === 1 ? "A seat is free" : `${seats.openCount} seats are free`) : "Race sign-up"}
+                    badge={
+                      seats.show ? (
+                        <span className="glow-pulse absolute -right-2 -top-1 font-mono text-[11px] font-bold tabular-nums text-brand">
+                          {seats.openCount}
+                          <span className="sr-only"> {seats.openCount === 1 ? "seat free" : "seats free"}</span>
+                        </span>
+                      ) : null
+                    }
+                  />
+                )}
+                <SheetTile
+                  to={seriesPath("/live")}
+                  Icon={Radio}
+                  label="Live"
+                  hint={liveFeatureNew ? "New: satellite track map" : liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
                   badge={
-                    seats.show ? (
-                      <span className="glow-pulse shrink-0 font-mono text-[11px] font-bold tabular-nums text-brand">
-                        {seats.openCount}
+                    liveNow > 0 ? (
+                      <span className="absolute -right-2.5 -top-1 min-w-[1.1rem] rounded-full bg-brand px-1 text-center font-mono text-[10px] font-bold leading-[1.1rem] tabular-nums text-ink">
+                        {liveNow}
+                        <span className="sr-only"> on track</span>
                       </span>
+                    ) : liveFeatureNew ? (
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-brand" />
                     ) : null
                   }
                 />
-              )}
-              <MobileRow
-                to={seriesPath("/live")}
-                icon={NAV_ICONS.live}
-                label="Live"
-                sub={liveFeatureNew ? "New: satellite track map" : liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
-              />
-
-              <MobileMenuLabel>Standings</MobileMenuLabel>
-              <MobileRow to={seriesPath("/drivers")} icon={NAV_ICONS.drivers} label="Drivers" />
-              <MobileRow to={seriesPath("/constructors")} icon={NAV_ICONS.constructors} label="Constructors" />
-              {transfersVisible && <MobileRow to={seriesPath("/transfers")} icon={NAV_ICONS.transfers} label="Transfers" sub="Team changes, round by round" />}
-              <MobileRow to={seriesPath("/records")} icon={NAV_ICONS.records} label="Hall of Fame" sub="All-time records" />
-
-              <MobileMenuLabel>More</MobileMenuLabel>
-              <MobileRow to="/downloads" icon={NAV_ICONS.info} label="Race Info" sub="Rules & downloads" />
-              <MobileRow to="/help" icon={NAV_ICONS.help} label="Help" sub="Checksums, kicks, sign-up" />
-              {/* The phone's way to the feedback panel: the floating button in
-                  the corner is desktop-only, so this row is what opens it here. */}
-              <MobileActionRow
-                icon={NAV_ICONS.feedback}
-                label="Feedback"
-                sub="Report a bug or an idea"
-                onClick={() => {
-                  closeMenu();
-                  openFeedback();
-                }}
-              />
-              {isLoggedIn && hasThreads && (
-                <MobileRow to="/feedback" icon={NAV_ICONS.messages} label="Your messages" sub="What the admins replied" />
-              )}
-              {/* Stewarding, on a phone. The corner button is desktop-only, and
-                  a race night is the one evening the whole grid is on phones. */}
-              {/* One row, not two: both led to /reports and lit up together.
-                  With reports of your own it opens the list (which has its own
-                  "Report an incident"), without it goes straight to the form. */}
-              {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
-                <MobileRow
-                  to={hasReports ? "/reports" : reportsPath({ nw: true })}
-                  icon={NAV_ICONS.incident}
-                  label="Stewarding"
-                  sub={hasReports ? "Report an incident, or see yours" : "Report an incident, privately"}
+                <SheetTile to="/downloads" Icon={FileText} label="Race Info" hint="Rules & downloads" />
+                <SheetTile to="/help" Icon={CircleHelp} label="Help" hint="Checksums, kicks, sign-up" />
+                {/* The phone's way to the feedback panel: the floating button in
+                    the corner is desktop-only, so this square is what opens it here. */}
+                <SheetTile
+                  Icon={MessageSquare}
+                  label="Feedback"
+                  hint="Report a bug or an idea"
+                  onClick={() => {
+                    closeMenu();
+                    openFeedback();
+                  }}
                 />
-              )}
+                {isLoggedIn && hasThreads && (
+                  <SheetTile to="/feedback" Icon={Mail} label="Messages" hint="What the admins replied" />
+                )}
+                {/* Stewarding, on a phone. The corner button is desktop-only, and
+                    a race night is the one evening the whole grid is on phones.
+                    With reports of your own it opens the list (which has its own
+                    "Report an incident"), without it goes straight to the form. */}
+                {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && (
+                  <SheetTile
+                    to={hasReports ? "/reports" : reportsPath({ nw: true })}
+                    Icon={TriangleAlert}
+                    label="Stewarding"
+                    hint={hasReports ? "Report an incident, or see yours" : "Report an incident, privately"}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
