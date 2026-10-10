@@ -8,6 +8,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // ---------------------------------------------------------------------------
 // /records — the Hall of Fame: the champions gallery (drivers ⇄ teams), the
@@ -369,9 +370,12 @@ export default function HallOfFame() {
 
   return (
     <div className="content-in space-y-6 sm:space-y-14">
-      <PageHeader eyebrow="All-time" title="Hall of Fame" />
+      <DesignSlot id="records/01-header">
+        <PageHeader eyebrow="All-time" title="Hall of Fame" />
+      </DesignSlot>
 
       {/* champions first — drivers ⇄ teams */}
+      <DesignSlot id="records/02-champions">
       {data.champions.length > 0 && (
         <section className="reveal">
           <SectionHead
@@ -397,8 +401,10 @@ export default function HallOfFame() {
           </div>
         </section>
       )}
+      </DesignSlot>
 
       {/* single records — hairline band of golden numbers */}
+      <DesignSlot id="records/03-records">
       {data.records.length > 0 && (
         <section className="reveal">
           <SectionHead eyebrow="One-offs" title="Records" />
@@ -411,8 +417,10 @@ export default function HallOfFame() {
           </div>
         </section>
       )}
+      </DesignSlot>
 
       {/* ONE all-time top list, category picked via the button bar */}
+      <DesignSlot id="records/04-top10">
       {activeList && (
         <section className="reveal">
           <SectionHead eyebrow="Careers" title="All-time Top 10" />
@@ -436,8 +444,10 @@ export default function HallOfFame() {
           </div>
         </section>
       )}
+      </DesignSlot>
 
       {/* the wall: names bought with server tokens, oldest first */}
+      <DesignSlot id="records/05-token-wall">
       {wall.data?.wall?.length > 0 && (
         <section className="reveal">
           <SectionHead eyebrow="NABS Tokens" title="The wall" />
@@ -454,6 +464,7 @@ export default function HallOfFame() {
           </ul>
         </section>
       )}
+      </DesignSlot>
     </div>
   );
 }

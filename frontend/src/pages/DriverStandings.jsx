@@ -17,6 +17,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import { List as ListIcon, Grid3x3, IdCard } from "lucide-react";
 import { countryFor } from "../data/driverCountries.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champion = false }) {
   const gap = leaderTotal - row.total;
@@ -361,6 +362,7 @@ export default function DriverStandings() {
           counts on one small line) so the table starts about 200px higher —
           three more drivers on the first screen. From sm up it is the full
           header and controls below, unchanged. */}
+      <DesignSlot id="drivers/01-header">
       <div className="mb-3 sm:hidden">
         <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">
           {seasonName ? `${seasonName} · Championship` : "Championship"}
@@ -370,7 +372,9 @@ export default function DriverStandings() {
       <div className="hidden sm:block">
         <PageHeader eyebrow="Championship" title={seasonHeading} />
       </div>
+      </DesignSlot>
 
+      <DesignSlot id="drivers/02-leaders">
       {top3.length > 0 && (
         // Phones skip the leader cards entirely — the same three drivers head
         // the table right below, so the cards were a screen of duplicate info
@@ -390,10 +394,12 @@ export default function DriverStandings() {
           ))}
         </div>
       )}
+      </DesignSlot>
 
       {/* One wrapper for both layouts, so the newcomer tour's stop finds the
           controls on whichever screen is in use. */}
       <div data-tour="standings-views">
+      <DesignSlot id="drivers/03-filters">
       {/* Phone: tier switch and view icons on one row, then one line of counts
           with the "with points" tick at its end. */}
       <div className="sm:hidden">
@@ -552,19 +558,58 @@ export default function DriverStandings() {
       </div>
 
       </div>
+      </DesignSlot>
       </div>
 
       <div key={`${activeView}:${activeTier}`} className={swap}>
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No drivers here"
-          hint={
-            idleReserves > 0
-              ? "Nobody here has started a round yet. The line above shows the reserves who signed up."
-              : "Nobody matches this filter yet. Try another tier, or include drivers without points."
-          }
+      {/* Design preview: each view (and the empty state) sits in its own slot,
+          so a picked variant shows whichever view is active. Unpicked, exactly
+          one of them renders, as before. */}
+      <DesignSlot id="drivers/04-list">
+      {rows.length > 0 && activeView !== "cards" && activeView !== "grid" && (
+        <div
+          ref={replayRef}
+          // While the replay runs (and afterwards, for this mount) the cascade
+          // entrance stays off: its per-row rise animates transform, and the
+          // replay owns transform. The replay IS the entrance on those loads.
+          className={`${replayArmed || seasonReplayed.current ? "" : "cascade"} card divide-y divide-border overflow-hidden`}
+        >
+          {rows.map((d, i) => (
+            <DriverRow
+              key={d.driverId}
+              d={d}
+              leaderTotal={leaderTotal}
+              index={Math.min(i, 16)}
+              showTier={multiTier}
+              champion={championIds.has(d.driverId)}
+              decided={seasonDecided}
+              delta={deltaById.has(d.driverId) ? deltaById.get(d.driverId) : null}
+              deltaSlot={deltaById.size > 0}
+            />
+          ))}
+        </div>
+      )}
+      </DesignSlot>
+      <DesignSlot id="drivers/05-matrix">
+      {rows.length > 0 && activeView === "grid" && (
+        <StandingsTable
+          variant="driver"
+          raceNumbers={data.raceNumbers}
+          sprintRounds={data.sprintRounds || []}
+          fastestLapPoints={data.fastestLapPoints || 0}
+          customPoints={data.customPoints || {}}
+          championOverride={data.championOverride || null}
+          manualPoints={!!data.manualPoints}
+          rows={rows}
+          dropWorst={data.dropWorst}
+          officialTotals={data.officialTotals}
+          decided={seasonDecided}
+          showMovement={!seasonDecided || demoArrows}
         />
-      ) : activeView === "cards" ? (
+      )}
+      </DesignSlot>
+      <DesignSlot id="drivers/06-cards">
+      {rows.length > 0 && activeView === "cards" && (
         // The field as their actual rating cards, in championship order of the
         // current filter view. The numbers are the season's FROZEN card values
         // (where each driver stood at the end of the previous season), so they
@@ -641,44 +686,20 @@ export default function DriverStandings() {
             </div>
           );
         })()
-      ) : activeView === "grid" ? (
-        <StandingsTable
-          variant="driver"
-          raceNumbers={data.raceNumbers}
-          sprintRounds={data.sprintRounds || []}
-          fastestLapPoints={data.fastestLapPoints || 0}
-          customPoints={data.customPoints || {}}
-          championOverride={data.championOverride || null}
-          manualPoints={!!data.manualPoints}
-          rows={rows}
-          dropWorst={data.dropWorst}
-          officialTotals={data.officialTotals}
-          decided={seasonDecided}
-          showMovement={!seasonDecided || demoArrows}
-        />
-      ) : (
-        <div
-          ref={replayRef}
-          // While the replay runs (and afterwards, for this mount) the cascade
-          // entrance stays off: its per-row rise animates transform, and the
-          // replay owns transform. The replay IS the entrance on those loads.
-          className={`${replayArmed || seasonReplayed.current ? "" : "cascade"} card divide-y divide-border overflow-hidden`}
-        >
-          {rows.map((d, i) => (
-            <DriverRow
-              key={d.driverId}
-              d={d}
-              leaderTotal={leaderTotal}
-              index={Math.min(i, 16)}
-              showTier={multiTier}
-              champion={championIds.has(d.driverId)}
-              decided={seasonDecided}
-              delta={deltaById.has(d.driverId) ? deltaById.get(d.driverId) : null}
-              deltaSlot={deltaById.size > 0}
-            />
-          ))}
-        </div>
       )}
+      </DesignSlot>
+      <DesignSlot id="drivers/08-empty">
+      {rows.length === 0 && (
+        <EmptyState
+          title="No drivers here"
+          hint={
+            idleReserves > 0
+              ? "Nobody here has started a round yet. The line above shows the reserves who signed up."
+              : "Nobody matches this filter yet. Try another tier, or include drivers without points."
+          }
+        />
+      )}
+      </DesignSlot>
       </div>
 
       {/* The season total is NOT the sum of a driver's results: the lowest N
@@ -687,6 +708,7 @@ export default function DriverStandings() {
           actually read, the headline number of the whole page was unexplained
           and did not add up. The matrix has its own, fuller wording (it can
           point at the struck-through cells), so this only fills the other two. */}
+      <DesignSlot id="drivers/07-legend">
       {activeView !== "grid" && data.dropWorst > 0 && data.raceNumbers.length > 0 && (
         <p className="mt-4 text-xs leading-relaxed text-light">
           Points are the season total after the drop rule: each driver&rsquo;s {data.dropWorst} lowest-scoring
@@ -697,6 +719,7 @@ export default function DriverStandings() {
           . Switch to <button type="button" onClick={() => setView("grid")} className="underline decoration-dotted underline-offset-2 transition hover:text-dark">By round</button> to see which rounds were dropped.
         </p>
       )}
+      </DesignSlot>
     </div>
   );
 }

@@ -1,0 +1,46 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="mx-auto max-w-[400px]">
+<div class="relative overflow-hidden rounded-2xl text-white shadow-lift" style="background:linear-gradient(160deg,#1c1007 0%,#0f172a 60%)">
+  <img src="/teams/mclaren.png" class="pointer-events-none absolute -right-10 -top-6 h-48 w-48 object-contain opacity-[.12]" alt="">
+  <div class="absolute inset-x-0 top-0 h-1" style="background:#F58220"></div>
+  <div class="relative p-5">
+    <div class="font-mono text-[10px] font-bold uppercase tracking-[.2em]" style="color:#F58220">Team · Tier 1</div>
+    <div class="mt-1 font-display text-4xl font-black uppercase italic leading-none">McLaren</div>
+    <div class="mt-4 flex items-end gap-5">
+      <div><div class="font-display text-5xl font-black italic leading-none">P2</div><div class="font-mono text-[10px] uppercase tracking-wider text-white/50">constructors</div></div>
+      <div class="pb-1"><div class="font-display text-2xl font-black italic leading-none" style="color:#F58220">399</div><div class="font-mono text-[10px] uppercase tracking-wider text-white/50">pts · −10 to P1</div></div>
+    </div>
+  </div>
+  <div class="relative grid grid-cols-2 gap-2 px-3 pb-3">
+    <div class="rounded-xl  p-3" style="background:#F58220;color:#0f172a">
+      <div class="flex items-center justify-between"><span class="font-display text-3xl font-black italic leading-none">P1</span><img src="/flags/w40/gb.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div>
+      <div class="mt-2 font-display text-base font-black uppercase leading-tight">Siggsta</div>
+      <div class="mt-0.5 font-mono text-[10px] font-bold uppercase text-ink/70">220 pts · 64%</div>
+    </div><div class="rounded-xl bg-white/5 p-3" style="">
+      <div class="flex items-center justify-between"><span class="font-display text-3xl font-black italic leading-none">P8</span><img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div>
+      <div class="mt-2 font-display text-base font-black uppercase leading-tight">JoMilan</div>
+      <div class="mt-0.5 font-mono text-[10px] font-bold uppercase text-white/50">126 pts · 36%</div>
+    </div>
+  </div>
+  <a class="relative flex items-center justify-between border-t border-white/10 px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-wider text-white/70">Team page <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+</div></div>
+</main></body></html>

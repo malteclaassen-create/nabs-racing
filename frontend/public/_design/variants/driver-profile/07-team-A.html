@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="mx-auto max-w-[400px]">
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex items-center gap-4 p-5" style="background:linear-gradient(135deg,#F582201f,transparent 70%)">
+    <span class="grid h-14 w-14 place-items-center rounded-2xl bg-card shadow-card"><img src="/teams/mclaren.png" class="h-9 w-9 object-contain" alt=""></span>
+    <div class="min-w-0 flex-1"><p class="eyebrow">Team</p><div class="font-display text-2xl font-black uppercase leading-tight">McLaren</div><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Tier 1 · since Season 7</div></div>
+    <svg viewBox="0 0 24 24" class="h-5 w-5 text-faint" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  </div>
+  <div class="grid grid-cols-3 divide-x divide-border border-y border-border text-center">
+    <div class="py-3"><div class="font-display text-2xl font-black ">P2</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-light">Constructors</div></div><div class="py-3"><div class="font-display text-2xl font-black ">399</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-light">Points</div></div><div class="py-3"><div class="font-display text-2xl font-black text-bad">−10</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-light">to Porsche</div></div>
+  </div>
+  <div class="p-5">
+    <div class="flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-wider text-light"><span>Share of team points</span><span>346 pts</span></div>
+    <div class="mt-2 flex h-3 overflow-hidden rounded-full"><div style="width:64%;background:#F58220"></div><div class="ml-0.5 flex-1" style="background:#F5822055"></div></div>
+    <div class="mt-4 space-y-2">
+      <div class="flex items-center gap-3 rounded-xl bg-primary/20 ring-1 ring-primary px-3 py-2.5">
+        <span class="h-3 w-3 rounded-sm" style="background:#F58220"></span><img src="/flags/w40/gb.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+        <span class="flex-1 font-display text-sm font-black uppercase leading-tight">Siggsta<span class="block font-mono text-[9px] tracking-wider text-eyebrow">this page</span></span>
+        <span class="font-mono text-xs text-light">P1</span><span class="w-9 text-right font-display font-black">220</span><span class="w-9 text-right font-mono text-[11px] text-light">64%</span>
+      </div><div class="flex items-center gap-3 rounded-xl bg-surface2 px-3 py-2.5">
+        <span class="h-3 w-3 rounded-sm" style="background:#F5822055"></span><img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+        <span class="flex-1 font-display text-sm font-black uppercase leading-tight">JoMilan</span>
+        <span class="font-mono text-xs text-light">P8</span><span class="w-9 text-right font-display font-black">126</span><span class="w-9 text-right font-mono text-[11px] text-light">36%</span>
+      </div>
+    </div>
+  </div>
+</div></div>
+</main></body></html>

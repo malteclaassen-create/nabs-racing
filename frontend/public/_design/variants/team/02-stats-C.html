@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>*::-webkit-scrollbar{display:none}</style></head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<section class="rounded-2xl bg-card p-4 shadow-card sm:p-6">
+<div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-lg font-black uppercase tracking-tight">How McLaren compares</h2>
+<div class="flex items-center gap-3 font-mono text-[10px] text-light"><span class="flex items-center gap-1"><span class="h-2 w-4 rounded-full" style="background:#F58220"></span>McLaren</span><span class="flex items-center gap-1"><span class="h-3 w-0.5 bg-dark"></span>Tier 1 avg</span><span>bar end = tier best</span></div></div>
+<div class="mt-3 divide-y divide-border"><div class="grid grid-cols-[110px_1fr_56px] items-center gap-3 py-2.5 sm:grid-cols-[160px_1fr_70px_200px]">
+<span class="text-sm font-semibold text-dark">Points</span>
+<div class="relative h-3 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:98%;background:#F58220"></div><span class="absolute -top-1 h-5 w-0.5 bg-dark" style="left:81%"></span></div>
+<span class="text-right font-mono text-base font-bold tabular-nums">399</span>
+<span class="hidden truncate font-mono text-[11px] text-light sm:block">Tier best · Porsche Martini 409</span></div><div class="grid grid-cols-[110px_1fr_56px] items-center gap-3 py-2.5 sm:grid-cols-[160px_1fr_70px_200px]">
+<span class="text-sm font-semibold text-dark">Race wins</span>
+<div class="relative h-3 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:100%;background:#F58220"></div><span class="absolute -top-1 h-5 w-0.5 bg-dark" style="left:67%"></span></div>
+<span class="text-right font-mono text-base font-bold tabular-nums">3</span>
+<span class="hidden truncate font-mono text-[11px] text-light sm:block">Tier best · McLaren 3</span></div><div class="grid grid-cols-[110px_1fr_56px] items-center gap-3 py-2.5 sm:grid-cols-[160px_1fr_70px_200px]">
+<span class="text-sm font-semibold text-dark">Podiums</span>
+<div class="relative h-3 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:89%;background:#F58220"></div><span class="absolute -top-1 h-5 w-0.5 bg-dark" style="left:67%"></span></div>
+<span class="text-right font-mono text-base font-bold tabular-nums">8</span>
+<span class="hidden truncate font-mono text-[11px] text-light sm:block">Tier best · Porsche Martini 9</span></div><div class="grid grid-cols-[110px_1fr_56px] items-center gap-3 py-2.5 sm:grid-cols-[160px_1fr_70px_200px]">
+<span class="text-sm font-semibold text-dark">Best round</span>
+<div class="relative h-3 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:100%;background:#F58220"></div><span class="absolute -top-1 h-5 w-0.5 bg-dark" style="left:83%"></span></div>
+<span class="text-right font-mono text-base font-bold tabular-nums">65</span>
+<span class="hidden truncate font-mono text-[11px] text-light sm:block">Tier best · McLaren 65</span></div><div class="grid grid-cols-[110px_1fr_56px] items-center gap-3 py-2.5 sm:grid-cols-[160px_1fr_70px_200px]">
+<span class="text-sm font-semibold text-dark">Avg / round</span>
+<div class="relative h-3 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:98%;background:#F58220"></div><span class="absolute -top-1 h-5 w-0.5 bg-dark" style="left:81%"></span></div>
+<span class="text-right font-mono text-base font-bold tabular-nums">39.9</span>
+<span class="hidden truncate font-mono text-[11px] text-light sm:block">Tier best · Porsche Martini 40.9</span></div></div></section>
+</main></body></html>

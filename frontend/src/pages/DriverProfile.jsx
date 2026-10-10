@@ -27,6 +27,16 @@ import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
 import { isIdleReserve, finishesOf } from "../utils/standingsRow.js";
+import DesignSlot from "../design/DesignSlot.jsx";
+import { DESIGN_ENABLED, useDesignPicks } from "../design/designPicks.js";
+
+// Design preview only: the stat tiles live INSIDE the hero panel, so with the
+// hero swapped for a mockup they would vanish with it. Then they follow it on
+// their own instead. Renders nothing on a built site.
+function AfterPickedHero({ children }) {
+  const { picks, off } = useDesignPicks();
+  return DESIGN_ENABLED && !off && picks["driver-profile/01-hero"] ? children : null;
+}
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -1714,6 +1724,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                 ))}
               </div>
             )}
+            <DesignSlot id="driver-profile/02-stat-tiles">
             {allTime && (
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -1736,6 +1747,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
             <div key={showAll ? "all" : "season"} className="content-in">
               <StatTiles stats={shown} visible={driver.profileTiles} className="grid-cols-2 sm:grid-cols-3" />
             </div>
+            </DesignSlot>
           </div>
         </div>
       </div>
@@ -2003,6 +2015,7 @@ export default function DriverProfile({ previewId, preview }) {
     return (
       <div className="content-in space-y-6">
         {ownControls}
+        <DesignSlot id="driver-profile/11-not-in-season">
         <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
           <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={72} />
           <div>
@@ -2029,6 +2042,7 @@ export default function DriverProfile({ previewId, preview }) {
             All drivers of {seasonLabel} →
           </Link>
         </div>
+        </DesignSlot>
       </div>
     );
   }
@@ -2037,6 +2051,9 @@ export default function DriverProfile({ previewId, preview }) {
     <ProfileAppearance driver={driver}>
     <div className="content-in space-y-6">
       {ownControls}
+      {/* Design preview: the "didn't race in this season" card replaces the
+          whole page; picked, it shows up here at the top. */}
+      <DesignSlot id="driver-profile/11-not-in-season" insert />
       {LAYOUT === "classic" ? (
         <>
           {/* Classic hero banner */}
@@ -2059,6 +2076,7 @@ export default function DriverProfile({ previewId, preview }) {
       ) : (
         /* Card-led top: rating card is the centrepiece; identity, championship
            and the headline stats fill the space beside it (no dark hero, no breakdown) */
+        <DesignSlot id="driver-profile/01-hero">
         <CardHeader
           driver={driver}
           rating={rating}
@@ -2072,7 +2090,13 @@ export default function DriverProfile({ previewId, preview }) {
           pinnedAchievements={p.pinnedAchievements}
           cardsEnabled={cardsEnabled}
         />
+        </DesignSlot>
       )}
+      <AfterPickedHero>
+        <DesignSlot id="driver-profile/02-stat-tiles">
+          <StatTiles stats={stats} visible={driver.profileTiles} />
+        </DesignSlot>
+      </AfterPickedHero>
 
       {/* The per-season AC telemetry (overtakes, consistency, contacts,
           penalties) is deliberately NOT shown here — it feeds the rating
@@ -2083,6 +2107,7 @@ export default function DriverProfile({ previewId, preview }) {
 
       {/* Season form + Head to head */}
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
+        <DesignSlot id="driver-profile/03-season-form" className="lg:col-span-2">
         <div className="reveal card profile-form-panel flex flex-col overflow-hidden lg:col-span-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Season Form</h2>
@@ -2146,14 +2171,20 @@ export default function DriverProfile({ previewId, preview }) {
             />
           </div>
         </div>
+        </DesignSlot>
 
+        <DesignSlot id="driver-profile/04-head-to-head">
         <HeadToHead me={p} meRow={meRow} standings={standingsData.standings} />
+        </DesignSlot>
       </div>
 
+      <DesignSlot id="driver-profile/05-rivals-progression">
       <RivalsProgression driverId={driver.id} standingsData={standingsData} />
+      </DesignSlot>
 
       {/* Race by race + Team */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <DesignSlot id="driver-profile/06-race-by-race" className="lg:col-span-2">
         <div className="reveal card overflow-hidden lg:col-span-2">
           <CardBar title="Race by Race" />
           <div className="overflow-x-auto">
@@ -2267,8 +2298,11 @@ export default function DriverProfile({ previewId, preview }) {
             </p>
           )}
         </div>
+        </DesignSlot>
 
+        <DesignSlot id="driver-profile/07-team">
         <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} teammateHistory={p.teammateHistory || []} />
+        </DesignSlot>
       </div>
 
       {/* Which kind of circuit suits this driver (not in the /profile live
@@ -2278,7 +2312,9 @@ export default function DriverProfile({ previewId, preview }) {
       )}
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
+      <DesignSlot id="driver-profile/10-career">
       <CareerBlock career={p.career} otherSeries={p.otherSeries} careerKey={p.driver.handle || p.driver.id} />
+      </DesignSlot>
 
       <div>
         <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">← All drivers</Link>

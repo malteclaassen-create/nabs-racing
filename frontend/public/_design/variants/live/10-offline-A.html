@@ -1,0 +1,54 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<section class="rounded-2xl bg-card px-5 py-10 text-center shadow-card sm:px-10 sm:py-14">
+  <div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-surface2 text-faint"><svg viewBox="0 0 24 24" class="h-7 w-7" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2-1.43"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="m2 2 20 20"/></svg></div>
+  <h2 class="mt-4 font-display text-2xl font-black uppercase tracking-tight text-dark">No session running</h2>
+  <p class="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-medium">Live timing comes to life when a race server is up. Nothing is on track right now — here's what's next.</p>
+  <div class="mx-auto mt-7 grid max-w-3xl gap-4 text-left md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div class="flex flex-col rounded-2xl border border-border bg-surface2/60 p-5">
+      <div class="flex items-start justify-between gap-3">
+        <div><div class="eyebrow">Next up · Round 12</div><div class="mt-1 flex items-center gap-2"><img src="/flags/w40/tr.png" alt="" class="shrink-0 rounded-[2px] object-cover " style="width:22px;height:15px"><span class="font-display text-xl font-extrabold uppercase tracking-tight text-dark">Istanbul Park</span></div><div class="mt-0.5 font-mono text-sm text-medium">Fri 16 Oct · 20:00 CEST</div></div>
+        <svg viewBox="0 0 100 89.3" class="h-16 w-auto shrink-0" fill="none"><path d="M37,78.4 L50.6,75.4 L51.7,74.9 L52.2,74 L52,73.2 L51.1,69.5 L50.6,67.6 L50.6,66.2 L51,64.1 L52.2,62 L54.2,60 L58.3,57.6 L60.7,56.6 L63.7,55.6 L69.1,54.6 L72.5,54.4 L74.4,54.4 L77.2,54.8 L78.4,54.6 L79.7,54 L80.9,52.8 L81.5,51.4 L81.8,50 L81.2,45.5 L81.4,44.6 L82,44 L83,44 L85.9,44.3 L88.4,44.3 L89.8,44 L90.4,43.3 L90.6,42.4 L89.8,38.5 L89.4,37.6 L88.5,36.9 L66.3,25.7 L64.9,24.6 L64.4,23.6 L64.5,22.6 L64.8,21.8 L65.4,21.1 L67.2,20 L68.8,19.6 L70.2,19.5 L77,20.7 L82.5,22 L85.4,22.9 L86.8,23.2 L87.6,22.9 L92,20.5 L92.6,19.8 L94,15.5 L94,14.4 L93.6,13.5 L91.9,10.6 L90.4,8.8 L88.1,6.6 L87,6.1 L85.4,6 L83.2,6.3 L55.2,14.6 L53.6,15.5 L53,16.2 L53.1,17.2 L54.1,18.9 L54.8,20.3 L54.8,21.9 L45.9,49.6 L44.8,51 L43,52.6 L6.8,72.2 L6.1,72.9 L6,73.9 L6.2,74.8 L6.9,75.8 L7.7,76 L10.1,75.9 L10.8,76.1 L11.1,76.6 L11,77.8 L10.4,82 L10.5,82.8 L11,83.3 L11.8,83.3 L37,78.4 Z" stroke="#0f172a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      </div>
+      <div class="mt-5 grid grid-cols-4 gap-2 text-center">
+        <div class="rounded-xl bg-card py-2 shadow-sm"><div class="font-mono text-xl font-bold tabular-nums text-dark">05</div><div class="font-mono text-[9px] uppercase tracking-wider text-light">days</div></div><div class="rounded-xl bg-card py-2 shadow-sm"><div class="font-mono text-xl font-bold tabular-nums text-dark">23</div><div class="font-mono text-[9px] uppercase tracking-wider text-light">hrs</div></div><div class="rounded-xl bg-card py-2 shadow-sm"><div class="font-mono text-xl font-bold tabular-nums text-dark">41</div><div class="font-mono text-[9px] uppercase tracking-wider text-light">min</div></div><div class="rounded-xl bg-card py-2 shadow-sm"><div class="font-mono text-xl font-bold tabular-nums text-dark">08</div><div class="font-mono text-[9px] uppercase tracking-wider text-light">sec</div></div>
+      </div>
+      <div class="mt-auto flex gap-2 pt-5">
+        <a class="flex-1 whitespace-nowrap rounded-lg bg-primary px-3 py-2.5 text-center text-[13px] font-bold uppercase tracking-wide text-ink">Calendar</a>
+        <a class="flex-1 whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2.5 text-center text-[13px] font-bold uppercase tracking-wide text-dark">Standings</a>
+      </div>
+    </div>
+    <div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="relative aspect-video overflow-hidden bg-ink">
+    <img src="/hero.jpg" alt="" class="absolute inset-0 h-full w-full object-cover" style="object-position:75% 70%">
+    <div class="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent"></div>
+    <span class="absolute left-1/2 top-1/2 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-ink shadow-lift"><svg viewBox="0 0 24 24" class="h-6 w-6 ml-1" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg></span>
+    <span class="absolute right-3 top-3 rounded bg-ink/80 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">1:27.418</span>
+    <div class="absolute bottom-3 left-4 right-4 text-white"><div class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Hotlap · onboard</div><div class="font-display text-base font-extrabold uppercase leading-tight">Learn Istanbul Park before race night</div></div>
+  </div>
+  <div class="flex items-center justify-between px-4 py-2.5 text-xs text-light"><span>Siggsta · McLaren · F1 2007</span><span class="font-mono">2 of 4 videos</span></div>
+</div>
+  </div>
+</section>
+<div class="mt-6 eyebrow px-1">Other states</div>
+<div class="mt-2 grid gap-3 md:grid-cols-2">
+  <div class="flex items-center gap-3 rounded-xl bg-card px-4 py-3 shadow-card"><span class="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-border border-t-accent"></span><div><div class="text-sm font-semibold text-dark">Connecting to Server 1…</div><div class="font-mono text-[10px] uppercase tracking-wider text-light">first data usually within 5 s</div></div></div>
+  <div class="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3"><span class="text-warn"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2-1.43"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="m2 2 20 20"/></svg></span><div class="min-w-0 flex-1"><div class="text-sm font-semibold text-warn">Connection lost — showing last known data</div><div class="font-mono text-[10px] uppercase tracking-wider text-warn/80">reconnecting · attempt 3 · held 0:42</div></div><button class="shrink-0 rounded-md bg-card px-2 py-1 font-mono text-[10px] font-bold uppercase text-dark">Retry</button></div>
+</div>
+</main></body></html>

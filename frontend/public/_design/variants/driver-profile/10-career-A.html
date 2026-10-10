@@ -1,0 +1,65 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6"><h2 class="font-display text-xl font-extrabold uppercase tracking-tight">Career across seasons</h2><a class="inline-flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Full career <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></a></div>
+  <table class="hidden w-full text-sm sm:table">
+    <thead><tr class="border-b border-border text-left font-mono text-[10px] font-bold uppercase tracking-wider text-light"><th class="px-6 py-2.5">Season</th><th class="px-2">Team</th><th class="px-2 text-center">Pos</th><th class="px-2 text-center">Starts</th><th class="px-2 text-center">Wins</th><th class="px-2 text-center">Podiums</th><th class="px-2">Points</th><th class="px-6"></th></tr></thead>
+    <tbody class="divide-y divide-border">
+      <tr class="bg-primary/15"><td class="px-6 py-3"><span class="font-display font-bold uppercase">Season 7</span> <span class="ml-1 font-mono text-[10px] text-light">F1 2007</span> <span class="ml-1 rounded-full bg-ink px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-white">this one</span></td>
+        <td class="px-2"><span class="flex items-center gap-2"><span class="h-4 w-1.5 rounded-full" style="background:#F58220"></span>McLaren</span></td>
+        <td class="px-2 text-center"><span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="background:#EAB308;color:#0f172a">P1</span></td>
+        <td class="px-2 text-center">10</td><td class="px-2 text-center font-bold">2</td><td class="px-2 text-center font-bold">4</td>
+        <td class="px-2"><div class="flex items-center gap-2"><div class="h-1.5 w-24 rounded-full bg-surface2"><div class="h-full rounded-full" style="width:88%;background:#F58220"></div></div><span class="font-display font-black">220</span></div></td>
+        <td class="px-6 text-right text-faint"><svg viewBox="0 0 24 24" class="ml-auto h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></td></tr><tr class=""><td class="px-6 py-3"><span class="font-display font-bold uppercase">Season 6</span> <span class="ml-1 font-mono text-[10px] text-light">F1 2006</span></td>
+        <td class="px-2"><span class="flex items-center gap-2"><span class="h-4 w-1.5 rounded-full" style="background:#FFD100"></span>Renault</span></td>
+        <td class="px-2 text-center"><span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P4</span></td>
+        <td class="px-2 text-center">12</td><td class="px-2 text-center font-bold">1</td><td class="px-2 text-center font-bold">5</td>
+        <td class="px-2"><div class="flex items-center gap-2"><div class="h-1.5 w-24 rounded-full bg-surface2"><div class="h-full rounded-full" style="width:96.4%;background:#FFD100"></div></div><span class="font-display font-black">241</span></div></td>
+        <td class="px-6 text-right text-faint"><svg viewBox="0 0 24 24" class="ml-auto h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></td></tr><tr class=""><td class="px-6 py-3"><span class="font-display font-bold uppercase">Season 5</span> <span class="ml-1 font-mono text-[10px] text-light">F1 2005</span></td>
+        <td class="px-2"><span class="flex items-center gap-2"><span class="h-4 w-1.5 rounded-full" style="background:#FFD100"></span>Renault</span></td>
+        <td class="px-2 text-center"><span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P9</span></td>
+        <td class="px-2 text-center">11</td><td class="px-2 text-center font-bold">0</td><td class="px-2 text-center font-bold">2</td>
+        <td class="px-2"><div class="flex items-center gap-2"><div class="h-1.5 w-24 rounded-full bg-surface2"><div class="h-full rounded-full" style="width:52.8%;background:#FFD100"></div></div><span class="font-display font-black">132</span></div></td>
+        <td class="px-6 text-right text-faint"><svg viewBox="0 0 24 24" class="ml-auto h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></td></tr><tr class=""><td class="px-6 py-3"><span class="font-display font-bold uppercase">Season 4</span> <span class="ml-1 font-mono text-[10px] text-light">F1 2004</span></td>
+        <td class="px-2"><span class="flex items-center gap-2"><span class="h-4 w-1.5 rounded-full" style="background:#0B6E4F"></span>Jaguar</span></td>
+        <td class="px-2 text-center"><span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P17</span></td>
+        <td class="px-2 text-center">7</td><td class="px-2 text-center font-bold">0</td><td class="px-2 text-center font-bold">0</td>
+        <td class="px-2"><div class="flex items-center gap-2"><div class="h-1.5 w-24 rounded-full bg-surface2"><div class="h-full rounded-full" style="width:16.4%;background:#0B6E4F"></div></div><span class="font-display font-black">41</span></div></td>
+        <td class="px-6 text-right text-faint"><svg viewBox="0 0 24 24" class="ml-auto h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></td></tr>
+    </tbody>
+    <tfoot><tr class="border-t border-border font-mono text-[11px] uppercase tracking-wider text-light"><td class="px-6 py-2.5">4 seasons</td><td></td><td class="text-center">best P1</td><td class="text-center">40</td><td class="text-center text-dark">3</td><td class="text-center text-dark">11</td><td class="px-2 font-display text-sm font-black text-dark">634</td><td></td></tr></tfoot>
+  </table>
+  <div class="divide-y divide-border sm:hidden">
+    <div class="flex items-center gap-3 px-4 py-3 bg-primary/15"><span class="h-10 w-1.5 rounded-full" style="background:#F58220"></span>
+      <div class="min-w-0 flex-1"><div class="font-display text-sm font-bold uppercase">Season 7 <span class="font-mono text-[10px] font-normal text-light">F1 2007</span></div><div class="text-xs text-light">McLaren · 10 starts · 2W 4P</div></div>
+      <span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="background:#EAB308;color:#0f172a">P1</span><span class="w-9 text-right font-display font-black">220</span></div><div class="flex items-center gap-3 px-4 py-3 "><span class="h-10 w-1.5 rounded-full" style="background:#FFD100"></span>
+      <div class="min-w-0 flex-1"><div class="font-display text-sm font-bold uppercase">Season 6 <span class="font-mono text-[10px] font-normal text-light">F1 2006</span></div><div class="text-xs text-light">Renault · 12 starts · 1W 5P</div></div>
+      <span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P4</span><span class="w-9 text-right font-display font-black">241</span></div><div class="flex items-center gap-3 px-4 py-3 "><span class="h-10 w-1.5 rounded-full" style="background:#FFD100"></span>
+      <div class="min-w-0 flex-1"><div class="font-display text-sm font-bold uppercase">Season 5 <span class="font-mono text-[10px] font-normal text-light">F1 2005</span></div><div class="text-xs text-light">Renault · 11 starts · 0W 2P</div></div>
+      <span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P9</span><span class="w-9 text-right font-display font-black">132</span></div><div class="flex items-center gap-3 px-4 py-3 "><span class="h-10 w-1.5 rounded-full" style="background:#0B6E4F"></span>
+      <div class="min-w-0 flex-1"><div class="font-display text-sm font-bold uppercase">Season 4 <span class="font-mono text-[10px] font-normal text-light">F1 2004</span></div><div class="text-xs text-light">Jaguar · 7 starts · 0W 0P</div></div>
+      <span class="inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md bg-surface2 px-1.5 font-display text-sm font-black" style="">P17</span><span class="w-9 text-right font-display font-black">41</span></div>
+    <div class="flex justify-between bg-surface2/60 px-4 py-2.5 font-mono text-[11px] uppercase text-light"><span>4 seasons · 40 starts</span><b class="text-dark">634 pts</b></div>
+  </div>
+  <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-border px-5 py-3 sm:px-6"><span class="text-sm text-medium">Also races in <b class="text-dark">Sunday GT League</b></span><span class="font-mono text-[11px] uppercase tracking-wider text-light">2 seasons · 14 starts · 1 win · 188 pts · best P3</span></div>
+</div>
+</main></body></html>

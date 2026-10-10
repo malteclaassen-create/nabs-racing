@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<section>
+  <div class="mx-auto max-w-2xl text-center">
+    <div class="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">New here?</div>
+    <h2 class="mt-2 font-display text-3xl sm:text-4xl font-black uppercase tracking-tight">What is the NABS Racing League?</h2>
+  </div>
+  <div class="mt-8 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+    <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:rounded-2xl lg:bg-surface2 lg:p-2" style="scrollbar-width:none">
+      <button class="flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-left bg-card text-medium lg:bg-transparent"><svg viewBox="0 0 24 24" class="h-5 w-5 text-faint" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 100 18 9 9 0 000-18zm0 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM12 3v5.5M5.6 19l3.6-4M18.4 19l-3.6-4"/></svg><span class="font-display text-sm font-extrabold uppercase tracking-tight whitespace-nowrap">A new era every season</span></button>
+      <button class="flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-left bg-ink text-white shadow-card"><svg viewBox="0 0 24 24" class="h-5 w-5 text-primary" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/></svg><span class="font-display text-sm font-extrabold uppercase tracking-tight whitespace-nowrap">Racing at every level</span></button>
+      <button class="flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-left bg-card text-medium lg:bg-transparent"><svg viewBox="0 0 24 24" class="h-5 w-5 text-faint" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4"/></svg><span class="font-display text-sm font-extrabold uppercase tracking-tight whitespace-nowrap">A real season</span></button>
+      <button class="flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-left bg-card text-medium lg:bg-transparent"><svg viewBox="0 0 24 24" class="h-5 w-5 text-faint" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8"/></svg><span class="font-display text-sm font-extrabold uppercase tracking-tight whitespace-nowrap">Built on Discord</span></button>
+    </div>
+    <div class="overflow-hidden rounded-2xl bg-card shadow-card">
+      <div class="grid grid-cols-1 md:grid-cols-[1fr_300px]">
+        <div class="p-6 sm:p-8">
+          <div class="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-faint">02 / 04</div>
+          <h3 class="mt-2 font-display text-2xl sm:text-3xl font-black uppercase tracking-tight">Racing at every level</h3>
+          <p class="mt-3 text-[15px] leading-relaxed text-medium">Grids are split by pace so the racing stays close, whatever your speed. Reserves can step in for any team when a regular can&rsquo;t make a round, and that&rsquo;s a perfect way to get your first start.</p>
+          <div class="mt-6 grid grid-cols-3 gap-2">
+            <div class="rounded-xl bg-surface2 p-3"><div class="font-display text-2xl font-black">2</div><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Tiers</div></div>
+            <div class="rounded-xl bg-surface2 p-3"><div class="font-display text-2xl font-black">17</div><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Teams</div></div>
+            <div class="rounded-xl bg-primary/30 p-3"><div class="font-display text-2xl font-black text-eyebrow">∞</div><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">Reserve seats</div></div>
+          </div>
+        </div>
+        <div class="border-t md:border-t-0 md:border-l border-border bg-surface2/60 p-5">
+          <div class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-faint">Pace split · example</div>
+          <div class="mt-3 space-y-2">
+            <div class="rounded-lg bg-card p-3 shadow-sm"><div class="flex justify-between font-mono text-[10px] font-bold uppercase"><span class="text-eyebrow">Tier 1</span><span class="text-faint">1:27.4 – 1:29.0</span></div><div class="mt-2 flex gap-1"><img src="/teams/mclaren.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/ferrari.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/porsche.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/williams.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"></div></div>
+            <div class="rounded-lg bg-card p-3 shadow-sm"><div class="flex justify-between font-mono text-[10px] font-bold uppercase"><span class="text-link">Tier 2</span><span class="text-faint">1:29.0 – 1:31.5</span></div><div class="mt-2 flex gap-1"><img src="/teams/honda.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/toyota.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/spyker.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"><img src="/teams/super_aguri.png" class="h-6 w-6 rounded bg-surface2 object-contain p-0.5"></div></div>
+            <div class="rounded-lg border border-dashed border-border p-3 font-mono text-[10px] font-bold uppercase text-light">Reserves · step in anywhere</div>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center justify-between border-t border-border px-6 py-3"><div class="flex gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-border"></span><span class="h-1.5 w-5 rounded-full bg-ink"></span><span class="h-1.5 w-1.5 rounded-full bg-border"></span><span class="h-1.5 w-1.5 rounded-full bg-border"></span></div><span class="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Next: A real season →</span></div>
+    </div>
+  </div>
+</section>
+</main></body></html>

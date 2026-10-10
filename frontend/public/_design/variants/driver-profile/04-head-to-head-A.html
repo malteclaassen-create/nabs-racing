@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="mx-auto max-w-[460px] overflow-hidden rounded-2xl bg-card shadow-card lg:max-w-[520px]">
+  <div class="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+    <h2 class="font-display text-lg font-extrabold uppercase tracking-tight">Head to head</h2>
+    <span class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-semibold"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-light" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> vs JoMilan <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-light" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+  </div>
+  <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 pt-5 sm:gap-3 sm:px-5">
+    <div class="flex items-center gap-3"><span class="grid h-10 w-10 text-base sm:h-14 sm:w-14 sm:text-xl shrink-0 place-items-center rounded-full font-display font-black text-white shadow-card" style="background:#F58220">S</span><div><div class="font-display text-sm font-black uppercase leading-tight sm:text-base">Siggsta</div><div class="font-mono text-[10px] uppercase text-light">P1 · McLaren</div></div></div>
+    <span class="rounded-full bg-surface2 px-2 py-1 font-mono text-[10px] font-bold text-light">VS</span>
+    <div class="flex flex-row-reverse items-center gap-3 text-right"><span class="grid h-10 w-10 text-base sm:h-14 sm:w-14 sm:text-xl shrink-0 place-items-center rounded-full font-display font-black text-white shadow-card" style="background:#6366f1">J</span><div><div class="font-display text-sm font-black uppercase leading-tight sm:text-base">JoMilan</div><div class="font-mono text-[10px] uppercase text-light">P8 · teammate</div></div></div>
+  </div>
+  <div class="flex justify-center pt-4"><div class="inline-flex rounded-xl border border-border bg-card p-1 font-mono text-[10px] font-bold uppercase tracking-wider"><span class="rounded-lg px-2.5 py-1.5 bg-primary text-ink">Race</span><span class="rounded-lg px-2.5 py-1.5 text-light">Qualifying</span><span class="rounded-lg px-2.5 py-1.5 text-light">Sprint</span></div></div>
+  <div class="space-y-3.5 px-5 pb-5 pt-4">
+    <div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black text-light">3</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Finished ahead <span class="normal-case text-faint">· 6 shared races</span></span><span class="font-display text-lg font-black text-light">3</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:50%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:50%;background:#6366f1;opacity:1"></div></div></div>
+      </div><div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black ">2</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Wins</span><span class="font-display text-lg font-black text-light">1</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:66.66666666666666%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:33.333333333333336%;background:#6366f1;opacity:0.45"></div></div></div>
+      </div><div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black ">4</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Podiums</span><span class="font-display text-lg font-black text-light">3</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:57.14285714285714%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:42.85714285714286%;background:#6366f1;opacity:0.45"></div></div></div>
+      </div><div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black text-light">P1</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Best finish</span><span class="font-display text-lg font-black text-light">P1</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:50%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:50%;background:#6366f1;opacity:1"></div></div></div>
+      </div><div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black ">4.2</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Avg finish</span><span class="font-display text-lg font-black text-light">5.5</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:56.70103092783505%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:43.29896907216495%;background:#6366f1;opacity:0.45"></div></div></div>
+      </div><div>
+        <div class="flex items-baseline justify-between"><span class="font-display text-lg font-black ">220</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Points</span><span class="font-display text-lg font-black text-light">126</span></div>
+        <div class="mt-1 flex h-2 gap-0.5"><div class="flex flex-1 justify-end rounded-l-full bg-surface2"><div class="rounded-l-full" style="width:63.58381502890174%;background:#F58220;opacity:1"></div></div><div class="flex-1 rounded-r-full bg-surface2"><div class="h-full rounded-r-full" style="width:36.41618497109826%;background:#6366f1;opacity:0.45"></div></div></div>
+      </div>
+  </div>
+  <div class="border-t border-border bg-surface2/60 px-5 py-3 text-center text-xs text-medium"><b class="text-dark">Siggsta</b> leads 4 of 6 categories</div>
+</div>
+</main></body></html>

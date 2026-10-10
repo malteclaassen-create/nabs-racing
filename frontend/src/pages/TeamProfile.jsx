@@ -13,6 +13,7 @@ import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { NO_VALUE } from "../utils/format.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 
@@ -198,6 +199,7 @@ export default function TeamProfile() {
   return (
     <div className="content-in space-y-6">
       {/* Hero */}
+      <DesignSlot id="team/01-hero">
       <div className="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lg">
         <span className="absolute inset-x-0 top-0 z-10 h-1.5" style={{ backgroundColor: color }} />
         <div className="absolute inset-0" style={{ background: `radial-gradient(120% 140% at 88% 10%, ${color}55, transparent 55%)` }} />
@@ -239,8 +241,10 @@ export default function TeamProfile() {
           )}
         </div>
       </div>
+      </DesignSlot>
 
       {/* Stat tiles */}
+      <DesignSlot id="team/02-stats">
       {teamRow && (
         <div className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Stat index={0} icon="hash" label="Championship" value={`P${teamRow.position}`} sub={`of ${standingsSet.standings.length} teams`} />
@@ -251,10 +255,12 @@ export default function TeamProfile() {
           <Stat index={5} icon="hash" label="Rounds Scored" value={roundsScored} sub={`of ${raceNumbers.length}`} />
         </div>
       )}
+      </DesignSlot>
 
       {/* Line-up + per-round points */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Drivers */}
+        <DesignSlot id="team/03-lineup">
         <div className="card overflow-hidden">
           <div className="flex items-center gap-2 border-b border-border px-5 py-4">
             <Icon name="users" className="h-4 w-4 text-light" />
@@ -283,8 +289,10 @@ export default function TeamProfile() {
             ))}
           </div>
         </div>
+        </DesignSlot>
 
         {/* Per-round points */}
+        <DesignSlot id="team/04-round-bars" className="lg:col-span-2">
         <div className="card overflow-hidden lg:col-span-2">
           <div className="flex items-baseline gap-3 border-b border-border px-5 py-4 sm:px-6">
             <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">Points by Round</h2>
@@ -311,11 +319,13 @@ export default function TeamProfile() {
             )}
           </div>
         </div>
+        </DesignSlot>
       </div>
 
       {/* Cumulative progression: the whole tier, this team's line bold and
           labelled, the rivals faint behind it. With one line to follow it reads
           on a phone too, so unlike the home page's version it is not hidden there. */}
+      <DesignSlot id="team/05-progression">
       {teamRow && completedNumbers.length > 0 && (
         <PointsChart
           standings={standingsSet.standings}
@@ -329,12 +339,15 @@ export default function TeamProfile() {
           title={`${TIER_LABEL[team.tier]} · cumulative points`}
         />
       )}
+      </DesignSlot>
 
+      <DesignSlot id="team/06-history">
       <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} />
 
       <div>
         <Link to="/constructors" className="transition text-sm font-semibold text-link hover:underline">← All constructors</Link>
       </div>
+      </DesignSlot>
     </div>
   );
 }

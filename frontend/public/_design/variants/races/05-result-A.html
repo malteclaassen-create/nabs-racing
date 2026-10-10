@@ -1,0 +1,320 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+
+<style>
+.ghost-num{font-family:Archivo,Inter,sans-serif;font-weight:900}
+.tnum{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none} .no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-3">
+  <div class="flex min-w-0 items-center gap-3"><img src="/flags/w40/tr.png" alt="" style="width:26px;height:19px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><h2 class="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-[28px]"><span class="text-light">R10</span> Turkey</h2></div>
+  <span class="ml-auto font-mono text-[11px] font-semibold text-light sm:order-last sm:ml-0">Fri, 19 Jun 2026</span>
+  <div class="flex items-center gap-1.5">
+    <a class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider border-border bg-card text-medium"><span class="text-accent"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="3"/><path d="M10.5 9.5l4.5 2.5-4.5 2.5v-5z"/></svg></span><span class="max-sm:hidden">Highlights</span></a>
+    <a class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider border-border bg-card text-medium"><span class="text-accent"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5z"/></svg></span><span class="max-sm:hidden">Replay</span></a>
+    <a class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider border-border bg-card text-medium"><span class="text-accent"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5"/></svg></span><span class="max-sm:hidden">Report</span></a>
+  </div>
+  <span class="hidden flex-1 sm:block"></span>
+  <div class="flex w-full gap-2 sm:w-auto">
+    <div class="flex flex-1 rounded-lg p-0.5 border border-border bg-card sm:flex-none">
+      <span class="flex-1 rounded-md bg-primary px-3 py-1.5 text-center text-xs font-bold text-ink shadow">Feature</span>
+      <span class="flex-1 px-3 py-1.5 text-center text-xs font-semibold text-light">Sprint</span>
+      <span class="flex-1 px-3 py-1.5 text-center text-xs font-semibold text-light">Quali</span>
+    </div>
+    <div class="flex rounded-lg p-0.5 border border-border bg-card">
+      <span class="rounded-md bg-surface2 text-dark px-2.5 py-1.5" title="Table"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/></svg></span>
+      <span class="px-2.5 py-1.5 text-light" title="Lap by lap"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></span>
+    </div>
+  </div>
+</div>
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex items-center justify-between border-b border-border px-4 py-3.5 sm:px-5">
+    <div><div class="eyebrow">Feature race</div><h3 class="font-display text-lg font-extrabold uppercase tracking-tight">Full classification</h3></div>
+    <div class="hidden items-center gap-4 font-mono text-[11px] text-light md:flex"><span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-fl"></span>Fastest lap</span><span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-indigo-300"></span>Tier 2 re-rank → constructor pts</span></div>
+  </div>
+  <table class="hidden w-full md:table">
+    <thead><tr class="border-b border-border bg-surface2/60 text-left font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+      <th class="py-2.5 pl-5 pr-2">Pos</th><th class="px-3">Driver</th><th class="px-3">Team</th><th class="px-3 text-center">Grid</th><th class="px-3 text-center">+/-</th><th class="px-3 text-right">Best lap</th><th class="px-3 text-center">Tier 2</th><th class="pl-3 pr-5 text-right">Pts</th></tr></thead>
+    <tbody><tr class="border-b border-border/70 bg-[#fdf6e3]">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#EAB308">1</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#E10600"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Takoda</span><img src="/flags/w40/nl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/ferrari.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Ferrari</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">3</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲2</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:29.971</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.066</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">35</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#94A3B8">2</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#1AA39B"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Mtimmis</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/porsche.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Porsche Martini</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">1</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼1</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:28.310</span><span class="ml-1.5 font-mono text-[10px] text-faint">+0.405</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">30</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#C2410C">3</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#F58220"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">JoMilan</span><img src="/flags/w40/it.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/mclaren.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">McLaren</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">8</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲5</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.347</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.442</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">25</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">4</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#0067C0"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Pizd</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/williams.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Williams</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">9</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲5</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.331</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.426</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">22</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">5</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#888888"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">ThatDudeGuest</span><span class="rounded-full bg-surface2 px-1.5 py-px font-mono text-[9px] font-bold text-light ">RES</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><span style="width:18px;height:18px;font-size:7px" class="inline-flex shrink-0 items-center justify-center rounded-md bg-slate-400 font-mono font-bold text-white ">RES</span>Reserve</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">2</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼3</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:28.341</span><span class="ml-1.5 font-mono text-[10px] text-faint">+0.436</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">20</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">6</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#F58220"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Siggsta</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/mclaren.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">McLaren</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">6</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-[11px] font-bold text-faint">=</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.058</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.153</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">18</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">7</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#A33EA1"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Rayman</span><img src="/flags/w40/nl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/honda.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Honda</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">7</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-[11px] font-bold text-faint">=</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:28.944</span><span class="ml-1.5 font-mono text-[10px] text-faint">+1.039</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">16</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">8</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#E10600"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Steve</span><img src="/flags/w40/nl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/ferrari.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Ferrari</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">10</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲2</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.666</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.761</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">14</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">9</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#0067C0"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Maltegoat</span><img src="/flags/w40/de.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/williams.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Williams</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">4</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼5</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.648</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.743</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">12</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">10</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#1AA39B"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">13bot</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-primary/40 px-1.5 py-px font-mono text-[9px] font-bold text-eyebrow ">T1</span><span class="rounded-full bg-fl/10 px-1.5 py-px font-mono text-[9px] font-bold text-fl">FL</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/porsche.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Porsche Martini</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">5</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼5</span></td>
+<td class="px-3 py-2.5 text-right"><span class="rounded-md bg-fl/10 px-1.5 py-0.5 font-mono text-sm font-bold text-fl">1:27.905</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">10</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">11</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#5A4FC4"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">DRAS</span><img src="/flags/w40/in.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/redbull.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Red Bull</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">14</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲3</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:31.086</span><span class="ml-1.5 font-mono text-[10px] text-faint">+3.181</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P1<span class="text-light">·</span>+35</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">8</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">12</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#E6A700"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Neesh</span><img src="/flags/w40/ca.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/lotus.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Lotus</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">25</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲13</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.761</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.856</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P2<span class="text-light">·</span>+30</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">7</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">13</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#FF7A66"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Kowandoh Badu</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/toyota.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Toyota</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">24</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲11</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">–</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P3<span class="text-light">·</span>+25</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">4</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">14</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#5A4FC4"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Justyn</span><img src="/flags/w40/fi.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/redbull.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Red Bull</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">11</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼3</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:30.200</span><span class="ml-1.5 font-mono text-[10px] text-faint">+2.295</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P4<span class="text-light">·</span>+22</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">5</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">15</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#888888"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Zohair Khan</span><span class="rounded-full bg-surface2 px-1.5 py-px font-mono text-[9px] font-bold text-light ">RES</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><span style="width:18px;height:18px;font-size:7px" class="inline-flex shrink-0 items-center justify-center rounded-md bg-slate-400 font-mono font-bold text-white ">RES</span>Reserve</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">21</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲6</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">–</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">3</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">16</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#888888"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Gabriele Grossi</span><span class="rounded-full bg-surface2 px-1.5 py-px font-mono text-[9px] font-bold text-light ">RES</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><span style="width:18px;height:18px;font-size:7px" class="inline-flex shrink-0 items-center justify-center rounded-md bg-slate-400 font-mono font-bold text-white ">RES</span>Reserve</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">13</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼3</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:31.496</span><span class="ml-1.5 font-mono text-[10px] text-faint">+3.591</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">2</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">17</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#B3446C"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Laluch</span><img src="/flags/w40/cz.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/fiat.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Fiat</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">18</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲1</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:31.271</span><span class="ml-1.5 font-mono text-[10px] text-faint">+3.366</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P5<span class="text-light">·</span>+20</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">18</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#888888"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">urmagaeddon</span><span class="rounded-full bg-surface2 px-1.5 py-px font-mono text-[9px] font-bold text-light ">RES</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><span style="width:18px;height:18px;font-size:7px" class="inline-flex shrink-0 items-center justify-center rounded-md bg-slate-400 font-mono font-bold text-white ">RES</span>Reserve</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">19</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-ok">▲1</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">–</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">19</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#888888"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Zyklopus</span><span class="rounded-full bg-surface2 px-1.5 py-px font-mono text-[9px] font-bold text-light ">RES</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><span style="width:18px;height:18px;font-size:7px" class="inline-flex shrink-0 items-center justify-center rounded-md bg-slate-400 font-mono font-bold text-white ">RES</span>Reserve</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">17</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center font-mono text-[11px] font-bold text-bad">▼2</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:31.989</span><span class="ml-1.5 font-mono text-[10px] text-faint">+4.084</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">20</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#C2410C"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">GoldGinger</span><img src="/flags/w40/id.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/spyker.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Spyker</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">20</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-[11px] font-bold text-faint">=</span></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">–</span></td>
+<td class="px-3 py-2.5 text-center"><span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-link">P6<span class="text-light">·</span>+18</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr><tr><td colspan="8" class="bg-surface2/70 px-5 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-light">Not classified</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-6 items-center rounded-md bg-amber-100 px-1.5 font-mono text-[10px] font-bold text-warn">DNF</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#14935A"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Flo</span><img src="/flags/w40/de.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/jaguar.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Jaguar</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">22</span></td>
+<td class="px-3 py-2.5 text-center"></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:32.845</span><span class="ml-1.5 font-mono text-[10px] text-faint">+4.940</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr><tr class="border-b border-border/70 ">
+<td class="py-2.5 pl-5 pr-2"><span class="inline-flex h-6 items-center rounded-md bg-amber-100 px-1.5 font-mono text-[10px] font-bold text-warn">DNF</span></td>
+<td class="px-3 py-2.5"><div class="flex items-center gap-2.5"><span class="h-7 w-1 rounded-full" style="background:#B3446C"></span><span class="font-display text-[15px] font-extrabold uppercase tracking-tight text-dark">Endriu</span><img src="/flags/w40/pl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-indigo-100 px-1.5 py-px font-mono text-[9px] font-bold text-link ">T2</span></div></td>
+<td class="px-3 py-2.5"><span class="flex items-center gap-2 text-sm text-medium"><img src="/teams/fiat.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Fiat</span></td>
+<td class="px-3 py-2.5 text-center"><span class="font-mono text-sm text-medium tnum">15</span></td>
+<td class="px-3 py-2.5 text-center"></td>
+<td class="px-3 py-2.5 text-right"><span class="font-mono text-sm text-medium tnum">1:32.976</span><span class="ml-1.5 font-mono text-[10px] text-faint">+5.071</span></td>
+<td class="px-3 py-2.5 text-center"><span class="text-faint">–</span></td>
+<td class="py-2.5 pl-3 pr-5 text-right font-display text-lg font-black tnum text-dark">0</td></tr></tbody>
+  </table>
+  <ol class="md:hidden"><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 bg-[#fdf6e3]">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#EAB308">1</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#E10600"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Takoda</span><img src="/flags/w40/nl.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Ferrari</span><span class="font-mono">P3</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲2</span></div></div>
+<span class="font-display text-lg font-black tnum">35</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#94A3B8">2</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#1AA39B"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Mtimmis</span><img src="/flags/w40/gb.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Porsche Martini</span><span class="font-mono">P1</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼1</span></div></div>
+<span class="font-display text-lg font-black tnum">30</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center rounded-lg font-display text-sm font-black text-white" style="background:#C2410C">3</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#F58220"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">JoMilan</span><img src="/flags/w40/it.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">McLaren</span><span class="font-mono">P8</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲5</span></div></div>
+<span class="font-display text-lg font-black tnum">25</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">4</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#0067C0"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Pizd</span><img src="/flags/w40/gb.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Williams</span><span class="font-mono">P9</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲5</span></div></div>
+<span class="font-display text-lg font-black tnum">22</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">5</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#888888"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">ThatDudeGuest</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Reserve</span><span class="font-mono">P2</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼3</span></div></div>
+<span class="font-display text-lg font-black tnum">20</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">6</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#F58220"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Siggsta</span><img src="/flags/w40/gb.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">McLaren</span><span class="font-mono">P6</span><span class="font-mono text-[10px] font-bold text-faint">=</span></div></div>
+<span class="font-display text-lg font-black tnum">18</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">7</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#A33EA1"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Rayman</span><img src="/flags/w40/nl.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Honda</span><span class="font-mono">P7</span><span class="font-mono text-[10px] font-bold text-faint">=</span></div></div>
+<span class="font-display text-lg font-black tnum">16</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">8</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#E10600"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Steve</span><img src="/flags/w40/nl.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Ferrari</span><span class="font-mono">P10</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲2</span></div></div>
+<span class="font-display text-lg font-black tnum">14</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">9</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#0067C0"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Maltegoat</span><img src="/flags/w40/de.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Williams</span><span class="font-mono">P4</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼5</span></div></div>
+<span class="font-display text-lg font-black tnum">12</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">10</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#1AA39B"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">13bot</span><img src="/flags/w40/gb.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "><span class="rounded-full bg-fl/10 px-1.5 py-px font-mono text-[9px] font-bold text-fl">FL</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Porsche Martini</span><span class="font-mono">P5</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼5</span></div></div>
+<span class="font-display text-lg font-black tnum">10</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">11</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#5A4FC4"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">DRAS</span><img src="/flags/w40/in.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Red Bull</span><span class="font-mono">P14</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲3</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P1</span></div></div>
+<span class="font-display text-lg font-black tnum">8</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">12</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#E6A700"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Neesh</span><img src="/flags/w40/ca.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Lotus</span><span class="font-mono">P25</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲13</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P2</span></div></div>
+<span class="font-display text-lg font-black tnum">7</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">13</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#FF7A66"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Kowandoh Badu</span><img src="/flags/w40/gb.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Toyota</span><span class="font-mono">P24</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲11</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P3</span></div></div>
+<span class="font-display text-lg font-black tnum">4</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">14</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#5A4FC4"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Justyn</span><img src="/flags/w40/fi.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Red Bull</span><span class="font-mono">P11</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼3</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P4</span></div></div>
+<span class="font-display text-lg font-black tnum">5</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">15</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#888888"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Zohair Khan</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Reserve</span><span class="font-mono">P21</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲6</span></div></div>
+<span class="font-display text-lg font-black tnum">3</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">16</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#888888"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Gabriele Grossi</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Reserve</span><span class="font-mono">P13</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼3</span></div></div>
+<span class="font-display text-lg font-black tnum">2</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">17</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#B3446C"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Laluch</span><img src="/flags/w40/cz.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Fiat</span><span class="font-mono">P18</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲1</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P5</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">18</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#888888"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">urmagaeddon</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Reserve</span><span class="font-mono">P19</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-ok">▲1</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">19</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#888888"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Zyklopus</span></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Reserve</span><span class="font-mono">P17</span><span class="inline-flex items-center font-mono text-[10px] font-bold text-bad">▼2</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-8 w-8 items-center justify-center font-display text-sm font-black text-medium">20</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#C2410C"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">GoldGinger</span><img src="/flags/w40/id.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Spyker</span><span class="font-mono">P20</span><span class="font-mono text-[10px] font-bold text-faint">=</span><span class="rounded bg-indigo-50 px-1 font-mono text-[10px] font-bold text-link">T2 P6</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li><li class="bg-surface2/70 px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest text-light">Not classified</li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-6 items-center rounded-md bg-amber-100 px-1.5 font-mono text-[10px] font-bold text-warn">DNF</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#14935A"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Flo</span><img src="/flags/w40/de.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Jaguar</span><span class="font-mono">P22</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li><li class="flex items-center gap-3 border-b border-border/70 px-4 py-2.5 ">
+<span class="w-8 shrink-0 text-center"><span class="inline-flex h-6 items-center rounded-md bg-amber-100 px-1.5 font-mono text-[10px] font-bold text-warn">DNF</span></span><span class="h-9 w-1 shrink-0 rounded-full" style="background:#B3446C"></span>
+<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-extrabold uppercase tracking-tight">Endriu</span><img src="/flags/w40/pl.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-0.5 flex items-center gap-2 text-xs text-light"><span class="truncate">Fiat</span><span class="font-mono">P15</span></div></div>
+<span class="font-display text-lg font-black tnum">0</span></li></ol>
+</div>
+</main></body></html>

@@ -1,0 +1,72 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-0 sm:px-8">
+<div class="mb-3 flex items-center justify-between px-4 sm:px-0"><div class="eyebrow">NABS in numbers</div><div class="font-mono text-[10px] uppercase tracking-wider text-faint sm:hidden">Swipe →</div></div>
+<section class="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0" style="scrollbar-width:none">
+  <div class="w-[78%] shrink-0 snap-start rounded-2xl bg-card p-5 shadow-card sm:w-auto">
+    <div class="flex items-baseline justify-between"><span class="font-display text-4xl font-black">6</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Years racing</span></div>
+    <div class="mt-4 flex items-end gap-1 h-12">
+      <div class="flex-1 rounded-t bg-primary/30 h-[30%]"></div><div class="flex-1 rounded-t bg-primary/40 h-[45%]"></div><div class="flex-1 rounded-t bg-primary/50 h-[55%]"></div><div class="flex-1 rounded-t bg-primary/60 h-[60%]"></div><div class="flex-1 rounded-t bg-primary/80 h-[80%]"></div><div class="flex-1 rounded-t bg-accent h-full"></div>
+    </div>
+    <div class="mt-1.5 flex justify-between font-mono text-[9px] text-faint"><span>2020</span><span>Races per year</span><span>2026</span></div>
+  </div>
+  <div class="w-[78%] shrink-0 snap-start rounded-2xl bg-card p-5 shadow-card sm:w-auto">
+    <div class="flex items-baseline justify-between"><span class="font-display text-4xl font-black">900+</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">On Discord</span></div>
+    <div class="mt-4 flex items-center">
+      <div class="flex -space-x-1.5">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#F58220] font-display text-xs font-black text-white ring-2 ring-white">SI</span>
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#1AA39B] font-display text-xs font-black text-white ring-2 ring-white">MT</span>
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#E10600] font-display text-xs font-black text-white ring-2 ring-white">TK</span>
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-[#0067C0] font-display text-xs font-black text-white ring-2 ring-white">MG</span>
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-discord font-display text-[10px] font-black text-white ring-2 ring-white">+896</span>
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-ok"><span class="h-1.5 w-1.5 rounded-full bg-ok"></span>142 online right now</div>
+  </div>
+  <div class="w-[78%] shrink-0 snap-start rounded-2xl bg-card p-5 shadow-card sm:w-auto">
+    <div class="flex items-baseline justify-between"><span class="font-display text-4xl font-black">17</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Teams</span></div>
+    <div class="mt-4 grid grid-cols-6 gap-1.5">
+      <img src="/teams/mclaren.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/ferrari.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/williams.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/porsche.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/redbull.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/renault.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/bmw.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/honda.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/toyota.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/spyker.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <img src="/teams/super_aguri.png" class="aspect-square w-full rounded-md bg-surface2 object-contain p-1">
+      <span class="flex aspect-square w-full items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">+6</span>
+    </div>
+  </div>
+  <div class="w-[78%] shrink-0 snap-start rounded-2xl bg-card p-5 shadow-card sm:w-auto">
+    <div class="flex items-baseline justify-between"><span class="font-display text-4xl font-black">7</span><span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Seasons</span></div>
+    <div class="mt-4 flex gap-1.5">
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S1</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S2</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S3</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S4</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S5</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-surface2 font-mono text-[10px] font-bold text-light">S6</span>
+      <span class="flex h-9 flex-1 items-center justify-center rounded-md bg-primary font-mono text-[10px] font-black text-ink">S7</span>
+    </div>
+    <div class="mt-3 font-mono text-[10px] uppercase tracking-wider text-light">Now: F1 2007 · Round 11 of 12</div>
+  </div>
+</section>
+<div class="mt-3 flex justify-center gap-1.5 sm:hidden"><span class="h-1.5 w-5 rounded-full bg-ink"></span><span class="h-1.5 w-1.5 rounded-full bg-border"></span><span class="h-1.5 w-1.5 rounded-full bg-border"></span><span class="h-1.5 w-1.5 rounded-full bg-border"></span></div>
+</main></body></html>

@@ -7,6 +7,8 @@ import CircuitMap from "./CircuitMap.jsx";
 import { Skeleton } from "./ui.jsx";
 import { circuitFor } from "../data/circuits.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
+import DesignSlot from "../design/DesignSlot.jsx";
+import { DESIGN_ENABLED, useDesignPicks } from "../design/designPicks.js";
 
 // ---------------------------------------------------------------------------
 // Track strengths on the driver profile: which KIND of circuit this driver
@@ -159,6 +161,10 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
       return next;
     });
   const { data, loading, error } = useApi(useCallback(() => api.driverTrackStrengths(driver.id, scope), [driver.id, scope]));
+  // Design preview only: the "By track" tiles live inside this card, so with
+  // the card swapped for a mockup they follow it as a card of their own.
+  const designPicks = useDesignPicks();
+  const cardPicked = DESIGN_ENABLED && !designPicks.off && !!designPicks.picks["driver-profile/08-track-strengths"];
   // The rival is read for the same scope, so the two shapes on the radar
   // are always measured over the same stretch of seasons.
   const [rival, setRival] = useState(null);
@@ -204,6 +210,62 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
   const ahead = diffs.find((x) => x.d >= 5);
   const behind = [...diffs].reverse().find((x) => x.d <= -5);
 
+  const hasTypes = !(data.races === 0 || !scored.length);
+  const byTrack = (
+    <div className="border-t border-border">
+      <button type="button" onClick={() => setTracksOpen((o) => !o)} aria-expanded={tracksOpen} aria-controls="ts-tracks"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-4 text-left transition hover:bg-surface2/60 sm:px-6">
+        <span className="flex items-baseline gap-2">
+          <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">By track</h3>
+          <span className="font-mono text-[11px] font-semibold text-light">{data.tracks.length}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:inline">best first · avg finish · gap to fastest lap</span>
+          <Chevron open={tracksOpen} />
+        </span>
+      </button>
+      <Drawer open={tracksOpen} id="ts-tracks">
+      <div className="grid grid-cols-2 gap-2.5 px-5 pb-4 sm:grid-cols-3 sm:px-6 lg:grid-cols-6">
+        {data.tracks.map((t) => {
+          const c = toneTile(t.score);
+          return (
+            <div key={t.key} className="relative overflow-hidden rounded-lg border border-border bg-surface2 px-2.5 pb-2 pt-2.5" title={`${t.name}: ${races(t.races)}`}>
+              <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: c }} aria-hidden="true" />
+              <div className="flex h-14 items-center justify-center">
+                {circuitFor(t.key) || circuitFor(t.name) ? (
+                  <CircuitMap track={circuitFor(t.key) ? t.key : t.name} stroke={c} strokeWidth={2} className="h-14 w-full" />
+                ) : (
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-faint">no outline</span>
+                )}
+              </div>
+              <div className="mt-1.5 flex items-baseline justify-between gap-1">
+                <span className="truncate font-display text-[13px] font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
+                <span className="font-display text-base font-black tabular-nums" style={{ color: c }}>{t.score}</span>
+              </div>
+              <div className="truncate text-[10px] font-semibold text-light">
+                {t.types.length ? t.types.map((k) => SHORT[k] || k).join(" · ") : "no type set"}
+              </div>
+              <div className="mt-1.5 flex justify-between font-mono text-[11px] tabular-nums text-medium">
+                <span>{t.avgFinish != null ? `P${t.avgFinish}` : "DNF"}</span>
+                <span>{gap(t.avgGapPct) || "–"}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      </Drawer>
+    </div>
+  );
+  if (cardPicked)
+    return (
+      <>
+        <DesignSlot id="driver-profile/08-track-strengths" />
+        <DesignSlot id="driver-profile/09-by-track">
+          {hasTypes && <div className="reveal card overflow-hidden">{byTrack}</div>}
+        </DesignSlot>
+      </>
+    );
+
   return (
     <div className="reveal card overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-4 sm:px-6">
@@ -234,7 +296,7 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
         </div>
       </div>
 
-      {data.races === 0 || !scored.length ? (
+      {!hasTypes ? (
         <p className="px-5 py-8 text-center text-sm text-light sm:px-6">
           {data.races === 0 ? "No races finished in this stretch yet." : "None of the circuits raced here has a type yet."}
         </p>
@@ -325,51 +387,9 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
             </ul>
           </div>
 
-          <div className="border-t border-border">
-            <button type="button" onClick={() => setTracksOpen((o) => !o)} aria-expanded={tracksOpen} aria-controls="ts-tracks"
-              className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-4 text-left transition hover:bg-surface2/60 sm:px-6">
-              <span className="flex items-baseline gap-2">
-                <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">By track</h3>
-                <span className="font-mono text-[11px] font-semibold text-light">{data.tracks.length}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:inline">best first · avg finish · gap to fastest lap</span>
-                <Chevron open={tracksOpen} />
-              </span>
-            </button>
-            <Drawer open={tracksOpen} id="ts-tracks">
-            <div className="grid grid-cols-2 gap-2.5 px-5 pb-4 sm:grid-cols-3 sm:px-6 lg:grid-cols-6">
-              {data.tracks.map((t) => {
-                const c = toneTile(t.score);
-                return (
-                  <div key={t.key} className="relative overflow-hidden rounded-lg border border-border bg-surface2 px-2.5 pb-2 pt-2.5" title={`${t.name}: ${races(t.races)}`}>
-                    <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: c }} aria-hidden="true" />
-                    <div className="flex h-14 items-center justify-center">
-                      {circuitFor(t.key) || circuitFor(t.name) ? (
-                        <CircuitMap track={circuitFor(t.key) ? t.key : t.name} stroke={c} strokeWidth={2} className="h-14 w-full" />
-                      ) : (
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-faint">no outline</span>
-                      )}
-                    </div>
-                    <div className="mt-1.5 flex items-baseline justify-between gap-1">
-                      <span className="truncate font-display text-[13px] font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
-                      <span className="font-display text-base font-black tabular-nums" style={{ color: c }}>{t.score}</span>
-                    </div>
-                    <div className="truncate text-[10px] font-semibold text-light">
-                      {t.types.length ? t.types.map((k) => SHORT[k] || k).join(" · ") : "no type set"}
-                    </div>
-                    <div className="mt-1.5 flex justify-between font-mono text-[11px] tabular-nums text-medium">
-                      <span>{t.avgFinish != null ? `P${t.avgFinish}` : "DNF"}</span>
-                      <span>{gap(t.avgGapPct) || "–"}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            </Drawer>
-          </div>
         </>
       )}
+      <DesignSlot id="driver-profile/09-by-track">{hasTypes && byTrack}</DesignSlot>
 
       <div className="border-t border-border">
       <button type="button" onClick={() => setAboutOpen((o) => !o)} aria-expanded={aboutOpen} aria-controls="ts-about"

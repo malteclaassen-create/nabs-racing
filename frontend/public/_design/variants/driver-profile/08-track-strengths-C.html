@@ -1,0 +1,130 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+    <h2 class="font-display text-lg font-extrabold uppercase tracking-tight">Track strengths</h2>
+    <div class="flex flex-wrap items-center gap-2"><div class="inline-flex rounded-xl border border-border bg-card p-1 font-mono text-[10px] font-bold uppercase tracking-wider"><span class="whitespace-nowrap rounded-lg px-2.5 py-1.5 bg-primary text-ink">All</span><span class="whitespace-nowrap rounded-lg px-2.5 py-1.5 text-light">S7</span></div><span class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-light" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Mtimmis <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-light" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></div>
+  </div>
+  <div class="hidden md:block">
+    <table class="w-full text-sm">
+      <thead><tr class="border-b border-border text-left font-mono text-[10px] font-bold uppercase tracking-wider text-light"><th class="px-5 py-2.5">Type</th><th class="px-2 text-center">Score ▾</th><th class="px-2 text-center">vs Field</th><th class="px-2 text-center">vs Mtimmis</th><th class="px-2 text-center">Races</th><th class="px-2 text-center">Avg fin.</th><th class="px-2 text-center">Lap gap</th><th class="px-5">Circuits</th></tr></thead>
+      <tbody class="divide-y divide-border">
+        <tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">Heavy braking</div><div class="text-[11px] text-light">big stops into slow corners</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(16,185,129,0.32)">95</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+45</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+1</td>
+          <td class="px-2 text-center font-mono text-xs">2</td>
+          <td class="px-2 text-center font-mono text-xs">P2.5</td>
+          <td class="px-2 text-center font-mono text-xs">+0.86%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Bahrain</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Monza</span></div></td>
+        </tr><tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">Power</div><div class="text-[11px] text-light">long straights, top speed and traction</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(16,185,129,0.32)">95</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+45</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+1</td>
+          <td class="px-2 text-center font-mono text-xs">2</td>
+          <td class="px-2 text-center font-mono text-xs">P2.5</td>
+          <td class="px-2 text-center font-mono text-xs">+0.86%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Bahrain</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Monza</span></div></td>
+        </tr><tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">Technical</div><div class="text-[11px] text-light">slow and medium corners in sequence</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(132,204,22,0.22999999999999998)">86</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+36</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-faint">±0</td>
+          <td class="px-2 text-center font-mono text-xs">3</td>
+          <td class="px-2 text-center font-mono text-xs">P3.3</td>
+          <td class="px-2 text-center font-mono text-xs">+1.07%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Most</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Nurburgring</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Imola</span></div></td>
+        </tr><tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">Flowing</div><div class="text-[11px] text-light">one corner running into the next, elevation</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(132,204,22,0.2)">83</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+33</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-bad">-2</td>
+          <td class="px-2 text-center font-mono text-xs">5</td>
+          <td class="px-2 text-center font-mono text-xs">P4.6</td>
+          <td class="px-2 text-center font-mono text-xs">+1.13%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Melbourne</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Spa</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Mugello</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Turkey</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Imola</span></div></td>
+        </tr><tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">Street</div><div class="text-[11px] text-light">walls close by, little run-off</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(132,204,22,0.2)">83</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+33</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+7</td>
+          <td class="px-2 text-center font-mono text-xs">2</td>
+          <td class="px-2 text-center font-mono text-xs">P6</td>
+          <td class="px-2 text-center font-mono text-xs">+0.61%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Melbourne</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Jeddah</span></div></td>
+        </tr><tr>
+          <td class="px-5 py-2.5"><div class="font-display font-bold uppercase">High-speed</div><div class="text-[11px] text-light">fast corners taken at full commitment</div></td>
+          <td class="px-2 text-center"><span class="inline-block w-12 rounded-md py-1 font-display text-lg font-black" style="background:rgba(245,158,11,0.18)">81</span></td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-ok">+31</td>
+          <td class="px-2 text-center font-mono text-xs font-bold text-bad">-2</td>
+          <td class="px-2 text-center font-mono text-xs">4</td>
+          <td class="px-2 text-center font-mono text-xs">P6</td>
+          <td class="px-2 text-center font-mono text-xs">+0.99%</td>
+          <td class="px-5"><div class="flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Spa</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Mugello</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Jeddah</span><span class="rounded bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">Turkey</span></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="divide-y divide-border md:hidden">
+    <div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(16,185,129,0.32)">95</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">Heavy braking</span><span class="font-mono text-[11px] font-bold text-ok">+1 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">2 races · avg P2.5 · gap +0.86%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Bahrain</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Monza</span></div>
+      </div></div><div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(16,185,129,0.32)">95</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">Power</span><span class="font-mono text-[11px] font-bold text-ok">+1 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">2 races · avg P2.5 · gap +0.86%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Bahrain</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Monza</span></div>
+      </div></div><div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(132,204,22,0.22999999999999998)">86</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">Technical</span><span class="font-mono text-[11px] font-bold text-faint">±0 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">3 races · avg P3.3 · gap +1.07%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Most</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Nurburgring</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Imola</span></div>
+      </div></div><div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(132,204,22,0.2)">83</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">Flowing</span><span class="font-mono text-[11px] font-bold text-bad">-2 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">5 races · avg P4.6 · gap +1.13%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Melbourne</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Spa</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Mugello</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Turkey</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Imola</span></div>
+      </div></div><div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(132,204,22,0.2)">83</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">Street</span><span class="font-mono text-[11px] font-bold text-ok">+7 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">2 races · avg P6 · gap +0.61%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Melbourne</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Jeddah</span></div>
+      </div></div><div class="flex gap-3 px-4 py-3">
+      <span class="grid h-12 w-12 shrink-0 place-items-center rounded-xl font-display text-xl font-black" style="background:rgba(245,158,11,0.18)">81</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between"><span class="font-display text-sm font-bold uppercase">High-speed</span><span class="font-mono text-[11px] font-bold text-bad">-2 vs MTI</span></div>
+        <div class="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-light">4 races · avg P6 · gap +0.99%</div>
+        <div class="mt-1.5 flex flex-wrap gap-1"><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Spa</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Mugello</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Jeddah</span><span class="rounded bg-surface2 px-1.5 py-px text-[10px] font-semibold text-medium">Turkey</span></div>
+      </div></div>
+  </div>
+  <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5 sm:px-5"><span class="font-mono text-[10px] uppercase tracking-wider text-light">Sorted by score · 50 = field average</span><span class="text-xs font-semibold text-eyebrow">How is this measured?</span></div>
+</div>
+</main></body></html>

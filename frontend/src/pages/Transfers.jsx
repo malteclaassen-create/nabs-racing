@@ -12,6 +12,7 @@ import Flag from "../components/Flag.jsx";
 import TeamHistoryGrid, { orderTeams, standingsMap } from "../components/TeamHistoryGrid.jsx";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import NotFound from "./NotFound.jsx";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // ---------------------------------------------------------------------------
 // The public transfer market: who moved where this season, and every driver's
@@ -265,7 +266,8 @@ function TransferCentre({ data, teamById, driverById }) {
 
 export default function Transfers() {
   const visible = useTransfersVisible();
-  return visible ? <TransfersPage /> : <NotFound />;
+  // DEV: always visible, so the design picker can preview it logged out.
+  return import.meta.env.DEV || visible ? <TransfersPage /> : <NotFound />;
 }
 
 function TransfersPage() {
@@ -293,12 +295,15 @@ function TransfersPage() {
 
   return (
     <div className="space-y-10">
+      <DesignSlot id="transfers/01-header">
       <PageHeader
         eyebrow="Transfer market"
         title={heading}
         subtitle={<span className="hidden sm:inline">Who drives for whom, round by round, and the moves already announced for the rounds ahead.</span>}
       />
+      </DesignSlot>
 
+      <DesignSlot id="transfers/02-centre">
       <section className="reveal space-y-4">
         {/* On a phone the page title already says it; the tabs start right away */}
         <div className="hidden sm:block">
@@ -306,7 +311,11 @@ function TransfersPage() {
         </div>
         <TransferCentre data={data} teamById={teamById} driverById={driverById} />
       </section>
+      </DesignSlot>
 
+      <DesignSlot id="transfers/03-upcoming" insert />
+
+      <DesignSlot id="transfers/04-grid">
       <section className="reveal space-y-4">
         <SectionHeading eyebrow="Round by round" title="Driver team history" />
         <TeamHistoryGrid
@@ -317,6 +326,7 @@ function TransfersPage() {
           teamHref={(t) => `/teams/${t.id}`}
         />
       </section>
+      </DesignSlot>
     </div>
   );
 }

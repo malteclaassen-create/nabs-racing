@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import DesignSlot from "../design/DesignSlot.jsx";
 import { Link } from "react-router-dom";
 import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -1049,6 +1050,7 @@ export default function Home() {
   return (
     <div className="content-in space-y-10 sm:space-y-16">
       {/* ===================== SEASON TICKER ===================== */}
+      <DesignSlot id="home/01-season-ticker">
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
           <SeasonPicker finished={seasonOver} />
@@ -1068,6 +1070,7 @@ export default function Home() {
           )}
         </div>
       </div>
+      </DesignSlot>
 
       {/* ===================== LEAD FEATURE ===================== */}
       {/* `reveal` (without an inline delay) makes the hero the first stop of the
@@ -1075,6 +1078,9 @@ export default function Home() {
       {/* The hero follows the site theme: dark mode keeps the classic dark
           card, light mode gets a proper WHITE version — white scrims over the
           photo and ink text (the inner elements carry light+dark variants). */}
+      {/* Running season: the countdown hero only exists before round one. */}
+      <DesignSlot id={showComingSoonHero ? "home/02-hero" : "home/03-hero-countdown"} insert />
+      <DesignSlot id={showComingSoonHero ? "home/03-hero-countdown" : "home/02-hero"}>
       <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10">
         <img
           ref={heroImgRef}
@@ -1416,11 +1422,13 @@ export default function Home() {
           )}
         </div>
       </section>
+      </DesignSlot>
 
       {/* ===================== TITLE FIGHT (running seasons) ================= */}
       {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a
           finished season by pretending the last two rounds are still to come. */}
       {(demoFight || (!isPast && !seasonOver && !showComingSoonHero)) && (
+        <DesignSlot id="home/05-title-fight">
         <TitleFight
           standings={standings}
           raceNumbers={drivers.data?.raceNumbers || []}
@@ -1436,12 +1444,14 @@ export default function Home() {
           // computed as of that earlier point in the season.
           completedNumbers={demoFight ? completedNumbers.slice(0, -2) : completedNumbers}
         />
+        </DesignSlot>
       )}
 
       {/* ===================== SEASON HONOURS (finished seasons) ============= */}
       {/* The awards of a completed season — the live finale and every archived
           season alike — in the site's quiet hairline-grid language. Awards an
           old season has no data for simply don't get a cell. */}
+      <DesignSlot id="home/04-season-honours">
       {(seasonOver || isPast) && honours && (() => {
         // Build the award cells first, so the grid can close its last row
         // cleanly no matter how many awards this season has (no half-framed
@@ -1533,6 +1543,7 @@ export default function Home() {
           </section>
         );
       })()}
+      </DesignSlot>
 
       {/* ===================== BY THE NUMBERS (personal when linked) ========= */}
       {/* Archive seasons show only the general season stats — no personal band.
@@ -1601,6 +1612,7 @@ export default function Home() {
               band (the hero + Season Honours already tell the season's story),
               everyone else the season-wide numbers. Two near-identical 5-tile
               rows stacked on top of each other read as clutter. */}
+          <DesignSlot id="home/06-stat-tiles">
           {!(!isPast && myRow) && (
           <div className="space-y-5">
             <section className="cascade grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -1649,7 +1661,9 @@ export default function Home() {
             </section>
           </div>
           )}
+          </DesignSlot>
 
+          <DesignSlot id="home/07-personal-season">
           {!isPast && myRow && (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1753,6 +1767,7 @@ export default function Home() {
           </section>
         </div>
           )}
+          </DesignSlot>
         </div>
       )}
 
@@ -1761,21 +1776,26 @@ export default function Home() {
           it's being set up. On an archive season this renders nothing, and in the
           off-season the hero already carries the announcement (with the same
           countdown), so the strip stays away rather than repeating it. */}
-      {season?.isActive && !offSeason && <NextSeasonTeaser data={teaser.data} />}
+      <DesignSlot id="home/08-next-season-teaser">
+        {season?.isActive && !offSeason && <NextSeasonTeaser data={teaser.data} />}
+      </DesignSlot>
 
       {/* ===================== SOCIAL WALL ===================== */}
       {/* What we posted lately, on YouTube, Instagram and TikTok. Kept off the
           archive seasons: "latest from our channels" under a two-year-old
           championship table would be this week's clip in a museum. */}
-      {!isPast && <SocialFeed />}
+      <DesignSlot id="home/09-social-feed">{!isPast && <SocialFeed />}</DesignSlot>
 
       {/* ===================== DRIVERS' CHAMPIONSHIP ===================== */}
+      <DesignSlot id="home/10-drivers-standings">
       <section className="reveal">
         <Heading index="01" eyebrow="Championship" title="Drivers' Standings" to="/drivers" />
         <DriversTable rows={(drivers.data?.standings || []).slice(0, 10)} leaderTotal={leader?.total ?? 0} decided={isPast || seasonOver} />
       </section>
+      </DesignSlot>
 
       {/* ===================== CONSTRUCTORS ===================== */}
+      <DesignSlot id="home/11-constructors">
       {hasT2 ? (
         <section className="reveal grid gap-10 lg:grid-cols-2">
           <div>
@@ -1793,6 +1813,7 @@ export default function Home() {
           <ConstructorTable rows={(t1.data?.standings || []).slice(0, 5)} decided={isPast || seasonOver} />
         </section>
       )}
+      </DesignSlot>
 
       {/* ===================== POINTS PROGRESSION ===================== */}
       {/* Hidden on phones ON PURPOSE (the dense line charts don't read well
@@ -1800,6 +1821,7 @@ export default function Home() {
           making the chart fit a narrow screen was tried and reverted, so please
           leave the breakpoint alone. Skipped entirely for archived seasons with
           no per-race data. */}
+      <DesignSlot id="home/12-points-progression">
       {completedNumbers.length > 0 && (
         <>
           <section className="reveal hidden md:block">
@@ -1815,6 +1837,7 @@ export default function Home() {
           )}
         </>
       )}
+      </DesignSlot>
     </div>
   );
 }

@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1280px] mx-auto px-4 sm:px-8">
+<section class="relative overflow-hidden rounded-[1.75rem] bg-ink p-7 text-white shadow-lift sm:p-12">
+  <div class="absolute inset-0 opacity-70" style="background:radial-gradient(80% 90% at 85% 50%,rgba(244,175,198,.18),transparent 60%)"></div>
+  <div class="relative grid grid-cols-1 lg:grid-cols-[1fr_420px] items-center gap-10">
+    <div>
+      <div class="font-mono text-[12px] font-bold uppercase tracking-[0.22em] text-primary">Lights out in 3 days</div>
+      <h2 class="mt-3 font-display text-5xl sm:text-7xl font-black uppercase leading-[0.86] tracking-tight">Ready to<br>line up<span class="text-primary">?</span></h2>
+      <p class="mt-5 max-w-md text-[15px] sm:text-lg leading-relaxed text-white/70">The next grid is forming now. There&rsquo;s a slot with your name on it. Jump into the Discord and we&rsquo;ll get you on track.</p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <a class="inline-flex items-center justify-center gap-2.5 rounded-xl bg-discord px-7 py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-discord/40"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.25.5a18.3 18.3 0 0 1 4.3 1.4 16.2 16.2 0 0 0-13 0A18.3 18.3 0 0 1 10.8 3.5L10.5 3A19.8 19.8 0 0 0 5.6 4.4 20.7 20.7 0 0 0 2 18.6 19.9 19.9 0 0 0 8 21l.5-1.7c-1-.3-1.9-.7-2.7-1.2l.6-.45a14.2 14.2 0 0 0 12.1 0l.6.45c-.85.5-1.75.9-2.7 1.2L17 21a19.9 19.9 0 0 0 6-2.4 20.7 20.7 0 0 0-2.7-14.2zM9 15.3c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2zm6 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2z"/></svg> Claim your slot →</a>
+        <a class="inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 px-6 py-4 text-sm font-bold uppercase tracking-wide">Browse the standings</a>
+      </div>
+    </div>
+    <div>
+      <div class="mb-3 flex items-center justify-between font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/45"><span>Starting grid · COTA</span><span>R11</span></div>
+      <div class="grid grid-cols-2 gap-x-3 sm:gap-x-4"><div class="space-y-2"><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P1</span><span class="h-4 w-1 rounded" style="background:#F58220"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Siggsta</span></div><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P3</span><span class="h-4 w-1 rounded" style="background:#E10600"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Takoda</span></div><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P5</span><span class="h-4 w-1 rounded" style="background:#0067C0"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Pizd</span></div><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P7</span><span class="h-4 w-1 rounded" style="background:#1AA39B"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">13bot</span></div></div><div class="mt-6 space-y-2"><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P2</span><span class="h-4 w-1 rounded" style="background:#1AA39B"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Mtimmis</span></div><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P4</span><span class="h-4 w-1 rounded" style="background:#0067C0"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Maltegoat</span></div><div class="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2.5 ring-1 ring-white/10"><span class="font-mono text-xs font-bold text-white/40">P6</span><span class="h-4 w-1 rounded" style="background:#E10600"></span><span class="min-w-0 truncate font-display text-sm font-black uppercase text-white/80">Steve</span></div><div class="flex items-center gap-3 rounded-lg border-2 border-dashed border-primary bg-primary/10 px-3 py-2.5"><span class="font-mono text-xs font-bold text-primary">P8</span><span class="font-display text-base font-black uppercase text-primary">You?</span><span class="ml-auto h-2 w-2 animate-pulse rounded-full bg-primary"></span></div></div></div>
+    </div>
+  </div>
+</section>
+</main></body></html>

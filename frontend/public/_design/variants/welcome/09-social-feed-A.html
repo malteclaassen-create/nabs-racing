@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3"><div><div class="font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-eyebrow">Off the track</div><h2 class="mt-2 font-display text-3xl sm:text-4xl font-black uppercase tracking-tight">See us race</h2><p class="mt-3 text-[15px] leading-relaxed text-light">Onboards, highlights and the odd disaster, straight from our channels.</p></div><a class="font-mono text-[11px] font-bold uppercase tracking-wider text-light">All videos →</a></div>
+<div class="mt-8 grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
+  <a class="group relative block overflow-hidden rounded-2xl bg-ink shadow-card aspect-[4/3] sm:aspect-video">
+    <img src="/hero.jpg" class="absolute inset-0 h-full w-full object-cover object-[65%_60%]">
+    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent"></div>
+    <div class="absolute inset-x-0 top-0 bottom-1/3 sm:bottom-0 flex items-center justify-center"><span class="flex h-14 w-14 items-center justify-center rounded-full bg-white/90 text-ink shadow-lift"><svg class="ml-1 h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span></div>
+    <span class="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-md bg-[#FF0000] px-2 py-1 text-white"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M23 7.2a3 3 0 0 0-2.1-2.1C19 4.6 12 4.6 12 4.6s-7 0-8.9.5A3 3 0 0 0 1 7.2 31 31 0 0 0 .5 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.9.5 8.9.5 8.9.5s7 0 8.9-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8zM9.8 15.1V8.9l5.7 3.1z"/></svg><span class="font-mono text-[10px] font-bold uppercase tracking-widest">YouTube</span></span>
+    <div class="absolute inset-x-0 bottom-0 p-4 sm:p-6 text-white"><div class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Race highlights · R10</div><div class="mt-1 font-display text-lg sm:text-2xl font-black uppercase leading-tight tracking-tight">Turkey: Takoda holds off Mtimmis through Turn 8</div><div class="mt-1 font-mono text-[11px] text-white/60">12:48 · 2.1k views · 3 days ago</div></div>
+  </a>
+  <div class="flex flex-col gap-3">
+    <a class="flex gap-4 rounded-2xl bg-card p-3 shadow-card"><div class="relative h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-ink"><img src="/maps/spa-aerial-2023.jpg" class="h-full w-full object-cover "><span class="absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 font-mono text-[10px] text-white">0:34</span></div><div class="min-w-0 py-0.5"><div class="flex items-center gap-1.5 text-eyebrow"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M16.6 2h-3.3v13.2a2.9 2.9 0 1 1-2-2.8V9a6.3 6.3 0 1 0 5.3 6.2V8.6a7.8 7.8 0 0 0 4.4 1.4V6.7a4.5 4.5 0 0 1-4.4-4.7z"/></svg><span class="font-mono text-[10px] font-bold uppercase tracking-widest">TikTok</span></div><div class="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-dark">Three-wide into La Source and somehow nobody touches</div><div class="mt-1 font-mono text-[10px] uppercase tracking-wider text-faint">48k views</div></div></a>
+    <a class="flex gap-4 rounded-2xl bg-card p-3 shadow-card"><div class="relative h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-ink"><img src="/cars/s8.jpg" class="h-full w-full object-cover object-[center_75%]"><span class="absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 font-mono text-[10px] text-white">IMG</span></div><div class="min-w-0 py-0.5"><div class="flex items-center gap-1.5 text-eyebrow"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg><span class="font-mono text-[10px] font-bold uppercase tracking-widest">Instagram</span></div><div class="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-dark">First look: the Season 8 livery is here</div><div class="mt-1 font-mono text-[10px] uppercase tracking-wider text-faint">1.2k likes</div></div></a>
+    <a class="flex gap-4 rounded-2xl bg-card p-3 shadow-card"><div class="relative h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-ink"><img src="/maps/interlagos-aerial.jpg" class="h-full w-full object-cover "><span class="absolute bottom-1.5 right-1.5 rounded bg-black/70 px-1 font-mono text-[10px] text-white">LIVE</span></div><div class="min-w-0 py-0.5"><div class="flex items-center gap-1.5 text-eyebrow"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M4 2 2.5 6v14h5v3h3l3-3h4l5-5V2zm16 12-3 3h-5l-3 3v-3H5V4h15zM15 7h2v6h-2zm-5 0h2v6h-2z"/></svg><span class="font-mono text-[10px] font-bold uppercase tracking-widest">Twitch</span></div><div class="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-dark">Live: R11 COTA broadcast with commentary</div><div class="mt-1 font-mono text-[10px] uppercase tracking-wider text-faint">Fri 3 Jul · 18:00</div></div></a>
+  </div>
+</div>
+</main></body></html>

@@ -1,0 +1,45 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="mb-3 flex items-center justify-between"><div><div class="eyebrow">Live timing</div><h2 class="font-display text-2xl font-black uppercase tracking-tight text-dark">Server status</h2></div><span class="inline-flex items-center gap-1.5 rounded-full bg-card px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light shadow-card"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg> checked 8 s ago</span></div>
+<div class="grid gap-3 md:grid-cols-2">
+  <div class="rounded-2xl bg-card p-4 shadow-card sm:p-5">
+    <div class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-xl bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/></svg></span><div class="min-w-0 flex-1"><div class="flex items-center gap-2 text-sm font-bold text-dark">Server 1 <span class="rounded bg-surface2 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-light">Offline</span></div><div class="truncate text-xs text-light">NABS Race Server #1</div></div></div>
+    <div class="mt-4 rounded-xl bg-surface2/70 px-3 py-2.5 text-[13px] text-medium">Last session: <strong class="text-dark">Imola · Race</strong> ended 2 days ago</div>
+    <a class="mt-3 inline-flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-link">Final classification <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+  </div>
+  <div class="relative rounded-2xl bg-card p-4 shadow-card ring-2 ring-primary sm:p-5">
+    <div class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/10 text-ok"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/></svg></span><div class="min-w-0 flex-1"><div class="flex items-center gap-2 text-sm font-bold text-dark">Server 2 <span class="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-ok"><span class="relative flex h-1.5 w-1.5 shrink-0"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60"></span><span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span></span> Practice</span></div><div class="truncate text-xs text-light">NABS Practice Server · Istanbul Park</div></div></div>
+    <div class="mt-4 flex items-center gap-3"><div class="flex -space-x-1.5"><span class="grid h-7 w-7 place-items-center rounded-full border-2 border-white font-mono text-[9px] font-black text-white" style="background:#1AA39B">MT</span><span class="grid h-7 w-7 place-items-center rounded-full border-2 border-white font-mono text-[9px] font-black text-white" style="background:#0067C0">PI</span><span class="grid h-7 w-7 place-items-center rounded-full border-2 border-white font-mono text-[9px] font-black text-white" style="background:#E6A700">NE</span></div><span class="text-[13px] text-medium"><strong class="text-dark">3 drivers</strong> on track · best 1:27.902</span></div>
+    <button class="mt-4 w-full rounded-lg bg-ink py-2.5 text-sm font-bold uppercase tracking-wide text-white">Watch Server 2 live</button>
+  </div>
+</div>
+<div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+  <div class="rounded-2xl bg-card p-4 shadow-card sm:p-5">
+    <div class="flex items-center justify-between"><span class="eyebrow">Your training · this week</span><span class="font-mono text-xs text-dark"><strong>47</strong><span class="text-light"> / 80 laps</span></span></div>
+    <div class="relative mt-3 h-3 rounded-full bg-surface2"><div class="h-full rounded-full bg-gradient-to-r from-primary to-accent" style="width:58.75%"></div><span class="absolute top-1/2 h-5 w-0.5 -translate-y-1/2 bg-dark" style="left:50%"></span></div>
+    <div class="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-wider text-light"><span>0</span><span class="text-ok">40 ✓ +1 pt</span><span>80 · +2 pts</span></div>
+  </div>
+  <div class="flex items-center gap-4 rounded-2xl bg-ink p-4 text-white shadow-card sm:p-5">
+    <svg viewBox="0 0 100 89.3" class="h-16 w-auto shrink-0" fill="none"><path d="M37,78.4 L50.6,75.4 L51.7,74.9 L52.2,74 L52,73.2 L51.1,69.5 L50.6,67.6 L50.6,66.2 L51,64.1 L52.2,62 L54.2,60 L58.3,57.6 L60.7,56.6 L63.7,55.6 L69.1,54.6 L72.5,54.4 L74.4,54.4 L77.2,54.8 L78.4,54.6 L79.7,54 L80.9,52.8 L81.5,51.4 L81.8,50 L81.2,45.5 L81.4,44.6 L82,44 L83,44 L85.9,44.3 L88.4,44.3 L89.8,44 L90.4,43.3 L90.6,42.4 L89.8,38.5 L89.4,37.6 L88.5,36.9 L66.3,25.7 L64.9,24.6 L64.4,23.6 L64.5,22.6 L64.8,21.8 L65.4,21.1 L67.2,20 L68.8,19.6 L70.2,19.5 L77,20.7 L82.5,22 L85.4,22.9 L86.8,23.2 L87.6,22.9 L92,20.5 L92.6,19.8 L94,15.5 L94,14.4 L93.6,13.5 L91.9,10.6 L90.4,8.8 L88.1,6.6 L87,6.1 L85.4,6 L83.2,6.3 L55.2,14.6 L53.6,15.5 L53,16.2 L53.1,17.2 L54.1,18.9 L54.8,20.3 L54.8,21.9 L45.9,49.6 L44.8,51 L43,52.6 L6.8,72.2 L6.1,72.9 L6,73.9 L6.2,74.8 L6.9,75.8 L7.7,76 L10.1,75.9 L10.8,76.1 L11.1,76.6 L11,77.8 L10.4,82 L10.5,82.8 L11,83.3 L11.8,83.3 L37,78.4 Z" stroke="#f4afc6" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>
+    <div class="min-w-0 flex-1"><div class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Next race · Rd 12</div><div class="font-display text-lg font-extrabold uppercase leading-tight">Istanbul Park</div><div class="font-mono text-xs text-white/60">Fri 16 Oct · 20:00 · in 5d 23h</div></div>
+    <button class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10"><svg viewBox="0 0 24 24" class="h-4 w-4 ml-0.5" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+  </div>
+</div>
+<div class="mt-3 flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-2.5 text-[13px] text-warn"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2-1.43"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="m2 2 20 20"/></svg><span class="min-w-0 flex-1 truncate"><strong>Lost connection</strong> to the timing relay · retrying in 4 s</span><span class="hidden font-mono text-[10px] uppercase tracking-wider sm:inline">state preview</span></div>
+</main></body></html>

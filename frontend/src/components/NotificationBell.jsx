@@ -6,6 +6,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
 import { GearIcon } from "./SettingsPanel.jsx";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
@@ -247,6 +248,7 @@ export default function NotificationBell({ className = "" }) {
               right). The old clamp only subtracted the page gutter, so on
               narrow phones the panel's LEFT edge ran off screen. Subtracting
               5.5rem accounts for the burger plus a margin, so it always fits. */}
+          <DesignSlot id="global/03-notifications" className="fixed inset-x-0 top-[84px] z-dropdown max-h-[calc(100dvh-84px)] overflow-y-auto">
           <div className="liquid-glass glass-dense glass-pop absolute right-0 top-full z-dropdown mt-2 w-80 max-w-[calc(100vw-5.5rem)] origin-top-right overflow-hidden rounded-[22px] lg:max-w-[calc(100vw-1.5rem)]">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Notifications</h2>
@@ -311,6 +313,7 @@ export default function NotificationBell({ className = "" }) {
               Settings
             </Link>
           </div>
+          </DesignSlot>
         </>
       )}
     </div>

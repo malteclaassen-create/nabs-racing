@@ -18,6 +18,7 @@ import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import { motionOff } from "../hooks/motion.js";
 import CalendarSubscribe from "../components/CalendarSubscribe.jsx";
+import DesignSlot from "../design/DesignSlot.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
@@ -959,6 +960,7 @@ export default function Races() {
           the same row (it drops under the title only when a third tab will not
           fit), so the rounds and the results start about 140px higher. From
           sm up it is the full header with the switch in its corner. */}
+      <DesignSlot id="races/01-header">
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 sm:hidden">
         <div className="min-w-0">
           <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">
@@ -978,6 +980,7 @@ export default function Races() {
           right={sessionSwitch("inline-flex rounded-xl border border-border bg-card p-1", "whitespace-nowrap px-4 py-2 text-sm")}
         />
       </div>
+      </DesignSlot>
 
       {/* Results explorer: race list (left), and on the right the selected
           race's results (completed) or sign-up + info (upcoming) — for
@@ -997,6 +1000,7 @@ export default function Races() {
             {/* The tour points at the rounds list, not at the whole explorer:
                 a spotlight the size of the viewport dims nothing and singles
                 out nothing, and this is the part you actually operate. */}
+            <DesignSlot id="races/02-rounds">
             <aside data-tour="race-rounds" className="lg:sticky lg:top-28 lg:self-start">
               {/* The label row shares the exact height of the round header on
                   the right (h-8 title line + mb-4), so the first round button
@@ -1006,6 +1010,7 @@ export default function Races() {
               </h3>
               <RoundRail races={shown} selectedId={selectedId} onSelect={selectRace} signupIds={signupIds} />
             </aside>
+            </DesignSlot>
 
             {/* selected race: results for completed rounds, sign-up + driver
                 market for rounds that haven't been run yet. SmoothHeight so the
@@ -1015,7 +1020,8 @@ export default function Races() {
             {/* Only a pick on the rail glides; the panel's first content
                 takes its height at once (see SmoothHeight's `animate`). */}
             <SmoothHeight className="min-w-0" onChange={onPanelResize} animate={switched}>
-              {selectedRace && !selectedRace.isCompleted ? (
+              <DesignSlot id="races/03-upcoming">
+              {selectedRace && !selectedRace.isCompleted && (
                 /* Keyed on the race so switching rounds REMOUNTS the panel. Its
                    track history (and with it the outline's admin-set rotation)
                    is fetched per track, and without the remount the new round
@@ -1044,7 +1050,10 @@ export default function Races() {
                   />
                 </div>
                 </>
-              ) : (
+              )}
+              </DesignSlot>
+              <DesignSlot id="races/04-signup" insert />
+              {!(selectedRace && !selectedRace.isCompleted) && (
                 <>
                   {/* The previous round's table stays up while the next one
                       loads (slightly dimmed) — swapping in a shorter skeleton
@@ -1058,6 +1067,7 @@ export default function Races() {
                     // newly loaded round (the stale round keeps its layout
                     // until the new one is ready).
                     <div key={detail.race.id} className={`${switched ? "round-swap-soft " : ""}${detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}`}>
+                      <DesignSlot id="races/05-result">
                       <div className="mb-3 sm:mb-4">
                         {/* One row from sm up. On phones the title shares its
                             line with the date and the actions, which shrink to
@@ -1314,11 +1324,14 @@ export default function Races() {
                       ) : (
                         <RaceResults race={detail.race} results={detail.results} quali={detail.quali} session={shownSession} />
                       )}
+                      </DesignSlot>
                       {/* The facts belong to the feature race — under the
                           sprint's table they would caption the wrong result. */}
+                      <DesignSlot id="races/06-facts">
                       {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
                         <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
+                      </DesignSlot>
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
                       {!detailIsStale && <RaceGallery photos={detail.photos} title={detail.race.track} />}
@@ -1344,6 +1357,7 @@ export default function Races() {
           race at a time. `cv-auto`: it sits below the results, off screen
           when the page opens, so the browser leaves its layout until it is
           scrolled to (see index.css). */}
+      <DesignSlot id="races/07-calendar">
       <div className="reveal cv-auto space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="section-title">Calendar · {tabLabel}</h3>
@@ -1373,6 +1387,7 @@ export default function Races() {
           )}
         </div>
       </div>
+      </DesignSlot>
     </div>
   );
 }
