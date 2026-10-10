@@ -10,6 +10,7 @@ import { useTilt } from "../hooks/motion.js";
 import StandingsTable from "../components/StandingsTable.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // Rounds that actually have scores recorded (for the progression chart).
 function completedRounds(data) {
@@ -32,9 +33,13 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
   const orderedTeams = [...teams].sort(
     (a, b) => (posByTeam.get(a.id) ?? Infinity) - (posByTeam.get(b.id) ?? Infinity)
   );
+  // Design-variant slots go on the first tier only (slot ids are unique).
+  const slot = (slotId, children, insert = false) =>
+    tier === 1 ? <DesignSlot id={slotId} insert={insert}>{children}</DesignSlot> : children;
 
   return (
     <section id={id} className="reveal scroll-mt-28 space-y-6">
+      {slot("constructors/02-standings-table", <>
       {/* No "Champions" pill up here — the gold first row of the table and the
           champion team card below already say it. */}
       <SectionHeading
@@ -50,7 +55,11 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
       />
 
       <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} sprintRounds={standings.sprintRounds || []} fastestLapPoints={standings.fastestLapPoints || 0} customPoints={standings.customPoints || {}} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
+      </>)}
 
+      {slot("constructors/03-points-graph", null, true)}
+
+      {slot("constructors/04-lineups", (
       <div className="space-y-3 pt-2">
         {/* The cards show who is in each seat today and nothing else. Moves,
             past and booked, live on the transfer market page, one tap away. */}
@@ -75,6 +84,7 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
           ))}
         </div>
       </div>
+      ))}
     </section>
   );
 }
@@ -203,12 +213,14 @@ export default function Constructors() {
       {/* The tier pills share the title line on every width (rightInline) —
           they're small enough now that they no longer push the header past
           the viewport, and the content starts a row earlier on phones. */}
+      <DesignSlot id="constructors/01-header">
       <PageHeader
         eyebrow="Championship"
         title={seasonHeading}
         rightInline
         right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
       />
+      </DesignSlot>
 
       <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} showMovement={showMovement} />
       {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} showMovement={showMovement} />}

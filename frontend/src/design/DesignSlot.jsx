@@ -46,7 +46,10 @@ function MockFrame({ src, title }) {
     const measure = () => {
       const doc = frame.contentDocument;
       if (!doc?.documentElement) return;
-      setHeight(Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight || 0));
+      // Measure the mockup itself, not the document: the document is never
+      // shorter than the frame, so a short mockup would keep a gap below it.
+      const el = doc.getElementById("mock") || doc.body;
+      if (el) setHeight(Math.ceil(el.getBoundingClientRect().height));
     };
     const onLoad = () => {
       const doc = frame.contentDocument;
@@ -54,10 +57,10 @@ function MockFrame({ src, title }) {
       // The mockups are full pages with their own grey ground and padding;
       // inside the site only the element itself should show.
       const style = doc.createElement("style");
-      style.textContent = "html,body{background:transparent!important;overflow:hidden}#mock{padding:0!important;max-width:none!important}";
+      style.textContent = "html,body{background:transparent!important;overflow:hidden}#mock{padding:0!important;max-width:none!important;display:flow-root}";
       doc.head.appendChild(style);
       observer = new ResizeObserver(measure);
-      observer.observe(doc.body);
+      observer.observe(doc.getElementById("mock") || doc.body);
       measure();
     };
     frame.addEventListener("load", onLoad);
