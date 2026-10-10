@@ -6,7 +6,7 @@ import Icon from "./InfoIcon.jsx";
 import { useAsk } from "./overlay.jsx";
 import { NO_VALUE } from "../utils/format.js";
 
-const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true };
+const EMPTY = { title: "", folderId: "", raceId: "", version: "", description: "", installNote: "", fileName: "", externalUrl: "", sortOrder: 0, published: true, required: false };
 
 const smallBtn = "flex h-7 w-7 items-center justify-center rounded-lg bg-surface2 text-medium transition hover:bg-border disabled:opacity-30";
 
@@ -175,7 +175,7 @@ export default function AdminDownloads() {
       title: d.title, folderId: d.folderId || "", raceId: d.raceId || "", version: d.version || "",
       description: d.description || "",
       installNote: d.installNote || "", fileName: d.fileName || "", externalUrl: d.externalUrl || "",
-      sortOrder: d.sortOrder || 0, published: d.published,
+      sortOrder: d.sortOrder || 0, published: d.published, required: !!d.required,
     });
     jumpToForm();
   }
@@ -448,6 +448,13 @@ export default function AdminDownloads() {
             onChange={(e) => set("published", e.target.checked)}
             label="Published (visible to members)"
           />
+          <CheckField
+            className="mt-5"
+            checked={form.required}
+            onChange={(e) => set("required", e.target.checked)}
+            label="Required to race"
+            hint="Tagged Required in the list on Race Info."
+          />
         </div>
 
         <div className="flex items-center gap-3">
@@ -479,6 +486,11 @@ export default function AdminDownloads() {
                     {d.raceId && (
                       <span className="rounded bg-link/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-link">
                         {raceName(d.raceId) || "Replay"}
+                      </span>
+                    )}
+                    {d.required && (
+                      <span className="rounded bg-warn/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-warn">
+                        Required
                       </span>
                     )}
                     {!d.published && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-warn">hidden</span>}

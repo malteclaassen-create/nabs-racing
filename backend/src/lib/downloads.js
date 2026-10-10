@@ -101,6 +101,8 @@ export function shapeDownload(r) {
     description: r.description ?? null,
     version: r.version ?? null,
     installNote: r.installNote ?? null,
+    // Every driver needs it to race (the public list tags it "Required").
+    required: !!Number(r.required),
     fileName: r.fileName ?? null,
     externalUrl: r.externalUrl ?? null,
     sortOrder: Number(r.sortOrder) || 0,
@@ -136,6 +138,10 @@ export async function ensureDownloadTables(prisma) {
   // Replays: a download can belong to a specific race (null = ordinary file).
   if (!cols.some((c) => c.name === "raceId")) {
     await prisma.$executeRawUnsafe(`ALTER TABLE "Download" ADD COLUMN "raceId" TEXT`);
+  }
+  // Files every driver must have installed to race (0 = optional).
+  if (!cols.some((c) => c.name === "required")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Download" ADD COLUMN "required" INTEGER NOT NULL DEFAULT 0`);
   }
   // One-time migration: category -> folder (only for rows not yet in a folder).
   const orphans = await prisma.$queryRawUnsafe(
@@ -232,10 +238,10 @@ export async function dbCreateDownload(prisma, d) {
   const id = randomUUID();
   await prisma.$executeRaw`
     INSERT INTO "Download"
-      ("id","title","category","folderId","raceId","description","version","installNote","fileName","externalUrl","sortOrder","published")
+      ("id","title","category","folderId","raceId","description","version","installNote","fileName","externalUrl","sortOrder","published","required")
     VALUES
       (${id}, ${d.title}, ${d.category ?? ""}, ${d.folderId ?? null}, ${d.raceId ?? null}, ${d.description ?? null}, ${d.version ?? null}, ${d.installNote ?? null},
-       ${d.fileName ?? null}, ${d.externalUrl ?? null}, ${Number(d.sortOrder) || 0}, ${d.published ? 1 : 0})`;
+       ${d.fileName ?? null}, ${d.externalUrl ?? null}, ${Number(d.sortOrder) || 0}, ${d.published ? 1 : 0}, ${d.required ? 1 : 0})`;
   return dbGetDownload(prisma, id);
 }
 
@@ -252,7 +258,8 @@ export async function dbUpdateDownload(prisma, id, d) {
       "fileName" = ${d.fileName ?? null},
       "externalUrl" = ${d.externalUrl ?? null},
       "sortOrder" = ${Number(d.sortOrder) || 0},
-      "published" = ${d.published ? 1 : 0}
+      "published" = ${d.published ? 1 : 0},
+      "required" = ${d.required ? 1 : 0}
     WHERE "id" = ${id}`;
   return dbGetDownload(prisma, id);
 }
