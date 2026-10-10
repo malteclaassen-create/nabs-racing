@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -122,8 +122,19 @@ function Group({ items, value, onPick, attention, attentionSummary }) {
 
 const ELSEWHERE_LABEL = "font-mono text-[10.5px] font-bold uppercase tracking-[0.16em] text-light";
 
-export default function ProfileNav({ nav, value, onSelect, attention = 0, attentionSummary = "" }) {
+// `openSignal`: open the phone sheet now. A changing value (the history entry's
+// key) rather than a flag, so the same request twice opens it twice; `onOpened`
+// lets the page drop the request once it has been carried out.
+export default function ProfileNav({ nav, value, onSelect, attention = 0, attentionSummary = "", openSignal = null, onOpened }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (!openSignal) return;
+    setSheetOpen(true);
+    onOpened?.();
+    // onOpened is a fresh function on every render of the page; the signal is
+    // what matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
   const here = nav.sections.find((s) => s.key === value);
 
   // A choice anywhere: the links call this with nothing (they navigate by
