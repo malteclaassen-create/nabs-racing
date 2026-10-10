@@ -216,26 +216,21 @@ function gearLabel(g) {
   return g === 0 ? "R" : g === 1 ? "N" : g - 1;
 }
 
-// Dev only: compare the marker options on the demo board straight from the
-// address bar. ?disc=pos puts the running position on the discs instead of the
-// race number, ?tags=all|0|3|6 overrides how many cars get a name tag.
-function previewOption(name) {
-  if (!import.meta.env.DEV) return null;
-  return new URLSearchParams(window.location.search).get(name);
-}
-
 // One car as the map draws it, whichever of the two maps it is on.
 function toDot(car, x, y, matchFn) {
   const m = matchFn ? matchFn(car.name) : null;
   const color = m?.teamColor || "#94a3b8";
   const title = m?.nabsName || car.name;
+  // The disc carries the running position: on a map the question is who is
+  // where in the race, and a race number answers it only for whoever knows
+  // the numbers by heart. Without a position yet, the number, then initials.
   const label = car.isSafetyCar
     ? "SC"
-    : previewOption("disc") === "pos" && car.racePosition != null
+    : car.racePosition != null
       ? String(car.racePosition)
       : car.raceNumber != null
-      ? String(car.raceNumber)
-      : (car.initials || car.name || "").slice(0, 3);
+        ? String(car.raceNumber)
+        : (car.initials || car.name || "").slice(0, 3);
   return {
     guid: car.guid,
     x,
@@ -383,11 +378,12 @@ function CarMarker({ d, r, spot, isFocusTarget, counterRotate, onFocus, register
 }
 
 // The tags for a set of dots, recomputed per board update.
-function useTags({ dots, focusGuid, zoom, r, rotated, H, fit }) {
+function useTags({ dots, focusGuid, zoom, r, rotated, H }) {
   const last = useRef(new Map());
-  // Three leaders on a phone-sized map, six on a wider one.
-  const tags = previewOption("tags");
-  const cap = tags === "all" ? Infinity : /^\d+$/.test(tags || "") ? Number(tags) : fit && fit.drawnW < 520 ? 3 : 6;
+  // Name tags for the top three only (plus the car being followed, which
+  // placeTags always adds): more than that and a bunched field turns into a
+  // pile of labels.
+  const cap = 3;
   return useMemo(
     () => placeTags({ dots, focusGuid, r, k: focusGuid ? 1 / Math.sqrt(zoom) : 1, rotated, H, cap, last: last.current }),
     [dots, focusGuid, zoom, r, rotated, H, cap]
@@ -582,7 +578,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
   // measured, and what incidents keep.
   const rBase = Math.max(W, H) * 0.014;
   const r = markerRadius(fit, rBase);
-  const tags = useTags({ dots, focusGuid, zoom, r, rotated, H, fit });
+  const tags = useTags({ dots, focusGuid, zoom, r, rotated, H });
   // The coloured lap: the AI line's middle, projected like the cars. About
   // four metres wide, a third of the band map.png paints for the road, and
   // never thinner than two and a half pixels on screen.
@@ -740,7 +736,7 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
   const diag = Math.hypot(vw, vh);
   const rBase = diag * 0.018;
   const r = markerRadius(fit, rBase);
-  const tags = useTags({ dots, focusGuid, zoom, r, rotated: false, H: vh, fit });
+  const tags = useTags({ dots, focusGuid, zoom, r, rotated: false, H: vh });
 
   if (!circuit) return null;
 

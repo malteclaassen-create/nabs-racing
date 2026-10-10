@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ChartLine, ChevronDown, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import { api, getToken, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { motionOff } from "../hooks/motion.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { Skeleton } from "./ui.jsx";
 import Flag from "./Flag.jsx";
@@ -39,8 +40,45 @@ import { comparisonCsv, comparisonSummary, downloadText, exportSvgPng } from "..
 // (84px, NavBar.jsx) on the page, under this card's header in full screen.
 // overflow-clip rather than hidden: hidden would make the card the player's
 // scroll container, and it would never pin.
+// How tall the card's light body stands while its sections wait for their
+// data: a card from the first moment, without guessing how long it will be.
+const BODY_RESERVE = 360;
+
 function ToolCard({ id, title, subtitle, actions, cardRef, full, stage, children }) {
   const headRef = useRef(null);
+  // The light body grows WITH the sections as they rise (see `stage` in
+  // TelemetryCompare): held at a card's height while they wait, then eased to
+  // its full length over the entrance. The hidden sections already take up
+  // their room while the data arrives, and the body used to jump longer with
+  // every step.
+  const boxRef = useRef(null);
+  const innerRef = useRef(null);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const inner = innerRef.current;
+    if (!box || !inner) return undefined;
+    const release = () => {
+      box.style.height = "";
+      box.style.overflow = "";
+      box.style.transition = "";
+    };
+    if (full || stage === "done" || motionOff()) {
+      release();
+      return undefined;
+    }
+    if (stage === "wait") {
+      box.style.transition = "none";
+      box.style.overflow = "clip";
+      box.style.height = `${BODY_RESERVE}px`;
+      return undefined;
+    }
+    // enter
+    void box.offsetHeight;
+    box.style.transition = "height 1100ms var(--e-out)";
+    box.style.height = `${inner.offsetHeight}px`;
+    const t = setTimeout(release, 1150);
+    return () => clearTimeout(t);
+  }, [stage, full]);
   const [headHeight, setHeadHeight] = useState(0);
   useEffect(() => {
     const el = headRef.current;
@@ -61,11 +99,13 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, stage, children
         </div>
         {actions}
       </div>
-      <div className={`bg-surface2/50 p-3 sm:p-5 ${full ? "min-h-full" : ""}`}>
+      <div ref={boxRef} className={`bg-surface2/50 ${full ? "min-h-full" : ""}`}>
+      <div ref={innerRef} className="p-3 sm:p-5">
         {/* `stage` is the one entrance (see TelemetryCompare): the sections
             wait unseen while the data comes in, rise together top to bottom
             once, and after that simply change in place. */}
         <div className={`tel-${stage} space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
+      </div>
       </div>
     </div>
   );
