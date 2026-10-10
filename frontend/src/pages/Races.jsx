@@ -1349,11 +1349,11 @@ export default function Races() {
                       {/* The facts belong to the feature race — under the
                           sprint's table they would caption the wrong result. */}
                       {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
-                        <RaceFacts key={detail.race.id} race={detail.race} results={detail.results} quali={detail.quali} />
+                        <RaceFacts key={`facts-${detail.race.id}`} race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
-                      {!detailIsStale && <RaceGallery key={detail.race.id} photos={detail.photos} title={detail.race.track} />}
+                      {!detailIsStale && <RaceGallery key={`gallery-${detail.race.id}`} photos={detail.photos} title={detail.race.track} />}
                     </div>
                   )}
                 </>

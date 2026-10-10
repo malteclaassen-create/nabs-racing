@@ -13,7 +13,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
-import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field, SmoothHeight } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
@@ -947,8 +947,14 @@ function MyProfile() {
       {/* Keyed on the tab so the panel beside the nav fades in on every
           switch. Until now only the tab pill moved and the content underneath
           hard-swapped, which read as two different components rather than one
-          control moving between views. */}
-      <div key={tab} className="content-in min-w-0 flex-1">
+          control moving between views.
+          Every section enters the same way (swap-in: a fade and a short rise,
+          the cards inside simply there). Some sections also brought their own
+          card-by-card entrance and others none, so switching felt different
+          each time. SmoothHeight carries the page between a long section and
+          a short one; the drop in page height used to yank the sticky nav. */}
+      <SmoothHeight className="min-w-0 flex-1">
+      <div key={tab} className="swap-in">
       {tab === "settings" ? (
         <SettingsSections />
       ) : tab === "tools" ? (
@@ -1045,6 +1051,7 @@ function MyProfile() {
         </>
       )}
       </div>
+      </SmoothHeight>
       </div>
     </div>
   );
