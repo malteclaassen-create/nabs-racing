@@ -106,7 +106,7 @@ const TIER_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4" };
 function HiddenChip({ count, text, action, onClick, quiet = false }) {
   return (
     <span
-      className={`flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-[13px] ${
+      className={`content-in flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-[13px] ${
         quiet ? "bg-surface2 text-light" : "bg-warn/10 text-warn"
       }`}
     >
@@ -660,8 +660,12 @@ export default function DriverStandings() {
         {/* Under the toolbar: the "with points" switch, then a chip for each
             group of drivers the table is holding back, put back in one tap.
             Without these the reserve pool would simply be missing with no
-            explanation, which is worse than the crowded table. */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+            explanation, which is worse than the crowded table.
+            The row keeps a chip's height even when no chip is up, and on a
+            phone (where a chip takes its own line) the height glides: switching
+            tiers adds or drops the reserves chip, and the table used to jump. */}
+        <SmoothHeight className="mt-3">
+        <div className="flex min-h-[28px] flex-wrap items-center gap-x-4 gap-y-2 px-1">
           <button
             type="button"
             role="switch"
@@ -714,6 +718,7 @@ export default function DriverStandings() {
             )}
           </span>
         </div>
+        </SmoothHeight>
       </div>
 
       {/* Switching to or from Cards, or the tier: the box glides to the new
