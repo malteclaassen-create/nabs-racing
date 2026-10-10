@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, CalendarX, ChevronRight } from "lucide-react";
 import { useParams, Link, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -11,7 +12,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
-  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, FlairBadge, StatusPill, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
+  ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, FlairBadge, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
 } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -21,7 +22,8 @@ import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import TrackStrengths from "../components/TrackStrengths.jsx";
-import PointsChart from "../components/PointsChart.jsx";
+import RivalsGapChart from "../components/RivalsGapChart.jsx";
+import DriverRaceByRace from "../components/DriverRaceByRace.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
@@ -299,10 +301,11 @@ function OtherSeriesLines({ otherSeries }) {
 }
 
 // Cross-season career: one row per linked season of THIS series, current name
-// resolved. The backend folds two rows of the SAME season (handle change
-// mid-season) into a single line, so this renders whenever there's anything
-// aggregated at all; other series show as one summary line each underneath.
-// The link out to /career/<handle>: this table is one league's half of it.
+// resolved, newest first. The backend folds two rows of the SAME season (handle
+// change mid-season) into a single line, so this renders whenever there's
+// anything aggregated at all; other series show as one summary line each
+// underneath. The link out to /career/<handle>: this table is one league's
+// half of it.
 function CareerLink({ careerKey }) {
   if (!careerKey) return null;
   return (
@@ -311,12 +314,29 @@ function CareerLink({ careerKey }) {
       className="transition inline-flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:text-brand"
     >
       Full career
-      <span aria-hidden="true">↗</span>
+      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
     </Link>
   );
 }
 
-function CareerBlock({ career, otherSeries, careerKey }) {
+// A season's championship place, medal-filled for the top three.
+function CareerPos({ position }) {
+  if (!position) return <span className="text-faint">{NO_VALUE}</span>;
+  const medal = position <= 3 ? MEDAL[position - 1] : null;
+  return (
+    <span
+      className={`inline-grid h-7 min-w-[2.2rem] place-items-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
+        medal ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"
+      }`}
+      style={medal ? { backgroundColor: medal } : undefined}
+    >
+      P{position}
+    </span>
+  );
+}
+
+function CareerBlock({ career, otherSeries, careerKey, gameOf }) {
+  const navigate = useNavigate();
   const hasTable = career && (career.seasons?.length ?? 0) >= 1;
   if (!hasTable && !otherSeries?.length) return null;
   if (!hasTable) {
@@ -328,11 +348,23 @@ function CareerBlock({ career, otherSeries, careerKey }) {
       </div>
     );
   }
-  const { seasons, totals } = career;
+  const { totals } = career;
+  const seasons = [...career.seasons].sort((a, b) => (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0));
+  // No championship position before the season has actually been raced: a
+  // standings rank over zero starts means nothing.
+  const posOf = (s) => (s.position && s.starts > 0 ? s.position : null);
+  const placed = seasons.map(posOf).filter(Boolean);
+  const bestPos = placed.length ? Math.min(...placed) : null;
+  // The points bar is read against the best season on the list.
+  const maxPts = Math.max(1, ...seasons.map((s) => s.points || 0));
+  const hrefOf = (s) => `/drivers/${s.driverId}${s.seasonNumber != null ? `?season=${s.seasonNumber}` : ""}`;
+  const nameOf = (s) => s.seasonName || `Season ${s.seasonNumber}`;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   return (
     <div className="reveal card overflow-hidden">
       <CardBar title="Career across seasons" right={<CareerLink careerKey={careerKey} />} />
-      <div className="overflow-x-auto">
+      {/* md and up: the table, the whole row opens that season's profile. */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
@@ -342,49 +374,100 @@ function CareerBlock({ career, otherSeries, careerKey }) {
               <th className="px-2 py-2.5 text-center">Starts</th>
               <th className="px-2 py-2.5 text-center">Wins</th>
               <th className="px-2 py-2.5 text-center">Podiums</th>
-              <th className="px-5 py-2.5 text-right">Pts</th>
+              <th className="px-2 py-2.5">Pts</th>
+              <th className="px-5 py-2.5"><span className="sr-only">Open</span></th>
             </tr>
           </thead>
           <tbody className="cascade divide-y divide-border">
-            {seasons.map((s, i) => (
-              <tr key={s.driverId} style={{ "--i": Math.min(i, 16) }} className="transition hover:bg-surface2">
-                <td className="px-5 py-3">
-                  <Link
-                    to={`/drivers/${s.driverId}${s.seasonNumber != null ? `?season=${s.seasonNumber}` : ""}`}
-                    className="transition font-display font-bold uppercase tracking-tight text-dark hover:text-brand"
-                  >
-                    {s.seasonName || `Season ${s.seasonNumber}`}
-                  </Link>
-                  {s.isCurrent && <span className="ml-2 pill bg-surface2 text-light">this one</span>}
-                </td>
-                <td className="px-2 py-3">
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-1.5 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} />
-                    <span className="text-medium">{s.teamName || NO_VALUE}</span>
-                  </span>
-                </td>
-                {/* No championship position before the season has actually
-                    been raced — a standings rank over zero starts means nothing. */}
-                <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{s.position && s.starts > 0 ? `P${s.position}` : "–"}</td>
-                <td className="px-2 py-3 text-center tabular-nums text-medium">{s.starts}</td>
-                <td className="px-2 py-3 text-center tabular-nums text-dark">{s.wins}</td>
-                <td className="px-2 py-3 text-center tabular-nums text-dark">{s.podiums}</td>
-                <td className="px-5 py-3 text-right font-display font-black tabular-nums text-dark">{s.points}</td>
-              </tr>
-            ))}
+            {seasons.map((s, i) => {
+              const href = hrefOf(s);
+              const game = gameOf?.(s.seasonNumber);
+              return (
+                <tr
+                  key={s.driverId}
+                  style={{ "--i": Math.min(i, 16) }}
+                  onClick={() => navigate(href)}
+                  onKeyDown={(e) => { if (e.key === "Enter") navigate(href); }}
+                  tabIndex={0}
+                  role="link"
+                  title={`Open ${nameOf(s)}`}
+                  className={`group cursor-pointer transition hover:bg-surface2 ${s.isCurrent ? "bg-primary/15" : ""}`}
+                >
+                  <td className="px-5 py-3">
+                    <span className="font-display font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">{nameOf(s)}</span>
+                    {game && <span className="ml-2 font-mono text-[11px] text-light">{game}</span>}
+                    {s.isCurrent && <span className="ml-2 pill bg-dark text-card">this one</span>}
+                  </td>
+                  <td className="px-2 py-3">
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} />
+                      <span className="text-medium">{s.teamName || NO_VALUE}</span>
+                    </span>
+                  </td>
+                  <td className="px-2 py-3 text-center"><CareerPos position={posOf(s)} /></td>
+                  <td className="px-2 py-3 text-center tabular-nums text-medium">{s.starts}</td>
+                  <td className="px-2 py-3 text-center font-bold tabular-nums text-dark">{s.wins}</td>
+                  <td className="px-2 py-3 text-center font-bold tabular-nums text-dark">{s.podiums}</td>
+                  <td className="px-2 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-surface2 lg:block" aria-hidden="true">
+                        <div className="h-full rounded-full" style={{ width: `${((s.points || 0) / maxPts) * 100}%`, backgroundColor: s.teamColor || "#64748b" }} />
+                      </div>
+                      <span className="font-display font-black tabular-nums text-dark">{s.points}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 text-faint">
+                    <ChevronRight className="ml-auto h-4 w-4 transition group-hover:text-brand" aria-hidden="true" />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t border-border font-mono text-[11px] uppercase tracking-wider text-light">
-              <td className="px-5 py-2.5">{totals.seasons} {totals.seasons === 1 ? "season" : "seasons"}</td>
+              <td className="px-5 py-2.5">{plural(totals.seasons, "season")}</td>
               <td className="px-2 py-2.5" />
-              <td className="px-2 py-2.5" />
+              <td className="px-2 py-2.5 text-center">{bestPos ? `best P${bestPos}` : ""}</td>
               <td className="px-2 py-2.5 text-center tabular-nums text-medium">{totals.starts}</td>
               <td className="px-2 py-2.5 text-center tabular-nums text-dark">{totals.wins}</td>
               <td className="px-2 py-2.5 text-center tabular-nums text-dark">{totals.podiums}</td>
-              <td className="px-5 py-2.5 text-right font-display font-black tabular-nums text-dark">{totals.points}</td>
+              <td className="px-2 py-2.5 font-display text-sm font-black tabular-nums text-dark">{totals.points}</td>
+              <td className="px-5 py-2.5" />
             </tr>
           </tfoot>
         </table>
+      </div>
+      {/* Phones: one compact line per season, the totals under them. */}
+      <div className="md:hidden">
+        <ul className="cascade divide-y divide-border">
+          {seasons.map((s, i) => {
+            const game = gameOf?.(s.seasonNumber);
+            return (
+              <li key={s.driverId} style={{ "--i": Math.min(i, 16) }}>
+                <Link to={hrefOf(s)} className={`flex items-center gap-3 px-4 py-3 transition hover:bg-surface2 ${s.isCurrent ? "bg-primary/15" : ""}`}>
+                  <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                      {nameOf(s)}
+                      {game && <span className="ml-1.5 font-mono text-[11px] font-normal text-light">{game}</span>}
+                    </span>
+                    <span className="block truncate text-xs text-light">
+                      {s.teamName || NO_VALUE} · {plural(s.starts, "start")} · {s.wins}W {s.podiums}P
+                    </span>
+                  </span>
+                  <CareerPos position={posOf(s)} />
+                  <span className="w-10 shrink-0 text-right font-display font-black tabular-nums text-dark">{s.points}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex justify-between gap-3 border-t border-border bg-surface2/60 px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider text-light">
+          <span>
+            {plural(totals.seasons, "season")} · {plural(totals.starts, "start")}
+          </span>
+          <b className="text-dark">{totals.points} pts</b>
+        </div>
       </div>
       <OtherSeriesLines otherSeries={otherSeries} />
     </div>
@@ -449,86 +532,6 @@ function RatingBreakdown({ rating, stats, color }) {
 // its own. Two races of the same evening belong in one picture — a driver
 // reading the season wants to see the sprint that set up the feature race,
 // not switch views to find it.
-// The championship around this driver: their points line bold and labelled,
-// the two places either side of them faint behind it (the five nearest rows of
-// the table), and in one line under it how far ahead or behind the neighbours
-// they sit and how much the remaining rounds can still pay. Reuses the
-// constructors' chart: driver rows are mapped into its shape, keyed by driver.
-function RivalsProgression({ driverId, standingsData }) {
-  const rows = [...(standingsData?.standings || [])]
-    .filter((r) => r.position != null)
-    .sort((a, b) => a.position - b.position);
-  const idx = rows.findIndex((r) => r.driverId === driverId);
-  const raceNumbers = standingsData?.raceNumbers || [];
-  const completed = raceNumbers.filter((n) => rows.some((r) => r.perRace?.[n] != null));
-  if (idx < 0 || rows.length < 2 || completed.length < 2) return null;
-
-  const start = Math.max(0, Math.min(idx - 2, rows.length - 5));
-  const field = rows.slice(start, start + 5).map((r) => ({
-    teamId: r.driverId,
-    name: r.name,
-    color: r.team?.color || "var(--c-faint)",
-    total: r.total,
-    perRace: Object.fromEntries(Object.entries(r.perRace || {}).map(([n, v]) => [n, v?.points || 0])),
-    // A dropped round leaves the driver's total whole, so the line skips it too.
-    droppedPerRace: Object.fromEntries((r.droppedRounds || []).map((n) => [n, r.perRace?.[n]?.points || 0])),
-  }));
-
-  // What the rounds still to run can pay at most: each at the best single-race
-  // haul seen this season (its own table's P1 where it has one), twice over for
-  // a sprint weekend. Same reading as the title fight on the home page.
-  const done = new Set(completed);
-  const sprint = new Set(standingsData?.sprintRounds || []);
-  const custom = standingsData?.customPoints || {};
-  const maxRace = Math.max(
-    0,
-    ...rows.flatMap((r) =>
-      completed
-        .filter((n) => !custom[n]?.length)
-        .map((n) => (r.perRace?.[n]?.points || 0) / (sprint.has(n) ? 2 : 1))
-    )
-  );
-  const potential = raceNumbers
-    .filter((n) => !done.has(n))
-    .reduce((sum, n) => sum + (custom[n]?.[0] ?? maxRace) * (sprint.has(n) ? 2 : 1), 0);
-
-  const me = rows[idx];
-  const ahead = rows[idx - 1];
-  const behind = rows[idx + 1];
-  const note = (
-    <p className="mt-4 rounded-lg bg-surface2 px-3 py-2.5 text-sm text-medium">
-      {ahead && (
-        <>
-          <span className="font-mono font-bold text-bad">{ahead.total - me.total}</span> behind {ahead.name}
-        </>
-      )}
-      {ahead && behind && " · "}
-      {behind && (
-        <>
-          <span className="font-mono font-bold text-ok">+{me.total - behind.total}</span> ahead of {behind.name}
-        </>
-      )}
-      {potential > 0 && (
-        <>
-          {" · "}up to <span className="font-mono font-bold text-dark">{potential}</span> pts still on the table
-        </>
-      )}
-    </p>
-  );
-
-  return (
-    <PointsChart
-      standings={field}
-      completed={completed}
-      allRounds={raceNumbers}
-      highlight={driverId}
-      eyebrow="Championship progression"
-      title={`${me.name} vs. rivals`}
-      note={note}
-    />
-  );
-}
-
 function FormChart({ perRace, seasonRounds, color, mode = "race", withSprint = false }) {
   // Every round of the season, run or not: a round already raced brings its
   // result along, one still ahead is an empty slot that only carries its label.
@@ -2000,34 +2003,46 @@ export default function DriverProfile({ previewId, preview }) {
     !racedSeasons.some((s) => s.seasonNumber === season);
   if (notInSeason) {
     const seasonLabel = currentSeason?.name || `Season ${season}`;
+    const raced = [...racedSeasons].sort((a, b) => (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0));
+    // The way out: their latest season in this league, and the field of the
+    // season the switcher stands on.
+    const latest = raced[0];
     return (
       <div className="content-in space-y-6">
         {ownControls}
-        <div className="card flex flex-col items-center gap-4 px-6 py-14 text-center">
-          <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={72} />
-          <div>
-            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">
-              {driver.name}
-            </h1>
-            <p className="mt-2 text-sm text-medium">didn&rsquo;t race in {seasonLabel}.</p>
+        <div className="card mx-auto max-w-[720px] px-6 py-12 text-center">
+          <div className="relative mx-auto h-20 w-20">
+            <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} fallbacks={driver.photoFallbacks} color={color} size={80} />
+            <span className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center rounded-full border-4 border-card bg-surface2 text-light">
+              <CalendarX className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <h1 className="mt-4 font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-3xl">{driver.name}</h1>
+          <p className="mt-1 text-medium">
+            didn&rsquo;t race in <b className="text-dark">{seasonLabel}</b>.
+          </p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
             <span className="mr-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Raced in</span>
-            {[...racedSeasons]
-              .sort((a, b) => (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0))
-              .map((s) => (
-                <Link
-                  key={s.driverId}
-                  to={`/drivers/${s.driverId}?season=${s.seasonNumber}`}
-                  className="rounded-lg bg-surface2 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:bg-brand hover:text-ink"
-                >
-                  S{s.seasonNumber}
-                </Link>
-              ))}
+            {raced.map((s) => (
+              <Link
+                key={s.driverId}
+                to={`/drivers/${s.driverId}?season=${s.seasonNumber}`}
+                className="rounded-lg bg-surface2 px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium transition hover:bg-brand hover:text-onbrand"
+              >
+                S{s.seasonNumber}
+              </Link>
+            ))}
           </div>
-          <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">
-            All drivers of {seasonLabel} →
-          </Link>
+          <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+            {latest && (
+              <Link to={`/drivers/${latest.driverId}?season=${latest.seasonNumber}`} className="btn-primary">
+                Open {latest.seasonName || `Season ${latest.seasonNumber}`} profile
+              </Link>
+            )}
+            <Link to="/drivers" className="btn-secondary">
+              All drivers of {seasonLabel}
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -2150,123 +2165,21 @@ export default function DriverProfile({ previewId, preview }) {
         <HeadToHead me={p} meRow={meRow} standings={standingsData.standings} />
       </div>
 
-      <RivalsProgression driverId={driver.id} standingsData={standingsData} />
+      <RivalsGapChart driverId={driver.id} standingsData={standingsData} />
 
       {/* Race by race + Team */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="reveal card overflow-hidden lg:col-span-2">
-          <CardBar title="Race by Race" />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-                  <th className="px-3 py-2.5 sm:px-5">Rnd</th>
-                  <th className="px-2 py-2.5">Circuit</th>
-                  <th className="px-2 py-2.5 text-center">Grid</th>
-                  <th className="px-2 py-2.5 text-center">{hasSprint ? "Feature" : "Race"}</th>
-                  {hasSprint && (
-                    <th className="px-2 py-2.5 text-center" title="The sprint race of a sprint weekend (scores like the feature race, added to the round)">
-                      Sprint
-                    </th>
-                  )}
-                  <th className="px-2 py-2.5 text-right">Pts</th>
-                  <th className="hidden px-5 py-2.5 text-right sm:table-cell">+/−</th>
-                </tr>
-              </thead>
-              {/* cascade: rounds deal in one after another, like the standings rows */}
-              <tbody className="cascade divide-y divide-border">
-                {perRace.map((r, i) => {
-                  const finished = r.status === "FINISHED" && r.position != null;
-                  const medal = finished && r.position <= 3 ? MEDAL[r.position - 1] : null;
-                  const delta = finished && r.grid != null ? r.grid - r.position : null;
-                  const dropped = droppedRounds.has(r.number);
-                  const raceHref = r.raceId
-                    ? `/races?race=${r.raceId}${driver.seasonNumber != null ? `&season=${driver.seasonNumber}` : ""}`
-                    : null;
-                  return (
-                    <tr
-                      key={r.number}
-                      style={{ "--i": Math.min(i, 16) }}
-                      title={dropped ? "Dropped: one of the lowest-scoring rounds, not counted toward the total" : raceHref ? "Open this race" : undefined}
-                      onClick={raceHref ? () => navigate(raceHref) : undefined}
-                      onKeyDown={raceHref ? (e) => { if (e.key === "Enter") navigate(raceHref); } : undefined}
-                      tabIndex={raceHref ? 0 : undefined}
-                      role={raceHref ? "link" : undefined}
-                      className={`group transition hover:bg-surface2 ${raceHref ? "cursor-pointer" : ""}`}
-                    >
-                      <td className="px-3 py-3 font-mono font-bold tabular-nums text-light sm:px-5">{r.number}</td>
-                      <td className="px-2 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <Flag code={flagFor(r.track)?.country} w={22} h={16} />
-                          <span className="font-display font-bold uppercase tracking-tight text-dark transition group-hover:text-brand">{r.track}</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-3 text-center font-mono tabular-nums text-medium">{r.grid ? `P${r.grid}` : "–"}</td>
-                      <td className="px-2 py-3 text-center">
-                        {finished ? (
-                          <span className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
-                            medal ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"}`}
-                            style={medal ? { backgroundColor: medal } : undefined}>
-                            P{r.position}
-                          </span>
-                        ) : <StatusPill status={r.status} />}
-                      </td>
-                      {hasSprint && (
-                        <td className="px-2 py-3 text-center">
-                          {r.sprint ? (
-                            r.sprint.status === "FINISHED" && r.sprint.position != null ? (
-                              <span
-                                className={`inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-1.5 font-display text-sm font-black tabular-nums ${
-                                  r.sprint.position <= 3 ? "text-ink" : "bg-surface2 text-dark ring-1 ring-border"}`}
-                                style={r.sprint.position <= 3 ? { backgroundColor: MEDAL[r.sprint.position - 1] } : undefined}
-                                title={`Sprint P${r.sprint.position} · ${r.sprint.points} pts`}
-                              >
-                                P{r.sprint.position}
-                              </span>
-                            ) : (
-                              <StatusPill status={r.sprint.status} />
-                            )
-                          ) : (
-                            <span className="text-faint" title="No sprint this round">–</span>
-                          )}
-                        </td>
-                      )}
-                      <td
-                        className="px-2 py-3 text-right font-display text-base font-black tabular-nums"
-                        title={r.sprint ? `Feature ${r.points - r.sprint.points} + sprint ${r.sprint.points} = ${r.points}` : undefined}
-                      >
-                        {dropped ? (
-                          <span className="text-faint line-through decoration-2">{r.points}</span>
-                        ) : (
-                          <span className="text-dark">{r.points}</span>
-                        )}
-                        {/* A sprint weekend's total is two results: say so
-                            under the number, so a 60 next to a P3 adds up. */}
-                        {r.sprint && (
-                          <span className="block font-mono text-[10px] font-semibold tabular-nums text-light">
-                            {r.points - r.sprint.points} + {r.sprint.points}
-                          </span>
-                        )}
-                      </td>
-                      <td className="hidden px-5 py-3 text-right font-mono text-sm font-bold tabular-nums sm:table-cell">
-                        {delta == null || delta === 0
-                          ? <span className="text-faint">–</span>
-                          : <span style={{ color: delta > 0 ? "#16a34a" : "#dc2626" }}>{delta > 0 ? `▲${delta}` : `▼${-delta}`}</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {dropWorst > 0 && (
-            <p className="border-t border-border px-5 py-2.5 font-mono text-[11px] leading-relaxed text-light sm:px-6">
-              <span className="text-faint line-through decoration-2">Struck</span> points are dropped: a driver&rsquo;s {dropWorst}
-              {" "}lowest-scoring round{dropWorst === 1 ? " doesn't" : "s don't"} count toward the total
-              {totalRounds > dropWorst && <> (best {totalRounds - dropWorst} of {totalRounds})</>}.
-            </p>
-          )}
-        </div>
+        <DriverRaceByRace
+          perRace={perRace}
+          seasonRounds={p.seasonRounds}
+          color={color}
+          droppedRounds={droppedRounds}
+          dropWorst={dropWorst}
+          totalRounds={totalRounds}
+          seasonNumber={driver.seasonNumber}
+          standings={standingsData.standings}
+          hasSprint={hasSprint}
+        />
 
         <TeamPanel driver={driver} standings={standingsData.standings} career={p.career} teammateHistory={p.teammateHistory || []} />
       </div>
@@ -2278,7 +2191,12 @@ export default function DriverProfile({ previewId, preview }) {
       )}
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
-      <CareerBlock career={p.career} otherSeries={p.otherSeries} careerKey={p.driver.handle || p.driver.id} />
+      <CareerBlock
+        career={p.career}
+        otherSeries={p.otherSeries}
+        careerKey={p.driver.handle || p.driver.id}
+        gameOf={(n) => (seasonList || []).find((x) => x.number === n)?.game || null}
+      />
 
       <div>
         <Link to="/drivers" className="transition text-sm font-semibold text-link hover:underline">← All drivers</Link>
