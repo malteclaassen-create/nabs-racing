@@ -10,8 +10,8 @@ import { playStandingsReplay } from "../utils/standingsReplay.js";
 import { useTilt, motionOff, useSwapClass } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
-import StandingsTable from "../components/StandingsTable.jsx";
-import DriverRow, { standingCaption } from "../components/DriverStandingsRow.jsx";
+import DriverStandingsBoard from "../components/DriverStandingsBoard.jsx";
+import { standingCaption } from "../components/DriverStandingsRow.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { List as ListIcon, Grid3x3, IdCard, Search, SearchX, X } from "lucide-react";
@@ -270,9 +270,11 @@ export default function DriverStandings() {
   // The search box in the toolbar. Not remembered: a name typed last visit
   // would quietly hide most of the table on the next one.
   const [query, setQuery] = useState("");
-  // The list below the switches fades over when either one changes; the first
-  // render keeps the page's own entrance (cascade / replay).
-  const swap = useSwapClass(`${view}:${tier}`);
+  // The table below the switches fades over when the tier or the cards view
+  // changes; the first render keeps the page's own entrance (cascade, replay).
+  // List and By round are the same table (DriverStandingsBoard), so switching
+  // between them is not a swap: the board stays and morphs.
+  const swap = useSwapClass(`${view === "cards" ? "cards" : "board"}:${tier}`);
   // Rating cards are a per-season switch (admin Seasons tab): the early seasons
   // were raced without the telemetry the ratings are built from, so their cards
   // would be guesswork. Off = the Cards option isn't offered at all here, and a
@@ -436,6 +438,12 @@ export default function DriverStandings() {
   // the same flash the projection table uses on race night, so the two pages
   // speak one language). Only on the full list — a tier filter re-sorts for a
   // reason that is not a round landing, and replaying there would be a lie.
+  // It plays in either view of the board, and only once: switching List and
+  // By round keeps the same rows, so there is nothing to replay again.
+  //
+  // The rows deal in with the usual cascade first, at their OLD slots, and
+  // the glide waits until the last of them has landed (`afterEntrance`, see
+  // utils/standingsReplay.js), so the two never fight over the same row.
   //
   // Runs from the container's CALLBACK REF, not an effect: refs attach in the
   // commit phase, before the browser paints, so the rows are already offset to
@@ -462,7 +470,7 @@ export default function DriverStandings() {
       replayNode.current = box;
       if (!replayArmed || seasonReplayed.current) return;
       seasonReplayed.current = true;
-      replayCancel.current = playStandingsReplay(box);
+      replayCancel.current = playStandingsReplay(box, { afterEntrance: true, holdMs: 250 });
     } else if (replayNode.current && !replayNode.current.isConnected) {
       replayCancel.current?.();
       replayCancel.current = null;
@@ -708,11 +716,12 @@ export default function DriverStandings() {
         </div>
       </div>
 
-      {/* Switching List / By round / Cards or the tier: the box glides to the
-          new view's height while the new view fades in, instead of the page
-          below jumping by the difference in one frame. */}
+      {/* Switching to or from Cards, or the tier: the box glides to the new
+          view's height while the new view fades in, instead of the page below
+          jumping by the difference in one frame. List and By round share one
+          key: the board stays mounted and morphs between the two. */}
       <SmoothHeight>
-      <div key={`${activeView}:${activeTier}`} className={swap}>
+      <div key={`${activeView === "cards" ? "cards" : "board"}:${activeTier}`} className={swap}>
       {shown.length === 0 ? (
         <FilteredEmpty {...emptyNote()} />
       ) : activeView === "cards" ? (
@@ -792,43 +801,25 @@ export default function DriverStandings() {
             </div>
           );
         })()
-      ) : activeView === "grid" ? (
-        <StandingsTable
-          variant="driver"
+      ) : (
+        <DriverStandingsBoard
+          mode={activeView}
+          rows={shown}
+          leaderTotal={leaderTotal}
           raceNumbers={data.raceNumbers}
           sprintRounds={data.sprintRounds || []}
           fastestLapPoints={data.fastestLapPoints || 0}
           customPoints={data.customPoints || {}}
           championOverride={data.championOverride || null}
           manualPoints={!!data.manualPoints}
-          rows={shown}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}
           decided={seasonDecided}
-          showMovement={!seasonDecided || demoArrows}
+          multiTier={multiTier}
+          championIds={championIds}
+          deltaById={deltaById}
+          rowsRef={replayRef}
         />
-      ) : (
-        <div
-          ref={replayRef}
-          // The rows deal in top to bottom like everywhere else. While the
-          // replay runs (and afterwards, for this mount) only their fade does:
-          // the usual rise animates transform, and the replay owns transform.
-          className={`cascade ${replayArmed || seasonReplayed.current ? "cascade-fade" : ""} card divide-y divide-border overflow-hidden`}
-        >
-          {shown.map((d, i) => (
-            <DriverRow
-              key={d.driverId}
-              d={d}
-              leaderTotal={leaderTotal}
-              index={Math.min(i, 16)}
-              showTier={multiTier}
-              champion={championIds.has(d.driverId)}
-              decided={seasonDecided}
-              delta={deltaById.has(d.driverId) ? deltaById.get(d.driverId) : null}
-              deltaSlot={deltaById.size > 0}
-            />
-          ))}
-        </div>
       )}
       </div>
       </SmoothHeight>
@@ -839,8 +830,12 @@ export default function DriverStandings() {
           actually read, the headline number of the whole page was unexplained
           and did not add up. The matrix has its own, fuller wording (it can
           point at the struck-through cells), so this only fills the other two. */}
-      {activeView !== "grid" && data.dropWorst > 0 && data.raceNumbers.length > 0 && (
-        <p className="mt-4 text-xs leading-relaxed text-light">
+      {data.dropWorst > 0 && data.raceNumbers.length > 0 && (
+        // Folds shut (rather than vanishing) while By round is showing, in
+        // step with the board's own footnotes folding open.
+        <div className={`sb-fold ${activeView !== "grid" ? "is-open" : ""}`}>
+        <div>
+        <p className="pt-4 text-xs leading-relaxed text-light">
           Points are the season total after the drop rule: each driver&rsquo;s {data.dropWorst} lowest-scoring
           round{data.dropWorst === 1 ? " doesn't" : "s don't"} count
           {data.raceNumbers.length > data.dropWorst && (
@@ -848,6 +843,8 @@ export default function DriverStandings() {
           )}
           . Switch to <button type="button" onClick={() => setView("grid")} className="underline decoration-dotted underline-offset-2 transition hover:text-dark">By round</button> to see which rounds were dropped.
         </p>
+        </div>
+        </div>
       )}
     </div>
   );

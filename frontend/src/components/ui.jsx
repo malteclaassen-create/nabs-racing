@@ -472,6 +472,22 @@ export function SmoothHeight({ children, duration = "var(--t-base)", onChange, c
 
   useEffect(() => () => undo.current?.(), []);
 
+  // The content can also change height on its own, between commits: the
+  // driver standings board grows its header and footnotes by CSS transition
+  // when it switches views, with no new render at the end of it. `prev` would
+  // then still hold the height from before, and the next unrelated commit
+  // would "animate" the box back from that stale value. So while nothing is
+  // pinned, whatever size the box settles at is the start of the next move.
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (!undo.current) prev.current = el.getBoundingClientRect().height;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div ref={box} className={className}>
       {children}
