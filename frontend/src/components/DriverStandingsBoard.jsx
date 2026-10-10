@@ -25,6 +25,12 @@ import TeamLogo from "./TeamLogo.jsx";
 // row-wide link wait this long before changing over when going back to the
 // list, see `settled` below.
 const MORPH_MS = 450;
+// Rows drawn up front, and how many more each time the reader scrolls near the
+// end of what is drawn. The full field with reserves is 150-odd rows; nobody
+// sees more than a screenful at a time, and every drawn row costs on every
+// view switch.
+const FIRST_ROWS = 40;
+const MORE_ROWS = 40;
 
 // Tracks how far the scroller is scrolled, so the frozen Pos/Driver and Pts
 // columns cast a shadow only when content is actually tucked beneath them.
@@ -369,7 +375,9 @@ export default function DriverStandingsBoard({
     lastMode.current = mode;
     const box = boxRef.current;
     if (!box || motionOff()) return undefined;
-    const margin = 120;
+    // A whole screen of slack below (and above): a row half in view must
+    // never be the one that jumps.
+    const margin = window.innerHeight;
     const parked = [];
     for (const el of box.children) {
       const r = el.getBoundingClientRect();
@@ -422,6 +430,24 @@ export default function DriverStandingsBoard({
     // Keyed on the row set only: the List / By round morph changes heights
     // on its own and must not be read as rows moving.
   }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rows past the first batch are drawn as the reader scrolls toward them.
+  const [limit, setLimit] = useState(FIRST_ROWS);
+  const moreRef = useRef(null);
+  const hasMore = rows.length > limit;
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!hasMore || !el || typeof IntersectionObserver === "undefined") return undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setLimit((l) => l + MORE_ROWS);
+      },
+      { rootMargin: "0px 0px 1200px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, limit]);
+  const drawn = hasMore ? rows.slice(0, limit) : rows;
 
   const leftShadow = edge.start ? "shadow-[10px_0_12px_-10px_rgba(0,0,0,0.45)]" : "";
   const rightShadow = edge.end ? "shadow-[-10px_0_12px_-10px_rgba(0,0,0,0.45)]" : "";
@@ -508,11 +534,12 @@ export default function DriverStandingsBoard({
               entrance as a race result on the Races page. --i drives the
               stagger; the replay re-deals the movers by the slot they start in. */}
           <div ref={setRowsBox} role={grid ? "rowgroup" : undefined} className="sboard-rows cascade divide-y divide-border">
-            {rows.map((d, i) => (
+            {drawn.map((d, i) => (
               <BoardRow
                 key={d.driverId}
                 d={d}
-                index={Math.min(i, 16)}
+                // Rows drawn later arrive out of sight; no stagger to wait on.
+                index={i < FIRST_ROWS ? Math.min(i, 16) : 0}
                 leaderTotal={leaderTotal}
                 grid={grid}
                 sticky={sticky}
@@ -531,6 +558,7 @@ export default function DriverStandingsBoard({
           </div>
         </div>
       </div>
+      {hasMore && <div ref={moreRef} className="h-px" aria-hidden="true" />}
       <div className={`sb-fold ${grid ? "is-open" : ""}`}>
         <div>
           <StandingsNotes
