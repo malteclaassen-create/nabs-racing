@@ -577,6 +577,14 @@ body {
   from { transform: translateY(18px) scale(0.95); }
   to   { transform: none; }
 }
+/* The same rise without the scale, for rows inside a box that scrolls
+   sideways (tables): the spring overshoots, so a scaled row was briefly a few
+   pixels WIDER than its table, and Firefox showed a horizontal scrollbar for
+   it while the rows came in. */
+@keyframes nabs-spring-up-y {
+  from { transform: translateY(18px); }
+  to   { transform: none; }
+}
 /* Hidden until scrolled into view (see useScrollReveal); then it rises in. */
 .reveal {
   opacity: 0;
@@ -676,6 +684,11 @@ body {
   animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
   /* children inherit --reveal-delay from the container, then fan out on --i */
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
+}
+/* Rows in a sideways scroller rise without the scale (see nabs-spring-up-y). */
+.overflow-x-auto .cascade.is-visible > :not(.proj-flash-up):not(.proj-flash-down),
+.overflow-x-auto.cascade.is-visible > :not(.proj-flash-up):not(.proj-flash-down) {
+  animation-name: nabs-fade-in, nabs-spring-up-y;
 }
 /* A sideways rail scrolled to its selected item (the Races round rail) fans
    out from that item, so what is on screen arrives first. */
@@ -1774,11 +1787,11 @@ body {
    (finished, row in place) and adds the flash beside it. */
 .sboard-rows.cascade.is-visible > .proj-flash-up,
 .sboard-rows.cascade.is-visible > .proj-flash-down {
-  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both, proj-flash-up var(--t-draw) ease-out;
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up-y 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both, proj-flash-up var(--t-draw) ease-out;
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms), calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms), 0s;
 }
 .sboard-rows.cascade.is-visible > .proj-flash-down {
-  animation-name: nabs-fade-in, nabs-spring-up, proj-flash-down;
+  animation-name: nabs-fade-in, nabs-spring-up-y, proj-flash-down;
 }
 /* The replay's flash on the board is opaque, like the frozen cells' own flash:
    a see-through tint let the row underneath show through while two rows
@@ -1792,8 +1805,8 @@ body {
   from { background-color: color-mix(in srgb, #ef4444 16%, var(--c-card)); }
   to   { background-color: var(--c-card); }
 }
-.sboard-rows.cascade.is-visible > .proj-flash-up { animation-name: nabs-fade-in, nabs-spring-up, sb-flash-up; }
-.sboard-rows.cascade.is-visible > .proj-flash-down { animation-name: nabs-fade-in, nabs-spring-up, sb-flash-down; }
+.sboard-rows.cascade.is-visible > .proj-flash-up { animation-name: nabs-fade-in, nabs-spring-up-y, sb-flash-up; }
+.sboard-rows.cascade.is-visible > .proj-flash-down { animation-name: nabs-fade-in, nabs-spring-up-y, sb-flash-down; }
 @media (prefers-reduced-motion: reduce) {
   .sb-head, .sboard-rows > *, .sb-fold { transition: none !important; }
 }
