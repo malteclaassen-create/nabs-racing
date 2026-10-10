@@ -937,13 +937,20 @@ function TelemetryCompare({ series: fixedSeries = null }) {
 // Grey shapes where the comparison is about to be, so the page does not jump
 // from one line of text to a full dashboard. `compact` when the lap list above
 // is already drawn and only the channels are on their way.
+// It holds the space but shows nothing: grey blocks that stood there and then
+// made way for the real sections, which then rose in one by one, read as the
+// page appearing, vanishing and appearing again. The card stands from the
+// start and the sections deal into it, as the results do on the Races page.
+// The label is still there for screen readers.
 function TelemetrySkeleton({ label, compact = false }) {
   return (
-    <div role="status" aria-label={label} className="space-y-3 sm:space-y-4">
-      {!compact && <Skeleton className="h-56 rounded-xl" />}
-      <Skeleton className="h-28 rounded-xl" />
-      <div className="grid gap-3 lg:grid-cols-2"><Skeleton className="h-72 rounded-xl" /><Skeleton className="hidden h-72 rounded-xl lg:block" /></div>
-      <p className="text-center text-xs text-light">{label}</p>
+    <div role="status" className="space-y-3 sm:space-y-4">
+      <span className="sr-only">{label}</span>
+      <div aria-hidden="true" className="invisible space-y-3 sm:space-y-4">
+        {!compact && <Skeleton className="h-56 rounded-xl" />}
+        <Skeleton className="h-28 rounded-xl" />
+        <div className="grid gap-3 lg:grid-cols-2"><Skeleton className="h-72 rounded-xl" /><Skeleton className="hidden h-72 rounded-xl lg:block" /></div>
+      </div>
     </div>
   );
 }
