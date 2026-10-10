@@ -15,6 +15,8 @@ import Logo from "./components/Logo.jsx";
 import SocialLinks, { useSocial, SocialIcon } from "./components/SocialLinks.jsx";
 import { useAuth } from "./hooks/useAuth.js";
 import PreviewToggle from "./components/PreviewToggle.jsx";
+import DesignBar from "./design/DesignBar.jsx";
+import DesignSlot from "./design/DesignSlot.jsx";
 import ScrollBar from "./components/ScrollBar.jsx";
 import FeedbackWidget from "./components/FeedbackWidget.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
@@ -512,9 +514,12 @@ function SeriesScopedApp() {
           <NavBar />
           <PrivateSeasonBanner />
           <AppRoutes />
-          <Footer />
+          <DesignSlot id="global/05-footer" className="mt-16">
+            <Footer />
+          </DesignSlot>
         </div>
         <PreviewToggle />
+        <DesignBar />
         <ScrollBar />
         {/* Bug reports & feature wishes. Its own floating button on desktop
             (bottom right); on phones it has no button of its own and is opened

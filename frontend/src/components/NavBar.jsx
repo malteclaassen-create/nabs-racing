@@ -24,6 +24,7 @@ import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useToken
 import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // The token count, sitting against the profile chip. Only there while the trial
 // is switched on (the hook returns null otherwise) and only for a signed-in
@@ -712,6 +713,7 @@ function StandingsNav({ seriesPath }) {
           TRANSPARENT padding, so the pointer never leaves the hover region on
           the way down to the card. */}
       <div className={`absolute left-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
+        <DesignSlot id="global/02-nav-menu" className={open ? "fixed inset-x-0 top-[84px] max-h-[calc(100dvh-84px)] overflow-y-auto" : "hidden"}>
         <div
           role="menu"
           data-tour="nav-standings-menu"
@@ -722,6 +724,7 @@ function StandingsNav({ seriesPath }) {
           {transfers && row(seriesPath("/transfers"), <><path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" /></>, "Transfers", "Team changes, round by round")}
           {row(seriesPath("/records"), <><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3" /></>, "Hall of Fame", "All-time records")}
         </div>
+        </DesignSlot>
       </div>
     </div>
   );
@@ -1150,6 +1153,11 @@ export default function NavBar() {
           out (nav-fade) so the bar melts into the page with no hard line. The
           84px height = 4px accent line + 80px (h-20) nav row. Lite mode swaps
           this for a solid page-coloured backdrop (see .nav-backdrop rules). */}
+      {/* The topbar mockups carry a strip of page skeleton under the bar; crop it. */}
+      <DesignSlot
+        id="global/01-topbar"
+        className="[&>iframe[title$=A]]:max-h-[65px] [&>iframe[title$=B]]:max-h-[100px] [&>iframe[title$=C]]:max-h-[148px] lg:[&>iframe[title$=C]]:max-h-[108px]"
+      >
       <div aria-hidden className="nav-backdrop nav-fade pointer-events-none absolute inset-x-0 top-0 h-[84px] bg-card/95 backdrop-blur" />
       <div className="relative">
         {/* team-colour accent line = scroll progress indicator */}
@@ -1287,6 +1295,7 @@ export default function NavBar() {
         </div>
       </nav>
       </div>
+      </DesignSlot>
 
       {/* Mobile menu — a drop-down panel that OVERLAYS the page (absolute, so the
           content underneath stays put) with a soft scrim. Tapping the scrim or a
@@ -1308,6 +1317,7 @@ export default function NavBar() {
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
             className={`nav-drop absolute inset-x-0 top-full z-30 h-[calc(100dvh-100%)] origin-top overflow-y-auto border-t border-border bg-card shadow-xl shadow-ink/20 ${closing ? "is-closing pointer-events-none" : ""}`}
           >
+            <DesignSlot id="global/02-nav-menu">
             <div className="container-page flex flex-col pt-3 pb-[calc(0.75rem+var(--bnav))]">
               {/* You-stuff first, on ONE row: profile chip left, search right.
                   The chip keeps its natural width (name truncates via its own
@@ -1398,11 +1408,14 @@ export default function NavBar() {
                 />
               )}
             </div>
+            </DesignSlot>
           </div>
         </div>
       )}
     </header>
-    <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} />
+    <DesignSlot id="global/04-bottom-tabbar" className="fixed inset-x-0 bottom-0 z-chrome flex flex-col justify-end overflow-hidden lg:hidden has-[iframe[title$=A]]:max-h-[98px] has-[iframe[title$=B]]:max-h-[120px] has-[iframe[title$=C]]:max-h-[134px] [&>iframe]:shrink-0">
+      <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} />
+    </DesignSlot>
     </>
   );
 }
