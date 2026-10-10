@@ -9,6 +9,7 @@ import { useApi } from "../hooks/useApi.js";
 import { api } from "../api/client.js";
 import { HELP_DEFAULTS } from "../data/helpDefaults.js";
 import { answerWords, fillHelp, helpSlugs, matchesHelp, parseHelp } from "./helpText.mjs";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // ---------------------------------------------------------------------------
 // /help — Help & troubleshooting.
@@ -160,6 +161,7 @@ export default function Help() {
 
   return (
     <div className="space-y-6 sm:space-y-10">
+      <DesignSlot id="help/01-header-search">
       <PageHeader
         eyebrow="Troubleshooting"
         title="Help"
@@ -187,13 +189,17 @@ export default function Help() {
           </button>
         )}
       </div>
+      </DesignSlot>
 
+      <DesignSlot id="help/05-search-results">
       {q && hits === 0 && (
         <p className="text-sm text-light">
           Nothing here matches &ldquo;{q}&rdquo;. Ask in Discord and we&rsquo;ll add it.
         </p>
       )}
+      </DesignSlot>
 
+      <DesignSlot id="help/02-topics">
       {filtered.map((t) => (
         <section key={t.title} className="space-y-3">
           <SectionHeading title={t.title} />
@@ -214,7 +220,13 @@ export default function Help() {
           </div>
         </section>
       ))}
+      </DesignSlot>
 
+      {/* An opened answer and one with a video exist only after a click. */}
+      <DesignSlot id="help/03-answer" insert />
+      <DesignSlot id="help/04-video" insert />
+
+      <DesignSlot id="help/06-still-stuck">
       <div className="card flex flex-wrap items-center gap-x-4 gap-y-3 p-4 sm:p-5">
         <div className="min-w-0 flex-1">
           <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark">Still stuck?</div>
@@ -234,6 +246,7 @@ export default function Help() {
           </a>
         )}
       </div>
+      </DesignSlot>
     </div>
   );
 }

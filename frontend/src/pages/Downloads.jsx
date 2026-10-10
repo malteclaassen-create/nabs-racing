@@ -12,6 +12,7 @@ import { SocialIcon } from "../components/SocialLinks.jsx";
 import Icon from "../components/InfoIcon.jsx";
 import { singularOne } from "../utils/format.js";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // League default points. Fallback only; seasons can override via pointsTable.
 const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
@@ -300,6 +301,7 @@ function Rules({ content, tokens }) {
   return (
     <div className="space-y-7 sm:space-y-10">
       {/* ------------------- the championship format ------------------- */}
+      <DesignSlot id="downloads/02-format">
       <section className="reveal space-y-4">
         <SectionHeading eyebrow="The rules" title="How the championship works" />
         <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -312,8 +314,10 @@ function Rules({ content, tokens }) {
           ))}
         </div>
       </section>
+      </DesignSlot>
 
       {/* ------------------------- points table ------------------------- */}
+      <DesignSlot id="downloads/03-points">
       <section className="reveal space-y-4">
         <SectionHeading
           eyebrow="Scoring"
@@ -353,8 +357,10 @@ function Rules({ content, tokens }) {
           <p className="text-xs leading-relaxed text-light">{text(content.pointsFootnote, tokens)}</p>
         )}
       </section>
+      </DesignSlot>
 
       {/* ------------------------- the rulebook ------------------------- */}
+      <DesignSlot id="downloads/04-rulebook">
       <section className="reveal space-y-4">
         <SectionHeading
           eyebrow="On track"
@@ -374,6 +380,7 @@ function Rules({ content, tokens }) {
           <p className="text-xs leading-relaxed text-light">{text(content.rulebookFootnote, tokens)}</p>
         )}
       </section>
+      </DesignSlot>
     </div>
   );
 }
@@ -408,16 +415,19 @@ export default function Downloads() {
 
   return (
     <div className="space-y-6 sm:space-y-12">
+      <DesignSlot id="downloads/01-header">
       <PageHeader
         eyebrow="Drivers' handbook"
         title="Race Info"
         subtitle={fill(content.subtitle, tokens)}
       />
+      </DesignSlot>
 
       <Rules content={content} tokens={tokens} />
 
       {/* ------------------------- downloads ------------------------- */}
       <section className="reveal space-y-4">
+        <DesignSlot id="downloads/05-catalogue">
         <SectionHeading
           eyebrow="Members"
           title="Downloads"
@@ -427,11 +437,14 @@ export default function Downloads() {
             </span>
           }
         />
-        {isLoggedIn ? <Catalogue /> : <LoginGate />}
+        {isLoggedIn && <Catalogue />}
+        </DesignSlot>
+        <DesignSlot id="downloads/06-login-gate">{!isLoggedIn && <LoginGate />}</DesignSlot>
         {/* The downloads are where a wrong mod version comes from, so the page
             that finds one belongs right under them — and it needs no login,
             because being unable to join is not a reason to make somebody sign
             in first. */}
+        <DesignSlot id="downloads/07-content-check">
         <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
           <div className="min-w-0 flex-1">
             <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark">
@@ -451,6 +464,7 @@ export default function Downloads() {
             </Link>
           </div>
         </div>
+        </DesignSlot>
       </section>
     </div>
   );
