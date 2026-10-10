@@ -615,6 +615,15 @@ export const api = {
     if (simulate) parts.push("simulate=1");
     return request(`/live/championship${parts.length ? `?${parts.join("&")}` : ""}`, { auth: true });
   },
+  // The circuit on air as a line from the start line round, in world metres,
+  // for the live map's sector colours. `ver` is the board's map version, so a
+  // track change asks again instead of reading the cached answer.
+  liveTrackLine: (server = null, ver = 0) => {
+    const parts = [`v=${encodeURIComponent(ver)}`];
+    if (SELECTED_SERIES) parts.push(`series=${encodeURIComponent(SELECTED_SERIES)}`);
+    if (server) parts.push(`server=${encodeURIComponent(server)}`);
+    return request(`/live/track-line?${parts.join("&")}`);
+  },
   // Race control (stewards + admins): does this viewer get the button, the
   // incidents of the session on air, and the two things a steward changes.
   raceControlAccess: () => request("/live/incidents/access", { auth: true }),

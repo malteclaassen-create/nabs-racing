@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseFastLane, roadFromAi, parseMapIni } from "./trackMaps.js";
+import { parseFastLane, roadFromAi, parseMapIni, centreLine } from "./trackMaps.js";
 
 // An AI file for a circle of radius r: `count` points anticlockwise in x/z,
 // 4 m of road to the left of the line and 6 m to the right.
@@ -89,6 +89,24 @@ describe("roadFromAi", () => {
   it("gives up on nothing", () => {
     expect(roadFromAi(null)).toBeNull();
     expect(roadFromAi([[0, 0, 1, 1]])).toBeNull();
+  });
+});
+
+describe("centreLine", () => {
+  it("runs down the middle of the road, from the start of the lap, a point every few metres", () => {
+    const road = { track: roadFromAi(parseFastLane(circleAi(100, 400)), { step: 3 }) };
+    const line = centreLine(road, 8);
+    // 4 m one side, 6 m the other: the middle of the tarmac is 1 m off the AI line.
+    expect(line.every(([x, z]) => Math.abs(Math.hypot(x, z) - 101) < 0.3 || Math.abs(Math.hypot(x, z) - 99) < 0.3)).toBe(true);
+    // The first point is the AI line's first point, which is where the lap starts.
+    expect(Math.atan2(line[0][1], line[0][0])).toBeCloseTo(0, 1);
+    expect(line.length).toBeGreaterThan(60);
+    expect(line.length).toBeLessThan(90);
+  });
+
+  it("has nothing to say about a missing or broken road", () => {
+    expect(centreLine(null)).toBeNull();
+    expect(centreLine({ track: { left: [[0, 0]], right: [] } })).toBeNull();
   });
 });
 

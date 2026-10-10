@@ -286,3 +286,55 @@ export async function ensureTrackRoad(track, layout) {
   misses.set(key, Date.now());
   return null;
 }
+
+// ---- The middle of the road, for the live map --------------------------------
+//
+// The live map colours the circuit by sector, and for that it needs the lap as
+// a line rather than as a picture: map.png is a stroke with no start and no
+// direction. The road above already is that line, twice over, and its points
+// run in the AI line's own order, which is the order NormalisedSplinePos counts
+// in: the first point is the start of the lap. Halfway between the two edges is
+// the middle of the tarmac, and a point every few metres is plenty for a stroke
+// on a map a few hundred pixels across.
+const CENTRE_STEP_M = 8;
+
+export function centreLine(road, step = CENTRE_STEP_M) {
+  const left = road?.track?.left;
+  const right = road?.track?.right;
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length < 3 || left.length !== right.length) return null;
+  const out = [];
+  let since = 0;
+  let prev = null;
+  for (let i = 0; i < left.length; i++) {
+    const p = [round1((left[i][0] + right[i][0]) / 2), round1((left[i][1] + right[i][1]) / 2)];
+    if (prev) since += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+    prev = p;
+    if (i > 0 && since < step) continue;
+    since = 0;
+    out.push(p);
+  }
+  return out.length >= 3 ? out : null;
+}
+
+// One fetch per track however many people open the live page at once: the
+// first visitor's request is shared with everyone who arrives while it runs,
+// and a line once found is kept for the life of the process (it never
+// changes). A miss is not kept here; ensureTrackRoad remembers those itself.
+const centreLines = new Map(); // "track|layout" -> line | Promise<line|null>
+
+export async function liveCentreLine(track, layout) {
+  if (!track) return null;
+  const key = `${track}|${layout || ""}`;
+  const have = centreLines.get(key);
+  if (have) return have;
+  const job = ensureTrackRoad(track, layout)
+    .then((road) => centreLine(road))
+    .catch(() => null)
+    .then((line) => {
+      if (line) centreLines.set(key, line);
+      else centreLines.delete(key);
+      return line;
+    });
+  centreLines.set(key, job);
+  return job;
+}

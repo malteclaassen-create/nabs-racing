@@ -36,7 +36,7 @@ import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
-import { noteBoard } from "../lib/sectorLines.js";
+import { noteBoard, sectorLinesFor } from "../lib/sectorLines.js";
 import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
@@ -2091,6 +2091,11 @@ function createRelay(server) {
         // Real overhead-map calibration when available (see loadTrackMap); null
         // tells the frontend to fall back to the stylised circuit outline.
         map: currentMapCalib(si, status.TrackMapData),
+        // Where the circuit's two sector lines are, in percent of the lap, for
+        // the map's sector colours. Learned from laps (lib/sectorLines.js), so
+        // null at a circuit nobody has recorded a matching lap on yet: the map
+        // then draws the track in one colour rather than guessing thirds.
+        sectorLines: sectorLinesFor(trackKeyOf(si.Track || "", si.TrackConfig || "")),
       },
       entries,
       updatedAt: Date.now(),
@@ -2146,6 +2151,12 @@ function createRelay(server) {
     raceSecond,
     guidsForName,
     getTrackMapPng: () => trackMap?.png || null,
+    // The AC folder names of the circuit on air, for the live map's sector
+    // colours (lib/trackMaps.js liveCentreLine). Null with no session loaded.
+    getTrackIds: () => {
+      const si = status?.SessionInfo;
+      return si?.Track ? { track: si.Track, layout: si.TrackConfig || "" } : null;
+    },
     // Size of every per-relay structure that can grow, for the memory
     // diagnostics. Counts only — the point is spotting the one that climbs.
     stats: () => ({
@@ -2222,6 +2233,10 @@ export function getBoard(serverKey) {
 
 export function getTrackMapPng(serverKey) {
   return relayFor(serverKey).getTrackMapPng();
+}
+
+export function getTrackIds(serverKey) {
+  return relayFor(serverKey).getTrackIds();
 }
 
 // How far into a live race we are, in seconds, for something that has to stamp
@@ -2433,6 +2448,18 @@ async function ensureDemoState() {
 // the first moments of every sector.
 const DEMO_CUT = [0.34, 0.33, 0.33];
 
+// Made-up cockpit numbers for the map's follow readout, so it can be looked at
+// without a race on: fast on the straights, slow in the corners, five of each
+// per lap, with a gear and revs that go with the speed. Raw AC gear numbering
+// (2 = first), like the real board.
+function demoCockpit(spline, inPits) {
+  if (inPits) return { speedKmh: 60, gear: 3, rpm: 5200 };
+  const speed = Math.round(150 + 170 * (0.5 + 0.5 * Math.cos(spline * Math.PI * 2 * 5)));
+  const gear = Math.min(8, 1 + Math.ceil(speed / 42));
+  const rpm = Math.round(6500 + ((speed % 42) / 42) * 5000);
+  return { speedKmh: speed, gear: gear + 1, rpm };
+}
+
 // A lap time cut into three sectors.
 function demoSectors(lapMs) {
   const cut = DEMO_CUT;
@@ -2582,6 +2609,7 @@ function getDemoBoard(kind = "race") {
       ping: 30 + idx,
       drs: false,
       deltaSelfMs: null,
+      ...demoCockpit(spline, inPits),
       spline,
       // Filled in below from actual race progress, so the demo has real
       // overtakes (exercises the Driving-Now / projection flip animations).
@@ -2668,6 +2696,9 @@ function getDemoBoard(kind = "race") {
       remainingMs: practice ? Math.max(0, 60 * 60000 - Math.round(secs * 1000)) : 32 * 60000,
       raceLaps: practice ? null : DEMO_RACE_LAPS, // the strategy axis runs the race distance
       map: null, // the demo carries no world positions — stylised outline only
+      // The demo's own cuts, so the map's sector colours line up with the
+      // sector times the board builds.
+      sectorLines: [DEMO_CUT[0] * 100, (DEMO_CUT[0] + DEMO_CUT[1]) * 100],
     },
     entries,
     updatedAt: Date.now(),
