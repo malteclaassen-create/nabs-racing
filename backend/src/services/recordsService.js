@@ -129,7 +129,8 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   const seasons = (
     await prisma.season.findMany({ where: { seriesId: series.id }, orderBy: { number: "asc" } })
   ).filter((s) => !priv.has(s.id));
-  if (!seasons.length) return { seriesName: series.name, seasons: 0, lists: [], records: [], champions: [] };
+  if (!seasons.length)
+    return { seriesName: series.name, seasons: 0, totals: { races: 0, drivers: 0, champions: 0 }, lists: [], records: [], champions: [] };
 
   const seasonIds = seasons.map((s) => s.id);
   const { byDriver } = await getPersonGroups(prisma);
@@ -357,5 +358,18 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     recordEntry("winStreak", "Longest win streak", streak, "consecutive races won, sprints included"),
   ].filter(Boolean);
 
-  return { seriesName: series.name, seasons: seasons.length, lists, records, champions };
+  // The headline numbers over the Hall of Fame. Races are the completed rounds
+  // plus every sprint that has results, so they count the way the wins do.
+  // Drivers are people, not handles, and only the ones who raced or scored:
+  // a reserve who signed up and never drove isn't part of the history. The
+  // champion count is people too, so a title defended under a new name is
+  // still one champion.
+  const sprintsRun = [...sprintChildren.keys()].filter((id) => raceIdsInPlay.has(id)).length;
+  const totals = {
+    races: completedRounds.length + sprintsRun,
+    drivers: [...persons.values()].filter((b) => b.starts > 0 || b.points > 0).length,
+    champions: new Set(champions.map((c) => personOf(c.driver.driverId))).size,
+  };
+
+  return { seriesName: series.name, seasons: seasons.length, totals, lists, records, champions };
 }

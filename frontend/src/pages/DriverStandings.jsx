@@ -14,7 +14,7 @@ import StandingsTable from "../components/StandingsTable.jsx";
 import DriverRow, { standingCaption } from "../components/DriverStandingsRow.jsx";
 import RatingCard from "../components/RatingCard.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
-import { List as ListIcon, Grid3x3, IdCard } from "lucide-react";
+import { List as ListIcon, Grid3x3, IdCard, Search, SearchX, X } from "lucide-react";
 import { countryFor } from "../data/driverCountries.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
 
@@ -97,6 +97,117 @@ const TIER_FILTERS = [
   { id: "2", label: "Tier 2" },
   { id: "0", label: "Reserves" },
 ];
+// The phone's tier switch is a grid of equal buttons, one column per tier the
+// season actually has. Spelled out so Tailwind sees the classes.
+const TIER_COLS = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4" };
+
+// One group of drivers the table is holding back, with the one-tap undo.
+// Amber while they are hidden; plain once they are back in.
+function HiddenChip({ count, text, action, onClick, quiet = false }) {
+  return (
+    <span
+      className={`flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1 text-[13px] ${
+        quiet ? "bg-surface2 text-light" : "bg-warn/10 text-warn"
+      }`}
+    >
+      <b className="font-mono tabular-nums">{count}</b>
+      {text}
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-dark shadow-sm transition hover:bg-surface2"
+      >
+        {action}
+      </button>
+    </span>
+  );
+}
+
+// Widths of the pale placeholder rows behind an empty table (percent).
+const GHOST_ROWS = [40, 57, 74, 56, 73, 55];
+
+// Nothing left after the filters. The table stays as a pale outline, the
+// filters in force sit on top as chips, and a note in the middle says what
+// emptied it with the fix one tap away, so the page keeps its shape instead of
+// collapsing into a lone message.
+function FilteredEmpty({ chips, onClearAll, title, hint, actions }) {
+  return (
+    <div className="card overflow-hidden rounded-2xl">
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-faint">Filters</span>
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={c.onRemove}
+              aria-label={`Remove filter ${c.label}`}
+              className="flex items-center gap-1.5 rounded-full bg-ink py-1 pl-3 pr-2 text-xs font-semibold text-white transition hover:bg-ink/85 dark:ring-1 dark:ring-white/15"
+            >
+              {c.label}
+              <X className="h-3.5 w-3.5 text-white/60" strokeWidth={2.25} aria-hidden />
+            </button>
+          ))}
+          <button type="button" onClick={onClearAll} className="ml-auto text-xs font-semibold text-link hover:underline">
+            Clear all
+          </button>
+        </div>
+      )}
+      <div className="relative">
+        <div aria-hidden className="divide-y divide-border">
+          {GHOST_ROWS.map((w, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <span className="h-4 w-5 rounded bg-surface2" />
+              <span className="h-8 w-8 rounded-full bg-surface2" />
+              <span className="flex-1">
+                <span className="block h-3 rounded bg-surface2" style={{ width: `${w}%` }} />
+                <span className="mt-1.5 block h-2 w-20 rounded bg-surface2" />
+              </span>
+              <span className="h-4 w-8 rounded bg-surface2" />
+            </div>
+          ))}
+        </div>
+        {/* The card colour, see-through: washes the outline out behind the
+            note in either theme and any design. */}
+        <div
+          className="absolute inset-0 flex items-center justify-center px-4"
+          style={{
+            background:
+              "linear-gradient(to bottom, color-mix(in srgb, var(--c-card) 30%, transparent), color-mix(in srgb, var(--c-card) 85%, transparent), color-mix(in srgb, var(--c-card) 30%, transparent))",
+          }}
+        >
+          <div role="status" className="flex max-w-md items-start gap-3 rounded-2xl bg-card p-4 shadow-lift ring-1 ring-border">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn">
+              <SearchX className="h-5 w-5" strokeWidth={2} aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="font-display text-base font-extrabold uppercase text-dark">{title}</p>
+              <p className="mt-0.5 text-sm text-light">{hint}</p>
+              {actions.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {actions.map((a, i) => (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={a.onClick}
+                      className={
+                        i === 0
+                          ? "rounded-lg bg-ink px-3 py-1.5 text-xs font-bold text-white transition hover:bg-ink/85 dark:ring-1 dark:ring-white/15"
+                          : "rounded-lg px-3 py-1.5 text-xs font-semibold text-medium ring-1 ring-border transition hover:bg-surface2 hover:text-dark"
+                      }
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // The page remounts on every season switch (App keys the content on the
 // season), which used to reset the view/filters to their defaults — switching
@@ -145,8 +256,8 @@ export default function DriverStandings() {
   const seasonHeading = seasonName ? `${seasonName} Driver Standings` : "Driver Standings";
   // Default OFF on purpose: the full field, reserves included, is what the
   // standings are meant to show. Defaulting this to ON was tried and taken back
-  // out — the crowded table is the intended one. The count line under the table
-  // still says how many rows a ticked box is holding back.
+  // out — the crowded table is the intended one. A chip under the toolbar
+  // still says how many rows the switch is holding back.
   const [onlyScoring, setOnlyScoring] = usePersistentState("nabs.standings.onlyScoring", false);
   // Reserves who never got in a car this season (see isIdleReserve below) are
   // off the table by default. This flips them back on.
@@ -156,6 +267,9 @@ export default function DriverStandings() {
   // table the Constructors page uses); "cards" = the whole field as their
   // actual driver rating cards, in championship order.
   const [view, setView] = usePersistentState("nabs.standings.view", "list");
+  // The search box in the toolbar. Not remembered: a name typed last visit
+  // would quietly hide most of the table on the next one.
+  const [query, setQuery] = useState("");
   // The list below the switches fades over when either one changes; the first
   // render keeps the page's own entrance (cascade / replay).
   const swap = useSwapClass(`${view}:${tier}`);
@@ -215,30 +329,38 @@ export default function DriverStandings() {
 
   // Filter by tier, drop the reserves who haven't raced, then optionally hide
   // point-less drivers, then re-rank the resulting view 1..n so a tier
-  // sub-table reads as its own standings.
-  let rows = activeTier === "all" ? all : all.filter((r) => String(r.tier) === activeTier);
-  // Who the standings are actually for: everyone holding a seat in a Tier 1 or
-  // Tier 2 team, plus the reserves who turned up — scored a point, or started
-  // a round (a start counts even if it ended in a DNF and no points, which is
-  // why this asks perRace rather than the total). A season's reserve pool is
-  // the whole sign-up list, so the rest of it is people who haven't driven
-  // this season at all: dozens of identical zero rows that are not part of any
-  // championship. The count line under the table brings them back in one
-  // click, so nobody vanishes without the page saying so. The rule itself
-  // lives in utils/standingsRow.js — the driver and team profiles withhold a
-  // P-number from exactly these rows, and the two have to agree.
-  const idleReserves = rows.filter(isIdleReserve).length;
-  if (!showIdleReserves) rows = rows.filter((r) => !isIdleReserve(r));
-  // The opt-in "only drivers with points" box on top of that, which also takes
-  // out the seated drivers who haven't scored. It only bites once there is a
-  // championship to show: before a season's first round nobody has scored, and
-  // an empty table is no answer. `hiddenCount` feeds the line under the table,
-  // so nothing disappears without saying so.
-  const anyScorer = rows.some((r) => r.total > 0);
-  const hideScoreless = onlyScoring && anyScorer;
-  const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
-  if (hideScoreless) rows = rows.filter((r) => r.total > 0);
-  rows = rows.map((d, i) => ({ ...d, position: i + 1 }));
+  // sub-table reads as its own standings. A function, because the tier
+  // switch shows how many drivers each tier would list under the same rules.
+  const viewOf = (tierId) => {
+    let rows = tierId === "all" ? all : all.filter((r) => String(r.tier) === tierId);
+    const pool = rows.length;
+    // Who the standings are actually for: everyone holding a seat in a Tier 1 or
+    // Tier 2 team, plus the reserves who turned up — scored a point, or started
+    // a round (a start counts even if it ended in a DNF and no points, which is
+    // why this asks perRace rather than the total). A season's reserve pool is
+    // the whole sign-up list, so the rest of it is people who haven't driven
+    // this season at all: dozens of identical zero rows that are not part of any
+    // championship. A chip under the toolbar brings them back in one
+    // click, so nobody vanishes without the page saying so. The rule itself
+    // lives in utils/standingsRow.js — the driver and team profiles withhold a
+    // P-number from exactly these rows, and the two have to agree.
+    const idleReserves = rows.filter(isIdleReserve).length;
+    if (!showIdleReserves) rows = rows.filter((r) => !isIdleReserve(r));
+    // The opt-in "only drivers with points" switch on top of that, which also takes
+    // out the seated drivers who haven't scored. It only bites once there is a
+    // championship to show: before a season's first round nobody has scored, and
+    // an empty table is no answer. `hiddenCount` feeds the chip under the
+    // toolbar, so nothing disappears without saying so.
+    const anyScorer = rows.some((r) => r.total > 0);
+    const hideScoreless = onlyScoring && anyScorer;
+    const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
+    if (hideScoreless) rows = rows.filter((r) => r.total > 0);
+    return { rows, pool, idleReserves, hiddenCount };
+  };
+  const tierCounts = new Map(tierFilters.map((t) => [t.id, viewOf(t.id).rows.length]));
+  const current = viewOf(activeTier);
+  const { idleReserves, hiddenCount } = current;
+  let rows = current.rows.map((d, i) => ({ ...d, position: i + 1 }));
   // The server ranks the previous round against the WHOLE pool (155 rows with
   // every idle reserve), so a debut read "▲83" in a table of 69. Re-rank it
   // inside this view, and nobody who hadn't started before the last round
@@ -300,6 +422,14 @@ export default function DriverStandings() {
     }
   }
 
+  // The toolbar's search narrows what is LISTED, never the ranking: a search
+  // for a team shows its drivers at their real places, with the real gaps.
+  // Any part of the driver's or the team's name, case ignored.
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? rows.filter((r) => r.name.toLowerCase().includes(q) || (r.team?.name || "").toLowerCase().includes(q))
+    : rows;
+
   // Replay the latest round's shake-up ONCE per visit, live-page style: the
   // list first paints in the PREVIOUS round's order, holds a beat, then every
   // mover glides to their real slot and flashes green or red (same glide and
@@ -318,6 +448,7 @@ export default function DriverStandings() {
   const replayArmed =
     !seasonReplayed.current &&
     activeTier === "all" &&
+    !q &&
     !motionOff() &&
     [...deltaById.values()].some((v) => v !== 0);
   // An INLINE callback ref is re-created every render, and React answers that
@@ -339,14 +470,59 @@ export default function DriverStandings() {
     }
   };
 
-  const scopeLabel = activeTier === "all" ? "drivers" : TIER_FILTERS.find((t) => t.id === activeTier).label;
+  // What the table says when the filters leave nobody: the filters in force as
+  // chips, what emptied it, and the one-tap ways back. The "with points" box
+  // can never be the cause (it stands down while nobody has scored), so it is
+  // the search, the reserves without a start, or a table nobody is on yet.
+  const tierLabel = TIER_FILTERS.find((t) => t.id === activeTier)?.label;
+  const noun = (n) => {
+    if (activeTier === "0") return n === 1 ? "reserve" : "reserves";
+    const drivers = n === 1 ? "driver" : "drivers";
+    return activeTier === "all" ? drivers : `${tierLabel} ${drivers}`;
+  };
+  const emptyNote = () => {
+    const chips = [];
+    if (activeTier !== "all") chips.push({ key: "tier", label: tierLabel, onRemove: () => setTier("all") });
+    if (onlyScoring) chips.push({ key: "points", label: "With points", onRemove: () => setOnlyScoring(false) });
+    if (q) chips.push({ key: "search", label: `"${query.trim()}"`, onRemove: () => setQuery("") });
+    const allTiers = activeTier !== "all" ? [{ label: "Show all tiers", onClick: () => setTier("all") }] : [];
+    const clearAll = () => {
+      setTier("all");
+      setOnlyScoring(false);
+      setQuery("");
+    };
+    if (q && rows.length > 0)
+      return {
+        chips,
+        onClearAll: clearAll,
+        title: `0 of ${rows.length} ${noun(rows.length)} match`,
+        hint: (
+          <>
+            No driver or team name here contains <b className="text-dark">{query.trim()}</b>.
+          </>
+        ),
+        actions: [{ label: "Clear search", onClick: () => setQuery("") }, ...allTiers],
+      };
+    if (idleReserves > 0 && !showIdleReserves)
+      return {
+        chips,
+        onClearAll: clearAll,
+        title: `0 of ${current.pool} ${noun(current.pool)} match`,
+        hint:
+          idleReserves === 1
+            ? "The one reserve here hasn't started a round yet, so the table leaves them out."
+            : `None of the ${idleReserves} has started a round yet, so the table leaves them out.`,
+        actions: [{ label: "Show reserves without a start", onClick: () => setShowIdleReserves(true) }, ...allTiers],
+      };
+    return { chips, onClearAll: clearAll, title: `No ${noun(0)} yet`, hint: "Nobody is on this table yet.", actions: allTiers };
+  };
+
   // The per-round matrix needs actual rounds; archived totals-only seasons fall
   // back to the list regardless of what's selected — as does a season whose
   // cards the admin switched off.
   const activeView = !hasRounds || (view === "cards" && !cardsEnabled) ? "list" : view;
 
-  // The three views, shared by the desktop's labelled switch and the phone's
-  // icon switch below.
+  // The three views. Labelled from sm up, icons only on a phone.
   const viewItems = [
     { key: "list", label: "List", Icon: ListIcon },
     { key: "grid", label: "By round", Icon: Grid3x3 },
@@ -357,10 +533,9 @@ export default function DriverStandings() {
 
   return (
     <div className="content-in">
-      {/* Phones get a compact head (title on one line, filters on one row, the
-          counts on one small line) so the table starts about 200px higher —
-          three more drivers on the first screen. From sm up it is the full
-          header and controls below, unchanged. */}
+      {/* Phones get a compact head (title on one line) so the table starts
+          higher, more drivers on the first screen. From sm up it is the full
+          header. */}
       <div className="mb-3 sm:hidden">
         <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">
           {seasonName ? `${seasonName} · Championship` : "Championship"}
@@ -391,179 +566,151 @@ export default function DriverStandings() {
         </div>
       )}
 
-      {/* One wrapper for both layouts, so the newcomer tour's stop finds the
-          controls on whichever screen is in use. */}
-      <div data-tour="standings-views">
-      {/* Phone: tier switch and view icons on one row, then one line of counts
-          with the "with points" tick at its end. */}
-      <div className="sm:hidden">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          {multiTier ? (
-            <SlidingTabs
-              items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
-              value={activeTier}
-              onChange={setTier}
-              btnClassName="px-2.5 py-1.5 text-[13px]"
-            />
-          ) : (
-            <span />
-          )}
-          {hasRounds && (
-            <div className="inline-flex shrink-0 rounded-lg border border-border bg-card p-0.5" role="group" aria-label="View">
-              {viewItems.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  type="button"
-                  aria-label={label}
-                  aria-pressed={activeView === key}
-                  title={label}
-                  onClick={() => setView(key)}
-                  className={`flex h-8 w-9 items-center justify-center rounded-md transition-colors ${
-                    activeView === key ? "bg-brand text-ink" : "text-light"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-light">
-            <span>
-              <b className="tabular-nums text-dark">{rows.length}</b> {scopeLabel}
-            </span>
-            <span aria-hidden>·</span>
-            {hasRounds ? (
-              <span>
-                <b className="tabular-nums text-dark">{data.raceNumbers.length}</b> rounds
-              </span>
-            ) : (
-              <span className="font-bold text-dark">Final standings</span>
-            )}
-            {hiddenCount > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <button type="button" onClick={() => setOnlyScoring(false)} className="underline decoration-dotted underline-offset-4">
-                  <b className="tabular-nums text-dark">{hiddenCount}</b> without points hidden
-                </button>
-              </>
-            )}
-            {idleReserves > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <button
-                  type="button"
-                  onClick={() => setShowIdleReserves(!showIdleReserves)}
-                  className="underline decoration-dotted underline-offset-4"
-                >
-                  {showIdleReserves ? (
-                    <>hide {idleReserves} idle reserves</>
-                  ) : (
+      {/* The toolbar: the tier switch with how many drivers each tier would
+          list, the search, and the three views. One card on every screen; on a
+          phone the tiers take the first row, search and the view icons share
+          the second. One wrapper, so the newcomer tour's stop finds it. */}
+      <div data-tour="standings-views" className="mb-4">
+        <div className="card rounded-2xl p-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            {multiTier && (
+              <SlidingTabs
+                items={tierFilters.map((t) => ({
+                  key: t.id,
+                  label: (
                     <>
-                      <b className="tabular-nums text-dark">{idleReserves}</b> reserves hidden
+                      <span className="text-[13px] sm:text-sm">{t.label}</span>
+                      <span
+                        className={`font-mono text-[10px] tabular-nums sm:text-[11px] ${
+                          t.id === activeTier ? "text-eyebrow" : "font-medium text-faint"
+                        }`}
+                      >
+                        {tierCounts.get(t.id)}
+                      </span>
                     </>
-                  )}
-                </button>
+                  ),
+                }))}
+                value={activeTier}
+                onChange={setTier}
+                wrapClassName={`grid gap-1 rounded-xl bg-surface2 p-1 lg:flex ${TIER_COLS[tierFilters.length] || "grid-cols-4"}`}
+                btnClassName="flex flex-col items-center justify-center px-1 py-1.5 sm:flex-row sm:gap-2 sm:px-3 lg:px-4"
+                pillClassName="rounded-lg bg-card shadow-sm"
+                activeClassName="text-dark"
+                idleClassName="text-medium hover:text-dark"
+              />
+            )}
+            <div className="flex flex-1 items-center gap-2">
+              <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 text-light transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25 lg:max-w-[260px]">
+                <Search className="h-4 w-4 shrink-0" strokeWidth={2.25} aria-hidden />
+                <input
+                  type="text"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a driver or team"
+                  aria-label="Find a driver or team"
+                  className="min-w-0 flex-1 bg-transparent text-base text-dark placeholder:text-faint focus:outline-none sm:text-sm"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    className="-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition hover:bg-surface2 hover:text-dark"
+                  >
+                    <X className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                  </button>
+                )}
+              </label>
+              {hasRounds && (
+                <SlidingTabs
+                  items={viewItems.map(({ key, label, Icon }) => ({
+                    key,
+                    title: label,
+                    label: (
+                      <>
+                        <Icon className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                        <span className="sr-only sm:not-sr-only">{label}</span>
+                      </>
+                    ),
+                  }))}
+                  value={activeView}
+                  onChange={setView}
+                  className="shrink-0 lg:ml-auto"
+                  wrapClassName="flex rounded-xl bg-surface2 p-1"
+                  btnClassName="flex h-8 items-center gap-1.5 px-2.5 text-sm"
+                  pillClassName="rounded-lg bg-brand"
+                  activeClassName="text-onbrand"
+                  idleClassName="text-light hover:text-dark"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Under the toolbar: the "with points" switch, then a chip for each
+            group of drivers the table is holding back, put back in one tap.
+            Without these the reserve pool would simply be missing with no
+            explanation, which is worse than the crowded table. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={onlyScoring}
+            onClick={() => setOnlyScoring(!onlyScoring)}
+            className="flex items-center gap-2 text-sm font-medium text-medium transition hover:text-dark"
+          >
+            <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${onlyScoring ? "bg-brand" : "bg-border"}`}>
+              <span
+                className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  onlyScoring ? "translate-x-4" : ""
+                }`}
+              />
+            </span>
+            Only drivers with points
+          </button>
+          {(hiddenCount > 0 || idleReserves > 0) && <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />}
+          {hiddenCount > 0 && (
+            <HiddenChip count={hiddenCount} text="without points hidden" action="Show" onClick={() => setOnlyScoring(false)} />
+          )}
+          {idleReserves > 0 &&
+            (showIdleReserves ? (
+              <HiddenChip
+                quiet
+                count={idleReserves}
+                text={idleReserves === 1 ? "reserve without a start shown" : "reserves without a start shown"}
+                action="Hide"
+                onClick={() => setShowIdleReserves(false)}
+              />
+            ) : (
+              <HiddenChip
+                count={idleReserves}
+                text={idleReserves === 1 ? "reserve without a start hidden" : "reserves without a start hidden"}
+                action="Show"
+                onClick={() => setShowIdleReserves(true)}
+              />
+            ))}
+          <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">
+            {!multiTier && (
+              <>
+                <b className="tabular-nums text-dark">{rows.length}</b> drivers ·{" "}
               </>
             )}
-          </div>
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-light">
-            <input
-              type="checkbox"
-              checked={onlyScoring}
-              onChange={(e) => setOnlyScoring(e.target.checked)}
-              className="h-3.5 w-3.5 rounded border-border text-link focus:ring-accent/40"
-            />
-            With points
-          </label>
-        </div>
-      </div>
-
-      <div className="hidden sm:block">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        {multiTier ? (
-          <SlidingTabs
-            items={tierFilters.map((t) => ({ key: t.id, label: t.label }))}
-            value={activeTier}
-            onChange={setTier}
-          />
-        ) : (
-          <span />
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-          {hasRounds && (
-            <SlidingTabs
-              items={viewItems.map(({ key, label }) => ({ key, label }))}
-              value={activeView}
-              onChange={setView}
-            />
-          )}
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-medium">
-            <input
-              type="checkbox"
-              checked={onlyScoring}
-              onChange={(e) => setOnlyScoring(e.target.checked)}
-              className="h-4 w-4 rounded border-border text-link focus:ring-accent/40"
-            />
-            Only drivers with points
-          </label>
-        </div>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-6 text-sm">
-        <span className="text-light">
-          Showing: <span className="font-mono font-bold tabular-nums text-dark">{rows.length}</span> {scopeLabel}
-        </span>
-        <span className="text-light">
-          {hasRounds ? (
-            <>Rounds: <span className="font-mono font-bold tabular-nums text-dark">{data.raceNumbers.length}</span></>
-          ) : (
-            <span className="font-mono font-bold uppercase tracking-wider text-dark">Final standings</span>
-          )}
-        </span>
-        {/* Says out loud what the default filter is doing, and undoes it in one
-            click. Without this the reserve pool would simply be missing with no
-            explanation, which is worse than the crowded table it replaces. */}
-        {hiddenCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setOnlyScoring(false)}
-            className="text-light underline decoration-dotted underline-offset-4 transition hover:text-dark"
-          >
-            <span className="font-mono font-bold tabular-nums">{hiddenCount}</span> without points hidden
-          </button>
-        )}
-        {/* Same idea for the reserve pool: the line names the people the table
-            is leaving out and puts them back (or away again) in one click. */}
-        {idleReserves > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowIdleReserves(!showIdleReserves)}
-            className="text-light underline decoration-dotted underline-offset-4 transition hover:text-dark"
-          >
-            {showIdleReserves ? (
-              <>Hide the <span className="font-mono font-bold tabular-nums">{idleReserves}</span> reserves without a start</>
+            {hasRounds ? (
+              <>
+                <b className="tabular-nums text-dark">{data.raceNumbers.length}</b> rounds
+              </>
             ) : (
-              <><span className="font-mono font-bold tabular-nums">{idleReserves}</span> reserves without a start hidden</>
+              <b className="text-dark">Final standings</b>
             )}
-          </button>
-        )}
-      </div>
-
-      </div>
+          </span>
+        </div>
       </div>
 
       <div key={`${activeView}:${activeTier}`} className={swap}>
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No drivers here"
-          hint={
-            idleReserves > 0
-              ? "Nobody here has started a round yet. The line above shows the reserves who signed up."
-              : "Nobody matches this filter yet. Try another tier, or include drivers without points."
-          }
-        />
+      {shown.length === 0 ? (
+        <FilteredEmpty {...emptyNote()} />
       ) : activeView === "cards" ? (
         // The field as their actual rating cards, in championship order of the
         // current filter view. The numbers are the season's FROZEN card values
@@ -578,7 +725,7 @@ export default function DriverStandings() {
           </div>
         ) : (() => {
           const ratingById = new Map(cardData.ratings.map((r) => [r.driverId, r]));
-          const withCards = rows.filter((d) => ratingById.has(d.driverId));
+          const withCards = shown.filter((d) => ratingById.has(d.driverId));
           if (withCards.length === 0)
             return <EmptyState title="No rating cards yet" hint="A card is carried over from the previous season, or earned with a driver's first races." />;
           return (
@@ -633,9 +780,9 @@ export default function DriverStandings() {
                   );
                 })}
               </div>
-              {withCards.length < rows.length && (
+              {withCards.length < shown.length && (
                 <p className="mt-6 text-center text-xs text-light">
-                  {rows.length - withCards.length} of {rows.length} drivers have no card yet (never rated in an earlier season).
+                  {shown.length - withCards.length} of {shown.length} drivers have no card yet (never rated in an earlier season).
                 </p>
               )}
             </div>
@@ -650,7 +797,7 @@ export default function DriverStandings() {
           customPoints={data.customPoints || {}}
           championOverride={data.championOverride || null}
           manualPoints={!!data.manualPoints}
-          rows={rows}
+          rows={shown}
           dropWorst={data.dropWorst}
           officialTotals={data.officialTotals}
           decided={seasonDecided}
@@ -664,7 +811,7 @@ export default function DriverStandings() {
           // replay owns transform. The replay IS the entrance on those loads.
           className={`${replayArmed || seasonReplayed.current ? "" : "cascade"} card divide-y divide-border overflow-hidden`}
         >
-          {rows.map((d, i) => (
+          {shown.map((d, i) => (
             <DriverRow
               key={d.driverId}
               d={d}

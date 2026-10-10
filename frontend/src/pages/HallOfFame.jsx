@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useSwapClass } from "../hooks/motion.js";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
@@ -11,9 +12,9 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 
 // ---------------------------------------------------------------------------
 // /records — the Hall of Fame: the champions gallery (drivers ⇄ teams), the
-// single records, and ONE big all-time top list with a category switcher.
+// single records, and ONE big all-time top list with a category picker.
 // Categories come data-driven from the backend's lists array, so new ones
-// (poles once quali data lands, new telemetry) appear as buttons by themselves.
+// (poles once quali data lands, new telemetry) appear in the picker by themselves.
 // ---------------------------------------------------------------------------
 
 function SectionHead({ eyebrow, title, right }) {
@@ -24,6 +25,65 @@ function SectionHead({ eyebrow, title, right }) {
         <h2 className="mt-1 font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">{title}</h2>
       </div>
       {right}
+    </div>
+  );
+}
+
+// --- Page head ---------------------------------------------------------------
+
+// Title, a line of intro and the series in four numbers. The numbers come from
+// the server (recordsService totals), counted in people rather than handles.
+// A server that predates the totals simply shows the seasons alone.
+function HallHeader({ data }) {
+  const t = data.totals;
+  const stats = [
+    { label: data.seasons === 1 ? "Season" : "Seasons", value: data.seasons },
+    ...(t
+      ? [
+          { label: "Races run", value: t.races },
+          { label: "Drivers", value: t.drivers },
+          { label: t.champions === 1 ? "Champion" : "Champions", value: t.champions },
+        ]
+      : []),
+  ];
+  return (
+    <div className="border-b border-border pb-6">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
+            All-time{data.seriesName ? ` · ${data.seriesName}` : ""}
+          </div>
+          <h1 className="mt-1 font-display text-4xl font-black uppercase leading-none tracking-tight text-dark sm:text-6xl">
+            Hall of Fame
+          </h1>
+          <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-light">
+            Every season so far, boiled down to the names that stuck. Champions, one-off records and the career
+            leaderboards.
+          </p>
+        </div>
+        {/* Two by two on a phone, one row from sm. Hairlines per cell rather
+            than divide-*, which would draw a second line along the outer edge
+            of the 2x2 block. */}
+        <div
+          className={`grid shrink-0 overflow-hidden rounded-2xl border border-border bg-card shadow-card ${
+            stats.length > 1 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1"
+          }`}
+        >
+          {stats.map((s, i) => (
+            <div
+              key={s.label}
+              className={`border-border px-4 py-3 sm:px-6 ${
+                ["", "border-l", "border-t sm:border-l sm:border-t-0", "border-l border-t sm:border-t-0"][i]
+              }`}
+            >
+              <div className="font-display text-2xl font-black tabular-nums text-dark sm:text-3xl">
+                <CountUp end={s.value} />
+              </div>
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -236,91 +296,105 @@ function RecordCell({ rec }) {
   );
 }
 
-// --- The ONE top list with its category switcher ------------------------------
+// --- The ONE top list, as a bar chart with a category picker -----------------
 
-function TopListPanel({ lists }) {
-  const [key, setKey] = useState(lists[0]?.key);
-  const list = lists.find((l) => l.key === key) || lists[0];
+// The category name as the picker and the heading show it: "Most career
+// points" reads "Career points".
+const listName = (l) => l.label.replace(/^Most /, "").replace(/^./, (c) => c.toUpperCase());
+
+// Dark in both themes, like the other heroes (bg-ink). Each bar is measured
+// against the leader and painted in the driver's latest team colour, so the
+// gaps between the names read at a glance. Nine-plus categories (and more as
+// the data grows) sit behind one dropdown instead of a wall of buttons. The
+// `dark` class hands the inside the dark-theme tokens (eyebrow tone, the
+// dropdown's open list) on a light page too.
+function TopListPanel({ lists, activeKey, onChange, seasons }) {
+  const list = lists.find((l) => l.key === activeKey) || lists[0];
   const max = list.rows[0]?.value || 1;
-  const [leader, ...chasers] = list.rows;
+  // The rows fade over when the category changes; the panel itself (and the
+  // dropdown with the focus in it) stays put.
+  const swap = useSwapClass(list.key);
 
   return (
-    <div className="card content-in overflow-hidden">
-      {/* the record holder of the picked category, celebrated big */}
-      <Link
-        to={`/drivers/${leader.driverId}${leader.seasonNumber != null ? `?season=${leader.seasonNumber}` : ""}`}
-        className="relative flex flex-wrap items-center gap-4 overflow-hidden border-b border-border p-5 transition hover:bg-surface2 sm:gap-6 sm:p-8"
-      >
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.1]"
-          style={{ background: `radial-gradient(110% 160% at 0% 0%, ${leader.team?.color || "#888"}, transparent 60%)` }}
-        />
-        <DriverAvatar name={leader.name} photoUrl={leader.photoUrl} color={leader.team?.color || "#64748b"} size={76} className="text-2xl" />
-        <span className="relative min-w-0 flex-1">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-widest sm:text-[11px] sm:tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
-            {list.label}
-          </span>
-          <span className="mt-1 flex items-center gap-3">
-            <span className="truncate font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-4xl">
-              {leader.name}
-            </span>
-            <Flag code={countryFor(leader.driverId, leader.country)} w={26} h={19} />
-          </span>
-          {list.note && <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-light">{list.note}</span>}
-        </span>
-        {/* Full-width row on phones — as a fixed right column it starved the name. */}
-        <span className="relative flex w-full items-baseline gap-2 sm:block sm:w-auto sm:shrink-0 sm:text-right">
-          <span className="font-display text-4xl font-black leading-none tabular-nums text-dark sm:text-6xl">
-            <CountUp end={leader.value} />
-          </span>
-          {list.unit && <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light sm:block">{list.unit}</span>}
-        </span>
-      </Link>
+    <section className="dark reveal rounded-3xl bg-ink p-5 text-white shadow-lift sm:p-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-eyebrow">
+            Careers · all-time top 10
+          </div>
+          <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight sm:text-4xl">{listName(list)}</h2>
+          {list.note && <p className="mt-1 font-mono text-[11px] text-white/50">{list.note}</p>}
+        </div>
+        <label className="relative inline-flex items-center gap-3 rounded-xl bg-white/10 pl-4 text-sm font-semibold ring-1 ring-white/15 transition focus-within:ring-2 focus-within:ring-white/40 hover:bg-white/15 max-sm:w-full max-sm:justify-between">
+          <span className="text-white/50">Ranking</span>
+          <select
+            value={list.key}
+            onChange={(e) => onChange(e.target.value)}
+            className="cursor-pointer appearance-none bg-transparent py-2.5 pr-10 text-right text-base font-semibold text-white focus:outline-none max-sm:flex-1 sm:text-left sm:text-sm"
+          >
+            {lists.map((l) => (
+              <option key={l.key} value={l.key} className="bg-ink text-white">
+                {listName(l)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4" strokeWidth={2} aria-hidden />
+        </label>
+      </div>
 
-      {/* the chasers — dealt in top to bottom, values counting up and the
-          team-coloured bars sweeping in against the leader's total */}
-      <div className="cascade divide-y divide-border">
-        {chasers.map((r, i) => {
-          const rank = i + 2;
-          const pct = Math.max(3, Math.round((r.value / max) * 100));
-          return (
-            <Link
-              key={r.driverId}
-              to={`/drivers/${r.driverId}${r.seasonNumber != null ? `?season=${r.seasonNumber}` : ""}`}
-              style={{ "--i": Math.min(i, 16) }}
-              className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:gap-4 sm:px-8"
-            >
-              <span className="w-7 shrink-0 text-center font-display text-lg font-black tabular-nums">
-                <span style={rank <= 3 ? { color: MEDAL_TEXT[rank - 1] } : undefined} className={rank <= 3 ? "" : "text-light"}>
+      <div key={list.key} className={swap}>
+        <div className="cascade space-y-2.5">
+          {list.rows.map((r, i) => {
+            const rank = i + 1;
+            const pct = Math.max(3, Math.round((r.value / max) * 100));
+            const color = r.team?.color || "#94a3b8";
+            return (
+              <Link
+                key={r.driverId}
+                to={`/drivers/${r.driverId}${r.seasonNumber != null ? `?season=${r.seasonNumber}` : ""}`}
+                style={{ "--i": Math.min(i, 16) }}
+                className="group grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 rounded-lg sm:grid-cols-[2rem_9rem_minmax(0,1fr)]"
+              >
+                <span
+                  className={`font-display text-base font-black tabular-nums ${rank === 1 ? "" : "text-white/50"}`}
+                  style={rank === 1 ? { color: MEDAL[0] } : undefined}
+                >
                   {rank}
                 </span>
-              </span>
-              <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={r.team?.color || "#64748b"} size={38} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2.5">
-                  <span className="truncate font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate font-display text-sm font-black uppercase tracking-tight text-white transition group-hover:text-eyebrow">
                     {r.name}
                   </span>
-                  <Flag code={countryFor(r.driverId, r.country)} w={20} h={14} />
+                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={11} />
                 </span>
-                <span className="mt-1.5 block h-1.5 w-full max-w-64 overflow-hidden rounded-full bg-border">
+                {/* The bar keeps room for the logo and the number even when the
+                    value is tiny next to the leader's. */}
+                <span className="relative col-span-2 block h-8 overflow-hidden rounded-md bg-white/5 sm:col-span-1">
                   <span
-                    className="bar-fill block h-full rounded-full"
-                    style={{ "--w": `${pct}%`, backgroundColor: r.team?.color || "#94a3b8" }}
-                  />
+                    className="bar-fill absolute inset-y-0 left-0 flex min-w-[5.5rem] items-center justify-end rounded-md pr-3"
+                    style={{ "--w": `${pct}%`, background: `linear-gradient(90deg, ${color}55, ${color})` }}
+                  >
+                    <span className="font-mono text-sm font-bold tabular-nums text-white drop-shadow">
+                      <CountUp end={r.value} />
+                    </span>
+                  </span>
+                  {r.team && (
+                    <span className="absolute inset-y-0 left-2 flex items-center">
+                      <TeamLogo id={r.team.id} name={r.team.name} color={r.team.color} logoUrl={r.team.logoUrl} size={16} />
+                    </span>
+                  )}
                 </span>
-              </span>
-              {/* Room for four digits, right-aligned: a width that followed the
-                  number let every row's bar end in a different place, and made
-                  the bar shrink while the count ran up. */}
-              <span className="min-w-[4ch] shrink-0 text-right font-display text-xl font-black tabular-nums text-dark sm:text-2xl">
-                <CountUp end={r.value} />
-              </span>
-            </Link>
-          );
-        })}
+              </Link>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/10 pt-4 font-mono text-[10px] uppercase tracking-wider text-white/50">
+        <span>Bar colour = latest team</span>
+        {seasons > 0 && <span>{seasons === 1 ? "1 season" : `${seasons} seasons`} counted</span>}
+      </div>
+    </section>
   );
 }
 
@@ -329,10 +403,10 @@ export default function HallOfFame() {
   const wall = useApi(useCallback(() => api.tokenWall(), []));
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
-  // Each switch below fades its panel over instead of rebuilding rows and bars
-  // from blank; the page's first arrival keeps its own entrance.
+  // The switch below fades its panel over instead of rebuilding it from blank;
+  // the page's first arrival keeps its own entrance. The top list does the
+  // same for its own rows.
   const champSwap = useSwapClass(champMode);
-  const listSwap = useSwapClass(listKey);
 
   if (loading)
     return (
@@ -365,11 +439,10 @@ export default function HallOfFame() {
     );
 
   const activeListKey = data.lists.some((l) => l.key === listKey) ? listKey : data.lists[0]?.key;
-  const activeList = data.lists.find((l) => l.key === activeListKey);
 
   return (
     <div className="content-in space-y-6 sm:space-y-14">
-      <PageHeader eyebrow="All-time" title="Hall of Fame" />
+      <HallHeader data={data} />
 
       {/* champions first — drivers ⇄ teams */}
       {data.champions.length > 0 && (
@@ -412,29 +485,9 @@ export default function HallOfFame() {
         </section>
       )}
 
-      {/* ONE all-time top list, category picked via the button bar */}
-      {activeList && (
-        <section className="reveal">
-          <SectionHead eyebrow="Careers" title="All-time Top 10" />
-          {/* Nine-plus categories, and the list grows with the data: on phones
-              the bar scrolls sideways as one row instead of stacking into a
-              three-row block (that block alone was 118px of the screen). From
-              sm up there's room to wrap as before. */}
-          <SlidingTabs
-            className="mb-4"
-            wrapClassName="scrollbar-slim flex overflow-x-auto rounded-xl border border-border bg-card p-1 sm:inline-flex sm:flex-wrap sm:overflow-visible"
-            btnClassName="shrink-0 whitespace-nowrap px-3.5 py-2 text-sm"
-            items={data.lists.map((l) => ({
-              key: l.key,
-              label: l.label.replace(/^Most /, "").replace(/^./, (c) => c.toUpperCase()),
-            }))}
-            value={activeListKey}
-            onChange={setListKey}
-          />
-          <div key={activeListKey} className={listSwap}>
-            <TopListPanel lists={[activeList]} />
-          </div>
-        </section>
+      {/* ONE all-time top list, the category picked in its own dropdown */}
+      {data.lists.length > 0 && (
+        <TopListPanel lists={data.lists} activeKey={activeListKey} onChange={setListKey} seasons={data.seasons} />
       )}
 
       {/* the wall: names bought with server tokens, oldest first */}
