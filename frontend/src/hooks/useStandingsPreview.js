@@ -3,6 +3,7 @@ import { api, peekCached } from "../api/client.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { isIdleReserve } from "../utils/standingsRow.js";
+import { centreRows } from "../utils/transferRows.js";
 
 // The little table inside the Standings menu: who leads, by how much, and which
 // team is on top. It asks for nothing until somebody opens the menu, so the bar
@@ -105,4 +106,76 @@ export function useStandingsPreview(open) {
     season: current,
     decided: archived || !!mine.data?.allScored,
   };
+}
+
+// The Transfers and Hall of Fame rows preview their own pages: the latest team
+// changes, and the reigning champion with the all-time wins. Same rules as the
+// table above: nothing is asked until that row is first pointed at, the answer
+// is the very one the page itself loads, and it is kept a few minutes for every
+// later open of the menu.
+const EXTRA = {
+  transfers: {
+    read: () => api.transferMarket(),
+    shape: (d) => {
+      const teams = new Map((d?.teams || []).map((t) => [t.id, t]));
+      const drivers = new Map((d?.drivers || []).map((x) => [x.id, x]));
+      const rows = centreRows(d);
+      return {
+        total: rows.length,
+        latest: rows.slice(0, 4).map((r) => ({ ...r, driver: drivers.get(r.driverId), from: teams.get(r.fromTeamId), to: teams.get(r.toTeamId) })),
+      };
+    },
+  },
+  records: {
+    read: () => api.seriesRecords(),
+    shape: (d) => ({
+      champion: d?.champions?.[0] || null,
+      wins: (d?.lists || []).find((l) => l.key === "wins")?.rows.slice(0, 3) || [],
+      totals: d?.totals || null,
+      seasons: d?.seasons || 0,
+    }),
+  },
+};
+
+function fetchExtra(kind, key) {
+  if (inflight.has(key)) return inflight.get(key);
+  const p = EXTRA[kind]
+    .read()
+    .then((d) => {
+      const data = EXTRA[kind].shape(d);
+      memo.set(key, { at: Date.now(), data });
+      return data;
+    })
+    .finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+// `kind`: "transfers" or "records", or anything else for nothing at all.
+export function useMenuPagePreview(kind) {
+  const { slug } = useSeriesPath();
+  const { current } = useSeason();
+  const wanted = EXTRA[kind] ? kind : null;
+  // The records span every season of the series; the transfers are this one's.
+  const key = wanted ? `${wanted}:${slug || ""}:${wanted === "transfers" ? current?.number ?? "" : ""}` : null;
+  const [state, setState] = useState({ key: null, data: null, error: false });
+
+  useEffect(() => {
+    if (!key) return;
+    const kept = memo.get(key);
+    if (kept && Date.now() - kept.at < FRESH_MS) {
+      setState({ key, data: kept.data, error: false });
+      return;
+    }
+    let alive = true;
+    fetchExtra(wanted, key)
+      .then((data) => alive && setState({ key, data, error: false }))
+      .catch(() => alive && setState({ key, data: null, error: true }));
+    return () => {
+      alive = false;
+    };
+  }, [key, wanted]);
+
+  const mine = state.key === key ? state : { data: memo.get(key)?.data || null, error: false };
+  return { data: mine.data, error: mine.error, loading: !!key && !mine.data && !mine.error };
 }

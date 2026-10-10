@@ -12,6 +12,7 @@ import Flag from "../components/Flag.jsx";
 import TeamHistoryGrid, { orderTeams, standingsMap } from "../components/TeamHistoryGrid.jsx";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import NotFound from "./NotFound.jsx";
+import { centreRows, kindLabel } from "../utils/transferRows.js";
 
 // ---------------------------------------------------------------------------
 // The public transfer market: who moved where this season, and every driver's
@@ -62,31 +63,6 @@ function Club({ team, side }) {
   ) : (
     <span className={cls}>{inner}</span>
   );
-}
-
-// Every row of the centre off the history payload: the recorded / detected
-// moves, plus one row per substitute drive found in the grid.
-function centreRows(data) {
-  if (!data) return [];
-  const rows = [];
-  for (const m of data.moves || []) {
-    rows.push({ key: `t-${m.driverId}-${m.round}`, kind: "transfer", driverId: m.driverId, fromTeamId: m.fromTeamId, toTeamId: m.toTeamId, round: m.round, pending: m.pending });
-  }
-  for (const d of data.drivers || []) {
-    for (const [n, c] of Object.entries(d.cells || {})) {
-      if (c.status !== "sub") continue;
-      rows.push({ key: `s-${d.id}-${n}`, kind: "sub", driverId: d.id, fromTeamId: c.fromTeamId || null, toTeamId: c.teamId, round: Number(n), pending: false });
-    }
-  }
-  // Newest round first; within a round the transfers before the fill-ins.
-  return rows.sort((a, b) => b.round - a.round || a.kind.localeCompare(b.kind));
-}
-
-// Where a football page prints the fee: what kind of move this is.
-function kindLabel(r) {
-  if (r.kind === "sub") return "Substitute";
-  if (r.pending) return "Announced";
-  return "Transfer";
 }
 
 function KindMark({ kind, pending }) {

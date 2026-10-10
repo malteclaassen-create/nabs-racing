@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
-import { DriverAvatar, MEDAL, Skeleton } from "./ui.jsx";
+import { ArrowRight, Repeat } from "lucide-react";
+import { DriverAvatar, MEDAL, MEDAL_TEXT, Skeleton } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { standingCaption } from "./DriverStandingsRow.jsx";
 import { seasonLabelOf } from "../utils/pageTitle.js";
+import { kindLabel } from "../utils/transferRows.js";
 
 // The right-hand half of the Standings menu, and the strip at the top of the
 // phone menu: the top of the table as it stands, with the gaps, so you can see
@@ -103,28 +105,139 @@ function Note({ children }) {
   return <p className="mt-3 text-[13px] leading-snug text-light">{children}</p>;
 }
 
-// Desktop: the panel beside the menu rows. `view` is "drivers" or
-// "constructors", following the row under the pointer or the keyboard focus.
-export function StandingsPreviewPanel({ preview, view }) {
+function LoadingRows() {
+  return (
+    <div className="mt-3 space-y-3" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center gap-2.5">
+          <Skeleton className="h-5 w-5" />
+          <Skeleton className="h-6 w-6 rounded-full" />
+          <Skeleton className="h-3 flex-1" />
+          <Skeleton className="h-3 w-8" />
+        </div>
+      ))}
+      <Skeleton className="h-14 w-full rounded-xl" />
+    </div>
+  );
+}
+
+function SmallLogo({ team }) {
+  if (!team) return <span className="h-5 w-5 shrink-0 rounded bg-border" aria-hidden="true" />;
+  return (
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center" title={team.name}>
+      <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={18} />
+    </span>
+  );
+}
+
+// Transfers: the latest moves, newest first, as the page lists them.
+function TransfersBody({ page }) {
+  const { data, loading, error } = page;
+  if (loading) return <LoadingRows />;
+  if (error) return <Note>The moves didn&apos;t load just now. The page on the left still has them.</Note>;
+  if (!data.total) return <Note>Nobody has changed team this season yet.</Note>;
+  return (
+    <div key="transfers" className="content-in">
+      <div className="mt-2 space-y-1">
+        {data.latest.map((r) => (
+          <Link
+            key={r.key}
+            to={`/drivers/${r.driverId}`}
+            className="-mx-1.5 flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition hover:bg-card"
+          >
+            <DriverAvatar name={r.driver?.name} photoUrl={r.driver?.photoUrl} color={r.to?.color} size={24} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-bold text-dark">{r.driver?.name || r.driverId}</span>
+              <span className={`block truncate text-[11px] ${r.pending ? "text-brand" : "text-light"}`}>
+                {kindLabel(r)} · R{r.round}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-1 text-light">
+              <SmallLogo team={r.from} />
+              {r.kind === "sub" ? <Repeat className="h-3 w-3" aria-hidden="true" /> : <ArrowRight className="h-3 w-3" aria-hidden="true" />}
+              <SmallLogo team={r.to} />
+            </span>
+          </Link>
+        ))}
+      </div>
+      {data.total > data.latest.length && (
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-light">
+          {data.total} moves this season
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Hall of Fame: the reigning champion, then the all-time wins.
+function RecordsBody({ page }) {
+  const { data, loading, error } = page;
+  if (loading) return <LoadingRows />;
+  if (error) return <Note>The records didn&apos;t load just now. The page on the left still has them.</Note>;
+  const champ = data.champion;
+  if (!champ && !data.wins.length) return <Note>No season has been decided yet. The first champion goes up here.</Note>;
+  return (
+    <div key="records" className="content-in">
+      {champ && (
+        <Link
+          to={`/drivers/${champ.driver.driverId}?season=${champ.seasonNumber}`}
+          className="mt-2 flex items-center gap-2.5 rounded-xl bg-card p-2.5 shadow-card transition hover:shadow-lift"
+        >
+          <DriverAvatar
+            name={champ.driver.name}
+            photoUrl={champ.driver.photoUrl}
+            color={champ.driver.team?.color || MEDAL[0]}
+            size={34}
+            className="ring-2 ring-[color:var(--medal-1)]"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color: MEDAL_TEXT[0] }}>
+              Champion · {champ.seasonName || `Season ${champ.seasonNumber}`}
+            </span>
+            <span className="block truncate text-[13px] font-bold text-dark">{champ.driver.name}</span>
+          </span>
+          <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-dark">{champ.points} pts</span>
+        </Link>
+      )}
+      {data.wins.length > 0 && (
+        <>
+          <div className="mt-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">Most wins, all time</div>
+          <div className="mt-1.5 space-y-1">
+            {data.wins.map((w, i) => (
+              <Link
+                key={w.driverId}
+                to={`/drivers/${w.driverId}${w.seasonNumber != null ? `?season=${w.seasonNumber}` : ""}`}
+                className="-mx-1.5 flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition hover:bg-card"
+              >
+                <MiniRank position={i + 1} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-dark">{w.name}</span>
+                <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-dark">{w.value}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Desktop: the panel beside the menu rows. `view` follows the row under the
+// pointer or the keyboard focus: "drivers" and "constructors" show the table
+// (`preview`), "transfers" and "records" their own page (`page`).
+export function StandingsPreviewPanel({ preview, view, page }) {
   const { data, loading, error, decided } = preview;
   const teamsView = view === "constructors";
-  const heading = teamsView ? (data?.multiTier ? "Tier 1 constructors" : "Constructors") : "Drivers";
+  const ownPage = view === "transfers" || view === "records";
+  const heading =
+    view === "transfers" ? "Latest moves" : view === "records" ? "Hall of Fame" : teamsView ? (data?.multiTier ? "Tier 1 constructors" : "Constructors") : "Drivers";
 
   let body;
-  if (loading) {
-    body = (
-      <div className="mt-3 space-y-3" aria-hidden="true">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-2.5">
-            <Skeleton className="h-5 w-5" />
-            <Skeleton className="h-6 w-6 rounded-full" />
-            <Skeleton className="h-3 flex-1" />
-            <Skeleton className="h-3 w-8" />
-          </div>
-        ))}
-        <Skeleton className="h-14 w-full rounded-xl" />
-      </div>
-    );
+  if (view === "transfers") {
+    body = <TransfersBody page={page} />;
+  } else if (view === "records") {
+    body = <RecordsBody page={page} />;
+  } else if (loading) {
+    body = <LoadingRows />;
   } else if (error) {
     body = <Note>The table didn&apos;t load just now. The pages on the left still have it.</Note>;
   } else if (data.empty) {
@@ -165,44 +278,11 @@ export function StandingsPreviewPanel({ preview, view }) {
 
   return (
     <div className="flex h-full flex-col rounded-[18px] bg-surface2 p-4">
-      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">{caption(preview)}</div>
+      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">
+        {view === "records" ? (page?.data?.seasons ? `${page.data.seasons} seasons` : "All time") : ownPage ? seasonLabelOf(preview.season) || "This season" : caption(preview)}
+      </div>
       <div className="mt-1 font-display text-sm font-extrabold uppercase tracking-tight text-dark">{heading}</div>
       {body}
     </div>
-  );
-}
-
-// Phone: the top three side by side, at the head of the menu sheet. Says
-// nothing at all when there is nothing to say (no results yet, or the read
-// failed): the rows below are what the menu is for.
-export function StandingsLeaderStrip({ preview, to }) {
-  const { data, loading, decided } = preview;
-  if (!loading && (!data || data.empty || data.drivers.length === 0)) return null;
-  return (
-    <Link to={to} className="block rounded-2xl bg-surface2 p-3">
-      <span className="block px-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">{caption(preview)}</span>
-      <span className="mt-2 flex gap-2">
-        {loading
-          ? [0, 1, 2].map((i) => (
-              <span key={i} className="flex flex-1 flex-col items-center gap-1.5" aria-hidden="true">
-                <Skeleton className="h-[30px] w-[30px] rounded-full" />
-                <Skeleton className="h-2.5 w-14" />
-                <Skeleton className="h-2 w-10" />
-              </span>
-            ))
-          : data.drivers.map((d) => (
-              <span key={d.driverId} className="flex min-w-0 flex-1 flex-col items-center text-center">
-                <DriverAvatar name={d.name} photoUrl={d.photoUrl} fallbacks={d.photoFallbacks} color={d.team?.color} size={30} />
-                <span className="mt-1 block w-full truncate text-[11px] font-bold uppercase text-dark">{d.name}</span>
-                <span className="block font-mono text-[10px] tabular-nums text-light">
-                  P{d.position} · {d.total}
-                </span>
-                <span className="block font-mono text-[10px] tabular-nums text-faint">
-                  {standingCaption(d.position, data.driverLeaderTotal - d.total, { decided, unit: " pts" })}
-                </span>
-              </span>
-            ))}
-      </span>
-    </Link>
   );
 }

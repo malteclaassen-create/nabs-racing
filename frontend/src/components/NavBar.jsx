@@ -24,8 +24,8 @@ import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useToken
 import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
-import { useStandingsPreview } from "../hooks/useStandingsPreview.js";
-import { StandingsLeaderStrip, StandingsPreviewPanel } from "./StandingsPreview.jsx";
+import { useMenuPagePreview, useStandingsPreview } from "../hooks/useStandingsPreview.js";
+import { StandingsPreviewPanel } from "./StandingsPreview.jsx";
 import {
   ArrowDownUp,
   CalendarCheck,
@@ -349,9 +349,8 @@ const desktopLinkClass = ({ isActive }) =>
 
 // The pages under "Standings", in menu order, for the desktop flyout and the
 // phone sheet alike. `preview` is what the panel beside the desktop menu shows
-// while that row is pointed at: the drivers' table, or the teams'. Transfers
-// and the Hall of Fame have no table of their own to preview, so they keep the
-// drivers' one up rather than blanking the panel.
+// while that row is pointed at: the drivers' table, the teams', the latest
+// moves or the Hall of Fame (components/StandingsPreview.jsx).
 function standingsPages(seriesPath, transfers, multiTier) {
   return [
     { to: seriesPath("/drivers"), Icon: User, title: "Drivers", sub: "Driver standings", tour: "nav-drivers", preview: "drivers" },
@@ -362,8 +361,8 @@ function standingsPages(seriesPath, transfers, multiTier) {
       sub: multiTier ? "Tier 1 & Tier 2" : "Constructor standings",
       preview: "constructors",
     },
-    transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "drivers" },
-    { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "drivers" },
+    transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
+    { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "records" },
   ].filter(Boolean);
 }
 
@@ -685,10 +684,19 @@ function StandingsNav({ seriesPath }) {
   const active = STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p));
   // Nothing is asked for until the menu opens for the first time.
   const preview = useStandingsPreview(open);
-  // Which table the panel shows. Every open starts on the drivers', or on the
-  // teams' when that is the page you are on.
-  const onConstructors = pathNoSeries.startsWith("/constructors");
+  // What the panel shows. Every open starts on the page you are on when it is
+  // one of these, otherwise on the drivers' table.
+  const startView = pathNoSeries.startsWith("/constructors")
+    ? "constructors"
+    : pathNoSeries.startsWith("/transfers")
+      ? "transfers"
+      : pathNoSeries.startsWith("/records")
+        ? "records"
+        : "drivers";
   const [view, setView] = useState("drivers");
+  // The Transfers and Hall of Fame previews, read the first time their row is
+  // pointed at.
+  const page = useMenuPagePreview(open ? view : null);
   // Pulled left when the menu would run past the window's right edge (the
   // nav sits at the right of the bar, so at narrower desktop widths it does).
   const [shift, setShift] = useState(0);
@@ -717,10 +725,10 @@ function StandingsNav({ seriesPath }) {
   // Measured before paint, so the menu never shows up half off screen.
   useLayoutEffect(() => {
     if (!open || !ref.current) return;
-    setView(onConstructors ? "constructors" : "drivers");
+    setView(startView);
     const left = ref.current.getBoundingClientRect().left;
     setShift(Math.min(0, document.documentElement.clientWidth - 16 - left - STANDINGS_MENU_W));
-  }, [open, onConstructors]);
+  }, [open, startView]);
 
   // One menu row, styled to match the series/season switcher menus: an icon
   // badge (brand-filled while active), a display title, a sub-line, and the
@@ -791,7 +799,7 @@ function StandingsNav({ seriesPath }) {
               </NavLink>
             ))}
           </div>
-          <StandingsPreviewPanel preview={preview} view={view} />
+          <StandingsPreviewPanel preview={preview} view={view} page={page} />
         </div>
       </div>
     </div>
@@ -1214,10 +1222,9 @@ export default function NavBar() {
     setMenuSeason(onSeasonPage);
   }, [onSeasonPage, menu]);
 
-  // The top of the table for the sheet's leader strip, asked for the first
-  // time the menu opens (and shared with the desktop flyout's answer).
-  const sheetPreview = useStandingsPreview(open);
-  const sheetPages = standingsPages(seriesPath, transfersVisible, sheetPreview.data?.multiTier);
+  // No preview in the phone sheet: the rows are what it is for, and asking for
+  // three tables every time the menu opens would cost more than it shows.
+  const sheetPages = standingsPages(seriesPath, transfersVisible, false);
 
   // Pulling the sheet down by its grip. It follows the finger straight, with
   // no React render per frame; let go far enough down and it closes from where
@@ -1462,11 +1469,6 @@ export default function NavBar() {
               )}
 
               <MobileMenuLabel>Standings</MobileMenuLabel>
-              {/* Who leads and by how much, before a page is even picked. Gone
-                  when there is nothing to show yet. */}
-              <div className="pb-1 empty:hidden">
-                <StandingsLeaderStrip preview={sheetPreview} to={seriesPath("/drivers")} />
-              </div>
               {sheetPages.map((pg) => (
                 <SheetRow key={pg.title} to={pg.to} Icon={pg.Icon} title={pg.title} sub={pg.sub} />
               ))}
