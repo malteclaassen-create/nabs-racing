@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
@@ -840,6 +840,15 @@ function MyProfile() {
   const leagues = useApi(useCallback(() => api.myLeagues().catch(() => ({ leagues: [] })), []));
   const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
+  // Arrived from the phone tab bar's Profile button: open the section picker
+  // straight away, since picking a section is what that tap is for. The tab bar
+  // says so in the history entry's state; once the sheet is open the entry is
+  // replaced without it, so Back, a reload or a section change never reopen it.
+  // The entry's key is the signal, so a second tap on the tab opens it again.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const openSections = location.state?.openSections ? location.key : null;
+  const sectionsOpened = () => navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
   const tab = sectionKeys(COCKPIT_TABS).includes(params.get("tab")) ? params.get("tab") : "profile";
   const setTab = (key) => {
     if (key === "feedback") return openFeedback(); // the panel, not a section
@@ -940,6 +949,8 @@ function MyProfile() {
         })}
         value={tab}
         onSelect={setTab}
+        openSignal={openSections}
+        onOpened={sectionsOpened}
         attention={adminAttention}
         attentionSummary={adminSummary}
       />

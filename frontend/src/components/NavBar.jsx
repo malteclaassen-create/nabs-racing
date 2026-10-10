@@ -524,6 +524,10 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
 
   const name = isLoggedIn ? user.driverName || user.discordName || "Profile" : "";
   const profileTo = isLoggedIn ? pathFor(user.driverId) : "/profile";
+  // Signed in and landing on My Profile: the tap is for picking a section, so
+  // the page opens its section picker straight away (Profile.jsx). Not for the
+  // public driver page (Settings can point the button there) or the sign-in.
+  const profileState = isLoggedIn && profileTo === "/profile" ? { openSections: true } : undefined;
   const tabs = [
     { key: "home", to: seriesPath(""), end: true, label: "Home", icon: TAB_ICONS.home, forced: location.pathname === "/" },
     { key: "races", to: seriesPath("/races"), label: "Races", icon: TAB_ICONS.races },
@@ -539,6 +543,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
       key: "me",
       to: profileTo,
       label: isLoggedIn ? "Profile" : "Sign in",
+      state: profileState,
       icon: TAB_ICONS.me,
       forced: pathNoSeries.startsWith("/profile") || (isLoggedIn && location.pathname === profileTo),
     },
@@ -569,6 +574,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
           <NavLink
             key={t.key}
             to={t.to}
+            state={t.state}
             end={t.end}
             onPointerDown={(e) => {
               touch.current = e.pointerType === "touch" ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
@@ -582,7 +588,7 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
               touchNavAt.current = Date.now();
               go(e.currentTarget, t);
               // Like a link: the page you are already on is replaced, not stacked.
-              navigate(t.to, { replace: location.pathname === t.to });
+              navigate(t.to, { replace: location.pathname === t.to, state: t.state });
             }}
             onClick={(e) => {
               if (Date.now() - touchNavAt.current < 800) {
