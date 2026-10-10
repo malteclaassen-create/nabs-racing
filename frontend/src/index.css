@@ -676,13 +676,6 @@ body {
   /* children inherit --reveal-delay from the container, then fan out on --i */
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
-/* Fade-only variant for rows something else moves (the standings replay owns
-   their transform): they still deal in one after another, without the rise.
-   Reduced motion and lite mode already stop every .cascade child. */
-.cascade-fade.is-visible > * {
-  animation: nabs-fade-in 240ms ease-out both;
-  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
-}
 /* A sideways rail scrolled to its selected item (the Races round rail) fans
    out from that item, so what is on screen arrives first. */
 @media (max-width: 1023.98px) {
@@ -1603,6 +1596,140 @@ body {
   .round-swap, .swap-in, .round-swap-soft { animation: none !important; }
 }
 .fx-lite .round-swap, .fx-lite .swap-in, .fx-lite .round-swap-soft { animation: none !important; }
+
+/* --- Driver standings board: List and By round as one table ------------- */
+/* The two views are the same rows read two ways, so switching between them
+   keeps the table on screen and only moves what differs: the round columns
+   open out of the space between name and points, the points bar folds away,
+   the header row and the footnotes grow in. Every width below comes from a
+   handful of variables on the board itself (DriverStandingsBoard.jsx), and
+   only those variables transition. One animated value per column for the
+   whole table, instead of a transition on each of a thousand cells.
+   Registered so the browser can interpolate them. A browser without
+   @property still reads the values, it just switches without the glide. */
+@property --sb-g { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --sb-rounds { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sb-bar { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sb-discord { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sb-driver { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sb-avatar { syntax: "<length>"; inherits: true; initial-value: 0px; }
+
+.sboard {
+  /* --sb-g runs 0 (list) to 1 (by round): the opacity of everything that
+     belongs to the round view, and the height of its header row. */
+  --sb-g: 0;
+  --sb-cell: 2.75rem; /* one round column */
+  --sb-pos: 3.375rem; /* rank and the gap after it */
+  --sb-pts: 3.75rem; /* the points column with its right padding */
+  --sb-pts-gap: 0.75rem; /* its left padding, round view only: in the list
+                           the gap before it is part of the column before */
+  --sb-rounds: 0px;
+  --sb-bar: 0px;
+  --sb-discord: 0px;
+  --sb-driver: 0px; /* the floor of the driver column; it fills the rest */
+  --sb-avatar: 2.875rem; /* the photo and the gap after it */
+  /* As wide as the card, or wider once the rounds need it: the scroller
+     around the board then takes over and the first columns stay put. */
+  width: max(100%, calc(var(--sb-pos) + var(--sb-driver) + var(--sb-bar) + var(--sb-discord) + var(--sb-rounds) + var(--sb-pts) + var(--sb-g) * var(--sb-pts-gap)));
+  transition:
+    --sb-g var(--t-slow) var(--e-out),
+    --sb-rounds var(--t-slow) var(--e-out),
+    --sb-bar var(--t-slow) var(--e-out),
+    --sb-discord var(--t-slow) var(--e-out),
+    --sb-driver var(--t-slow) var(--e-out),
+    --sb-avatar var(--t-slow) var(--e-out);
+}
+/* The movement arrows take their own slot beside the rank. */
+.sboard.sboard-delta { --sb-pos: 5.25rem; }
+/* On a phone the round view needs every pixel for the rounds: the name keeps
+   a fixed slice and the photo folds away (the colour bar still says team). */
+.sboard[data-mode="grid"] {
+  --sb-g: 1;
+  --sb-rounds: calc(var(--sb-n, 0) * var(--sb-cell));
+  --sb-driver: 8rem;
+  --sb-avatar: 0px;
+}
+@media (min-width: 640px) {
+  .sboard { --sb-cell: 3rem; --sb-pos: 4.25rem; --sb-pts: 6.25rem; --sb-pts-gap: 1rem; --sb-avatar: 3.25rem; }
+  .sboard.sboard-delta { --sb-pos: 7rem; }
+  .sboard[data-mode="grid"] { --sb-driver: 14rem; --sb-avatar: 3.25rem; }
+}
+/* The points bar, as wide as the list always had it (w-28, w-40, w-56), plus
+   the gap after it. */
+@media (min-width: 768px) {
+  .sboard[data-mode="list"] { --sb-bar: 8rem; }
+}
+@media (min-width: 1024px) {
+  .sboard[data-mode="list"] { --sb-bar: 11rem; }
+  .sboard[data-mode="grid"] { --sb-discord: 9rem; }
+}
+@media (min-width: 1280px) {
+  .sboard[data-mode="list"] { --sb-bar: 15rem; }
+}
+.sb-pos { width: var(--sb-pos); flex-shrink: 0; }
+.sb-driver { flex: 1 1 0%; min-width: var(--sb-driver); }
+.sb-avatar { width: var(--sb-avatar); flex-shrink: 0; overflow: clip; }
+.sb-bar { width: var(--sb-bar); flex-shrink: 0; overflow: clip; opacity: calc(1 - var(--sb-g)); }
+.sb-discord { width: var(--sb-discord); flex-shrink: 0; overflow: clip; opacity: var(--sb-g); }
+.sb-rounds { width: var(--sb-rounds); flex-shrink: 0; overflow: clip; opacity: var(--sb-g); }
+.sb-cell { width: var(--sb-cell); flex-shrink: 0; }
+.sb-pts {
+  width: calc(var(--sb-pts) + var(--sb-g) * var(--sb-pts-gap));
+  padding-left: calc(var(--sb-g) * var(--sb-pts-gap));
+  flex-shrink: 0;
+  border-left: 1px solid color-mix(in srgb, var(--c-border) calc(var(--sb-g) * 100%), transparent);
+}
+/* `clip`, not `hidden`: hidden would make these boxes scroll containers, and
+   the frozen header cells inside would stick to them instead of to the
+   table's scroller. */
+.sb-head { height: calc(var(--sb-g) * 2.5rem); overflow: clip; opacity: var(--sb-g); }
+.sb-only-grid { max-height: calc(var(--sb-g) * 1rem); overflow: clip; opacity: var(--sb-g); }
+.sb-only-grid-x { max-width: calc(var(--sb-g) * 3rem); overflow: clip; opacity: var(--sb-g); }
+@media (max-width: 639.98px) {
+  .sb-flag {
+    max-width: calc((1 - var(--sb-g)) * 2rem);
+    margin-left: calc(var(--sb-g) * -0.5rem); /* takes the gap before it along */
+    overflow: clip;
+    opacity: calc(1 - var(--sb-g));
+  }
+}
+
+/* A block that folds open and shut with the view (the footnotes under the
+   round view, the drop-rule note under the list). The 0fr/1fr row animates
+   to the content's own height, whatever it is; visibility goes with it, so a
+   shut fold's link is out of the tab order too. */
+.sb-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows var(--t-slow) var(--e-out), opacity var(--t-slow) var(--e-out), visibility 0s linear var(--t-slow);
+}
+.sb-fold.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.sb-fold > * { min-height: 0; overflow: hidden; }
+
+/* The replay's flash lands on rows that also carry the cascade entrance. On
+   its own the flash would REPLACE the entrance in the animation list, and the
+   row would fall back to the cascade's hidden start for the length of the
+   flash. Naming the entrance again in the same list leaves it as it is
+   (finished, row in place) and adds the flash beside it. */
+.sboard-rows.cascade.is-visible > .proj-flash-up,
+.sboard-rows.cascade.is-visible > .proj-flash-down {
+  animation: nabs-fade-in 240ms ease-out both, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) both, proj-flash-up var(--t-draw) ease-out;
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms), calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms), 0s;
+}
+.sboard-rows.cascade.is-visible > .proj-flash-down {
+  animation-name: nabs-fade-in, nabs-spring-up, proj-flash-down;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sboard, .sb-fold { transition: none !important; }
+}
+.fx-lite .sboard, .fx-lite .sb-fold { transition: none !important; }
 
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a
