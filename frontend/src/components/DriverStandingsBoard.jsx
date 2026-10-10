@@ -357,11 +357,11 @@ export default function DriverStandingsBoard({
   }, [mode, scrollRef]);
 
   // Only the rows on screen take part in the List / By round morph. With the
-  // whole field listed that is a hundred-odd rows re-laid out every frame,
-  // and the switch stuttered. The rest are taken out of rendering for the
-  // length of the morph (content-visibility, held at their measured height so
-  // nothing moves) and simply show the new layout when they come back. Both
-  // views give a row the same height, so the page below does not shift.
+  // whole field listed that is a hundred-odd rows, and gliding them all made
+  // the switch stutter. The glide runs per row (see .sboard-rows in index.css),
+  // so the rows out of sight are told to sit it out: they take the new layout
+  // at once and nobody sees them do it. Both views give a row the same
+  // height, so nothing on screen moves because of it.
   const boxRef = useRef(null);
   const lastMode = useRef(mode);
   useLayoutEffect(() => {
@@ -374,17 +374,11 @@ export default function DriverStandingsBoard({
     for (const el of box.children) {
       const r = el.getBoundingClientRect();
       if (r.bottom > -margin && r.top < window.innerHeight + margin) continue;
-      el.style.containIntrinsicSize = `auto ${el.offsetHeight}px`;
-      el.style.contentVisibility = "auto";
+      el.classList.add("sb-still");
       parked.push(el);
     }
     if (!parked.length) return undefined;
-    const t = setTimeout(() => {
-      for (const el of parked) {
-        el.style.contentVisibility = "";
-        el.style.containIntrinsicSize = "";
-      }
-    }, MORPH_MS + 80);
+    const t = setTimeout(() => parked.forEach((el) => el.classList.remove("sb-still")), MORPH_MS + 80);
     return () => clearTimeout(t);
   }, [mode]);
 

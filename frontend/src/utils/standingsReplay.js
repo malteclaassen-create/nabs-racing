@@ -61,7 +61,8 @@ export function playStandingsReplay(container, { holdMs = 700, afterEntrance = f
     const mover = { el, up: dy > 0, stagger: el.style.getPropertyValue("--i") }; // starts below its slot = climbing up
     el.style.transition = "none";
     el.style.translate = `0 ${dy}px`;
-    el.style.zIndex = "1";
+    // Climbers pass over the rows they overtake, fallers under them.
+    el.style.zIndex = dy > 0 ? "2" : "1";
     el.style.position = "relative";
     if (afterEntrance) el.style.setProperty("--i", String(Math.min(prevIdx, 16)));
     movers.push(mover);

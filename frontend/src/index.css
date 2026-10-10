@@ -1631,14 +1631,29 @@ body {
   /* As wide as the card, or wider once the rounds need it: the scroller
      around the board then takes over and the first columns stay put. */
   width: max(100%, calc(var(--sb-pos) + var(--sb-driver) + var(--sb-bar) + var(--sb-discord) + var(--sb-rounds) + var(--sb-pts) + var(--sb-g) * var(--sb-pts-gap)));
+}
+/* The glide runs on each row (and the header), not on the board: a value
+   animated on the board is inherited, and so recomputed, by every row of a
+   150-driver table on every frame, on screen or not. Per row, the rows out of
+   sight can simply sit the glide out (DriverStandingsBoard parks them with
+   transition: none) and land in the new view at once. */
+.sb-head,
+.sboard-rows > * {
   transition:
     --sb-g var(--t-slow) var(--e-out),
     --sb-rounds var(--t-slow) var(--e-out),
     --sb-bar var(--t-slow) var(--e-out),
     --sb-discord var(--t-slow) var(--e-out),
     --sb-driver var(--t-slow) var(--e-out),
-    --sb-avatar var(--t-slow) var(--e-out);
+    --sb-avatar var(--t-slow) var(--e-out),
+    background-color 150ms;
 }
+/* Every row its own layer, so a row gliding past another during the replay
+   passes over all of it: the frozen name and points cells of a standing row
+   used to poke through a moving one while the cells between did not. */
+.sboard-rows > * { z-index: 0; }
+/* Rows out of sight during a view switch: they take the new layout at once. */
+.sboard-rows > .sb-still { transition: none !important; }
 /* The movement arrows take their own slot beside the rank. */
 .sboard.sboard-delta { --sb-pos: 5.25rem; }
 /* On a phone the round view needs every pixel for the rounds: the name keeps
@@ -1726,10 +1741,24 @@ body {
 .sboard-rows.cascade.is-visible > .proj-flash-down {
   animation-name: nabs-fade-in, nabs-spring-up, proj-flash-down;
 }
-@media (prefers-reduced-motion: reduce) {
-  .sboard, .sb-fold { transition: none !important; }
+/* The replay's flash on the board is opaque, like the frozen cells' own flash:
+   a see-through tint let the row underneath show through while two rows
+   crossed, so green and red mixed and the middle of a row looked different
+   from its name and points. */
+@keyframes sb-flash-up {
+  from { background-color: color-mix(in srgb, #10b981 20%, var(--c-card)); }
+  to   { background-color: var(--c-card); }
 }
-.fx-lite .sboard, .fx-lite .sb-fold { transition: none !important; }
+@keyframes sb-flash-down {
+  from { background-color: color-mix(in srgb, #ef4444 16%, var(--c-card)); }
+  to   { background-color: var(--c-card); }
+}
+.sboard-rows.cascade.is-visible > .proj-flash-up { animation-name: nabs-fade-in, nabs-spring-up, sb-flash-up; }
+.sboard-rows.cascade.is-visible > .proj-flash-down { animation-name: nabs-fade-in, nabs-spring-up, sb-flash-down; }
+@media (prefers-reduced-motion: reduce) {
+  .sb-head, .sboard-rows > *, .sb-fold { transition: none !important; }
+}
+.fx-lite .sb-head, .fx-lite .sboard-rows > *, .fx-lite .sb-fold { transition: none !important; }
 
 /* --- Frosted bar ---------------------------------------------------------- */
 /* A sticky bar the page scrolls under: what passes behind it arrives as a
