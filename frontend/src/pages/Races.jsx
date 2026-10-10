@@ -1064,9 +1064,12 @@ export default function Races() {
                       <div className="mb-3 flex h-8 items-center sm:mb-4">
                         <Skeleton className="h-6 w-48 max-w-[60%]" />
                       </div>
+                      {/* As long as the result will be: one row per car (the
+                          rail knows how many), at the row heights of the
+                          phone list and the desktop table. */}
                       <div className="card overflow-hidden">
-                        <div className="hidden h-10 border-b border-border bg-surface2/50 md:block" />
-                        <div className="h-[32rem]" />
+                        <div className="hidden h-[41px] border-b border-border bg-surface2/50 md:block" />
+                        <div className="h-[calc(var(--n)*66px)] md:h-[calc(var(--n)*64px)]" style={{ "--n": Math.max(selectedRace?.resultCount || 20, 4) }} />
                       </div>
                     </div>
                   )}

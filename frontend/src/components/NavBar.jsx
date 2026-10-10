@@ -814,6 +814,44 @@ function StandingsNav({ seriesPath }) {
   );
 }
 
+// The desktop nav's active-page pill. It glides by transform alone: moving AND
+// resizing are a translate plus a scale from the old box to the new one, which
+// the browser runs off the main thread. Animating `width` instead needed the
+// page to lay out every frame, and a page that is busy building itself (Races,
+// with its result table) froze the size: the pill slid over at the old width
+// and only snapped small at the end.
+function NavGlidePill({ box }) {
+  const ref = useRef(null);
+  const last = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const prev = last.current;
+    last.current = box;
+    el.style.width = `${box.width}px`;
+    el.style.height = `${box.height}px`;
+    const to = `translate(${box.left}px, ${box.top}px)`;
+    if (!prev || !box.width || !box.height) {
+      el.style.transition = "none";
+      el.style.transform = to;
+      return;
+    }
+    // Start where it was, at its old size (the new box scaled), then let go.
+    el.style.transition = "none";
+    el.style.transform = `translate(${prev.left}px, ${prev.top}px) scale(${prev.width / box.width}, ${prev.height / box.height})`;
+    void el.offsetWidth;
+    el.style.transition = "";
+    el.style.transform = to;
+  }, [box]);
+  return (
+    <span
+      ref={ref}
+      aria-hidden
+      className="nav-glide absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50"
+    />
+  );
+}
+
 // The accent line under the nav doubles as the page's scroll indicator (the
 // native scrollbar is hidden, see index.css): a full-width strip slides in from
 // the left as you scroll, so the colour reveals instead of stretching. Written
@@ -1320,13 +1358,7 @@ export default function NavBar() {
             items instead of jumping (one absolutely-positioned pill follows
             whichever item carries `.is-active`). */}
         <div ref={desktopNavRef} className="relative hidden shrink-0 items-center gap-0.5 lg:flex xl:gap-1">
-          {navPill && (
-            <span
-              aria-hidden
-              className="spring-glide absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50"
-              style={{ transform: `translate(${navPill.left}px, ${navPill.top}px)`, width: navPill.width, height: navPill.height }}
-            />
-          )}
+          {navPill && <NavGlidePill box={navPill} />}
           {links.map((l) =>
             l.standings ? (
               <StandingsNav key="standings" seriesPath={seriesPath} />

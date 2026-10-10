@@ -38,25 +38,11 @@ function fmtSector(ms) {
   return `${s}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
-// The head of a results card: a mono eyebrow over the title, and an optional
-// note on the right. Phones and the desktop table share it.
-// The classification card has no heading of its own: the round's title sits
-// right above it and the column heads start the table. What the heading used
-// to carry on the side, that gaps include time penalties, sits under it.
+// The result cards have no heading of their own: the round's title sits right
+// above them and the column heads start the table. What the heading used to
+// carry on the side, that gaps include time penalties, sits under it.
 function PenaltyNote({ text }) {
   return <p className="border-t border-border px-4 py-2.5 font-mono text-[11px] text-light md:px-5">{text}</p>;
-}
-
-function CardHead({ eyebrow, title, note = null, className = "" }) {
-  return (
-    <div className={`flex items-start justify-between gap-4 border-b border-border px-4 py-4 ${className}`}>
-      <div>
-        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{eyebrow}</div>
-        <h3 className="mt-0.5 font-display text-lg font-extrabold uppercase leading-tight tracking-tight text-dark">{title}</h3>
-      </div>
-      {note && <p className="max-w-[9.5rem] pt-1 text-right font-mono text-[11px] leading-snug text-light sm:max-w-none">{note}</p>}
-    </div>
-  );
 }
 
 // Within this much of the session's best sector a split counts as "on the
@@ -70,7 +56,6 @@ const NEAR_BEST_SECTOR_MS = 100;
 function MobileQuali({ rows, hasSectors, bestSector }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <CardHead eyebrow="Qualifying" title="Grid order" />
       <ol className="cascade">
         {rows.map((r, i) => {
           const pole = r.position === 1 && isLap(r.bestLapMs);
@@ -168,7 +153,6 @@ function QualiTable({ rows }) {
     <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
-      <CardHead eyebrow="Qualifying" title="Grid order" className="px-5" />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
