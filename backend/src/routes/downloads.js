@@ -26,6 +26,8 @@ router.get("/", requireUser, async (req, res, next) => {
         id: r.id,
         title: r.title,
         folderId: r.folderId ?? null,
+        // A replay belongs to a round; the list tags it with that round.
+        raceId: r.raceId ?? null,
         description: r.description ?? null,
         version: r.version ?? null,
         installNote: r.installNote ?? null,
@@ -33,6 +35,7 @@ router.get("/", requireUser, async (req, res, next) => {
         available: external ? true : st.exists,
         size: external ? null : st.size,
         sizeText: external ? null : fmtSize(st.size),
+        updatedAt: external || !st.mtime ? null : st.mtime.toISOString(),
       };
     });
     res.json({ downloads, folders: await dbListFolders(prisma) });
