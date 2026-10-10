@@ -2020,6 +2020,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const stylised = circuitForLive(session.trackName, session.track);
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
+  const mapCarCount = cars.filter((e) => !e.isSafetyCar).length;
   // With a stream configured, map and player SHARE this card and a switch picks
   // between them, rather than stacking two tall windows down a narrow column.
   // No stream link, no switch — the card is the map, exactly as before.
@@ -2079,8 +2080,23 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               follow={follow}
               onCarTelemetry={onCarTelemetry}
               server={server}
+              sectorLines={session.sectorLines}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
+            {/* How to use the map, and what a faded car means while one is in. */}
+            {cars.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 font-mono text-[10px] uppercase tracking-wider text-light">
+                <span>
+                  {mapCarCount} {mapCarCount === 1 ? "car" : "cars"} · tap a car to follow
+                </span>
+                {cars.some((c) => c.inPits) && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-faint opacity-50" aria-hidden="true" />
+                    faded = pit lane
+                  </span>
+                )}
+              </div>
+            )}
             {/* The caveat only applies to the stylised outline; real map is exact. */}
             {!realMap && (
               <p className="mt-3 text-center font-mono text-[11px] uppercase tracking-wider text-light">
@@ -3356,6 +3372,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                   follow={follow}
                   onCarTelemetry={onCarTelemetry}
                   server={server}
+                  sectorLines={session.sectorLines}
                   wrapClassName={mapFrame}
                   className={`${mapFit} text-medium`}
                   incidents={mapIncidents}

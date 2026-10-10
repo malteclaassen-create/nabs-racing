@@ -38,7 +38,8 @@ import contentCheckRoutes from "./routes/contentCheck.js";
 import changelogRoutes from "./routes/changelog.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
-import { initLiveTiming, getBoard, getTrackMapPng } from "./services/liveTiming.js";
+import { initLiveTiming, getBoard, getTrackMapPng, getTrackIds } from "./services/liveTiming.js";
+import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
@@ -295,6 +296,23 @@ app.get("/api/live/map.png", async (req, res) => {
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=300");
   res.send(png);
+});
+
+// The middle of the circuit on air as a line in world metres, starting at the
+// start line, so the live map can colour it by sector (lib/trackMaps.js). Kept
+// off the board on purpose: it is a few hundred points that never change, and
+// the board goes out to every viewer several times a second. 404 when the
+// track's AI line is not served; the map then draws the track as before.
+app.get("/api/live/track-line", async (req, res) => {
+  try {
+    const ids = getTrackIds(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server }));
+    const line = ids ? await liveCentreLine(ids.track, ids.layout) : null;
+    if (!line) return res.status(404).json({ error: "No track line" });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({ line });
+  } catch {
+    res.status(404).json({ error: "No track line" });
+  }
 });
 
 // Race control: incidents (collisions, stopped cars) for stewards.
