@@ -38,20 +38,21 @@ function avg(nums) {
 const MAX_LAP_MS = 1_800_000;
 const isLap = (ms) => ms != null && ms > 0 && ms <= MAX_LAP_MS;
 
-// How many of the given result rows held their RACE's overall fastest lap —
-// i.e. the number of rounds where this driver set the fastest lap of anyone.
-// Needs the full field per race (a driver's own rows only know their own
-// laps), so it loads every result of the races involved. Ties count for both.
-// Rounds with an admin-recorded holder (archive seasons, lib/raceHonours.js)
-// are settled by that record alone, whatever partial lap data they carry.
-async function countFastestLaps(prisma, ownRows) {
-  if (!ownRows.length) return 0;
+// Which of the given result rows held their RACE's overall fastest lap, as
+// the set of those race ids: the rounds where this driver set the fastest lap
+// of anyone. Needs the full field per race (a driver's own rows only know
+// their own laps), so it loads every result of the races involved. Ties count
+// for both. Rounds with an admin-recorded holder (archive seasons,
+// lib/raceHonours.js) are settled by that record alone, whatever partial lap
+// data they carry.
+async function fastestLapRaceIds(prisma, ownRows) {
+  const held = new Set();
+  if (!ownRows.length) return held;
   const manual = await readManualFastestLaps(prisma, new Set(ownRows.map((r) => r.raceId)));
-  let recorded = 0;
-  for (const r of ownRows) if (manual.get(r.raceId) === r.driverId) recorded += 1;
+  for (const r of ownRows) if (manual.get(r.raceId) === r.driverId) held.add(r.raceId);
   const withLap = ownRows.filter((r) => isLap(r.bestLapMs) && !manual.has(r.raceId));
   const raceIds = [...new Set(withLap.map((r) => r.raceId))];
-  if (!raceIds.length) return recorded;
+  if (!raceIds.length) return held;
   const field = await prisma.raceResult.findMany({
     where: { raceId: { in: raceIds } },
     select: { raceId: true, bestLapMs: true },
@@ -62,7 +63,13 @@ async function countFastestLaps(prisma, ownRows) {
     const m = minByRace.get(r.raceId);
     if (m == null || r.bestLapMs < m) minByRace.set(r.raceId, r.bestLapMs);
   }
-  return recorded + withLap.filter((r) => r.bestLapMs === minByRace.get(r.raceId)).length;
+  for (const r of withLap) if (r.bestLapMs === minByRace.get(r.raceId)) held.add(r.raceId);
+  return held;
+}
+
+// How many rounds those were.
+async function countFastestLaps(prisma, ownRows) {
+  return (await fastestLapRaceIds(prisma, ownRows)).size;
 }
 
 // Sprint-race stats over a list of sprint results ({ status, position }): the
@@ -544,7 +551,7 @@ export async function getDriverProfile(prisma, driverId) {
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, number: { not: null } },
       orderBy: { number: "asc" },
-      select: { id: true, number: true, track: true, isCompleted: true },
+      select: { id: true, number: true, track: true, isCompleted: true, date: true },
     }),
     // Classified, not raw: a car moved by a time penalty shows its new place
     // (the standings score it from there, so the points already say so).
@@ -904,10 +911,16 @@ export async function getDriverProfile(prisma, driverId) {
   // Fastest laps of every classification this season: the feature races and,
   // on sprint weekends, the sprints (their hidden child races).
   const seasonRaceIds = new Set([...races.map((r) => r.id), ...races.map((r) => sprintChildByRound.get(r.id)).filter(Boolean)]);
-  const fastestLaps = await countFastestLaps(
+  const fastestLapRaces = await fastestLapRaceIds(
     prisma,
     results.filter((r) => seasonRaceIds.has(r.raceId))
   );
+  const fastestLaps = fastestLapRaces.size;
+  // The race-by-race table marks the rounds where the lap was theirs.
+  for (const r of perRace) {
+    r.fastestLap = fastestLapRaces.has(r.raceId);
+    if (r.sprint) r.sprint.fastestLap = fastestLapRaces.has(r.sprint.raceId);
+  }
   // Poles this season: quali-derived where a session is on file, grid slot 1
   // otherwise (lib/raceHonours.js) — a reverse-grid feature race's slot 1 is
   // not a pole. A round with no pole on its feature race takes the sprint's
@@ -1075,6 +1088,8 @@ export async function getDriverProfile(prisma, driverId) {
       number: r.number,
       track: r.track,
       isCompleted: r.isCompleted,
+      // When it runs, for the rounds still ahead in the race-by-race table.
+      date: r.date,
       // Whether the round has a sprint classification on file.
       hasSprint: sprintChildByRound.has(r.id),
     })),

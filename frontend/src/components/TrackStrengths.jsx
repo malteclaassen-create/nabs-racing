@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, LayoutGrid, List, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import SlidingTabs from "./SlidingTabs.jsx";
 import CircuitMap from "./CircuitMap.jsx";
+import Flag from "./Flag.jsx";
 import { Skeleton } from "./ui.jsx";
-import { circuitFor } from "../data/circuits.js";
+import { circuitFor, flagFor } from "../data/circuits.js";
+import { NO_VALUE } from "../utils/format.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +71,7 @@ function Radar({ axes, color, rivalColor }) {
       {/* The field's average, the reference every number is read against. */}
       <polygon points={poly(Array(n).fill(50))} fill="none" stroke="var(--c-faint)" strokeWidth="1.5" strokeDasharray="4 3" />
       {hasRival && (
-        <polygon points={poly(axes.map((a) => a.rival ?? 50))} fill={rivalColor} fillOpacity="0.1" stroke={rivalColor} strokeWidth="1.8" strokeLinejoin="round" />
+        <polygon points={poly(axes.map((a) => a.rival ?? 50))} fill={rivalColor} fillOpacity="0.1" stroke={rivalColor} strokeWidth="1.8" strokeDasharray="5 4" strokeLinejoin="round" />
       )}
       <polygon points={poly(axes.map((a) => a.me))} fill={color} fillOpacity="0.22" stroke={color} strokeWidth="2.4" strokeLinejoin="round" />
       {axes.map((a, i) => {
@@ -144,21 +146,22 @@ function summary(data, name) {
 export default function TrackStrengths({ driver, color, standings = [] }) {
   const [scope, setScope] = useState("all");
   const [rivalId, setRivalId] = useState("");
-  // What is unfolded: the detail of each circuit type (none to start with —
-  // the bar and the number say the most), the circuit tiles (open on a
-  // desktop, folded on a phone, where they are a long scroll) and the note on
-  // how it is measured.
-  const [openTypes, setOpenTypes] = useState(() => new Set());
+  // What is unfolded: the detail of each circuit type (the strongest one to
+  // start with, until the reader picks their own; null = that default), the
+  // circuit list (open on a desktop, folded on a phone, where it is a long
+  // scroll) and the note on how it is measured.
+  const [openTypes, setOpenTypes] = useState(null);
   const [tracksOpen, setTracksOpen] = useState(startsWide);
+  const [tracksView, setTracksView] = useState("list"); // "list" | "grid"
   const [aboutOpen, setAboutOpen] = useState(false);
-  const toggleType = (key) =>
-    setOpenTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   const { data, loading, error } = useApi(useCallback(() => api.driverTrackStrengths(driver.id, scope), [driver.id, scope]));
+  const shownOpen = openTypes ?? new Set(data?.strongest ? [data.strongest] : []);
+  const toggleType = (key) => {
+    const next = new Set(shownOpen);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setOpenTypes(next);
+  };
   // The rival is read for the same scope, so the two shapes on the radar
   // are always measured over the same stretch of seasons.
   const [rival, setRival] = useState(null);
@@ -223,7 +226,23 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
             onChange={setScope}
             btnClassName="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
           />
-          {others.length > 0 && (
+          {/* A picked rival sits as a chip that takes them off again; the
+              picker comes back once they are gone. */}
+          {rivalRow ? (
+            <span className="inline-flex items-center gap-2 rounded-xl border border-border py-1 pl-3 pr-1 text-xs font-semibold text-dark">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: RIVAL }} aria-hidden="true" />
+              vs {rivalName}
+              <button
+                type="button"
+                onClick={() => setRivalId("")}
+                aria-label={`Stop comparing with ${rivalName}`}
+                title="Remove"
+                className="grid h-7 w-7 place-items-center rounded-lg text-faint transition hover:bg-surface2 hover:text-dark"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </span>
+          ) : others.length > 0 && (
             <select aria-label="Compare with another driver" className="input w-auto py-1.5 text-xs font-semibold" value={rivalId} onChange={(e) => setRivalId(e.target.value)}>
               <option value="">Compare with…</option>
               {others.map((o) => (
@@ -240,16 +259,16 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
         </p>
       ) : (
         <>
-          <div className={`grid ${showRadar ? "lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" : ""}`}>
+          <div className={`grid grid-cols-1 ${showRadar ? "lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]" : ""}`}>
             {showRadar && (
               <div className="border-b border-border px-4 pb-4 pt-3 lg:border-b-0 lg:border-r">
                 <Radar axes={axes} color={color} rivalColor={RIVAL} />
-                <div className="mt-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-semibold text-medium">
-                  <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: color }} />{driver.name}</span>
-                  {rival && rivalName && <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: RIVAL }} />{rivalName}</span>}
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm" style={{ background: color }} />{driver.name}</span>
+                  {rival && rivalName && <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: RIVAL }} />{rivalName}</span>}
                   <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed border-faint" />Field average</span>
                 </div>
-                <div className="mx-1 mt-4 rounded-lg border border-border bg-surface2 px-3.5 py-3">
+                <div className="mx-1 mt-4 rounded-xl bg-primary/15 px-3.5 py-3">
                   <div className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">In short</div>
                   <p className="mt-1.5 text-[13px] leading-relaxed text-medium">{summary(data, driver.name)}</p>
                   {rival && rivalName && (ahead || behind) && (
@@ -266,35 +285,44 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
             <ul className="divide-y divide-border">
               {data.types.map((t) => {
                 const none = t.score == null;
-                const open = openTypes.has(t.key);
+                const open = shownOpen.has(t.key);
                 const panel = `ts-type-${t.key}`;
+                const theirs = !none ? rivalBy[t.key]?.score ?? null : null;
                 return (
-                  <li key={t.key} className={none ? "opacity-60" : ""}>
+                  <li key={t.key} className={`transition-colors ${none ? "opacity-60" : ""} ${open ? "bg-surface2/50" : ""}`}>
                     {/* The row is the switch: tap it for the races, the
                         average finish and the circuits behind the number. */}
                     <button type="button" onClick={() => toggleType(t.key)} aria-expanded={open} aria-controls={panel}
-                      className="grid w-full grid-cols-[minmax(0,1fr)_3.5rem_1rem] items-center gap-x-3 px-5 py-3 text-left transition hover:bg-surface2/60 sm:px-6">
-                      <span className="min-w-0">
-                        <span className="flex flex-wrap items-center gap-2">
+                      className="block w-full px-5 py-3 text-left transition hover:bg-surface2/60 sm:px-6">
+                      <span className="flex items-center gap-2">
+                        <span className="flex min-w-0 flex-wrap items-center gap-2">
                           <span className="font-display text-sm font-bold uppercase tracking-tight text-dark" title={t.hint}>{t.label}</span>
                           {data.strongest === t.key && <span className="pill bg-ok/15 text-ok">Strongest</span>}
                           {data.weakest === t.key && <span className="pill bg-bad/15 text-bad">Weakest</span>}
-                          {rivalBy[t.key]?.score != null && !none && (
-                            <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: RIVAL }} title={`${rivalName}: ${rivalBy[t.key].score}`}>
-                              {rivalName?.split(" ")[0]} {rivalBy[t.key].score}
-                            </span>
-                          )}
                         </span>
-                        <span className="relative mt-2 block h-[7px] rounded-full bg-surface2">
+                        {theirs != null && (
+                          <span className="ml-auto font-mono text-[11px] font-bold tabular-nums" style={{ color: RIVAL }} title={`${rivalName}: ${theirs}`}>
+                            {theirs}
+                          </span>
+                        )}
+                        <span className={`w-10 shrink-0 text-right font-display text-2xl font-black tabular-nums ${theirs != null ? "" : "ml-auto"}`} style={{ color: tone(t.score) }}>
+                          {none ? NO_VALUE : t.score}
+                        </span>
+                        <Chevron open={open} />
+                      </span>
+                      {/* This driver's bar, the rival's thinner one under it,
+                          and the field's average, where both are read from. */}
+                      <span className="relative mt-2 block space-y-1">
+                        <span className="block h-2 rounded-full bg-surface2">
                           {!none && <span className="block h-full rounded-full" style={{ width: `${t.score}%`, background: color }} />}
-                          {/* The field's average, where every bar is read from. */}
-                          <span className="absolute -bottom-[3px] -top-[3px] left-1/2 w-0.5 rounded bg-faint" aria-hidden="true" />
                         </span>
+                        {theirs != null && (
+                          <span className="block h-1 rounded-full bg-surface2">
+                            <span className="block h-full rounded-full" style={{ width: `${theirs}%`, background: RIVAL }} />
+                          </span>
+                        )}
+                        <span className="absolute -bottom-1 -top-1 left-1/2 w-0.5 rounded bg-faint" aria-hidden="true" />
                       </span>
-                      <span className="text-right font-display text-2xl font-black tabular-nums" style={{ color: tone(t.score) }}>
-                        {none ? "–" : t.score}
-                      </span>
-                      <Chevron open={open} />
                     </button>
                     <Drawer open={open} id={panel}>
                       <div className="px-5 pb-3 sm:px-6">
@@ -313,7 +341,7 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
                         {t.tracks.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {t.tracks.map((x) => (
-                              <span key={x.key} className="rounded-md border border-border bg-surface2 px-1.5 py-px text-[11px] font-semibold text-medium">{x.name}</span>
+                              <span key={x.key} className="rounded-md border border-border bg-card px-1.5 py-px text-[11px] font-semibold text-medium">{x.name}</span>
                             ))}
                           </div>
                         )}
@@ -326,18 +354,80 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
           </div>
 
           <div className="border-t border-border">
-            <button type="button" onClick={() => setTracksOpen((o) => !o)} aria-expanded={tracksOpen} aria-controls="ts-tracks"
-              className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-4 text-left transition hover:bg-surface2/60 sm:px-6">
-              <span className="flex items-baseline gap-2">
+            <div className="flex items-center gap-3 px-5 py-3 sm:px-6">
+              <button type="button" onClick={() => setTracksOpen((o) => !o)} aria-expanded={tracksOpen} aria-controls="ts-tracks"
+                className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left">
                 <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">By track</h3>
                 <span className="font-mono text-[11px] font-semibold text-light">{data.tracks.length}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:inline">best first · avg finish · gap to fastest lap</span>
-                <Chevron open={tracksOpen} />
-              </span>
-            </button>
+                <span className="ml-2 hidden truncate font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:inline">best first · avg finish · gap to fastest lap</span>
+                <Chevron open={tracksOpen} className="ml-auto" />
+              </button>
+              {tracksOpen && (
+                <SlidingTabs
+                  items={[
+                    { key: "list", title: "List", label: <><List className="h-4 w-4" aria-hidden="true" /><span className="sr-only">List</span></> },
+                    { key: "grid", title: "Grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Grid</span></> },
+                  ]}
+                  value={tracksView}
+                  onChange={setTracksView}
+                  btnClassName="flex items-center px-2.5 py-1.5"
+                />
+              )}
+            </div>
             <Drawer open={tracksOpen} id="ts-tracks">
+            {tracksView === "list" ? (
+              // Ranked, best first: one bar per circuit, read from the
+              // field's average in the middle like the type rows above.
+              <div className="pb-3">
+                <div className="hidden grid-cols-[1.5rem_2.5rem_9rem_minmax(0,1fr)_3rem_4.5rem] gap-3 px-6 pb-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:grid">
+                  <span>#</span>
+                  <span />
+                  <span>Circuit</span>
+                  <span>Score · 50 = field</span>
+                  <span className="text-right">Fin</span>
+                  <span className="text-right">Lap gap</span>
+                </div>
+                <ol className="divide-y divide-border sm:divide-y-0">
+                  {data.tracks.map((t, i) => {
+                    const c = toneTile(t.score);
+                    const key = circuitFor(t.key) ? t.key : t.name;
+                    const fin = t.avgFinish != null ? `P${t.avgFinish}` : "DNF";
+                    return (
+                      <li key={t.key} title={`${t.name}: ${races(t.races)}`}
+                        className="grid grid-cols-[1.25rem_2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-5 py-2.5 sm:grid-cols-[1.5rem_2.5rem_9rem_minmax(0,1fr)_3rem_4.5rem] sm:px-6 sm:py-1.5">
+                        <span className="font-mono text-xs font-bold tabular-nums text-light">{i + 1}</span>
+                        <span className="flex h-7 items-center text-medium" aria-hidden="true">
+                          <CircuitMap track={key} strokeWidth={1.5} className="h-7 w-full" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <Flag code={(flagFor(t.key) || flagFor(t.name))?.country} w={14} h={10} />
+                            <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{t.name}</span>
+                          </span>
+                          <span className="block truncate text-[11px] text-light">
+                            {t.types.length ? t.types.map((k) => SHORT[k] || k).join(" · ") : "no type set"}
+                          </span>
+                        </span>
+                        <span className="col-span-4 col-start-1 row-start-2 sm:col-span-1 sm:col-start-auto sm:row-start-auto">
+                          <span className="relative flex h-5 items-center rounded bg-surface2">
+                            <span className="flex h-full items-center justify-end rounded pr-1.5" style={{ width: `${Math.max(2, t.score)}%`, background: c }}>
+                              {t.score >= 22 && <span className="font-display text-[11px] font-black tabular-nums text-card">{t.score}</span>}
+                            </span>
+                            {t.score < 22 && <span className="pl-1.5 font-display text-[11px] font-black tabular-nums" style={{ color: c }}>{t.score}</span>}
+                            <span className="absolute -bottom-0.5 -top-0.5 left-1/2 w-px bg-faint" aria-hidden="true" />
+                          </span>
+                        </span>
+                        <span className="col-start-4 row-start-1 text-right font-mono text-xs tabular-nums text-dark sm:col-start-auto sm:row-start-auto">
+                          <b>{fin}</b>
+                          <span className="text-light sm:hidden"> · {gap(t.avgGapPct) || NO_VALUE}</span>
+                        </span>
+                        <span className="hidden text-right font-mono text-xs tabular-nums text-light sm:block">{gap(t.avgGapPct) || NO_VALUE}</span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-2.5 px-5 pb-4 sm:grid-cols-3 sm:px-6 lg:grid-cols-6">
               {data.tracks.map((t) => {
                 const c = toneTile(t.score);
@@ -360,12 +450,13 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
                     </div>
                     <div className="mt-1.5 flex justify-between font-mono text-[11px] tabular-nums text-medium">
                       <span>{t.avgFinish != null ? `P${t.avgFinish}` : "DNF"}</span>
-                      <span>{gap(t.avgGapPct) || "–"}</span>
+                      <span>{gap(t.avgGapPct) || NO_VALUE}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
+            )}
             </Drawer>
           </div>
         </>
