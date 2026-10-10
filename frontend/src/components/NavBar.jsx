@@ -418,6 +418,30 @@ const NAV_ICONS = {
   myReports: <><path d="M9 4H7a2 2 0 00-2 2v13a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2h-2" /><rect x="9" y="2.2" width="6" height="3.6" rx="1" /><path d="M9 13.5l2 2 4-4" /></>,
 };
 
+// The phone tab bar's own marks, a size up from the menu rows and with some
+// solid in them: the house has a door, the flag is checkered, the trophy
+// stands on a base, the person is one closed shape. At 16px in the menu the
+// checks would turn to mush, so the rows keep the plain line icons above.
+// The flag's checks are squares on the pole's slant (skewX), clipped to the
+// waving cloth; only one tab bar is ever on the page, so one clip id will do.
+const TAB_ICONS = {
+  home: <><path d="M2.5 11.5L12 3l9.5 8.5" /><path d="M5 9.5V20.5h14V9.5" /><path d="M9.5 20.5v-4a2.5 2.5 0 015 0v4z" fill="currentColor" /></>,
+  races: (
+    <>
+      <defs>
+        <clipPath id="bnav-flag-cloth"><path d="M7.9 3.5C11 1.8 14.5 5.8 20.5 4L19 14C13.5 15.6 10 11.8 6.6 13.5Z" /></clipPath>
+      </defs>
+      <g clipPath="url(#bnav-flag-cloth)" fill="currentColor" stroke="none" transform="skewX(-8)">
+        <rect x="12.6" y="0" width="4.2" height="8.8" /><rect x="8" y="8.8" width="4.6" height="9" /><rect x="16.8" y="8.8" width="5" height="9" />
+      </g>
+      <path d="M7.9 3.5C11 1.8 14.5 5.8 20.5 4L19 14C13.5 15.6 10 11.8 6.6 13.5" /><path d="M8.1 3L5.6 21" />
+    </>
+  ),
+  standings: <><path d="M7 3.5h10V9a5 5 0 01-10 0V3.5z" /><path d="M7 5.5H4V7a4 4 0 003.6 4" /><path d="M17 5.5h3V7a4 4 0 01-3.6 4" /><path d="M12 14v3.5" /><rect x="8" y="17.5" width="8" height="3.5" rx="1" /></>,
+  live: <><circle cx="12" cy="12" r="2" /><path d="M8.2 7.8a6 6 0 000 8.4M15.8 7.8a6 6 0 010 8.4" /><path d="M5 4.6a10.5 10.5 0 000 14.8M19 4.6a10.5 10.5 0 010 14.8" /></>,
+  me: <><circle cx="12" cy="7.5" r="4" /><path d="M4 20a8 7.5 0 0116 0v.5a.5.5 0 01-.5.5h-15a.5.5 0 01-.5-.5z" /></>,
+};
+
 // The two pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
 const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
@@ -511,21 +535,21 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   const name = isLoggedIn ? user.driverName || user.discordName || "Profile" : "";
   const profileTo = isLoggedIn ? pathFor(user.driverId) : "/profile";
   const tabs = [
-    { key: "home", to: seriesPath(""), end: true, label: "Home", icon: NAV_ICONS.home, forced: location.pathname === "/" },
-    { key: "races", to: seriesPath("/races"), label: "Races", icon: NAV_ICONS.races },
+    { key: "home", to: seriesPath(""), end: true, label: "Home", icon: TAB_ICONS.home, forced: location.pathname === "/" },
+    { key: "races", to: seriesPath("/races"), label: "Races", icon: TAB_ICONS.races },
     {
       key: "standings",
       to: seriesPath("/drivers"),
       label: "Standings",
-      icon: NAV_ICONS.records,
+      icon: TAB_ICONS.standings,
       forced: STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p)),
     },
-    { key: "live", to: seriesPath("/live"), label: "Live", icon: NAV_ICONS.live },
+    { key: "live", to: seriesPath("/live"), label: "Live", icon: TAB_ICONS.live },
     {
       key: "me",
       to: profileTo,
       label: isLoggedIn ? "Profile" : "Sign in",
-      icon: NAV_ICONS.drivers,
+      icon: TAB_ICONS.me,
       forced: pathNoSeries.startsWith("/profile") || (isLoggedIn && location.pathname === profileTo),
     },
   ];
