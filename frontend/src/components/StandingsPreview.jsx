@@ -133,8 +133,8 @@ function SmallLogo({ team }) {
 // Transfers: the latest moves, newest first, as the page lists them.
 function TransfersBody({ page }) {
   const { data, loading, error } = page;
-  if (loading) return <LoadingRows />;
   if (error) return <Note>The moves didn&apos;t load just now. The page on the left still has them.</Note>;
+  if (loading || !data) return <LoadingRows />;
   if (!data.total) return <Note>Nobody has changed team this season yet.</Note>;
   return (
     <div key="transfers" className="content-in">
@@ -172,8 +172,8 @@ function TransfersBody({ page }) {
 // Hall of Fame: the reigning champion, then the all-time wins.
 function RecordsBody({ page }) {
   const { data, loading, error } = page;
-  if (loading) return <LoadingRows />;
   if (error) return <Note>The records didn&apos;t load just now. The page on the left still has them.</Note>;
+  if (loading || !data) return <LoadingRows />;
   const champ = data.champion;
   if (!champ && !data.wins.length) return <Note>No season has been decided yet. The first champion goes up here.</Note>;
   return (

@@ -30,6 +30,11 @@ export default class ErrorBoundary extends Component {
   render() {
     if (!this.state.hasError) return this.props.children;
 
+    // `fallback`: a guard around one small decoration (the Standings menu's
+    // preview), so a throw in it costs that box and nothing else. Whatever is
+    // passed is shown instead, null included.
+    if ("fallback" in this.props) return this.props.fallback;
+
     // `root`: this instance sits ABOVE the nav bar and the routes, so it catches
     // the one thing the per-route guard cannot — a crash in the NavBar, the
     // Footer or one of the providers, which used to unwind all the way out and

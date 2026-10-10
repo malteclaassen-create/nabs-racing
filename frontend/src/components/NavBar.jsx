@@ -26,6 +26,7 @@ import TokenIcon from "./TokenIcon.jsx";
 import { useSlidingHighlight } from "./SlidingTabs.jsx";
 import { useMenuPagePreview, useStandingsPreview } from "../hooks/useStandingsPreview.js";
 import { StandingsPreviewPanel } from "./StandingsPreview.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
 import {
   ArrowDownUp,
   CalendarCheck,
@@ -729,8 +730,11 @@ function StandingsNav({ seriesPath }) {
     return () => ro.disconnect();
   }, []);
   // The Transfers and Hall of Fame previews, read the first time their row is
-  // pointed at.
-  const page = useMenuPagePreview(open ? view : null);
+  // pointed at. Keyed on what the panel SHOWS, not on the menu being open: the
+  // panel stays mounted (and keeps its view) after the menu closes and while
+  // its content lingers, and handing the hook nothing at that moment left the
+  // panel drawing a page with no data, which took the whole site down.
+  const page = useMenuPagePreview(panelView);
   // Pulled left when the menu would run past the window's right edge (the
   // nav sits at the right of the bar, so at narrower desktop widths it does).
   const [shift, setShift] = useState(0);
@@ -851,7 +855,11 @@ function StandingsNav({ seriesPath }) {
           </div>
           <div className="standings-menu-panel min-w-0 overflow-hidden" aria-hidden={!view}>
             <div style={{ width: STANDINGS_PANEL_W }} className="h-full">
-              {panelView && <StandingsPreviewPanel preview={preview} view={panelView} page={page} />}
+              {panelView && (
+                <ErrorBoundary fallback={null} resetKey={panelView}>
+                  <StandingsPreviewPanel preview={preview} view={panelView} page={page} />
+                </ErrorBoundary>
+              )}
             </div>
           </div>
           </div>
