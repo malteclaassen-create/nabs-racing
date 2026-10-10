@@ -19,7 +19,7 @@ import GlobalSearch from "./GlobalSearch.jsx";
 import { openFeedback } from "./FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
-import { DriverAvatar, SmoothHeight } from "./ui.jsx";
+import { DriverAvatar } from "./ui.jsx";
 import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useTokenBalance.js";
 import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
@@ -706,6 +706,22 @@ function StandingsNav({ seriesPath }) {
     if (!open) setLingering(null);
   }, [open]);
   const panelView = view || lingering;
+  // The menu's height follows its content with a transition. Measured as
+  // layout (offsetHeight), not on screen: the card scales while it opens and
+  // closes, and a measurement taken mid-scale pinned the menu too short on a
+  // quick reopen, cutting the lower rows off until it grew back.
+  const gridRef = useRef(null);
+  const [gridH, setGridH] = useState(null);
+  useLayoutEffect(() => {
+    const el = gridRef.current;
+    if (!el) return undefined;
+    const read = () => setGridH(el.offsetHeight);
+    read();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // The Transfers and Hall of Fame previews, read the first time their row is
   // pointed at.
   const page = useMenuPagePreview(open ? view : null);
@@ -794,8 +810,9 @@ function StandingsNav({ seriesPath }) {
         >
           {/* The height glides too: the preview is taller than the four rows,
               and its content changes as it loads and from row to row. */}
-          <SmoothHeight>
+          <div className="standings-menu-body" style={gridH != null ? { height: gridH } : undefined}>
           <div
+            ref={gridRef}
             className="standings-menu-grid grid"
             style={{ gridTemplateColumns: `${STANDINGS_ROWS_W}px ${view ? STANDINGS_PANEL_W : 0}px`, columnGap: view ? 6 : 0 }}
           >
@@ -832,7 +849,7 @@ function StandingsNav({ seriesPath }) {
             </div>
           </div>
           </div>
-          </SmoothHeight>
+          </div>
         </div>
       </div>
     </div>

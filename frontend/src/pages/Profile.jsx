@@ -929,7 +929,7 @@ function MyProfile() {
         }
       />
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
+      <div className="page-in-steady flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
       <ProfileNav
         nav={profileNav({
           isAdmin: !!user?.isAdmin,

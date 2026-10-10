@@ -900,7 +900,11 @@ body {
 @keyframes nabs-block-fade {
   from { opacity: 0; }
 }
-.page-in > * > :not(.reveal):not(.cascade):not(.recap-reveal):not(:has(.reveal, .reveal-chart, .cascade, .recap-reveal)) {
+/* .page-in-steady opts a block out: one whose content swaps in place (the
+   profile's nav + section) flips in and out of the :has() test below as its
+   sections do or do not carry reveals, and each flip replayed this entrance
+   on the whole block, side nav included. */
+.page-in > * > :not(.reveal):not(.cascade):not(.recap-reveal):not(.page-in-steady):not(:has(.reveal, .reveal-chart, .cascade, .recap-reveal)) {
   animation: nabs-block-fade 240ms ease-out backwards, nabs-spring-up 600ms cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
   animation-delay: calc(min(var(--pi, 0), 8) * 45ms);
 }
@@ -1933,6 +1937,11 @@ body {
 .glass-menu.standings-menu.is-open .glass-menu-item {
   transition-delay: 40ms, 40ms, 0ms;
 }
+.standings-menu-body {
+  overflow: clip;
+  overflow-clip-margin: 6px; /* room for the active row's glass edge */
+  transition: height var(--t-base) var(--e-out);
+}
 .standings-menu-grid {
   transition: grid-template-columns var(--t-base) var(--e-out), column-gap var(--t-base) var(--e-out);
 }
@@ -1947,9 +1956,9 @@ body {
   transition: opacity 240ms ease-out 90ms, transform 420ms cubic-bezier(0.32, 1.32, 0.5, 1) 90ms;
 }
 @media (prefers-reduced-motion: reduce) {
-  .glass-menu.standings-menu.is-open, .standings-menu-grid, .standings-menu-panel > * { transition: none !important; }
+  .glass-menu.standings-menu.is-open, .standings-menu-body, .standings-menu-grid, .standings-menu-panel > * { transition: none !important; }
 }
-.fx-lite .glass-menu.standings-menu.is-open, .fx-lite .standings-menu-grid, .fx-lite .standings-menu-panel > * { transition: none !important; }
+.fx-lite .glass-menu.standings-menu.is-open, .fx-lite .standings-menu-body, .fx-lite .standings-menu-grid, .fx-lite .standings-menu-panel > * { transition: none !important; }
 
 .glass-menu-item {
   opacity: 0;
