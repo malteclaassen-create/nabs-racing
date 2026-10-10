@@ -240,7 +240,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
   const sectionLabel=(s)=>{
     const x=geo.a.x[s.apex], y=geo.a.y[s.apex];
     const dx=x-geo.centroid.x, dy=y-geo.centroid.y, d=Math.hypot(dx,dy)||1;
-    // The circuit's corner names where they are known ("T8", "T1–3"): a
+    // The circuit's corner names where they are known ("T8", "T1-3"): a
     // pill that grows with the text, a circle for a bare number.
     const tag=String(s.tag||s.n);
     const off=(16+Math.max(0,tag.length-2)*2.5)*localPixel, r=8*localPixel, w=Math.max(2*r,(tag.length*6.2+7)*localPixel);

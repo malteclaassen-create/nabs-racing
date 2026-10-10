@@ -8,8 +8,8 @@ const section = (n, coreStart, coreEnd, apex) => ({ n, start: coreStart - 30, en
 
 test("a section is named after the circuit's corners inside it", () => {
   const [a, b, c, d] = labelSections([section(1, 75, 115, 110), section(2, 395, 415, 409), section(3, 690, 705, 700), section(4, 900, 910, 905)], corners, 1001);
-  assert.equal(a.label, "T1–T3");
-  assert.equal(a.tag, "T1–3");
+  assert.equal(a.label, "T1-T3");
+  assert.equal(a.tag, "T1-3");
   assert.equal(b.label, "T8");
   assert.equal(c.label, "T12 Anderson");
   assert.equal(c.tag, "T12");

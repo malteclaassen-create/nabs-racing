@@ -676,6 +676,13 @@ body {
   /* children inherit --reveal-delay from the container, then fan out on --i */
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
 }
+/* Fade-only variant for rows something else moves (the standings replay owns
+   their transform): they still deal in one after another, without the rise.
+   Reduced motion and lite mode already stop every .cascade child. */
+.cascade-fade.is-visible > * {
+  animation: nabs-fade-in 240ms ease-out both;
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms);
+}
 /* A sideways rail scrolled to its selected item (the Races round rail) fans
    out from that item, so what is on screen arrives first. */
 @media (max-width: 1023.98px) {

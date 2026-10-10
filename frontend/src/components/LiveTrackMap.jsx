@@ -216,6 +216,14 @@ function gearLabel(g) {
   return g === 0 ? "R" : g === 1 ? "N" : g - 1;
 }
 
+// Dev only: compare the marker options on the demo board straight from the
+// address bar. ?disc=pos puts the running position on the discs instead of the
+// race number, ?tags=all|0|3|6 overrides how many cars get a name tag.
+function previewOption(name) {
+  if (!import.meta.env.DEV) return null;
+  return new URLSearchParams(window.location.search).get(name);
+}
+
 // One car as the map draws it, whichever of the two maps it is on.
 function toDot(car, x, y, matchFn) {
   const m = matchFn ? matchFn(car.name) : null;
@@ -223,7 +231,9 @@ function toDot(car, x, y, matchFn) {
   const title = m?.nabsName || car.name;
   const label = car.isSafetyCar
     ? "SC"
-    : car.raceNumber != null
+    : previewOption("disc") === "pos" && car.racePosition != null
+      ? String(car.racePosition)
+      : car.raceNumber != null
       ? String(car.raceNumber)
       : (car.initials || car.name || "").slice(0, 3);
   return {
@@ -376,7 +386,8 @@ function CarMarker({ d, r, spot, isFocusTarget, counterRotate, onFocus, register
 function useTags({ dots, focusGuid, zoom, r, rotated, H, fit }) {
   const last = useRef(new Map());
   // Three leaders on a phone-sized map, six on a wider one.
-  const cap = fit && fit.drawnW < 520 ? 3 : 6;
+  const tags = previewOption("tags");
+  const cap = tags === "all" ? Infinity : /^\d+$/.test(tags || "") ? Number(tags) : fit && fit.drawnW < 520 ? 3 : 6;
   return useMemo(
     () => placeTags({ dots, focusGuid, r, k: focusGuid ? 1 / Math.sqrt(zoom) : 1, rotated, H, cap, last: last.current }),
     [dots, focusGuid, zoom, r, rotated, H, cap]

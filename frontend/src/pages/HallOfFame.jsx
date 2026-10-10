@@ -1,10 +1,10 @@
-import { useCallback, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
 import { useSwapClass } from "../hooks/motion.js";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, readableInkOn } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -302,6 +302,91 @@ function RecordCell({ rec }) {
 // points" reads "Career points".
 const listName = (l) => l.label.replace(/^Most /, "").replace(/^./, (c) => c.toUpperCase());
 
+// The category picker. A list of our own rather than a native <select>: the
+// browser's open list could not be styled, came out narrower or wider than the
+// button and in the system's colours. This one opens exactly as wide as the
+// button, in the panel's dark style, and keeps the keyboard handling a select
+// has (arrows, Home/End, Enter, Escape).
+function RankingPicker({ lists, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const wrap = useRef(null);
+  const button = useRef(null);
+  const listId = useId();
+  const current = Math.max(0, lists.findIndex((l) => l.key === value));
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!wrap.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+
+  const show = () => { setActive(current); setOpen(true); };
+  const pick = (i) => {
+    onChange(lists[i].key);
+    setOpen(false);
+    button.current?.focus();
+  };
+  const onKey = (e) => {
+    const last = lists.length - 1;
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) { e.preventDefault(); show(); }
+      return;
+    }
+    if (e.key === "Escape" || e.key === "Tab") { setOpen(false); return; }
+    e.preventDefault();
+    if (e.key === "ArrowDown") setActive((i) => Math.min(last, i + 1));
+    else if (e.key === "ArrowUp") setActive((i) => Math.max(0, i - 1));
+    else if (e.key === "Home") setActive(0);
+    else if (e.key === "End") setActive(last);
+    else if (e.key === "Enter" || e.key === " ") pick(active);
+  };
+
+  return (
+    <div ref={wrap} className="relative max-sm:w-full sm:min-w-[15rem]">
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={onKey}
+        className={`flex w-full items-center gap-3 rounded-xl bg-white/10 py-2.5 pl-4 pr-3 text-base font-semibold ring-1 transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-sm ${open ? "ring-white/30" : "ring-white/15"}`}
+      >
+        <span className="text-white/50">Ranking</span>
+        <span className="min-w-0 flex-1 truncate text-left text-white">{listName(lists[current])}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2} aria-hidden />
+      </button>
+      {open && (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Ranking"
+          className="absolute inset-x-0 top-full z-dropdown mt-1.5 max-h-80 overflow-y-auto rounded-xl bg-ink p-1.5 shadow-lift ring-1 ring-white/15"
+        >
+          {lists.map((l, i) => (
+            <li
+              key={l.key}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === current}
+              onPointerEnter={() => setActive(i)}
+              onClick={() => pick(i)}
+              className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${i === active ? "bg-white/10 text-white" : "text-white/75"}`}
+            >
+              {listName(l)}
+              {i === current && <Check className="h-4 w-4 shrink-0 text-eyebrow" strokeWidth={2} aria-hidden />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // Dark in both themes, like the other heroes (bg-ink). Each bar is measured
 // against the leader and painted in the driver's latest team colour, so the
 // gaps between the names read at a glance. Nine-plus categories (and more as
@@ -325,21 +410,7 @@ function TopListPanel({ lists, activeKey, onChange, seasons }) {
           <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight sm:text-4xl">{listName(list)}</h2>
           {list.note && <p className="mt-1 font-mono text-[11px] text-white/50">{list.note}</p>}
         </div>
-        <label className="relative inline-flex items-center gap-3 rounded-xl bg-white/10 pl-4 text-sm font-semibold ring-1 ring-white/15 transition focus-within:ring-2 focus-within:ring-white/40 hover:bg-white/15 max-sm:w-full max-sm:justify-between">
-          <span className="text-white/50">Ranking</span>
-          <select
-            value={list.key}
-            onChange={(e) => onChange(e.target.value)}
-            className="cursor-pointer appearance-none bg-transparent py-2.5 pr-10 text-right text-base font-semibold text-white focus:outline-none max-sm:flex-1 sm:text-left sm:text-sm"
-          >
-            {lists.map((l) => (
-              <option key={l.key} value={l.key} className="bg-ink text-white">
-                {listName(l)}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4" strokeWidth={2} aria-hidden />
-        </label>
+        <RankingPicker lists={lists} value={list.key} onChange={onChange} />
       </div>
 
       <div key={list.key} className={swap}>
@@ -374,7 +445,10 @@ function TopListPanel({ lists, activeKey, onChange, seasons }) {
                     className="bar-fill absolute inset-y-0 left-0 flex min-w-[5.5rem] items-center justify-end rounded-md pr-3"
                     style={{ "--w": `${pct}%`, background: `linear-gradient(90deg, ${color}55, ${color})` }}
                   >
-                    <span className="font-mono text-sm font-bold tabular-nums text-white drop-shadow">
+                    <span
+                      className={`font-mono text-sm font-bold tabular-nums ${readableInkOn(color) === "#fff" ? "drop-shadow" : ""}`}
+                      style={{ color: readableInkOn(color) }}
+                    >
                       <CountUp end={r.value} />
                     </span>
                   </span>

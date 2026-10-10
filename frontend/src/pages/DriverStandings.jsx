@@ -5,7 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState, PosDelta } from "../components/ui.jsx";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, TierBadge, Rank, MEDAL, DriverAvatar, CountUp, EmptyState, PosDelta, SmoothHeight } from "../components/ui.jsx";
 import { playStandingsReplay } from "../utils/standingsReplay.js";
 import { useTilt, motionOff, useSwapClass } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
@@ -708,6 +708,10 @@ export default function DriverStandings() {
         </div>
       </div>
 
+      {/* Switching List / By round / Cards or the tier: the box glides to the
+          new view's height while the new view fades in, instead of the page
+          below jumping by the difference in one frame. */}
+      <SmoothHeight>
       <div key={`${activeView}:${activeTier}`} className={swap}>
       {shown.length === 0 ? (
         <FilteredEmpty {...emptyNote()} />
@@ -806,10 +810,10 @@ export default function DriverStandings() {
       ) : (
         <div
           ref={replayRef}
-          // While the replay runs (and afterwards, for this mount) the cascade
-          // entrance stays off: its per-row rise animates transform, and the
-          // replay owns transform. The replay IS the entrance on those loads.
-          className={`${replayArmed || seasonReplayed.current ? "" : "cascade"} card divide-y divide-border overflow-hidden`}
+          // The rows deal in top to bottom like everywhere else. While the
+          // replay runs (and afterwards, for this mount) only their fade does:
+          // the usual rise animates transform, and the replay owns transform.
+          className={`cascade ${replayArmed || seasonReplayed.current ? "cascade-fade" : ""} card divide-y divide-border overflow-hidden`}
         >
           {shown.map((d, i) => (
             <DriverRow
@@ -827,6 +831,7 @@ export default function DriverStandings() {
         </div>
       )}
       </div>
+      </SmoothHeight>
 
       {/* The season total is NOT the sum of a driver's results: the lowest N
           rounds come off first. That was explained in exactly one place, the
