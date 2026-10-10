@@ -216,7 +216,7 @@ function FormatCards({ content, tokens, rounds, counted, answers }) {
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-onbrand">
                   <Icon name={c.icon} className="h-5 w-5" />
                 </span>
-                <span className="font-display text-4xl font-black leading-none text-surface2" aria-hidden="true">
+                <span className="font-display text-4xl font-black leading-none text-faint" aria-hidden="true">
                   {String(i + 1).padStart(2, "0")}
                 </span>
               </div>
