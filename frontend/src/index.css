@@ -258,6 +258,66 @@ body {
    used to have drifting brand-coloured blooms (the "aurora") behind every page;
    they were removed so the background matches the chosen design. */
 
+/* Taking a new version of the site (UpdateBanner's Reload button). A reload
+   blanks the tab and the new page pops in from nothing, so it is wrapped in a
+   veil instead: the old page goes soft and sinks into the page colour, the tab
+   reloads behind it, and the new page comes back into focus out of that same
+   colour. The veil only ever sits over the page (backdrop-filter, a fixed layer
+   on top), never filters the page itself: a filter on #root would pull the
+   fixed nav bars loose for the length of the animation.
+   Out: .update-veil, added by the old page right before the reload.
+   In: html.update-reveal, set by the inline script in index.html before the
+   first paint, so the new page opens already veiled; .update-reveal-go lifts it
+   once the app has rendered (UpdateBanner). The -late animation is the safety
+   net that lifts it anyway if the app never gets that far, and the inline
+   script drops both classes after a few seconds whatever happens. */
+.update-veil,
+html.update-reveal body::after {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+.update-veil {
+  animation: update-veil-in 380ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+html.update-reveal body::after {
+  content: "";
+  background-color: var(--c-bg);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  animation: update-veil-out-late 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 1500ms forwards;
+}
+html.update-reveal.update-reveal-go body::after {
+  animation: update-veil-out 700ms cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+@keyframes update-veil-in {
+  from { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+  to { background-color: var(--c-bg); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+}
+@keyframes update-veil-out {
+  to { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+}
+@keyframes update-veil-out-late {
+  to { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); }
+}
+/* Reduced motion: a plain, quick fade both ways, no blur. */
+@media (prefers-reduced-motion: reduce) {
+  .update-veil { animation: update-fade-in 150ms linear forwards; }
+  html.update-reveal body::after { -webkit-backdrop-filter: none; backdrop-filter: none; animation: update-fade-out-late 150ms linear 1500ms forwards; }
+  html.update-reveal.update-reveal-go body::after { animation: update-fade-out 150ms linear forwards; }
+}
+@keyframes update-fade-in {
+  from { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); }
+  to { background-color: var(--c-bg); }
+}
+@keyframes update-fade-out {
+  to { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); }
+}
+@keyframes update-fade-out-late {
+  to { background-color: color-mix(in srgb, var(--c-bg) 0%, transparent); }
+}
+
 @layer components {
   .container-page {
     @apply max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 2xl:px-14;
