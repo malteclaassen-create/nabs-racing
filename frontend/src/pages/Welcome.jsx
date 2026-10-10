@@ -21,6 +21,7 @@ import { disciplineOf } from "../utils/pageTitle.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useTour } from "../components/Tour.jsx";
 import { fmtDateShort, singularOne } from "../utils/format.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 
 // League default points per finishing position — only the fallback: seasons
 // can override the table (Season.pointsTable), which /api/seasons delivers and
@@ -415,6 +416,7 @@ export default function Welcome() {
   return (
     <div className="content-in space-y-24">
       {/* ============================ HERO ============================ */}
+      <DesignSlot id="welcome/01-hero">
       <section className="relative overflow-hidden rounded-[1.75rem] bg-card shadow-xl shadow-ink/20 ring-1 ring-black/5 dark:bg-ink dark:shadow-card dark:ring-white/10">
         <img
           ref={heroImgRef}
@@ -551,6 +553,7 @@ export default function Welcome() {
           )}
         </div>
       </section>
+      </DesignSlot>
 
       {/* ====================== BY THE NUMBERS ====================== */}
       {/* The four figures a newcomer actually wants: how long this has been
@@ -573,6 +576,7 @@ export default function Welcome() {
           rules drew a cross through a bordered block, which turns the band back
           into the boxed card this was meant to get away from. Two figures side
           by side with one rule between the rows is enough separation there. */}
+      <DesignSlot id="welcome/02-stats">
       <section className="cascade -mt-6 border-y border-border sm:-mt-8">
         <div className="grid grid-cols-2 divide-y divide-border sm:grid-cols-4 sm:divide-x sm:divide-y-0">
           {[
@@ -598,11 +602,15 @@ export default function Welcome() {
             ))}
         </div>
       </section>
+      </DesignSlot>
 
       {/* =============== NEXT SEASON (transition period only) =============== */}
-      <NextSeasonTeaser />
+      <DesignSlot id="welcome/03-next-season">
+        <NextSeasonTeaser />
+      </DesignSlot>
 
       {/* ====================== WHAT IS NABS ======================= */}
+      <DesignSlot id="welcome/04-what-is-nabs">
       <section>
         {/* The one heading on the page that answers the question a newcomer
             actually types into a search box, so it names the sim and the cars
@@ -641,10 +649,12 @@ export default function Welcome() {
           </FeatureCard>
         </div>
       </section>
+      </DesignSlot>
 
       {/* ====================== SEASON TIMELINE ======================= */}
       {/* League history straight from the DB: appears per season entered by the
           admin, so it grows on its own. Hidden while only one season exists. */}
+      <DesignSlot id="welcome/05-season-timeline">
       {timeline.length > 1 && (
         <section>
           <SectionHead
@@ -718,8 +728,10 @@ export default function Welcome() {
           </div>
         </section>
       )}
+      </DesignSlot>
 
       {/* ====================== HOW IT WORKS ======================= */}
+      <DesignSlot id="welcome/06-how-it-works">
       <section id="how-it-works" className="scroll-mt-24">
         <SectionHead
           eyebrow="The format"
@@ -792,8 +804,10 @@ export default function Welcome() {
           </div>
         </div>
       </section>
+      </DesignSlot>
 
       {/* ====================== GET STARTED ======================= */}
+      <DesignSlot id="welcome/07-joining">
       <section className="grid gap-10 lg:grid-cols-2 lg:items-center">
         <div>
           <SectionHead
@@ -877,8 +891,10 @@ export default function Welcome() {
           )}
         </div>
       </section>
+      </DesignSlot>
 
       {/* ====================== FAQ ======================= */}
+      <DesignSlot id="welcome/08-faq">
       <section>
         <SectionHead center eyebrow="Good to know" title="Frequently asked" />
         <div className="mx-auto grid max-w-3xl gap-3">
@@ -931,12 +947,14 @@ export default function Welcome() {
           )}
         </div>
       </section>
+      </DesignSlot>
 
       {/* ================= WHAT WE POST ================== */}
       {/* The same wall as the member home page. On a newcomer landing it does a
           different job: everything above is us describing ourselves, this is
           the racing itself. Renders nothing at all until there is something to
           show — see SocialFeed. */}
+      <DesignSlot id="welcome/09-social-feed">
       <SocialFeed
         header={
           <SectionHead
@@ -947,8 +965,10 @@ export default function Welcome() {
           />
         }
       />
+      </DesignSlot>
 
       {/* ====================== FINAL CTA ======================= */}
+      <DesignSlot id="welcome/10-final-cta">
       <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-ink p-10 text-center shadow-xl shadow-ink/20 sm:p-14">
         <div className="absolute inset-0 opacity-60" style={{ background: "radial-gradient(120% 120% at 50% 0%, rgb(var(--c-brand) / 0.25), transparent 60%)" }} />
         <div className="speed-hatch absolute inset-0 opacity-30" />
@@ -974,6 +994,7 @@ export default function Welcome() {
           </div>
         </div>
       </section>
+      </DesignSlot>
     </div>
   );
 }
