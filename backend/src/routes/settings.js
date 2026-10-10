@@ -8,7 +8,7 @@ import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 import { readHelpFaq } from "../lib/helpFaq.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readPrivacyInfo } from "../lib/privacyInfo.js";
-import { discordMemberCount, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
+import { discordCounts, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
 import { isTelemetryPublic } from "../lib/telemetryAccess.js";
 import { resolveSeries } from "../lib/series.js";
@@ -111,11 +111,17 @@ router.get("/privacy", async (req, res, next) => {
 // GET /api/settings/league-stats -> the two headline numbers the database has
 // no answer for: how many people are in the Discord, and how long the league has
 // been running. See lib/leagueStats.js for why neither can be derived. Both may
-// be null, and the landing page has a fallback for each.
+// be null, and the landing page has a fallback for each. `discordOnline` comes
+// from the same Discord answer and can be null on its own.
 router.get("/league-stats", async (req, res, next) => {
   try {
-    const [members, since] = await Promise.all([discordMemberCount(prisma), leagueSince(prisma)]);
-    res.json({ discordMembers: members, since, years: yearsOfRacing(since) });
+    const [discord, since] = await Promise.all([discordCounts(prisma), leagueSince(prisma)]);
+    res.json({
+      discordMembers: discord.members,
+      discordOnline: discord.online,
+      since,
+      years: yearsOfRacing(since),
+    });
   } catch (e) {
     next(e);
   }
