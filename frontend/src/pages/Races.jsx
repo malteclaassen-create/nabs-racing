@@ -510,6 +510,19 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   );
 }
 
+// The results card with nothing in it yet: as long as the result will be (one
+// row per car, the rail knows how many) at the row heights of the phone list
+// and the desktop table, so the background stands at its full size and the
+// drivers deal into it.
+function ResultsShell({ count }) {
+  return (
+    <div className="card overflow-hidden" aria-hidden="true">
+      <div className="hidden h-[41px] border-b border-border bg-surface2/50 md:block" />
+      <div className="h-[calc(var(--n)*66px)] md:h-[calc(var(--n)*64px)]" style={{ "--n": Math.max(count || 20, 4) }} />
+    </div>
+  );
+}
+
 export default function Races() {
   const { data: races, loading, error, reload } = useApi(useCallback(() => api.races(), []));
   // Picked on the very first render when the calendar is already in memory
@@ -1064,21 +1077,15 @@ export default function Races() {
                       <div className="mb-3 flex h-8 items-center sm:mb-4">
                         <Skeleton className="h-6 w-48 max-w-[60%]" />
                       </div>
-                      {/* As long as the result will be: one row per car (the
-                          rail knows how many), at the row heights of the
-                          phone list and the desktop table. */}
-                      <div className="card overflow-hidden">
-                        <div className="hidden h-[41px] border-b border-border bg-surface2/50 md:block" />
-                        <div className="h-[calc(var(--n)*66px)] md:h-[calc(var(--n)*64px)]" style={{ "--n": Math.max(selectedRace?.resultCount || 20, 4) }} />
-                      </div>
+                      <ResultsShell count={selectedRace?.resultCount} />
                     </div>
                   )}
                   {detailError && !detailLoading && <ErrorBox message={detailError} />}
                   {detail && (
-                    // Keyed on the race: the cascade entrance replays for each
-                    // newly loaded round (the stale round keeps its layout
-                    // until the new one is ready).
-                    <div key={detail.race.id} className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
+                    // Not keyed on the round: the card stays up across a switch and
+                    // only its rows are swapped (see RaceResults). What below it
+                    // belongs to one round is keyed on its own.
+                    <div className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
                       <div className="mb-3 sm:mb-4">
                         {/* One row from sm up. On phones the title shares its
                             line with the date and the actions, which shrink to
@@ -1313,7 +1320,11 @@ export default function Races() {
                           moment later. A placeholder sized for where you are
                           GOING does both jobs. */}
                       {detailIsStale ? (
-                        <TableSkeleton rows={Math.max(selectedRace?.resultCount || 10, 4)} />
+                        // The same card, emptied: the background stays where
+                        // it is and only the drivers go, then the new ones
+                        // deal in. A shimmering skeleton that faded in late
+                        // made the whole card vanish and come back.
+                        <ResultsShell count={selectedRace?.resultCount} />
                       ) : shownSession === "sprint" ? (
                         sprint.loading || sprint.raceId !== sprintRaceId ? (
                           <div className="px-5 py-10 text-center text-sm text-light">Reading the sprint…</div>
@@ -1338,11 +1349,11 @@ export default function Races() {
                       {/* The facts belong to the feature race — under the
                           sprint's table they would caption the wrong result. */}
                       {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
-                        <RaceFacts race={detail.race} results={detail.results} quali={detail.quali} />
+                        <RaceFacts key={detail.race.id} race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
-                      {!detailIsStale && <RaceGallery photos={detail.photos} title={detail.race.track} />}
+                      {!detailIsStale && <RaceGallery key={detail.race.id} photos={detail.photos} title={detail.race.track} />}
                     </div>
                   )}
                 </>

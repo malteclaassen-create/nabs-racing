@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { StatusPill, Rank, TierBadge, SafetyCarBadge, NoData } from "./ui.jsx";
@@ -53,10 +53,10 @@ const NEAR_BEST_SECTOR_MS = 100;
 // flag and name (Pole on P1), then the lap's three sectors as a strip — purple
 // where it was the fastest split of the session, green within a tenth of it —
 // and on the right the lap time over the gap to pole.
-function MobileQuali({ rows, hasSectors, bestSector }) {
+function MobileQuali({ rows, hasSectors, bestSector, rowsKey }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <ol className="cascade">
+      <ol key={rowsKey} className="cascade">
         {rows.map((r, i) => {
           const pole = r.position === 1 && isLap(r.bestLapMs);
           const lap = fmtLap(r.bestLapMs);
@@ -140,7 +140,7 @@ function MobileQuali({ rows, hasSectors, bestSector }) {
   );
 }
 
-function QualiTable({ rows }) {
+function QualiTable({ rows, rowsKey }) {
   // Sector columns only exist when the import carried them (older blobs
   // don't). The field's best time in each sector is tinted purple.
   const hasSectors = rows.some((r) => Array.isArray(r.sectors));
@@ -150,7 +150,7 @@ function QualiTable({ rows }) {
   });
   return (
     <>
-    <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} />
+    <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} rowsKey={rowsKey} />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
@@ -168,7 +168,7 @@ function QualiTable({ rows }) {
             </tr>
           </thead>
           {/* cascade: rows rise in one after another, like the race table */}
-          <tbody className="cascade">
+          <tbody key={rowsKey} className="cascade">
             {rows.map((r, i) => {
               const pole = r.position === 1 && isLap(r.bestLapMs);
               return (
@@ -316,10 +316,10 @@ function StintBar({ stints, totalLaps }) {
 // and on the right the gap and the points. Everything else (grid slot, best
 // lap, tyre strategy) folds out when the row is tapped. A tyre strip and two
 // stacked times on every row made twenty rows read as noise.
-function MobileClassification({ penaltyNote, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
+function MobileClassification({ rowsKey, penaltyNote, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <ol className="cascade">
+      <ol key={rowsKey} className="cascade">
         {results.map((r, i) => {
           const team = r.effectiveTeam || r.team;
           const finished = isFin(r);
@@ -481,6 +481,11 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   // Which drivers' tyre strategies are folded open (rows with stint data from
   // the AC import are clickable; older rounds simply have none).
   const [openStints, setOpenStints] = useState(() => new Set());
+  // Switching rounds keeps the card and its column heads on screen and only
+  // swaps the rows: they are keyed on the round (so they deal in afresh), and
+  // the folded-open strategies of the last round close.
+  const rowsKey = race?.id;
+  useEffect(() => setOpenStints(new Set()), [rowsKey]);
   const toggleStints = (driverId) =>
     setOpenStints((prev) => {
       const next = new Set(prev);
@@ -536,11 +541,12 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   );
   const hasAnyStints = results.some((r) => Array.isArray(r.stints) && r.stints.length > 0);
 
-  if (hasQuali && session === "quali") return <QualiTable rows={quali} />;
+  if (hasQuali && session === "quali") return <QualiTable rows={quali} rowsKey={rowsKey} />;
 
   return (
     <>
     <MobileClassification
+      rowsKey={rowsKey}
       penaltyNote={penaltyNote}
       results={results}
       scores={scores}
@@ -584,7 +590,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
             </tr>
           </thead>
           {/* cascade: rows rise in one after another, like the standings tables */}
-          <tbody className="cascade">
+          <tbody key={rowsKey} className="cascade">
             {results.map((r, i) => {
               const tier = r.tier ?? r.team?.tier;
               const isFastest = r.driverId === fastestDriverId;

@@ -5,6 +5,7 @@ import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
+import { motionOff } from "../hooks/motion.js";
 import { GearIcon } from "./SettingsPanel.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
@@ -168,6 +169,30 @@ export default function NotificationBell({ className = "" }) {
     isLoggedIn,
   );
 
+  // Closing plays the opening backwards before the panel goes: `shown` keeps
+  // it mounted for that moment, `open` is already false (so the bell, the
+  // dismiss layer and a quick reopen all see it as shut).
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setShown(true);
+      return undefined;
+    }
+    const t = setTimeout(() => setShown(false), motionOff() ? 0 : 180);
+    return () => clearTimeout(t);
+  }, [open]);
+  // The red count leaves the same way: it shrinks away instead of blinking out
+  // when the panel marks everything seen. `badge` is the last count shown.
+  const [badge, setBadge] = useState(0);
+  useEffect(() => {
+    if (unread > 0) {
+      setBadge(unread);
+      return undefined;
+    }
+    const t = setTimeout(() => setBadge(0), motionOff() ? 0 : 220);
+    return () => clearTimeout(t);
+  }, [unread]);
+
   const close = useCallback(() => setOpen(false), []);
 
   // Escape and click-outside come from the shared overlay layer. That also
@@ -228,26 +253,26 @@ export default function NotificationBell({ className = "" }) {
         className={`relative flex items-center justify-center rounded-lg text-light transition hover:bg-surface2 ${className}`}
       >
         <BellIcon ringing={unread > 0 && !open} />
-        {unread > 0 && (
+        {badge > 0 && (
           <span
             aria-hidden
             className={`absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 font-mono text-[10px] font-bold leading-none text-white ${
-              open ? "" : "bell-badge-pulse"
+              unread === 0 ? "bell-badge-out" : open ? "" : "bell-badge-pulse"
             }`}
           >
-            {unread > 9 ? "9+" : unread}
+            {badge > 9 ? "9+" : badge}
           </span>
         )}
       </button>
 
-      {open && (
+      {(open || shown) && (
         <>
           {/* The panel hangs off the bell's right edge, and on a phone the bell
               itself sits ~60px in from the screen edge (the burger is to its
               right). The old clamp only subtracted the page gutter, so on
               narrow phones the panel's LEFT edge ran off screen. Subtracting
               5.5rem accounts for the burger plus a margin, so it always fits. */}
-          <div className="liquid-glass glass-dense glass-pop absolute right-0 top-full z-dropdown mt-2 w-80 max-w-[calc(100vw-5.5rem)] origin-top-right overflow-hidden rounded-[22px] lg:max-w-[calc(100vw-1.5rem)]">
+          <div className={`liquid-glass glass-dense ${open ? "glass-pop" : "glass-pop-out"} absolute right-0 top-full z-dropdown mt-2 w-80 max-w-[calc(100vw-5.5rem)] origin-top-right overflow-hidden rounded-[22px] lg:max-w-[calc(100vw-1.5rem)]`}>
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Notifications</h2>
               {unreadCountLabel(items)}

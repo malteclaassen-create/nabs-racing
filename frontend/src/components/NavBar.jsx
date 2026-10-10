@@ -19,7 +19,7 @@ import GlobalSearch from "./GlobalSearch.jsx";
 import { openFeedback } from "./FeedbackWidget.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
-import { DriverAvatar } from "./ui.jsx";
+import { DriverAvatar, SmoothHeight } from "./ui.jsx";
 import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useTokenBalance.js";
 import { useRecapSettled } from "./RaceRecap.jsx";
 import TokenIcon from "./TokenIcon.jsx";
@@ -691,6 +691,21 @@ function StandingsNav({ seriesPath }) {
   // What the panel shows: nothing until a row is pointed at or focused, so the
   // menu opens as the plain list it always was and only then grows the preview.
   const [view, setView] = useState(null);
+  // The preview's content stays a moment after the pointer leaves the rows,
+  // so it can fade out while the menu narrows instead of vanishing first.
+  const [lingering, setLingering] = useState(null);
+  useEffect(() => {
+    if (view) {
+      setLingering(view);
+      return undefined;
+    }
+    const t = setTimeout(() => setLingering(null), motionOff() ? 0 : 130);
+    return () => clearTimeout(t);
+  }, [view]);
+  useEffect(() => {
+    if (!open) setLingering(null);
+  }, [open]);
+  const panelView = view || lingering;
   // The Transfers and Hall of Fame previews, read the first time their row is
   // pointed at.
   const page = useMenuPagePreview(open ? view : null);
@@ -744,6 +759,9 @@ function StandingsNav({ seriesPath }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        // Back on the button: the preview folds away and the menu is the plain
+        // list again.
+        onMouseEnter={() => open && setView(null)}
         aria-haspopup="menu"
         aria-expanded={open}
         data-tour="nav-standings"
@@ -767,15 +785,20 @@ function StandingsNav({ seriesPath }) {
       >
         <div
           data-tour="nav-standings-menu"
-          className={`liquid-glass glass-dense glass-menu standings-menu grid rounded-[22px] p-1.5 ${open ? "is-open" : ""} ${view ? "has-preview" : ""}`}
+          className={`liquid-glass glass-dense glass-menu standings-menu rounded-[22px] p-1.5 ${open ? "is-open" : ""} ${view ? "has-preview" : ""}`}
           // Springs out of the button even when the card has been pulled left.
           style={{
             width: view ? STANDINGS_MENU_W : STANDINGS_ROWS_W + 12,
-            gridTemplateColumns: `${STANDINGS_ROWS_W}px ${view ? STANDINGS_PANEL_W : 0}px`,
-            columnGap: view ? 6 : 0,
             transformOrigin: `${24 - shift}px 0`,
           }}
         >
+          {/* The height glides too: the preview is taller than the four rows,
+              and its content changes as it loads and from row to row. */}
+          <SmoothHeight>
+          <div
+            className="standings-menu-grid grid"
+            style={{ gridTemplateColumns: `${STANDINGS_ROWS_W}px ${view ? STANDINGS_PANEL_W : 0}px`, columnGap: view ? 6 : 0 }}
+          >
           <div role="menu" aria-label="Standings" className="flex flex-col gap-0.5">
             {pages.map((pg, i) => (
               <NavLink
@@ -805,9 +828,11 @@ function StandingsNav({ seriesPath }) {
           </div>
           <div className="standings-menu-panel min-w-0 overflow-hidden" aria-hidden={!view}>
             <div style={{ width: STANDINGS_PANEL_W }} className="h-full">
-              {view && <StandingsPreviewPanel preview={preview} view={view} page={page} />}
+              {panelView && <StandingsPreviewPanel preview={preview} view={panelView} page={page} />}
             </div>
           </div>
+          </div>
+          </SmoothHeight>
         </div>
       </div>
     </div>
