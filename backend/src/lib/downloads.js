@@ -37,11 +37,15 @@ export function resolveDownloadPath(fileName) {
   return join(DOWNLOADS_DIR, safe);
 }
 
+// mtime = when the file on disk last changed, i.e. when the admin last put a
+// new version there. The public list shows it as "Updated".
 export function statFile(fileName) {
   const p = resolveDownloadPath(fileName);
-  if (!p || !existsSync(p)) return { exists: false, size: null };
-  try { return { exists: true, size: statSync(p).size }; }
-  catch { return { exists: false, size: null }; }
+  if (!p || !existsSync(p)) return { exists: false, size: null, mtime: null };
+  try {
+    const st = statSync(p);
+    return { exists: true, size: st.size, mtime: st.mtime };
+  } catch { return { exists: false, size: null, mtime: null }; }
 }
 
 // Remove a stored file from disk. Returns true when a file was actually

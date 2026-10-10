@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import {
+  ChevronDown, ChevronRight, CircleHelp, Download, ExternalLink, FileCheck, Film, Flag,
+  Folder, Info, Lock, Package, Search, TriangleAlert,
+} from "lucide-react";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonGameParts } from "../utils/seasonGame.js";
-import { PageHeader, SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
+import { SectionHeading, ErrorBox, Skeleton, MEDAL } from "../components/ui.jsx";
 import { answerWords, withLiveAnswers } from "../utils/signupAnswers.mjs";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Icon from "../components/InfoIcon.jsx";
-import { singularOne } from "../utils/format.js";
+import { singularOne, threeLetterMonths } from "../utils/format.js";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 
 // League default points. Fallback only; seasons can override via pointsTable.
@@ -32,52 +36,433 @@ function fill(s, tokens) {
     .replace(/\s{2,}/g, " ")
     .trim());
 }
-function rich(s) {
+const BOLD = "font-semibold text-dark";
+// The rulebook marks its key values a little louder, so "160 km/h" or
+// "4 seconds" can be found again at a glance.
+const MARK = "rounded bg-primary/30 px-1 font-semibold text-dark";
+function rich(s, cls = BOLD) {
   const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
   if (parts.length === 1) return s;
   return parts.map((p, i) =>
-    i % 2 ? <span key={i} className="font-semibold text-dark">{p}</span> : p
+    i % 2 ? <span key={i} className={cls}>{p}</span> : p
   );
 }
 const text = (s, tokens) => rich(fill(s, tokens));
 
-// Members-only gate: same Discord sign-in flow as the profile page.
+// Mono eyebrow, the same one SectionHeading uses.
+const EYEBROW = "font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow";
+
+// Jump to a section of this page without adding a history entry per click.
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const still =
+    (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) ||
+    document.documentElement.classList.contains("fx-lite");
+  el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+}
+
+// Rough reading time of the rules on this page, from the words actually in it.
+function readMinutes(content, tokens) {
+  const all = [
+    content.subtitle,
+    ...content.cards.flatMap((c) => [c.title, c.text]),
+    content.pointsFootnote,
+    ...content.rulebook.flatMap((g) => [g.subject, ...g.rules]),
+    content.rulebookFootnote,
+  ];
+  const words = all.reduce((n, s) => n + (s ? fill(s, tokens).split(/\s+/).filter(Boolean).length : 0), 0);
+  return Math.max(1, Math.round(words / 220));
+}
+
+// ----------------------------------------------------------------- header --
+
+// Title on the left, a table of contents on the right (under it on a phone).
+// Every row jumps to its section; the counts come from the same content the
+// sections render, so they can't disagree.
+function Header({ content, tokens, pointsCount, isLoggedIn, fileCount }) {
+  const ruleCount = content.rulebook.reduce((n, g) => n + g.rules.length, 0);
+  const cardCount = content.cards.length;
+  const rows = [
+    { id: "format", title: "How the championship works", meta: `${cardCount} ${cardCount === 1 ? "card" : "cards"}` },
+    { id: "points", title: "Points per finish", meta: pointsCount ? `P1 to P${pointsCount}` : null },
+    { id: "regulations", title: "Sporting regulations", meta: `${ruleCount} ${ruleCount === 1 ? "rule" : "rules"}` },
+    { id: "downloads", title: "Downloads", members: true },
+  ];
+
+  return (
+    <header className="mb-4 grid grid-cols-1 gap-6 border-b border-border pb-5 sm:mb-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+      <div className="min-w-0">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow sm:text-[13px] sm:tracking-[0.2em]">
+          Drivers&rsquo; handbook
+        </div>
+        <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-dark sm:text-4xl">Race Info</h1>
+        {content.subtitle && (
+          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-light">{fill(content.subtitle, tokens)}</p>
+        )}
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-dashed border-accent/40 bg-primary/15 px-4 py-3 text-sm text-medium">
+          <Flag className="mt-0.5 h-4 w-4 shrink-0 text-eyebrow" strokeWidth={2} aria-hidden="true" />
+          <span>
+            <span className="font-semibold text-dark">New here?</span> Read sections 01 and 03, then get the files
+            in 04. That&rsquo;s all you need for your first start.
+          </span>
+        </div>
+      </div>
+
+      <nav aria-label="On this page" className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">Contents</span>
+          <span className="font-mono text-[11px] text-faint">~{readMinutes(content, tokens)} min read</span>
+        </div>
+        <ol className="divide-y divide-border text-sm">
+          {rows.map((r, i) => {
+            const n = String(i + 1).padStart(2, "0");
+            const loud = r.members;
+            return (
+              <li key={r.id}>
+                <a
+                  href={`#${r.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    jumpTo(r.id);
+                  }}
+                  className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface2 ${loud ? "bg-primary/10" : ""}`}
+                >
+                  <span className={`w-5 font-mono text-xs font-bold ${loud ? "text-eyebrow" : "text-faint"}`}>{n}</span>
+                  <span className="min-w-0 flex-1 font-semibold text-dark">{r.title}</span>
+                  {r.members ? (
+                    isLoggedIn ? (
+                      fileCount > 0 && (
+                        <span className="font-mono text-[11px] text-light">
+                          {fileCount} {fileCount === 1 ? "file" : "files"}
+                        </span>
+                      )
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-mono text-[11px] text-eyebrow">
+                        <Lock className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                        members
+                      </span>
+                    )
+                  ) : (
+                    r.meta && <span className="font-mono text-[11px] text-light">{r.meta}</span>
+                  )}
+                </a>
+              </li>
+            );
+          })}
+          <li>
+            <Link to="/content-check" className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface2">
+              <span className="w-5 font-mono text-xs font-bold text-faint">05</span>
+              <span className="min-w-0 flex-1 font-semibold text-dark">Checksum failed? Content Check</span>
+              <ChevronRight className="h-4 w-4 text-faint" strokeWidth={2} aria-hidden="true" />
+            </Link>
+          </li>
+        </ol>
+      </nav>
+    </header>
+  );
+}
+
+// ------------------------------------------------- championship format --
+
+const ANSWER_CHIPS = [
+  ["ACCEPTED", "Accepted", "bg-ok/10 text-ok"],
+  ["TENTATIVE", "Tentative", "bg-warn/10 text-warn"],
+  ["DECLINED", "Declined", "bg-bad/10 text-bad"],
+];
+
+// A small picture under a card, only where the card's own text talks about
+// something the page knows live: the drop rule (which rounds count) and the
+// sign-up answers. Keyed on the placeholders, so an admin rewrite of the
+// wording keeps it, and a card that drops the placeholder loses it.
+function CardVisual({ card, rounds, counted, answers }) {
+  const raw = `${card.title} ${withLiveAnswers(card.text)}`;
+  if (/\{(counted|drop)\}/.test(raw) && rounds > 0 && counted > 0 && counted < rounds) {
+    return (
+      <div className="mt-3 flex gap-1" role="img" aria-label={`${counted} of ${rounds} rounds count`}>
+        {Array.from({ length: rounds }).map((_, i) => (
+          <span key={i} className={`h-1.5 flex-1 rounded-full ${i < counted ? "bg-dark" : "bg-border"}`} />
+        ))}
+      </div>
+    );
+  }
+  if (/\{answers\}/.test(raw)) {
+    const on = Array.isArray(answers) ? answers : ANSWER_CHIPS.map(([k]) => k);
+    const chips = ANSWER_CHIPS.filter(([k]) => on.includes(k));
+    if (!chips.length) return null;
+    return (
+      <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-bold">
+        {chips.map(([k, label, cls]) => (
+          <span key={k} className={`rounded-md px-2 py-0.5 ${cls}`}>{label}</span>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function FormatCards({ content, tokens, rounds, counted, answers }) {
+  return (
+    <section id="format" className="reveal scroll-mt-28 space-y-4">
+      <SectionHeading eyebrow="01 · The rules" title="How the championship works" />
+      <div className="cascade grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {content.cards.map((c, i) => (
+          <div key={i} style={{ "--i": Math.min(i, 8) }}>
+            <article className="card h-full p-5">
+              <div className="flex items-start justify-between">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-onbrand">
+                  <Icon name={c.icon} className="h-5 w-5" />
+                </span>
+                <span className="font-display text-4xl font-black leading-none text-surface2" aria-hidden="true">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+              </div>
+              <h3 className="mt-4 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+                {fill(c.title, tokens)}
+              </h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-medium">{text(c.text, tokens)}</p>
+              <CardVisual card={c} rounds={rounds} counted={counted} answers={answers} />
+            </article>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------ points table --
+
+function PointsTable({ content, tokens, pointsTable, fastestLapPoints }) {
+  return (
+    <section id="points" className="reveal scroll-mt-28 space-y-4">
+      <SectionHeading
+        eyebrow="Scoring"
+        title="Points per finish"
+        right={
+          <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+            P{pointsTable.length + 1}+ &amp; DNF = 0
+          </span>
+        }
+      />
+      <div className="card overflow-hidden">
+        <div className="grid grid-cols-3 gap-px bg-border sm:grid-cols-6 lg:grid-cols-9">
+          {pointsTable.map((pts, i) => {
+            const medal = i < 3 ? MEDAL[i] : null;
+            return (
+              <div key={i} className="flex flex-col items-center justify-center bg-card py-3">
+                <span
+                  className="flex h-6 min-w-6 items-center justify-center rounded px-1 font-display text-xs font-black"
+                  style={{ backgroundColor: medal || "transparent", color: medal ? "#0F172A" : "var(--c-text3)" }}
+                >
+                  P{i + 1}
+                </span>
+                <span className="mt-1 font-mono text-lg font-bold tabular-nums text-dark">{pts}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {fastestLapPoints > 0 && (
+        <p className="text-xs leading-relaxed text-light">
+          <span className="font-bold text-fl">Fastest lap:</span> the driver who sets the fastest race lap scores +
+          {fastestLapPoints} on top of their finishing points, if they finish the race. On a sprint weekend the
+          feature race and the sprint each pay it.
+        </p>
+      )}
+      {content.pointsFootnote && (
+        <p className="text-xs leading-relaxed text-light">{text(content.pointsFootnote, tokens)}</p>
+      )}
+    </section>
+  );
+}
+
+// ------------------------------------------------------------ the rulebook --
+
+// A long subject shows its first few rules and a "show all" link; anything up
+// to LONG rules is short enough to show in full straight away.
+const LONG = 8;
+const FIRST = 6;
+
+// Subjects on the left (swipeable chips on a phone), the chosen subject's
+// numbered rules on the right. Subject n's rules are numbered n.1, n.2, ...
+function Rulebook({ content, tokens }) {
+  const groups = content.rulebook || [];
+  const [sel, setSel] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const total = groups.reduce((n, g) => n + g.rules.length, 0);
+  if (!groups.length) return null;
+
+  const at = Math.min(sel, groups.length - 1);
+  const g = groups[at];
+  const long = g.rules.length > LONG;
+  const shown = long && !showAll ? g.rules.slice(0, FIRST) : g.rules;
+  const pick = (i) => {
+    setSel(i);
+    setShowAll(false);
+  };
+
+  return (
+    <section id="regulations" className="reveal scroll-mt-28 space-y-4">
+      <SectionHeading
+        eyebrow="On track"
+        title="Sporting regulations"
+        right={
+          <span className="hidden font-mono text-[11px] uppercase tracking-wider text-light sm:inline">
+            {total} {total === 1 ? "rule" : "rules"}
+          </span>
+        }
+      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        {/* Chips that scroll sideways on a phone, a list that stays in view
+            below the site header on a desktop. */}
+        <nav
+          aria-label="Rule subjects"
+          className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6 lg:sticky lg:top-[100px] lg:mx-0 lg:self-start lg:overflow-visible lg:px-0"
+        >
+          <ul className="flex min-w-max gap-2 pb-1 lg:min-w-0 lg:flex-col lg:gap-1 lg:rounded-xl lg:border lg:border-border lg:bg-card lg:p-2 lg:pb-2 lg:shadow-card">
+            {groups.map((grp, i) => {
+              const on = i === at;
+              return (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onClick={() => pick(i)}
+                    aria-pressed={on}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                      on
+                        ? "bg-ink text-white"
+                        : "border border-border bg-card text-medium hover:bg-surface2 lg:border-transparent"
+                    }`}
+                  >
+                    <span className={on ? "text-primary" : "text-eyebrow"}>
+                      <Icon name={grp.icon} className="h-4 w-4" />
+                    </span>
+                    <span className="flex-1 whitespace-nowrap">{grp.subject}</span>
+                    <span className={`font-mono text-[11px] ${on ? "text-white/60" : "text-faint"}`}>{grp.rules.length}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        <article className="card min-w-0 overflow-hidden">
+          <header className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-onbrand">
+              <Icon name={g.icon} className="h-5 w-5" />
+            </span>
+            <h3 className="min-w-0 flex-1 font-display text-lg font-extrabold uppercase tracking-tight text-dark">
+              {g.subject}
+            </h3>
+            <span className="shrink-0 font-mono text-[11px] text-faint">
+              {g.rules.length} {g.rules.length === 1 ? "rule" : "rules"} · §{at + 1}
+            </span>
+          </header>
+          <ol className="divide-y divide-border">
+            {shown.map((r, j) => (
+              <li key={j} className="flex gap-4 px-5 py-3.5">
+                <span className="shrink-0 pt-0.5 font-mono text-xs font-bold text-eyebrow">
+                  {at + 1}.{j + 1}
+                </span>
+                <p className="text-sm leading-relaxed text-medium">{rich(r, MARK)}</p>
+              </li>
+            ))}
+          </ol>
+          {long && (
+            <footer className="flex items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-light">
+              <span>
+                Showing {shown.length} of {g.rules.length}
+              </span>
+              <button type="button" onClick={() => setShowAll((v) => !v)} className="font-semibold text-link hover:underline">
+                {showAll ? "Show fewer" : `Show all ${g.rules.length} rules`}
+              </button>
+            </footer>
+          )}
+        </article>
+      </div>
+      {content.rulebookFootnote && (
+        <p className="text-xs leading-relaxed text-light">{text(content.rulebookFootnote, tokens)}</p>
+      )}
+    </section>
+  );
+}
+
+// -------------------------------------------------------------- downloads --
+
+// Members-only gate. Behind the sign-in card sits a blurred stand-in for the
+// file list: plain grey bars, never the real catalogue (a logged-out visitor
+// can't read it, and nothing about the files belongs in this page's markup).
 function LoginGate() {
   const { enabled, loading, start } = useDiscordLogin();
   return (
-    <div className="mx-auto max-w-md">
-      <div className="card flex flex-col items-center gap-5 p-8 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#5865F2]/15 text-[#5865F2]">
-          <Icon name="lock" className="h-7 w-7" />
-        </span>
-        <div>
-          <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark">
-            Members only
-          </h2>
-          <p className="mt-1.5 text-sm text-light">
-            The downloads are for logged-in members. Sign in with Discord to get the tracks,
-            safety car, Custom Shaders Patch, Real Penalty and more.
-          </p>
+    <div className="card relative overflow-hidden">
+      <div className="pointer-events-none select-none divide-y divide-border opacity-60 blur-[3px]" aria-hidden="true">
+        {[44, 36, 52, 40, 30, 48].map((w, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3">
+            <span className="h-8 w-8 shrink-0 rounded-lg bg-surface2" />
+            <span className="flex-1 space-y-1.5">
+              <span className="block h-3.5 rounded bg-dark/60" style={{ width: `${w}%` }} />
+              <span className="block h-2.5 w-24 rounded bg-border" />
+            </span>
+            <span className="h-8 w-9 shrink-0 rounded-lg bg-primary sm:w-24" />
+          </div>
+        ))}
+      </div>
+      <div
+        className="absolute inset-0 flex items-center justify-center p-4"
+        style={{
+          background:
+            "linear-gradient(to bottom, color-mix(in srgb, var(--c-card) 40%, transparent), color-mix(in srgb, var(--c-card) 90%, transparent))",
+        }}
+      >
+        <div className="flex w-full max-w-xl flex-col items-center gap-4 rounded-xl border border-border bg-card p-5 text-center shadow-lift sm:flex-row sm:text-left">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#5865F2]/15 text-[#5865F2]">
+            <Lock className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Members only</h3>
+            <p className="mt-0.5 text-sm text-light">
+              Sign in with Discord to get the tracks, safety car, Custom Shaders Patch, Real Penalty and more.
+            </p>
+          </div>
+          {loading ? (
+            <span className="text-sm text-light">…</span>
+          ) : enabled ? (
+            <button
+              onClick={start}
+              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#4752c4] sm:w-auto"
+            >
+              <SocialIcon name="discord" className="h-5 w-5" />
+              Sign in
+            </button>
+          ) : (
+            <p className="text-sm text-medium sm:max-w-[10rem]">Discord login is not configured yet.</p>
+          )}
         </div>
-        {loading ? (
-          <span className="text-sm text-light">…</span>
-        ) : enabled ? (
-          <button
-            onClick={start}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#4752c4]"
-          >
-            <SocialIcon name="discord" className="h-5 w-5" />
-            Continue with Discord
-          </button>
-        ) : (
-          <p className="text-sm text-medium">Discord login is not configured yet.</p>
-        )}
       </div>
     </div>
   );
 }
 
-function DownloadCard({ item, highlight = false }) {
+// A file counts as new for two weeks after it was put on the server.
+const NEW_FOR_MS = 14 * 24 * 3600 * 1000;
+
+function fmtUpdated(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const opts = { day: "numeric", month: "short" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return threeLetterMonths(d.toLocaleDateString("en-GB", opts));
+}
+
+const version = (v) => (v ? (/^v/i.test(v) ? v : `v${v}`) : "");
+
+// Shared column layout of the header row and the file rows. Below md the row
+// folds into name + button with the details on a second line.
+const COLS = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-4 md:grid-cols-[minmax(0,1fr)_90px_90px_110px_130px] md:gap-4 md:px-5";
+
+function FileRow({ item, round, highlight }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -95,90 +480,87 @@ function DownloadCard({ item, highlight = false }) {
     }
   }
 
+  const updated = fmtUpdated(item.updatedAt);
+  const isNew = item.updatedAt && Date.now() - new Date(item.updatedAt).getTime() < NEW_FOR_MS;
+  const size = item.external ? "External link" : item.sizeText;
+  const FileIcon = item.external ? ExternalLink : item.raceId ? Film : Package;
+  const label = busy ? "Preparing…" : item.external ? "Open link" : "Download";
+
   return (
     <div
       id={`dl-${item.id}`}
-      className={`card flex scroll-mt-28 flex-col p-5 ${highlight ? "ring-2 ring-brand shadow-lg" : ""}`}
+      className={`${COLS} scroll-mt-28 py-2.5 ${highlight ? "bg-primary/10 ring-2 ring-inset ring-brand" : ""}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{item.title}</h3>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-            {item.version && <span>v{item.version}</span>}
-            {item.version && (item.sizeText || item.external) && <span className="text-faint">·</span>}
-            {item.external ? <span>External link</span> : item.sizeText && <span>{item.sizeText}</span>}
-          </div>
-        </div>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface2 text-medium">
-          <Icon name={item.external ? "external" : "box"} className="h-5 w-5" />
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium">
+          <FileIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
         </span>
-      </div>
-
-      {item.description && <p className="mt-3 text-sm leading-relaxed text-medium">{item.description}</p>}
-
-      {item.installNote && (
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-warn ring-1 ring-amber-500/20">
-          <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{item.installNote}</span>
+        <div className="min-w-0">
+          <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="min-w-0 truncate text-sm font-semibold text-dark">{item.title}</span>
+            {isNew && (
+              <span className="shrink-0 rounded bg-primary/50 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-dark">
+                New
+              </span>
+            )}
+            {round != null && (
+              <span className="shrink-0 rounded bg-link/10 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-link">
+                R{round}
+              </span>
+            )}
+          </div>
+          <span className="block font-mono text-[11px] text-light md:hidden">
+            {[version(item.version), size, updated].filter(Boolean).join(" · ")}
+          </span>
+          {item.description && <p className="mt-0.5 text-xs leading-relaxed text-light">{item.description}</p>}
+          {item.installNote && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs font-medium text-warn">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+              <span>{item.installNote}</span>
+            </p>
+          )}
         </div>
-      )}
-
-      {/* mt-auto: the buttons sit on the cards' bottom edge whatever the
-          description above them runs to. */}
-      <div className="mt-auto flex items-center gap-3 pt-4">
-        <button
-          onClick={go}
-          disabled={busy || !item.available}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-onbrand transition hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Icon name={item.external ? "external" : "download"} className="h-4 w-4" />
-          {busy ? "Preparing…" : item.available ? (item.external ? "Open link" : "Download") : "Coming soon"}
-        </button>
-        {!item.available && !item.external && (
-          <span className="text-xs text-light">Not uploaded yet</span>
-        )}
       </div>
-
-      {err && <p className="mt-2 text-xs font-medium text-bad">{err}</p>}
+      <span className="hidden self-start pt-2 font-mono text-xs text-medium md:block">{version(item.version)}</span>
+      <span className="hidden self-start pt-2 text-right font-mono text-xs text-medium md:block">
+        {item.external ? "" : item.sizeText}
+      </span>
+      <span className="hidden self-start pt-2 text-xs text-light md:block">{updated}</span>
+      <span className="flex justify-end self-start">
+        {item.available ? (
+          <button
+            type="button"
+            onClick={go}
+            disabled={busy}
+            aria-label={`${label}: ${item.title}`}
+            className={`inline-flex min-h-8 min-w-9 items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:cursor-wait disabled:opacity-60 md:px-3 ${
+              item.external ? "bg-surface2 text-dark hover:bg-border" : "bg-primary text-onbrand hover:bg-primary-dark"
+            }`}
+          >
+            {item.external ? (
+              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            ) : (
+              <Download className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            )}
+            <span className="hidden md:inline">{label}</span>
+          </button>
+        ) : (
+          <span className="pt-2 text-xs text-faint">Coming soon</span>
+        )}
+      </span>
+      {err && <p className="col-span-full text-xs font-medium text-bad">{err}</p>}
     </div>
   );
 }
 
-// One collapsible folder of downloads (folders are created in the admin, e.g.
-// Tracks / Cars / one folder per event). Same accordion pattern as the rulebook.
-function FolderSection({ name, description, items, index = 0, defaultOpen = false, highlightId = null }) {
-  return (
-    <details className="anim-details group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
-          <Icon name="folder" className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 font-display text-base font-bold uppercase tracking-tight text-dark">
-          {name}
-        </span>
-        <span className="font-mono text-[11px] font-semibold text-faint">
-          {items.length} {items.length === 1 ? "file" : "files"}
-        </span>
-        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-base group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </summary>
-      <div className="border-t border-border bg-bg/50 p-4">
-        {description && <p className="mb-3 text-sm leading-relaxed text-medium">{description}</p>}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it) => <DownloadCard key={it.id} item={it} highlight={it.id === highlightId} />)}
-        </div>
-      </div>
-    </details>
-  );
-}
-
-function Catalogue() {
-  const { data, loading, error, reload } = useApi(useCallback(() => api.downloads(), []));
-  // Deep link from the Races page ("Replay" button): /downloads?dl=<id> opens
-  // the folder holding that entry, scrolls to it and highlights the card.
+// The catalogue as one dense list, grouped by the admin's folders. A folder
+// that holds nothing but race replays starts folded away; every other folder
+// is open. The ?dl=<id> deep link (the Races page's "Replay" button) opens the
+// folder holding that entry, scrolls to it and highlights the row.
+function Catalogue({ data, loading, error, reload, query, roundOf }) {
   const [params] = useSearchParams();
   const highlightId = params.get("dl");
+  const [toggled, setToggled] = useState({});
 
   const groups = useMemo(() => {
     const items = data?.downloads || [];
@@ -189,12 +571,12 @@ function Catalogue() {
       .filter((g) => g.items.length > 0);
     const loose = items.filter((i) => !i.folderId || !known.has(i.folderId));
     if (loose.length) out.push({ key: "loose", name: "More files", description: null, items: loose });
-    return out;
+    return out.map((g) => ({ ...g, replays: g.items.every((i) => i.raceId) }));
   }, [data]);
 
   useEffect(() => {
     if (!highlightId || !data) return;
-    // Keep nudging until the card actually sits in the viewport: the page
+    // Keep nudging until the row actually sits in the viewport: the page
     // remounts once the season context resolves (scroll resets to top) and
     // the entrance animations shift the layout, so a single scroll attempt
     // reliably lands short. Instant jumps can't be cancelled mid-animation.
@@ -221,159 +603,106 @@ function Catalogue() {
   if (!groups.length)
     return (
       <div className="card p-10 text-center text-medium">
-        <Icon name="box" className="mx-auto h-8 w-8 text-faint" />
+        <Package className="mx-auto h-8 w-8 text-faint" strokeWidth={2} aria-hidden="true" />
         <p className="mt-3 text-sm">No downloads have been added yet.</p>
       </div>
     );
 
-  return (
-    <div className="cascade space-y-3">
-      {groups.map((g, i) => (
-        <FolderSection
-          key={g.key}
-          name={g.name}
-          description={g.description}
-          items={g.items}
-          index={Math.min(i, 8)}
-          defaultOpen={i === 0 || g.items.some((it) => it.id === highlightId)}
-          highlightId={highlightId}
-        />
-      ))}
-    </div>
-  );
-}
+  const q = query.trim().toLowerCase();
+  const matches = (it, g) =>
+    !q || [it.title, it.description, it.version, g.name].some((s) => s && String(s).toLowerCase().includes(q));
+  const shownGroups = groups
+    .map((g) => ({ ...g, hits: g.items.filter((it) => matches(it, g)) }))
+    .filter((g) => g.hits.length > 0);
 
-// One collapsible subject in the rulebook (same accordion pattern as the
-// Welcome-page FAQ, so the two read as one design family).
-function RuleGroup({ icon, subject, rules, defaultOpen = false, index = 0 }) {
   return (
-    <details className="anim-details group card overflow-hidden" open={defaultOpen} style={{ "--i": index }}>
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 transition hover:bg-surface2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
-          <Icon name={icon} className="h-[18px] w-[18px]" />
-        </span>
-        <span className="flex-1 font-display text-base font-bold uppercase tracking-tight text-dark">
-          {subject}
-        </span>
-        <span className="font-mono text-[11px] font-semibold text-faint">
-          {rules.length} {rules.length === 1 ? "rule" : "rules"}
-        </span>
-        <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-eyebrow transition-transform duration-base group-open:rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </summary>
-      <ul className="space-y-2.5 border-t border-border px-5 py-4">
-        {rules.map((r, i) => (
-          <li key={i} className="flex items-start gap-2.5 text-sm leading-relaxed text-medium">
-            <span className="mt-[0.55em] h-px w-3.5 shrink-0 bg-accent/60" aria-hidden="true" />
-            <span>{rich(r)}</span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
-// One rule card in the "how it works" grid.
-function RuleCard({ icon, title, children }) {
-  return (
-    <div className="card h-full p-5">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-eyebrow">
-          <Icon name={icon} className="h-[18px] w-[18px]" />
-        </span>
-        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">{title}</h3>
+    <div className="card overflow-hidden">
+      <div className={`${COLS} hidden border-b border-border bg-surface2/60 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light md:grid`}>
+        <span>File</span>
+        <span>Version</span>
+        <span className="text-right">Size</span>
+        <span>Updated</span>
+        <span />
       </div>
-      <div className="mt-3 space-y-2 text-sm leading-relaxed text-medium">{children}</div>
+      {!shownGroups.length && (
+        <p className="px-5 py-8 text-center text-sm text-light">No file matches &ldquo;{query.trim()}&rdquo;.</p>
+      )}
+      <div className="divide-y divide-border">
+        {shownGroups.map((g) => {
+          const byDefault = !g.replays || g.items.some((it) => it.id === highlightId);
+          const open = q ? true : toggled[g.key] != null ? toggled[g.key] : byDefault;
+          return (
+            <div key={g.key} className="divide-y divide-border">
+              <button
+                type="button"
+                onClick={() => setToggled((t) => ({ ...t, [g.key]: !open }))}
+                aria-expanded={open}
+                disabled={!!q}
+                className="flex w-full items-center gap-2 bg-surface2/30 px-4 py-2 text-left transition hover:bg-surface2 disabled:cursor-default disabled:hover:bg-surface2/30 md:px-5"
+              >
+                <Folder className="h-3.5 w-3.5 shrink-0 text-eyebrow" strokeWidth={2} aria-hidden="true" />
+                <span className="font-display text-xs font-extrabold uppercase tracking-tight text-dark">{g.name}</span>
+                <span className="font-mono text-[10px] text-faint">{g.hits.length}</span>
+                {!q && (
+                  <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-link">
+                    {!open && "Show"}
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform duration-base ${open ? "" : "-rotate-90"}`}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                  </span>
+                )}
+              </button>
+              {open && g.description && (
+                <p className="px-4 py-2 text-xs leading-relaxed text-light md:px-5">{g.description}</p>
+              )}
+              {open &&
+                g.hits.map((it) => (
+                  <FileRow key={it.id} item={it} round={it.raceId ? roundOf.get(it.raceId) ?? null : null} highlight={it.id === highlightId} />
+                ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// The league rulebook. All wording comes from `content` (admin-edited, or the
-// built-in defaults); the numbers behind the {placeholders} and the points
-// table come live from the season, so scoring changes need no text edits.
-function Rules({ content, tokens }) {
-  const { current: season } = useSeason();
-  const pointsTable =
-    Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
-
+// The downloads are where a wrong mod version comes from, so the page that
+// finds one belongs right under them, and it needs no login: being unable to
+// join is not a reason to make somebody sign in first.
+function ContentCheckNotice() {
   return (
-    <div className="space-y-7 sm:space-y-10">
-      {/* ------------------- the championship format ------------------- */}
-      <section className="reveal space-y-4">
-        <SectionHeading eyebrow="The rules" title="How the championship works" />
-        <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {content.cards.map((c, i) => (
-            <div key={i} style={{ "--i": Math.min(i, 8) }}>
-              <RuleCard icon={c.icon} title={fill(c.title, tokens)}>
-                <p>{text(c.text, tokens)}</p>
-              </RuleCard>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ------------------------- points table ------------------------- */}
-      <section className="reveal space-y-4">
-        <SectionHeading
-          eyebrow="Scoring"
-          title="Points per finish"
-          right={
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-              P{pointsTable.length + 1}+ &amp; DNF = 0
-            </span>
-          }
-        />
-        <div className="card overflow-hidden">
-          <div className="grid grid-cols-3 gap-px bg-border sm:grid-cols-6 lg:grid-cols-9">
-            {pointsTable.map((pts, i) => {
-              const medal = i < 3 ? MEDAL[i] : null;
-              return (
-                <div key={i} className="flex flex-col items-center justify-center bg-card py-3">
-                  <span
-                    className="flex h-6 min-w-6 items-center justify-center rounded px-1 font-display text-xs font-black"
-                    style={{ backgroundColor: medal || "transparent", color: medal ? "#0F172A" : "var(--c-text3)" }}
-                  >
-                    P{i + 1}
-                  </span>
-                  <span className="mt-1 font-mono text-lg font-bold tabular-nums text-dark">{pts}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        {season?.fastestLapPoints > 0 && (
-          <p className="text-xs leading-relaxed text-light">
-            <span className="font-bold text-fl">Fastest lap:</span> the driver who sets the fastest race lap scores +
-            {season.fastestLapPoints} on top of their finishing points, if they finish the race. On a sprint weekend the
-            feature race and the sprint each pay it.
-          </p>
-        )}
-        {content.pointsFootnote && (
-          <p className="text-xs leading-relaxed text-light">{text(content.pointsFootnote, tokens)}</p>
-        )}
-      </section>
-
-      {/* ------------------------- the rulebook ------------------------- */}
-      <section className="reveal space-y-4">
-        <SectionHeading
-          eyebrow="On track"
-          title="Sporting Regulations"
-          right={
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-              {content.rulebook.reduce((n, g) => n + g.rules.length, 0)} rules
-            </span>
-          }
-        />
-        <div className="cascade space-y-3">
-          {content.rulebook.map((g, i) => (
-            <RuleGroup key={i} icon={g.icon} subject={g.subject} rules={g.rules} index={Math.min(i, 8)} />
-          ))}
-        </div>
-        {content.rulebookFootnote && (
-          <p className="text-xs leading-relaxed text-light">{text(content.rulebookFootnote, tokens)}</p>
-        )}
-      </section>
+    <div className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:p-6">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn">
+        <TriangleAlert className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
+          Kicked with &ldquo;Checksum failed&rdquo;?
+        </h3>
+        <p className="mt-1 text-sm leading-relaxed text-light">
+          The Content Check compares your files with the race server&rsquo;s and names the one that doesn&rsquo;t
+          match. No sign-in needed.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:shrink-0 sm:flex-row">
+        <Link
+          to="/content-check"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-sm font-bold text-white transition hover:bg-ink/85 focus:outline-none focus:ring-2 focus:ring-accent/50"
+        >
+          <FileCheck className="h-4 w-4 text-primary" strokeWidth={2} aria-hidden="true" />
+          Run Content Check
+        </Link>
+        <Link
+          to="/help"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-medium transition hover:bg-surface2 focus:outline-none focus:ring-2 focus:ring-border"
+        >
+          <CircleHelp className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          Other problems
+        </Link>
+      </div>
     </div>
   );
 }
@@ -383,6 +712,9 @@ export default function Downloads() {
   const { current: season } = useSeason();
   const races = useApi(useCallback(() => api.races(), []));
   const info = useApi(useCallback(() => api.raceInfo(), []));
+  // The catalogue is members only; a logged-out visitor never asks for it.
+  const files = useApi(useCallback(() => (isLoggedIn ? api.downloads() : Promise.resolve(null)), [isLoggedIn]));
+  const [query, setQuery] = useState("");
 
   // Admin-saved content wins; the built-in defaults cover a fresh site.
   const content = info.data?.content || RACE_INFO_DEFAULTS;
@@ -405,52 +737,86 @@ export default function Downloads() {
     // Only the sign-up buttons that exist (Admin -> Notifications).
     answers: answerWords(info.data?.answers),
   };
+  const pointsTable =
+    Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
+
+  // Replays carry their race; the list tags them with that round's number.
+  const roundOf = useMemo(
+    () => new Map((races.data || []).filter((r) => r.number != null).map((r) => [r.id, r.number])),
+    [races.data]
+  );
+  const fileCount = files.data?.downloads?.length || 0;
 
   return (
     <div className="space-y-6 sm:space-y-12">
-      <PageHeader
-        eyebrow="Drivers' handbook"
-        title="Race Info"
-        subtitle={fill(content.subtitle, tokens)}
+      <Header
+        content={content}
+        tokens={tokens}
+        pointsCount={pointsTable.length}
+        isLoggedIn={isLoggedIn}
+        fileCount={fileCount}
       />
 
-      <Rules content={content} tokens={tokens} />
+      <div className="space-y-7 sm:space-y-10">
+        <FormatCards
+          content={content}
+          tokens={tokens}
+          rounds={totalRounds}
+          counted={counted}
+          answers={info.data?.answers}
+        />
+        <PointsTable
+          content={content}
+          tokens={tokens}
+          pointsTable={pointsTable}
+          fastestLapPoints={season?.fastestLapPoints}
+        />
+        <Rulebook content={content} tokens={tokens} />
+      </div>
 
-      {/* ------------------------- downloads ------------------------- */}
-      <section className="reveal space-y-4">
+      <section id="downloads" className="reveal scroll-mt-28 space-y-4">
         <SectionHeading
           eyebrow="Members"
           title="Downloads"
           right={
-            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
-              Tracks · Mods · Car pack
-            </span>
+            isLoggedIn ? (
+              fileCount > 0 && (
+                <label className="relative w-44 sm:w-64">
+                  <span className="sr-only">Filter the downloads</span>
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={`Filter ${fileCount} ${fileCount === 1 ? "file" : "files"}`}
+                    className="input pl-9"
+                  />
+                </label>
+              )
+            ) : (
+              <span className="hidden font-mono text-[11px] uppercase tracking-wider text-light sm:inline">
+                Tracks · Mods · Car pack
+              </span>
+            )
           }
         />
-        {isLoggedIn ? <Catalogue /> : <LoginGate />}
-        {/* The downloads are where a wrong mod version comes from, so the page
-            that finds one belongs right under them — and it needs no login,
-            because being unable to join is not a reason to make somebody sign
-            in first. */}
-        <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
-          <div className="min-w-0 flex-1">
-            <div className="font-display text-sm font-extrabold uppercase tracking-tight text-dark">
-              Kicked from the server with &ldquo;Checksum failed&rdquo;?
-            </div>
-            <p className="mt-0.5 text-xs leading-relaxed text-light">
-              The Content Check compares your files with the race server&rsquo;s and names the one that doesn&rsquo;t match.
-              Other problems getting on the server are on the help page.
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <Link to="/help" className="btn-secondary px-4 py-1.5 text-xs">
-              Help
-            </Link>
-            <Link to="/content-check" className="btn-secondary px-4 py-1.5 text-xs">
-              Content Check
-            </Link>
-          </div>
-        </div>
+        {isLoggedIn ? (
+          <Catalogue
+            data={files.data}
+            loading={files.loading}
+            error={files.error}
+            reload={files.reload}
+            query={query}
+            roundOf={roundOf}
+          />
+        ) : (
+          <LoginGate />
+        )}
+        <ContentCheckNotice />
       </section>
     </div>
   );
