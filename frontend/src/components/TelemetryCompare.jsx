@@ -128,6 +128,12 @@ const LINK_PARAM = "tel";
 // Which league the link is about, beside it. Every series has its own laps,
 // and a link pasted into Discord is opened by people viewing the other one.
 const SERIES_PARAM = "series";
+// The address the league in it was last taken from. The league in the address
+// is a LINK, honoured once: the page rebuilds this card whenever the site's
+// series changes (the page area is keyed on it), and reading the same address
+// again switched the site straight back to the league it named. Picking
+// Sunday Championship loaded everything anew and landed on F1 Friday again.
+let usedSeriesLink = null;
 const toLink = (trackKey, aId, bId) => [trackKey, aId.replace(":", "."), bId ? bId.replace(":", ".") : ""].filter(Boolean).join("_");
 function fromLink(raw) {
   const [trackKey, a, b] = String(raw || "").split("_");
@@ -187,7 +193,12 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // shared link names its series, so it opens on the right laps for everybody.
   const { seriesList, slug: viewedSlug, active: activeSeries, setSlug: setViewedSeries } = useSeries();
   const linkParams = useRef(new URLSearchParams(window.location.search));
-  const [pickedSeries, setPickedSeries] = useState(fixedSeries || linkParams.current.get(SERIES_PARAM) || null);
+  const [pickedSeries, setPickedSeries] = useState(
+    () => fixedSeries || (window.location.search !== usedSeriesLink ? linkParams.current.get(SERIES_PARAM) : null) || null
+  );
+  useEffect(() => {
+    usedSeriesLink = window.location.search;
+  }, []);
   const seriesSlug = fixedSeries || pickedSeries;
   // The site's own series (the switcher in the header) and the card's go
   // together on the members' page. A link to Sunday Championship laps opened
