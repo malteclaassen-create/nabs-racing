@@ -13,7 +13,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
-import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field, SmoothHeight } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
@@ -950,11 +950,13 @@ function MyProfile() {
           control moving between views.
           The panel itself only fades; what is inside builds from the top
           down, every section the same way (its cards rise in one after
-          another, see the cascades in each section). SmoothHeight carries the
-          page between a long section and a short one; the drop in page
-          height used to yank the sticky nav. */}
-      <SmoothHeight className="min-w-0 flex-1">
-      <div key={tab} className="content-in">
+          another, see the cascades in each section).
+          No height animation: a section still loading is only a few pixels
+          tall, so gliding from the last section's height shrank the panel to
+          nothing and then threw it open again. It keeps at least a screen of
+          height instead, so a section that is still loading cannot collapse
+          the page under the nav. */}
+      <div key={tab} className="content-in min-h-screen min-w-0 flex-1">
       {tab === "settings" ? (
         <SettingsSections />
       ) : tab === "tools" ? (
@@ -1053,7 +1055,6 @@ function MyProfile() {
         </div>
       )}
       </div>
-      </SmoothHeight>
       </div>
     </div>
   );
