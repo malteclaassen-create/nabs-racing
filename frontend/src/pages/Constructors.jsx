@@ -5,10 +5,13 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
-import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton } from "../components/ui.jsx";
+import { ArrowDownUp, ChevronRight, Users } from "lucide-react";
+import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton, DriverAvatar } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
-import StandingsTable from "../components/StandingsTable.jsx";
+import ConstructorTable from "../components/ConstructorTable.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import Flag from "../components/Flag.jsx";
+import { countryFor } from "../data/driverCountries.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 
 // Rounds that actually have scores recorded (for the progression chart).
@@ -16,10 +19,11 @@ function completedRounds(data) {
   return data.raceNumbers.filter((n) => data.standings.some((t) => t.perRace[n] != null));
 }
 
-// One tier shown as a unit: championship table, progression chart and the
-// line-ups of every team in that tier. `championTeamId` (set once the season
-// is decided) puts the golden champion treatment on that team.
-function TierBlock({ id, tier, standings, teams, title, championTeamId, decided = false, showMovement = false }) {
+// One tier shown as a unit: championship table and the line-ups of every team
+// in that tier. `championTeamId` (set once the season is decided) puts the
+// golden champion treatment on that team. `reserves` (the reserve pool's team
+// row) adds the pool's tile after the line-ups.
+function TierBlock({ id, tier, standings, teams, races, title, championTeamId, decided = false, showMovement = false, reserves = null }) {
   const rows = standings.standings;
   const transfers = useTransfersVisible();
   const done = completedRounds(standings);
@@ -32,6 +36,8 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
   const orderedTeams = [...teams].sort(
     (a, b) => (posByTeam.get(a.id) ?? Infinity) - (posByTeam.get(b.id) ?? Infinity)
   );
+  const rowByTeam = new Map(rows.map((r) => [r.teamId, r]));
+  const rosterByTeam = new Map(teams.map((t) => [t.id, t.drivers]));
 
   return (
     <section id={id} className="reveal scroll-mt-28 space-y-6">
@@ -49,11 +55,12 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
         }
       />
 
-      <StandingsTable variant="constructor" raceNumbers={standings.raceNumbers} sprintRounds={standings.sprintRounds || []} fastestLapPoints={standings.fastestLapPoints || 0} customPoints={standings.customPoints || {}} rows={rows} dropWorst={standings.dropWorst} officialTotals={standings.officialTotals} dropMode={standings.dropMode} teamDropWorst={standings.teamDropWorst} decided={decided} showMovement={showMovement} />
+      <ConstructorTable standings={standings} races={races} rosterByTeam={rosterByTeam} decided={decided} showMovement={showMovement} />
 
       <div className="space-y-3 pt-2">
-        {/* The cards show who is in each seat today and nothing else. Moves,
-            past and booked, live on the transfer market page, one tap away. */}
+        {/* The cards show who is in each seat today and what each of them has
+            brought in. Moves, past and booked, live on the transfer market
+            page, one tap away. */}
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Line-ups</h3>
           {transfers && (
@@ -62,64 +69,125 @@ function TierBlock({ id, tier, standings, teams, title, championTeamId, decided 
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark"
             title="Every team change of this season, and who drove for whom round by round"
           >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M7 17V5" /><path d="M3 9l4-4 4 4" /><path d="M17 7v12" /><path d="M13 15l4 4 4-4" />
-            </svg>
+            <ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />
             Team changes
           </Link>
           )}
         </div>
-        <div className="cascade grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="cascade grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {orderedTeams.map((team, i) => (
-            <TeamCard key={team.id} team={team} index={i} champion={team.id === championTeamId} />
+            <TeamCard key={team.id} team={team} row={rowByTeam.get(team.id) || null} index={i} champion={team.id === championTeamId} />
           ))}
+          {reserves && reserves.drivers.length > 0 && (
+            <div style={{ "--i": orderedTeams.length }}>
+              <Link
+                to={`/teams/${reserves.id}`}
+                className="flex h-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border p-6 text-center transition hover:border-brand/50"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-light shadow-card">
+                  <Users className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="mt-2 font-display text-sm font-bold uppercase text-dark">Reserve pool</span>
+                <span className="text-xs text-light">
+                  {reserves.drivers.length} {reserves.drivers.length === 1 ? "driver" : "drivers"} ready to fill in
+                </span>
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function TeamCard({ team, index = 0, champion = false }) {
+// A team's line-up: place and points up top, then each driver in the seat
+// today with the points they have scored for this team and their share of
+// everything the team scored on track (subs included, before drops). Archived
+// seasons that only kept the team's own round sheet have no such split, so
+// those cards show the names alone.
+function TeamCard({ team, row, index = 0, champion = false }) {
   const tiltRef = useTilt({ max: 5, lift: 5 });
+  const scorers = row?.scorers || null;
+  const scoredByTeam = scorers ? scorers.reduce((s, x) => s + x.points, 0) : 0;
+  const scorerOf = new Map((scorers || []).map((x) => [x.driverId, x]));
+  const seated = new Set(team.drivers.map((d) => d.id));
+  // Points brought in by drivers not in these seats today (subs, and anyone
+  // who moved on), said in one line so the bars above still add up.
+  const others = (scorers || []).filter((x) => !seated.has(x.driverId)).reduce((s, x) => s + x.points, 0);
+  const drivers = [...team.drivers].sort(
+    (a, b) => (scorerOf.get(b.id)?.points ?? 0) - (scorerOf.get(a.id)?.points ?? 0)
+  );
   return (
     // Wrapper takes the cascade entrance so its filled keyframe can't pin the
     // card's transform — that's what kept the tilt from easing in smoothly.
     <div style={{ "--i": index }}>
     <div
       ref={tiltRef}
-      className={`transition card shine tilt group relative h-full overflow-hidden hover:shadow-xl ${champion ? "champion-gold" : ""}`}
+      className={`transition card shine tilt relative h-full overflow-hidden p-4 hover:shadow-lift ${champion ? "champion-gold" : ""}`}
     >
-      <div className="h-1.5 w-full" style={{ backgroundColor: team.color }} />
-      <div className="p-4 sm:p-5">
-        <Link to={`/teams/${team.id}`} className="flex items-center gap-3">
-          <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
-          <h4 className="font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand sm:text-lg">
+      <Link to={`/teams/${team.id}`} className="group flex items-center gap-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          style={{ backgroundColor: `color-mix(in srgb, ${team.color} 12%, transparent)` }}
+        >
+          <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={30} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
             {team.name}
-          </h4>
-          {champion && (
-            <span className="ml-auto shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--medal-1)" }}>
-              Champions
-            </span>
-          )}
-        </Link>
-        <ul className="mt-4 space-y-1">
-          {team.drivers.map((d) => (
+          </span>
+          <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+            {row ? `P${row.position} · ${row.total} pts` : "No points yet"}
+          </span>
+        </span>
+        {champion && (
+          <span className="shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--medal-1)" }}>
+            Champions
+          </span>
+        )}
+        <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden="true" />
+      </Link>
+      <ul className="mt-2 divide-y divide-border">
+        {drivers.map((d) => {
+          const pts = scorerOf.get(d.id)?.points ?? 0;
+          const share = scoredByTeam > 0 ? Math.round((pts / scoredByTeam) * 100) : 0;
+          return (
             <li key={d.id}>
               <Link
                 to={`/drivers/${d.id}`}
-                className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface2"
+                className="group/driver flex items-center gap-3 py-2"
+                title={scorers ? `${pts} of the ${scoredByTeam} points ${team.name} scored on track (${share}%)` : undefined}
               >
-                {/* The driver's name keeps its line; the Discord name gives way.
-                    Sharing the shrink made long Discord names break the
-                    driver's name in two on some rows and not others. */}
-                <span className="shrink-0 font-display font-bold uppercase tracking-tight text-dark">{d.name}</span>
-                <span className="min-w-0 truncate text-right text-light">{d.discordName}</span>
+                <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={team.color} size={30} />
+                {/* The driver's name keeps its line; the Discord name gives way. */}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark transition group-hover/driver:text-brand">
+                      {d.name}
+                    </span>
+                    <Flag code={countryFor(d.id, d.country)} />
+                  </span>
+                  {d.discordName && <span className="block truncate text-xs text-light">@{d.discordName}</span>}
+                </span>
+                {scorers && (
+                  <span className="w-20 shrink-0">
+                    <span className="block text-right font-mono text-xs font-bold tabular-nums text-dark">{pts}</span>
+                    <span className="mt-1 block h-1 rounded-full bg-surface2">
+                      <span className="block h-1 rounded-full" style={{ width: `${share}%`, backgroundColor: team.color }} />
+                    </span>
+                  </span>
+                )}
               </Link>
             </li>
-          ))}
-          {team.drivers.length === 0 && <li className="px-2 text-sm text-light">No drivers assigned.</li>}
-        </ul>
-      </div>
+          );
+        })}
+        {team.drivers.length === 0 && <li className="py-2 text-sm text-light">No drivers assigned.</li>}
+      </ul>
+      {others > 0 && (
+        <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">
+          {others} pts from other drivers
+        </p>
+      )}
     </div>
     </div>
   );
@@ -183,6 +251,8 @@ export default function Constructors() {
 
   const t1Teams = teams.data.filter((t) => t.tier === 1);
   const t2Teams = teams.data.filter((t) => t.tier === 2);
+  // The reserve pool (tier 0), shown once, after the last tier's line-ups.
+  const reserveTeam = teams.data.find((t) => t.tier === 0) || null;
   // Single-class seasons (archived S1–S5) have no Tier 2 at all: hide the split
   // and the jump pills, and title the one block plainly "Constructors".
   const hasT2 = t2.data.standings.length > 0 || t2Teams.length > 0;
@@ -210,8 +280,8 @@ export default function Constructors() {
         right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
       />
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} showMovement={showMovement} />
-      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} championTeamId={champId(t2.data)} decided={seasonDecided} showMovement={showMovement} />}
+      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} races={races.data || []} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} showMovement={showMovement} reserves={hasT2 ? null : reserveTeam} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} races={races.data || []} championTeamId={champId(t2.data)} decided={seasonDecided} showMovement={showMovement} reserves={reserveTeam} />}
     </div>
   );
 }

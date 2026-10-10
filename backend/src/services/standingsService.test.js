@@ -13,6 +13,7 @@ import {
   finishSheetOf,
   attachPrevPositions,
   roundContributions,
+  teamScorers,
 } from "./standingsService.js";
 import { parseFinalStandings } from "./seasonService.js";
 import {
@@ -500,6 +501,26 @@ describe("buildTeamRoundDropConstructorRows", () => {
       raceNumbers: CAL, resultsByRound, teamDropN: 3,
     });
     expect(rows.find((r) => r.teamId === "tx").total).toBe(420);
+  });
+});
+
+describe("teamScorers (each driver's part in a team's points)", () => {
+  it("puts a sub's points under the team they drove for and counts starts per round", () => {
+    const drivers = [...T1_DRIVERS, { id: "S", teamId: null, name: "Sub" }];
+    const resultsByRound = new Map([
+      [1, [res("A", 20), res("B", 10)]],
+      [2, [res("A", 25), res("S", 6, { subForTeamId: "tx" }), res("B", 0, { status: "DNS" })]],
+      [3, [res("A", 0, { status: "DNF" }), res("B", 12), res("C", 30)]],
+    ]);
+    const scorers = teamScorers({
+      tier: 1, teams: T1_TEAMS, drivers, raceNumbers: [1, 2, 3, 4], resultsByRound,
+    });
+    expect(scorers.get("tx")).toEqual([
+      { driverId: "A", name: null, points: 45, starts: 3 },
+      { driverId: "B", name: null, points: 22, starts: 2 },
+      { driverId: "S", name: "Sub", points: 6, starts: 1 },
+    ]);
+    expect(scorers.get("ty")).toEqual([{ driverId: "C", name: null, points: 30, starts: 1 }]);
   });
 });
 
