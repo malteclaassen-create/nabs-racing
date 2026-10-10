@@ -324,6 +324,15 @@ export default function DriverStandingsBoard({
   // in the same render as the switch is invisible) and kept after.
   const [roundsOn, setRoundsOn] = useState(grid);
   if (grid && !roundsOn) setRoundsOn(true);
+  // ...or quietly once the page has settled, so the first switch does not
+  // have to build them in the same frame it starts animating.
+  useEffect(() => {
+    if (roundsOn) return undefined;
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+    const cancel = window.cancelIdleCallback || clearTimeout;
+    const id = idle(() => setRoundsOn(true), { timeout: 3000 });
+    return () => cancel(id);
+  }, [roundsOn]);
 
   // Which layout rules are in force: the frozen columns (round view) or the
   // row-wide link (list). Going TO the round view they change at once, since
@@ -347,13 +356,44 @@ export default function DriverStandingsBoard({
     if (el && el.scrollLeft > 0) el.scrollTo({ left: 0, behavior: motionOff() ? "auto" : "smooth" });
   }, [mode, scrollRef]);
 
+  // Only the rows on screen take part in the List / By round morph. With the
+  // whole field listed that is a hundred-odd rows re-laid out every frame,
+  // and the switch stuttered. The rest are taken out of rendering for the
+  // length of the morph (content-visibility, held at their measured height so
+  // nothing moves) and simply show the new layout when they come back. Both
+  // views give a row the same height, so the page below does not shift.
+  const boxRef = useRef(null);
+  const lastMode = useRef(mode);
+  useLayoutEffect(() => {
+    if (lastMode.current === mode) return undefined;
+    lastMode.current = mode;
+    const box = boxRef.current;
+    if (!box || motionOff()) return undefined;
+    const margin = 120;
+    const parked = [];
+    for (const el of box.children) {
+      const r = el.getBoundingClientRect();
+      if (r.bottom > -margin && r.top < window.innerHeight + margin) continue;
+      el.style.containIntrinsicSize = `auto ${el.offsetHeight}px`;
+      el.style.contentVisibility = "auto";
+      parked.push(el);
+    }
+    if (!parked.length) return undefined;
+    const t = setTimeout(() => {
+      for (const el of parked) {
+        el.style.contentVisibility = "";
+        el.style.containIntrinsicSize = "";
+      }
+    }, MORPH_MS + 80);
+    return () => clearTimeout(t);
+  }, [mode]);
+
   // A different set of rows (tier, search, filters) keeps the board standing:
   // rows that stay glide from where they were to their new line, rows that are
   // new deal in through the cascade like on first load, and rows that left are
   // simply gone. Rebuilding the board for this flashed every row on screen,
   // even when the visible part of the table did not change at all.
   const lastTops = useRef(null);
-  const boxRef = useRef(null);
   // The page's own ref is a callback (the replay starts from it); this one is
   // just for measuring. Both get the node.
   const setRowsBox = (el) => {
