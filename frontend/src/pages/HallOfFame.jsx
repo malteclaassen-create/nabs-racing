@@ -309,6 +309,17 @@ const listName = (l) => l.label.replace(/^Most /, "").replace(/^./, (c) => c.toU
 // has (arrows, Home/End, Enter, Escape).
 function RankingPicker({ lists, value, onChange }) {
   const [open, setOpen] = useState(false);
+  // The list stays a moment after closing so it can fold away instead of
+  // vanishing; `open` is already false, so the button and the keys see it shut.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setShown(true);
+      return undefined;
+    }
+    const t = setTimeout(() => setShown(false), 140);
+    return () => clearTimeout(t);
+  }, [open]);
   const [active, setActive] = useState(0);
   const wrap = useRef(null);
   const button = useRef(null);
@@ -360,12 +371,14 @@ function RankingPicker({ lists, value, onChange }) {
         <span className="min-w-0 flex-1 truncate text-left text-white">{listName(lists[current])}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2} aria-hidden />
       </button>
-      {open && (
+      {(open || shown) && (
+        // Tall enough for every category; it only scrolls on a screen too
+        // short for the whole list.
         <ul
           id={listId}
           role="listbox"
           aria-label="Ranking"
-          className="absolute inset-x-0 top-full z-dropdown mt-1.5 max-h-80 overflow-y-auto rounded-xl bg-ink p-1.5 shadow-lift ring-1 ring-white/15"
+          className={`${open ? "drop-in" : "drop-out"} absolute inset-x-0 top-full z-dropdown mt-1.5 max-h-[calc(100vh-8rem)] origin-top overflow-y-auto rounded-xl bg-ink p-1.5 shadow-lift ring-1 ring-white/15`}
         >
           {lists.map((l, i) => (
             <li
