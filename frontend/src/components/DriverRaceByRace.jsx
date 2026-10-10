@@ -144,7 +144,7 @@ export default function DriverRaceByRace({
       <CardBar title="Race by Race" />
 
       {/* md and up: the table. */}
-      <div className="hidden overflow-x-auto md:block">
+      <div className="hidden overflow-x-auto overflow-y-hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">

@@ -235,7 +235,7 @@ function RoundRail({ races, selectedId, onSelect, signupIds }) {
       // screen (round 10 and its neighbours) arrive last, well after the table
       // below them. There they fan out from the selected chip instead (--d,
       // see index.css); the vertical sidebar keeps the top-down order.
-      className="cascade rail-from-active scrollbar-slim flex gap-2 overflow-x-auto pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
+      className="cascade rail-from-active scrollbar-slim flex gap-2 overflow-x-auto overflow-y-hidden pb-2 pt-1 lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0 lg:pt-0"
     >
       {races.map((r, i) => {
         const flag = flagFor(r.track, r.country);

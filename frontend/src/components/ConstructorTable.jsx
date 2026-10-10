@@ -188,7 +188,10 @@ export default function ConstructorTable({ standings, races = [], rosterByTeam =
 
       {/* Wide screens (and phones that asked for it): the round matrix. */}
       <div className={phoneTable ? "block" : "hidden md:block"}>
-        <div className="overflow-x-auto overscroll-x-none">
+        {/* overflow-y-hidden: the rows rising in briefly reach below the box,
+            and a sideways scroller shows a scrollbar for that (y computes to
+            auto beside x: auto). */}
+        <div className="overflow-x-auto overflow-y-hidden overscroll-x-none">
           {/* Separate borders on the cells, top borders only: the frozen
               columns paint an opaque background that would cover a collapsed
               row border (see StandingsTable for the long story). */}

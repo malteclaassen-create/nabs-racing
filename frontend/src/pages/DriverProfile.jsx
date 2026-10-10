@@ -364,7 +364,7 @@ function CareerBlock({ career, otherSeries, careerKey, gameOf }) {
     <div className="reveal card overflow-hidden">
       <CardBar title="Career across seasons" right={<CareerLink careerKey={careerKey} />} />
       {/* md and up: the table, the whole row opens that season's profile. */}
-      <div className="hidden overflow-x-auto md:block">
+      <div className="hidden overflow-x-auto overflow-y-hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left font-mono text-[11px] font-semibold uppercase tracking-wider text-light">

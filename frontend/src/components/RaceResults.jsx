@@ -153,7 +153,10 @@ function QualiTable({ rows, rowsKey }) {
     <MobileQuali rows={rows} hasSectors={hasSectors} bestSector={bestSector} rowsKey={rowsKey} />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
-      <div className="overflow-x-auto">
+      {/* overflow-y-hidden: a box that scrolls sideways cannot leave the
+          other axis visible (it computes to auto), and the rows rising in from
+          just below their slots flashed a vertical scrollbar while they did. */}
+      <div className="overflow-x-auto overflow-y-hidden">
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-border bg-surface2/50 text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -561,7 +564,10 @@ export default function RaceResults({ race, results, quali = null, session = "ra
     />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
-      <div className="overflow-x-auto">
+      {/* overflow-y-hidden: a box that scrolls sideways cannot leave the
+          other axis visible (it computes to auto), and the rows rising in from
+          just below their slots flashed a vertical scrollbar while they did. */}
+      <div className="overflow-x-auto overflow-y-hidden">
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-border bg-surface2/50 text-left font-mono text-[11px] font-bold uppercase tracking-wider text-light">
