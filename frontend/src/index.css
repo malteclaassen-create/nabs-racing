@@ -685,6 +685,26 @@ body {
   }
 }
 
+/* The telemetry card's one entrance (TelemetryCompare `stage`): its sections
+   wait unseen while the data comes in, then rise top to bottom together. The
+   chart frames and their drawing wait too, so nothing plays out of sight. */
+.tel-wait > * { opacity: 0; }
+.tel-wait .reveal, .tel-wait .tel-draw { animation-play-state: paused !important; }
+.tel-enter > * {
+  animation: nabs-fade-in 260ms ease-out both, nabs-spring-up 640ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+  animation-delay: calc(min(var(--ti, 0), 6) * 70ms);
+}
+.tel-enter > :nth-child(2) { --ti: 1; }
+.tel-enter > :nth-child(3) { --ti: 2; }
+.tel-enter > :nth-child(4) { --ti: 3; }
+.tel-enter > :nth-child(5) { --ti: 4; }
+.tel-enter > :nth-child(6) { --ti: 5; }
+.tel-enter > :nth-child(n + 7) { --ti: 6; }
+@media (prefers-reduced-motion: reduce) {
+  .tel-wait > *, .tel-enter > * { opacity: 1; animation: none !important; }
+}
+.fx-lite .tel-wait > *, .fx-lite .tel-enter > * { opacity: 1; animation: none !important; }
+
 /* Telemetry traces draw themselves from the start of the lap to the end once
    their chart has scrolled into view (the chart frame is a .reveal). A clip
    rather than a stroke-dash: lap B's line is dashed already. */

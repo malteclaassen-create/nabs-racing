@@ -39,7 +39,7 @@ import { comparisonCsv, comparisonSummary, downloadText, exportSvgPng } from "..
 // (84px, NavBar.jsx) on the page, under this card's header in full screen.
 // overflow-clip rather than hidden: hidden would make the card the player's
 // scroll container, and it would never pin.
-function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
+function ToolCard({ id, title, subtitle, actions, cardRef, full, stage, children }) {
   const headRef = useRef(null);
   const [headHeight, setHeadHeight] = useState(0);
   useEffect(() => {
@@ -62,11 +62,10 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
         {actions}
       </div>
       <div className={`bg-surface2/50 p-3 sm:p-5 ${full ? "min-h-full" : ""}`}>
-        {/* cascade-auto: the card's sections (track, laps, overview, tips,
-            replay and traces) rise in one after another as the page opens,
-            and a section that arrives later (once its lap has loaded) rises
-            in on its own. */}
-        <div className={`cascade cascade-auto space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
+        {/* `stage` is the one entrance (see TelemetryCompare): the sections
+            wait unseen while the data comes in, rise together top to bottom
+            once, and after that simply change in place. */}
+        <div className={`tel-${stage} space-y-3 sm:space-y-4 ${full ? "mx-auto max-w-[1400px]" : ""}`}>{children}</div>
       </div>
     </div>
   );
@@ -755,12 +754,26 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const subtitle = [...said, `${said.length ? "b" : "B"}oth laps aligned by track position`].join(" · ");
 
   const loadingChannels = !error && (laps === null || (aId && !lapA) || (bId && !lapB));
+  // The card's one entrance. The data comes in three steps (tracks, the
+  // track's laps, the chosen laps' channels), and animating each step as it
+  // landed read as the page appearing, vanishing and building itself again.
+  // So the sections wait unseen until the first full picture is there (or
+  // there is nothing more to wait for), then rise top to bottom once, and the
+  // traces draw. After that, a new pick just swaps in place.
+  const ready = !!error || (!!tracks.data && (!list.length || (laps !== null && (!laps.length || !loadingChannels))));
+  const [stage, setStage] = useState("wait");
+  useEffect(() => {
+    if (stage === "wait" && ready) setStage("enter");
+    if (stage !== "enter") return undefined;
+    const t = setTimeout(() => setStage("done"), 1400);
+    return () => clearTimeout(t);
+  }, [ready, stage]);
   const playLabel = playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap';
   const minSpan = Math.min(n - 1, Math.max(8, Math.ceil((n - 1) / 20)));
   const shows = (key) => channels.includes(key);
 
   return (
-    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={copied ? `${copied === "link" ? "Link" : "Summary"} copied` : subtitle}
+    <ToolCard id="telemetry" cardRef={cardRef} full={full} stage={stage} title="Lap comparison" subtitle={copied ? `${copied === "link" ? "Link" : "Summary"} copied` : subtitle}
       // Labelled actions from sm up; on a phone all of them sit behind one
       // "more" button, so the title keeps the row.
       actions={<>

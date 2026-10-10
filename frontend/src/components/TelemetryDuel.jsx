@@ -109,16 +109,15 @@ export default function TelemetryDuel({
       <div className="hidden grid-cols-[2rem_2.25rem_2.25rem_minmax(0,1fr)_6.5rem_5.5rem_6rem] gap-3 border-b border-border px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid" aria-hidden="true">
         <span>#</span><span className="text-center">A</span><span className="text-center">B</span><span>Driver</span><span className="text-right">Lap</span><span className="text-right">Gap</span><span>Recorded</span>
       </div>
-      {/* The laps deal in top to bottom when the list first shows. */}
-      <ul className="cascade divide-y divide-border">
-        {shown.map((l, i) => {
+      <ul className="divide-y divide-border">
+        {shown.map((l) => {
           const id = pickOf(l);
           const pos = rows.indexOf(l);
           const isA = id === aId, isB = id === bId;
           const gapMs = fastest != null ? l.lapTimeMs - fastest : null;
           const ordinal = ordinalOf(l);
           return (
-            <li key={id} style={{ "--i": Math.min(i, 12) }} className={`grid grid-cols-[1.25rem_2rem_2rem_minmax(0,1fr)_auto] items-center gap-x-2 px-3 py-1 sm:grid-cols-[2rem_2.25rem_2.25rem_minmax(0,1fr)_6.5rem_5.5rem_6rem] sm:gap-x-3 sm:px-4 ${isA || isB ? "bg-primary/10" : ""}`}>
+            <li key={id} className={`grid grid-cols-[1.25rem_2rem_2rem_minmax(0,1fr)_auto] items-center gap-x-2 px-3 py-1 sm:grid-cols-[2rem_2.25rem_2.25rem_minmax(0,1fr)_6.5rem_5.5rem_6rem] sm:gap-x-3 sm:px-4 ${isA || isB ? "bg-primary/10" : ""}`}>
               <span className="font-mono text-xs font-bold tabular-nums text-faint">{pos + 1}</span>
               <Pick name={`${uid}-a`} side="A" on={isA} color={colorA} label={label(l)} onPick={() => onPickA(id)} />
               <Pick name={`${uid}-b`} side="B" on={isB} color={colorB} label={label(l)} disabled={isA && !bId} onPick={() => onPickB(id)} />
