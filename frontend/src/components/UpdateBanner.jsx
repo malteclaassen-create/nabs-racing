@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { anyDirty } from "../utils/unsavedGuard.js";
 
 // ---------------------------------------------------------------------------
 // "There is a new version of this page."
@@ -35,6 +36,42 @@ const CHECK_EVERY_MS = 10 * 60 * 1000;
 // somebody flicking between tabs is not sending a request per flick.
 const MIN_GAP_MS = 60 * 1000;
 
+// Reload into the new version without the blank flash: a veil (.update-veil in
+// index.css) blurs the page and sinks it into the page colour, then the tab
+// reloads behind it. The mark in sessionStorage tells the new page to open under
+// the same veil and lift it once it has rendered (the inline script in
+// index.html, and the effect in UpdateBanner below). The scroll position goes
+// along in the mark: the browser's own restore gives up on this site, because
+// the page is still short when it tries and only grows once the app has
+// rendered. The timeout covers browsers that run no animation at all.
+const REVEAL_KEY = "nabs_update_reveal";
+const RESTORE_MS = 900;
+function reloadIntoNewVersion() {
+  // Unsaved changes on the page: the browser asks "leave this page?" first, and
+  // a "stay" would leave the page sitting under the veil. Plain reload then.
+  if (anyDirty()) {
+    window.location.reload();
+    return;
+  }
+  try {
+    sessionStorage.setItem(REVEAL_KEY, JSON.stringify({ at: Date.now(), y: Math.round(window.scrollY) }));
+  } catch {
+    /* no storage: the new page simply opens without the veil */
+  }
+  let gone = false;
+  const go = () => {
+    if (gone) return;
+    gone = true;
+    window.location.reload();
+  };
+  const veil = document.createElement("div");
+  veil.className = "update-veil";
+  veil.setAttribute("aria-hidden", "true");
+  veil.addEventListener("animationend", go, { once: true });
+  document.body.appendChild(veil);
+  setTimeout(go, 700);
+}
+
 // The hashed bundle names in a piece of HTML, as one comparable string.
 function fingerprint(html) {
   const names = [...html.matchAll(/\/assets\/[A-Za-z0-9._-]+\.js/g)].map((m) => m[0]);
@@ -52,6 +89,29 @@ export default function UpdateBanner() {
   // below reads out of the server's HTML.
   const mineRef = useRef(null);
   const lastCheck = useRef(0);
+
+  // Just reloaded from the button: the page opened veiled (index.html) and the
+  // app has now rendered. Scroll back to where the reader was while the veil is
+  // still up, then let the page come into focus. The page may still be growing
+  // as its content arrives, so the scroll is tried each frame until it lands,
+  // for at most RESTORE_MS; after that it lifts wherever the page has got to.
+  useEffect(() => {
+    const html = document.documentElement;
+    if (!html.classList.contains("update-reveal")) return undefined;
+    const target = window.__nabsRevealScrollY || 0;
+    const start = performance.now();
+    let id;
+    const step = () => {
+      if (target && Math.abs(window.scrollY - target) > 2) window.scrollTo(0, target);
+      if (Math.abs(window.scrollY - target) <= 2 || performance.now() - start > RESTORE_MS) {
+        id = requestAnimationFrame(() => html.classList.add("update-reveal-go"));
+      } else {
+        id = requestAnimationFrame(step);
+      }
+    };
+    id = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     if (!import.meta.env.PROD) return;
@@ -119,7 +179,7 @@ export default function UpdateBanner() {
         </span>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={reloadIntoNewVersion}
           className="shrink-0 rounded-lg bg-brand px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-ink transition hover:brightness-105"
         >
           Reload
