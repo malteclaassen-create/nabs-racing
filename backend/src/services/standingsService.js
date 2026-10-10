@@ -15,6 +15,7 @@ import {
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
 import { getSeasonScoring } from "./seasonService.js";
+import { resultTeamId } from "../lib/resultTeam.js";
 import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
 import { personPhotoFor, photoFallbacksFor } from "../lib/cardPhoto.js";
 import { readSprintChildrenOf, readParentIds } from "../lib/sprintRaces.js";
@@ -360,6 +361,58 @@ export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNu
       total,
     };
   });
+}
+
+// Who brought in a team's points: every driver who started a round for it
+// (subs included, each under the team they drove for that weekend), with the
+// points they scored for it and how many rounds they started for it. Points
+// as the races paid them, before any drop rule, so the shares add up to what
+// the team scored on track rather than to its championship total. The
+// constructors page and the team page draw each driver's share from this.
+// Returns Map<teamId, [{ driverId, name, points, starts }]>, biggest share
+// first. Pure / side-effect free.
+export function teamScorers({ tier, teams, drivers, raceNumbers, resultsByRound, table = DEFAULT_POINTS_TABLE }) {
+  const contributionsFor =
+    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+  const driverById = new Map(drivers.map((d) => [d.id, d]));
+  const byTeam = new Map(teams.filter((t) => t.tier === tier).map((t) => [t.id, new Map()]));
+  const entry = (teamId, driverId) => {
+    const team = byTeam.get(teamId);
+    if (!team) return null;
+    if (!team.has(driverId)) team.set(driverId, { points: 0, rounds: new Set() });
+    return team.get(driverId);
+  };
+
+  for (const num of raceNumbers) {
+    const results = resultsByRound.get(num);
+    if (!results || results.length === 0) continue;
+    // A start is any result but a DNS, counted once per round (a sprint
+    // weekend has two results under one round).
+    for (const r of results) {
+      if (r.status === "DNS") continue;
+      entry(resultTeamId(r, driverById), r.driverId)?.rounds.add(num);
+    }
+    for (const c of roundContributions(contributionsFor, results, drivers, teams, table)) {
+      const e = entry(c.teamId, c.driverId);
+      if (e) e.points += c.points;
+    }
+  }
+
+  const out = new Map();
+  for (const [teamId, map] of byTeam) {
+    out.set(
+      teamId,
+      [...map.entries()]
+        .map(([driverId, e]) => ({
+          driverId,
+          name: driverById.get(driverId)?.name || null,
+          points: e.points,
+          starts: e.rounds.size,
+        }))
+        .sort((a, b) => b.points - a.points || b.starts - a.starts || String(a.name).localeCompare(String(b.name)))
+    );
+  }
+  return out;
 }
 
 // Countback tie-break (the FIA way): drivers on equal points rank by their
@@ -941,6 +994,14 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
       for (const row of rows) row.prevPosition = prevPos.get(row.teamId) ?? null;
     }
   }
+  // Each driver's part in the team's points. Not for an archived season that
+  // ships its own per-round team sheet: those numbers were never traced to
+  // drivers, so a share worked out from the old results would not add up to them.
+  if (dropMode !== "official") {
+    const scorers = teamScorers({ tier, teams, drivers, raceNumbers, resultsByRound, table });
+    for (const row of rows) row.scorers = scorers.get(row.teamId) || [];
+  }
+
   // Archived seasons: official team totals & order win (finalStandings.teams
   // holds every team; only this tier's rows exist here, so the rest are
   // ignored). Not for a mid-season view: that sheet is where the season ended.
