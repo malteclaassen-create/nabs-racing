@@ -1049,15 +1049,27 @@ export default function Races() {
                   {/* The previous round's table stays up while the next one
                       loads (slightly dimmed) — swapping in a shorter skeleton
                       made everything below jump up for a beat on each switch. */}
+                  {/* First load: the card is there from the start, empty, and
+                      the drivers deal into it once the result arrives. A
+                      skeleton held back to avoid a flash meant a blank beat,
+                      then the card popping in, then the rows. */}
                   {detailLoading && !detail && (
-                    <TableSkeleton rows={10} />
+                    <div aria-hidden="true">
+                      <div className="mb-3 flex h-8 items-center sm:mb-4">
+                        <Skeleton className="h-6 w-48 max-w-[60%]" />
+                      </div>
+                      <div className="card overflow-hidden">
+                        <div className="hidden h-10 border-b border-border bg-surface2/50 md:block" />
+                        <div className="h-[32rem]" />
+                      </div>
+                    </div>
                   )}
                   {detailError && !detailLoading && <ErrorBox message={detailError} />}
                   {detail && (
                     // Keyed on the race: the cascade entrance replays for each
                     // newly loaded round (the stale round keeps its layout
                     // until the new one is ready).
-                    <div key={detail.race.id} className={`${switched ? "round-swap-soft " : ""}${detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}`}>
+                    <div key={detail.race.id} className={detailLoading ? "opacity-60 transition-opacity" : "transition-opacity"}>
                       <div className="mb-3 sm:mb-4">
                         {/* One row from sm up. On phones the title shares its
                             line with the date and the actions, which shrink to

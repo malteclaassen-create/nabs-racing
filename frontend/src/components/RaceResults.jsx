@@ -40,6 +40,13 @@ function fmtSector(ms) {
 
 // The head of a results card: a mono eyebrow over the title, and an optional
 // note on the right. Phones and the desktop table share it.
+// The classification card has no heading of its own: the round's title sits
+// right above it and the column heads start the table. What the heading used
+// to carry on the side, that gaps include time penalties, sits under it.
+function PenaltyNote({ text }) {
+  return <p className="border-t border-border px-4 py-2.5 font-mono text-[11px] text-light md:px-5">{text}</p>;
+}
+
 function CardHead({ eyebrow, title, note = null, className = "" }) {
   return (
     <div className={`flex items-start justify-between gap-4 border-b border-border px-4 py-4 ${className}`}>
@@ -325,10 +332,9 @@ function StintBar({ stints, totalLaps }) {
 // and on the right the gap and the points. Everything else (grid slot, best
 // lap, tyre strategy) folds out when the row is tapped. A tyre strip and two
 // stacked times on every row made twenty rows read as noise.
-function MobileClassification({ eyebrow, penaltyNote, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
+function MobileClassification({ penaltyNote, results, scores, detailed, hasTimes, timeCell, isFin, fastestDriverId, dotdId, openStints, toggleStints }) {
   return (
     <div className="card overflow-hidden md:hidden">
-      <CardHead eyebrow={eyebrow} title="Full classification" note={penaltyNote} />
       <ol className="cascade">
         {results.map((r, i) => {
           const team = r.effectiveTeam || r.team;
@@ -469,6 +475,7 @@ function MobileClassification({ eyebrow, penaltyNote, results, scores, detailed,
           );
         })}
       </ol>
+      {penaltyNote && <PenaltyNote text={penaltyNote} />}
     </div>
   );
 }
@@ -538,7 +545,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
 
   // Card head wording, and the length the tyre strips are scaled to (the most
   // laps anyone drove). Shared by the phone list and the desktop table.
-  const eyebrow = race.parentRaceId ? "Sprint" : race.type === "TRAINING" ? "Training" : race.type === "SPECIAL" ? "Special event" : "Race";
   const penaltyNote = hasTimes && results.some((r) => r.penaltySeconds > 0) ? "Gaps include time penalties" : null;
   const totalLaps = Math.max(
     0,
@@ -551,7 +557,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   return (
     <>
     <MobileClassification
-      eyebrow={eyebrow}
       penaltyNote={penaltyNote}
       results={results}
       scores={scores}
@@ -566,7 +571,6 @@ export default function RaceResults({ race, results, quali = null, session = "ra
     />
     {/* From md up the full table; phones get the row list above. */}
     <div className="card hidden overflow-hidden md:block">
-      <CardHead eyebrow={eyebrow} title="Full classification" note={penaltyNote} className="px-5" />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
@@ -883,6 +887,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
           </span>
         </div>
       )}
+      {penaltyNote && <PenaltyNote text={penaltyNote} />}
     </div>
     </>
   );
