@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NABS Design-Picker</title>
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+/* Picker for the design variants. Left: pages and elements with Original / A / B / C.
+   Right: the real site in a frame, which swaps each picked element live. */
+:root {
+  --bg: #e7ecf3; --card: #fff; --inset: #f1f5f9; --line: #dbe2ec;
+  --fg: #0f172a; --fg2: #334155; --fg3: #5b6879;
+  --pink: #f4afc6; --pink-ink: #be185d; --ink: #0f172a;
+  --f-display: "Archivo", "Inter", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+html, body { height: 100%; margin: 0 }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; display: grid; grid-template-columns: 440px minmax(0, 1fr) }
+button { font: inherit; color: inherit; cursor: pointer }
+:focus-visible { outline: 2px solid var(--pink-ink); outline-offset: 2px }
+.eyebrow { font: 600 10px/1.2 var(--f-mono); letter-spacing: .18em; text-transform: uppercase; color: var(--pink-ink) }
+h1, h2 { font-family: var(--f-display); text-transform: uppercase; margin: 0; line-height: 1.05 }
+
+aside { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; border-right: 1px solid var(--line); background: var(--bg); min-height: 0; height: 100vh }
+.side-head { padding: 16px 16px 10px; display: flex; align-items: baseline; gap: 10px }
+.side-head h1 { font-size: 18px; font-weight: 900 }
+.side-head span { font: 600 10px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--fg3) }
+.pages { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 5px; border-bottom: 1px solid var(--line) }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--fg2) }
+.chip[aria-current="true"] { background: var(--pink); border-color: var(--pink); color: var(--ink) }
+.chip .n { font: 600 10px var(--f-mono); color: var(--pink-ink); margin-left: 4px }
+.chip[aria-current="true"] .n { color: var(--ink) }
+.els { overflow: auto; padding: 12px 16px 24px; display: grid; gap: 12px; align-content: start }
+.el { background: var(--card); border-radius: 14px; padding: 12px; display: grid; gap: 8px; box-shadow: 0 1px 2px rgba(15,23,42,.06) }
+.el-top { display: flex; gap: 8px; align-items: baseline }
+.el-top .no { font: 600 11px var(--f-mono); color: var(--fg3) }
+.el-top b { font: 800 13px var(--f-display); text-transform: uppercase; flex: 1 }
+.el-top button { border: 0; background: none; font-size: 11px; color: var(--fg3); padding: 0 }
+.el-top button:hover { color: var(--pink-ink) }
+.cur { margin: 0; font-size: 12px; color: var(--fg3) }
+.opts { display: grid; grid-template-columns: 62px repeat(3, minmax(0, 1fr)); gap: 6px }
+.opt { border: 2px solid var(--line); background: var(--inset); border-radius: 10px; padding: 0; overflow: hidden; text-align: left; display: grid; grid-template-rows: 58px auto }
+.opt img { width: 100%; height: 58px; object-fit: cover; object-position: top; display: block; background: var(--bg) }
+.opt .orig { height: 58px; display: grid; place-items: center; font: 700 10px var(--f-mono); letter-spacing: .08em; color: var(--fg3); text-transform: uppercase }
+.opt span { display: block; padding: 4px 6px; font-size: 11px; font-weight: 600; line-height: 1.25; color: var(--fg2) }
+.opt span b { font-family: var(--f-display); margin-right: 4px; color: var(--fg) }
+.opt[aria-pressed="true"] { border-color: var(--pink-ink); background: #fdf0f5 }
+.desc { margin: 0; font-size: 12px; color: var(--fg2); background: var(--inset); border-radius: 8px; padding: 6px 8px }
+.foot { border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center }
+.btn { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 6px 10px; font-size: 12px; font-weight: 700 }
+.btn.primary { background: var(--ink); color: #fff; border-color: var(--ink) }
+.count { font: 700 11px var(--f-mono); color: var(--pink-ink); margin-right: auto }
+
+main { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; height: 100vh }
+.bar { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap }
+.seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px }
+.seg button { border: 0; background: none; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; color: var(--fg2) }
+.seg button[aria-pressed="true"] { background: var(--ink); color: #fff }
+.route { font: 500 12px var(--f-mono); color: var(--fg3) }
+.bar a { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--pink-ink) }
+.stage { overflow: auto; position: relative; background: repeating-linear-gradient(45deg, transparent 0 10px, rgba(15,23,42,.03) 10px 20px) }
+.frame-wrap { transform-origin: 0 0; position: absolute; top: 0; left: 0 }
+.frame-wrap.phone { position: static; margin: 16px auto; border-radius: 30px; border: 10px solid var(--ink); overflow: hidden; box-shadow: 0 20px 50px -20px rgba(15,23,42,.5) }
+iframe { border: 0; display: block; background: var(--bg) }
+
+.lb { position: fixed; inset: 0; background: rgba(8,13,24,.86); z-index: 10; overflow: auto; padding: 16px; text-align: center }
+.lb img { max-width: min(100%, 1440px); border-radius: 8px }
+.lb p { color: #e8eef7; margin: 0 0 10px; font-weight: 700 }
+@media (max-width: 900px) { body { grid-template-columns: minmax(0,1fr) } main { display: none } aside { height: auto; min-height: 100vh } }
+</style>
+</head>
+<body>
+<aside>
+  <div class="side-head"><h1>NABS</h1><span>Design-Picker</span></div>
+  <nav class="pages" id="pages" aria-label="Seiten"></nav>
+  <div class="els" id="els"></div>
+  <div class="foot">
+    <span class="count" id="count">0 gewählt</span>
+    <button class="btn" id="copy" type="button">Auswahl kopieren</button>
+    <button class="btn" id="resetPage" type="button">Seite zurücksetzen</button>
+    <button class="btn" id="resetAll" type="button">Alles zurücksetzen</button>
+  </div>
+</aside>
+<main>
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Breite">
+      <button type="button" id="vDesk" aria-pressed="true">Desktop 1440</button>
+      <button type="button" id="vPhone" aria-pressed="false">Handy 390</button>
+    </div>
+    <div class="seg" role="group" aria-label="Vergleich">
+      <button type="button" id="mVar" aria-pressed="true">Varianten</button>
+      <button type="button" id="mOrig" aria-pressed="false">Original</button>
+    </div>
+    <span class="route" id="route"></span>
+    <a id="openTab" href="/" target="_blank" rel="noopener">In neuem Tab öffnen ↗</a>
+  </div>
+  <div class="stage" id="stage"><div class="frame-wrap" id="wrap"><iframe id="site" title="Live-Vorschau der Seite"></iframe></div></div>
+</main>
+<div class="lb" id="lb" hidden><p id="lbT"></p><img id="lbImg" alt=""></div>
+
+<script>
+const PICKS = 'nabs-variant-picks', OFF = 'nabs-design-off', HOME = 'nabs_home_preview';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ls = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+let DATA, page, view = ls.get('nabs-design-view', 'desk');
+let picks = ls.get(PICKS, {}) || {};
+
+function savePicks() { ls.set(PICKS, picks); renderCount(); }
+function renderCount() { $('count').textContent = Object.keys(picks).length + ' gewählt'; }
+
+function renderPages() {
+  $('pages').innerHTML = DATA.pages.map(p => {
+    const n = p.elements.filter(e => picks[p.page + '/' + e.id]).length;
+    return `<button class="chip" type="button" data-p="${esc(p.page)}" aria-current="${p === page}">${esc(p.title)}${n ? `<span class="n">${n}</span>` : ''}</button>`;
+  }).join('');
+}
+
+function renderEls() {
+  $('els').innerHTML = page.elements.map((e, i) => {
+    const k = page.page + '/' + e.id, cur = picks[k]?.key || '';
+    const v = e.variants.find(x => x.key === cur);
+    return `<section class="el" data-k="${esc(k)}">
+      <div class="el-top"><span class="no">${String(i + 1).padStart(2, '0')}</span><b>${esc(e.name)}</b><button type="button" data-goto="${esc(k)}">zeigen ↓</button></div>
+      <p class="cur">Heute: ${esc(e.current)}</p>
+      <div class="opts">
+        <button class="opt" type="button" data-k="${esc(k)}" data-key="" aria-pressed="${!cur}"><div class="orig">Original</div><span>Heute</span></button>
+        ${e.variants.map(x => `<button class="opt" type="button" data-k="${esc(k)}" data-key="${esc(x.key)}" data-file="${esc(x.file)}" data-title="${esc(x.title)}" aria-pressed="${cur === x.key}" title="${esc(x.desc)}">
+          <img src="${esc(view === 'phone' ? x.mobile : x.desktop)}" alt="" loading="lazy" data-big="${esc(x.desktop)}" data-bigm="${esc(x.mobile)}"><span><b>${esc(x.key)}</b>${esc(x.title)}</span></button>`).join('')}
+      </div>
+      ${v ? `<p class="desc"><b>${esc(v.key)}:</b> ${esc(v.desc)}</p>` : ''}
+    </section>`;
+  }).join('');
+}
+
+function loadSite() {
+  if (page.homeMode) ls.set(HOME, page.homeMode); // newcomer vs member home
+  $('route').textContent = page.route;
+  $('openTab').href = page.route;
+  $('site').src = page.route + (page.route.includes('?') ? '&' : '?') + 'design=' + Date.now();
+}
+
+function layout() {
+  const wrap = $('wrap'), stage = $('stage'), f = $('site');
+  if (view === 'phone') {
+    wrap.className = 'frame-wrap phone'; wrap.style.transform = ''; wrap.style.width = '410px';
+    f.style.width = '390px'; f.style.height = (stage.clientHeight - 52) + 'px';
+  } else {
+    const scale = Math.min(1, stage.clientWidth / 1440);
+    wrap.className = 'frame-wrap'; wrap.style.width = '1440px'; wrap.style.transform = `scale(${scale})`;
+    f.style.width = '1440px'; f.style.height = Math.round(stage.clientHeight / scale) + 'px';
+  }
+  $('vDesk').setAttribute('aria-pressed', view === 'desk'); $('vPhone').setAttribute('aria-pressed', view === 'phone');
+  const off = ls.get(OFF, 0) === 1;
+  $('mVar').setAttribute('aria-pressed', !off); $('mOrig').setAttribute('aria-pressed', off);
+}
+
+function setPage(p) {
+  page = p; try { history.replaceState(null, '', '#' + p.page); } catch {}
+  renderPages(); renderEls(); loadSite();
+}
+
+document.addEventListener('click', ev => {
+  const chip = ev.target.closest('.chip');
+  if (chip) { setPage(DATA.pages.find(p => p.page === chip.dataset.p)); return; }
+  const go = ev.target.closest('[data-goto]');
+  if (go) { $('site').contentWindow?.postMessage({ type: 'nabs-design-scroll', id: go.dataset.goto }, location.origin); return; }
+  const opt = ev.target.closest('.opt');
+  if (opt) {
+    if (ev.altKey && opt.querySelector('img')) { const im = opt.querySelector('img'); $('lbImg').src = view === 'phone' ? im.dataset.bigm : im.dataset.big; $('lbT').textContent = opt.textContent.trim(); $('lb').hidden = false; return; }
+    const k = opt.dataset.k;
+    if (!opt.dataset.key) delete picks[k];
+    else picks[k] = { key: opt.dataset.key, file: opt.dataset.file, title: opt.dataset.title, page: page.title, el: opt.closest('.el').querySelector('b').textContent };
+    ls.set(OFF, null); layout();
+    savePicks(); renderPages(); renderEls();
+    $('site').contentWindow?.postMessage({ type: 'nabs-design-scroll', id: k }, location.origin);
+    return;
+  }
+  if (ev.target.closest('#lb')) $('lb').hidden = true;
+});
+document.addEventListener('contextmenu', ev => {
+  const opt = ev.target.closest('.opt'); const im = opt?.querySelector('img');
+  if (!im) return; ev.preventDefault();
+  $('lbImg').src = view === 'phone' ? im.dataset.bigm : im.dataset.big; $('lbT').textContent = opt.textContent.trim(); $('lb').hidden = false;
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('lb').hidden = true; });
+$('vDesk').onclick = () => { view = 'desk'; ls.set('nabs-design-view', view); layout(); renderEls(); };
+$('vPhone').onclick = () => { view = 'phone'; ls.set('nabs-design-view', view); layout(); renderEls(); };
+$('mVar').onclick = () => { ls.set(OFF, null); layout(); };
+$('mOrig').onclick = () => { ls.set(OFF, 1); layout(); };
+$('resetPage').onclick = () => { page.elements.forEach(e => delete picks[page.page + '/' + e.id]); savePicks(); renderPages(); renderEls(); };
+$('resetAll').onclick = () => { picks = {}; savePicks(); renderPages(); renderEls(); };
+$('copy').onclick = async () => {
+  const lines = [];
+  DATA.pages.forEach(p => p.elements.forEach(e => { const v = picks[p.page + '/' + e.id]; if (v) lines.push(`${p.title} › ${e.name}: ${v.key} (${v.title})`); }));
+  const text = 'Meine Design-Auswahl:\n' + lines.join('\n');
+  try { await navigator.clipboard.writeText(text); $('copy').textContent = 'Kopiert'; } catch { prompt('Auswahl', text); }
+  setTimeout(() => { $('copy').textContent = 'Auswahl kopieren'; }, 1800);
+};
+// Picks changed in another tab (e.g. reset there): follow along.
+window.addEventListener('storage', e => { if (e.key === PICKS) { picks = ls.get(PICKS, {}) || {}; renderCount(); renderPages(); renderEls(); } });
+window.addEventListener('resize', layout);
+
+fetch('data.json').then(r => r.json()).then(d => {
+  DATA = d;
+  const h = location.hash.slice(1);
+  renderCount(); layout();
+  setPage(DATA.pages.find(p => p.page === h) || DATA.pages[0]);
+});
+</script>
+</body>
+</html>

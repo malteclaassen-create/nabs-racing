@@ -1,0 +1,138 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+
+<style>
+.ghost-num{font-family:Archivo,Inter,sans-serif;font-weight:900}
+.tnum{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none} .no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="hidden lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-8">
+<aside><div class="mb-4 flex h-8 items-center justify-between font-mono text-[11px] font-bold uppercase tracking-widest text-light"><span>Rounds</span><span class="text-ok">10 / 12 done</span></div>
+<ol class="relative space-y-1"><span class="absolute bottom-4 left-[7px] top-4 w-0.5 bg-gradient-to-b from-emerald-500 via-emerald-500 to-border" style="background:linear-gradient(#10b981 0 80%, #dbe2ec 80%)"></span><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R1</span><img src="/flags/w40/au.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Melbourne</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 10 Apr</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#1AA39B;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">1</span><span class="hidden max-w-[5.5rem] truncate xl:inline">13bot</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R2</span><img src="/flags/w40/it.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Mugello</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 17 Apr</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#1AA39B;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">1</span><span class="hidden max-w-[5.5rem] truncate xl:inline">13bot</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R3</span><img src="/flags/w40/cz.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Most</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 01 May</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#F58220;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">S</span><span class="hidden max-w-[5.5rem] truncate xl:inline">Siggsta</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R4</span><img src="/flags/w40/bh.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Bahrain</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 08 May</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#F58220;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">S</span><span class="hidden max-w-[5.5rem] truncate xl:inline">Siggsta</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R5</span><img src="/flags/w40/it.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Monza</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 15 May</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#1AA39B;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">J</span><span class="hidden max-w-[5.5rem] truncate xl:inline">JoMilan</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R6</span><img src="/flags/w40/sa.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Jeddah</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 22 May</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#0067C0;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">M</span><span class="hidden max-w-[5.5rem] truncate xl:inline">Maltegoat</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R7</span><img src="/flags/w40/de.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Nurburgring</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 29 May</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#E10600;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="hidden max-w-[5.5rem] truncate xl:inline">Takoda</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R8</span><img src="/flags/w40/be.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Spa</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 05 Jun</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#A33EA1;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="hidden max-w-[5.5rem] truncate xl:inline">ThatDudeGuest</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><svg viewBox="0 0 16 16" class="h-2.5 w-2.5" fill="currentColor"><path d="M6.2 11.3 3 8.1l1.1-1.1 2.1 2.1 5-5L12.3 5z"/></svg></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R9</span><img src="/flags/w40/it.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Imola</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 12 Jun</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#F58220;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="hidden max-w-[5.5rem] truncate xl:inline">ThatDudeGuest</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 flex h-4 w-4 items-center justify-center rounded-full bg-accent ring-4 ring-primary/40"></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left bg-card shadow-card ring-1 ring-primary">
+    <span class="w-6 font-mono text-xs font-bold tnum text-dark">R10</span><img src="/flags/w40/tr.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Turkey</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 19 Jun</span></span>
+    <span class="ml-auto flex items-center gap-1.5 truncate text-[11px] font-semibold text-light"><span style="width:18px;height:18px;background:#E10600;font-size:10px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="hidden max-w-[5.5rem] truncate xl:inline">Takoda</span></span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 h-4 w-4 rounded-full border-[3px] border-accent bg-card"></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R11</span><img src="/flags/w40/us.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">COTA</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 03 Jul</span></span>
+    <span class="ml-auto rounded-full bg-primary px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-dark">Sign up</span>
+  </button></li><li class="relative flex items-center gap-3 lg:gap-4">
+  <div class="flex w-4 justify-center"><span class="relative z-10 h-4 w-4 rounded-full border-2 border-border bg-card"></span></div>
+  <button class="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-white/60">
+    <span class="w-6 font-mono text-xs font-bold tnum text-light">R12</span><img src="/flags/w40/br.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] ">
+    <span class="min-w-0"><span class="block truncate font-display text-[15px] font-extrabold uppercase leading-tight tracking-tight text-dark">Interlagos</span><span class="block whitespace-nowrap font-mono text-[10px] uppercase tracking-wider text-light">Fri, 10 Jul</span></span>
+    
+  </button></li></ol></aside>
+<div class="hidden lg:block"><div class="mb-4 h-8 w-72 rounded-lg bg-white/60"></div><div class="space-y-2 rounded-2xl bg-white/60 p-5"><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div><div class="h-9 rounded-md bg-surface2/80"></div></div></div></div><div class="lg:hidden">
+<div class="mb-3 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-widest text-light"><span>Rounds</span><span class="text-ok">10 / 12 done</span></div>
+<div class="relative -mx-4 overflow-hidden px-4"><div class="relative flex overflow-x-auto no-sb pb-1" style="mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)">
+<span class="absolute left-0 top-[27px] h-0.5 w-[520px]" style="background:linear-gradient(90deg,#10b981 0 62%, #dbe2ec 62%)"></span><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-light">R7</span>
+  <span class="relative z-10 h-4 w-4 rounded-full bg-emerald-500"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/de.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-medium">Nurburgring</span>
+  <span class="font-mono text-[9px] uppercase text-light">29 May</span>
+</button><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-light">R8</span>
+  <span class="relative z-10 h-4 w-4 rounded-full bg-emerald-500"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/be.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-medium">Spa</span>
+  <span class="font-mono text-[9px] uppercase text-light">05 Jun</span>
+</button><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-light">R9</span>
+  <span class="relative z-10 h-4 w-4 rounded-full bg-emerald-500"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/it.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-medium">Imola</span>
+  <span class="font-mono text-[9px] uppercase text-light">12 Jun</span>
+</button><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-dark">R10</span>
+  <span class="relative z-10 h-4 w-4 rounded-full bg-accent ring-4 ring-primary/40"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/tr.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-dark">Turkey</span>
+  <span class="font-mono text-[9px] uppercase text-light">19 Jun</span>
+</button><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-light">R11</span>
+  <span class="relative z-10 h-4 w-4 rounded-full border-[3px] border-accent bg-card"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/us.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-dark">COTA</span>
+  <span class="font-mono text-[9px] uppercase text-light">03 Jul</span>
+</button><button class="flex w-[86px] shrink-0 flex-col items-center gap-1.5 text-center">
+  <span class="font-mono text-[10px] font-bold text-light">R12</span>
+  <span class="relative z-10 h-4 w-4 rounded-full border-2 border-border bg-card"></span>
+  <span class="mt-0.5 flex items-center gap-1"><img src="/flags/w40/br.png" alt="" style="width:16px;height:11px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span>
+  <span class="w-full truncate font-display text-[13px] font-extrabold uppercase leading-none tracking-tight text-medium">Interlagos</span>
+  <span class="font-mono text-[9px] uppercase text-light">10 Jul</span>
+</button></div></div></div>
+</main></body></html>

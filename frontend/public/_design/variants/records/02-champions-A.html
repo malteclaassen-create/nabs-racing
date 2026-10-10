@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+
+<style>
+.ghost-num{font-family:Archivo,Inter,sans-serif;font-weight:900}
+.tnum{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none} .no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<div class="mb-5 flex flex-wrap items-end justify-between gap-3"><div><div class="eyebrow">The titles</div><h2 class="mt-1 font-display text-2xl font-extrabold uppercase tracking-tight text-dark sm:text-3xl">Champions</h2></div><div class="flex rounded-xl border border-border bg-card p-1 text-sm font-semibold"><span class="rounded-lg bg-primary px-4 py-1.5 text-ink">Drivers</span><span class="px-4 py-1.5 text-light">Teams</span></div></div>
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+<div class="relative grid gap-6 overflow-hidden p-6 sm:p-8 md:grid-cols-[auto_1fr_auto] md:items-center" style="background:radial-gradient(90% 140% at 100% 0%,rgba(234,179,8,.16),transparent 60%)">
+<div class="relative w-max"><span style="width:104px;height:104px;background:#1AA39B;font-size:41px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm ring-4 ring-amber-400 ring-offset-4 ring-offset-white text-4xl">M</span><span class="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-amber-400 text-ink shadow"><svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5z"/></svg></span></div>
+<div><div class="font-mono text-[11px] font-bold uppercase tracking-[0.2em]" style="color:#b45309">Reigning champion · Season 6</div>
+<div class="mt-1 flex items-center gap-3"><span class="font-display text-4xl font-black uppercase tracking-tight sm:text-6xl">Mtimmis</span><img src="/flags/w40/gb.png" alt="" style="width:30px;height:22px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></div>
+<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-medium"><span class="flex items-center gap-2"><img src="/teams/porsche.png" alt="" style="width:20px;height:20px" class="inline-block shrink-0 object-contain ">Porsche Martini</span><span>7 wins · 10 podiums</span><span>won by 17 pts over Takoda</span></div></div>
+<div class="md:text-right"><div class="font-display text-5xl font-black leading-none tnum sm:text-6xl" style="color:#b45309">298</div><div class="font-mono text-[11px] font-bold uppercase tracking-wider text-light">points</div></div></div>
+<div class="hidden grid-cols-[3.5rem_1fr_11rem_10rem_5rem] gap-3 border-y border-border bg-surface2/60 px-7 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid"><span>Season</span><span>Champion</span><span>Team</span><span>Margin</span><span class="text-right">Points</span></div>
+<ol class="divide-y divide-border border-t border-border sm:border-t-0"><li class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[3.5rem_1fr_11rem_10rem_5rem] sm:px-7">
+<span class="font-display text-xl font-black text-faint">S5</span>
+<span class="flex min-w-0 items-center gap-3"><span style="width:36px;height:36px;background:#E10600;font-size:14px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate font-display text-lg font-extrabold uppercase tracking-tight">Takoda</span><img src="/flags/w40/nl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span><span class="block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">by 14 pts over Mtimmis</span></span></span>
+<span class="hidden items-center gap-2 text-sm text-medium sm:flex"><img src="/teams/ferrari.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Ferrari</span>
+<span class="hidden font-mono text-xs text-light sm:block">+14 over Mtimmis</span>
+<span class="text-right font-display text-xl font-black tnum">276<span class="ml-1 font-mono text-[10px] text-light">pts</span></span></li><li class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[3.5rem_1fr_11rem_10rem_5rem] sm:px-7">
+<span class="font-display text-xl font-black text-faint">S4</span>
+<span class="flex min-w-0 items-center gap-3"><span style="width:36px;height:36px;background:#1AA39B;font-size:14px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">1</span><span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate font-display text-lg font-extrabold uppercase tracking-tight">13bot</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span><span class="block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">by 7 pts over Siggsta</span></span></span>
+<span class="hidden items-center gap-2 text-sm text-medium sm:flex"><img src="/teams/porsche.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Porsche Martini</span>
+<span class="hidden font-mono text-xs text-light sm:block">+7 over Siggsta</span>
+<span class="text-right font-display text-xl font-black tnum">251<span class="ml-1 font-mono text-[10px] text-light">pts</span></span></li><li class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[3.5rem_1fr_11rem_10rem_5rem] sm:px-7">
+<span class="font-display text-xl font-black text-faint">S3</span>
+<span class="flex min-w-0 items-center gap-3"><span style="width:36px;height:36px;background:#F58220;font-size:14px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">S</span><span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate font-display text-lg font-extrabold uppercase tracking-tight">Siggsta</span><img src="/flags/w40/gb.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span><span class="block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">by 9 pts over 13bot</span></span></span>
+<span class="hidden items-center gap-2 text-sm text-medium sm:flex"><img src="/teams/mclaren.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">McLaren</span>
+<span class="hidden font-mono text-xs text-light sm:block">+9 over 13bot</span>
+<span class="text-right font-display text-xl font-black tnum">240<span class="ml-1 font-mono text-[10px] text-light">pts</span></span></li><li class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[3.5rem_1fr_11rem_10rem_5rem] sm:px-7">
+<span class="font-display text-xl font-black text-faint">S2</span>
+<span class="flex min-w-0 items-center gap-3"><span style="width:36px;height:36px;background:#0067C0;font-size:14px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">M</span><span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate font-display text-lg font-extrabold uppercase tracking-tight">Maltegoat</span><img src="/flags/w40/de.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span><span class="block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">by 5 pts over Takoda</span></span></span>
+<span class="hidden items-center gap-2 text-sm text-medium sm:flex"><img src="/teams/williams.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Williams</span>
+<span class="hidden font-mono text-xs text-light sm:block">+5 over Takoda</span>
+<span class="text-right font-display text-xl font-black tnum">219<span class="ml-1 font-mono text-[10px] text-light">pts</span></span></li><li class="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[3.5rem_1fr_11rem_10rem_5rem] sm:px-7">
+<span class="font-display text-xl font-black text-faint">S1</span>
+<span class="flex min-w-0 items-center gap-3"><span style="width:36px;height:36px;background:#E10600;font-size:14px" class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white shadow-sm  ">T</span><span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate font-display text-lg font-extrabold uppercase tracking-tight">Takoda</span><img src="/flags/w40/nl.png" alt="" style="width:18px;height:13px" class="inline-block shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.08)] "></span><span class="block font-mono text-[10px] uppercase tracking-wider text-light sm:hidden">by 18 pts over Pizd</span></span></span>
+<span class="hidden items-center gap-2 text-sm text-medium sm:flex"><img src="/teams/ferrari.png" alt="" style="width:18px;height:18px" class="inline-block shrink-0 object-contain ">Ferrari</span>
+<span class="hidden font-mono text-xs text-light sm:block">+18 over Pizd</span>
+<span class="text-right font-display text-xl font-black tnum">188<span class="ml-1 font-mono text-[10px] text-light">pts</span></span></li></ol></div>
+</main></body></html>

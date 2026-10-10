@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1280px] mx-auto px-4 sm:px-8">
+<section class="rounded-[1.75rem] bg-ink px-6 pb-4 pt-10 text-white shadow-lift sm:px-12 sm:pt-14">
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 pb-8">
+    <div><div class="font-mono text-[12px] font-bold uppercase tracking-[0.22em] text-primary">New here?</div>
+    <h2 class="mt-3 font-display text-4xl sm:text-6xl font-black uppercase leading-[0.9] tracking-tight">What is<br>the NABS<span class="text-primary"> league?</span></h2></div>
+    <p class="max-w-sm text-[15px] leading-relaxed text-white/65">A community-run online F1 2007 championship on Assetto Corsa. Four things to know before your first race.</p>
+  </div>
+  <div class="group grid grid-cols-[auto_1fr] lg:grid-cols-[120px_1fr_1.1fr_220px] items-start lg:items-center gap-x-5 gap-y-3 border-t border-white/10 py-7 sm:py-8">
+  <div class="font-display text-5xl sm:text-7xl font-black leading-none text-transparent" style="-webkit-text-stroke:1.5px #f4afc6">01</div>
+  <h3 class="font-display text-2xl sm:text-3xl font-black uppercase leading-[0.95] tracking-tight self-center">A new era<br>every season</h3>
+  <p class="col-span-2 lg:col-span-1 text-[15px] leading-relaxed text-white/65">Each season we race a fresh grid of equally matched cars, right now F1 2007 on Assetto Corsa, with proper physics and no driver aids holding your hand.</p>
+  <div class="col-span-2 lg:col-span-1 h-28 lg:h-24 overflow-hidden rounded-xl ring-1 ring-white/10"><img src="/hero.jpg" class="h-full w-full object-cover object-[70%_65%]"></div>
+</div>
+  <div class="group grid grid-cols-[auto_1fr] lg:grid-cols-[120px_1fr_1.1fr_220px] items-start lg:items-center gap-x-5 gap-y-3 border-t border-white/10 py-7 sm:py-8">
+  <div class="font-display text-5xl sm:text-7xl font-black leading-none text-transparent" style="-webkit-text-stroke:1.5px #f4afc6">02</div>
+  <h3 class="font-display text-2xl sm:text-3xl font-black uppercase leading-[0.95] tracking-tight self-center">Racing at<br>every level</h3>
+  <p class="col-span-2 lg:col-span-1 text-[15px] leading-relaxed text-white/65">Grids are split by pace so the racing stays close, whatever your speed. Reserves can step in for any team, and it&rsquo;s a perfect way to get your first start.</p>
+  <div class="col-span-2 lg:col-span-1 h-28 lg:h-24 overflow-hidden rounded-xl ring-1 ring-white/10"><div class="flex h-full items-center gap-2 bg-white/5 px-4 font-mono text-[11px] font-bold uppercase"><div class="flex-1 rounded-lg bg-primary py-3 text-center text-ink">Tier 1</div><div class="flex-1 rounded-lg bg-white/15 py-3 text-center">Tier 2</div><div class="flex-1 rounded-lg border border-dashed border-white/30 py-3 text-center text-white/60">Res.</div></div></div>
+</div>
+  <div class="group grid grid-cols-[auto_1fr] lg:grid-cols-[120px_1fr_1.1fr_220px] items-start lg:items-center gap-x-5 gap-y-3 border-t border-white/10 py-7 sm:py-8">
+  <div class="font-display text-5xl sm:text-7xl font-black leading-none text-transparent" style="-webkit-text-stroke:1.5px #f4afc6">03</div>
+  <h3 class="font-display text-2xl sm:text-3xl font-black uppercase leading-[0.95] tracking-tight self-center">A real<br>season</h3>
+  <p class="col-span-2 lg:col-span-1 text-[15px] leading-relaxed text-white/65">12 rounds on iconic circuits, run weekly. Your best 9 results count toward the title, so one bad night never ends your championship.</p>
+  <div class="col-span-2 lg:col-span-1 h-28 lg:h-24 overflow-hidden rounded-xl ring-1 ring-white/10"><img src="/maps/spa-aerial-2023.jpg" class="h-full w-full object-cover opacity-80"></div>
+</div>
+  <div class="group grid grid-cols-[auto_1fr] lg:grid-cols-[120px_1fr_1.1fr_220px] items-start lg:items-center gap-x-5 gap-y-3 border-t border-white/10 py-7 sm:py-8">
+  <div class="font-display text-5xl sm:text-7xl font-black leading-none text-transparent" style="-webkit-text-stroke:1.5px #f4afc6">04</div>
+  <h3 class="font-display text-2xl sm:text-3xl font-black uppercase leading-[0.95] tracking-tight self-center">Built on<br>Discord</h3>
+  <p class="col-span-2 lg:col-span-1 text-[15px] leading-relaxed text-white/65">Everything happens in our Discord: sign-ups, banter, stewarding and results. This site is the scoreboard that updates itself after every race.</p>
+  <div class="col-span-2 lg:col-span-1 h-28 lg:h-24 overflow-hidden rounded-xl ring-1 ring-white/10"><div class="flex h-full flex-col justify-center gap-1.5 bg-[#313338] px-4 font-sans text-[12px]"><div><b class="text-[#F58220]">Siggsta</b> <span class="text-white/70">GG all, what a race at Turkey</span></div><div><b class="text-[#1AA39B]">Mtimmis</b> <span class="text-white/70">3 points. THREE.</span></div><div><b class="text-primary">Stewards</b> <span class="text-white/70">R10 decisions are posted</span></div></div></div>
+</div>
+</section>
+</main></body></html>

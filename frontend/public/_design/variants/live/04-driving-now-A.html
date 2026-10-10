@@ -1,0 +1,137 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1000px] mx-auto px-4 sm:px-8">
+
+<section class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+    <div class="flex items-center gap-2"><span class="eyebrow">Driving now</span><span class="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-bold text-ok">17 on lap</span></div>
+    <div class="hidden gap-4 font-mono text-[10px] uppercase tracking-wider text-light sm:flex"><span>Current lap sectors</span><span>Δ own best</span></div>
+  </div>
+  <ul>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-ink text-white font-display text-sm font-black tabular-nums">1</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#F58220"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Siggsta</span></div><div class="truncate text-xs text-light">McLaren · <span class="font-mono">Leader</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums bg-fl/15 text-fl ">27.618</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>20.6</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-ok sm:col-start-auto sm:row-start-auto">−0.120</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:22.904</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">5</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">2</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#E10600"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Takoda</span></div><div class="truncate text-xs text-light">Ferrari · <span class="font-mono">+2.418</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums text-medium bg-surface2">27.542</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>18.2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-bad sm:col-start-auto sm:row-start-auto">+0.060</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:22.736</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">4</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">3</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#0067C0"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">MalteGoat</span></div><div class="truncate text-xs text-light">Williams · <span class="font-mono">+4.901</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums text-medium bg-surface2">27.971</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>15.7</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-bad sm:col-start-auto sm:row-start-auto">+0.140</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.512</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">14</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">4</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#1AA39B"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Mtimmis</span></div><div class="truncate text-xs text-light">Porsche Martini · <span class="font-mono">+7.330</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums bg-emerald-500/15 text-ok ">27.676</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>13.2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-ok sm:col-start-auto sm:row-start-auto">−0.040</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:22.988</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">6</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">5</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#E10600"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Steve</span></div><div class="truncate text-xs text-light">Ferrari · <span class="font-mono">+9.112</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums text-medium bg-surface2">27.809</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>11.4</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-bad sm:col-start-auto sm:row-start-auto">+0.090</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.204</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">5</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">6</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#F58220"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">JoMilan</span></div><div class="truncate text-xs text-light">McLaren · <span class="font-mono">+12.774</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums bg-emerald-500/15 text-ok ">27.610</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>7.6</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-ok sm:col-start-auto sm:row-start-auto">−0.120</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.087</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">3</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">7</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#0067C0"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Pizd</span></div><div class="truncate text-xs text-light">Williams · <span class="font-mono">+15.090</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md py-1 font-mono text-[11px] font-bold tabular-nums text-medium bg-surface2">28.011</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>5.3</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-bad sm:col-start-auto sm:row-start-auto">+0.060</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.771</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">14</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">9</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#A33EA1"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Rashford</span></div><div class="truncate text-xs text-light">Honda · <span class="font-mono">+21.006</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>27.2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-faint sm:col-start-auto sm:row-start-auto">—</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.902</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">5</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">10</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#A33EA1"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">Rayman</span></div><div class="truncate text-xs text-light">Honda · <span class="font-mono">+24.388</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>23.9</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-faint sm:col-start-auto sm:row-start-auto">—</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:24.115</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">14</span></span>
+</li>
+<li class="grid grid-cols-[34px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 last:border-0 sm:grid-cols-[40px_minmax(0,1.2fr)_auto_80px_120px_44px] sm:px-5">
+  <span class="grid h-8 w-8 place-items-center rounded-lg bg-surface2 text-dark font-display text-sm font-black tabular-nums">11</span>
+  <div class="flex min-w-0 items-center gap-2.5">
+    <span class="h-8 w-1 shrink-0 rounded-full" style="background:#5A4FC4"></span>
+    <div class="min-w-0"><div class="flex items-center gap-1.5"><span class="truncate font-display text-[15px] font-bold uppercase tracking-tight text-dark">DRAS</span></div><div class="truncate text-xs text-light">Red Bull · <span class="font-mono">+27.910</span></div></div>
+  </div>
+  <div class="col-span-3 col-start-1 row-start-2 flex gap-1.5 sm:col-span-1 sm:col-start-auto sm:row-start-auto"><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] items-center justify-center gap-1 rounded-md border border-dashed border-primary bg-primary/10 py-1 font-mono text-[11px] font-bold tabular-nums text-eyebrow"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"></span>20.3</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S2</span><span class="inline-flex flex-1 sm:flex-none sm:w-[64px] justify-center rounded-md bg-surface2/60 py-1 font-mono text-[11px] text-faint">S3</span></div>
+  <span class="col-start-3 row-start-1 text-right font-mono text-sm font-bold tabular-nums text-faint sm:col-start-auto sm:row-start-auto">—</span>
+  <span class="hidden whitespace-nowrap text-right font-mono text-xs tabular-nums text-light sm:block">last 1:23.844</span>
+  <span class="hidden items-center justify-end gap-1 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:20px;height:20px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(10,15,30,.55)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[10px] text-light">6</span></span>
+</li></ul>
+  <button class="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Show 7 more <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+</section>
+</main></body></html>

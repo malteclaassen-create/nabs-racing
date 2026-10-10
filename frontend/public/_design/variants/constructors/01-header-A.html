@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>*::-webkit-scrollbar{display:none}</style></head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <div class="flex items-center gap-2">
+      <p class="eyebrow">Championship</p>
+      <button class="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium">Season 7 <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+    <h1 class="mt-2 font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">Constructors</h1>
+    <p class="mt-2 max-w-xl text-sm text-light sm:text-base">Team totals after <b class="text-dark">Round 10 of 12</b> · next up <span class="inline-flex items-center gap-1 align-middle"><img src="/flags/w40/us.png" alt="" class="inline-block shrink-0 rounded-[2px] ring-1 ring-black/10 " style="width:16px;height:11px;object-fit:cover"> COTA</span>, Sat 17 Oct.</p>
+  </div>
+  <div class="relative inline-flex w-full rounded-xl border border-border bg-card p-1 sm:w-auto">
+<button class="flex-1 rounded-lg px-5 py-2 text-sm font-semibold sm:flex-none bg-primary text-ink shadow-sm">Tier 1 <span class="ml-1 font-mono text-[10px] opacity-70">5 teams</span></button>
+<button class="flex-1 rounded-lg px-5 py-2 text-sm font-semibold sm:flex-none text-medium">Tier 2 <span class="ml-1 font-mono text-[10px] opacity-70">12 teams</span></button></div>
+</div>
+<div class="mt-5 flex items-center gap-3">
+  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white"><div class="h-full rounded-full bg-primary" style="width:83%"></div></div>
+  <span class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">10 / 12 rounds</span>
+</div>
+</main></body></html>

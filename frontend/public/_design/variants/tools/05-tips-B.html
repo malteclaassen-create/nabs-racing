@@ -1,0 +1,314 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+  <section class="overflow-hidden rounded-3xl bg-ink text-white shadow-lift">
+    <div class="grid gap-5 border-b border-white/10 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
+      <div>
+        <p class="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-primary"><i data-i="bulb" class="h-4 w-4"></i>Race engineer · Tips</p>
+        <h3 class="mt-2 font-display text-3xl sm:text-5xl font-black uppercase italic leading-[0.95]">Maltegoat, 0.72 s<br>is on the table.</h3>
+        <p class="mt-3 max-w-lg text-sm text-white/65">Three corners hold 0.51 s of it. The pattern: <span class="font-semibold text-white">you brake too early</span> into La Source, Les Combes and the Bus Stop. Fix the habit once, it pays three times a lap.</p>
+      </div>
+      <div class="relative"><svg id="map" viewBox="0 0 1000 560" class="w-full"></svg></div>
+    </div>
+    <div class="-mx-0 flex snap-x snap-mandatory gap-3 overflow-x-auto p-4 sm:p-6 lg:grid lg:grid-cols-3 lg:overflow-visible" id="cards"></div>
+    <div class="flex flex-wrap items-center gap-2 border-t border-white/10 px-5 py-3 text-xs text-white/60 sm:px-7">
+      <span class="font-mono text-[10px] font-bold uppercase tracking-widest text-white/40">Also</span>
+      <span class="rounded-full bg-white/10 px-2.5 py-1">Blanchimont <b class="text-rose-300">+0.06</b></span><span class="rounded-full bg-white/10 px-2.5 py-1">Les Combes <b class="text-rose-300">+0.06</b></span><span class="rounded-full bg-white/10 px-2.5 py-1">Pouhon <b class="text-rose-300">+0.05</b></span><span class="rounded-full bg-emerald-400/15 px-2.5 py-1 text-emerald-300">Rivage −0.03 · keep it</span>
+    </div>
+  </section>
+</main>
+<script>
+// Synthetic but physically plausible Spa telemetry for the mockups.
+(function () {
+  const L = 7004, N = 701, ds = L / (N - 1);
+  const C = [
+    { name: "La Source", t: "T1", s: 380, a: 72, b: 70, early: 14, late: 0 },
+    { name: "Eau Rouge", t: "T3", s: 1050, a: 268, b: 263, early: 0, late: 0 },
+    { name: "Les Combes", t: "T5", s: 2150, a: 128, b: 126, early: 4, late: 0 },
+    { name: "Malmedy", t: "T7", s: 2380, a: 152, b: 151, early: 0, late: 0 },
+    { name: "Rivage", t: "T8", s: 2850, a: 82, b: 83, early: 0, late: 0 },
+    { name: "Pouhon", t: "T10", s: 3500, a: 197, b: 190, early: 0, late: 0 },
+    { name: "Fagnes", t: "T12", s: 3950, a: 142, b: 143, early: 0, late: 0 },
+    { name: "Stavelot", t: "T15", s: 4450, a: 158, b: 156, early: 0, late: 18 },
+    { name: "Blanchimont", t: "T17", s: 5650, a: 291, b: 290, early: 0, late: 0 },
+    { name: "Bus Stop", t: "T18", s: 6500, a: 68, b: 67, early: 3, late: 0 },
+  ];
+  const AB = 30, AA = 8.2, VMAX = 318 / 3.6;
+  function lap(side) {
+    const v = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const s = i * ds; let m = VMAX;
+      for (const c of C) {
+        const vm = (side === "a" ? c.a : c.b) / 3.6;
+        const e = side === "b" ? c.early : 0, l = side === "b" ? c.late : 0;
+        for (const off of [-L, 0, L]) {
+          const sc = c.s + off, d = sc - s;
+          let w;
+          if (d >= 0) w = Math.sqrt(vm * vm + 2 * AB * Math.max(0, d - e));
+          else w = Math.sqrt(vm * vm + 2 * AA * Math.max(0, -d - l) * (1 - Math.min(0.55, (-d) / 2600)));
+          if (w < m) m = w;
+        }
+      }
+      v[i] = m;
+    }
+    // smooth a little
+    const sv = v.map((_, i) => { let s = 0, k = 0; for (let j = -1; j <= 1; j++) { const q = v[(i + j + N) % N]; s += q; k++; } return s / k; });
+    const t = [0];
+    for (let i = 1; i < N; i++) t.push(t[i - 1] + ds / ((sv[i] + sv[i - 1]) / 2));
+    const speed = sv.map((x) => x * 3.6);
+    const gas = [], brake = [], gear = [];
+    for (let i = 0; i < N; i++) {
+      const dv = speed[(i + 1) % N] - speed[i];
+      if (dv < -1.6) { brake.push(Math.min(100, 55 + (-dv) * 9)); gas.push(0); }
+      else if (dv < 0.05 && speed[i] < 300) { brake.push(0); gas.push(Math.max(15, Math.min(70, 30 + speed[i] / 8))); }
+      else { brake.push(0); gas.push(100); }
+      const g = speed[i] < 95 ? 2 : speed[i] < 135 ? 3 : speed[i] < 175 ? 4 : speed[i] < 215 ? 5 : speed[i] < 255 ? 6 : 7;
+      gear.push(g);
+    }
+    return { speed, t, gas, brake, gear };
+  }
+  const A = lap("a"), B = lap("b");
+  // scale times to target lap times
+  const target = { a: 106912, b: 107634 };
+  const ka = target.a / 1000 / A.t[N - 1], kb = ka;
+  A.t = A.t.map((x) => x * ka); B.t = B.t.map((x) => x * kb);
+  { const raw = A.t.map((x, i) => B.t[i] - x), k = (target.b - target.a) / 1000 / raw[N - 1]; B.t = A.t.map((x, i) => x + raw[i] * k); }
+  const delta = A.t.map((x, i) => B.t[i] - x);
+
+  // map control points [x, y, frac]
+  const P = [[90,330,0],[90,200,.03],[100,95,.048],[125,60,.054],[150,85,.06],[160,160,.09],[170,250,.13],[180,290,.15],[215,270,.165],[330,215,.2],[500,135,.25],[640,75,.29],[690,55,.307],[715,75,.32],[720,110,.34],[780,150,.375],[835,175,.407],[825,205,.42],[775,215,.44],[720,245,.47],[690,300,.5],[715,345,.53],[770,360,.564],[830,385,.6],[880,420,.635],[870,470,.66],[800,495,.7],[600,505,.75],[400,500,.807],[250,485,.87],[160,470,.928],[115,450,.94],[95,400,.97],[90,330,1]];
+  function at(f) {
+    f = ((f % 1) + 1) % 1;
+    const n = P.length - 1; // last == first
+    let k = 0; while (k < n - 1 && f > P[k + 1][2]) k++;
+    const t = (f - P[k][2]) / ((P[k + 1][2] - P[k][2]) || 1);
+    const g = (i) => P[((i % n) + n) % n];
+    const p0 = g(k - 1), p1 = g(k), p2 = g(k + 1), p3 = g(k + 2);
+    const cr = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+    return [cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])];
+  }
+  // smooth closed path through control points (catmull-rom), with transform
+  function trackPath(tx = (x) => x, ty = (y) => y, from = 0, to = 1) {
+    const pts = P.slice(0, -1).filter((p) => p[2] >= from - 1e-9 && p[2] <= to + 1e-9);
+    const closed = from === 0 && to === 1;
+    const arr = closed ? P.slice(0, -1) : pts;
+    const n = arr.length;
+    const g = (i) => closed ? arr[(i + n) % n] : arr[Math.max(0, Math.min(n - 1, i))];
+    let d = `M${tx(arr[0][0]).toFixed(1)},${ty(arr[0][1]).toFixed(1)}`;
+    const last = closed ? n : n - 1;
+    for (let i = 0; i < last; i++) {
+      const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += `C${tx(c1[0]).toFixed(1)},${ty(c1[1]).toFixed(1)} ${tx(c2[0]).toFixed(1)},${ty(c2[1]).toFixed(1)} ${tx(p2[0]).toFixed(1)},${ty(p2[1]).toFixed(1)}`;
+    }
+    return d + (closed ? "Z" : "");
+  }
+  // line chart path for array over index range
+  function line(arr, w, h, lo, hi, from = 0, to = N - 1, pad = 2) {
+    let d = "";
+    for (let i = from; i <= to; i++) {
+      const x = ((i - from) / (to - from)) * w;
+      const y = pad + (1 - (arr[i] - lo) / (hi - lo)) * (h - 2 * pad);
+      d += (i === from ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+    }
+    return d;
+  }
+  function area(arr, w, h, lo, hi, from = 0, to = N - 1, base = lo) {
+    const yb = (1 - (base - lo) / (hi - lo)) * h;
+    return line(arr, w, h, lo, hi, from, to, 0) + `L${w},${yb.toFixed(1)}L0,${yb.toFixed(1)}Z`;
+  }
+  const idx = (m) => Math.round(m / ds);
+  const fmtLap = (ms) => { const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000; return `${m}:${s.toFixed(3).padStart(6, "0")}`; };
+  window.TEL = { L, N, ds, C, A, B, delta, P, at, trackPath, line, area, idx, fmtLap,
+    nameA: "Siggsta", nameB: "Maltegoat", colorA: "#F58220", colorB: "#0067C0", lapA: 106912, lapB: 107634 };
+
+  // ---- map rendering ---------------------------------------------------
+  // opts: {w,h,pad,mode:'gain'|'plain'|'lines', labels:bool, cursor:idx, road:bool, dark:bool, sectors:bool}
+  function map(o) {
+    o = Object.assign({ w: 1000, h: 560, pad: 30, mode: 'gain', labels: true, cursor: null, road: true, dark: false, sectors: false, labelSize: 30, width: 1 }, o);
+    const sx = (o.w - 2 * o.pad) / 960, sy = (o.h - 2 * o.pad) / 500, sc = Math.min(sx, sy);
+    const ox = (o.w - 960 * sc) / 2 - 50 * sc, oy = (o.h - 500 * sc) / 2 - 40 * sc;
+    const X = (x) => ox + x * sc, Y = (y) => oy + y * sc;
+    const pts = []; for (let i = 0; i < N; i++) { const p = at(i / (N - 1)); pts.push([X(p[0]), Y(p[1])]); }
+    const poly = (a, b) => pts.slice(a, b + 1).map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    let s = '';
+    const W = o.width;
+    if (o.road) s += `<polyline points="${poly(0, N - 1)}" fill="none" stroke="${o.dark ? '#273244' : '#cbd5e1'}" stroke-width="${14 * W}" stroke-linejoin="round" stroke-linecap="round"/><polyline points="${poly(0, N - 1)}" fill="none" stroke="${o.dark ? '#1b2433' : '#343b49'}" stroke-width="${11 * W}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    if (o.mode === 'gain') {
+      const step = 6;
+      for (let i = 0; i < N - 1; i += step) {
+        const j = Math.min(N - 1, i + step);
+        const d = (delta[j] - delta[i]) * 1000 / step; // ms per sample, + = A gaining
+        const col = Math.abs(d) < 0.4 ? (o.dark ? '#475569' : '#cbd5e1') : d > 0 ? window.TEL.colorA : window.TEL.colorB;
+        const w = Math.abs(d) < 0.4 ? 2.2 : Math.abs(d) < 2 ? 4.2 : Math.abs(d) < 4 ? 5.4 : 6.6;
+        s += `<polyline points="${poly(i, j)}" fill="none" stroke="${col}" stroke-width="${w * W}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      }
+    } else if (o.mode === 'lines') {
+      s += `<polyline points="${poly(0, N - 1)}" fill="none" stroke="${window.TEL.colorA}" stroke-width="${2.6 * W}"/>`;
+      s += `<polyline points="${pts.map((p, i) => (p[0] + 2.2 * W * Math.sin(i / 25)).toFixed(1) + ',' + (p[1] + 2.2 * W * Math.cos(i / 31)).toFixed(1)).join(' ')}" fill="none" stroke="${window.TEL.colorB}" stroke-width="${2.2 * W}" stroke-dasharray="${6 * W} ${4 * W}"/>`;
+    } else {
+      s += `<polyline points="${poly(0, N - 1)}" fill="none" stroke="${o.plainColor || '#f4afc6'}" stroke-width="${4 * W}" stroke-linejoin="round"/>`;
+    }
+    // start/finish
+    const sf = pts[0];
+    s += `<rect x="${sf[0] - 10 * W}" y="${sf[1] - 2}" width="${20 * W}" height="4" fill="#fff" stroke="#0f172a" stroke-width="1"/>`;
+    if (o.sectors) {
+      [0.27, 0.70].forEach((f, k) => { const p = pts[Math.round(f * (N - 1))]; s += `<circle cx="${p[0]}" cy="${p[1]}" r="${6 * W}" fill="${o.dark ? '#0f172a' : '#fff'}" stroke="#be185d" stroke-width="2"/><text x="${p[0] + 10 * W}" y="${p[1] - 8 * W}" font-family="JetBrains Mono" font-size="${11 * W}" font-weight="700" fill="#be185d">S${k + 2}</text>`; });
+    }
+    if (o.labels) {
+      const off = { 'La Source': [-6, -18], 'Eau Rouge': [-30, 30], 'Les Combes': [-10, -18], 'Malmedy': [18, 6], 'Rivage': [18, 6], 'Pouhon': [-90, 8], 'Fagnes': [-10, -16], 'Stavelot': [18, 6], 'Blanchimont': [-40, 28], 'Bus Stop': [-20, 30] };
+      for (const c of C) {
+        const p = pts[idx(c.s)], d0 = off[c.name] || [10, -10], d = o.short ? [d0[0] < -40 ? -70 : d0[0] < 0 ? -20 : d0[0], d0[1] < 0 ? -22 : d0[1] > 20 ? 50 : 14] : d0;
+        s += `<circle cx="${p[0]}" cy="${p[1]}" r="${3.2 * W}" fill="${o.dark ? '#fff' : '#0f172a'}"/>`;
+        s += `<text x="${p[0] + d[0] * W}" y="${p[1] + d[1] * W}" font-family="Inter" font-weight="700" font-size="${o.labelSize * W * 0.55}" fill="${o.dark ? '#e2e8f0' : '#334155'}" paint-order="stroke" stroke="${o.dark ? '#0f172a' : '#fff'}" stroke-width="${o.short ? 8 : 3}">${o.short ? c.t : c.t + ' ' + c.name}</text>`;
+      }
+    }
+    if (o.cursor != null) {
+      const p = pts[o.cursor], q = pts[Math.max(0, o.cursor - 3)];
+      s += `<circle cx="${q[0]}" cy="${q[1]}" r="${7 * W}" fill="${window.TEL.colorB}" stroke="#fff" stroke-width="2"/>`;
+      s += `<circle cx="${p[0]}" cy="${p[1]}" r="${8 * W}" fill="${window.TEL.colorA}" stroke="#fff" stroke-width="2.5"/>`;
+    }
+    return { svg: s, pts, X, Y };
+  }
+  // ---- section numbers used across panels --------------------------------
+  const SECTIONS = [
+    { n: 1, name: 'La Source', t: 'T1', at: 5, m: 380, lost: 332, kind: 'Braking', facts: ['Maltegoat brakes 14 m earlier', 'Siggsta +15 km/h at the slowest point'] },
+    { n: 2, name: 'Eau Rouge', t: 'T3', at: 15, m: 1050, lost: 29, kind: 'Corner speed', facts: ['Siggsta +5 km/h at the slowest point'] },
+    { n: 3, name: 'Les Combes', t: 'T5', at: 31, m: 2150, lost: 61, kind: 'Braking', facts: ['Maltegoat brakes 4 m earlier', 'Siggsta +5 km/h at the slowest point'] },
+    { n: 4, name: 'Malmedy', t: 'T7', at: 34, m: 2380, lost: 11, kind: '', facts: [] },
+    { n: 5, name: 'Rivage', t: 'T8', at: 41, m: 2850, lost: -31, kind: 'Your strength', facts: ['Maltegoat +1 km/h at the slowest point', 'Maltegoat on full throttle 6 m earlier'] },
+    { n: 6, name: 'Pouhon', t: 'T10', at: 50, m: 3500, lost: 47, kind: 'Corner speed', facts: ['Siggsta +7 km/h at the slowest point', 'Siggsta +4 km/h on exit'] },
+    { n: 7, name: 'Fagnes', t: 'T12', at: 56, m: 3950, lost: 12, kind: '', facts: [] },
+    { n: 8, name: 'Stavelot', t: 'T15', at: 64, m: 4450, lost: 94, kind: 'Throttle', facts: ['Siggsta on full throttle 18 m earlier', 'Siggsta +7 km/h on exit'] },
+    { n: 9, name: 'Blanchimont', t: 'T17', at: 81, m: 5650, lost: 62, kind: 'Lift', facts: ['Maltegoat lifts for 0.2 s, Siggsta stays flat'] },
+    { n: 10, name: 'Bus Stop', t: 'T18', at: 93, m: 6500, lost: 83, kind: 'Corner speed', facts: ['Maltegoat brakes 3 m earlier', 'Siggsta +5 km/h at the slowest point'] },
+  ];
+  window.TEL.map = map; window.TEL.SECTIONS = SECTIONS;
+  // mini speed trace around a corner, both laps; returns svg inner + viewBox
+  window.TEL.mini = function (c, W = 360, H = 120, dark = false) {
+    const i0 = Math.max(0, idx(c.s) - 32), i1 = Math.min(N - 1, idx(c.s) + 22);
+    const vs = []; for (let i = i0; i <= i1; i++) vs.push(A.speed[i], B.speed[i]);
+    const lo = Math.floor((Math.min(...vs) - 10) / 10) * 10, hi = Math.ceil((Math.max(...vs) + 5) / 10) * 10;
+    const pl = 30, pt = 14, pb = 16, pw = W - pl - 6, ph = H - pt - pb;
+    const px = (i) => pl + ((i - i0) / (i1 - i0)) * pw, py = (v) => pt + (1 - (v - lo) / (hi - lo)) * ph;
+    const path = (L) => { let d = ''; for (let i = i0; i <= i1; i++) d += (i === i0 ? 'M' : 'L') + px(i).toFixed(1) + ',' + py(L.speed[i]).toFixed(1); return d; };
+    const bA = idx(c.s) - 12, bB = idx(c.s) - 12 - Math.round((c.early || 0) / 10) - 1;
+    const grid = dark ? '#334155' : '#dbe2ec', txt = dark ? '#94a3b8' : '#68758a';
+    let s = `<line x1="${pl}" x2="${W - 6}" y1="${pt + ph / 2}" y2="${pt + ph / 2}" stroke="${grid}" stroke-dasharray="2 3"/>`;
+    s += `<text x="${pl - 4}" y="${pt + 4}" text-anchor="end" font-size="9" font-family="JetBrains Mono" fill="${txt}">${hi}</text><text x="${pl - 4}" y="${pt + ph}" text-anchor="end" font-size="9" font-family="JetBrains Mono" fill="${txt}">${lo}</text>`;
+    const ax = px(idx(c.s)); s += `<line x1="${ax}" x2="${ax}" y1="${pt}" y2="${pt + ph}" stroke="${txt}" stroke-width=".8"/><text x="${ax}" y="${pt - 4}" text-anchor="middle" font-size="9" font-family="JetBrains Mono" fill="${txt}">APEX</text>`;
+    [[bA, window.TEL.colorA], [bB, window.TEL.colorB]].forEach(([b, col]) => { const x = px(b); s += `<line x1="${x}" x2="${x}" y1="${pt}" y2="${pt + ph}" stroke="${col}" stroke-opacity=".7"/><circle cx="${x}" cy="${pt}" r="2.5" fill="${col}"/>`; });
+    s += `<path d="${path(B)}" fill="none" stroke="${window.TEL.colorB}" stroke-width="2"/><path d="${path(A)}" fill="none" stroke="${window.TEL.colorA}" stroke-width="2" stroke-dasharray="5 4"/>`;
+    s += `<text x="${pl}" y="${H - 3}" font-size="9" font-family="JetBrains Mono" fill="${txt}">km/h · dots: brake points</text>`;
+    return `<svg viewBox="0 0 ${W} ${H}" class="block w-full">${s}</svg>`;
+  };
+})();
+
+
+</script>
+<script>const TIPS=[
+ {c:0,place:'T1 La Source',kind:'Braking',ms:332,say:'You brake <b>14 m earlier</b> than Siggsta into La Source, and you are still <b>15 km/h slower</b> at the apex.',facts:[['Brake point','142 m','128 m'],['Slowest','75','90 km/h'],['Full throttle','61 m','58 m']],try:'Brake at Siggsta\'s marker, 128 m before the apex, and release the brake gradually so the car rolls more speed to the apex.',pct:5,m:380},
+ {c:7,place:'T15 Stavelot',kind:'Throttle',ms:94,say:'You are back on <b>full throttle 18 m later</b> than Siggsta out of Stavelot. That costs you all the way down to Blanchimont.',facts:[['Full throttle','46 m','28 m'],['Exit speed','241','248 km/h'],['Slowest','162','167 km/h']],try:'Straighten the exit and open the throttle earlier: Siggsta is flat 28 m after the apex.',pct:64,m:4450},
+ {c:9,place:'T18 Bus Stop',kind:'Corner speed',ms:83,say:'<b>5 km/h slower</b> at the slowest point of the Bus Stop, and on the brakes <b>3 m earlier</b>.',facts:[['Slowest','81','86 km/h'],['Brake point','112 m','109 m'],['Exit speed','172','176 km/h']],try:'Carry more speed through the first part of the chicane and use the inside kerb like Siggsta.',pct:93,m:6500}];
+const SMALL=[['T17 Blanchimont','Lift',62,'You lift for <b>0.2 s</b> where Siggsta stays flat.'],['T5 Les Combes','Braking',61,'You brake <b>4 m earlier</b> and are <b>5 km/h slower</b> in the middle.'],['T10 Pouhon','Corner speed',47,'<b>7 km/h slower</b> at the slowest point of Pouhon.'],['T3 Eau Rouge','Corner speed',29,'<b>5 km/h slower</b> at the bottom of Eau Rouge.']];
+const BREAK=[['La Source',332],['Stavelot',94],['Bus Stop',83],['Blanchimont',62],['Les Combes',61],['Pouhon',47],['Eau Rouge',29],['Rivage',-31],['Rest of the lap',45,'straights']];
+const sev=(ms)=>ms<0?'#046c4e':ms>=150?'#b91c1c':ms>=80?'#fb923c':'#d97706';
+const secs=(ms)=>(ms<0?'−':'+')+(Math.abs(ms)/1000).toFixed(2);
+const M=TEL.map({dark:true,mode:'gain',labels:false,width:1.3});
+let s=M.svg;TIPS.forEach((t,i)=>{const p=M.pts[TEL.idx(TEL.C[t.c].s)];s+=`<circle cx="${p[0]}" cy="${p[1]}" r="26" fill="#f4afc6" stroke="#0f172a" stroke-width="4"/><text x="${p[0]}" y="${p[1]+10}" text-anchor="middle" font-family="Archivo" font-weight="900" font-size="30" fill="#0f172a">${i+1}</text>`});
+document.getElementById('map').innerHTML=s;
+document.getElementById('cards').innerHTML=TIPS.map((t,i)=>`<article class="w-[86%] shrink-0 snap-start rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10 lg:w-auto"><div class="flex items-start justify-between gap-2"><div class="flex items-center gap-3"><span class="font-display text-4xl font-black italic leading-none text-primary">${i+1}</span><div><p class="font-display text-lg font-black uppercase leading-tight">${t.place.replace(/^T\d+ /,'')}</p><p class="font-mono text-[10px] uppercase tracking-widest text-white/40">${t.place.split(' ')[0]} · ${t.kind}</p></div></div><span class="font-display text-2xl font-black text-rose-300">${secs(t.ms)}</span></div><div class="relative mt-3 rounded-xl rounded-tl-sm bg-white px-3 py-2.5 text-[13px] leading-relaxed text-ink [&_b]:font-bold [&_b]:text-eyebrow"><span class="mb-1 flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-widest text-light"><span class="h-1.5 w-1.5 rounded-full bg-bad"></span>Radio</span>${t.say}</div><div class="mt-3 rounded-lg bg-black/25 p-2">${TEL.mini(TEL.C[t.c],360,110,true)}</div><p class="mt-3 flex gap-2 text-[13px] text-white/75"><i data-i="target" class="mt-0.5 h-4 w-4 shrink-0 text-emerald-300"></i>${t.try}</p></article>`).join('');
+</script><script>
+(function(){
+const I={
+calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+shieldcheck:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+scale:'<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10M12 3v18M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+box:'<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+check:'<path d="M20 6 9 17l-5-5"/>',
+checkcircle:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+plus:'<path d="M12 5v14M5 12h14"/>',
+minus:'<path d="M5 12h14"/>',
+x:'<path d="M18 6 6 18M6 6l12 12"/>',
+down:'<path d="m6 9 6 6 6-6"/>',
+right:'<path d="m9 18 6-6-6-6"/>',
+left:'<path d="m15 18-6-6 6-6"/>',
+up:'<path d="m18 15-6-6-6 6"/>',
+arrowright:'<path d="M5 12h14M12 5l7 7-7 7"/>',
+arrowdown:'<path d="M12 5v14M19 12l-7 7-7-7"/>',
+alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
+link:'<path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/>',
+play:'<polygon points="6 3 20 12 6 21 6 3"/>',
+pause:'<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
+book:'<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+tyre:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/>',
+limits:'<path d="M7 17 17 7M7 7h10v10"/>',
+wind:'<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
+wheel:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><path d="M12 14v8M10 12 2.5 10M14 12l7.5-2"/>',
+blueflag:'<path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.33 2q2 0 3.67-.8a1 1 0 0 1 1.4.9v9.5a1 1 0 0 1-.4.8 6 6 0 0 1-4 1.2c-2.33 0-4.33-2-7.33-2q-2 0-3.67.8"/>',
+align:'<path d="M12 3v18"/><rect x="2" y="7" width="7" height="10" rx="1"/><rect x="15" y="7" width="7" height="10" rx="1"/>',
+message:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
+server:'<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>',
+trophy:'<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+filecheck:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/>',
+terminal:'<path d="m4 17 6-6-6-6M12 19h8"/>',
+video:'<path d="m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.94a.5.5 0 0 0-.78-.42L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+thumbsup:'<path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
+thumbsdown:'<path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/>',
+activity:'<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+gauge:'<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+map:'<path d="M14.1 6.6 9.9 4.4a2 2 0 0 0-1.8 0L3.6 6.7A1 1 0 0 0 3 7.6v12.8a.5.5 0 0 0 .7.4l4.4-2.2a2 2 0 0 1 1.8 0l4.2 2.1a2 2 0 0 0 1.8 0l4.5-2.2a1 1 0 0 0 .6-.9V4.6a.5.5 0 0 0-.7-.4l-4.4 2.2a2 2 0 0 1-1.8 0ZM9 4v14M15 6v14"/>',
+chart:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+maximize:'<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+swap:'<path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/>',
+bulb:'<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/>',
+skipback:'<path d="M19 20 9 12l10-8v16ZM5 19V5"/>',
+skipfwd:'<path d="m5 4 10 8-10 8V4ZM19 5v14"/>',
+keyboard:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>',
+target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+zap:'<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+trend:'<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>',
+copy:'<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>',
+eye:'<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
+list:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',
+grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+hash:'<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+sparkles:'<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/>',
+};
+const DISCORD='<path fill="currentColor" stroke="none" d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>';
+const YT='<path fill="currentColor" stroke="none" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/>';
+function run(){document.querySelectorAll('i[data-i]').forEach(el=>{const n=el.dataset.i;const body=n==='discord'?DISCORD:n==='youtube'?YT:(I[n]||'');const sw=el.dataset.sw||'2';el.outerHTML=`<svg viewBox="0 0 24 24" class="${el.className}" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;});}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();
+})();
+
+</script></body></html>

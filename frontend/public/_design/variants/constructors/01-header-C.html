@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>*::-webkit-scrollbar{display:none}</style></head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="flex flex-wrap items-baseline justify-between gap-2">
+  <h1 class="font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-3xl">S7 Constructors</h1>
+  <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-light">After R10 of 12 · updated Sat 22:41</span>
+</div>
+<div class="sticky top-0 z-10 mt-4 rounded-2xl bg-card p-2 shadow-card">
+  <div class="flex items-center gap-2 overflow-x-auto [scrollbar-width:none]">
+    <div class="flex shrink-0 rounded-lg bg-surface2 p-0.5">
+      <button class="rounded-md bg-ink px-3 py-1.5 font-mono text-[11px] font-bold uppercase text-white">T1</button>
+      <button class="rounded-md px-3 py-1.5 font-mono text-[11px] font-bold uppercase text-medium">T2</button>
+      <button class="rounded-md px-3 py-1.5 font-mono text-[11px] font-bold uppercase text-medium">Both</button>
+    </div>
+    <span class="h-6 w-px shrink-0 bg-border"></span>
+    <div class="flex shrink-0 gap-1">
+      <button class="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-ink"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Table</button>
+      <button class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-medium hover:bg-surface2"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16M7 15l3-4 3 3 4-6"/></svg>Progression</button>
+      <button class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-medium hover:bg-surface2"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Line-ups</button>
+    </div>
+    <div class="ml-auto flex shrink-0 items-center gap-2 pl-2">
+      <label class="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-medium"><span class="relative inline-block h-4 w-7 rounded-full bg-ink"><span class="absolute right-0.5 top-0.5 h-3 w-3 rounded-full bg-white"></span></span>Show dropped</label>
+      <button class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-medium">Season 7 <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+  </div>
+</div>
+</main></body></html>

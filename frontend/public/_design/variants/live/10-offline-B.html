@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<section class="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lift">
+  <div class="pointer-events-none absolute inset-0 opacity-[0.06]" style="background:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 4px)"></div>
+  <div class="pointer-events-none absolute -left-20 bottom-0 opacity-[0.07]"><svg viewBox="0 0 100 89.3" class="h-[420px] w-auto" fill="none"><path d="M37,78.4 L50.6,75.4 L51.7,74.9 L52.2,74 L52,73.2 L51.1,69.5 L50.6,67.6 L50.6,66.2 L51,64.1 L52.2,62 L54.2,60 L58.3,57.6 L60.7,56.6 L63.7,55.6 L69.1,54.6 L72.5,54.4 L74.4,54.4 L77.2,54.8 L78.4,54.6 L79.7,54 L80.9,52.8 L81.5,51.4 L81.8,50 L81.2,45.5 L81.4,44.6 L82,44 L83,44 L85.9,44.3 L88.4,44.3 L89.8,44 L90.4,43.3 L90.6,42.4 L89.8,38.5 L89.4,37.6 L88.5,36.9 L66.3,25.7 L64.9,24.6 L64.4,23.6 L64.5,22.6 L64.8,21.8 L65.4,21.1 L67.2,20 L68.8,19.6 L70.2,19.5 L77,20.7 L82.5,22 L85.4,22.9 L86.8,23.2 L87.6,22.9 L92,20.5 L92.6,19.8 L94,15.5 L94,14.4 L93.6,13.5 L91.9,10.6 L90.4,8.8 L88.1,6.6 L87,6.1 L85.4,6 L83.2,6.3 L55.2,14.6 L53.6,15.5 L53,16.2 L53.1,17.2 L54.1,18.9 L54.8,20.3 L54.8,21.9 L45.9,49.6 L44.8,51 L43,52.6 L6.8,72.2 L6.1,72.9 L6,73.9 L6.2,74.8 L6.9,75.8 L7.7,76 L10.1,75.9 L10.8,76.1 L11.1,76.6 L11,77.8 L10.4,82 L10.5,82.8 L11,83.3 L11.8,83.3 L37,78.4 Z" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
+  <div class="relative flex items-center justify-between border-b border-white/10 px-5 py-3 sm:px-8">
+    <span class="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-white/60"><span class="h-2 w-2 rounded-full bg-white/30"></span> Off air</span>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-white/40">Server 1 · idle · Server 2 · idle</span>
+  </div>
+  <div class="relative grid gap-8 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+    <div>
+      <div class="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-primary">Lights out in</div>
+      <div class="mt-3 flex items-start gap-1.5 sm:gap-3"><div class="text-center"><div class="rounded-xl bg-white/[0.06] px-2 py-2 font-display text-4xl font-black tabular-nums sm:px-4 sm:text-7xl">05</div><div class="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/40">days</div></div><div class="pt-2 font-display text-3xl font-black text-white/20 sm:pt-5 sm:text-5xl">:</div><div class="text-center"><div class="rounded-xl bg-white/[0.06] px-2 py-2 font-display text-4xl font-black tabular-nums sm:px-4 sm:text-7xl">23</div><div class="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/40">hrs</div></div><div class="pt-2 font-display text-3xl font-black text-white/20 sm:pt-5 sm:text-5xl">:</div><div class="text-center"><div class="rounded-xl bg-white/[0.06] px-2 py-2 font-display text-4xl font-black tabular-nums sm:px-4 sm:text-7xl">41</div><div class="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/40">min</div></div><div class="pt-2 font-display text-3xl font-black text-white/20 sm:pt-5 sm:text-5xl">:</div><div class="text-center"><div class="rounded-xl bg-white/[0.06] px-2 py-2 font-display text-4xl font-black tabular-nums sm:px-4 sm:text-7xl">08</div><div class="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-white/40">sec</div></div></div>
+      <div class="mt-6 flex items-center gap-3"><img src="/flags/w40/tr.png" alt="" class="shrink-0 rounded-[2px] object-cover " style="width:28px;height:19px"><div><div class="font-display text-2xl font-black uppercase italic leading-none sm:text-3xl">Istanbul Park</div><div class="mt-1 font-mono text-xs text-white/50">Round 12 · season finale · Fri 16 Oct · 20:00 CEST</div></div></div>
+      <div class="mt-6 flex flex-wrap gap-2"><a class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg> Remind me</a><a class="inline-flex items-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm font-bold uppercase tracking-wide"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg> Calendar</a></div>
+    </div>
+    <div class="space-y-4">
+      <div class="rounded-2xl bg-white/5 p-4"><div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Last time out · Imola</span><span class="font-mono text-[10px] text-white/40">final</span></div><div class="mt-3 flex items-end gap-2"><div class="flex flex-1 flex-col items-center"><span class="mb-2 grid h-9 w-9 place-items-center rounded-full bg-white"><img src="/teams/ferrari.png" alt="" class="shrink-0 object-contain " style="width:24px;height:24px"></span><span class="font-display text-xs font-extrabold uppercase sm:text-sm">Takoda</span><div class="mt-2 w-full h-14 bg-silver grid place-items-start justify-center rounded-t-lg pt-1 font-display text-xl font-black text-ink/80">2</div></div><div class="flex flex-1 flex-col items-center"><span class="mb-2 grid h-9 w-9 place-items-center rounded-full bg-white"><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain " style="width:24px;height:24px"></span><span class="font-display text-xs font-extrabold uppercase sm:text-sm">Siggsta</span><div class="mt-2 w-full h-20 bg-gold grid place-items-start justify-center rounded-t-lg pt-1 font-display text-xl font-black text-ink/80">1</div></div><div class="flex flex-1 flex-col items-center"><span class="mb-2 grid h-9 w-9 place-items-center rounded-full bg-white"><img src="/teams/williams.png" alt="" class="shrink-0 object-contain " style="width:24px;height:24px"></span><span class="font-display text-xs font-extrabold uppercase sm:text-sm">MalteGoat</span><div class="mt-2 w-full h-10 bg-bronze grid place-items-start justify-center rounded-t-lg pt-1 font-display text-xl font-black text-ink/80">3</div></div></div></div>
+      <div class="overflow-hidden rounded-2xl bg-white/5">
+  <div class="relative aspect-video overflow-hidden bg-ink">
+    <img src="/hero.jpg" alt="" class="absolute inset-0 h-full w-full object-cover" style="object-position:75% 70%">
+    <div class="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent"></div>
+    <span class="absolute left-1/2 top-1/2 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-ink shadow-lift"><svg viewBox="0 0 24 24" class="h-6 w-6 ml-1" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg></span>
+    <span class="absolute right-3 top-3 rounded bg-ink/80 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">1:27.418</span>
+    <div class="absolute bottom-3 left-4 right-4 text-white"><div class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Hotlap · onboard</div><div class="font-display text-base font-extrabold uppercase leading-tight">Learn Istanbul Park before race night</div></div>
+  </div>
+  <div class="flex items-center justify-between px-4 py-2.5 text-xs text-white/60"><span>Siggsta · McLaren · F1 2007</span><span class="font-mono">2 of 4 videos</span></div>
+</div>
+    </div>
+  </div>
+</section>
+</main></body></html>

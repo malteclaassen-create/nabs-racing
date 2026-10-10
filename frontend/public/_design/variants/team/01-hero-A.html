@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>*::-webkit-scrollbar{display:none}</style></head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<section class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="h-1.5" style="background:#F58220"></div>
+  <div class="relative flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:gap-8 sm:p-8">
+    <div class="absolute inset-y-0 right-0 hidden w-1/2 sm:block" style="background:linear-gradient(90deg,transparent,#F5822012)"></div>
+    <a class="relative inline-flex items-center gap-1.5 text-xs font-semibold text-link sm:absolute sm:left-8 sm:top-5"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg> Constructors · Tier 1</a>
+    <span class="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl sm:mt-6 sm:h-32 sm:w-32" style="background:#F5822014"><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain " style="width:80px;height:80px"></span>
+    <div class="relative min-w-0 flex-1 sm:mt-6">
+      <div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-ink px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-white">Tier 1</span><span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">Season 7 · 2 race seats</span></div>
+      <h1 class="mt-2 font-display text-5xl font-black uppercase tracking-tight text-dark sm:text-6xl">McLaren</h1>
+      <p class="mt-2 text-sm text-medium sm:text-base"><b>10 points</b> behind Porsche Martini with two rounds to go. Led the table after R1–R5.</p>
+    </div>
+    <div class="relative grid grid-cols-2 gap-3 sm:mt-6 sm:w-[260px]">
+      <div class="rounded-xl bg-surface2 p-4"><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Position</div><div class="mt-1 font-display text-4xl font-black text-dark">P2<span class="ml-1 text-sm font-bold text-faint">/5</span></div></div>
+      <div class="rounded-xl p-4" style="background:#F582201a"><div class="font-mono text-[10px] font-bold uppercase tracking-wider" style="color:#b45309">Points</div><div class="mt-1 font-display text-4xl font-black" style="color:#F58220">399</div></div>
+    </div>
+  </div>
+</section>
+</main></body></html>

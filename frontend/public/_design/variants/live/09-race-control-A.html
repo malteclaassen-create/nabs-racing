@@ -1,0 +1,116 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[960px] mx-auto px-4 sm:px-8">
+
+<section class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+    <div class="flex items-center gap-2.5"><span class="grid h-8 w-8 place-items-center rounded-lg bg-ink text-white"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></span><div><div class="font-display text-base font-extrabold uppercase leading-none text-dark">Race control</div><div class="mt-1 font-mono text-[10px] uppercase tracking-wider text-light">Stewards only · Lap 14</div></div></div>
+    <label class="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light">Sound<span class="relative h-5 w-9 rounded-full bg-ok"><span class="absolute right-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow"></span></span></label>
+  </div>
+  <div class="-mx-0 flex gap-2 overflow-x-auto border-b border-border bg-surface2/50 px-4 py-2.5 sm:px-5"><button class="shrink-0 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">All <span class="opacity-60">8</span></button><button class="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-medium"><span class="h-2 w-2 rounded-full" style="background:#ef4444"></span>Contact <span class="text-faint">3</span></button><button class="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-medium"><span class="h-2 w-2 rounded-full" style="background:#f59e0b"></span>Wall <span class="text-faint">2</span></button><button class="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-medium"><span class="h-2 w-2 rounded-full" style="background:#38bdf8"></span>Stopped <span class="text-faint">1</span></button><button class="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-medium"><span class="h-2 w-2 rounded-full" style="background:#a855f7"></span>Off track <span class="text-faint">2</span></button></div>
+  <ul><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5 bg-red-500/[0.04] ">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:#ef4444"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L13</div>19:42:18</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-red-500/15 text-red-600">Contact</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Flo × Zero0n1k <span class="ml-1 rounded bg-accent px-1 font-mono text-[9px] font-bold text-white">NEW</span></div><div class="truncate font-mono text-[11px] text-light">64 km/h · Tosa</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <button class="rounded-md bg-primary px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">Review</button>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  ">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L12</div>19:40:51</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-fl/15 text-fl">Off track</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Endriu</div><div class="truncate font-mono text-[11px] text-light">3.8 m off · Variante Alta</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <button class="rounded-md bg-primary px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">Review</button>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  ">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L11</div>19:38:02</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700">Wall</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Hedimak</div><div class="truncate font-mono text-[11px] text-light">118 km/h · Piratella</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <button class="rounded-md bg-primary px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">Review</button>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  ">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L9</div>19:35:47</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-fl/15 text-fl">Off track</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Kalervo</div><div class="truncate font-mono text-[11px] text-light">2.1 m off · Rivazza</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <button class="rounded-md bg-primary px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">Review</button>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  opacity-60">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L7</div>19:33:09</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-700">Stopped</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Tischler</div><div class="truncate font-mono text-[11px] text-light">stationary 42 s · Acque Minerali</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-ok">✓ Reviewed</span>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  opacity-60">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L7</div>19:33:02</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700">Wall</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Tischler</div><div class="truncate font-mono text-[11px] text-light">167 km/h · Acque Minerali</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-ok">✓ Reviewed</span>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  opacity-60">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L3</div>19:26:40</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-red-500/15 text-red-600">Contact</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Rayman × DRAS</div><div class="truncate font-mono text-[11px] text-light">41 km/h · Tamburello</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-ok">✓ Reviewed</span>
+  </div>
+</li><li class="relative flex gap-3 border-b border-border px-4 py-3 last:border-0 sm:items-center sm:px-5  opacity-60">
+  <span class="absolute inset-y-0 left-0 w-1" style="background:transparent"></span>
+  <div class="w-14 shrink-0 font-mono text-[11px] leading-tight text-light sm:w-20"><div class="font-bold text-dark">L1</div>19:24:12</div>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="inline-flex shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider bg-red-500/15 text-red-600">Contact</span>
+    <div class="mt-1 min-w-0 sm:mt-0"><div class="truncate text-sm font-semibold text-dark">Neesh × GoldGinger</div><div class="truncate font-mono text-[11px] text-light">22 km/h · Variante Alta</div></div>
+  </div>
+  <div class="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+    <button class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-medium"><svg viewBox="0 0 24 24" class="h-3 w-3" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg><span class="hidden sm:inline">Replay</span></button>
+    <span class="font-mono text-[10px] uppercase tracking-wider text-ok">✓ Reviewed</span>
+  </div>
+</li></ul>
+  <div class="border-t border-border px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-faint sm:px-5">Off track is estimated from the map · contacts come straight from the server</div>
+</section>
+</main></body></html>

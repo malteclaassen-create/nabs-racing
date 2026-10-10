@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+
+<style>
+.ghost-num{font-family:Archivo,Inter,sans-serif;font-weight:900}
+.tnum{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none} .no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="rounded-2xl bg-card shadow-card">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-5">
+    <div class="flex min-w-0 items-baseline gap-3">
+      <h1 class="font-display text-2xl font-black uppercase tracking-tight text-dark">Races</h1>
+      <button class="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">Season 7 <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    </div>
+    <div class="ml-auto flex items-center gap-1.5 sm:order-3">
+      <button class="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold text-medium" title="Add to calendar"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span class="hidden md:inline">Add to calendar</span></button>
+      <button class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-medium" title="Copy feed link"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1"/></svg></button>
+    </div>
+    <div class="order-last flex w-full gap-1 overflow-x-auto no-sb rounded-xl bg-surface2 p-1 sm:order-2 sm:w-auto">
+      <a class="flex shrink-0 items-center gap-1.5 rounded-lg bg-card px-3 py-1.5 text-sm font-bold text-dark shadow-sm"><span class="h-2 w-2 rounded-full bg-accent"></span>Championship <span class="font-mono text-xs text-light">12</span></a>
+      <a class="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-light"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Special <span class="font-mono text-xs">3</span></a>
+      <a class="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-light"><span class="h-2 w-2 rounded-full bg-sky-500"></span>Training <span class="font-mono text-xs">2</span></a>
+    </div>
+  </div>
+  <div class="flex items-center gap-3 overflow-x-auto no-sb border-t border-border px-4 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-light sm:px-5">
+    <span class="shrink-0"><b class="text-ok">10</b> done</span><span class="text-border">|</span>
+    <span class="shrink-0"><b class="text-eyebrow">R11 COTA</b> sign-up open</span><span class="text-border">|</span>
+    <span class="shrink-0">Leader <b class="text-dark">Siggsta</b> 220 pts</span><span class="text-border">|</span>
+    <span class="shrink-0">Finale <b class="text-dark">Interlagos</b> · 10 Jul</span>
+  </div>
+</div>
+</main></body></html>

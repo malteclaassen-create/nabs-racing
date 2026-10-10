@@ -1,0 +1,103 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+  <div><div class="eyebrow">Live standings</div><h2 class="font-display text-2xl font-black uppercase tracking-tight text-dark sm:text-3xl">Championship, if it ends like this</h2></div>
+  <span class="font-mono text-[10px] uppercase tracking-wider text-light">Updated 6 s ago · round 11 of 12</span>
+</div>
+<div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+  <section class="overflow-hidden rounded-2xl bg-card shadow-card">
+    <table class="w-full">
+      <thead class="bg-surface2/70"><tr class="border-b border-border text-left font-mono text-[10px] font-bold uppercase tracking-widest text-light"><th class="py-2.5 pl-4 sm:pl-5">Pos</th><th class="py-2.5">Driver</th><th class="py-2.5 text-center">Race</th><th class="py-2.5 pr-2 text-right">+Pts</th><th class="py-2.5 pr-3 text-right">Total</th><th class="hidden py-2.5 pr-5 text-right sm:table-cell">Gap</th></tr></thead>
+      <tbody><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-primary text-ink font-display text-[13px] font-black">1</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#F58220"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Siggsta</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P1</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+35</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">255</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">—</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">2</span><span class="w-8"><span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-ok">▲1</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/ferrari.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#E10600"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Takoda</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P2</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+30</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">241</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−14</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">3</span><span class="w-8"><span class="inline-flex items-center rounded-full bg-red-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-bad">▼1</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/porsche.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#1AA39B"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Mtimmis</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P4</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+22</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">239</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−16</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">4</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/williams.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#0067C0"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">MalteGoat</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P3</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+25</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">200</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−55</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">5</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/williams.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#0067C0"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Pizd</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P7</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+16</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">179</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−76</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">6</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/ferrari.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#E10600"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Steve</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P5</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+20</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">162</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−93</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">7</span><span class="w-8"><span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-ok">▲1</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#F58220"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">JoMilan</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P6</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+18</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">144</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−111</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">8</span><span class="w-8"><span class="inline-flex items-center rounded-full bg-red-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-bad">▼1</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><img src="/teams/porsche.png" alt="" class="shrink-0 object-contain hidden sm:block" style="width:18px;height:18px"><span class="h-5 w-1 rounded sm:hidden" style="background:#1AA39B"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">13bot</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs">P8</td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok">+14</td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">141</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−114</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">9</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><span class="hidden h-[18px] w-[18px] sm:block"></span><span class="h-5 w-1 rounded sm:hidden" style="background:#94a3b8"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">Tball</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs"><span class="text-faint">—</span></td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok"></td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">98</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−157</td>
+</tr><tr class="border-b border-border last:border-0">
+  <td class="py-2.5 pl-4 sm:pl-5"><div class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-md bg-surface2 text-dark font-display text-[13px] font-black">10</span><span class="w-8"><span class="font-mono text-[10px] text-faint">—</span></span></div></td>
+  <td class="py-2.5"><div class="flex items-center gap-2"><span class="hidden h-[18px] w-[18px] sm:block"></span><span class="h-5 w-1 rounded sm:hidden" style="background:#94a3b8"></span><span class="truncate font-display text-sm font-bold uppercase text-dark sm:text-[15px]">ThatDudeGuest</span></div></td>
+  <td class="py-2.5 text-center font-mono text-xs"><span class="text-faint">—</span></td>
+  <td class="py-2.5 pr-2 text-right font-mono text-sm font-bold text-ok"></td>
+  <td class="py-2.5 pr-3 text-right font-mono text-base font-bold tabular-nums text-dark">95</td>
+  <td class="hidden py-2.5 pr-5 text-right font-mono text-xs text-light sm:table-cell">−160</td>
+</tr></tbody>
+    </table>
+    <div class="border-t border-border bg-primary/10 px-4 py-2.5 text-[13px] text-medium sm:px-5"><strong class="text-dark">Siggsta</strong> would lead by <strong class="text-dark">14 pts</strong> with one round to go — Takoda jumps to P2.</div>
+  </section>
+  <div class="space-y-4"><div class="overflow-hidden rounded-2xl bg-card shadow-card"><div class="border-b border-border px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Constructors · Tier 1</div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">1</span><img src="/teams/ferrari.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Ferrari</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+50</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">403</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">2</span><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">McLaren</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+53</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">399</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">3</span><img src="/teams/porsche.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Porsche Martini</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+36</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">380</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">4</span><img src="/teams/williams.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Williams</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+41</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">379</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">5</span><img src="/teams/honda.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Honda</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+22</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">111</span></div></div><div class="overflow-hidden rounded-2xl bg-card shadow-card"><div class="border-b border-border px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">Constructors · Tier 2</div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">1</span><span class="inline-grid shrink-0 place-items-center rounded-full text-[9px] font-black text-white " style="width:18px;height:18px;background:#E6A700">L</span><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Lotus</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+4</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">118</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">2</span><img src="/teams/redbull.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Red Bull</span><span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-ok">▲2</span><span class="w-9 text-right font-mono text-[11px] text-ok">+14</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">97</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">3</span><img src="/teams/bmw.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">BMW Sauber</span><span class="inline-flex items-center rounded-full bg-red-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-bad">▼1</span><span class="w-9 text-right font-mono text-[11px] text-ok">+6</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">94</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">4</span><img src="/teams/torro_rosso.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Toro Rosso</span><span class="inline-flex items-center rounded-full bg-red-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-bad">▼1</span><span class="w-9 text-right font-mono text-[11px] text-ok"></span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">88</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">5</span><img src="/teams/ncb_mugen.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">NCB Mugen</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+8</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">71</span></div><div class="flex items-center gap-2.5 border-b border-border px-4 py-2 last:border-0"><span class="w-4 font-mono text-xs font-bold text-light">6</span><img src="/teams/jaguar.png" alt="" class="shrink-0 object-contain " style="width:18px;height:18px"><span class="min-w-0 flex-1 truncate text-sm font-semibold text-dark">Jaguar</span><span class="font-mono text-[10px] text-faint">—</span><span class="w-9 text-right font-mono text-[11px] text-ok">+7</span><span class="w-10 text-right font-mono text-sm font-bold tabular-nums text-dark">66</span></div></div></div>
+</div>
+</main></body></html>

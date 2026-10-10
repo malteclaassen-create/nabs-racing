@@ -1,0 +1,94 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-ink text-white shadow-lift">
+  <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:px-6">
+    <div class="flex items-center gap-3"><span class="h-6 w-1.5 skew-x-[-12deg]" style="background:#F58220"></span><h2 class="font-display text-xl font-black uppercase italic tracking-tight">Form guide</h2></div>
+    <div class="flex rounded-lg bg-white/5 p-0.5 font-mono text-[10px] font-bold uppercase tracking-wider"><span class="rounded-md px-3 py-1.5" style="background:#F58220;color:#0f172a">Race</span><span class="px-3 py-1.5 text-white/50">Quali</span><span class="px-3 py-1.5 text-white/50">Sprint</span></div>
+  </div>
+  <div class="mt-1 px-5 font-mono text-[10px] uppercase tracking-[.18em] text-white/40 sm:px-6">Taller bar = better finish · 10 of 12 rounds</div>
+  <div class="hidden grid-cols-12 gap-2 px-6 pb-5 pt-4 sm:grid"><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#C2410C">P3</span>
+      <div class="w-full rounded-t-md" style="height:73.8%;background:linear-gradient(180deg,#C2410C,#C2410C33)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R1</span><img src="/flags/w40/au.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P6</span>
+      <div class="w-full rounded-t-md" style="height:61.49999999999999%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R2</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#EAB308">P1</span>
+      <div class="w-full rounded-t-md" style="height:82%;background:linear-gradient(180deg,#EAB308,#EAB30833)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R3</span><img src="/flags/w40/cz.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#EAB308">P1</span>
+      <div class="w-full rounded-t-md" style="height:82%;background:linear-gradient(180deg,#EAB308,#EAB30833)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R4</span><img src="/flags/w40/bh.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P4</span>
+      <div class="w-full rounded-t-md" style="height:69.7%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R5</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P9</span>
+      <div class="w-full rounded-t-md" style="height:49.199999999999996%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R6</span><img src="/flags/w40/sa.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P4</span>
+      <div class="w-full rounded-t-md" style="height:69.7%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R7</span><img src="/flags/w40/de.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#C2410C">P3</span>
+      <div class="w-full rounded-t-md" style="height:73.8%;background:linear-gradient(180deg,#C2410C,#C2410C33)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R8</span><img src="/flags/w40/be.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P5</span>
+      <div class="w-full rounded-t-md" style="height:65.6%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R9</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:210px">
+      <span class="mb-1 font-display text-lg font-black italic" style="color:#fff">P6</span>
+      <div class="w-full rounded-t-md" style="height:61.49999999999999%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R10</span><img src="/flags/w40/tr.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full items-end" style="height:210px"><div class="w-full rounded-t-md border border-dashed border-white/20" style="height:30%"></div></div><span class="font-mono text-[9px] font-bold text-white/30">R11</span><img src="/flags/w40/us.png" class="h-2.5 w-3.5 opacity-40 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full items-end" style="height:210px"><div class="w-full rounded-t-md border border-dashed border-white/20" style="height:30%"></div></div><span class="font-mono text-[9px] font-bold text-white/30">R12</span><img src="/flags/w40/br.png" class="h-2.5 w-3.5 opacity-40 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div></div>
+  <div class="grid grid-cols-12 gap-1 px-4 pb-4 pt-4 sm:hidden"><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#C2410C">P3</span>
+      <div class="w-full rounded-t-md" style="height:73.8%;background:linear-gradient(180deg,#C2410C,#C2410C33)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R1</span><img src="/flags/w40/au.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P6</span>
+      <div class="w-full rounded-t-md" style="height:61.49999999999999%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R2</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#EAB308">P1</span>
+      <div class="w-full rounded-t-md" style="height:82%;background:linear-gradient(180deg,#EAB308,#EAB30833)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R3</span><img src="/flags/w40/cz.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#EAB308">P1</span>
+      <div class="w-full rounded-t-md" style="height:82%;background:linear-gradient(180deg,#EAB308,#EAB30833)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R4</span><img src="/flags/w40/bh.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P4</span>
+      <div class="w-full rounded-t-md" style="height:69.7%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R5</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P9</span>
+      <div class="w-full rounded-t-md" style="height:49.199999999999996%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R6</span><img src="/flags/w40/sa.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P4</span>
+      <div class="w-full rounded-t-md" style="height:69.7%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R7</span><img src="/flags/w40/de.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#C2410C">P3</span>
+      <div class="w-full rounded-t-md" style="height:73.8%;background:linear-gradient(180deg,#C2410C,#C2410C33)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R8</span><img src="/flags/w40/be.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P5</span>
+      <div class="w-full rounded-t-md" style="height:65.6%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R9</span><img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full flex-col items-center justify-end" style="height:150px">
+      <span class="mb-1 font-display text-xs font-black italic" style="color:#fff">P6</span>
+      <div class="w-full rounded-t-md" style="height:61.49999999999999%;background:linear-gradient(180deg,#F58220,#F5822022)"></div></div>
+      <span class="font-mono text-[9px] font-bold text-white/50">R10</span><img src="/flags/w40/tr.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full items-end" style="height:150px"><div class="w-full rounded-t-md border border-dashed border-white/20" style="height:30%"></div></div><span class="font-mono text-[9px] font-bold text-white/30">R11</span><img src="/flags/w40/us.png" class="h-2.5 w-3.5 opacity-40 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div><div class="flex flex-col items-center gap-1.5"><div class="flex w-full items-end" style="height:150px"><div class="w-full rounded-t-md border border-dashed border-white/20" style="height:30%"></div></div><span class="font-mono text-[9px] font-bold text-white/30">R12</span><img src="/flags/w40/br.png" class="h-2.5 w-3.5 opacity-40 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div></div>
+  <div class="grid grid-cols-3 border-t border-white/10 bg-white/[.03] text-center">
+    <div class="px-3 py-3 "><div class="font-display text-xl font-black italic">40%</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-white/45">Podium rate</div></div><div class="px-3 py-3 border-l border-white/10"><div class="font-display text-xl font-black italic">P4.2</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-white/45">Avg finish</div></div><div class="px-3 py-3 border-l border-white/10"><div class="font-display text-xl font-black italic">1</div><div class="font-mono text-[9px] font-bold uppercase tracking-wider text-white/45">Top-5 streak</div></div>
+  </div>
+</div>
+</main></body></html>

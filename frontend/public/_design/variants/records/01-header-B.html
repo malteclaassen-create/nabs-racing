@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+
+<style>
+.ghost-num{font-family:Archivo,Inter,sans-serif;font-weight:900}
+.tnum{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none} .no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+<section class="relative overflow-hidden rounded-3xl bg-ink px-5 py-10 text-center text-white shadow-lift sm:py-16">
+<div class="pointer-events-none absolute inset-0" style="background:radial-gradient(60% 80% at 50% 0%,rgba(234,179,8,.35),transparent 70%)"></div>
+<div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-300/60 to-transparent"></div>
+<div class="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-amber-300 to-amber-600 text-ink shadow-[0_0_40px_rgba(234,179,8,.45)]"><svg viewBox="0 0 24 24" class="h-8 w-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3"/></svg></div>
+<p class="relative mt-5 font-mono text-[11px] font-bold uppercase tracking-[0.35em] text-amber-300">All-time · Since 2023</p>
+<h1 class="relative mt-2 font-display text-[44px] font-black uppercase leading-[0.9] tracking-tight sm:text-[96px]">Hall of <span class="bg-gradient-to-b from-amber-200 to-amber-500 bg-clip-text text-transparent">Fame</span></h1>
+<p class="relative mx-auto mt-4 max-w-md text-sm text-white/60 sm:text-base">Five champions. 84 races. One wall of names the rest of the grid is chasing.</p>
+<div class="relative mt-6 flex justify-center gap-2 overflow-x-auto no-sb"><span class="shrink-0 rounded-full bg-white/10 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-white/80">S1 – S7</span><span class="shrink-0 rounded-full bg-white/10 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-white/80">F1 2007 · AC</span></div>
+</section>
+</main></body></html>

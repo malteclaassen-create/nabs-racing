@@ -1,0 +1,137 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-border px-5 py-4 sm:px-6">
+    <div><h2 class="font-display text-xl font-extrabold uppercase tracking-tight">Season form</h2><p class="font-mono text-[11px] uppercase tracking-wider text-light">finishing position by round</p></div>
+    <div class="flex flex-wrap items-center gap-2 sm:ml-auto">
+      <span class="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-semibold"><span class="h-0.5 w-4 rounded" style="background:#F58220"></span>Race</span>
+      <span class="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-medium"><span class="w-4 border-t-2 border-dashed border-slate-400"></span>Grid</span>
+      <span class="inline-flex items-center gap-2 rounded-full border border-dashed border-border px-3 py-1.5 text-xs font-semibold text-faint">+ Sprint</span>
+    </div>
+  </div>
+  <div class="grid gap-0 lg:grid-cols-[1fr_220px]">
+    <div class="p-4 sm:p-6">
+      <div class="hidden sm:block"><svg viewBox="0 0 820 250" width="820" height="250" class="block max-w-full h-auto" font-family="JetBrains Mono, monospace"><line x1="36" x2="804" y1="14" y2="14" stroke="#e2e8f0" stroke-dasharray=""/><text x="28" y="18" text-anchor="end" font-size="11" fill="#68758a">P1</text><line x1="36" x2="804" y1="54.36363636363637" y2="54.36363636363637" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="28" y="58.36363636363637" text-anchor="end" font-size="11" fill="#68758a">P3</text><line x1="36" x2="804" y1="94.72727272727273" y2="94.72727272727273" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="28" y="98.72727272727273" text-anchor="end" font-size="11" fill="#68758a">P5</text><line x1="36" x2="804" y1="135.0909090909091" y2="135.0909090909091" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="28" y="139.0909090909091" text-anchor="end" font-size="11" fill="#68758a">P7</text><line x1="36" x2="804" y1="175.45454545454547" y2="175.45454545454547" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="28" y="179.45454545454547" text-anchor="end" font-size="11" fill="#68758a">P9</text><line x1="36" x2="804" y1="215.8181818181818" y2="215.8181818181818" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="28" y="219.8181818181818" text-anchor="end" font-size="11" fill="#68758a">P11</text><line x1="734.1818181818181" x2="734.1818181818181" y1="14" y2="236" stroke="#e2e8f0" stroke-dasharray="2 4"/><line x1="804" x2="804" y1="14" y2="236" stroke="#e2e8f0" stroke-dasharray="2 4"/><path d="M36,135.0909090909091 L105.81818181818181,14 L175.63636363636363,34.18181818181819 L245.45454545454547,74.54545454545455 L315.27272727272725,114.9090909090909 L385.09090909090907,236 L454.90909090909093,74.54545454545455 L524.7272727272727,94.72727272727273 L594.5454545454545,155.27272727272728 L664.3636363636364,114.9090909090909" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 5"/><defs><linearGradient id="fg820" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#F58220" stop-opacity="0.28"/><stop offset="1" stop-color="#F58220" stop-opacity="0"/></linearGradient></defs><path d="M36.0,54.4 L105.8,114.9 L175.6,14.0 L245.5,14.0 L315.3,74.5 L385.1,175.5 L454.9,74.5 L524.7,54.4 L594.5,94.7 L664.4,114.9 L664.3636363636364,236 L36,236 Z" fill="url(#fg820)"/><path d="M36.0,54.4 L105.8,114.9 L175.6,14.0 L245.5,14.0 L315.3,74.5 L385.1,175.5 L454.9,74.5 L524.7,54.4 L594.5,94.7 L664.4,114.9" fill="none" stroke="#F58220" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="36" cy="54.36363636363637" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="105.81818181818181" cy="114.9090909090909" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="175.63636363636363" cy="14" r="9" fill="#fff" stroke="#10b981" stroke-width="2.5"/><circle cx="175.63636363636363" cy="14" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="245.45454545454547" cy="14" r="9" fill="#fff" stroke="#10b981" stroke-width="2.5"/><circle cx="245.45454545454547" cy="14" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="315.27272727272725" cy="74.54545454545455" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="385.09090909090907" cy="175.45454545454547" r="9" fill="#fff" stroke="#ef4444" stroke-width="2.5"/><circle cx="385.09090909090907" cy="175.45454545454547" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="454.90909090909093" cy="74.54545454545455" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="524.7272727272727" cy="54.36363636363637" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="594.5454545454545" cy="94.72727272727273" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="664.3636363636364" cy="114.9090909090909" r="5" fill="#F58220" stroke="#fff" stroke-width="2"/></svg><div class="relative mt-2 h-16"><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:4.390243902439024%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums text-white" style="background:#C2410C">P3</span>
+      <img src="/flags/w40/au.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R1</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:12.904656319290464%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P6</span>
+      <img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R2</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:21.419068736141906%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums text-ink" style="background:#EAB308">P1</span>
+      <img src="/flags/w40/cz.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R3</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:29.93348115299335%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums text-ink" style="background:#EAB308">P1</span>
+      <img src="/flags/w40/bh.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R4</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:38.44789356984479%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P4</span>
+      <img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R5</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:46.96230598669623%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P9</span>
+      <img src="/flags/w40/sa.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R6</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:55.47671840354768%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P4</span>
+      <img src="/flags/w40/de.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R7</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:63.991130820399114%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums text-white" style="background:#C2410C">P3</span>
+      <img src="/flags/w40/be.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R8</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:72.50554323725055%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P5</span>
+      <img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R9</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:81.01995565410199%">
+      <span class="inline-flex h-7 min-w-[2rem] text-xs items-center justify-center rounded-md px-1.5 font-display font-black tabular-nums bg-surface2 text-dark ring-1 ring-border" >P6</span>
+      <img src="/flags/w40/tr.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R10</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:89.53436807095343%">
+      <span class="grid h-7 w-8 place-items-center rounded-md border border-dashed border-border font-mono text-[10px] text-faint">–</span>
+      <img src="/flags/w40/us.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R11</span>
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:98.04878048780488%">
+      <span class="grid h-7 w-8 place-items-center rounded-md border border-dashed border-border font-mono text-[10px] text-faint">–</span>
+      <img src="/flags/w40/br.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      <span class="font-mono text-[9px] text-faint">R12</span>
+    </div></div></div>
+      <div class="sm:hidden"><svg viewBox="0 0 350 200" width="350" height="200" class="block max-w-full h-auto" font-family="JetBrains Mono, monospace"><line x1="30" x2="334" y1="14" y2="14" stroke="#e2e8f0" stroke-dasharray=""/><text x="22" y="18" text-anchor="end" font-size="11" fill="#68758a">P1</text><line x1="30" x2="334" y1="60.90909090909091" y2="60.90909090909091" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="22" y="64.9090909090909" text-anchor="end" font-size="11" fill="#68758a">P4</text><line x1="30" x2="334" y1="107.81818181818181" y2="107.81818181818181" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="22" y="111.81818181818181" text-anchor="end" font-size="11" fill="#68758a">P7</text><line x1="30" x2="334" y1="154.72727272727272" y2="154.72727272727272" stroke="#e2e8f0" stroke-dasharray="3 4"/><text x="22" y="158.72727272727272" text-anchor="end" font-size="11" fill="#68758a">P10</text><line x1="306.3636363636364" x2="306.3636363636364" y1="14" y2="186" stroke="#e2e8f0" stroke-dasharray="2 4"/><line x1="334" x2="334" y1="14" y2="186" stroke="#e2e8f0" stroke-dasharray="2 4"/><path d="M30,107.81818181818181 L57.63636363636364,14 L85.27272727272728,29.636363636363637 L112.9090909090909,60.90909090909091 L140.54545454545456,92.18181818181819 L168.1818181818182,186 L195.8181818181818,60.90909090909091 L223.45454545454547,76.54545454545455 L251.0909090909091,123.45454545454545 L278.72727272727275,92.18181818181819" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 5"/><defs><linearGradient id="fg350" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#F58220" stop-opacity="0.28"/><stop offset="1" stop-color="#F58220" stop-opacity="0"/></linearGradient></defs><path d="M30.0,45.3 L57.6,92.2 L85.3,14.0 L112.9,14.0 L140.5,60.9 L168.2,139.1 L195.8,60.9 L223.5,45.3 L251.1,76.5 L278.7,92.2 L278.72727272727275,186 L30,186 Z" fill="url(#fg350)"/><path d="M30.0,45.3 L57.6,92.2 L85.3,14.0 L112.9,14.0 L140.5,60.9 L168.2,139.1 L195.8,60.9 L223.5,45.3 L251.1,76.5 L278.7,92.2" fill="none" stroke="#F58220" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><circle cx="30" cy="45.27272727272727" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="57.63636363636364" cy="92.18181818181819" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="85.27272727272728" cy="14" r="8" fill="#fff" stroke="#10b981" stroke-width="2.5"/><circle cx="85.27272727272728" cy="14" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="112.9090909090909" cy="14" r="8" fill="#fff" stroke="#10b981" stroke-width="2.5"/><circle cx="112.9090909090909" cy="14" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="140.54545454545456" cy="60.90909090909091" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="168.1818181818182" cy="139.0909090909091" r="8" fill="#fff" stroke="#ef4444" stroke-width="2.5"/><circle cx="168.1818181818182" cy="139.0909090909091" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="195.8181818181818" cy="60.90909090909091" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="223.45454545454547" cy="45.27272727272727" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="251.0909090909091" cy="76.54545454545455" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/><circle cx="278.72727272727275" cy="92.18181818181819" r="4" fill="#F58220" stroke="#fff" stroke-width="2"/></svg><div class="relative mt-2 h-9"><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:8.571428571428571%">
+      <span class="font-display text-[11px] font-black " style="color:#C2410C">3</span>
+      <img src="/flags/w40/au.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:16.467532467532468%">
+      <span class="font-display text-[11px] font-black text-medium" style="">6</span>
+      <img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:24.363636363636367%">
+      <span class="font-display text-[11px] font-black " style="color:#EAB308">1</span>
+      <img src="/flags/w40/cz.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:32.25974025974026%">
+      <span class="font-display text-[11px] font-black " style="color:#EAB308">1</span>
+      <img src="/flags/w40/bh.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:40.155844155844164%">
+      <span class="font-display text-[11px] font-black text-medium" style="">4</span>
+      <img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:48.05194805194805%">
+      <span class="font-display text-[11px] font-black text-medium" style="">9</span>
+      <img src="/flags/w40/sa.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:55.94805194805195%">
+      <span class="font-display text-[11px] font-black text-medium" style="">4</span>
+      <img src="/flags/w40/de.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:63.84415584415585%">
+      <span class="font-display text-[11px] font-black " style="color:#C2410C">3</span>
+      <img src="/flags/w40/be.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:71.74025974025973%">
+      <span class="font-display text-[11px] font-black text-medium" style="">5</span>
+      <img src="/flags/w40/it.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:79.63636363636364%">
+      <span class="font-display text-[11px] font-black text-medium" style="">6</span>
+      <img src="/flags/w40/tr.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:87.53246753246754%">
+      <span class="font-display text-[11px] font-black text-faint">–</span>
+      <img src="/flags/w40/us.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div><div class="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1" style="left:95.42857142857143%">
+      <span class="font-display text-[11px] font-black text-faint">–</span>
+      <img src="/flags/w40/br.png" class="h-2.5 w-3.5 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt="">
+      
+    </div></div></div>
+    </div>
+    <div class="grid grid-cols-3 gap-px border-t border-border bg-border lg:grid-cols-1 lg:border-l lg:border-t-0">
+      <div class="bg-card px-4 py-3 lg:px-5 lg:py-5"><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Best</div><div class="mt-1 font-display text-2xl font-black text-ok">P1</div><div class="truncate text-[11px] text-light">Most · Bahrain</div></div><div class="bg-card px-4 py-3 lg:px-5 lg:py-5"><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Worst</div><div class="mt-1 font-display text-2xl font-black text-bad">P9</div><div class="truncate text-[11px] text-light">Jeddah</div></div><div class="bg-card px-4 py-3 lg:px-5 lg:py-5"><div class="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Trend</div><div class="mt-1 font-display text-2xl font-black text-warn">↘ P5.0</div><div class="truncate text-[11px] text-light">last 3 avg</div></div>
+    </div>
+  </div>
+</div>
+</main></body></html>

@@ -1,0 +1,67 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-ink text-white shadow-lift">
+  <div class="relative grid grid-cols-2">
+    <div class="relative overflow-hidden px-5 pb-5 pt-6 sm:px-8" style="background:linear-gradient(135deg,#F5822066,transparent 70%)">
+      <div class="font-mono text-[10px] font-bold uppercase tracking-[.2em] text-white/60">P1 · 220 pts</div>
+      <div class="mt-1 font-display text-[26px] font-black uppercase italic leading-none sm:text-6xl">Siggsta</div>
+      <div class="mt-2 flex items-center gap-2"><img src="/flags/w40/gb.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""><span class="font-mono text-[10px] uppercase text-white/60">McLaren</span></div>
+    </div>
+    <div class="relative overflow-hidden px-5 pb-5 pt-6 text-right sm:px-8" style="background:linear-gradient(225deg,#6366f166,transparent 70%)">
+      <div class="font-mono text-[10px] font-bold uppercase tracking-[.2em] text-white/60">P8 · 126 pts</div>
+      <div class="mt-1 font-display text-[26px] font-black uppercase italic leading-none sm:text-6xl">JoMilan</div>
+      <div class="mt-2 flex items-center justify-end gap-2"><span class="font-mono text-[10px] uppercase text-white/60">McLaren</span><img src="/flags/w40/it.png" class="h-3 w-4 inline-block rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(15,23,42,.12)]" alt=""></div>
+    </div>
+    <span class="absolute left-1/2 top-1/2 z-10 hidden h-11 w-11 sm:grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-ink bg-white font-display text-sm font-black italic text-ink">VS</span>
+  </div>
+  <div class="flex flex-wrap items-center justify-between gap-2 border-y border-white/10 px-5 py-2.5 sm:px-8"><div class="inline-flex rounded-xl bg-white/5 p-1 font-mono text-[10px] font-bold uppercase tracking-wider"><span class="rounded-lg px-2.5 py-1.5 bg-white text-ink">Race</span><span class="rounded-lg px-2.5 py-1.5 text-white/45">Qualifying</span><span class="rounded-lg px-2.5 py-1.5 text-white/45">Sprint</span></div><span class="inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider text-white/60">Change rival <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></span></div>
+  <div class="divide-y divide-white/[.07]">
+    <div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">3</span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Finished ahead</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">3</span></span>
+      </div><div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:#F58220">2</span><span class="h-1.5 w-1.5 rounded-full" style="background:#F58220"></span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Wins</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">1</span></span>
+      </div><div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:#F58220">4</span><span class="h-1.5 w-1.5 rounded-full" style="background:#F58220"></span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Podiums</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">3</span></span>
+      </div><div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">P1</span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Best finish</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">P1</span></span>
+      </div><div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:#F58220">4.2</span><span class="h-1.5 w-1.5 rounded-full" style="background:#F58220"></span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Avg finish</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">5.5</span></span>
+      </div><div class="grid grid-cols-[1fr_auto_1fr] items-center px-5 py-3 sm:px-8 lg:px-24">
+        <span class="flex items-center gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:#F58220">220</span><span class="h-1.5 w-1.5 rounded-full" style="background:#F58220"></span></span>
+        <span class="text-center font-mono text-[10px] font-bold uppercase tracking-[.16em] text-white/55">Points</span>
+        <span class="flex items-center justify-end gap-2"><span class="font-display text-2xl font-black italic sm:text-3xl" style="color:rgba(255,255,255,.55)">126</span></span>
+      </div>
+  </div>
+  <div class="grid grid-cols-[4fr_2fr_.25fr] gap-1 px-5 pb-2 pt-2 sm:px-8"><div class="h-1.5 rounded-full" style="background:#F58220"></div><div class="h-1.5 rounded-full bg-white/15"></div><div class="h-1.5 rounded-full" style="background:#6366f1"></div></div>
+  <div class="flex justify-between px-5 pb-4 font-mono text-[10px] uppercase tracking-wider text-white/45 sm:px-8"><span>Siggsta 4</span><span>2 level</span><span>JoMilan 0</span></div>
+</div>
+</main></body></html>

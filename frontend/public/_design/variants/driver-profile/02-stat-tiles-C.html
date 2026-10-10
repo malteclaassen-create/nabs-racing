@@ -1,0 +1,100 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="overflow-hidden rounded-2xl bg-card shadow-card">
+  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+    <h2 class="font-display text-lg font-extrabold uppercase tracking-tight">Stats vs. the field</h2>
+    <div class="flex items-center gap-2">
+      <span class="hidden font-mono text-[10px] uppercase tracking-wider text-light sm:inline">compare</span>
+      <div class="inline-flex rounded-xl border border-border bg-card p-1 text-xs"><span class="rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider bg-primary text-ink">S7</span><span class="rounded-lg px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">All</span></div>
+      <span class="grid h-9 w-9 place-items-center rounded-xl border border-border text-light"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/></svg></span>
+    </div>
+  </div>
+  <div class="grid lg:grid-cols-2">
+    <div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 lg:border-r">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Wins</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:97%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">leader 3 · Takoda</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="color:#a16207">2</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">3rd of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 ">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21h20"/><path d="M9 21V9h6v12"/><path d="M3 21v-7h6"/><path d="M15 13h6v8"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Podiums</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:96%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">leader 6 · Mtimmis</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">4</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">3rd of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 lg:border-r">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Best Finish</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:94%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">9 drivers have a win</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">P1</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">=1st of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 ">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Avg Finish</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:100%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">field avg P9.8</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">P4.2</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">1st of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 lg:border-r">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Poles</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:91%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">leader 3 · 13bot</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">1</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">4th of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 ">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Places Gained</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:99%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">most +31 · Pizd</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="color:#16a34a">+25</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">2nd of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 lg:border-r">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Sprint Wins</span><span class="rounded bg-ink px-1 py-px font-mono text-[9px] font-bold uppercase text-white">Sprint</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:98%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">leader 2 · Takoda</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">1</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">2nd of 73</div></div>
+    </div><div class="grid grid-cols-[1.75rem_1fr_auto] items-center gap-x-3 border-b border-border px-4 py-3 sm:px-5 ">
+      <span class="grid h-7 w-7 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21h20"/><path d="M9 21V9h6v12"/><path d="M3 21v-7h6"/><path d="M15 13h6v8"/></svg></span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="font-display text-sm font-bold uppercase tracking-tight">Sprint Podiums</span><span class="rounded bg-ink px-1 py-px font-mono text-[9px] font-bold uppercase text-white">Sprint</span></div>
+        <div class="relative mt-1.5 h-1.5 rounded-full bg-surface2"><div class="absolute inset-y-0 left-0 rounded-full" style="width:98%;background:#F58220"></div><span class="absolute -top-[3px] h-3 w-0.5 rounded bg-faint" style="left:50%"></span></div>
+        <div class="mt-1 truncate font-mono text-[10px] uppercase tracking-wider text-faint">leader 3 · Takoda</div>
+      </div>
+      <div class="text-right"><div class="font-display text-2xl font-black leading-none" style="">2</div><div class="mt-1 font-mono text-[10px] font-bold uppercase text-eyebrow">2nd of 73</div></div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 font-mono text-[10px] uppercase tracking-wider text-light sm:px-5"><span>Bar = percentile in the field · tick = field median</span><span class="text-eyebrow">+ add tiles</span></div>
+</div>
+</main></body></html>

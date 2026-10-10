@@ -1,0 +1,119 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1000px] mx-auto px-4 sm:px-8">
+
+<section class="overflow-hidden rounded-2xl bg-ink shadow-lift">
+  <div class="flex items-center gap-3 bg-gradient-to-r from-red-600 to-red-600/0 px-4 py-2.5 sm:px-5">
+    <span class="font-display text-sm font-black uppercase italic tracking-wider text-white">Lap 14<span class="text-white/60">/24</span></span>
+    <span class="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-white/80">Driving now</span>
+    <span class="ml-auto flex items-center gap-3 font-mono text-[9px] uppercase tracking-wider text-white/50"><span class="flex items-center gap-1"><span class="h-2 w-3 rounded-sm bg-[#a855f7]"></span>Fastest</span><span class="flex items-center gap-1"><span class="h-2 w-3 rounded-sm bg-[#10b981]"></span>PB</span><span class="hidden items-center gap-1 sm:flex"><span class="h-2 w-3 rounded-sm bg-[#f59e0b]"></span>Slower</span></span>
+  </div>
+  <div class="hidden grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] gap-x-4 border-b border-white/10 px-5 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-white/40 sm:grid"><span>P</span><span></span><span>Driver</span><span class="text-right">Int.</span><span>S1 · S2 · S3 (live)</span><span class="text-right">Δ PB</span><span class="text-right">Tyre</span></div>
+  
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 ">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">1</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#F58220"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">SIG</span><span class="hidden truncate text-xs text-white/40 sm:inline">Siggsta</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white/40 text-[10px] uppercase tracking-wider">Leader</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#a855f7"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:70%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-emerald-300">−0.120</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">5</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 bg-white/[0.04]">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">2</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#E10600"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">TAK</span><span class="hidden truncate text-xs text-white/40 sm:inline">Takoda</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+2.418</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#f59e0b"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:62%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-red-300">+0.060</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">4</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 ">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">3</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#0067C0"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">MAL</span><span class="hidden truncate text-xs text-white/40 sm:inline">MalteGoat</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+2.483</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#f59e0b"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:53%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-red-300">+0.140</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">14</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 bg-white/[0.04]">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">4</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#1AA39B"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">MTI</span><span class="hidden truncate text-xs text-white/40 sm:inline">Mtimmis</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+2.429</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#10b981"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:45%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-emerald-300">−0.040</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">6</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 ">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">5</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#E10600"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">STE</span><span class="hidden truncate text-xs text-white/40 sm:inline">Steve</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+1.782</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#f59e0b"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:38%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-red-300">+0.090</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">5</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 bg-white/[0.04]">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">6</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#F58220"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">JOM</span><span class="hidden truncate text-xs text-white/40 sm:inline">JoMilan</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+3.662</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#10b981"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:26%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-emerald-300">−0.120</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">3</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 ">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">7</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#0067C0"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">PIZ</span><span class="hidden truncate text-xs text-white/40 sm:inline">Pizd</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+2.316</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="h-2 flex-1 rounded-sm" style="background:#f59e0b"></span><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:18%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-red-300">+0.060</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">14</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 bg-white/[0.04]">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">9</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#A33EA1"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">RAS</span><span class="hidden truncate text-xs text-white/40 sm:inline">Rashford</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+2.454</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:97%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-white/30">—</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">5</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 ">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">10</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#A33EA1"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">RAY</span><span class="hidden truncate text-xs text-white/40 sm:inline">Rayman</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+3.382</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:85%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-white/30">—</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">14</span></span>
+</div>
+<div class="grid grid-cols-[28px_6px_minmax(0,1fr)_74px] items-center gap-x-2.5 border-b border-white/5 px-3 py-2 sm:grid-cols-[32px_6px_150px_90px_minmax(0,1fr)_80px_56px] sm:gap-x-4 sm:px-5 bg-white/[0.04]">
+  <span class="font-display text-lg font-black italic tabular-nums text-white">11</span>
+  <span class="h-6 w-1.5 rounded-sm" style="background:#5A4FC4"></span>
+  <span class="flex min-w-0 items-baseline gap-2"><span class="font-display text-base font-extrabold uppercase tracking-wide text-white">DRA</span><span class="hidden truncate text-xs text-white/40 sm:inline">DRAS</span></span>
+  <span class="text-right font-mono text-sm tabular-nums text-white">+3.522</span>
+  <div class="col-span-4 mt-1.5 flex gap-1 sm:col-span-1 sm:mt-0"><span class="relative h-2 flex-1 overflow-hidden rounded-sm bg-white/10"><span class="absolute inset-y-0 left-0 bg-white/70" style="width:73%"></span></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span><span class="h-2 flex-1 rounded-sm bg-white/10"></span></div>
+  <span class="hidden text-right font-mono text-sm font-bold tabular-nums sm:block text-white/30">—</span>
+  <span class="hidden items-center justify-end gap-1.5 sm:flex"><span title="Medium" class="inline-grid shrink-0 place-items-center rounded-full font-mono font-black" style="width:18px;height:18px;background:#eceff3;color:#111827;box-shadow:0 0 0 2px rgba(255,255,255,.25)"><svg viewBox="0 0 100 100" style="width:100%;height:100%"><text x="50" y="50" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="62" font-weight="900" font-family="JetBrains Mono, monospace">M</text></svg></span><span class="font-mono text-[11px] text-white/50">6</span></span>
+</div>
+  <div class="flex items-center justify-between px-5 py-2.5 font-mono text-[10px] uppercase tracking-wider text-white/40"><span>+7 cars</span><span class="text-primary">Expand tower ↓</span></div>
+</section>
+</main></body></html>

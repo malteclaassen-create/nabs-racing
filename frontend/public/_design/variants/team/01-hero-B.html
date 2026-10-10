@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>*::-webkit-scrollbar{display:none}</style></head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<section class="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lift">
+  <img src="/cars/s8.jpg" class="absolute inset-0 h-full w-full object-cover opacity-50" alt="">
+  <div class="absolute inset-0" style="background:linear-gradient(100deg,#0f172a 30%,rgba(15,23,42,.6) 60%,#F5822055)"></div>
+  <div class="absolute bottom-0 left-0 right-0 h-1.5" style="background:linear-gradient(90deg,#F58220,#F5822000)"></div>
+  <div class="pointer-events-none absolute -bottom-6 right-4 select-none font-display text-[180px] font-black uppercase leading-none tracking-tighter text-transparent opacity-30 sm:text-[260px]" style="-webkit-text-stroke:2px #F58220">P2</div>
+  <div class="relative flex min-h-[340px] flex-col justify-end p-5 sm:min-h-[400px] sm:p-10">
+    <div class="flex items-center gap-3"><span class="flex h-14 w-14 items-center justify-center rounded-xl bg-white/95 sm:h-16 sm:w-16"><img src="/teams/mclaren.png" alt="" class="shrink-0 object-contain " style="width:44px;height:44px"></span>
+      <div class="font-mono text-[11px] font-bold uppercase tracking-[.2em]" style="color:#F58220">Tier 1 constructor<br><span class="text-white/60">Season 7</span></div></div>
+    <h1 class="mt-4 font-display text-6xl font-black uppercase leading-[.85] tracking-tighter sm:text-[120px]">McLaren</h1>
+    <div class="mt-6 flex flex-wrap items-end gap-x-8 gap-y-4">
+      <div><div class="font-mono text-[10px] font-bold uppercase tracking-widest text-white/50">Championship</div><div class="font-display text-4xl font-black">P2 <span class="text-lg text-white/40">of 5</span></div></div>
+      <div><div class="font-mono text-[10px] font-bold uppercase tracking-widest text-white/50">Points</div><div class="font-display text-4xl font-black" style="color:#F58220">399</div></div>
+      <div><div class="font-mono text-[10px] font-bold uppercase tracking-widest text-white/50">To leader</div><div class="font-display text-4xl font-black">−10</div></div>
+      <div class="flex -space-x-2 sm:ml-auto"><span class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white ring-2 ring-ink" style="width:40px;height:40px;background:#F58220;font-size:16px">S</span><span class="inline-flex shrink-0 items-center justify-center rounded-full font-display font-black text-white ring-2 ring-ink" style="width:40px;height:40px;background:#c2410c;font-size:16px">J</span><span class="ml-4 self-center pl-4 text-sm text-white/70">Siggsta · JoMilan</span></div>
+    </div>
+  </div>
+</section>
+</main></body></html>

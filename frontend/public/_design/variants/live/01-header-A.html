@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+</head><body>
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<header class="flex flex-col gap-5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
+  <div class="min-w-0">
+    <div class="flex items-center gap-3">
+      <span class="eyebrow">Real-time</span>
+      <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-ok"><span class="relative flex h-1.5 w-1.5 shrink-0"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60"></span><span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span></span> Live now</span>
+    </div>
+    <h1 class="mt-1 font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-5xl">Live Timing</h1>
+    <p class="mt-2 text-sm text-medium">Round 11 · <strong class="text-dark">Imola</strong> · Race in progress on Server 1</p>
+  </div>
+  <div class="flex flex-col gap-2 lg:items-end">
+    <div class="flex items-center justify-between gap-3 lg:justify-end">
+      <span class="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">Race server</span>
+      <button class="hidden items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:text-dark sm:inline-flex"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8"/></svg> TV mode</button>
+    </div>
+    <div class="flex gap-2">
+      <button class="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition sm:w-[250px] sm:flex-none border-primary bg-primary/15 shadow-[inset_0_0_0_1px_#f4afc6]">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ink text-white"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/></svg></span>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-1.5 text-[13px] font-bold text-dark">Server 1 <span class="relative flex h-2 w-2 shrink-0"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span></span></span>
+          <span class="block truncate font-mono text-[10px] uppercase tracking-wider text-light">Imola · Race</span>
+        </span>
+        <span class="hidden shrink-0 rounded-md bg-surface2 px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-medium sm:inline">19/20</span>
+      </button>
+      <button class="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition sm:w-[250px] sm:flex-none border-border bg-card hover:bg-surface2">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface2 text-light"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01"/><path d="M6 17h.01"/></svg></span>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-1.5 text-[13px] font-bold text-dark">Server 2 <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span></span>
+          <span class="block truncate font-mono text-[10px] uppercase tracking-wider text-light">Istanbul · Practice</span>
+        </span>
+        <span class="hidden shrink-0 rounded-md bg-surface2 px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-medium sm:inline">3/4</span>
+      </button>
+    </div>
+  </div>
+</header>
+<aside class="mt-5 flex items-center gap-3 rounded-full border border-primary/50 bg-card py-1.5 pl-1.5 pr-2 shadow-card sm:w-fit">
+  <span class="shrink-0 rounded-full bg-primary px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-ink">New</span>
+  <p class="min-w-0 flex-1 truncate text-[13px] text-medium"><strong class="text-dark">Satellite track map</strong><span class="hidden sm:inline"> — pick Satellite on the map, then click a car to follow it</span></p>
+  <a class="shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">Show me</a>
+  <button class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-light hover:bg-surface2"><svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+</aside>
+</main></body></html>

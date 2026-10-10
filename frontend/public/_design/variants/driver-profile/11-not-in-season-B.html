@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  colors: { bg:"#e7ecf3", card:"#ffffff", surface2:"#f1f5f9", border:"#dbe2ec", dark:"#0f172a", medium:"#334155", light:"#586676", faint:"#68758a",
+    primary:{DEFAULT:"#f4afc6", dark:"#ee8bac"}, brand:"#f4afc6", onbrand:"#0f172a", ink:"#0f172a", eyebrow:"#be185d", accent:"#db2777",
+    gold:"#EAB308", silver:"#94A3B8", bronze:"#C2410C", link:"#374594", ok:"#046c4e", bad:"#b91c1c", warn:"#92400e", fl:"#701aaf", discord:"#5865F2" },
+  fontFamily: { sans:["Inter","system-ui","sans-serif"], display:["Archivo","Inter","sans-serif"], mono:["JetBrains Mono","ui-monospace","monospace"] },
+  boxShadow: { card:"0 1px 2px rgba(15,23,42,.06), 0 10px 26px -14px rgba(15,23,42,.28)", lift:"0 2px 6px rgba(15,23,42,.08), 0 18px 40px -16px rgba(15,23,42,.34)" }
+}}}
+</script>
+<style>body{background:#e7ecf3;color:#0f172a;font-family:Inter,system-ui,sans-serif;margin:0;-webkit-font-smoothing:antialiased}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#be185d;font-weight:600}
+#mock{padding-top:32px;padding-bottom:32px}</style>
+<style>
+.num{font-variant-numeric:tabular-nums}
+.no-sb::-webkit-scrollbar{display:none}.no-sb{scrollbar-width:none}
+</style></head><body class="">
+<main id="mock" class="max-w-[1200px] mx-auto px-4 sm:px-8">
+
+<div class="relative overflow-hidden rounded-2xl bg-ink text-white shadow-lift">
+  <img src="/heroes/s3.jpg" class="absolute inset-0 h-full w-full object-cover opacity-25 grayscale" alt="">
+  <div class="absolute inset-0 bg-gradient-to-t from-ink via-ink/80 to-ink/40"></div>
+  <div class="relative px-5 py-10 sm:px-10 sm:py-14">
+    <span class="rounded bg-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[.2em] text-white/70">Season 3 · F1 2003</span>
+    <h1 class="mt-4 font-display text-4xl font-black uppercase italic leading-none sm:text-6xl">Not on the grid</h1>
+    <p class="mt-3 max-w-lg text-white/70">Siggsta joined the league in Season 4. Pick one of the seasons below — or see who raced in Season 3.</p>
+    <div class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <a class="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur"><div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold uppercase text-white/50">S4</span><span class="h-3 w-1 rounded-full" style="background:#0B6E4F"></span></div><div class="mt-1 font-display text-2xl font-black italic">P17</div><div class="truncate text-xs text-white/60">Jaguar · 41 pts</div></a><a class="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur"><div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold uppercase text-white/50">S5</span><span class="h-3 w-1 rounded-full" style="background:#FFD100"></span></div><div class="mt-1 font-display text-2xl font-black italic">P9</div><div class="truncate text-xs text-white/60">Renault · 132 pts</div></a><a class="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur"><div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold uppercase text-white/50">S6</span><span class="h-3 w-1 rounded-full" style="background:#FFD100"></span></div><div class="mt-1 font-display text-2xl font-black italic">P4</div><div class="truncate text-xs text-white/60">Renault · 241 pts</div></a><a class="rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur"><div class="flex items-center justify-between"><span class="font-mono text-[10px] font-bold uppercase text-white/50">S7</span><span class="h-3 w-1 rounded-full" style="background:#F58220"></span></div><div class="mt-1 font-display text-2xl font-black italic">P1</div><div class="truncate text-xs text-white/60">McLaren · 220 pts</div></a>
+    </div>
+    <a class="mt-5 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-primary">Season 3 drivers <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+  </div>
+</div>
+</main></body></html>
