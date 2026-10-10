@@ -35,6 +35,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
+import DesignSlot from "../design/DesignSlot.jsx";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 import {
   makeDriverMatcher,
@@ -3798,6 +3799,7 @@ export default function Live() {
           the board is only there while a session is running, which is one
           evening a week, and the tour has to have something to point at on the
           six days it isn't. */}
+      <DesignSlot id="live/01-header">
       <div data-tour="live-header">
       <PageHeader
         eyebrow="Real-time"
@@ -3875,6 +3877,8 @@ export default function Live() {
           <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-brand/20 hover:text-dark">×</button>
         </aside>
       )}
+      </DesignSlot>
+      <DesignSlot id="live/10-offline" className="mb-8">
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts
         // a moment — it used to be the ONLY state, which meant the page spun
@@ -3902,9 +3906,12 @@ export default function Live() {
             />
           )}
         </div>
-      ) : (
+      ) : null}
+      </DesignSlot>
+      {(heardFromRelay || board) && !offAir && (
         <div className="space-y-8">
           {/* ===== Session bar across the top ===== */}
+          <DesignSlot id="live/02-session">
           <SessionHeader
             session={session}
             receivedAt={receivedAt}
@@ -3915,22 +3922,19 @@ export default function Live() {
             // server's week and not the other one's.
             serverKey={board?.serverKey || serverKey}
           />
+          </DesignSlot>
 
-          {quiet ? (
-            // Empty server: the best-times board takes the "right now" slot,
-            // everything else (driving now, map, pit lane, strategy) sits out —
-            // and with the map goes the stream, which lives in that card as its
-            // second view. A lone player floating over the best-times table was
-            // the one thing on this page with nothing beside it. The hotlap,
-            // which also lives in that card, comes back as a card of its own
-            // under the times: an empty server is exactly when somebody is
-            // learning the track.
-            <>
-              {bestTimes}
-              <LiveHotlap track={liveTrack} raceId={null} subtitle={`Learn ${liveTrack}`} className="mx-auto w-full max-w-4xl" />
-            </>
-          ) : (
-          <>
+          {/* Empty server (quiet): the best-times board takes the "right now"
+              slot, everything else (driving now, map, pit lane, strategy) sits
+              out — and with the map goes the stream, which lives in that card as
+              its second view. A lone player floating over the best-times table
+              was the one thing on this page with nothing beside it. The hotlap,
+              which also lives in that card, comes back as a card of its own
+              under the times: an empty server is exactly when somebody is
+              learning the track.
+              (Design preview: the containers below collapse to `contents` while
+              quiet, so the slots can still show a picked variant without
+              changing the quiet layout.) */}
           {/* ===== Driving now (left, wider) beside the track map + pit lane
                  (right, narrower): one "right now" block. The map column is
                  first in the DOM so it leads on phones; explicit column starts
@@ -3943,8 +3947,10 @@ export default function Live() {
               Only from xl, though — the timing table beside it needs about
               710px to lay its columns out, and at lg two fifths would put it
               into a sideways scroll it does not have today. */}
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch xl:grid-cols-5">
-            <div className="flex flex-col gap-4 sm:gap-6 lg:col-span-1 lg:col-start-3 lg:row-start-1 xl:col-span-2 xl:col-start-4">
+          <div className={quiet ? "contents" : "grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-stretch xl:grid-cols-5"}>
+            <div className={quiet ? "contents" : "flex flex-col gap-4 sm:gap-6 lg:col-span-1 lg:col-start-3 lg:row-start-1 xl:col-span-2 xl:col-start-4"}>
+              <DesignSlot id="live/03-trackmap" className={quiet ? "mt-8" : ""}>
+              {!quiet && (
               <TrackMapSection
                 session={session}
                 entries={entries}
@@ -3959,6 +3965,8 @@ export default function Live() {
                 hotlap={liveHotlap.videos}
                 hotlapTrack={liveTrack}
               />
+              )}
+              </DesignSlot>
               {/* Phones skip the pit-lane card: the same drivers already show
                   as dimmed dots on the map above and carry a PIT badge in the
                   timing table, so it was a third copy of the same fact for a
@@ -3966,11 +3974,15 @@ export default function Live() {
               {/* Practice and qualifying: the sector holders, between the map
                   and the pit lane. In a race the pit lane is the story and the
                   column is full without them. */}
-              {session.type !== "Race" && (
+              <DesignSlot id="live/05-side-panels" className={quiet ? "mt-8" : ""}>
+              {!quiet && session.type !== "Race" && (
                 <BestSectorsSection entries={entries} match={match} className="hidden sm:flex" />
               )}
-              <PitLaneSection entries={entries} match={match} className="hidden flex-1 sm:flex" />
+              {!quiet && <PitLaneSection entries={entries} match={match} className="hidden flex-1 sm:flex" />}
+              </DesignSlot>
             </div>
+            <DesignSlot id="live/04-driving-now" className={quiet ? "mt-8" : "lg:col-span-2 lg:col-start-1 lg:row-start-1 xl:col-span-3"}>
+            {!quiet && (
             <DrivingNowSection
               // In a race, drivers who left the server (post-race exodus) stay
               // listed in their final slot, dimmed — the result holds.
@@ -3988,30 +4000,48 @@ export default function Live() {
               // that scales to whatever it is given.
               className="lg:col-span-2 lg:col-start-1 lg:row-start-1 xl:col-span-3"
             />
+            )}
+            </DesignSlot>
           </div>
 
+          <DesignSlot id="live/06-timing-table">
           {/* ===== Timing / Strategy / Standings switch ===== */}
+          {!quiet && (
           <div className="reveal flex items-center justify-between gap-4">
             <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
               Session view
             </span>
             <ViewSwitch view={view} setView={setView} hasStandings={!!champ?.active} />
           </div>
+          )}
 
-          <div key={view} className={viewSwap}>
-          {view === "standings" && champ?.active ? (
-            <ChampionshipProjection data={champ} />
-          ) : view === "strategy" ? (
+          {quiet ? bestTimes : !(view === "standings" && champ?.active) && view !== "strategy" && (
+            <div key={view} className={viewSwap}>{bestTimes}</div>
+          )}
+          </DesignSlot>
+          <DesignSlot id="live/07-strategy">
+          {!quiet && view === "strategy" && (
+            <div key={view} className={viewSwap}>
             <section className="reveal space-y-4">
               <SectionHeading eyebrow="Tyres" title="Strategy" />
               <TyreStrategy entries={entries} matchFn={match} raceLaps={session.raceLaps} />
               <CompoundLegend entries={entries} />
             </section>
-          ) : (
-            bestTimes
+            </div>
           )}
-          </div>
-          </>
+          </DesignSlot>
+          <DesignSlot id="live/08-projection">
+          {!quiet && view === "standings" && champ?.active && (
+            <div key={view} className={viewSwap}>
+            <ChampionshipProjection data={champ} />
+            </div>
+          )}
+          </DesignSlot>
+          {/* Race control lives in TV mode only (stewards); this is where a
+              design variant of it previews on the normal page. */}
+          <DesignSlot id="live/09-race-control" insert />
+          {quiet && (
+            <LiveHotlap track={liveTrack} raceId={null} subtitle={`Learn ${liveTrack}`} className="mx-auto w-full max-w-4xl" />
           )}
 
           {/* A quiet session and a broken connection both mean "these numbers
