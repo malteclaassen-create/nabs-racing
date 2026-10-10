@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { TierBadge, Rank, PosDelta, CountUp, DriverAvatar } from "./ui.jsx";
 import { StandingsNotes, customTableOf, manualOfRow } from "./StandingsTable.jsx";
@@ -347,6 +347,48 @@ export default function DriverStandingsBoard({
     if (el && el.scrollLeft > 0) el.scrollTo({ left: 0, behavior: motionOff() ? "auto" : "smooth" });
   }, [mode, scrollRef]);
 
+  // A different set of rows (tier, search, filters) keeps the board standing:
+  // rows that stay glide from where they were to their new line, rows that are
+  // new deal in through the cascade like on first load, and rows that left are
+  // simply gone. Rebuilding the board for this flashed every row on screen,
+  // even when the visible part of the table did not change at all.
+  const lastTops = useRef(null);
+  const boxRef = useRef(null);
+  // The page's own ref is a callback (the replay starts from it); this one is
+  // just for measuring. Both get the node.
+  const setRowsBox = (el) => {
+    boxRef.current = el;
+    rowsRef?.(el);
+  };
+  const idsKey = rows.map((d) => d.driverId).join(",");
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const now = new Map();
+    for (const el of box.children) if (el.dataset.driverId) now.set(el.dataset.driverId, el.offsetTop);
+    const before = lastTops.current;
+    lastTops.current = now;
+    if (!before || motionOff()) return;
+    const moved = [];
+    for (const el of box.children) {
+      const was = before.get(el.dataset.driverId);
+      const dy = was == null ? 0 : was - now.get(el.dataset.driverId);
+      if (!dy) continue;
+      el.style.transition = "none";
+      el.style.translate = `0 ${dy}px`;
+      moved.push(el);
+    }
+    if (!moved.length) return;
+    void box.offsetHeight; // commit the old spots before letting go
+    for (const el of moved) {
+      el.style.transition = "translate var(--t-base) var(--e-out)";
+      el.style.translate = "";
+      el.addEventListener("transitionend", () => { el.style.transition = ""; }, { once: true });
+    }
+    // Keyed on the row set only: the List / By round morph changes heights
+    // on its own and must not be read as rows moving.
+  }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const leftShadow = edge.start ? "shadow-[10px_0_12px_-10px_rgba(0,0,0,0.45)]" : "";
   const rightShadow = edge.end ? "shadow-[-10px_0_12px_-10px_rgba(0,0,0,0.45)]" : "";
   const headCell = "flex items-center";
@@ -431,7 +473,7 @@ export default function DriverStandingsBoard({
           {/* cascade: rows rise in one after another, top to bottom, the same
               entrance as a race result on the Races page. --i drives the
               stagger; the replay re-deals the movers by the slot they start in. */}
-          <div ref={rowsRef} role={grid ? "rowgroup" : undefined} className="sboard-rows cascade divide-y divide-border">
+          <div ref={setRowsBox} role={grid ? "rowgroup" : undefined} className="sboard-rows cascade divide-y divide-border">
             {rows.map((d, i) => (
               <BoardRow
                 key={d.driverId}

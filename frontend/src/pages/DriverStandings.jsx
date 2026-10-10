@@ -726,7 +726,9 @@ export default function DriverStandings() {
           jumping by the difference in one frame. List and By round share one
           key: the board stays mounted and morphs between the two. */}
       <SmoothHeight>
-      <div key={`${activeView === "cards" ? "cards" : "board"}:${activeTier}`} className={swap}>
+      {/* The board stays mounted across tiers too: it moves its own rows (see
+          DriverStandingsBoard). Only the Cards view is swapped as a whole. */}
+      <div key={activeView === "cards" ? `cards:${activeTier}` : "board"} className={activeView === "cards" ? swap : ""}>
       {shown.length === 0 ? (
         <FilteredEmpty {...emptyNote()} />
       ) : activeView === "cards" ? (
