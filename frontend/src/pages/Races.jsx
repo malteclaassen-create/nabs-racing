@@ -988,7 +988,11 @@ export default function Races() {
           rail was stuck, so the rounds list nudged sideways out of place every
           time the page caught up. Matching the two means the rail is already
           exactly where it ends up, and does not move at all. */}
-      <div ref={panelRef} className="reveal scroll-mt-28">
+      {/* No entrance of its own: it used to rise and fade in by itself, so the
+          results card popped up empty first and only then did the drivers
+          deal in. It now arrives with the page, and the rounds on the rail
+          and the drivers in the card are what move. */}
+      <div ref={panelRef} className="scroll-mt-28">
         {shown.length > 0 ? (
           // minmax(0,…) keeps the wide results table from stretching the
           // column (and the whole page) past the viewport on phones
@@ -1053,7 +1057,9 @@ export default function Races() {
                       the drivers deal into it once the result arrives. A
                       skeleton held back to avoid a flash meant a blank beat,
                       then the card popping in, then the rows. */}
-                  {detailLoading && !detail && (
+                  {/* From the very first paint, not only once the request is
+                      out: the page is on screen a moment before that. */}
+                  {!detail && !detailError && (
                     <div aria-hidden="true">
                       <div className="mb-3 flex h-8 items-center sm:mb-4">
                         <Skeleton className="h-6 w-48 max-w-[60%]" />
