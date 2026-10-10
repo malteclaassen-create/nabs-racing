@@ -383,7 +383,7 @@ function SheetRow({ to, Icon, title, sub }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-2xl px-2 py-2 transition ${
+        `flex items-center gap-3 rounded-2xl px-2 py-1.5 transition ${
           isActive ? "bg-brand/20 ring-1 ring-inset ring-brand/50" : "hover:bg-surface2"
         }`
       }
@@ -411,7 +411,7 @@ function SheetRow({ to, Icon, title, sub }) {
 // `badge` sits on the icon's corner: cars on track, free seats.
 function SheetTile({ to, end, alsoActiveOn, Icon, label, hint, badge = null, onClick }) {
   const { pathname } = useLocation();
-  const base = "flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-3 text-center text-xs font-semibold transition";
+  const base = "flex min-w-0 flex-col items-center gap-1 rounded-xl px-0.5 py-2.5 text-center text-xs font-semibold transition";
   const idle = "bg-surface2 text-medium hover:text-dark";
   const inner = (active) => (
     <>
@@ -447,7 +447,7 @@ function SheetTile({ to, end, alsoActiveOn, Icon, label, hint, badge = null, onC
 // eyebrows, with a hairline running out to the right edge.
 function MobileMenuLabel({ children }) {
   return (
-    <div className="flex items-center gap-3 px-2 pb-1 pt-4">
+    <div className="flex items-center gap-3 px-2 pb-1 pt-3">
       <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">{children}</span>
       <span className="h-px flex-1 bg-border" />
     </div>
@@ -483,7 +483,7 @@ const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
 // every floating toast read, so nothing ends up hidden behind it. The glass
 // look (.liquid-glass) is in index.css, with why it can afford the blur the top
 // bar gives up on phones.
-function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
+function BottomNav({ seriesPath, liveNow, liveFeatureNew, onTap }) {
   const location = useLocation();
   const { user, isLoggedIn } = useAuth();
   const { total, summary } = useAdminAttention();
@@ -515,6 +515,9 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
   const go = (el, t) => {
     if (!el.classList.contains("is-active")) setHop((h) => h + 1);
     setTapped(t.key);
+    // The open menu gets out of the way with the tap, also for the tab you
+    // are already on (Profile on your profile), where no route change would.
+    onTap();
   };
   const pill = useSlidingHighlight(ref, [location.pathname, tapped]);
   // Profile is the one tab behind a lazy chunk; fetch it while the phone is
@@ -1052,6 +1055,14 @@ export default function NavBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
+  // A link to the page you are already on leaves the path as it is, so the
+  // effect above never hears of it and the menu stayed open: the profile chip
+  // tapped on your profile, Drivers on the drivers' table. Those close here.
+  const closeOnLinkHere = (e) => {
+    const a = e.target.closest?.("a[href]");
+    if (a && new URL(a.href).pathname === location.pathname) closeMenu();
+  };
+
   // Season pages are matched with the series prefix stripped, so the docked
   // season pill follows the same pages inside every series.
   const pathNoSeries = location.pathname.replace(/^\/s\/[^/]+/, "") || "/";
@@ -1282,10 +1293,14 @@ export default function NavBar() {
             onClick={closeMenu}
             className={`nav-scrim fixed inset-x-0 bottom-0 top-[84px] z-20 bg-ink/40 backdrop-blur-sm ${closing ? "is-closing pointer-events-none" : ""}`}
           />
+          {/* Sized to show the whole menu at once on a phone: it may reach up
+              to just under the bar, and the rows are tight enough to end above
+              the tab bar. Only a small screen still scrolls it. */}
           <div
             ref={sheetRef}
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
-            className={`nav-drop nav-sheet fixed inset-x-0 bottom-0 z-30 max-h-[calc(100dvh-96px)] overflow-y-auto overscroll-contain rounded-t-[28px] bg-card shadow-lift ${closing ? "is-closing pointer-events-none" : ""}`}
+            onClick={closeOnLinkHere}
+            className={`nav-drop nav-sheet fixed inset-x-0 bottom-0 z-30 max-h-[calc(100dvh-88px)] overflow-y-auto overscroll-contain rounded-t-[28px] bg-card shadow-lift ${closing ? "is-closing pointer-events-none" : ""}`}
           >
             <div className="container-page flex flex-col pb-[calc(0.75rem+var(--bnav))]">
               {/* The grip and the title stay put while the sheet scrolls, and
@@ -1335,7 +1350,8 @@ export default function NavBar() {
               ))}
 
               <MobileMenuLabel>League</MobileMenuLabel>
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              {/* Four to a row: with three the last row sat behind the tab bar. */}
+              <div className="grid grid-cols-4 gap-2 pt-1">
                 <SheetTile to={seriesPath("")} end alsoActiveOn="/" Icon={House} label="Home" />
                 <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />
                 {attendanceOpen && (
@@ -1404,7 +1420,7 @@ export default function NavBar() {
         </div>
       )}
     </header>
-    <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} />
+    <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} onTap={closeMenu} />
     </>
   );
 }
