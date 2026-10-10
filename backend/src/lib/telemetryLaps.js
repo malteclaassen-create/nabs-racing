@@ -403,6 +403,9 @@ export function listTracks(series, season, legacy = false) {
         track: laps[0].track,
         layout: laps[0].layout,
         laps: laps.length,
+        // A driver keeps up to three laps here, so the lap count alone
+        // overstates how many people have driven the track.
+        drivers: new Set(laps.map((l) => l.steamId)).size,
         bestMs: laps[0].lapTimeMs,
         // When the last lap landed here. ISO stamps compare as strings; a
         // lap from before the store stamped them has none, and its track

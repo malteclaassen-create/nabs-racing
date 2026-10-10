@@ -286,9 +286,19 @@ export function explain(r, refName) {
   else if (r.exitMe != null && r.exitRef != null) facts.push({ label: "Exit speed", me: `${r.exitMe} km/h`, ref: `${r.exitRef} km/h` });
   if (kind === "braking" && r.peakMe >= BRAKE_ON && r.peakRef >= BRAKE_ON) facts.push({ label: "Peak brake", me: `${r.peakMe}%`, ref: `${r.peakRef}%` });
 
+  // The tip as one line for a practice plan: the thing to do, with the
+  // number to aim for, short enough to keep in mind for a whole session.
+  const place = r.place || "this corner";
+  let step;
+  if (kind === "braking") step = `Brake ${early} m later into ${zone.main ? place : zone.place || place}`;
+  else if (kind === "entry") step = `Brake a touch earlier into ${place}, carry ${midLoss} km/h more`;
+  else if (kind === "speed") step = `Carry ${midLoss} km/h more through ${place}`;
+  else if (kind === "exit") step = throttleLate ? `Full throttle ${throttleLate} m sooner out of ${place}` : `Leave ${place} ${exitLoss} km/h faster`;
+  else step = `Compare your line through ${place}`;
+
   // Which brake points the small chart marks: the zone the tip is about.
   const marks = kind === "braking" && !zone.main ? { me: zone.brakeIdxMe ?? null, ref: zone.brakeIdxRef ?? null } : null;
-  return { kind, kindLabel: KIND_LABEL[kind], say, try: tryText, facts: facts.slice(0, 3), ...(marks ? { brakeIdxMe: marks.me, brakeIdxRef: marks.ref } : {}) };
+  return { kind, kindLabel: KIND_LABEL[kind], say, try: tryText, step, facts: facts.slice(0, 3), ...(marks ? { brakeIdxMe: marks.me, brakeIdxRef: marks.ref } : {}) };
 }
 
 // A section the slower lap is QUICKER in: worth saying, briefly, with the one

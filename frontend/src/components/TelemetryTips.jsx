@@ -1,19 +1,26 @@
 import { Fragment, useState } from "react";
-import { Lightbulb } from "lucide-react";
+import { Check, Lightbulb } from "lucide-react";
 import { Panel, Segmented } from "./TelemetryUI.jsx";
+import { formatLapTime } from "../utils/telemetryAnalysis.js";
 
 // ---------------------------------------------------------------------------
 // Tips: the comparison read out loud for the driver of the slower lap
-// (utils/drivingTips.js writes the sentences). Where the gap goes corner by
-// corner, then the biggest three as cards — what differs, the numbers behind
-// it, what the quicker lap did there — and the rest as one line each. Every
-// card zooms the traces below to its corner, where the claim can be checked.
+// (utils/drivingTips.js writes the sentences). On the left a practice plan:
+// the three corners worth the most, each as one thing to do, to tick off, and
+// the lap time they add up to. On the right every corner of the lap with what
+// it costs, biggest first; one is open at a time with the sentence, what the
+// quicker lap did there and the corner's own trace. Every corner zooms the
+// traces below to it, where the claim can be checked.
 // ---------------------------------------------------------------------------
 
 const secs = (ms) => `${ms < 0 ? "−" : "+"}${(Math.abs(ms) / 1000).toFixed(2)}`;
 // How much a corner costs, as a colour: the same three steps everywhere on
-// the panel, so a red card is a red bar is a red number.
+// the panel, so a red bar is a red number.
 const severity = (ms) => (ms < 0 ? "rgb(var(--c-ok))" : ms >= 150 ? "rgb(var(--c-bad))" : ms >= 80 ? "#fb923c" : "rgb(var(--c-warn))");
+const dayMonth = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(d) : "";
+};
 
 // "**15 m earlier**" in the sentences becomes bold.
 function Say({ text, className = "" }) {
@@ -25,42 +32,31 @@ function Say({ text, className = "" }) {
   );
 }
 
-// Where the gap goes: one bar per section, losses right of the line and gains
-// left of it, then what the sections do not account for.
-function Breakdown({ tips, onSection }) {
-  const rows = [...tips.rows].filter((r) => Math.abs(r.lostMs) >= 10).sort((a, b) => b.lostMs - a.lostMs);
-  const rest = tips.restMs;
-  const max = Math.max(60, ...rows.map((r) => Math.abs(r.lostMs)), Math.abs(rest));
-  const zero = 14; // percent of the track where "no difference" sits
-  const bar = (ms) => {
-    const w = (Math.abs(ms) / max) * (100 - zero - 2);
-    return { left: `${ms >= 0 ? zero : zero - Math.min(zero, w)}%`, width: `${ms >= 0 ? w : Math.min(zero, w)}%`, background: severity(ms) };
-  };
-  const line = (key, label, sub, ms, onClick) => (
-    <button key={key} type="button" onClick={onClick} disabled={!onClick}
-      className="grid w-full grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4rem] items-center gap-3 rounded-md px-2 py-1.5 text-left transition enabled:hover:bg-surface2 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_4.5rem]">
-      <span className="min-w-0 truncate text-[13px] font-semibold text-medium">
-        {label}
-        {sub && <span className="ml-1.5 font-mono text-[10px] font-normal text-light">{sub}</span>}
-      </span>
-      <span className="relative h-3.5">
-        <span className="absolute -bottom-1 -top-1 w-px bg-faint" style={{ left: `${zero}%` }} aria-hidden="true" />
-        <span className="absolute top-0.5 h-2.5 rounded-sm" style={bar(ms)} />
-      </span>
-      <span className="text-right font-mono text-xs font-bold tabular-nums" style={{ color: ms < 0 ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))" }}>{secs(ms)}</span>
-    </button>
-  );
-  return (
-    <div>
-      {rows.map((r) => line(r.n, r.place, r.named ? null : `${Math.round(r.apexPct)}%`, r.lostMs, () => onSection(r)))}
-      {Math.abs(rest) >= 10 && line("rest", "Rest of the lap", "straights", rest, null)}
-      <div className="mt-1 flex items-center justify-between border-t border-border px-2 pt-2 text-[13px] font-bold text-dark">
-        <span>Total</span>
-        <span className="font-mono text-sm tabular-nums text-bad">{secs(tips.gapMs)} s</span>
-      </div>
-    </div>
-  );
+// Which plan steps a driver has ticked off, per comparison and per browser:
+// the same two laps open on the same ticks next time. Storage can be missing
+// or throw (private windows); the plan then simply starts unticked. Only the
+// most recent comparisons are kept, so the entry cannot grow without end.
+const PLAN_KEY = "nabs_tel_plan";
+const PLAN_KEEP = 40;
+function readPlans() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PLAN_KEY) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
 }
+function writePlan(key, done) {
+  try {
+    const all = readPlans();
+    all[key] = { at: Date.now(), done };
+    const keep = Object.entries(all).sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0)).slice(0, PLAN_KEEP);
+    localStorage.setItem(PLAN_KEY, JSON.stringify(Object.fromEntries(keep)));
+  } catch { /* per-browser nicety only */ }
+}
+const lapKey = (lap) => `${lap.steamId || lap.name}:${lap.lapTimeMs}`;
+const planKeyOf = (me, other) => `${me.track || ""}/${me.layout || ""}|${lapKey(me)}|${lapKey(other)}`;
+const stepKey = (t) => `${t.n}:${t.kind}`;
 
 // The corner's speed trace, both laps, with where each started braking. Just
 // enough to see the tip's claim; the full traces are one click away.
@@ -176,156 +172,216 @@ function MiniLine({ me, other, row, colorMe, colorRef, road }) {
   );
 }
 
-function TipCard({ t, index, me, other, names, colorMe, colorRef, road, onSection }) {
-  const c = severity(t.lostMs);
+// The open corner's chart: its speed trace, or both lines from above when the
+// laps recorded positions. A tip that blames the line opens on the line.
+function CornerChart({ row, me, other, names, colorMe, colorRef, road, preferLine }) {
   const hasLine = !!(me.x && me.z && other.x && other.z);
-  // A tip that blames the line opens on the line; the rest on the speed.
-  const [view, setView] = useState(hasLine && t.kind === "line" ? "line" : "speed");
+  const [view, setView] = useState(hasLine && preferLine ? "line" : "speed");
   return (
-    <article className="grid overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-[minmax(0,1fr)_23rem]">
-      <div className="min-w-0 p-3.5 sm:p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg px-1 font-display text-sm font-black text-ink" style={{ background: c }}>{index + 1}</span>
-          <h4 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">{t.place}</h4>
-          <span className="pill bg-surface2 text-medium">{t.kindLabel}</span>
-          <span className="ml-auto font-display text-xl font-black tabular-nums text-bad">{secs(t.lostMs)}<span className="text-xs font-bold text-light"> s</span></span>
-        </div>
-        <Say text={t.say} className="mb-3 mt-2.5 text-sm leading-relaxed text-dark" />
-        {t.facts.length > 0 && (
-          // One line per number on a phone (label left, values right): three
-          // tiles side by side there cut the label and wrapped the units.
-          <dl className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
-            {t.facts.map((f) => (
-              <div key={f.label} className="flex min-w-0 items-baseline justify-between gap-2 rounded-lg border border-border bg-surface2/60 px-2.5 py-1.5 sm:block">
-                <dt className="truncate font-mono text-[10px] font-semibold uppercase tracking-wider text-light">{f.label}</dt>
-                <dd className="shrink-0 font-mono text-xs font-bold tabular-nums text-dark sm:mt-0.5">
-                  <span style={{ color: colorMe }}>{f.me}</span>
-                  {f.ref && <><span className="font-normal text-faint"> vs </span><span style={{ color: colorRef }}>{f.ref}</span></>}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        <div className="flex gap-2.5 rounded-r-lg border-l-[3px] border-ok bg-ok/10 px-3 py-2 text-[13px] leading-relaxed text-medium">
-          <span className="pt-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-ok">Try</span>
-          <span>{t.try}</span>
-        </div>
-        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-light">
-          <span>{Math.round(t.apexPct)}% of lap{t.atM != null ? ` · ${t.atM.toLocaleString("en-GB")} m` : ""}</span>
-          <button type="button" className="font-semibold text-link hover:underline" onClick={() => onSection(t)}>Show in the traces ↓</button>
-        </div>
+    <div className="min-w-0 rounded-lg bg-card p-2 ring-1 ring-border">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-medium">
+        {hasLine
+          ? <Segmented label="Chart" value={view} onChange={setView} items={[{ key: "speed", label: "Speed" }, { key: "line", label: "Line" }]} />
+          : <span className="font-mono uppercase tracking-wider text-light">Speed</span>}
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex min-w-0 items-center gap-1.5"><span className="h-0.5 w-3.5 shrink-0 rounded-full" style={{ background: colorMe }} /><span className="truncate">{names.me}</span></span>
+          <span className="flex min-w-0 items-center gap-1.5"><span className="w-3.5 shrink-0 border-t-2 border-dashed" style={{ borderColor: colorRef }} /><span className="truncate">{names.ref}</span></span>
+        </span>
       </div>
-      <div className="border-t border-border bg-surface2/50 px-3 py-2.5 lg:border-l lg:border-t-0">
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-medium">
-          {hasLine
-            ? <Segmented label="Chart" value={view} onChange={setView} items={[{ key: "speed", label: "Speed" }, { key: "line", label: "Line" }]} />
-            : <span className="font-mono uppercase tracking-wider text-light">Speed</span>}
-          <span className="flex min-w-0 items-center gap-3">
-            <span className="flex min-w-0 items-center gap-1.5"><span className="h-0.5 w-3.5 shrink-0 rounded-full" style={{ background: colorMe }} /><span className="truncate">{names.me}</span></span>
-            <span className="flex min-w-0 items-center gap-1.5"><span className="w-3.5 shrink-0 border-t-2 border-dashed" style={{ borderColor: colorRef }} /><span className="truncate">{names.ref}</span></span>
-          </span>
-        </div>
-        {view === "line" && hasLine
-          ? <MiniLine me={me} other={other} row={t} colorMe={colorMe} colorRef={colorRef} road={road} />
-          : <MiniTrace me={me} other={other} row={t} colorMe={colorMe} colorRef={colorRef} />}
-      </div>
-    </article>
+      {view === "line" && hasLine
+        ? <MiniLine me={me} other={other} row={row} colorMe={colorMe} colorRef={colorRef} road={road} />
+        : <MiniTrace me={me} other={other} row={row} colorMe={colorMe} colorRef={colorRef} />}
+    </div>
   );
 }
 
-export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA, nameB, road, onSection }) {
-  if (!tips) return null;
-  const me = tips.student === "A" ? lapA : lapB;
-  const other = tips.student === "A" ? lapB : lapA;
-  const names = tips.student === "A" ? { me: nameA, ref: nameB } : { me: nameB, ref: nameA };
-  const colorMe = tips.student === "A" ? colorA : colorB;
-  const colorRef = tips.student === "A" ? colorB : colorA;
-  const top = tips.tips.slice(0, 3);
-  const small = tips.tips.slice(3);
-  const level = tips.gapMs < 10;
+// What opens under a corner's row: the sentence, the numbers behind it and
+// what the quicker lap did, beside the corner's own trace.
+function CornerDetail({ row, tip, strength, refName, chart, colorMe, colorRef, onSection }) {
   return (
-    <Panel title="Tips" icon={Lightbulb}
-      note={level ? "These two laps are level" : `For ${tips.studentName}, from ${tips.sameDriver ? "their quicker lap" : `${tips.refName}'s lap`}`}
-      bodyClassName="space-y-4">
-      {!tips.tips.length ? (
-        <p className="py-2 text-sm text-light">
-          No corner costs {tips.studentName} more than a few hundredths against {tips.refName}. The gap
-          {level ? " is too small to explain" : " is spread over the whole lap rather than in one place"}.
-        </p>
-      ) : (
-        <>
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <div className="min-w-0">
-              <h4 className="mb-1.5 text-xs font-semibold text-dark">Where the {(tips.gapMs / 1000).toFixed(3)} s go</h4>
-              <Breakdown tips={tips} onSection={onSection} />
-            </div>
-            <div className="flex min-w-0 flex-col gap-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-border bg-surface2/40 px-3 py-2.5">
-                  <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">Gap</div>
-                  <div className="mt-1 font-display text-2xl font-black tabular-nums text-bad">{secs(tips.gapMs)} s</div>
+    <div className="grid grid-cols-1 gap-3 px-3 pb-4 sm:px-5 md:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0">
+        {tip ? <>
+          <Say text={tip.say} className="text-sm leading-relaxed text-dark" />
+          {tip.facts.length > 0 && (
+            <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              {tip.facts.map((f) => (
+                <div key={f.label} className="flex min-w-0 items-baseline gap-1.5">
+                  <dt className="font-mono font-semibold uppercase tracking-wider text-light">{f.label}</dt>
+                  <dd className="font-mono font-bold tabular-nums">
+                    <span style={{ color: colorMe }}>{f.me}</span>
+                    {f.ref && <><span className="font-normal text-faint"> vs </span><span style={{ color: colorRef }}>{f.ref}</span></>}
+                  </dd>
                 </div>
-                <div className="rounded-lg border border-border bg-surface2/40 px-3 py-2.5">
-                  <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-light">The top {Math.min(3, tips.tips.length)}</div>
-                  <div className="mt-1 font-display text-2xl font-black tabular-nums text-ok">−{(tips.top3Ms / 1000).toFixed(2)} s</div>
-                  <div className="text-[11px] text-light">if matched</div>
-                </div>
-              </div>
-              {tips.pattern && (
-                <div className="rounded-lg border border-border bg-surface2/40 px-3 py-2.5">
-                  <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-eyebrow">Pattern</div>
-                  <p className="mt-1 text-[13px] leading-relaxed text-medium">
-                    <strong className="text-dark">{(tips.pattern.ms / 1000).toFixed(2)} s of it is {tips.pattern.label.toLowerCase()}</strong>, in{" "}
-                    {tips.pattern.places.join(", ")}. One habit behind several corners: fix it once and it pays everywhere.
-                  </p>
-                </div>
-              )}
-              {tips.strengths.length > 0 && (
-                <div className="rounded-lg border border-border bg-surface2/40 px-3 py-2.5">
-                  <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-ok">Where {tips.studentName} is quicker</div>
-                  <ul className="mt-1 space-y-1">
-                    {tips.strengths.slice(0, 3).map((s) => (
-                      <li key={s.n}>
-                        <button type="button" className="text-left text-[13px] leading-relaxed text-medium hover:text-dark" onClick={() => onSection(s)}>
-                          <strong className="text-dark">{s.place}</strong> · {s.say}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {top.map((t, i) => (
-              <TipCard key={t.n} t={t} index={i} me={me} other={other} names={names} colorMe={colorMe} colorRef={colorRef} road={road} onSection={onSection} />
-            ))}
-          </div>
-
-          {small.length > 0 && (
-            <div>
-              <h4 className="mb-1.5 text-xs font-semibold text-dark">Smaller things</h4>
-              <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-                {small.map((t) => (
-                  <li key={t.n}>
-                    {/* On a phone: the corner and its cost on one line, the
-                        sentence under both. From sm up, one row of four. */}
-                    <button type="button" onClick={() => onSection(t)}
-                      className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 px-3 py-2.5 text-left transition hover:bg-surface2 sm:grid-cols-[minmax(0,10rem)_6.5rem_minmax(0,1fr)_4rem]">
-                      <span className="order-1 truncate text-[13px] font-bold text-dark">{t.place}</span>
-                      <span className="hidden sm:order-2 sm:block"><span className="pill bg-surface2 text-medium">{t.kindLabel}</span></span>
-                      <Say text={t.say} className="order-3 col-span-2 min-w-0 text-[13px] leading-relaxed text-medium sm:col-span-1 [&_strong]:text-medium" />
-                      <span className="order-2 text-right font-mono text-xs font-bold tabular-nums text-bad sm:order-4">{secs(t.lostMs)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+              ))}
+            </dl>
           )}
-        </>
+          <p className="mt-2 text-[13px] leading-relaxed text-medium">
+            <span className="mr-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-ok">Try</span>{tip.try}
+          </p>
+        </> : strength ? (
+          <Say text={strength.say} className="text-sm leading-relaxed text-dark" />
+        ) : (
+          <p className="text-sm leading-relaxed text-medium">Within a few hundredths of {refName} here, so there is no tip for this corner.</p>
+        )}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-light">
+          <span>{Math.round(row.apexPct)}% of lap{row.atM != null ? ` · ${row.atM.toLocaleString("en-GB")} m` : ""}</span>
+          <button type="button" className="font-semibold text-link hover:underline" onClick={() => onSection(row)}>Show in the traces ↓</button>
+        </div>
+      </div>
+      <CornerChart key={row.n} row={row} preferLine={tip?.kind === "line"} {...chart} />
+    </div>
+  );
+}
+
+// The plan: the biggest three, each as one thing to do, ticked off by the
+// driver, and the lap they add up to.
+function PracticePlan({ steps, done, onToggle, openN, onOpen, me, refName, top3Ms, pattern }) {
+  return (
+    <>
+      <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Practice plan</p>
+      <ol className="mt-3 space-y-2">
+        {steps.map((t) => {
+          const at = done[stepKey(t)];
+          const id = `tel-plan-${t.n}`;
+          return (
+            <li key={t.n} className={`flex gap-3 rounded-xl bg-card p-3 shadow-card ${openN === t.n ? "ring-2 ring-primary" : ""}`}>
+              <input id={id} type="checkbox" className="peer sr-only" checked={!!at} onChange={() => onToggle(t)} />
+              <label htmlFor={id} title={at ? "Mark as not done" : "Mark as done"}
+                className={`mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border-2 transition peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-1 ${at ? "border-ok bg-ok text-card" : "border-border bg-card"}`}>
+                {at && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" />}
+                <span className="sr-only">{t.step}</span>
+              </label>
+              <button type="button" onClick={() => onOpen(t.n)} className="min-w-0 text-left" title="Open this corner in the list">
+                <span className={`block text-sm font-bold text-dark ${at ? "line-through decoration-ok/60" : ""}`}>{t.step}</span>
+                <span className="block text-xs text-light">worth {(t.lostMs / 1000).toFixed(2)} s{at ? ` · done on ${dayMonth(at)}` : ""}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {/* ink is dark in both themes, so the text on it stays light. */}
+      <div className="mt-4 rounded-xl bg-ink p-3 text-white">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-white/60">Target lap</p>
+        <p className="font-display text-2xl font-black tabular-nums">
+          {formatLapTime(me.lapTimeMs - top3Ms)} <span className="text-sm text-emerald-300">−{(top3Ms / 1000).toFixed(2)}</span>
+        </p>
+        <p className="mt-0.5 text-[11px] text-white/60">Your {formatLapTime(me.lapTimeMs)} if {steps.length === 1 ? "this corner matches" : `these ${steps.length} corners match`} {refName}</p>
+      </div>
+      {pattern && (
+        <p className="mt-3 text-[13px] leading-relaxed text-medium">
+          <strong className="text-dark">{(pattern.ms / 1000).toFixed(2)} s of it is {pattern.label.toLowerCase()}</strong>, in{" "}
+          {pattern.places.join(", ")}. One habit behind several corners: fix it once and it pays everywhere.
+        </p>
       )}
-      <p className="border-t border-border pt-2 text-[11px] leading-relaxed text-light">
+    </>
+  );
+}
+
+const ROW_GRID = "grid-cols-[1.25rem_minmax(0,1fr)_auto] sm:grid-cols-[1.75rem_minmax(0,9rem)_7rem_minmax(0,1fr)_4rem]";
+
+export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA, nameB, road, onSection }) {
+  const [order, setOrder] = useState("cost");
+  const [openN, setOpenN] = useState(() => tips?.tips[0]?.n ?? null);
+  const student = tips?.student;
+  const me = student === "A" ? lapA : lapB;
+  const other = student === "A" ? lapB : lapA;
+  const planKey = me && other ? planKeyOf(me, other) : "";
+  const [done, setDone] = useState(() => (planKey ? readPlans()[planKey]?.done || {} : {}));
+  if (!tips || !me || !other) return null;
+
+  const names = student === "A" ? { me: nameA, ref: nameB } : { me: nameB, ref: nameA };
+  const colorMe = student === "A" ? colorA : colorB;
+  const colorRef = student === "A" ? colorB : colorA;
+  const level = tips.gapMs < 10;
+  const steps = tips.tips.slice(0, 3);
+  const byTip = new Map(tips.tips.map((t) => [t.n, t]));
+  const byStrength = new Map(tips.strengths.map((s) => [s.n, s]));
+  const ordered = order === "cost" ? [...tips.rows].sort((a, b) => b.lostMs - a.lostMs) : tips.rows;
+  const rest = tips.restMs;
+  const max = Math.max(60, ...tips.rows.map((r) => Math.abs(r.lostMs)), Math.abs(rest));
+  const chart = { me, other, names, colorMe, colorRef, road };
+  const toggle = (t) => {
+    const next = { ...done };
+    if (next[stepKey(t)]) delete next[stepKey(t)];
+    else next[stepKey(t)] = new Date().toISOString();
+    setDone(next);
+    writePlan(planKey, next);
+  };
+  const open = (n) => {
+    setOpenN(n);
+    // The plan sits above the list on a phone: bring the opened row up.
+    requestAnimationFrame(() => document.getElementById(`tel-corner-${n}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  };
+  const bar = (ms) => (
+    <span className="hidden h-2 overflow-hidden rounded-full bg-surface2 sm:block" aria-hidden="true">
+      <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (Math.abs(ms) / max) * 100)}%`, background: severity(ms) }} />
+    </span>
+  );
+  const pill = (label, tone) => (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{label}</span>
+  );
+
+  return (
+    <Panel title={`Tips for ${tips.studentName}`} icon={Lightbulb} flush
+      note={level ? "These two laps are level" : `against ${tips.sameDriver ? "their quicker lap" : tips.refName} · ${secs(tips.gapMs)} s`}
+      actions={<Segmented label="Order" value={order} onChange={setOrder} items={[{ key: "cost", label: "By cost" }, { key: "lap", label: "Lap order" }]} />}>
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="min-w-0 border-b border-border bg-surface2/50 p-3 sm:p-5 lg:border-b-0 lg:border-r">
+          {steps.length ? (
+            <PracticePlan steps={steps} done={done} onToggle={toggle} openN={openN} onOpen={open} me={me} refName={tips.refName} top3Ms={tips.top3Ms} pattern={tips.pattern} />
+          ) : (
+            <p className="text-sm text-light">
+              No corner costs {tips.studentName} more than a few hundredths against {tips.refName}. The gap
+              {level ? " is too small to explain" : " is spread over the whole lap rather than in one place"}.
+            </p>
+          )}
+        </aside>
+        <div className="min-w-0">
+          <div className={`hidden gap-3 border-b border-border px-5 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid ${ROW_GRID}`} aria-hidden="true">
+            <span>#</span><span>Corner</span><span>What</span><span>Cost</span><span className="text-right">s</span>
+          </div>
+          <ul className="divide-y divide-border">
+            {ordered.map((r, i) => {
+              const isOpen = r.n === openN;
+              const tip = byTip.get(r.n);
+              const strength = byStrength.get(r.n);
+              return (
+                <li key={r.n} id={`tel-corner-${r.n}`} className={isOpen ? "bg-primary/10" : ""} style={{ scrollMarginTop: "var(--tel-top, 84px)" }}>
+                  <button type="button" aria-expanded={isOpen} onClick={() => setOpenN(isOpen ? null : r.n)}
+                    className={`grid w-full items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left transition hover:bg-surface2/70 sm:px-5 ${ROW_GRID}`}>
+                    <span className="font-mono text-xs font-bold tabular-nums text-faint">{i + 1}</span>
+                    <span className="min-w-0 truncate text-[13px] font-bold text-dark">
+                      {r.place}
+                      {!r.named && <span className="ml-1.5 font-mono text-[10px] font-normal text-light">{Math.round(r.apexPct)}%</span>}
+                    </span>
+                    <span className="order-last col-span-2 col-start-2 sm:order-none sm:col-span-1 sm:col-start-auto">
+                      {tip ? pill(tip.kindLabel, "bg-surface2 text-medium") : strength ? pill(strength.kindLabel, "bg-ok/10 text-ok") : pill("Close", "text-light")}
+                    </span>
+                    {bar(r.lostMs)}
+                    <span className={`text-right font-mono text-xs font-bold tabular-nums ${r.lostMs < 0 ? "text-ok" : "text-bad"}`}>{secs(r.lostMs)}</span>
+                  </button>
+                  {isOpen && <CornerDetail row={r} tip={tip} strength={strength} refName={tips.refName} chart={chart} colorMe={colorMe} colorRef={colorRef} onSection={onSection} />}
+                </li>
+              );
+            })}
+            {Math.abs(rest) >= 10 && (
+              <li className={`grid items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:px-5 ${ROW_GRID}`}>
+                <span />
+                <span className="min-w-0 truncate text-[13px] font-semibold text-medium">Rest of the lap</span>
+                <span className="order-last col-span-2 col-start-2 sm:order-none sm:col-span-1 sm:col-start-auto">{pill("Straights", "text-light")}</span>
+                {bar(rest)}
+                <span className={`text-right font-mono text-xs font-bold tabular-nums ${rest < 0 ? "text-ok" : "text-bad"}`}>{secs(rest)}</span>
+              </li>
+            )}
+          </ul>
+          <div className="flex items-center justify-between border-t border-border px-3 py-2.5 text-[13px] font-bold text-dark sm:px-5">
+            <span>Total</span>
+            <span className="font-mono text-sm tabular-nums text-bad">{secs(tips.gapMs)} s</span>
+          </div>
+        </div>
+      </div>
+      <p className="border-t border-border px-3 py-2 text-[11px] leading-relaxed text-light sm:px-4">
         Written from the same numbers as the sections below: brake point, slowest speed, exit speed and where full
         throttle comes back. Only corners worth more than 0.03 s get a tip. The suggestions are what the quicker lap
         did in that corner, not a diagnosis.

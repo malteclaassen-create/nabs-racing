@@ -170,11 +170,11 @@ describe("the list a comparison picks from", () => {
     ]);
   });
 
-  it("summarises the track by its overall best, how many laps it holds and when the last one landed", () => {
+  it("summarises the track by its overall best, how many laps and drivers it holds and when the last one landed", () => {
     for (const ms of [92000, 91000]) keepIfFaster(lap(ME, ms));
     keepIfFaster({ ...lap(OTHER, 90000, "Neesh"), recordedAt: "2026-09-14T23:33:08.013Z" });
     expect(listTracks(F1, S8, true)).toEqual([
-      { trackKey: TRACK, track: "watkins_glen", layout: "", laps: 3, bestMs: 90000, newestAt: "2026-09-14T23:33:08.013Z" },
+      { trackKey: TRACK, track: "watkins_glen", layout: "", laps: 3, drivers: 2, bestMs: 90000, newestAt: "2026-09-14T23:33:08.013Z" },
     ]);
   });
 

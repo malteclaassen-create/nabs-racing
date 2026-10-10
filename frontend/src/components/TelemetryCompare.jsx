@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, ChartLine, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, RefreshCw, TriangleAlert,
+  Activity, ChartLine, ChevronDown, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import { api, getToken, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { Field, Skeleton } from "./ui.jsx";
+import { Skeleton } from "./ui.jsx";
+import Flag from "./Flag.jsx";
+import SlidingTabs from "./SlidingTabs.jsx";
+import { flagFor } from "../data/circuits.js";
 import { useAsk } from "./overlay.jsx";
-import { fmtLap } from "../utils/format.js";
-import { ChannelChart, PedalChart, ChartAxis, lapColor } from "./TelemetryCharts.jsx";
+import { ChannelChart, PedalChart, ChartAxis, CornerTicks, lapColor, signedSeconds } from "./TelemetryCharts.jsx";
 import TelemetryDuel from "./TelemetryDuel.jsx";
 import TelemetryPlayer from "./TelemetryPlayer.jsx";
 import { Chip, Menu, MenuItem, Panel, Segmented, ToolButton } from "./TelemetryUI.jsx";
@@ -50,7 +52,7 @@ function ToolCard({ id, title, subtitle, actions, cardRef, full, children }) {
   return (
     <div id={id} ref={cardRef} className={`card ${full ? "overflow-y-auto" : "overflow-clip"}`} style={{ "--tel-top": full ? `${headHeight}px` : "84px" }}>
       <div ref={headRef} className={`flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:px-5 ${full ? "sticky top-0 z-30" : ""}`}>
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/15 text-dark" aria-hidden="true"><Activity className="h-5 w-5" /></span>
           <div className="min-w-0">
             <h2 className="font-mono text-[11px] font-bold uppercase tracking-widest text-eyebrow">{title}</h2>
@@ -82,12 +84,17 @@ const OPTIONAL_CHANNELS = [
   { key: "lat", label: "Lateral g" },
   { key: "long", label: "Longitudinal g" },
 ];
+// Somebody who has never chosen gets the gear trace under the pedals: where
+// the shifts are tells a driver as much as the speed line does.
+const DEFAULT_CHANNELS = ["gear"];
 function readChannels() {
   try {
-    const v = JSON.parse(localStorage.getItem(CHANNELS_KEY) || "[]");
-    return Array.isArray(v) ? v.filter((k) => OPTIONAL_CHANNELS.some((c) => c.key === k)) : [];
+    const raw = localStorage.getItem(CHANNELS_KEY);
+    if (raw == null) return DEFAULT_CHANNELS;
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((k) => OPTIONAL_CHANNELS.some((c) => c.key === k)) : DEFAULT_CHANNELS;
   } catch {
-    return [];
+    return DEFAULT_CHANNELS;
   }
 }
 
@@ -119,10 +126,9 @@ function fromLink(raw) {
 }
 const findPick = (laps, id) => (id ? laps.find((l) => pickOf(l) === id) || laps.find((l) => l.steamId === splitPick(id)[0]) || null : null);
 
-// "Neesh · 1:31.010" when it is their only lap here, "Neesh · 1:31.010 (2nd)"
-// when it is not — otherwise a driver appears three times in the list with
-// nothing to tell the rows apart but a time nobody has memorised.
-const ORDINAL = ["best", "2nd", "3rd"];
+// Which of a driver's laps each entry is ("2nd"), and whether it is their only
+// one here: otherwise a driver appears three times in the list with nothing
+// to tell the rows apart but a time nobody has memorised.
 function lapRows(laps) {
   const seen = new Map();
   return (laps || []).map((l) => {
@@ -130,6 +136,31 @@ function lapRows(laps) {
     seen.set(l.steamId, n + 1);
     return { ...l, rank: n, only: (laps || []).filter((x) => x.steamId === l.steamId).length === 1 };
   });
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// The track, as the circuit's flag, its name and how much there is to compare
+// on it. A native <select> lies invisibly over the drawing: the phone's own
+// picker, the keyboard and screen readers all work as they would on a plain
+// dropdown, and its text is 16px so iOS does not zoom in on it.
+function TrackPicker({ list, value, onChange, labelOf }) {
+  const t = list.find((x) => x.trackKey === value) || list[0];
+  const count = (x) => [plural(x.laps, "lap"), x.drivers ? plural(x.drivers, "driver") : null].filter(Boolean).join(" · ");
+  const flag = t ? flagFor(t.track) : null;
+  return (
+    <div className="relative w-full sm:max-w-md">
+      <select aria-labelledby="tel-track-label" className="peer absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none opacity-0 text-base" value={value} onChange={(e) => onChange(e.target.value)}>
+        {list.map((x) => <option key={x.trackKey} value={x.trackKey}>{labelOf(x)} · {count(x)}</option>)}
+      </select>
+      <div className="flex min-w-0 items-center gap-3 rounded-lg bg-card px-3 py-2 shadow-card ring-1 ring-border transition peer-hover:ring-medium peer-focus-visible:ring-2 peer-focus-visible:ring-primary" aria-hidden="true">
+        {flag ? <Flag code={flag.country} title={flag.countryName} w={24} h={16} /> : <span className="h-4 w-6 shrink-0 rounded-sm bg-surface2" />}
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{t ? labelOf(t) : ""}</span>
+        {t && <span className="shrink-0 font-mono text-[11px] text-light">{count(t)}</span>}
+        <ChevronDown className="h-4 w-4 shrink-0 text-faint" />
+      </div>
+    </div>
+  );
 }
 
 function TelemetryCompare({ series: fixedSeries = null }) {
@@ -355,7 +386,10 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const n = lapA?.n || 0;
   const lapB = useMemo(() => (lapBRaw && lapA ? resampleLap(lapBRaw, lapA.n) : lapBRaw), [lapBRaw, lapA]);
   const both = !!(lapA && lapB);
-  const colorA=lapColor(lapA,'A'), colorB=lapColor(lapB,'B');
+  // The colours come from the list entry until the lap itself is in, so the
+  // picks in the lap list do not change colour while the channels load.
+  const colorA = lapColor(lapA || laps?.find((l) => pickOf(l) === aId), 'A');
+  const colorB = lapColor(lapB || laps?.find((l) => pickOf(l) === bId), 'B');
   const visibleRange = chartRange ? fitTelemetryWindow(...chartRange, n - 1) : [0, Math.max(1, n - 1)];
   const chartSpan = visibleRange[1] - visibleRange[0];
   const chartZoomed = chartSpan < n - 1;
@@ -586,7 +620,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const at = Math.max(0, Math.min(n - 1, cursor ?? 0));
   const gap = both ? (lapB.lapTimeMs - lapA.lapTimeMs) / 1000 : null;
   const active = sectionAt(sections, at);
-  const bands = useMemo(() => sections.map((s) => ({ n: s.n, start: s.start, end: s.end, label: s.label, tag: s.tag, active: s.n === active?.n })), [sections, active?.n]);
+  const bands = useMemo(() => sections.map((s) => ({ n: s.n, start: s.start, end: s.end, apex: s.apex, label: s.label, tag: s.tag, active: s.n === active?.n })), [sections, active?.n]);
   const applyChartRange = (next, index) => {
     setChartRange(next);
     pickCursor(Math.max(next[0], Math.min(next[1], index)));
@@ -640,14 +674,18 @@ function TelemetryCompare({ series: fixedSeries = null }) {
       setRemoving(false);
     }
   };
-  const removeButton = (lap) => admin && lap ? (
-    <button type="button" className="text-xs font-semibold text-bad hover:underline disabled:text-faint" disabled={removing} title="Delete this lap from the site's store (admins only)" onClick={() => removeLap(lap)}>
-      {removing ? "Removing…" : "Remove lap"}
-    </button>
-  ) : null;
+  // Picking for one side the lap the other side is on swaps the two, so a
+  // click never leaves both sides on the same lap.
   const changeA = (id) => {
     if (id === bId) setBId(aId);
     setAId(id);
+  };
+  const changeB = (id) => {
+    if (id === aId) {
+      if (!bId) return;
+      setAId(bId);
+    }
+    setBId(id);
   };
   const readable = (value) => String(value || '').replaceAll('_', ' ');
   const position = (index) => (axisMode === "dist" && dist ? `${Math.round(dist[index]).toLocaleString("en-GB")} m` : `${((index / (n - 1)) * 100).toFixed(1)}%`);
@@ -712,58 +750,69 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const said = [picksSeries ? null : seriesName, season ? `Season ${season}` : null].filter(Boolean);
   const subtitle = [...said, `${said.length ? "b" : "B"}oth laps aligned by track position`].join(" · ");
 
-  const lapOption = (l) => <option key={pickOf(l)} value={pickOf(l)}>{l.name} · {fmtLap(l.lapTimeMs)}{l.only ? '' : ` (${ORDINAL[l.rank] || l.rank + 1})`}</option>;
-  const pickerA = (
-    <select aria-label="Lap A · reference" className="input min-w-0 w-full py-1.5 font-semibold" value={aId} onChange={(e) => changeA(e.target.value)}>
-      {!rows.length && <option value="">{laps === null ? 'Loading laps…' : 'No laps available'}</option>}
-      {rows.map(lapOption)}
-    </select>
-  );
-  const pickerB = (
-    <select aria-label="Lap B · comparison" className="input min-w-0 w-full py-1.5 font-semibold" value={bId} onChange={(e) => setBId(e.target.value)}>
-      <option value="">Single lap · no comparison</option>
-      {rows.filter((l) => pickOf(l) !== aId).map(lapOption)}
-    </select>
-  );
   const loadingChannels = !error && (laps === null || (aId && !lapA) || (bId && !lapB));
   const playLabel = playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap';
   const minSpan = Math.min(n - 1, Math.max(8, Math.ceil((n - 1) / 20)));
   const shows = (key) => channels.includes(key);
 
   return (
-    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={subtitle}
-      // One row on a phone: the league picker takes what the four icon buttons
-      // leave, and its word is for screen readers only there. From sm up the
-      // row sits beside the title and may wrap.
-      actions={<div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-wrap">
-        {/* The league, when there is more than one to choose from. Up here
-            rather than beside the track dropdown so it is there when the list
-            is empty — which is exactly when somebody wants to look at the
-            other league's laps instead. The eyebrow says it picks the LEAGUE,
-            the choice that decides which laps exist at all, and the accent
-            border tells it apart from the track dropdown at a glance. A real
-            <label>, so the visible word is the accessible name too. */}
-        {picksSeries && (
-          <label className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
-            <span className="sr-only font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:not-sr-only">Series</span>
-            <select className="input h-8 min-w-0 border-accent/60 py-0 text-xs font-bold sm:w-auto" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
-              {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
-            </select>
-          </label>
-        )}
-        {picksSeries && <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />}
-        {/* Which laps you are looking at, then what you can do with them. */}
-        {lapA && <ToolButton icon={Link2} label={copied === "link" ? "Link copied" : "Copy link"} title="Copy a link that opens exactly this comparison" onClick={copyLink} />}
-        {lapA && (
-          <Menu icon={Download} label="Export" summary={<span className="hidden sm:inline">{copied === "summary" ? "Summary copied" : "Export"}</span>}>
-            <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>
-            <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>
-            {hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+    <ToolCard id="telemetry" cardRef={cardRef} full={full} title="Lap comparison" subtitle={copied ? `${copied === "link" ? "Link" : "Summary"} copied` : subtitle}
+      // Labelled actions from sm up; on a phone all of them sit behind one
+      // "more" button, so the title keeps the row.
+      actions={<>
+        <div className="hidden items-center gap-1.5 sm:flex">
+          {lapA && <ToolButton icon={Link2} label={copied === "link" ? "Link copied" : "Copy link"} title="Copy a link that opens exactly this comparison" onClick={copyLink} />}
+          {lapA && (
+            <Menu icon={Download} label="Export" summary={<><span>{copied === "summary" ? "Summary copied" : "Export"}</span><ChevronDown className="h-3 w-3" aria-hidden="true" /></>}>
+              <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>
+              <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>
+              {hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+            </Menu>
+          )}
+          {lapA && <ToolButton icon={full ? Minimize2 : Maximize2} label={full ? "Exit full screen" : "Full screen"} title="Full screen (F)" aria-pressed={full} onClick={toggleFull} showLabel={false} className="w-8" />}
+          <ToolButton icon={RefreshCw} label="Refresh laps" onClick={refresh} disabled={tracks.loading} showLabel={false} className="w-8" />
+        </div>
+        <div className="sm:hidden">
+          <Menu icon={MoreHorizontal} label="Comparison actions" summary={false} width="w-56">
+            {lapA && <MenuItem icon={Link2} onClick={copyLink}>Copy link</MenuItem>}
+            {lapA && <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>}
+            {lapA && <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>}
+            {lapA && hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+            {lapA && <MenuItem icon={full ? Minimize2 : Maximize2} onClick={toggleFull}>{full ? "Exit full screen" : "Full screen"}</MenuItem>}
+            <MenuItem icon={RefreshCw} onClick={refresh} disabled={tracks.loading}>Refresh laps</MenuItem>
           </Menu>
-        )}
-        {lapA && <ToolButton icon={full ? Minimize2 : Maximize2} label={full ? "Exit full screen" : "Full screen"} title="Full screen (F)" aria-pressed={full} onClick={toggleFull} />}
-        <ToolButton icon={RefreshCw} label="Refresh laps" onClick={refresh} disabled={tracks.loading} />
-      </div>}>
+        </div>
+      </>}>
+      {/* The league and the track: which laps exist at all. The league sits
+          here even when its list is empty, which is exactly when somebody
+          wants to look at the other league's laps instead. */}
+      {(picksSeries || list.length > 0) && (
+        <div className={`grid grid-cols-1 gap-3 ${picksSeries ? "sm:grid-cols-[auto_minmax(0,1fr)] sm:items-end" : ""}`}>
+          {picksSeries && (
+            <div className="min-w-0">
+              <p className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-light" id="tel-series-label">Series</p>
+              {seriesList.length <= 3 ? (
+                <div role="group" aria-labelledby="tel-series-label">
+                  <SlidingTabs items={seriesList.map((s) => ({ key: s.slug, label: s.name }))} value={effectiveSeries || ""} onChange={(slug) => setPickedSeries(slug || null)}
+                    wrapClassName="flex w-full rounded-lg bg-card p-1 shadow-card ring-1 ring-border sm:inline-flex sm:w-auto"
+                    btnClassName="flex-1 whitespace-nowrap px-3 py-1.5 text-sm font-semibold sm:flex-none"
+                    pillClassName="rounded-md bg-ink" activeClassName="text-white" idleClassName="text-medium hover:text-dark" />
+                </div>
+              ) : (
+                <select aria-labelledby="tel-series-label" className="input min-w-0 w-full font-semibold sm:w-auto" value={effectiveSeries || ""} onChange={(e) => setPickedSeries(e.target.value || null)}>
+                  {seriesList.map((s) => <option key={s.slug} value={s.slug}>{s.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          {list.length > 0 && (
+            <div className="min-w-0">
+              <p className="mb-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-light" id="tel-track-label">Track</p>
+              <TrackPicker list={list} value={trackKey} onChange={setTrackKey} labelOf={trackLabel} />
+            </div>
+          )}
+        </div>
+      )}
       {error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />{error}<button type="button" className="ml-auto font-semibold underline" onClick={refresh}>Try again</button></div>}
       {tracks.loading && !tracks.data ? <TelemetrySkeleton label="Loading recorded tracks…" />
         : !list.length && !error ? (
@@ -774,24 +823,18 @@ function TelemetryCompare({ series: fixedSeries = null }) {
           </div>
         )
         : list.length > 0 && <>
-          <Field label="Track" className="sm:max-w-md">
-            <select aria-label="Track" className="input min-w-0 w-full" value={trackKey} onChange={(e) => setTrackKey(e.target.value)}>
-              {list.map((t) => <option key={t.trackKey} value={t.trackKey}>{trackLabel(t)} · {t.laps} laps</option>)}
-            </select>
-          </Field>
           {!error && laps?.length === 0 && <p className="rounded-xl border border-dashed border-border bg-card px-4 py-6 text-center text-sm text-light">No laps are currently available for this track. Refresh or select another track.</p>}
           {laps?.length > 0 && (
-            <TelemetryDuel lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} pickerA={pickerA} pickerB={pickerB}
-              actionA={removeButton(lapA)} actionB={removeButton(lapB)} idealMs={idealMs} onSwap={() => { setAId(bId); setBId(aId); }}
-              placeholderA={aError ? 'Could not load this lap.' : 'Loading lap…'}
-              placeholderB={bId ? (bError ? 'Could not load this lap.' : 'Loading lap…') : 'Compare another driver or one of your own laps.'} />
+            <TelemetryDuel rows={rows} pickOf={pickOf} aId={aId} bId={bId} onPickA={changeA} onPickB={changeB} onClearB={() => setBId("")}
+              onSwap={() => { setAId(bId); setBId(aId); }} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} idealMs={idealMs}
+              myDriverId={user?.driverId || null} canRemove={admin} removing={removing} onRemove={removeLap} />
           )}
           {loadingChannels && <TelemetrySkeleton label="Loading lap channels…" compact={laps?.length > 0} />}
           {lapA && !loadingChannels && <>
             {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
             {profileA && <TelemetryOverview sectors={sectors} sectorsReal={!!sectorLines} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} />}
-            {tips && <TelemetryTips tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} road={track?.road}
+            {tips && <TelemetryTips key={`${aId}|${bId}`} tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} road={track?.road}
               onSection={(s) => { selectSection(s); document.getElementById("telemetry-traces")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
             {/* Player, replay, traces and sections share one wrapper: the
                 player bar pins itself for as long as this block is on screen,
@@ -849,7 +892,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                       <button type="button" className="h-7 w-7 rounded-md text-sm font-bold text-medium transition hover:bg-card disabled:opacity-30" aria-label="Zoom in on graphs" disabled={chartSpan <= minSpan} onClick={() => zoomCharts(2)}>+</button>
                     </div>
                     <button type="button" className="rounded-md px-2 py-1 text-xs font-semibold text-link transition hover:bg-surface2 disabled:text-faint disabled:hover:bg-transparent" disabled={!chartZoomed} onClick={resetCharts}>Full lap</button>
-                    <span className="font-mono text-[11px] tabular-nums text-light" aria-label="Visible graph section">{position(visibleRange[0])} – {position(visibleRange[1])}</span>
+                    <span className="font-mono text-[11px] tabular-nums text-light" aria-label="Visible graph section">{position(visibleRange[0])} to {position(visibleRange[1])}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Optional traces">
                     {OPTIONAL_CHANNELS.filter((c) => c.key !== 'lat' || gA?.lat).map((c) => <Chip key={c.key} on={shows(c.key)} onClick={() => toggleChannel(c.key)}>{c.label}</Chip>)}
@@ -862,7 +905,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                 </div>}
                 <div className="space-y-5 pt-4">
                   {both && delta && <div>
-                    <ChannelChart {...chartProps} title="Time delta" unit={`s · ${nameB} against ${nameA}`} a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120} />
+                    <ChannelChart {...chartProps} title="Time delta" unit={`s · ${nameB} against ${nameA}`} a={delta.d} lo={-delta.maxAbs} hi={delta.maxAbs} delta height={120}
+                      aside={gap != null && <span className={gap > 0 ? "text-bad" : gap < 0 ? "text-ok" : "text-light"} title={`${nameB} against ${nameA} at the finish line`}>{signedSeconds(gap)} at the line</span>} />
                     <p className="ml-12 mt-2 text-[11px] text-light">Above the line {nameA} is ahead, below it {nameB}. Rising: {nameB} loses time there.</p>
                   </div>}
                   <ChannelChart {...chartProps} title="Speed" unit="km/h" a={lapA.speed} b={lapB?.speed} lo={speedLo} hi={speedHi} height={150} />
@@ -871,7 +915,10 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                   {shows('gear') && <ChannelChart {...chartProps} title="Gear" unit="" a={lapA.gear} b={lapB?.gear} lo={0} hi={Math.max(6, ...lapA.gear, ...(lapB?.gear || []))} height={90} />}
                   {shows('lat') && gA?.lat && <ChannelChart {...chartProps} title="Lateral g" unit="g · from the recorded line" a={gA.lat} b={gB?.lat || null} lo={-gRange.lat} hi={gRange.lat} format={(v) => v.toFixed(1)} height={100} />}
                   {shows('long') && gA && <ChannelChart {...chartProps} title="Longitudinal g" unit="g · + accelerating, − braking" a={gA.long} b={gB?.long || null} lo={-gRange.long} hi={gRange.long} format={(v) => v.toFixed(1)} height={100} />}
-                  <ChartAxis visibleRange={visibleRange} n={n} dist={dist} mode={axisMode} zoomed={chartZoomed} />
+                  <div>
+                    <ChartAxis visibleRange={visibleRange} n={n} dist={dist} mode={axisMode} zoomed={chartZoomed} />
+                    <CornerTicks bands={bands} visibleRange={visibleRange} onBand={selectSection} />
+                  </div>
                 </div>
                 <p className="mt-3 border-t border-border pt-2 text-[11px] text-light">Drag across a graph to zoom into that stretch. Double-click for the full lap. The shaded bands are the corners; their labels zoom to them.</p>
               </Panel>
@@ -884,14 +931,12 @@ function TelemetryCompare({ series: fixedSeries = null }) {
 }
 
 // Grey shapes where the comparison is about to be, so the page does not jump
-// from one line of text to a full dashboard. `compact` when the duel above is
-// already drawn and only the channels are on their way.
+// from one line of text to a full dashboard. `compact` when the lap list above
+// is already drawn and only the channels are on their way.
 function TelemetrySkeleton({ label, compact = false }) {
   return (
     <div role="status" aria-label={label} className="space-y-3 sm:space-y-4">
-      {!compact && <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_12rem_1fr]">
-        <Skeleton className="h-36 rounded-xl" /><Skeleton className="hidden h-36 rounded-xl sm:block" /><Skeleton className="h-36 rounded-xl" />
-      </div>}
+      {!compact && <Skeleton className="h-56 rounded-xl" />}
       <Skeleton className="h-28 rounded-xl" />
       <div className="grid gap-3 lg:grid-cols-2"><Skeleton className="h-72 rounded-xl" /><Skeleton className="hidden h-72 rounded-xl lg:block" /></div>
       <p className="text-center text-xs text-light">{label}</p>
