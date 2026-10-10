@@ -15,6 +15,9 @@
 export const RACE_INFO_DEFAULTS = {
   subtitle:
     "The rules, the format and every file you need to get on the NABS grid. {platform} setup included.",
+  // The hint box under the intro. Empty hides it.
+  newHere:
+    "**New here?** Read sections 01 and 03, then get the files in 04. That’s all you need for your first start.",
   cards: [
     {
       icon: "calendar",

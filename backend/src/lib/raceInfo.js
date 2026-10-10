@@ -1,6 +1,7 @@
-// Admin-editable content of the Race Info page (rule cards, sporting
-// regulations, footnotes). Stored as one JSON blob in the Setting table; the
-// frontend falls back to its built-in defaults while nothing is saved yet.
+// Admin-editable content of the Race Info page (intro, "New here?" hint, rule
+// cards, sporting regulations, footnotes). Stored as one JSON blob in the
+// Setting table; the frontend falls back to its built-in defaults while
+// nothing is saved yet.
 
 export const RACE_INFO_KEY = "race_info_content";
 
@@ -18,6 +19,11 @@ export function sanitizeRaceInfo(input) {
     rulebook: [],
     rulebookFootnote: str(input.rulebookFootnote, 600),
   };
+  // The "New here?" hint in the page header. Content saved before the hint was
+  // editable has no such key, and that must keep showing the standard hint, so
+  // the key is only written when the editor sent it. An empty string is a real
+  // answer: the admin cleared it and the page hides the hint.
+  if (typeof input.newHere === "string") out.newHere = str(input.newHere, 400);
   for (const c of Array.isArray(input.cards) ? input.cards.slice(0, 12) : []) {
     if (!c || typeof c !== "object") continue;
     const title = str(c.title, 120);

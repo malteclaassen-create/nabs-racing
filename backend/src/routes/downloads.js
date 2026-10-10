@@ -31,6 +31,7 @@ router.get("/", requireUser, async (req, res, next) => {
         description: r.description ?? null,
         version: r.version ?? null,
         installNote: r.installNote ?? null,
+        required: !!Number(r.required),
         external,
         available: external ? true : st.exists,
         size: external ? null : st.size,

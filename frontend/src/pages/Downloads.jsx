@@ -80,9 +80,12 @@ function readMinutes(content, tokens) {
 // Title on the left, a table of contents on the right (under it on a phone).
 // Every row jumps to its section; the counts come from the same content the
 // sections render, so they can't disagree.
-function Header({ content, tokens, pointsCount, isLoggedIn, fileCount }) {
+function Header({ content, tokens, pointsCount, isLoggedIn, fileCount, requiredCount }) {
   const ruleCount = content.rulebook.reduce((n, g) => n + g.rules.length, 0);
   const cardCount = content.cards.length;
+  // Admin text (Race Info tab). Content saved before it was editable has no
+  // key and keeps the standard hint; an empty one hides the box.
+  const newHere = content.newHere ?? RACE_INFO_DEFAULTS.newHere;
   const rows = [
     { id: "format", title: "How the championship works", meta: `${cardCount} ${cardCount === 1 ? "card" : "cards"}` },
     { id: "points", title: "Points per finish", meta: pointsCount ? `P1 to P${pointsCount}` : null },
@@ -100,13 +103,12 @@ function Header({ content, tokens, pointsCount, isLoggedIn, fileCount }) {
         {content.subtitle && (
           <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-light">{fill(content.subtitle, tokens)}</p>
         )}
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-dashed border-accent/40 bg-primary/15 px-4 py-3 text-sm text-medium">
-          <Flag className="mt-0.5 h-4 w-4 shrink-0 text-eyebrow" strokeWidth={2} aria-hidden="true" />
-          <span>
-            <span className="font-semibold text-dark">New here?</span> Read sections 01 and 03, then get the files
-            in 04. That&rsquo;s all you need for your first start.
-          </span>
-        </div>
+        {newHere && (
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-dashed border-accent/40 bg-primary/15 px-4 py-3 text-sm text-medium">
+            <Flag className="mt-0.5 h-4 w-4 shrink-0 text-eyebrow" strokeWidth={2} aria-hidden="true" />
+            <span>{text(newHere, tokens)}</span>
+          </div>
+        )}
       </div>
 
       <nav aria-label="On this page" className="card overflow-hidden">
@@ -135,6 +137,7 @@ function Header({ content, tokens, pointsCount, isLoggedIn, fileCount }) {
                       fileCount > 0 && (
                         <span className="font-mono text-[11px] text-light">
                           {fileCount} {fileCount === 1 ? "file" : "files"}
+                          {requiredCount > 0 && ` · ${requiredCount} required`}
                         </span>
                       )
                     ) : (
@@ -236,7 +239,7 @@ function PointsTable({ content, tokens, pointsTable, fastestLapPoints }) {
   return (
     <section id="points" className="reveal scroll-mt-28 space-y-4">
       <SectionHeading
-        eyebrow="Scoring"
+        eyebrow="02 · Scoring"
         title="Points per finish"
         right={
           <span className="font-mono text-[11px] uppercase tracking-wider text-light">
@@ -278,33 +281,21 @@ function PointsTable({ content, tokens, pointsTable, fastestLapPoints }) {
 
 // ------------------------------------------------------------ the rulebook --
 
-// A long subject shows its first few rules and a "show all" link; anything up
-// to LONG rules is short enough to show in full straight away.
-const LONG = 8;
-const FIRST = 6;
-
 // Subjects on the left (swipeable chips on a phone), the chosen subject's
 // numbered rules on the right. Subject n's rules are numbered n.1, n.2, ...
 function Rulebook({ content, tokens }) {
   const groups = content.rulebook || [];
   const [sel, setSel] = useState(0);
-  const [showAll, setShowAll] = useState(false);
   const total = groups.reduce((n, g) => n + g.rules.length, 0);
   if (!groups.length) return null;
 
   const at = Math.min(sel, groups.length - 1);
   const g = groups[at];
-  const long = g.rules.length > LONG;
-  const shown = long && !showAll ? g.rules.slice(0, FIRST) : g.rules;
-  const pick = (i) => {
-    setSel(i);
-    setShowAll(false);
-  };
 
   return (
     <section id="regulations" className="reveal scroll-mt-28 space-y-4">
       <SectionHeading
-        eyebrow="On track"
+        eyebrow="03 · On track"
         title="Sporting regulations"
         right={
           <span className="hidden font-mono text-[11px] uppercase tracking-wider text-light sm:inline">
@@ -326,7 +317,7 @@ function Rulebook({ content, tokens }) {
                 <li key={i}>
                   <button
                     type="button"
-                    onClick={() => pick(i)}
+                    onClick={() => setSel(i)}
                     aria-pressed={on}
                     className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
                       on
@@ -359,7 +350,7 @@ function Rulebook({ content, tokens }) {
             </span>
           </header>
           <ol className="divide-y divide-border">
-            {shown.map((r, j) => (
+            {g.rules.map((r, j) => (
               <li key={j} className="flex gap-4 px-5 py-3.5">
                 <span className="shrink-0 pt-0.5 font-mono text-xs font-bold text-eyebrow">
                   {at + 1}.{j + 1}
@@ -368,16 +359,6 @@ function Rulebook({ content, tokens }) {
               </li>
             ))}
           </ol>
-          {long && (
-            <footer className="flex items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-light">
-              <span>
-                Showing {shown.length} of {g.rules.length}
-              </span>
-              <button type="button" onClick={() => setShowAll((v) => !v)} className="font-semibold text-link hover:underline">
-                {showAll ? "Show fewer" : `Show all ${g.rules.length} rules`}
-              </button>
-            </footer>
-          )}
         </article>
       </div>
       {content.rulebookFootnote && (
@@ -498,6 +479,11 @@ function FileRow({ item, round, highlight }) {
         <div className="min-w-0">
           <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="min-w-0 truncate text-sm font-semibold text-dark">{item.title}</span>
+            {item.required && (
+              <span className="shrink-0 rounded bg-warn/15 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-warn">
+                Required
+              </span>
+            )}
             {isNew && (
               <span className="shrink-0 rounded bg-primary/50 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-dark">
                 New
@@ -679,7 +665,8 @@ function ContentCheckNotice() {
         <TriangleAlert className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
-        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
+        <div className={EYEBROW}>05 · Content Check</div>
+        <h3 className="mt-1 font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
           Kicked with &ldquo;Checksum failed&rdquo;?
         </h3>
         <p className="mt-1 text-sm leading-relaxed text-light">
@@ -746,6 +733,7 @@ export default function Downloads() {
     [races.data]
   );
   const fileCount = files.data?.downloads?.length || 0;
+  const requiredCount = (files.data?.downloads || []).filter((d) => d.required).length;
 
   return (
     <div className="space-y-6 sm:space-y-12">
@@ -755,6 +743,7 @@ export default function Downloads() {
         pointsCount={pointsTable.length}
         isLoggedIn={isLoggedIn}
         fileCount={fileCount}
+        requiredCount={requiredCount}
       />
 
       <div className="space-y-7 sm:space-y-10">
@@ -776,7 +765,7 @@ export default function Downloads() {
 
       <section id="downloads" className="reveal scroll-mt-28 space-y-4">
         <SectionHeading
-          eyebrow="Members"
+          eyebrow="04 · Members"
           title="Downloads"
           right={
             isLoggedIn ? (

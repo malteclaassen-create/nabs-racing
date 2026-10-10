@@ -7,8 +7,9 @@ import { useAsk } from "./overlay.jsx";
 import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
 import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
-// Editor for the public Race Info page: the intro line, the "how the
-// championship works" cards, the Sporting Regulations and both footnotes.
+// Editor for the public Race Info page: the intro line, the "New here?" hint,
+// the "how the championship works" cards, the Sporting Regulations and both
+// footnotes.
 // Everything is stored as one blob in the backend; while nothing has been
 // saved the page shows the built-in defaults (which also pre-fill this form).
 
@@ -19,6 +20,9 @@ function toForm(content) {
   const c = content || RACE_INFO_DEFAULTS;
   return {
     subtitle: c.subtitle || "",
+    // Saved content from before the hint was editable has no key at all and
+    // keeps the standard hint; an empty string means the admin removed it.
+    newHere: c.newHere ?? RACE_INFO_DEFAULTS.newHere,
     cards: (c.cards || []).map((x) => ({ icon: x.icon || "info", title: x.title || "", text: x.text || "" })),
     pointsFootnote: c.pointsFootnote || "",
     rulebook: (c.rulebook || []).map((g) => ({
@@ -33,6 +37,7 @@ function toForm(content) {
 function fromForm(f) {
   return {
     subtitle: f.subtitle.trim(),
+    newHere: f.newHere.trim(),
     cards: f.cards
       .map((c) => ({ icon: c.icon, title: c.title.trim(), text: c.text.trim() }))
       .filter((c) => c.title && c.text),
@@ -162,6 +167,12 @@ export default function AdminRaceInfo() {
         <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Page intro</h3>
         <Field label="Subtitle under the page title">
           <textarea className="input" rows={2} value={form.subtitle} onChange={(e) => set("subtitle", e.target.value)} />
+        </Field>
+        <Field
+          label={'"New here?" hint'}
+          hint="The flagged box under the subtitle. Leave it empty to hide the box."
+        >
+          <textarea className="input" rows={2} value={form.newHere} onChange={(e) => set("newHere", e.target.value)} />
         </Field>
       </div>
 
