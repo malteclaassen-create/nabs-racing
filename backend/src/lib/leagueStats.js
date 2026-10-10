@@ -7,8 +7,10 @@
 //   Discord members — read live from Discord's public invite endpoint. The
 //     league's own invite is already stored (Setting `social_discord`), and
 //     `?with_counts=true` answers with an approximate member count for anyone,
-//     no bot and no token involved. Cached for an hour: this sits on the most
-//     visited page of the site and the number moves by a handful a week.
+//     no bot and no token involved. The same answer says how many of them are
+//     online, which the landing page shows next to it. Cached for ten minutes:
+//     this sits on the most visited page of the site, and an online count from
+//     an hour ago would be a different evening.
 //
 //   Racing since — the archived seasons carry no dates at all (only S6 onward
 //     have them), so "N years of racing" cannot be derived: the earliest dated
@@ -16,8 +18,9 @@
 //     single admin-set year, next to the Discord link it belongs with.
 // ---------------------------------------------------------------------------
 
-const MEMBERS_TTL_MS = 60 * 60 * 1000;
-let membersCache = { value: null, at: 0 };
+const COUNTS_TTL_MS = 10 * 60 * 1000;
+let countsCache = { value: null, at: 0 };
+const NO_COUNTS = { members: null, online: null };
 
 // The invite code out of whatever shape the admin pasted: a bare code, a
 // discord.gg link, or a full discord.com/invite/... URL.
@@ -27,29 +30,38 @@ export function inviteCode(url) {
   return m ? m[1] : null;
 }
 
-// Approximate member count of the league's Discord, or null when it cannot be
-// read (no invite configured, invite expired, Discord unreachable). Null means
-// the tile simply shows something else — a landing page must never wait on, or
-// break because of, a third party.
-export async function discordMemberCount(prisma) {
+// A positive whole number, or null. An invite to a server Discord will not
+// describe comes back without the counts at all.
+function positive(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+// Approximate member and online counts of the league's Discord, as
+// { members, online }. Either is null when it cannot be read (no invite
+// configured, invite expired, Discord unreachable). Null means the page simply
+// leaves that figure out — a landing page must never wait on, or break because
+// of, a third party.
+export async function discordCounts(prisma) {
   const now = Date.now();
-  if (membersCache.value != null && now - membersCache.at < MEMBERS_TTL_MS) return membersCache.value;
+  const last = countsCache.value || NO_COUNTS;
+  if (countsCache.value && now - countsCache.at < COUNTS_TTL_MS) return countsCache.value;
   try {
     const row = await prisma.setting.findUnique({ where: { key: "social_discord" } });
     const code = inviteCode(row?.value);
-    if (!code) return membersCache.value;
+    if (!code) return last;
     const res = await fetch(`https://discord.com/api/v10/invites/${code}?with_counts=true`, {
       signal: AbortSignal.timeout(4000),
     });
-    if (!res.ok) return membersCache.value; // keep the last good number
+    if (!res.ok) return last; // keep the last good numbers
     const data = await res.json();
-    const n = Number(data?.approximate_member_count);
-    if (!Number.isFinite(n) || n <= 0) return membersCache.value;
-    membersCache = { value: n, at: now };
-    return n;
+    const members = positive(data?.approximate_member_count);
+    if (!members) return last;
+    countsCache = { value: { members, online: positive(data?.approximate_presence_count) }, at: now };
+    return countsCache.value;
   } catch {
     // Stale is better than nothing, and nothing is better than a broken page.
-    return membersCache.value;
+    return last;
   }
 }
 
