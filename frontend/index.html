@@ -62,6 +62,26 @@
           if (d && /^(carbon|midnight|ocean|paddock)$/.test(d)) document.documentElement.setAttribute("data-design", d);
         } catch (e) {}
       })();
+      // Coming back from the Reload button of "A new version of the site is
+      // ready": open veiled, so the new version can come into focus instead of
+      // popping in (UpdateBanner.jsx, .update-veil in index.css), back where the
+      // reader was scrolled to. The mark is
+      // read once and only counts for a few seconds, so a later reload or a
+      // restored tab opens normally. The timeout lifts the veil whatever
+      // happens, even if the app never starts.
+      (function () {
+        try {
+          var mark = JSON.parse(sessionStorage.getItem("nabs_update_reveal") || "null");
+          sessionStorage.removeItem("nabs_update_reveal");
+          if (!mark || !mark.at || Date.now() - mark.at > 15000) return;
+          var html = document.documentElement;
+          html.classList.add("update-reveal");
+          window.__nabsRevealScrollY = Number(mark.y) || 0;
+          setTimeout(function () {
+            html.classList.remove("update-reveal", "update-reveal-go");
+          }, 3500);
+        } catch (e) {}
+      })();
     </script>
   </head>
   <body>
