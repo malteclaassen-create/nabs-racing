@@ -1122,6 +1122,30 @@ body {
 .nav-scrim.is-closing {
   animation: nav-fade-out var(--t-base) ease both;
 }
+/* The phone menu is a sheet from the bottom edge now, so it rises instead of
+   dropping. The way in fills only backwards: once the sheet has arrived nothing
+   pins its transform, which is what lets the grip drag it (NavBar's grab*).
+   The way out has no start frame, so it leaves from wherever the finger let go
+   instead of jumping back up first. */
+@keyframes nav-sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+@keyframes nav-sheet-out {
+  to { transform: translateY(100%); }
+}
+.nav-drop.nav-sheet {
+  animation: nav-sheet-in var(--t-slow) var(--e-out) backwards;
+}
+.nav-drop.nav-sheet.is-closing {
+  animation: nav-sheet-out var(--t-base) var(--e-in) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-drop.nav-sheet, .nav-drop.nav-sheet.is-closing { animation: none !important; }
+  .nav-drop.nav-sheet.is-closing { opacity: 0; }
+}
+.fx-lite .nav-drop.nav-sheet, .fx-lite .nav-drop.nav-sheet.is-closing { animation: none !important; }
+.fx-lite .nav-drop.nav-sheet.is-closing { opacity: 0; }
 
 /* --- Animated collapse (session header on phones) ------------------------ */
 /* Height can't transition to `auto`, so the open height is measured in JS and
