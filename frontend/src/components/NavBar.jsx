@@ -657,7 +657,11 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew }) {
 }
 
 // How wide the Standings menu is: the rows on the left, the table on the right.
-const STANDINGS_MENU_W = 600;
+// The menu opens as a plain list of the four pages (narrow) and widens to make
+// room for the preview the first time a row is pointed at or focused.
+const STANDINGS_ROWS_W = 322;
+const STANDINGS_PANEL_W = 260;
+const STANDINGS_MENU_W = STANDINGS_ROWS_W + STANDINGS_PANEL_W + 18; // + padding and gap
 
 // "Standings" nav item: one entry that opens a menu of the standings pages on
 // hover (and on click, for touch/keyboard). Highlighted while on any of them.
@@ -684,16 +688,9 @@ function StandingsNav({ seriesPath }) {
   const active = STANDINGS_PAGES.some((p) => pathNoSeries.startsWith(p));
   // Nothing is asked for until the menu opens for the first time.
   const preview = useStandingsPreview(open);
-  // What the panel shows. Every open starts on the page you are on when it is
-  // one of these, otherwise on the drivers' table.
-  const startView = pathNoSeries.startsWith("/constructors")
-    ? "constructors"
-    : pathNoSeries.startsWith("/transfers")
-      ? "transfers"
-      : pathNoSeries.startsWith("/records")
-        ? "records"
-        : "drivers";
-  const [view, setView] = useState("drivers");
+  // What the panel shows: nothing until a row is pointed at or focused, so the
+  // menu opens as the plain list it always was and only then grows the preview.
+  const [view, setView] = useState(null);
   // The Transfers and Hall of Fame previews, read the first time their row is
   // pointed at.
   const page = useMenuPagePreview(open ? view : null);
@@ -725,10 +722,12 @@ function StandingsNav({ seriesPath }) {
   // Measured before paint, so the menu never shows up half off screen.
   useLayoutEffect(() => {
     if (!open || !ref.current) return;
-    setView(startView);
+    setView(null);
+    // Placed for the full width, so the menu does not slide sideways when the
+    // preview opens.
     const left = ref.current.getBoundingClientRect().left;
     setShift(Math.min(0, document.documentElement.clientWidth - 16 - left - STANDINGS_MENU_W));
-  }, [open, startView]);
+  }, [open]);
 
   // One menu row, styled to match the series/season switcher menus: an icon
   // badge (brand-filled while active), a display title, a sub-line, and the
@@ -768,9 +767,14 @@ function StandingsNav({ seriesPath }) {
       >
         <div
           data-tour="nav-standings-menu"
-          className={`liquid-glass glass-dense glass-menu grid grid-cols-[minmax(0,1fr)_260px] gap-1.5 rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+          className={`liquid-glass glass-dense glass-menu standings-menu grid rounded-[22px] p-1.5 ${open ? "is-open" : ""} ${view ? "has-preview" : ""}`}
           // Springs out of the button even when the card has been pulled left.
-          style={{ width: STANDINGS_MENU_W, transformOrigin: `${24 - shift}px 0` }}
+          style={{
+            width: view ? STANDINGS_MENU_W : STANDINGS_ROWS_W + 12,
+            gridTemplateColumns: `${STANDINGS_ROWS_W}px ${view ? STANDINGS_PANEL_W : 0}px`,
+            columnGap: view ? 6 : 0,
+            transformOrigin: `${24 - shift}px 0`,
+          }}
         >
           <div role="menu" aria-label="Standings" className="flex flex-col gap-0.5">
             {pages.map((pg, i) => (
@@ -799,7 +803,11 @@ function StandingsNav({ seriesPath }) {
               </NavLink>
             ))}
           </div>
-          <StandingsPreviewPanel preview={preview} view={view} page={page} />
+          <div className="standings-menu-panel min-w-0 overflow-hidden" aria-hidden={!view}>
+            <div style={{ width: STANDINGS_PANEL_W }} className="h-full">
+              {view && <StandingsPreviewPanel preview={preview} view={view} page={page} />}
+            </div>
+          </div>
         </div>
       </div>
     </div>
