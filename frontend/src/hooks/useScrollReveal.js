@@ -31,9 +31,13 @@ export function useScrollReveal() {
       // 45ms a step (it was 110): enough to read as a top-to-bottom build,
       // quick enough that the whole first screen is in within ~0.6s of the
       // tap instead of the last section still arriving after a second.
+      // `data-reveal-after` (ms) holds an element back a little longer, for a
+      // block that should wait until what sits above it has started (the
+      // standings rows behind their toolbar).
       due.sort((a, b) => a.top - b.top);
       due.forEach(({ el }, i) => {
-        el.style.setProperty("--reveal-delay", `${Math.min(i, 7) * 45}ms`);
+        const after = Number(el.dataset.revealAfter) || 0;
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 7) * 45 + after}ms`);
         el.classList.add("is-visible");
       });
     };

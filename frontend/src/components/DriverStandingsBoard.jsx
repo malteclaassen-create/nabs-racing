@@ -431,6 +431,14 @@ export default function DriverStandingsBoard({
     // on its own and must not be read as rows moving.
   }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The rows wait for the toolbar on the way in (data-reveal-after below).
+  // Only then: rows that arrive later, after a tier switch or a search, come
+  // at once instead of carrying the entrance's head start.
+  useEffect(() => {
+    const t = setTimeout(() => boxRef.current?.style.setProperty("--reveal-delay", "0ms"), 1800);
+    return () => clearTimeout(t);
+  }, []);
+
   // Rows past the first batch are drawn as the reader scrolls toward them.
   const [limit, setLimit] = useState(FIRST_ROWS);
   const moreRef = useRef(null);
@@ -533,7 +541,13 @@ export default function DriverStandingsBoard({
           {/* cascade: rows rise in one after another, top to bottom, the same
               entrance as a race result on the Races page. --i drives the
               stagger; the replay re-deals the movers by the slot they start in. */}
-          <div ref={setRowsBox} role={grid ? "rowgroup" : undefined} className="sboard-rows cascade divide-y divide-border">
+          <div
+            ref={setRowsBox}
+            role={grid ? "rowgroup" : undefined}
+            className="sboard-rows cascade divide-y divide-border"
+            // Behind the toolbar on the way in (see useScrollReveal).
+            data-reveal-after="180"
+          >
             {drawn.map((d, i) => (
               <BoardRow
                 key={d.driverId}

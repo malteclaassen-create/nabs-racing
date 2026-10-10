@@ -578,7 +578,10 @@ export default function DriverStandings() {
           list, the search, and the three views. One card on every screen; on a
           phone the tiers take the first row, search and the view icons share
           the second. One wrapper, so the newcomer tour's stop finds it. */}
-      <div data-tour="standings-views" className="mb-4">
+      {/* `reveal`: the toolbar takes its place in the page's top-to-bottom
+          build (title, leaders, toolbar, rows) instead of riding the general
+          page fade on its own clock, which let the rows overtake it. */}
+      <div data-tour="standings-views" className="reveal mb-4" data-reveal-after="70">
         <div className="card rounded-2xl p-2">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
             {multiTier && (

@@ -971,7 +971,12 @@ export default function Races() {
       {/* Phones get a compact head: a short title with the session switch on
           the same row (it drops under the title only when a third tab will not
           fit), so the rounds and the results start about 140px higher. From
-          sm up it is the full header with the switch in its corner. */}
+          sm up it is the full header with the switch in its corner.
+          The two sit in ONE block: the page's space-y counts a display:none
+          sibling as a sibling, so the desktop header carried a 48px top margin
+          for the hidden phone one and the whole page sat lower than the
+          other pages. */}
+      <div>
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2 sm:hidden">
         <div className="min-w-0">
           <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">
@@ -990,6 +995,7 @@ export default function Races() {
           title={seasonHeading}
           right={sessionSwitch("inline-flex rounded-xl border border-border bg-card p-1", "whitespace-nowrap px-4 py-2 text-sm")}
         />
+      </div>
       </div>
 
       {/* Results explorer: race list (left), and on the right the selected
