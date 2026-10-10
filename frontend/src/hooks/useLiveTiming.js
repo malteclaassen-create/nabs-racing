@@ -33,7 +33,15 @@ export function useLiveTiming() {
     function connect() {
       if (!aliveRef.current) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const base = import.meta.env.VITE_API_BASE || `${proto}//${window.location.host}`;
+      // In development the socket goes straight to the backend rather than
+      // through Vite's proxy: on this Windows machine (Node 24) a proxied
+      // WebSocket torn down mid-write, which every quick page change does,
+      // took the whole dev server down with it, several times in one evening.
+      // The backend's socket server takes connections from any origin.
+      const devBase = import.meta.env.DEV
+        ? import.meta.env.VITE_API_TARGET || `${window.location.protocol}//${window.location.hostname}:4000`
+        : null;
+      const base = import.meta.env.VITE_API_BASE || devBase || `${proto}//${window.location.host}`;
       // Forward the page's ?demo so the backend can send the fabricated demo
       // board (dev/opt-in only there — a real visitor's plain URL never gets it).
       // Two flavours: ?demo=1 is the race, ?demo=practice the practice session.
