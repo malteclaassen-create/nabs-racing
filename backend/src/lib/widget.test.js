@@ -444,6 +444,21 @@ describe("buildWidget", () => {
     expect(body.updatedAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
   });
 
+  it("keeps a disqualified car off the podium", async () => {
+    // A DSQ row keeps the place it crossed the line in; the classified field
+    // is what stands on the podium.
+    raceDetailPayload.mockResolvedValueOnce({
+      race: {},
+      results: [
+        { driverId: "dq", name: "Disqualified", position: 1, status: "DSQ", points: 0, team: team("a", "Alpine", "#2293D1") },
+        { driverId: "me", name: "Racer", position: 1, status: "FINISHED", points: 35, team: team("w", "Williams", "#1E6FE0") },
+        { driverId: "lead", name: "Leader", position: 2, status: "FINISHED", points: 30, team: team("m", "McLaren", "#FF8000") },
+      ],
+    });
+    const body = await buildWidget(prisma, {});
+    expect(body.lastRace.podium.map((p) => p.driver)).toEqual(["Racer", "Leader"]);
+  });
+
   it("adds the new fields", async () => {
     const body = await buildWidget(prisma, {});
     expect(body.series).toEqual({ slug: "friday-f1", name: "F1 Friday", accent: "#F4AFC6" });

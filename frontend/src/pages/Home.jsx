@@ -750,8 +750,10 @@ export default function Home() {
   const podiumBlock = (payload) => {
     const race = payload?.race || null;
     const rows = payload?.results || [];
+    // Classified cars only: a DSQ/DNF row keeps the raw place it crossed the
+    // line in (a disqualified winner still says 1) and must not stand on it.
     const podium = rows
-      .filter((r) => r.position != null)
+      .filter((r) => r.position != null && (!r.status || r.status === "FINISHED"))
       .sort((a, b) => a.position - b.position)
       .slice(0, 3);
     const scores = race?.scores ?? (race?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
