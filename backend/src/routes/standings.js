@@ -34,10 +34,19 @@ function upToParam(req) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
 }
 
+// ?drops=<n> is the late-season preview: each driver's n worst results so far
+// dropped, as if the rounds still to come were all better (see
+// getDriverStandings). Absent or nonsense means the real table.
+function dropsParam(req) {
+  if (req.query.drops == null || req.query.drops === "") return null;
+  const n = Number(req.query.drops);
+  return Number.isInteger(n) && n >= 0 && n <= 10 ? n : null;
+}
+
 router.get("/drivers", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    const result = await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req) });
+    const result = await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) });
     // Members who asked for their own lettering in the table get it here.
     const names = await readDriverNameStyles(prisma, result.standings.map((d) => d.driverId));
     res.json({ ...result, standings: result.standings.map((d) => ({ ...d, nameStyle: names.get(d.driverId) || null })) });

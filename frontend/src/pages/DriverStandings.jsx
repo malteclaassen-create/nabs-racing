@@ -244,7 +244,23 @@ export default function DriverStandings() {
   const seasonReplayed = useRef(false);
   const replayCancel = useRef(null);
   const replayNode = useRef(null);
-  const { data, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
+  const { data: realData, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
+  // The late-season "drop worst" preview: how many of each driver's worst
+  // results so far to take off, or null for the real table. The previewed
+  // table is fetched on its own and swapped in once it arrives, so the board
+  // stays up and its rows glide to their new places instead of the page
+  // falling back to a skeleton. Not remembered: the real table is the default.
+  const [dropPick, setDropPick] = useState(null);
+  const [projected, setProjected] = useState(null); // { n, data }
+  useEffect(() => {
+    if (dropPick == null || projected?.n === dropPick) return undefined;
+    let alive = true;
+    api
+      .driverStandings(undefined, null, dropPick)
+      .then((d) => alive && setProjected({ n: dropPick, data: d }))
+      .catch(() => alive && setDropPick(null));
+    return () => { alive = false; };
+  }, [dropPick, projected]);
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
   // The season belongs in the heading, not only in the switcher above it.
@@ -316,6 +332,9 @@ export default function DriverStandings() {
       </div>
     );
 
+  // The table on show: the preview once it has arrived, otherwise the real one.
+  const projecting = dropPick != null && projected?.n === dropPick;
+  const data = projecting ? projected.data : realData;
   const all = data.standings;
   // Archived single-class seasons (S1–S5) have only one tier: hide the tier
   // filter + per-row tier badges. Totals-only seasons (no races) swap the
@@ -417,8 +436,21 @@ export default function DriverStandings() {
   // in the browser with a plain points sort — no countback, name as the
   // tie-break — which ranked level drivers differently than the table itself,
   // and re-summed every driver's season inside a comparator on every render.
+  // Rounds still to run, and from that what the drop rule takes off TODAY:
+  // an unrun round counts as 0 and soaks up a drop, so with two rounds left
+  // one real result is already gone. The preview offers that number up to the
+  // season's full count, but only in the last stretch (no more rounds left
+  // than drops), where "what if it ended now" is a question people ask.
+  const roundsLeft = data.raceNumbers.length - scoredRounds.length;
+  const dropsNow = Math.max(0, (realData.dropWorst || 0) - roundsLeft);
+  const dropChoices =
+    !seasonDecided && !realData.officialTotals && realData.dropWorst > 0 && roundsLeft > 0 && roundsLeft <= realData.dropWorst
+      ? Array.from({ length: realData.dropWorst - dropsNow + 1 }, (_, i) => dropsNow + i)
+      : [];
+  const pickDrops = (n) => setDropPick(n === dropsNow ? null : n);
+
   const deltaById = new Map();
-  if (!seasonDecided || demoArrows) {
+  if ((!seasonDecided || demoArrows) && !projecting) {
     for (const r of rows) {
       if (r.prevPosition != null) deltaById.set(r.driverId, r.prevPosition - r.position);
     }
@@ -706,7 +738,26 @@ export default function DriverStandings() {
                 onClick={() => setShowIdleReserves(true)}
               />
             ))}
-          <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-light">
+          {dropChoices.length > 1 && (
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <span className="text-sm font-medium text-medium">Drop worst</span>
+              <SlidingTabs
+                items={dropChoices.map((n) => ({
+                  key: n,
+                  title: n === dropsNow ? "The table as it stands" : `Preview with ${n} worst results dropped`,
+                  label: <span className="font-mono tabular-nums">{n}</span>,
+                }))}
+                value={dropPick ?? dropsNow}
+                onChange={pickDrops}
+                wrapClassName="flex rounded-lg bg-surface2 p-0.5"
+                btnClassName="flex h-6 min-w-[28px] items-center justify-center px-2 text-xs font-bold"
+                pillClassName="rounded-md bg-brand"
+                activeClassName="text-onbrand"
+                idleClassName="text-light hover:text-dark"
+              />
+            </div>
+          )}
+          <span className={`${dropChoices.length > 1 ? "" : "ml-auto "}font-mono text-[11px] uppercase tracking-wider text-light`}>
             {!multiTier && (
               <>
                 <b className="tabular-nums text-dark">{rows.length}</b> drivers ·{" "}
@@ -721,6 +772,21 @@ export default function DriverStandings() {
             )}
           </span>
         </div>
+        {dropPick != null && (
+          <p className="content-in mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
+            <span>
+              <b>Preview, not the real table.</b> Everyone&rsquo;s {dropPick} worst result{dropPick === 1 ? "" : "s"} so far{" "}
+              {dropPick === 1 ? "is" : "are"} dropped. That only holds if nobody does worse in the last {roundsLeft === 1 ? "round" : `${roundsLeft} rounds`} than in those.
+            </span>
+            <button
+              type="button"
+              onClick={() => setDropPick(null)}
+              className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-dark shadow-sm transition hover:bg-surface2"
+            >
+              Back to real table
+            </button>
+          </p>
+        )}
         </SmoothHeight>
       </div>
 
@@ -822,7 +888,7 @@ export default function DriverStandings() {
           customPoints={data.customPoints || {}}
           championOverride={data.championOverride || null}
           manualPoints={!!data.manualPoints}
-          dropWorst={data.dropWorst}
+          dropWorst={data.projectedDrops ?? data.dropWorst}
           officialTotals={data.officialTotals}
           decided={seasonDecided}
           multiTier={multiTier}
@@ -840,7 +906,7 @@ export default function DriverStandings() {
           actually read, the headline number of the whole page was unexplained
           and did not add up. The matrix has its own, fuller wording (it can
           point at the struck-through cells), so this only fills the other two. */}
-      {data.dropWorst > 0 && data.raceNumbers.length > 0 && (
+      {data.dropWorst > 0 && data.raceNumbers.length > 0 && !projecting && (
         // Folds shut (rather than vanishing) while By round is showing, in
         // step with the board's own footnotes folding open.
         <div className={`sb-fold ${activeView !== "grid" ? "is-open" : ""}`}>

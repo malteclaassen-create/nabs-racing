@@ -711,7 +711,15 @@ export function attachPrevPositions(rows, raceNumbers, dropN, manualOf = () => n
 // a second code path. That is the point of doing it here rather than in the
 // caller — a mid-season standings poster has to be the same table the site
 // showed that week, drop rule and tie-breaks included, not a re-sum of points.
-export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, _depth = 1 } = {}) {
+//
+// `projectDrops` is the "what if the season ended today" look the table offers
+// in the last few rounds: each driver's N worst results SO FAR come off, as if
+// every round still to run were better than those. Normally an unrun round
+// counts as 0 and soaks up a drop, so with three rounds left nothing real is
+// dropped yet. Capped at the season's own drop count; ignored on a frozen
+// mid-season view. Movement arrows are left off, since the previous round's
+// table was never ranked this way.
+export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, projectDrops = null, _depth = 1 } = {}) {
   const [drivers, allRaces, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
@@ -751,6 +759,12 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     .catch(() => []);
   const hidden = new Set(hiddenRows.map((r) => r.id));
 
+  // The projection drops over the rounds already run, and only those.
+  const projecting = !partial && Number.isInteger(projectDrops) && projectDrops >= 0 && scoring.dropWorst > 0;
+  const dropN = projecting ? Math.min(projectDrops, scoring.dropWorst) : scoring.dropWorst;
+  const runRounds = new Set(appliedResults.map((r) => raceNumberById.get(r.raceId)).filter((n) => n != null));
+  const dropRounds = projecting ? raceNumbers.filter((n) => runRounds.has(n)) : raceNumbers;
+
   // Points the admin set by hand for this season (lib/manualPoints.js): a
   // bonus/penalty on top of the computed total, or a total typed in whole.
   // Not on a frozen mid-season view — the same reasoning as the official final
@@ -763,7 +777,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // Season total drops each driver's N lowest rounds (unscored / not-yet-run
     // rounds count as 0 and are dropped first). The per-race grid still shows
     // every real result; droppedRounds tells the UI which ones don't count.
-    const { total, droppedRounds } = applyDropScores(pointsByRound, raceNumbers, scoring.dropWorst);
+    const { total, droppedRounds } = applyDropScores(pointsByRound, dropRounds, dropN);
 
     // Linked-person display: archive rows show the person's current name with a
     // subtle "raced as <old handle>" note (formerName), plus their CURRENT
@@ -830,7 +844,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // Where everyone stood BEFORE the latest completed round, so the table can
   // carry movement arrows the way championship tables do (see
   // attachPrevPositions).
-  attachPrevPositions(rows, raceNumbers, scoring.dropWorst, (id) => manualPoints.get(id) || null);
+  if (!projecting) attachPrevPositions(rows, raceNumbers, scoring.dropWorst, (id) => manualPoints.get(id) || null);
 
   // Archived seasons: official totals & order win over the computed ones. Not
   // for a mid-season view, though: the official sheet is where the season
@@ -862,6 +876,8 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // The overridden champion ({ driverId, name }) or null.
     championOverride,
     dropWorst: scoring.dropWorst,
+    // How many worst results the projection dropped, or null for the real table.
+    projectedDrops: projecting ? dropN : null,
     // Bonus the fastest race lap pays this season (0 = none), so the table
     // can footnote it and explain the cells that carry it.
     fastestLapPoints: scoring.fastestLapPoints || 0,
