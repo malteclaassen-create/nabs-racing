@@ -554,3 +554,14 @@ describe("duelStats", () => {
     expect(duelStats(null).bestFinish).toBe(null);
   });
 });
+
+describe("liveBlock size", () => {
+  it("lists the twelve fastest drivers, quickest first", () => {
+    const entries = Array.from({ length: 21 }, (_, i) => ({ name: "driver" + i, bestLapMs: 100_000 - i * 100, carName: "Formula 2010", onTrack: i === 0 }));
+    const block = liveBlock({ ok: true, stale: false, session: { trackName: "Silverstone", type: "Practice", sessionCount: 1, sessionIndex: 0, remainingMs: 600_000 }, entries }, []);
+    expect(block.best).toHaveLength(12);
+    expect(block.best[0]).toMatchObject({ pos: 1, driver: "DRIVER20", gap: null });
+    expect(block.best[11].pos).toBe(12);
+    expect(block.onTrack).toBe(1);
+  });
+});

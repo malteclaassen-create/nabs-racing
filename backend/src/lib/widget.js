@@ -58,7 +58,7 @@ import { makeDriverMatcher, formatLap, formatGap } from "../../../frontend/src/d
 const PODIUM_SIZE = 3;
 const RESULTS_SIZE = 10;
 const STANDINGS_SIZE = 10;
-const LIVE_SIZE = 8;
+const LIVE_SIZE = 12;
 const FORM_SIZE = 6;
 
 // Flags are stored and drawn from lowercase ISO codes; the widget gets them
