@@ -553,18 +553,6 @@ html.update-reveal.update-reveal-go body::after {
 .dark .live-map image {
   filter: none;
 }
-/* The live map's three sector colours, used by the coloured lap and its legend
-   alike. A notch lighter on the dark map so they keep their contrast there. */
-.live-sectors {
-  --live-s1: #db2777;
-  --live-s2: #0284c7;
-  --live-s3: #d97706;
-}
-.dark .live-sectors {
-  --live-s1: #f472b6;
-  --live-s2: #38bdf8;
-  --live-s3: #fbbf24;
-}
 
 /* Oversized ghost numeral behind hero content. */
 .ghost-numeral {

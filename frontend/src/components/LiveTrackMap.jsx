@@ -15,12 +15,13 @@ import SlidingTabs from "./SlidingTabs.jsx";
 //     walked along the SVG path by NormalisedSplinePos (indicative, not surveyed).
 //
 // SECTORS: once the circuit's sector lines are known (session.sectorLines,
-// learned from laps on the backend) the lap is drawn in three colours with the
-// start line and the two sector lines marked. On the real map the coloured
-// line is the middle of the road from the track's AI line (/api/live/track-line),
-// which starts where the lap starts; on the outline it is the outline itself,
-// which is the same path the cars are walked along. No lines known, no colours:
-// the map never guesses thirds.
+// learned from laps on the backend) the start line and the two sector lines are
+// marked. On the real map they are placed along the track's AI line itself
+// (/api/live/track-line) — the line the map.png band is drawn around — which
+// starts where the lap starts; on the outline, along the outline itself, the
+// same path the cars are walked along. No lines known, no markers: the map
+// never guesses thirds. The lap is not coloured by sector: that colour line sat
+// off the band on some circuits (china_gp, the Nordschleife) and was dropped.
 //
 // CARS are round markers in the team colour with the race number on them, and
 // a short name tag beside the followed car and the first few of the running
@@ -392,8 +393,8 @@ function useTags({ dots, focusGuid, zoom, r, rotated, H }) {
 
 // ---- Sectors -----------------------------------------------------------------
 
-// The lap as a polyline (first point = start line), cut into its three
-// sectors, with a way to find any point on it by share of the lap.
+// The lap as a polyline (first point = start line), with a way to find any
+// point on it by share of the lap, and where its two sector lines fall.
 function sectorGeometry(points, lines) {
   if (!points || points.length < 3 || !lines) return null;
   const cum = [0];
@@ -412,23 +413,15 @@ function sectorGeometry(points, lines) {
     const t = (want - cum[i - 1]) / span;
     return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, angle: (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI };
   };
-  const slice = (f0, f1) => {
-    const a = at(f0), b = at(f1);
-    const mid = [];
-    for (let i = 0; i < points.length; i++) {
-      const s = cum[i] / total;
-      if (s > f0 && s < f1) mid.push(points[i]);
-    }
-    return `M${[[a.x, a.y], ...mid, [b.x, b.y]].map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L")}`;
-  };
   const [s1, s2] = lines.map((v) => v / 100);
-  return { paths: [slice(0, s1), slice(s1, s2), slice(s2, 1)], at, cuts: [s1, s2] };
+  return { at, cuts: [s1, s2] };
 }
 
-// The coloured lap plus its three markers: a bar across the start line and a
-// labelled disc at each sector line. `width` is the coloured line's weight in
-// viewBox units, or in screen pixels with `nonScaling`. `r` sizes the markers.
-function SectorTrack({ geo, width, r, counterRotate, nonScaling = false }) {
+// The lap's three markers: a bar across the start line and a labelled disc at
+// each sector line. `r` sizes them. (The lap used to be drawn in three colours
+// between them; it sat off the road's band on enough tracks to look wrong, so
+// the colours went and only the markers stayed.)
+function SectorTrack({ geo, r, counterRotate }) {
   const upright = counterRotate ? " rotate(-90)" : "";
   const sf = geo.at(0);
   const barLen = r * 2.6;
@@ -438,18 +431,6 @@ function SectorTrack({ geo, width, r, counterRotate, nonScaling = false }) {
   const lab = barLen / 2 + r * 0.9;
   return (
     <g pointerEvents="none">
-      {geo.paths.map((d, i) => (
-        <path
-          key={i}
-          d={d}
-          fill="none"
-          stroke={`var(--live-s${i + 1})`}
-          strokeWidth={width}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          vectorEffect={nonScaling ? "non-scaling-stroke" : undefined}
-        />
-      ))}
       <g transform={`translate(${sf.x} ${sf.y}) rotate(${sf.angle})`}>
         <rect x={-r * 0.2} y={-barLen / 2} width={r * 0.4} height={barLen} className="fill-dark" />
       </g>
@@ -508,7 +489,7 @@ function projectXZ(x, z, map) {
     : [(x + map.xOffset) / map.scaleFactor + pad, (z + map.zOffset) / map.scaleFactor + pad];
 }
 
-// The circuit's centre line for the real map, fetched once per track (the
+// The circuit's AI line for the real map, fetched once per track (the
 // map version changes with the track). Null while loading or when the race
 // server does not publish the track's AI line.
 function useTrackLine(ver, server) {
@@ -579,14 +560,11 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
   const rBase = Math.max(W, H) * 0.014;
   const r = markerRadius(fit, rBase);
   const tags = useTags({ dots, focusGuid, zoom, r, rotated, H });
-  // The coloured lap: the AI line's middle, projected like the cars. About
-  // four metres wide, a third of the band map.png paints for the road, and
-  // never thinner than two and a half pixels on screen.
+  // The sector markers' line: the AI line, projected like the cars.
   const geo = useMemo(
     () => (line && sectorLines ? sectorGeometry([...line, line[0]].map(([x, z]) => projectXZ(x, z, cal)), sectorLines) : null),
     [line, sectorLines, cal]
   );
-  const lineWidth = Math.max(4 / (scale || 1), fit ? 2.5 / fit.s : 0);
   return (
     <div className={`live-map overflow-hidden rounded-xl ${className}`}>
       {/* Width-driven: the SVG takes its height from the (rotated) aspect ratio,
@@ -653,7 +631,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
                 (above), so the coloured lap steps aside for it. */}
             {geo && (
               <g opacity={showAerial ? 0 : 1} className="transition-opacity duration-500 motion-reduce:transition-none">
-                <SectorTrack geo={geo} width={lineWidth} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} />
+                <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} />
               </g>
             )}
             {(incidents || []).map((inc) => {
@@ -765,14 +743,14 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
           // Screen pixels (non-scaling stroke), so the road is the same
           // weight whatever the box or the zoom. Derived from the car size it
           // came out at 1.4px and vanished under the cars on a wide circuit.
-          strokeWidth={geo ? 6 : 3.5}
+          strokeWidth={3.5}
           strokeLinejoin="round"
           strokeLinecap="round"
           className="text-faint"
           vectorEffect="non-scaling-stroke"
-          opacity={geo ? 0.35 : 0.6}
+          opacity={0.6}
         />
-        {geo && <SectorTrack geo={geo} width={2.5} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={false} nonScaling />}
+        {geo && <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={false} />}
         {len > 0 &&
           pathRef.current &&
           (incidents || []).map((inc) => {
@@ -907,8 +885,6 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   const [lineA, lineB] = Array.isArray(sectorLines) ? sectorLines : [];
   const lines = useMemo(() => validLines([lineA, lineB]), [lineA, lineB]);
   const line = useTrackLine(real ? map.ver ?? 0 : null, server);
-  // The legend only when the map actually shows the colours it explains.
-  const showLegend = !!lines && (real ? !!line && !aerial : true);
   const focusMatch = focusedCar && matchFn ? matchFn(focusedCar.name) : null;
   const focusName = focusedCar ? focusMatch?.nabsName || focusedCar.name : null;
   const focusColor = focusMatch?.teamColor || "#94a3b8";
@@ -929,7 +905,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
     />
   );
   return (
-    <div className={`${wrapClassName || "relative"} live-sectors flex flex-col`}>
+    <div className={`${wrapClassName || "relative"} flex flex-col`}>
       <div className="relative min-h-0 flex-1">
       {aerialAvailable && (
         <div className="absolute right-2 top-2 z-10" role="group" aria-label="Map background">
@@ -941,15 +917,6 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
             value={aerial ? "aerial" : "track"}
             onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
           />
-        </div>
-      )}
-      {showLegend && (
-        <div className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-3 rounded-lg bg-card/90 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium shadow-sm">
-          {[1, 2, 3].map((i) => (
-            <span key={i} className="flex items-center gap-1">
-              <span className="h-1 w-3 rounded" style={{ background: `var(--live-s${i})` }} aria-hidden="true" />S{i}
-            </span>
-          ))}
         </div>
       )}
       {real ? (

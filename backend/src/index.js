@@ -299,8 +299,8 @@ app.get("/api/live/map.png", async (req, res) => {
   res.send(png);
 });
 
-// The middle of the circuit on air as a line in world metres, starting at the
-// start line, so the live map can colour it by sector (lib/trackMaps.js). Kept
+// The circuit's AI line (what the map.png band is drawn around) as a line in
+// world metres, starting at the start line, so the live map can colour it by sector (lib/trackMaps.js). Kept
 // off the board on purpose: it is a few hundred points that never change, and
 // the board goes out to every viewer several times a second. 404 when the
 // track's AI line is not served; the map then draws the track as before.
