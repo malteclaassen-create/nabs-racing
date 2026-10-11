@@ -144,6 +144,7 @@ export const TAB_VIEWS = {
   tokens: {
     orders: "Orders",
     members: "Balances",
+    history: "History",
     rules: "Rules and prices",
     bot: "Discord bot",
   },
@@ -542,6 +543,13 @@ export const ADMIN_INDEX = [
     title: "Fill a shop order",
     hint: "Somebody redeemed a helmet, a car skin or a role. Mark it filled, or decline it and give the points back.",
     keywords: "tokens shop order redeem helmet skin livery role prize reward refund decline fill",
+  },
+  {
+    tab: "tokens",
+    view: "history",
+    title: "See what a driver earned points for",
+    hint: "Pick a member and read their whole points history: every race, training week, invite, purchase and hand-booked award.",
+    keywords: "tokens history ledger who earned points what for driver member races training invite log transactions overview",
   },
   {
     tab: "tokens",

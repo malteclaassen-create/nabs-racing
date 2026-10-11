@@ -1000,6 +1000,8 @@ export const api = {
   // Everybody's Discord activity since the last F1 briefing, with the
   // multiplier it adds up to.
   tokenActivity: () => request("/admin/tokens/activity", { auth: true }),
+  // One member's whole points history (what they earned or spent, and for what).
+  tokenLedger: (discordId) => request(`/admin/tokens/ledger/${encodeURIComponent(discordId)}`, { auth: true }),
   setTokensEarning: (on) => request("/admin/tokens/earning", { method: "POST", body: { on }, auth: true }),
   setTokensMode: (mode) => request("/admin/tokens/enabled", { method: "POST", body: { mode }, auth: true }),
   setTokensEnabled: (enabled) =>

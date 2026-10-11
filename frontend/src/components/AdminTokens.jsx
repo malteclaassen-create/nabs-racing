@@ -807,6 +807,167 @@ function fmtBriefing(t) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// History: pick one member, read everything they earned or spent points for.
+// The same rows the member sees as "Your history", uncapped, with a total per
+// kind on top so "where did most of it come from?" is answered at a glance.
+// ---------------------------------------------------------------------------
+
+const HISTORY_KINDS = {
+  race_finish: "Race",
+  clean_race: "Race",
+  practice_20: "Training",
+  practice_50: "Training",
+  referral_join: "Invite",
+  referral_race: "Invite",
+  redeem: "Shop",
+  card_design: "Shop",
+  studio: "Shop",
+  refund: "Refund",
+  admin: "League",
+};
+const KIND_ORDER = ["Race", "Training", "Invite", "Shop", "Refund", "League"];
+
+// Mirrors kindOf in pages/Tokens.jsx, so a row reads the same here as it does
+// on the member's own page.
+function kindOf(e) {
+  const rule = String(e.rule || "");
+  return HISTORY_KINDS[rule] || (rule.startsWith("practice") ? "Training" : rule.startsWith("invite") ? "Invite" : e.delta < 0 ? "Shop" : "League");
+}
+
+const signed = (n) => `${n > 0 ? "+" : n < 0 ? "\u2212" : ""}${fmt(Math.abs(n))}`;
+
+function HistoryPanel({ members }) {
+  const [discordId, setDiscordId] = useState("");
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("all");
+
+  const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  const q = query.trim().toLowerCase();
+  const shown = sorted.filter((m) => !q || m.name.toLowerCase().includes(q) || m.discordId === q || m.discordId === discordId);
+
+  const data = useApi(useCallback(() => (discordId ? api.tokenLedger(discordId) : Promise.resolve(null)), [discordId]));
+  // Switching member keeps the last answer on screen until the new one is in.
+  const d = data.data?.member?.discordId === discordId ? data.data : null;
+  const ledger = d?.ledger || [];
+
+  const totals = new Map();
+  for (const e of ledger) {
+    const k = kindOf(e);
+    const t = totals.get(k) || { count: 0, sum: 0 };
+    t.count += 1;
+    t.sum += Number(e.delta) || 0;
+    totals.set(k, t);
+  }
+  const kinds = KIND_ORDER.filter((k) => totals.has(k));
+  const rows = kind === "all" ? ledger : ledger.filter((e) => kindOf(e) === kind);
+
+  return (
+    <div className="space-y-4">
+      <div className="card flex flex-wrap items-center gap-3 p-5">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search a member"
+          className="input w-full max-w-[14rem] text-sm"
+        />
+        <select
+          className="input min-w-0 flex-1 text-sm sm:max-w-sm"
+          value={discordId}
+          onChange={(e) => {
+            setDiscordId(e.target.value);
+            setKind("all");
+          }}
+        >
+          <option value="">Choose a member…</option>
+          {shown.map((m) => (
+            <option key={m.discordId} value={m.discordId}>
+              {m.nameKnown === false ? `Not on the site yet (${m.discordId})` : m.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {!discordId && (
+        <EmptyState
+          title="Pick a member"
+          hint="Then you see every race, training week, invite, purchase and hand-booked award that moved their points, newest first."
+        />
+      )}
+
+      {discordId && data.error && <ErrorBox message={data.error} onRetry={data.reload} />}
+
+      {discordId && d && (
+        <>
+          <div className="card flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-dark">{d.member.name}</div>
+              <div className="text-xs text-light">{ledger.length} entries</div>
+            </div>
+            <span className="inline-flex items-center gap-1 font-mono text-lg font-bold tabular-nums text-dark">
+              <TokenIcon className="h-4 w-4 text-brand" />
+              {fmt(d.balance)}
+            </span>
+          </div>
+
+          {kinds.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setKind("all")}
+                className={`rounded-lg border px-3 py-1.5 text-[13px] ${kind === "all" ? "border-brand bg-brand/15 text-dark" : "border-border bg-card text-light"}`}
+              >
+                All <span className="font-mono tabular-nums">{ledger.length}</span>
+              </button>
+              {kinds.map((k) => {
+                const t = totals.get(k);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className={`rounded-lg border px-3 py-1.5 text-[13px] ${kind === k ? "border-brand bg-brand/15 text-dark" : "border-border bg-card text-light"}`}
+                  >
+                    {k} <span className="font-mono tabular-nums">{signed(t.sum)}</span>
+                    <span className="text-faint"> ({t.count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {rows.length ? (
+            <div className="card px-5 py-1">
+              <ul className="divide-y divide-border">
+                {rows.map((e) => (
+                  <li key={e.id} className="flex items-center justify-between gap-3 py-2">
+                    <span className="w-16 shrink-0 rounded bg-surface2 px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wider text-light">
+                      {kindOf(e)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm text-dark">{e.title}</div>
+                      {e.detail && <div className="truncate text-xs text-light">{e.detail}</div>}
+                    </div>
+                    <span className="hidden shrink-0 text-xs text-faint sm:block">{fmtWhen(e.createdAt)}</span>
+                    <span
+                      className={`shrink-0 font-mono text-sm font-bold tabular-nums ${e.delta >= 0 ? "text-brand" : "text-light"}`}
+                    >
+                      {signed(e.delta)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <EmptyState title="Nothing earned yet" hint="This member has no points movements." />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ActivityPanel() {
   const data = useApi(useCallback(() => api.tokenActivity(), []));
   const reload = data.reload;
@@ -990,6 +1151,7 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
         items={[
           { key: "orders", label: waiting ? `Orders (${waiting})` : "Orders" },
           { key: "members", label: "Balances" },
+          { key: "history", label: "History" },
           { key: "activity", label: "Activity" },
           { key: "rules", label: "Rules and prices" },
           { key: "bot", label: "Discord bot" },
@@ -1074,6 +1236,8 @@ export default function AdminTokens({ jumpView = null, jumpKey = null }) {
             hint="One is created the first time a member signs in while the tokens are switched on."
           />
         ))}
+
+      {view === "history" && <HistoryPanel members={d.members || []} />}
 
       {view === "activity" && <ActivityPanel />}
 
