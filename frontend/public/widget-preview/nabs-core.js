@@ -6,7 +6,7 @@
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "6.7"
+const CORE_VERSION = "6.8"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -625,35 +625,22 @@ function nextL(d) {
   return w
 }
 
-// Days and hours as two big numbers (under a day it is one running timer)
-function countdownBlocks(p, date, size) {
+// The time left as iOS's own running timer: it counts down by itself every second, with
+// no help from a redraw, and it keeps counting in hours past a day (162:07:33). The last
+// argument is the width it may use; the size is chosen to fit it.
+function countdownBlocks(p, date, size, avail) {
   const ms = new Date(date).getTime() - Date.now()
   if (ms <= 0) { line(p, "LIGHTS OUT", size, { f: "black", c: ACC }); return }
-  if (ms < 864e5) {
-    const t = p.addDate(new Date(date))
-    t.applyTimerStyle()
-    t.font = Font.boldMonospacedSystemFont(Math.round(size * 0.9))
-    t.textColor = ACC
-    t.lineLimit = 1
-    t.minimumScaleFactor = 0.6
-    return
-  }
-  // Days and hours only: the widget redraws on the hour in the days before a race,
-  // so minutes would already be out of date. Under a day the timer below ticks on its own.
-  const parts = [
-    [Math.floor(ms / 864e5), Math.floor(ms / 864e5) === 1 ? "DAY" : "DAYS"],
-    [Math.floor((ms % 864e5) / 36e5), "HRS"],
-  ]
-  const row = H(p, 8)
-  parts.forEach(([n, label], i) => {
-    if (i > 0) T(row, ":", Math.round(size * 0.8), { f: "black", c: C.dim })
-    const c = V(row, 0)
-    // no spacer next to the number: it would keep 8 pt of a narrow widget
-    const num = H(c, 0)
-    T(num, String(n).padStart(2, "0"), size, { f: "black", c: i === 0 ? ACC : C.text })
-    T(c, label, 9, { f: "monob", c: C.mute })
-  })
-  row.addSpacer()
+  const fit = Math.min(size, Math.floor(0.9 * (avail || 300) / 5.4))
+  const h = H(p, 0)
+  const t = h.addDate(new Date(date))
+  t.applyTimerStyle()
+  t.font = Font.boldMonospacedSystemFont(fit)
+  t.textColor = ACC
+  t.lineLimit = 1
+  t.minimumScaleFactor = 0.6
+  h.addSpacer()
+  line(p, "HRS : MIN : SEC", 9, { f: "monob", c: C.mute })
 }
 
 function countdownM(d) {
@@ -666,7 +653,7 @@ function countdownM(d) {
   w.addSpacer()
   line(w, "LIGHTS OUT IN", 10, { f: "mono", c: C.mute })
   w.addSpacer(2)
-  countdownBlocks(w, r.date, 30)
+  countdownBlocks(w, r.date, 38, widgetWidth("medium") - 28)
   w.addSpacer()
   line(w, up(fmt(new Date(r.date), "EEE d MMM · HH:mm")) + (r.signedUp != null ? " · " + r.signedUp + " SIGNED UP" : ""), 10, { f: "mono", c: new Color("#D4D4D8") })
   return w
@@ -684,7 +671,7 @@ function countdownL(d) {
   w.addSpacer()
   line(w, "LIGHTS OUT IN", 11, { f: "mono", c: C.mute })
   w.addSpacer(2)
-  countdownBlocks(w, r.date, 62)
+  countdownBlocks(w, r.date, 56, widgetWidth("large") - 28)
   w.addSpacer()
   const img = trackImage(r.track, r.outline, 150, 105)
   if (img) {
@@ -718,18 +705,10 @@ function countdownS(d) {
   if (ms <= 0) {
     line(w, "LIGHTS", 30, { f: "black", c: ACC })
     line(w, "OUT", 30, { f: "black", c: ACC })
-  } else if (ms >= 864e5) {
+  } else {
     line(w, "LIGHTS OUT IN", 9, { f: "mono", c: C.mute })
     w.addSpacer(2)
-    countdownBlocks(w, r.date, 30)
-  } else {
-    line(w, "TODAY", 10, { f: "monob", c: ACC })
-    const t = w.addDate(new Date(r.date))
-    t.applyTimerStyle()
-    t.font = Font.boldMonospacedSystemFont(30)
-    t.textColor = C.text
-    t.lineLimit = 1
-    t.minimumScaleFactor = 0.5
+    countdownBlocks(w, r.date, 30, widgetWidth("small") - 28)
   }
   w.addSpacer(7)
   line(w, up(fmt(new Date(r.date), "EEE d MMM · HH:mm")), 10, { f: "mono", c: new Color("#D4D4D8") })
@@ -747,16 +726,13 @@ function countdownText(ms) {
 function countdownLine(p, date, size) {
   const ms = new Date(date).getTime() - Date.now()
   if (ms <= 0) { line(p, "LIGHTS OUT", size, { f: "black", c: ACC }); return }
-  if (ms < 864e5) {
-    const t = p.addDate(new Date(date))
-    t.applyTimerStyle()
-    t.font = Font.boldMonospacedSystemFont(size)
-    t.textColor = ACC
-    t.lineLimit = 1
-    t.minimumScaleFactor = 0.7
-    return
-  }
-  line(p, countdownText(ms), size, { f: "black", c: ACC, min: 0.8 })
+  // the running timer, whatever the distance
+  const t = p.addDate(new Date(date))
+  t.applyTimerStyle()
+  t.font = Font.boldMonospacedSystemFont(size)
+  t.textColor = ACC
+  t.lineLimit = 1
+  t.minimumScaleFactor = 0.7
 }
 
 function seasonOver(d) {
@@ -930,16 +906,13 @@ function liveHeader(p, lv, withTime) {
     const ms = new Date(lv.endsAt).getTime() - Date.now()
     if (ms > 0) {
       sub(h, "Left")
-      if (ms < 864e5) {
-        const t = h.addDate(new Date(lv.endsAt))
-        t.applyTimerStyle()
-        t.font = Font.boldMonospacedSystemFont(12)
-        t.textColor = C.text
-        t.lineLimit = 1
-        t.rightAlignText()
-      } else {
-        T(h, countdownText(ms), 11, { f: "monob" })
-      }
+      const t = h.addDate(new Date(lv.endsAt))
+      t.applyTimerStyle()
+      t.font = Font.boldMonospacedSystemFont(12)
+      t.textColor = C.text
+      t.lineLimit = 1
+      t.minimumScaleFactor = 0.7
+      t.rightAlignText()
     }
   }
 }
@@ -2663,12 +2636,12 @@ function accessory(view, fam, d) {
   if (r) {
     atext(w, "R" + r.round + " " + r.track, 15, "black")
     const ms = new Date(r.date).getTime() - Date.now()
-    if (ms > 0 && ms < 864e5) {
+    if (ms > 0) {
       const t = w.addDate(new Date(r.date))
       t.applyTimerStyle()
-      t.font = Font.mediumSystemFont(12)
+      t.font = Font.mediumMonospacedSystemFont(13)
     } else {
-      atext(w, ms <= 0 ? "Lights out" : countdownText(ms).toLowerCase(), 12, "medium")
+      atext(w, "Lights out", 12, "medium")
     }
   } else {
     atext(w, "Season finished", 14, "black")
