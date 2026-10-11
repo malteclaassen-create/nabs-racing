@@ -583,16 +583,20 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
     // The neighbours by name: the standings list stops at the top ten, so a driver
     // further down would otherwise see "car ahead" and "car behind".
     ahead: ahead?.name ?? null,
+    aheadCountry: ahead ? flagCode(countryFor(ahead.driverId, ahead.country)) : null,
     aheadTeam: ahead?.team?.name ?? null,
     aheadColor: ahead?.team?.color ?? null,
     behind: behind?.name ?? null,
+    behindCountry: behind ? flagCode(countryFor(behind.driverId, behind.country)) : null,
     behindTeam: behind?.team?.name ?? null,
     behindColor: behind?.team?.color ?? null,
     rating,
     lastResult,
     form,
     stats: duelStats(row),
-    teammate: mate ? { driver: mate.name, pos: mate.position, points: mate.total, stats: duelStats(mate) } : null,
+    teammate: mate
+      ? { driver: mate.name, country: flagCode(countryFor(mate.driverId, mate.country)), pos: mate.position, points: mate.total, stats: duelStats(mate) }
+      : null,
     attendance,
   };
 }
