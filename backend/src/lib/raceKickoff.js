@@ -4,7 +4,7 @@
 // The fallback is computed against Europe/Berlin so it follows daylight
 // saving instead of drifting an hour when the clocks change.
 
-const LEAGUE_TZ = "Europe/Berlin";
+export const LEAGUE_TZ = "Europe/Berlin";
 const LEAGUE_START_HOUR = 19;
 
 function berlinHour(t) {

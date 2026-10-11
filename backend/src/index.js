@@ -33,6 +33,7 @@ import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
+import widgetRoutes from "./routes/widget.js";
 import shareRoutes from "./routes/share.js";
 import contentCheckRoutes from "./routes/contentCheck.js";
 import changelogRoutes from "./routes/changelog.js";
@@ -365,6 +366,8 @@ app.use("/api/reports", reportsRoutes);
 // is treated as one.
 if (!IS_DEPLOYED) app.use("/api/dev", devLoginRoutes);
 app.use("/api/search", searchRoutes);
+// The iPhone home screen widget: next round, last podium, top five (public).
+app.use("/api/widget", widgetRoutes);
 app.use("/api/share", shareRoutes);
 // The site's own changelog, from merged pull requests on GitHub.
 app.use("/api/changelog", changelogRoutes);
