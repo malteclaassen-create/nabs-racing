@@ -44,6 +44,7 @@ import { readNotifySettings } from "./notifications.js";
 import { activityFor } from "./attendanceActivity.js";
 import { getNameOverrides, getIdentityOverrides, getLinkedDriverIds } from "./persons.js";
 import { readDriverRoles } from "./driverRoles.js";
+import { avatarUrlFor } from "./widgetAvatar.js";
 import { nextUpcomingRace } from "../../../frontend/src/utils/raceFormat.js";
 import { seasonGameParts } from "../../../frontend/src/utils/seasonGame.js";
 import { seriesThemeColor } from "../../../frontend/src/utils/seriesColor.js";
@@ -466,7 +467,7 @@ async function cardRating(prisma, seasonId, driverId) {
   return g ? { rtg: g.overall, exp: g.exp, rac: g.rac, awa: g.aha, pac: g.pac } : null;
 }
 
-async function meBlock(prisma, name, { season, champRaces, childrenOf, lastRace, lastResults, standingsData, view }) {
+async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, lastRace, lastResults, standingsData, view }) {
   const row = findDriverRow(standingsData?.standings || [], name);
   if (!row) return null;
   const at = view.findIndex((r) => r.driverId === row.driverId);
@@ -474,10 +475,12 @@ async function meBlock(prisma, name, { season, champRaces, childrenOf, lastRace,
   const ahead = at > 0 ? view[at - 1] : null;
   const behind = at >= 0 && at < view.length - 1 ? view[at + 1] : null;
   const linkedIds = await getLinkedDriverIds(prisma, row.driverId);
-  const [number, rating, attendance] = await Promise.all([
+  const [number, avatar, rating, attendance] = await Promise.all([
     orNull("number", async () =>
       (await prisma.driver.findUnique({ where: { id: row.driverId }, select: { number: true } }))?.number ?? null
     ),
+    // The picture behind their driver card, sized for a widget (lib/widgetAvatar.js).
+    orNull("avatar", () => avatarUrlFor(prisma, row.driverId, origin)),
     orNull("rating", () => cardRating(prisma, season.id, row.driverId)),
     orNull("attendance", () => driverAttendance(prisma, { champRaces, childrenOf, linkedIds, driverId: row.driverId })),
   ]);
@@ -496,9 +499,12 @@ async function meBlock(prisma, name, { season, champRaces, childrenOf, lastRace,
   return {
     driver: row.name,
     number,
+    avatar,
     country: flagCode(countryFor(row.driverId, row.country)),
     team: row.team?.name ?? null,
     teamColor: row.team?.color ?? null,
+    // The tier on their card; a reserve (tier 0, "Reserve" on the card) has none.
+    tier: row.tier === 1 || row.tier === 2 ? row.tier : null,
     pos: mine?.position ?? null,
     points: row.total,
     gapAhead: mine && ahead ? mine.total - ahead.total : null,
@@ -516,8 +522,9 @@ async function meBlock(prisma, name, { season, champRaces, childrenOf, lastRace,
 // ---------------------------------------------------------------------------
 
 // The widget for a series (slug; empty = the primary series), or null when
-// there is no such public series or it has no season yet. `driver` fills `me`.
-export async function buildWidget(prisma, { series, driver } = {}) {
+// there is no such public series or it has no season yet. `driver` fills `me`;
+// `origin` is the site's address, for the absolute picture URL in it.
+export async function buildWidget(prisma, { series, driver, origin = "" } = {}) {
   const seriesRow = await resolveSeries(prisma, series, { includePrivate: false });
   if (!seriesRow) return null;
   const season = await getActiveSeason(prisma, seriesRow.id);
@@ -543,7 +550,7 @@ export async function buildWidget(prisma, { series, driver } = {}) {
   const leaderTotal = view[0]?.total ?? 0;
   const me = driver
     ? await orNull("me", () =>
-        meBlock(prisma, driver, { season, champRaces, childrenOf, lastRace, lastResults, standingsData, view })
+        meBlock(prisma, driver, { origin, season, champRaces, childrenOf, lastRace, lastResults, standingsData, view })
       )
     : null;
 

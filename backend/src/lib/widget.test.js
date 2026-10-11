@@ -33,6 +33,9 @@ vi.mock("./persons.js", () => ({
   getLinkedDriverIds: vi.fn(async (_prisma, id) => [id]),
 }));
 vi.mock("./driverRoles.js", () => ({ readDriverRoles: vi.fn(async () => new Map()) }));
+vi.mock("./widgetAvatar.js", () => ({
+  avatarUrlFor: vi.fn(async (_prisma, id, origin) => `${origin}/api/widget/avatar/${id}?v=abc`),
+}));
 
 const { resolveSeries } = await import("./series.js");
 const { getActiveSeason } = await import("../services/seasonService.js");
@@ -428,13 +431,15 @@ describe("buildWidget", () => {
   });
 
   it("fills `me` for a driver who asks, and only then", async () => {
-    const body = await buildWidget(prisma, { driver: "racer" });
+    const body = await buildWidget(prisma, { driver: "racer", origin: "https://nabsracing.com" });
     expect(body.me).toEqual({
       driver: "Racer",
       number: 69,
+      avatar: "https://nabsracing.com/api/widget/avatar/me?v=abc",
       country: "DE",
       team: "Williams",
       teamColor: "#1E6FE0",
+      tier: 1,
       pos: 3,
       points: 96,
       gapAhead: -36,
@@ -448,6 +453,15 @@ describe("buildWidget", () => {
         { round: 10, status: "signed" },
       ] },
     });
+  });
+
+  it("gives a reserve no tier", async () => {
+    const data = await standingsService.getDriverStandings();
+    standingsService.getDriverStandings.mockResolvedValueOnce({
+      ...data,
+      standings: data.standings.map((r) => (r.driverId === "me" ? { ...r, tier: 0 } : r)),
+    });
+    expect((await buildWidget(prisma, { driver: "racer" })).me.tier).toBe(null);
   });
 
   it("answers normally when the driver is unknown", async () => {
