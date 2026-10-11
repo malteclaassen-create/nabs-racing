@@ -187,6 +187,19 @@ describe("classifyResults / applyPenalties (time penalties)", () => {
     expect(map.get("d1")).toBe(4); // still slower even after the bump -> unchanged
   });
 
+  it("never drops a penalised car behind a car a lap down, even one with a larger total time", () => {
+    // c1 is a lap down but crossed the line after the leader finished, so its
+    // total time is larger than b1's. b1's 5s must not put it behind c1.
+    const results = [
+      fint("a1", 1, 100000, { laps: 15 }),
+      fint("b1", 2, 108000, { laps: 15, penaltySeconds: 5 }),
+      fint("c1", 3, 110000, { laps: 14 }),
+    ];
+    const map = classifyResults(results);
+    expect(map.get("b1")).toBe(2);
+    expect(map.get("c1")).toBe(3);
+  });
+
   it("does not move a car whose penalty is smaller than the gap behind", () => {
     // a1 leads by 6s; a 5s penalty isn't enough to drop it behind b1.
     const results = [

@@ -2179,6 +2179,40 @@ router.put("/attendance-hotlaps", async (req, res, next) => {
   }
 });
 
+// GET/PUT /api/admin/import-server-penalties?series= -> what the result import
+// does with the time penalties the race server (Emperor) put into a file:
+// KEEP them as normal penalties the steward can still edit, or OWN — drop
+// them and let the stewards decide every penalty themselves. Per series, so
+// each league sets its own rule; unset means KEEP, the behaviour from before.
+const SERVER_PENALTY_MODES = ["KEEP", "OWN"];
+const serverPenaltyKey = (slug) => `import_server_penalties:${slug}`;
+
+router.get("/import-server-penalties", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    const row = series
+      ? await prisma.setting.findUnique({ where: { key: serverPenaltyKey(series.slug) } })
+      : null;
+    res.json({ series: series?.slug || null, mode: row?.value === "OWN" ? "OWN" : "KEEP" });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/import-server-penalties", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const mode = req.body?.mode;
+    if (!SERVER_PENALTY_MODES.includes(mode)) return res.status(400).json({ error: "mode must be KEEP or OWN" });
+    const key = serverPenaltyKey(series.slug);
+    await prisma.setting.upsert({ where: { key }, update: { value: mode }, create: { key, value: mode } });
+    res.json({ series: series.slug, mode });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // LIVE RACE SERVERS (which server each series' live page follows)
 // ---------------------------------------------------------------------------

@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseAcRaceJson, levenshtein, similarity, normalize, countCarContacts } from "./acJsonParser.js";
+import {
+  parseAcRaceJson,
+  levenshtein,
+  similarity,
+  normalize,
+  countCarContacts,
+  roadPositions,
+  serverPenaltySecondsOf,
+} from "./acJsonParser.js";
 
 const drivers = [
   { id: "lewis", name: "Lewis Hamilton", discordName: "lewis_h", teamId: "alpha", tier: 1 },
@@ -243,5 +251,63 @@ describe("countCarContacts", () => {
     // 5s apart: merged under a 10s window, separate under a 2s window.
     expect(countCarContacts(events, { mergeWindowMs: 10000 }).get("a")).toBe(1);
     expect(countCarContacts(events, { mergeWindowMs: 2000 }).get("a")).toBe(2);
+  });
+});
+
+describe("roadPositions / serverPenaltySecondsOf (race server time penalties)", () => {
+  const S = 1e9; // ACSM stores PenaltyTime as Go nanoseconds
+  const res = (DriverName, TotalTime, NumLaps, extra = {}) => ({ DriverName, TotalTime, NumLaps, PenaltyTime: 0, ...extra });
+  const order = (results) => {
+    const road = roadPositions(results);
+    return [...results].sort((a, b) => road.get(a) - road.get(b)).map((r) => r.DriverName);
+  };
+
+  it("reads whole seconds from nanoseconds", () => {
+    expect(serverPenaltySecondsOf({ PenaltyTime: 5 * S })).toBe(5);
+    expect(serverPenaltySecondsOf({ PenaltyTime: 0 })).toBe(0);
+    expect(serverPenaltySecondsOf({})).toBe(0);
+  });
+
+  it("takes the server's penalty back out of the file order", () => {
+    // Shape of the 2026-10-11 feature race: 13bot was faster on the road than
+    // Maltegoat but sits behind them in the file because of its +5s.
+    const file = [
+      res("Techouss", 1686065, 15),
+      res("Maltegoat", 1689222, 15),
+      res("13bot", 1686262, 15, { PenaltyTime: 5 * S }),
+      res("Steve", 1692034, 15),
+      res("Takoda", 1689427, 15, { PenaltyTime: 5 * S }),
+    ];
+    expect(order(file)).toEqual(["Techouss", "13bot", "Maltegoat", "Takoda", "Steve"]);
+  });
+
+  it("keeps a file without server penalties exactly as it is", () => {
+    const file = [res("a", 100, 15), res("b", 99, 15), res("c", 50, 14)];
+    expect(order(file)).toEqual(["a", "b", "c"]);
+  });
+
+  it("never moves a penalised car past a car on another lap or a disqualified one", () => {
+    const file = [
+      res("lapped", 1780000, 14),
+      res("pen", 1776000, 15, { PenaltyTime: 5 * S }),
+      res("dq", 1770000, 15, { Disqualified: true }),
+      res("pen2", 1700000, 15, { PenaltyTime: 5 * S }),
+    ];
+    expect(order(file)).toEqual(["lapped", "pen", "dq", "pen2"]);
+  });
+
+  it("is carried on every parsed entry", () => {
+    const json = {
+      Type: "RACE",
+      Result: [
+        res("Max Verstappen", 101000, 10),
+        res("Lewis Hamilton", 100000, 10, { PenaltyTime: 5 * S }),
+      ],
+    };
+    const { entries } = parseAcRaceJson(json, drivers);
+    expect(entries.map((e) => [e.acDriverName, e.position, e.roadPosition, e.serverPenaltySeconds])).toEqual([
+      ["Max Verstappen", 1, 2, 0],
+      ["Lewis Hamilton", 2, 1, 5],
+    ]);
   });
 });
