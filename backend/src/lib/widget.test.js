@@ -411,7 +411,7 @@ describe("buildWidget", () => {
     standingsService.getT2ConstructorStandings.mockResolvedValue({ standings: [] });
     getCardRating.mockResolvedValue({ ratings: { overall: 86, exp: 76, rac: 82, aha: 89, pac: 93 } });
     getBoard.mockReturnValue({ ok: false, session: null, entries: [] });
-    seatsFor.mockResolvedValue({ accepted: 18, mine: "ACCEPTED" });
+    seatsFor.mockResolvedValue({ accepted: 18, capacity: 40, waiting: 2, mine: "ACCEPTED" });
   });
 
   it("is null for a series nobody may see", async () => {
@@ -446,6 +446,8 @@ describe("buildWidget", () => {
       date: "2026-10-16T19:30:00+02:00",
       outline: expect.stringMatching(/^[\d.]+,[\d.]+ /),
       signedUp: 18,
+      maxGrid: 40,
+      waiting: 2,
     });
     expect(body.lastRace).toMatchObject({ circuit: "Marina Bay", country: "SG", date: "2026-10-09T19:30:00+02:00" });
     expect(body.lastRace.results).toHaveLength(2);
@@ -460,7 +462,10 @@ describe("buildWidget", () => {
 
   it("leaves the sign-up count out until the sign-up opens", async () => {
     attendanceGate.mockReturnValueOnce({ open: false, opensAt: new Date(Date.now() + 86_400_000), forced: null, closedForStart: false });
-    expect((await buildWidget(prisma, {})).nextRace.signedUp).toBe(null);
+    const next = (await buildWidget(prisma, {})).nextRace;
+    expect(next.signedUp).toBe(null);
+    expect(next.maxGrid).toBe(null);
+    expect(next.waiting).toBe(null);
   });
 
   it("fills `me` for a driver who asks, and only then", async () => {

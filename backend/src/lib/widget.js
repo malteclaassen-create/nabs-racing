@@ -192,8 +192,9 @@ export function outlineFor(track) {
   return points.length > 1 ? points.join(" ") : null;
 }
 
-// How many drivers have a seat for this round, counted the way the sign-up
-// card counts "18/40 seats taken" (lib/waitlist.js). null whenever the card
+// The seats of this round, counted the way the sign-up card counts
+// "18/40 seats taken" (lib/waitlist.js): drivers with a seat, the grid size and
+// the waiting list. null whenever the card
 // shows no such line (components/RaceSignupCard.jsx `gridRow`): the round is
 // not on the Attendance page, its sign-up opens later, or the league shows no
 // "Accepted" list.
@@ -208,7 +209,8 @@ async function signedUpFor(prisma, race) {
   const notYetOpen = gate.forced !== "closed" && !!gate.opensAt && gate.opensAt.getTime() > Date.now();
   const shows = !Array.isArray(notify.attendanceShow) || notify.attendanceShow.includes("ACCEPTED");
   if (notYetOpen || !shows) return null;
-  return (await seatsFor(prisma, race)).accepted;
+  const seats = await seatsFor(prisma, race);
+  return { accepted: seats.accepted, capacity: seats.capacity ?? null, waiting: seats.waiting ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -575,7 +577,7 @@ export async function buildWidget(prisma, { series, driver, origin = "" } = {}) 
   // The arrows stop once the title is decided (Standings page).
   const decided = champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
-  const [lastResults, standingsData, t1, t2, signedUp, live] = await Promise.all([
+  const [lastResults, standingsData, t1, t2, seats, live] = await Promise.all([
     lastRace ? raceDetailPayload(prisma, lastRace) : null,
     getDriverStandings(prisma, season.id),
     orNull("tier 1", () => getT1ConstructorStandings(prisma, season.id)),
@@ -603,7 +605,9 @@ export async function buildWidget(prisma, { series, driver, origin = "" } = {}) 
           round: nextRace.number ?? null,
           totalRounds: champRaces.length,
           ...raceFacts(nextRace),
-          signedUp,
+          signedUp: seats ? seats.accepted : null,
+          maxGrid: seats ? seats.capacity : null,
+          waiting: seats ? seats.waiting : null,
         }
       : null,
     lastRace: lastRace
