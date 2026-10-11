@@ -198,6 +198,43 @@ export default function AdminImport({ onCommitted }) {
   const [parsed, setParsed] = useState(null);
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ track: "", date: "" });
+  // The series' rule for the race server's own time penalties: KEEP fills
+  // them into the penalty column, OWN leaves the column to the stewards. The
+  // table always starts from the road order, so the two differ only there.
+  const serverPenalties = useApi(useCallback(() => api.getImportServerPenalties(), [currentSeason?.number]));
+  const [penaltyMode, setPenaltyMode] = useState("KEEP");
+  const [penaltyModeError, setPenaltyModeError] = useState(null);
+  // Swap only the server's share of each penalty; seconds a steward typed on
+  // top stay where they are.
+  function applyPenaltyMode(next) {
+    if (next === penaltyMode) return false;
+    const prev = penaltyMode;
+    setRows((rs) =>
+      rs.map((r) => {
+        const server = r.serverPenaltySeconds || 0;
+        if (!server) return r;
+        const own = Math.max(0, (Number(r.penaltySeconds) || 0) - (prev === "KEEP" ? server : 0));
+        return { ...r, penaltySeconds: own + (next === "KEEP" ? server : 0) };
+      })
+    );
+    setPenaltyMode(next);
+    return true;
+  }
+  // The stored setting can answer after a file is already on the table.
+  const storedPenaltyMode = serverPenalties.data?.mode;
+  useEffect(() => {
+    if (storedPenaltyMode) applyPenaltyMode(storedPenaltyMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedPenaltyMode]);
+  async function changePenaltyMode(next) {
+    if (!applyPenaltyMode(next)) return;
+    setPenaltyModeError(null);
+    try {
+      await api.setImportServerPenalties(next);
+    } catch (err) {
+      setPenaltyModeError(`Applied to this import, but not saved as the series setting: ${err.message}`);
+    }
+  }
 
   // Step 1 — the race this import is for. Chosen before any file is touched,
   // because it decides everything else on this page: which server session is
@@ -482,12 +519,16 @@ export default function AdminImport({ onCommitted }) {
         const takeover = driverId ? takeoverByDriver.get(driverId) : null;
         return {
           acDriverName: en.acDriverName,
-          position: en.position,
+          // Road order: the race server's time penalties are taken back out
+          // of the file's order and, when the series keeps them, re-added as
+          // normal seconds in the penalty column below.
+          position: en.roadPosition ?? en.position,
           driverId,
           status: en.disqualified ? "DSQ" : "FINISHED",
           subForTeamId: takeover ? takeover.teamId : "",
           marketFor: takeover ? takeover.forName : null,
-          penaltySeconds: 0,
+          serverPenaltySeconds: en.serverPenaltySeconds || 0,
+          penaltySeconds: penaltyMode === "KEEP" ? en.serverPenaltySeconds || 0 : 0,
           bestLapMs: en.bestLap || null,
           grid: en.grid ?? null,
           totalTimeMs: en.totalTimeMs ?? null,
@@ -781,6 +822,8 @@ export default function AdminImport({ onCommitted }) {
     const t = rows.filter((r) => r.status === "FINISHED" && r.totalTimeMs > 0).map((r) => r.totalTimeMs);
     return t.length ? Math.min(...t) : null;
   }, [rows]);
+
+  const serverPenalized = rows.filter((r) => r.serverPenaltySeconds > 0);
 
   const remoteList = remote.data?.results || [];
   const filteredRemote = remoteQuery.trim()
@@ -1251,12 +1294,48 @@ export default function AdminImport({ onCommitted }) {
             </div>
           </div>
 
+          <div className="card space-y-3 p-5">
+            <CardHead eyebrow="Penalties" title="Time penalties from the race server" />
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Time penalties from the race server">
+              {[
+                ["KEEP", "Keep them"],
+                ["OWN", "Decide ourselves"],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={penaltyMode === mode}
+                  className={penaltyMode === mode ? "btn-primary" : "btn-secondary"}
+                  onClick={() => changePenaltyMode(mode)}
+                  disabled={busy}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-sm text-light">
+              {penaltyMode === "KEEP"
+                ? "The seconds the race server handed out are filled into the penalty column. Change or clear any of them there before saving."
+                : "The race server's seconds are ignored: every car is placed where it crossed the line, and only the penalties your stewards enter count."}{" "}
+              Saved for the whole series, so the next import starts the same way.
+            </p>
+            {serverPenalized.length > 0 ? (
+              <p className="text-sm text-medium">
+                In this file: {serverPenalized.map((r) => `${r.acDriverName} +${r.serverPenaltySeconds}s`).join(", ")}
+              </p>
+            ) : (
+              <p className="text-sm text-light">This file carries no time penalties from the race server.</p>
+            )}
+            {penaltyModeError && <Notice kind="error">{penaltyModeError}</Notice>}
+          </div>
+
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface2 text-left text-light">
-                    <th className="px-3 py-2 text-center" title="Finishing position from the race file">Finish</th>
+                    <th className="px-3 py-2 text-center" title="Where the car crossed the line, before any time penalty">Finish</th>
                     <th className="px-3 py-2 text-center" title="Total race time (leader) or gap behind the leader">Time / Gap</th>
                     <th className="px-3 py-2">AC Name</th>
                     <th className="px-3 py-2">Driver</th>
@@ -1384,6 +1463,20 @@ export default function AdminImport({ onCommitted }) {
                             value={r.penaltySeconds}
                             onChange={(e) => setRow(i, { penaltySeconds: e.target.value })}
                           />
+                          {r.serverPenaltySeconds > 0 && (
+                            <div
+                              className={`mt-1 font-mono text-[10px] uppercase tracking-wider ${
+                                penaltyMode === "KEEP" ? "text-warn" : "text-light line-through"
+                              }`}
+                              title={
+                                penaltyMode === "KEEP"
+                                  ? "Handed out by the race server and filled in above."
+                                  : "Handed out by the race server, ignored for this import."
+                              }
+                            >
+                              server +{r.serverPenaltySeconds}s
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

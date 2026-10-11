@@ -892,6 +892,9 @@ export const api = {
   getAttendanceHotlaps: () => request(`/admin/attendance-hotlaps${seriesQ()}`, { auth: true }),
   setAttendanceHotlaps: (shown) =>
     request(`/admin/attendance-hotlaps${seriesQ()}`, { method: "PUT", body: { shown }, auth: true }),
+  getImportServerPenalties: () => request(`/admin/import-server-penalties${seriesQ()}`, { auth: true }),
+  setImportServerPenalties: (mode) =>
+    request(`/admin/import-server-penalties${seriesQ()}`, { method: "PUT", body: { mode }, auth: true }),
   setLiveServers: (map) => request("/admin/live-servers", { method: "PUT", body: { map }, auth: true }),
   // Training best laps carried from session files onto the live board. The
   // track is optional: left out, it is whatever the series' race server is on

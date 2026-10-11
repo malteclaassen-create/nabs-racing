@@ -84,20 +84,26 @@ export function classifyResults(raceResults) {
   // swap a (currently ahead) with the car b just behind it only when
   //   - b genuinely finished behind a on the road  (b.origTime >= a.origTime, so
   //     b is same-lap-slower, never a fewer-laps car with a smaller time), AND
-  //   - a's penalised time now exceeds b's          (a.adjusted > b.adjusted).
+  //   - a's penalised time now exceeds b's          (a.adjusted > b.adjusted), AND
+  //   - both completed the same number of laps, where both lap counts are
+  //     known: a car a lap down that crossed the line after the leader can
+  //     carry a LARGER total time than a slow lead-lap car, and must still
+  //     never be jumped.
   // Adding seconds can only move a car down, never up.
   const order = finishers.map((r) => ({
     driverId: r.driverId,
     origTime: r.totalTimeMs,
     adjusted: r.totalTimeMs + (r.penaltySeconds || 0) * 1000,
+    laps: Number.isInteger(r.laps) ? r.laps : null,
   }));
+  const sameLap = (a, b) => a.laps == null || b.laps == null || a.laps === b.laps;
   let swapped = true;
   while (swapped) {
     swapped = false;
     for (let j = 0; j + 1 < order.length; j++) {
       const a = order[j];
       const b = order[j + 1];
-      if (b.origTime >= a.origTime && a.adjusted > b.adjusted) {
+      if (b.origTime >= a.origTime && a.adjusted > b.adjusted && sameLap(a, b)) {
         order[j] = b;
         order[j + 1] = a;
         swapped = true;

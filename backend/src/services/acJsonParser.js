@@ -58,6 +58,50 @@ function similarity(acName, driver) {
   return best;
 }
 
+// A time penalty the race server (ACSM / Emperor) put on a result, in whole
+// seconds. ACSM stores it as Go nanoseconds in Result[].PenaltyTime and folds
+// it into the ORDER of Result[], never into TotalTime.
+export function serverPenaltySecondsOf(r) {
+  const ns = Number(r?.PenaltyTime) || 0;
+  return ns > 0 ? Math.round(ns / 1e9) : 0;
+}
+
+// The finishing order on the road: Result[] with the server's time penalties
+// taken back out. Only cars on the same lap, both with a real time and neither
+// disqualified, are swapped, and only where one of the two carries a server
+// penalty — so a file without server penalties keeps its order exactly, and a
+// penalised car never jumps a car it was lapped by. Returns a Map from each
+// Result[] entry to its 1-based road position.
+export function roadPositions(results) {
+  const order = results.map((r) => ({
+    r,
+    time: Number.isFinite(r.TotalTime) && r.TotalTime > 0 ? r.TotalTime : null,
+    laps: r.NumLaps ?? null,
+    pen: serverPenaltySecondsOf(r),
+  }));
+  const movable = (a, b) =>
+    (a.pen > 0 || b.pen > 0) &&
+    a.time != null &&
+    b.time != null &&
+    a.laps === b.laps &&
+    !a.r.Disqualified &&
+    !b.r.Disqualified;
+  let swapped = true;
+  while (swapped) {
+    swapped = false;
+    for (let j = 0; j + 1 < order.length; j++) {
+      const a = order[j];
+      const b = order[j + 1];
+      if (movable(a, b) && b.time < a.time) {
+        order[j] = b;
+        order[j + 1] = a;
+        swapped = true;
+      }
+    }
+  }
+  return new Map(order.map((o, i) => [o.r, i + 1]));
+}
+
 // Parse the AC JSON and return a structured, matchable result set.
 // `drivers` = all registered drivers (with team) for fuzzy matching.
 export function parseAcRaceJson(json, drivers) {
@@ -135,6 +179,7 @@ export function parseAcRaceJson(json, drivers) {
   // so the admin import carries cleanliness/pace data through to the stored
   // result. safetyCarGuids lets the review UI flag and deprioritise the SC.
   const { byGuid, safetyCarGuids, suspectedSafetyCarGuids } = extractTelemetry(json, { pitStopsByGuid });
+  const roadOf = roadPositions(json.Result);
 
   const entries = json.Result
     // AC includes spectators / non-finishers with 0 laps & huge time; we keep
@@ -187,6 +232,11 @@ export function parseAcRaceJson(json, drivers) {
       const tel = guid != null ? byGuid.get(guid) : null;
       return {
         position: index + 1,
+        // Where the car crossed the line before the server's time penalty, and
+        // that penalty in seconds. The import starts from the road order and
+        // either keeps the server's seconds as a normal penalty or drops them.
+        roadPosition: roadOf.get(r),
+        serverPenaltySeconds: serverPenaltySecondsOf(r),
         acDriverName: r.DriverName,
         // Steam id — stable identity, used to attribute telemetry (and a far
         // more reliable key than the display name).
