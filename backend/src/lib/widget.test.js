@@ -54,6 +54,7 @@ const {
   resultRows,
   standingsView,
   liveBlock,
+  outlineFor,
   findDriverRow,
   attendanceBlock,
 } = await import("./widget.js");
@@ -244,8 +245,8 @@ describe("liveBlock", () => {
       remainingMs: 60_000,
     },
     entries: [
-      { name: "STEFFAN", bestLapMs: 90_330, carName: "Formula 2010" },
-      { name: "aliveaxe", bestLapMs: 90_536, carName: "Formula 2010" },
+      { name: "STEFFAN", bestLapMs: 90_330, carName: "Formula 2010", onTrack: true },
+      { name: "aliveaxe", bestLapMs: 90_536, carName: "Formula 2010", onTrack: false },
       { name: "Stranger", bestLapMs: 90_600, carName: "F1 2010 - Lotus" },
       { name: "NoLapYet", bestLapMs: null },
     ],
@@ -256,6 +257,7 @@ describe("liveBlock", () => {
     const now = Date.parse("2026-10-18T03:09:00Z");
     expect(liveBlock(board(), teams, now)).toEqual({
       active: true,
+      onTrack: 1,
       name: "NABS Silverstone",
       track: "Silverstone",
       session: "Practice 1/3",
@@ -269,11 +271,41 @@ describe("liveBlock", () => {
     });
   });
 
-  it("is null without a session, and inactive (no end time) once the data stops", () => {
+  it("keeps the session's best times when nobody is driving", () => {
+    const now = Date.parse("2026-10-18T03:09:00Z");
+    const empty = board();
+    empty.entries = empty.entries.map((e) => ({ ...e, onTrack: false }));
+    const idle = liveBlock(empty, teams, now);
+    expect(idle).toMatchObject({ active: false, onTrack: 0, endsAt: "2026-10-18T05:10:00+02:00" });
+    expect(idle.best).toHaveLength(3);
+  });
+
+  it("is null without a session, and has no end time once the data stops", () => {
     expect(liveBlock({ ok: false, session: null, entries: [] }, teams)).toBe(null);
     const quiet = liveBlock(board({ stale: true }), teams);
-    expect(quiet.active).toBe(false);
     expect(quiet.endsAt).toBe(null);
+    expect(quiet.best).toHaveLength(3);
+  });
+});
+
+describe("outlineFor", () => {
+  it("fits the site's circuit outline into a 100 × 70 box", () => {
+    const pts = outlineFor("Most")
+      .split(" ")
+      .map((p) => p.split(",").map(Number));
+    expect(pts.length).toBeGreaterThan(50);
+    const xs = pts.map(([x]) => x);
+    const ys = pts.map(([, y]) => y);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(100);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...ys)).toBeLessThanOrEqual(70);
+    expect(outlineFor("Poznan")).toMatch(/^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
+  });
+
+  it("has none for a track the site does not draw", () => {
+    expect(outlineFor("Nowhere Raceway")).toBe(null);
+    expect(outlineFor(null)).toBe(null);
   });
 });
 
@@ -351,7 +383,7 @@ describe("buildWidget", () => {
     tier: 1,
     country: "de",
     team: team(teamId, teamId === "w" ? "Williams" : "McLaren", "#1E6FE0"),
-    perRace: { 9: { points: 10 } },
+    perRace: { 9: { points: 10, status: "FINISHED", position } },
   });
 
   beforeEach(() => {
@@ -412,6 +444,7 @@ describe("buildWidget", () => {
       circuit: "Silverstone",
       country: "GB",
       date: "2026-10-16T19:30:00+02:00",
+      outline: expect.stringMatching(/^[\d.]+,[\d.]+ /),
       signedUp: 18,
     });
     expect(body.lastRace).toMatchObject({ circuit: "Marina Bay", country: "SG", date: "2026-10-09T19:30:00+02:00" });
@@ -447,6 +480,7 @@ describe("buildWidget", () => {
       gapLeader: -54,
       rating: { rtg: 86, exp: 76, rac: 82, awa: 89, pac: 93 },
       lastResult: { round: 9, track: "Singapore", pos: 2, points: 30 },
+      form: [{ round: 9, track: "Singapore", pos: 3 }],
       teammate: { driver: "Mate", pos: 2, points: 132 },
       attendance: { driven: 1, total: 1, streak: 1, next: "signed", rounds: [
         { round: 9, status: "attended" },
