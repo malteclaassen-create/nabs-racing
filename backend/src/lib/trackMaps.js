@@ -287,54 +287,99 @@ export async function ensureTrackRoad(track, layout) {
   return null;
 }
 
-// ---- The middle of the road, for the live map --------------------------------
+// ---- The lap as a line, for the live map -------------------------------------
 //
 // The live map colours the circuit by sector, and for that it needs the lap as
 // a line rather than as a picture: map.png is a stroke with no start and no
-// direction. The road above already is that line, twice over, and its points
-// run in the AI line's own order, which is the order NormalisedSplinePos counts
-// in: the first point is the start of the lap. Halfway between the two edges is
-// the middle of the tarmac, and a point every few metres is plenty for a stroke
-// on a map a few hundred pixels across.
-const CENTRE_STEP_M = 8;
+// direction. The AI line is that line, and its points run in the order
+// NormalisedSplinePos counts in: the first point is the start of the lap.
+//
+// It is the AI line itself, NOT the middle between the road's two edges. The
+// map.png is drawn as a stroke around the AI line (see above), and the AI line
+// does not run down the middle of the tarmac — it hugs one side for stretches,
+// a metre or three. The midpoint of the edges is the better "middle of the
+// road", but it landed on the stroke's edge, a visible step beside the band the
+// cars are drawn on (2026-10-11). A point every few metres is plenty for a
+// stroke on a map a few hundred pixels across.
+const LINE_STEP_M = 8;
 
-export function centreLine(road, step = CENTRE_STEP_M) {
-  const left = road?.track?.left;
-  const right = road?.track?.right;
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length < 3 || left.length !== right.length) return null;
+// The AI points ([x, z, left, right]) as a thinned [x, z] polyline.
+export function lapLine(points, step = LINE_STEP_M) {
+  if (!Array.isArray(points) || points.length < 3) return null;
   const out = [];
   let since = 0;
   let prev = null;
-  for (let i = 0; i < left.length; i++) {
-    const p = [round1((left[i][0] + right[i][0]) / 2), round1((left[i][1] + right[i][1]) / 2)];
-    if (prev) since += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
-    prev = p;
+  for (let i = 0; i < points.length; i++) {
+    const [x, z] = points[i];
+    if (prev) since += Math.hypot(x - prev[0], z - prev[1]);
+    prev = points[i];
     if (i > 0 && since < step) continue;
     since = 0;
-    out.push(p);
+    out.push([round1(x), round1(z)]);
   }
   return out.length >= 3 ? out : null;
+}
+
+function readTrackLine(track, layout) {
+  const file = join(dirFor(track, layout), "line.json");
+  if (!existsSync(file)) return null;
+  try {
+    const line = JSON.parse(readFileSync(file, "utf8"));
+    return Array.isArray(line) && line.length >= 3 ? line : null;
+  } catch {
+    return null;
+  }
+}
+
+// Fetched once from the league's servers and kept beside the map, from the same
+// files and in the same order as the road. Its own file rather than a field of
+// road.json: that one goes out whole to the telemetry page, which has no use
+// for the line.
+async function ensureTrackLine(track, layout) {
+  const have = readTrackLine(track, layout);
+  if (have) return have;
+
+  const key = `line:${track}|${layout || ""}`;
+  const missedAt = misses.get(key);
+  if (missedAt && Date.now() - missedAt < MISS_TTL_MS) return null;
+
+  const enc = encodeURIComponent;
+  for (const server of LIVE_SERVERS) {
+    const base = `${String(server.origin).replace(/\/+$/, "")}/content/tracks`;
+    const folders = layout ? [`${base}/${enc(track)}/${enc(layout)}`, `${base}/${enc(track)}`] : [`${base}/${enc(track)}`];
+    for (const folder of folders) {
+      const line = lapLine(parseFastLane(await get(`${folder}/ai/fast_lane.ai`, "buf")));
+      if (!line) continue;
+      const dir = dirFor(track, layout);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "line.json"), JSON.stringify(line));
+      misses.delete(key);
+      return line;
+    }
+  }
+
+  misses.set(key, Date.now());
+  return null;
 }
 
 // One fetch per track however many people open the live page at once: the
 // first visitor's request is shared with everyone who arrives while it runs,
 // and a line once found is kept for the life of the process (it never
-// changes). A miss is not kept here; ensureTrackRoad remembers those itself.
-const centreLines = new Map(); // "track|layout" -> line | Promise<line|null>
+// changes). A miss is not kept here; ensureTrackLine remembers those itself.
+const laps = new Map(); // "track|layout" -> line | Promise<line|null>
 
 export async function liveCentreLine(track, layout) {
   if (!track) return null;
   const key = `${track}|${layout || ""}`;
-  const have = centreLines.get(key);
+  const have = laps.get(key);
   if (have) return have;
-  const job = ensureTrackRoad(track, layout)
-    .then((road) => centreLine(road))
+  const job = ensureTrackLine(track, layout)
     .catch(() => null)
     .then((line) => {
-      if (line) centreLines.set(key, line);
-      else centreLines.delete(key);
+      if (line) laps.set(key, line);
+      else laps.delete(key);
       return line;
     });
-  centreLines.set(key, job);
+  laps.set(key, job);
   return job;
 }

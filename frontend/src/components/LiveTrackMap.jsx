@@ -17,8 +17,10 @@ import SlidingTabs from "./SlidingTabs.jsx";
 // SECTORS: once the circuit's sector lines are known (session.sectorLines,
 // learned from laps on the backend) the lap is drawn in three colours with the
 // start line and the two sector lines marked. On the real map the coloured
-// line is the middle of the road from the track's AI line (/api/live/track-line),
-// which starts where the lap starts; on the outline it is the outline itself,
+// line is the track's AI line itself (/api/live/track-line) — the very line the
+// map.png band is drawn around, so the colour sits on the band, whereas the
+// middle between the road's edges does not — and it starts where the lap
+// starts; on the outline it is the outline itself,
 // which is the same path the cars are walked along. No lines known, no colours:
 // the map never guesses thirds.
 //
@@ -508,7 +510,7 @@ function projectXZ(x, z, map) {
     : [(x + map.xOffset) / map.scaleFactor + pad, (z + map.zOffset) / map.scaleFactor + pad];
 }
 
-// The circuit's centre line for the real map, fetched once per track (the
+// The circuit's AI line for the real map, fetched once per track (the
 // map version changes with the track). Null while loading or when the race
 // server does not publish the track's AI line.
 function useTrackLine(ver, server) {
@@ -579,7 +581,7 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
   const rBase = Math.max(W, H) * 0.014;
   const r = markerRadius(fit, rBase);
   const tags = useTags({ dots, focusGuid, zoom, r, rotated, H });
-  // The coloured lap: the AI line's middle, projected like the cars. About
+  // The coloured lap: the AI line, projected like the cars. About
   // four metres wide, a third of the band map.png paints for the road, and
   // never thinner than two and a half pixels on screen.
   const geo = useMemo(
