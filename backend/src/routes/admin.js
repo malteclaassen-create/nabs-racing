@@ -27,7 +27,7 @@ import {
 } from "./settings.js";
 import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
 import { leagueDay } from "../lib/tokenRules.js";
-import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds } from "../lib/sprintRaces.js";
+import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds, resultsBellRace } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -502,19 +502,26 @@ router.get("/backups/download", async (req, res, next) => {
   }
 });
 
-// Confirmed Driver-Market seat takeovers for races that haven't finished yet.
+// Confirmed Driver-Market seat takeovers for races that haven't finished yet,
+// plus those of the round being imported into (`raceId`) whatever its state:
+// on a sprint weekend the feature's save completes the round, and the sprint
+// imported right after it must still see the same takeovers.
 // Returned alongside a parsed import so the review table can pre-fill the
 // "team this race" (subForTeam) column for reserves who were picked to sub.
-async function getSeatTakeovers(prismaClient, seasonId) {
+async function getSeatTakeovers(prismaClient, seasonId, raceId = null) {
   const offers = await prismaClient.seatOffer.findMany({
     where: {
       status: "FILLED",
       filledById: { not: null },
-      race: { isCompleted: false, ...(seasonId ? { seasonId } : {}) },
+      OR: [
+        { race: { isCompleted: false, ...(seasonId ? { seasonId } : {}) } },
+        ...(raceId ? [{ raceId: String(raceId) }] : []),
+      ],
     },
     include: { team: true, filledBy: true, driver: true, race: true },
   });
   return offers.map((o) => ({
+    raceId: o.raceId,
     reserveDriverId: o.filledById,
     reserveName: o.filledBy?.name || null,
     teamId: o.teamId,
@@ -556,7 +563,7 @@ async function attachSteamIds(drivers) {
   return drivers;
 }
 
-// POST /api/admin/races/import  (multipart: file=<AC json>)
+// POST /api/admin/races/import?race=<raceId>  (multipart: file=<AC json>)
 // Parses the JSON and returns a fuzzy-matched mapping for the admin to confirm.
 // Does NOT persist anything yet.
 router.post("/races/import", upload.single("file"), async (req, res, next) => {
@@ -580,7 +587,7 @@ router.post("/races/import", upload.single("file"), async (req, res, next) => {
     // Keep the raw JSON so the round's telemetry can be recomputed later; the
     // key comes back with the parse and is moved into place on commit.
     const archiveKey = stashIncoming(json);
-    res.json({ ...parsed, archiveKey, seatTakeovers: await getSeatTakeovers(prisma, seasonId) });
+    res.json({ ...parsed, archiveKey, seatTakeovers: await getSeatTakeovers(prisma, seasonId, req.query.race) });
   } catch (e) {
     if (e instanceof SyntaxError) return res.status(400).json({ error: "Invalid JSON file" });
     next(e);
@@ -598,19 +605,19 @@ router.get("/results/remote", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/results/remote/import  { id }
+// POST /api/admin/results/remote/import  { id, raceId? }
 // Downloads the chosen result JSON from the server and returns the same
 // fuzzy-matched mapping as a manual file upload (nothing persisted yet).
 router.post("/results/remote/import", async (req, res, next) => {
   try {
-    const { id, season, series } = req.body || {};
+    const { id, season, series, raceId } = req.body || {};
     if (!id || !RESULT_REF_RE.test(id)) return res.status(400).json({ error: "Valid result id required" });
     const json = await fetchRemoteResult(id);
     const seasonId = await resolveSeasonId(prisma, season, { includePrivate: true, series });
     const drivers = await attachSteamIds(await prisma.driver.findMany({ where: { seasonId }, orderBy: { name: "asc" } }));
     const parsed = parseAcRaceJson(json, drivers);
     const archiveKey = stashIncoming(json);
-    res.json({ ...parsed, archiveKey, seatTakeovers: await getSeatTakeovers(prisma, seasonId) });
+    res.json({ ...parsed, archiveKey, seatTakeovers: await getSeatTakeovers(prisma, seasonId, raceId) });
   } catch (e) {
     if (e.message && e.message.startsWith("Invalid AC")) return res.status(400).json({ error: e.message });
     next(e);
@@ -723,9 +730,14 @@ router.post("/races/commit", async (req, res, next) => {
       `before-import-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : race.number != null ? `r${race.number}` : "training"}`
     );
     const saveSummary = await saveRaceResults(prisma, race.id, results);
-    // Bell notification (deduped per race, so re-imports stay silent). A sprint
-    // child stays quiet — the evening's bell rings once, with the feature.
-    if (results.length && !isSprint) notifyResultsSaved(prisma, race);
+    // Bell notification (deduped per race, so re-imports stay silent). On a
+    // sprint weekend it waits until both races are in and then rings once, for
+    // the event, with whichever save completed the pair.
+    if (results.length) {
+      resultsBellRace(prisma, race, sprintOf)
+        .then((bell) => bell && notifyResultsSaved(prisma, bell))
+        .catch(() => {});
+    }
     // New results can tip a driver over a card-unlock threshold (and the finale
     // seals titles) — reconcile the season's linked drivers' bells. A sprint
     // scores too, so its points can be the ones that tip someone over.

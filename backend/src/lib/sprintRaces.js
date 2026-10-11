@@ -24,6 +24,7 @@
 // raw SQL), so all reads and writes of the link go through here.
 // ---------------------------------------------------------------------------
 import { writeRaceType } from "./raceTypes.js";
+import { readRaceFormat } from "./raceFormat.js";
 
 // Map raceId -> parentRaceId for the given ids (only rows that HAVE a parent
 // appear). Empty map when the column doesn't exist yet.
@@ -229,4 +230,22 @@ export async function ensureSprintChild(prisma, parent) {
     /* cosmetic only */
   }
   return prisma.race.findUnique({ where: { id: child.id } });
+}
+
+// The race whose "results are in" bell a save should ring, or null for none
+// yet. `race` is the row just written, `sprintOf` its event when that was a
+// sprint. A single-race round rings with its own save; a sprint weekend only
+// once the feature (the event row) and the sprint (its child) both hold
+// results — a bell after the feature alone sent everyone to half an evening.
+export async function resultsBellRace(prisma, race, sprintOf) {
+  const event = sprintOf || race;
+  const format = (await readRaceFormat(prisma, [event.id])).get(event.id);
+  if (format?.raceFormat !== "SPRINT_FEATURE") return sprintOf ? null : event;
+  const childId = sprintOf ? race.id : (await readSprintChildren(prisma, [event.id])).get(event.id);
+  if (!childId) return null;
+  const [feature, sprint] = await Promise.all([
+    prisma.raceResult.count({ where: { raceId: event.id } }),
+    prisma.raceResult.count({ where: { raceId: childId } }),
+  ]);
+  return feature > 0 && sprint > 0 ? event : null;
 }

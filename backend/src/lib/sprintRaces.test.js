@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ensureSprintChild, readParentIds, readSprintChildren, readSprintChildrenOf,
-  withSprintClassifications, withSprintRounds,
+  withSprintClassifications, withSprintRounds, resultsBellRace,
 } from "./sprintRaces.js";
 
 // A minimal in-memory Race table speaking just enough prisma for the lib: the
@@ -10,9 +10,12 @@ import {
 // import of the same sprint has to land on the same child.
 function fakePrisma() {
   const rows = new Map(); // id -> race row
+  const resultCount = new Map(); // raceId -> stored results
   let n = 0;
   return {
     rows,
+    resultCount,
+    raceResult: { count: async ({ where }) => resultCount.get(where.raceId) || 0 },
     race: {
       create: async ({ data }) => {
         const row = { id: `race${++n}`, parentRaceId: null, country: null, raceLaps: null, type: "CHAMPIONSHIP", ...data };
@@ -28,6 +31,9 @@ function fakePrisma() {
       }
       if (sql.includes('"parentRaceId" IN')) {
         return [...rows.values()].filter((r) => args.includes(r.parentRaceId));
+      }
+      if (sql.includes('"raceFormat"')) {
+        return [...rows.values()].filter((r) => args.includes(r.id)).map((r) => ({ id: r.id, raceFormat: r.raceFormat ?? "SINGLE" }));
       }
       if (sql.includes('SELECT "country", "sprintLaps"')) {
         const r = rows.get(args[0]);
@@ -170,5 +176,37 @@ describe("withSprintClassifications", () => {
     const { races, sprintIds } = await withSprintClassifications(prisma, [r5]);
     expect(races).toEqual([r5]);
     expect(sprintIds.size).toBe(0);
+  });
+});
+
+describe("resultsBellRace", () => {
+  it("rings a single-race round with its own save", async () => {
+    const prisma = fakePrisma();
+    const race = await prisma.race.create({ data: { track: "Monza", seasonId: "s8" } });
+    prisma.resultCount.set(race.id, 20);
+    expect(await resultsBellRace(prisma, race, null)).toBe(race);
+  });
+
+  it("holds a sprint weekend's bell until feature and sprint are both in", async () => {
+    const prisma = fakePrisma();
+    const event = await prisma.race.create({ data: { track: "Spa", seasonId: "s8", raceFormat: "SPRINT_FEATURE" } });
+    // Feature saved, no sprint row yet: no bell.
+    prisma.resultCount.set(event.id, 20);
+    expect(await resultsBellRace(prisma, event, null)).toBe(null);
+    // The sprint lands on the child; that save completes the pair and rings
+    // for the event.
+    const child = await ensureSprintChild(prisma, event);
+    prisma.resultCount.set(child.id, 20);
+    expect(await resultsBellRace(prisma, child, event)).toBe(event);
+  });
+
+  it("rings with the feature when the sprint went in first", async () => {
+    const prisma = fakePrisma();
+    const event = await prisma.race.create({ data: { track: "Spa", seasonId: "s8", raceFormat: "SPRINT_FEATURE" } });
+    const child = await ensureSprintChild(prisma, event);
+    prisma.resultCount.set(child.id, 20);
+    expect(await resultsBellRace(prisma, child, event)).toBe(null);
+    prisma.resultCount.set(event.id, 20);
+    expect(await resultsBellRace(prisma, event, null)).toBe(event);
   });
 });
