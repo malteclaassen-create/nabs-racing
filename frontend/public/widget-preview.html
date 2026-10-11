@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NABS Widgets · Preview</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+  :root {
+    --bg: #0B0B0D;
+    --panel: #141417;
+    --line: #26262B;
+    --text: #F4F4F5;
+    --mute: #A1A1AA;
+    --dim: #71717A;
+    --acc: #F4AFC6;
+    --bad: #EF4444;
+    --ok: #22C55E;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-ui, sans-serif; }
+  body { min-height: 100vh; }
+  button, input, select { font: inherit; color: inherit; }
+
+  .bar { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 20px 10px; }
+  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: 0.01em; margin-right: 6px; }
+  .live { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  .live.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+  .live.off { background: var(--bad); }
+  .ver { font: 500 11px/1 "JetBrains Mono", monospace; color: var(--mute); }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .controls label { display: flex; align-items: center; gap: 6px; color: var(--mute); font-size: 12px; }
+  .controls input, .controls select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; color: var(--text); font-size: 13px; }
+  .controls input[type=text] { width: 130px; }
+  .controls input:focus, .controls select:focus { outline: 2px solid rgba(244, 175, 198, 0.4); outline-offset: 0; }
+  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: #3A3A40; }
+  .row2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .chip { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--mute); cursor: pointer; }
+  .chip:hover { color: var(--text); }
+  .chip.on { background: var(--acc); border-color: var(--acc); color: #1C1218; font-weight: 700; }
+  .toggle { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--mute); margin-left: 6px; cursor: pointer; }
+  .status { margin-left: auto; display: flex; gap: 14px; font: 500 11px/1 "JetBrains Mono", monospace; color: var(--dim); }
+  #fakeTime { color: var(--acc); }
+
+  main { padding: 18px 20px 80px; }
+  .wsec { padding: 18px 0 26px; border-bottom: 1px solid var(--line); }
+  .whead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .whead h2 { margin: 0; font-size: 18px; font-weight: 800; }
+  .whead code { font: 500 12px "JetBrains Mono", monospace; color: var(--dim); }
+  .tag { font-size: 11px; color: var(--acc); border: 1px solid rgba(244, 175, 198, 0.35); border-radius: 999px; padding: 1px 8px; }
+  .wrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px; }
+  .card { margin: 0; display: flex; flex-direction: column; gap: 7px; }
+  .card figcaption { font: 500 11px/1 "JetBrains Mono", monospace; color: var(--dim); }
+  .card.busy .stage { opacity: 0.55; }
+  .stage { position: relative; transition: opacity 0.15s; }
+  .scale { transform-origin: 0 0; width: max-content; }
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 16px; max-width: 100%; }
+  .link { font: 500 11px "JetBrains Mono", monospace; color: var(--mute); text-decoration: none; }
+  .link:hover { color: var(--acc); }
+  .warn { font: 500 11px "JetBrains Mono", monospace; color: var(--bad); }
+  .logbtn { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; font-size: 11px; color: var(--mute); cursor: pointer; }
+  .log { flex-basis: 100%; margin: 0; max-width: 520px; max-height: 180px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: 11px/1.45 "JetBrains Mono", monospace; color: var(--mute); white-space: pre-wrap; }
+  .errbox { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 22px; background: #2A1215; border: 1px solid rgba(239, 68, 68, 0.5); color: #FCA5A5; font-size: 12px; overflow: auto; }
+  .errbox b { color: var(--bad); font-size: 13px; }
+  .errbox code { font: 11px/1.4 "JetBrains Mono", monospace; color: #FECACA; word-break: break-word; }
+  .empty { color: var(--mute); }
+
+  /* Lock screen widgets have no background of their own, the dashed line only marks their area */
+  .card-lock .stage { outline: 1px dashed rgba(255, 255, 255, 0.18); outline-offset: 2px; }
+  .card-lock .stage-accessoryCircular { border-radius: 50%; }
+
+  .builderr { margin: 14px 20px 0; padding: 12px 14px; border-radius: 10px; background: #2A1215; border: 1px solid rgba(239, 68, 68, 0.5); color: #FCA5A5; font-size: 13px; }
+  .builderr b { color: var(--bad); margin-right: 6px; }
+  .builderr pre { margin: 8px 0 0; font: 11px/1.45 "JetBrains Mono", monospace; white-space: pre-wrap; color: #FECACA; }
+  .intro { margin: 14px 20px 0; max-width: 62ch; color: var(--mute); font-size: 13px; }
+  body.site .devonly { display: none !important; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: all 0.2s; background: #1F1F23; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; font-size: 13px; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.bad { border-color: var(--bad); color: #FCA5A5; }
+
+  /* Widget renderer */
+  .sw-widget { position: relative; overflow: hidden; border-radius: 22px; color: #fff; -webkit-font-smoothing: antialiased; font-synthesis: none; font-kerning: normal; }
+  .sw-widget * { box-sizing: border-box; }
+  .sw-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .sw-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  .sw-stack { position: relative; display: flex; }
+  .sw-text { overflow: hidden; white-space: normal; }
+  .sw-one { white-space: nowrap; text-overflow: ellipsis; }
+  .sw-clamp { display: -webkit-box; -webkit-box-orient: vertical; }
+  .sw-image { position: relative; overflow: hidden; }
+  .sw-image img { display: block; width: 100%; height: 100%; }
+  .sw-tint { position: absolute; inset: 0; mask-repeat: no-repeat; mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+  .sw-border { position: absolute; inset: 0; border-style: solid; pointer-events: none; }
+  .sw-flag { display: inline-block; height: 0.78em; width: 1.05em; object-fit: cover; border-radius: 0.14em; vertical-align: -0.04em; margin: 0 0.06em; }
+  .sw-accessoryRectangular, .sw-accessoryCircular, .sw-accessoryInline { border-radius: 0; filter: grayscale(1); }
+  .sw-accessoryCircular { border-radius: 50%; }
+  .sw-acc-bg { background: rgba(255, 255, 255, 0.16); }
+  .sw-inline { flex-direction: row; }
+
+  @media (max-width: 700px) {
+    .bar { padding: 10px 16px; }
+    main { padding: 12px 16px 60px; }
+    .status { margin-left: 0; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="top">
+    <div class="brand"><span id="live" class="live" title="Verbinde …"></span>NABS Widgets · Preview <span class="ver" id="coreVer"></span><span class="ver" id="setupVer"></span></div>
+    <div class="controls">
+      <label>Driver <input type="text" id="driver" list="drivers" autocomplete="off" spellcheck="false"></label>
+      <datalist id="drivers"></datalist>
+      <label>Series <select id="series"></select></label>
+      <label>iPhone <select id="device"></select></label>
+      <label>Zoom <select id="zoom"></select></label>
+      <label>Time <select id="time"></select><input type="datetime-local" id="customTime" hidden></label>
+      <label class="devonly">Data <select id="source"><option value="live">nabsracing.com</option><option value="local">localhost:4000</option></select></label>
+      <button class="btn" id="refresh" type="button" title="Fetches fresh data from the site">Reload data</button>
+    </div>
+  </div>
+  <div class="row2">
+    <div id="filter" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <label class="toggle"><input type="checkbox" id="showHome"> Home screen</label>
+    <label class="toggle"><input type="checkbox" id="showLock"> Lock screen</label>
+    <label class="toggle devonly" title="Pretends the backend already sends 40 seats and head-to-head numbers"><input type="checkbox" id="mockGrid"> Test data: seats + head-to-head</label>
+    <div class="status"><span id="fakeTime"></span><span id="dataInfo"></span><span id="stamp"></span></div>
+  </div>
+</header>
+<div id="buildError" class="builderr devonly" hidden><b>Build failed</b> The widgets still show the last working state.<pre></pre></div>
+<p class="intro" id="intro" hidden>This is how the NABS Racing iPhone widgets look. Type a driver name to see your own, pick a series and a phone size. The widgets use the same data as the website, live. To get them on your phone, ask in the league for the setup file.</p>
+<main id="grid"></main>
+<div id="toast"></div>
+<script>window.NABS_SITE = true</script>
+<script type="module" src="/widget-preview/app.js"></script>
+</body>
+</html>
