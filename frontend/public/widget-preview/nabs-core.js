@@ -6,7 +6,7 @@
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "6.8"
+const CORE_VERSION = "6.9"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -558,7 +558,7 @@ function nextM(d) {
   left.addSpacer(3)
   line(left, up(fmt(new Date(r.date), "EEE d MMM · HH:mm")), 10, { f: "mono", c: new Color("#D4D4D8") })
   left.addSpacer()
-  line(left, "LIGHTS OUT IN", 10, { f: "mono", c: C.mute })
+  line(left, "LIGHTS OUT IN" + dayTag(r.date), 10, { f: "mono", c: C.mute })
   countdownLine(left, r.date, 19)
   const right = V(row, 5)
   right.addSpacer()
@@ -602,7 +602,7 @@ function nextL(d) {
   line(left, up(fmt(new Date(r.date), "EEE d MMM · HH:mm")), 10, { f: "mono", c: new Color("#D4D4D8") })
   if (r.circuit) line(left, up(r.circuit), 10, { f: "mono", c: C.mute })
   left.addSpacer(10)
-  line(left, "LIGHTS OUT IN", 10, { f: "mono", c: C.mute })
+  line(left, "LIGHTS OUT IN" + dayTag(r.date), 10, { f: "mono", c: C.mute })
   countdownLine(left, r.date, 22)
   if (r.signedUp != null) {
     left.addSpacer(4)
@@ -625,6 +625,16 @@ function nextL(d) {
   return w
 }
 
+// "5 DAYS 1 HR" for the time left, or null when it is less than a day. This part is
+// plain text drawn when the widget is drawn (in race week that is about hourly); the
+// timer next to it is the one that runs by itself.
+function daysText(ms) {
+  if (ms < 864e5) return null
+  const d = Math.floor(ms / 864e5)
+  const h = Math.floor((ms % 864e5) / 36e5)
+  return d + (d === 1 ? " DAY" : " DAYS") + (h ? " " + h + (h === 1 ? " HR" : " HRS") : "")
+}
+
 // The time left as iOS's own running timer: it counts down by itself every second, with
 // no help from a redraw, and it keeps counting in hours past a day (162:07:33). The last
 // argument is the width it may use; the size is chosen to fit it.
@@ -640,7 +650,8 @@ function countdownBlocks(p, date, size, avail) {
   t.lineLimit = 1
   t.minimumScaleFactor = 0.6
   h.addSpacer()
-  line(p, "HRS : MIN : SEC", 9, { f: "monob", c: C.mute })
+  const days = daysText(ms)
+  line(p, days ? "= " + days : "HRS : MIN : SEC", 9, { f: "monob", c: C.mute })
 }
 
 function countdownM(d) {
@@ -721,6 +732,12 @@ function countdownText(ms) {
   const m = Math.floor((ms % 36e5) / 6e4)
   if (d > 0) return d + (d === 1 ? " DAY " : " DAYS ") + h + (h === 1 ? " HR" : " HRS")
   return h + (h === 1 ? " HR " : " HRS ") + m + " MIN"
+}
+
+// " · 5 DAYS 1 HR" for a label, or nothing under a day
+function dayTag(date) {
+  const t = daysText(new Date(date).getTime() - Date.now())
+  return t ? " · " + t : ""
 }
 
 function countdownLine(p, date, size) {
@@ -905,7 +922,7 @@ function liveHeader(p, lv, withTime) {
   if (withTime && lv.endsAt) {
     const ms = new Date(lv.endsAt).getTime() - Date.now()
     if (ms > 0) {
-      sub(h, "Left")
+      sub(h, ms >= 864e5 ? "Left · " + Math.floor(ms / 864e5) + "D" : "Left")
       const t = h.addDate(new Date(lv.endsAt))
       t.applyTimerStyle()
       t.font = Font.boldMonospacedSystemFont(12)
@@ -2632,7 +2649,8 @@ function accessory(view, fam, d) {
     atext(w, mine ? "You P" + mine.pos : (lr.results[1] ? "2  " + lr.results[1].driver : ""), 12, "medium")
     return w
   }
-  atext(w, "NABS · NEXT RACE", 11, "bold")
+  const lockDays = r ? daysText(new Date(r.date).getTime() - Date.now()) : null
+  atext(w, lockDays ? "NEXT RACE · " + lockDays : "NABS · NEXT RACE", 11, "bold")
   if (r) {
     atext(w, "R" + r.round + " " + r.track, 15, "black")
     const ms = new Date(r.date).getTime() - Date.now()
