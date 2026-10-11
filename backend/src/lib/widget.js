@@ -59,6 +59,7 @@ const PODIUM_SIZE = 3;
 const RESULTS_SIZE = 10;
 const STANDINGS_SIZE = 10;
 const LIVE_SIZE = 8;
+const FORM_SIZE = 6;
 
 // Flags are stored and drawn from lowercase ISO codes; the widget gets them
 // the way the flag's label reads, upper case. "" (no flag) becomes null.
@@ -160,12 +161,35 @@ export function leagueIso(date) {
 // (frontend data/circuits.js), the round's flag as /api/races sends it, and
 // the real kickoff.
 function raceFacts(race) {
+  const outline = outlineFor(race.track);
   return {
     track: race.track,
     circuit: circuitFor(race.track)?.circuit ?? null,
     country: flagCode(race.country),
     date: leagueIso(raceKickoff(race.date)),
+    // Only where the site draws the circuit; the widget has its own otherwise.
+    ...(outline ? { outline } : {}),
   };
+}
+
+// The circuit outline the site draws for a track (frontend data/circuits.js),
+// as "x,y x,y …" fitted into a 100 × 70 box and centred in it. The site's
+// outlines are one polyline each, in a box whose long side is 100.
+const OUTLINE_W = 100;
+const OUTLINE_H = 70;
+export function outlineFor(track) {
+  const c = circuitFor(track);
+  if (!c?.path || !c.box) return null;
+  const [bx, by, bw, bh] = c.box.split(/\s+/).map(Number);
+  if (!(bw > 0) || !(bh > 0)) return null;
+  const scale = Math.min(OUTLINE_W / bw, OUTLINE_H / bh);
+  const ox = (OUTLINE_W - bw * scale) / 2;
+  const oy = (OUTLINE_H - bh * scale) / 2;
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const points = [...c.path.matchAll(/(-?\d+(?:\.\d+)?)[ ,](-?\d+(?:\.\d+)?)/g)].map(
+    ([, x, y]) => `${r1(ox + (x - bx) * scale)},${r1(oy + (y - by) * scale)}`
+  );
+  return points.length > 1 ? points.join(" ") : null;
 }
 
 // How many drivers have a seat for this round, counted the way the sign-up
@@ -350,8 +374,12 @@ const carLabel = (carName) => (carName ? carName.replace(/^f1\s*\d{4}\s*[-–—
 export function liveBlock(board, teams, now = Date.now()) {
   const s = board?.session;
   if (!s) return null;
-  // The nav bar's live dot: connected, data in the last 75 seconds.
-  const active = !!board.ok && !board.stale;
+  // Who is out on the server right now, counted the way /api/live/status
+  // counts it for the nav bar; somebody driving is what makes it active.
+  const onTrack = (board.entries || []).filter((e) => e.onTrack).length;
+  // The board still hears from the server (the relay marks it stale after 75
+  // seconds of silence), so its "Time left" is current.
+  const current = !!board.ok && !board.stale;
   const match = makeDriverMatcher(teams);
   const timed = (board.entries || [])
     .filter((e) => e.bestLapMs > 0)
@@ -371,13 +399,16 @@ export function liveBlock(board, teams, now = Date.now()) {
     };
   });
   return {
-    active,
+    active: onTrack > 0,
+    onTrack,
     // The session card's headline, without the content pack's suffix.
     name: (s.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "") || null,
     track: liveTrackName(s),
     session: s.type ? `${s.type}${s.sessionCount > 1 ? ` ${s.sessionIndex + 1}/${s.sessionCount}` : ""}` : null,
     // "Time left" as a moment, so the widget can count down on its own.
-    endsAt: active && s.remainingMs != null ? leagueIso(new Date(now + s.remainingMs)) : null,
+    endsAt: current && s.remainingMs != null ? leagueIso(new Date(now + s.remainingMs)) : null,
+    // The session's best times (Live page, "Classification · Session Best
+    // Times"), whether or not anybody is out there now.
     best,
   };
 }
@@ -490,6 +521,15 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
     lastRace && res && res.status !== "DNS"
       ? { round: lastRace.number, track: lastRace.track, pos: isFin(res) ? res.position : null, points: res.points ?? 0 }
       : null;
+  // The last rounds run, oldest first, as the profile's season form plots them:
+  // a finishing position, or a gap (null) where they did not start or finish.
+  const form = champRaces
+    .filter((r) => r.isCompleted)
+    .slice(-FORM_SIZE)
+    .map((r) => {
+      const cell = row.perRace?.[r.number];
+      return { round: r.number, track: r.track, pos: cell?.status === "FINISHED" && cell.position != null ? cell.position : null };
+    });
   // Same team, same season, as the profile's team panel; the Reserve pool is
   // not a team anybody shares.
   const mate =
@@ -512,6 +552,7 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
     gapLeader: mine && at > 0 ? mine.total - view[0].total : null,
     rating,
     lastResult,
+    form,
     teammate: mate ? { driver: mate.name, pos: mate.position, points: mate.total } : null,
     attendance,
   };
