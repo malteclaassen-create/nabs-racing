@@ -12,7 +12,7 @@
 //
 // Run it again any time to change your driver or to update.
 
-const SETUP_VERSION = "7.0"
+const SETUP_VERSION = "7.1"
 const BASE_URL = "https://nabsracing.com"
 const MAIN_SLUG = "friday-f1"
 const SUNDAY_SLUG = "sunday-championship"
@@ -36,7 +36,9 @@ const WIDGETS = [
   { name: "NABS · Form",          view: "form",         icon: "chart-line",      color: "deep-blue", driver: true },
   { name: "NABS · Rivals",        view: "rivals",       icon: "crosshairs",      color: "deep-blue", driver: true },
 ]
-const SECOND_SERIES_VIEWS = ["result", "next", "standings", "me", "signup", "form", "rivals"]
+// Every widget gets a second copy for the Sunday series when you pick "Both" ("Auto" does not:
+// it is only a shortcut for the latest race and the next one).
+const SECOND_SERIES_VIEWS = ["result", "next", "countdown", "live", "standings", "top3", "constructors", "card", "me", "teammate", "signup", "attendance", "form", "rivals"]
 
 // The shared widget code. The setup saves it as its own script ("NABS Core"),
 // all widget scripts load it from there.
@@ -49,7 +51,7 @@ const CORE_SOURCE = String.raw`
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "7.0"
+const CORE_VERSION = "7.1"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
