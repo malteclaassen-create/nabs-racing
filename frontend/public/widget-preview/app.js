@@ -58,6 +58,96 @@ const SERIES = [
   { slug: "sunday-championship", label: "Sunday Championship" },
 ]
 
+// ─── Who is looking (the public page) ──────────────────────
+// Members are signed in with Discord on the site; the session lives in this browser.
+// /api/me names the driver that belongs to the account, so nobody types a name.
+// ?driver=Name (and &series=slug) overrides it, for testing.
+let who = { state: "out", name: "", series: [], tier: null }
+
+function tokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now()
+  } catch (_) { return false }
+}
+
+async function widgetOf(name, series, scope) {
+  const q = new URLSearchParams()
+  if (series) q.set("series", series)
+  q.set("driver", name)
+  if (scope) q.set("scope", scope)
+  try {
+    const r = await fetch("/api/widget?" + q, { cache: "no-cache" })
+    return r.ok ? await r.json() : null
+  } catch (_) { return null }
+}
+
+async function resolveMember() {
+  const qp = new URLSearchParams(location.search)
+  let name = qp.get("driver") || ""
+  if (!name) {
+    const token = localStorage.getItem("nabs_user_token")
+    if (!token || tokenExpired(token)) return { state: "out", name: "", series: [], tier: null }
+    try {
+      const r = await fetch("/api/me", { headers: { Authorization: "Bearer " + token }, cache: "no-store" })
+      if (r.status === 401) return { state: "out", name: "", series: [], tier: null }
+      const me = await r.json()
+      if (!me.isLinked || !me.name) return { state: "unlinked", name: me.discordName || "", series: [], tier: null }
+      name = me.name
+    } catch (_) { return { state: "out", name: "", series: [], tier: null } }
+  }
+  // The series this driver races in: the ones whose table has their name
+  const found = []
+  let tier = null
+  for (const s of SERIES) {
+    const d = await widgetOf(name, s.slug)
+    if (d && d.me) {
+      found.push({ slug: s.slug, label: (d.series && d.series.name) || s.label })
+      if (tier == null) tier = d.me.tier
+    }
+  }
+  return { state: found.length ? "ok" : "none", name, series: found, tier }
+}
+
+function renderHello() {
+  const h = $("#hello")
+  const p = $("#lead")
+  const a = $("#loginHint")
+  a.hidden = true
+  if (who.state === "ok") {
+    h.textContent = "Your NABS widgets, " + who.name
+    p.textContent = "This is how your widgets look on your iPhone, with your own numbers. It is all live, the same data as the website."
+  } else if (who.state === "unlinked") {
+    h.textContent = "Your NABS widgets"
+    p.textContent = "You are signed in, but your Discord account is not linked to a driver yet, so there are no numbers of your own to show. Ask an admin to link it. Below are the widgets that look the same for everybody."
+  } else if (who.state === "none") {
+    h.textContent = "Your NABS widgets"
+    p.textContent = "We could not find " + who.name + " in a current season, so there is nothing of your own to show yet. Below are the widgets that look the same for everybody."
+  } else {
+    h.textContent = "Your NABS widgets"
+    p.textContent = "Sign in with Discord on the website and this page shows your own widgets, with your numbers. Until then you see the ones that look the same for everybody."
+    a.hidden = false
+  }
+}
+
+// One line per widget for the public page
+const BLURBS = {
+  auto: "Shows the latest result after a race, the next race before one.",
+  result: "The last race: winner, podium and your own result.",
+  next: "The next race with the countdown and the table.",
+  countdown: "Days and hours until lights out.",
+  live: "The session's fastest laps while the server is running.",
+  standings: "The driver standings with your row highlighted.",
+  top3: "The podium of the championship, and where you are.",
+  constructors: "The constructors table of your tier, with your team.",
+  card: "Your driver card with your rating.",
+  me: "Your season: position, points, and the drivers around you.",
+  teammate: "You against your teammate, head to head.",
+  signup: "Are you signed up, and how many seats are left.",
+  attendance: "How many races you drove this season.",
+  form: "Your last six results at a glance.",
+  rivals: "The driver ahead of you and the one behind, in points.",
+}
 const ZOOMS = [1, 1.25, 1.5, 2]
 
 const TIME_PRESETS = [
@@ -71,7 +161,7 @@ const TIME_PRESETS = [
 
 // ─── State ───────────────────────────────────────────────────
 
-const DEFAULTS = { mockGrid: false, driver: SITE ? "" : "Maltegoat", series: "", device: "pro17", zoom: 1.5, source: "live", time: "now", customTime: "", widget: "all", home: true, lock: true }
+const DEFAULTS = { mockGrid: false, driver: SITE ? "" : "Maltegoat", series: "", scope: "all", device: "pro17", zoom: 1.5, source: "live", time: "now", customTime: "", widget: "all", home: true, lock: !SITE }
 const state = Object.assign({}, DEFAULTS, readSaved())
 
 function readSaved() {
@@ -112,6 +202,7 @@ async function loadWidgetList() {
   const setup = await fetchText(SETUP_URL)
   const m = setup.match(/const WIDGETS = (\[[\s\S]*?\n\])/)
   const next = m ? new Function("return " + m[1])() : []
+  next.forEach(w => { w.blurb = BLURBS[w.view] || "" })
   const v = setup.match(/const SETUP_VERSION = "([^"]+)"/)
   $("#setupVer").textContent = v ? "Setup " + v[1] : ""
   coreName = v && /CORE_NAME = "NABS Core " \+ SETUP_VERSION/.test(setup) ? "NABS Core " + v[1].replace(/\./g, "") : "NABS Core"
@@ -131,6 +222,7 @@ function apiUrl() {
   const q = []
   if (state.series) q.push("series=" + encodeURIComponent(state.series))
   if (state.driver) q.push("driver=" + encodeURIComponent(state.driver))
+  if (state.driver && state.scope === "tier") q.push("scope=tier")
   return BASE_URL + "/api/widget" + (q.length ? "?" + q.join("&") : "")
 }
 
@@ -140,6 +232,11 @@ async function loadMeta() {
     const r = await fetch(dataUrl(apiUrl(), state.source), { cache: "no-cache" })
     const d = await r.json()
     nextRace = d.nextRace || null
+    const note = $("#note")
+    if (note) {
+      note.hidden = !(SITE && state.driver && !d.me)
+      note.textContent = "We could not find \"" + state.driver + "\" in this series. Check the spelling, it is the name on nabsracing.com."
+    }
     const list = $("#drivers")
     list.replaceChildren(...(d.standings || []).map(s => { const o = el("option"); o.value = s.driver; return o }))
     $("#dataInfo").textContent = (d.series && d.series.name ? d.series.name : "") + (d.season ? " · " + d.season : "")
@@ -196,7 +293,7 @@ function initControls() {
   })
 
   const series = $("#series")
-  series.replaceChildren(...SERIES.map(s => option(s.slug, s.label, state.series === s.slug)))
+  series.replaceChildren(...((SITE ? who.series : SERIES) || SERIES).map(s => option(s.slug, s.label, state.series === s.slug)))
   series.addEventListener("change", () => { state.series = series.value; save(); refreshAll() })
 
   const device = $("#device")
@@ -206,6 +303,10 @@ function initControls() {
   const zoom = $("#zoom")
   zoom.replaceChildren(...ZOOMS.map(z => option(String(z), Math.round(z * 100) + " %", state.zoom === z)))
   zoom.addEventListener("change", () => { state.zoom = Number(zoom.value); save(); buildGrid(); renderAll() })
+
+  const scope = $("#scope")
+  scope.value = state.scope
+  scope.addEventListener("change", () => { state.scope = scope.value; save(); refreshAll() })
 
   const source = $("#source")
   source.value = state.source
@@ -267,10 +368,14 @@ function buildGrid() {
   const z = state.zoom
   for (const w of widgets) {
     if (state.widget !== "all" && state.widget !== w.view) continue
+    // your own widgets only make sense for a known driver
+    if (SITE && w.driver && who.state !== "ok") continue
     const sec = el("section", "wsec")
     const head = el("div", "whead")
-    head.append(el("h2", null, w.name.replace(/^NABS · /, "")), el("code", null, w.view))
-    if (w.driver) head.append(el("span", "tag", "needs a driver"))
+    head.append(el("h2", null, w.name.replace(/^NABS · /, "")))
+    if (!SITE) head.append(el("code", null, w.view))
+    if (w.driver && !SITE) head.append(el("span", "tag", "needs a driver"))
+    if (SITE && w.blurb) head.append(el("span", "blurb", w.blurb))
     sec.append(head)
 
     const row = el("div", "wrow")
@@ -289,7 +394,7 @@ function buildGrid() {
 function makeCard(w, f, dev, z) {
   const [cw, ch] = dev[f.key]
   const fig = el("figure", "card card-" + f.group)
-  const cap = el("figcaption", null, f.label + " · " + cw + "×" + ch)
+  const cap = el("figcaption", null, SITE ? f.label : f.label + " · " + cw + "×" + ch)
   const stage = el("div", "stage stage-" + f.key)
   stage.style.width = cw * z + "px"
   stage.style.height = ch * z + "px"
@@ -305,7 +410,7 @@ function seedStore(off) {
   const store = new Map()
   const now = Date.now() + off
   const docs = S.LOCAL_DOCS
-  store.set(docs + "/nabs-settings.json", { value: JSON.stringify({ driver: state.driver, series: state.series }), mtime: now })
+  store.set(docs + "/nabs-settings.json", { value: JSON.stringify({ driver: state.driver, series: state.series, scope: state.scope }), mtime: now })
   // Stops the core from looking for an update on nabsracing.com in the preview
   store.set(docs + "/nabs-update-check.txt", { value: String(now), mtime: now })
   return store
@@ -475,6 +580,22 @@ function connect() {
 // ─── Start ───────────────────────────────────────────────────
 
 async function start() {
+  if (SITE) {
+    who = await resolveMember()
+    state.driver = who.state === "ok" ? who.name : ""
+    state.series = who.series.length ? who.series[0].slug : ""
+    state.scope = "all"
+    renderHello()
+    $("#seriesLabel").hidden = who.series.length < 2
+    $("#scopeLabel").hidden = !(who.state === "ok" && (who.tier === 1 || who.tier === 2))
+    // widgets at their true size on a phone, a little larger on a desktop
+    const narrow = window.innerWidth < 640
+    state.zoom = narrow ? 1 : 1.25
+    state.device = narrow ? "pro" : "pro17"
+    state.widget = "all"
+    state.home = true
+    $("#zoom").value = String(state.zoom)
+  }
   initControls()
   // Load the font weights first so text measurement is right on the first pass
   await Promise.all(["400", "500", "600", "700", "800", "900"].map(w => document.fonts.load(w + " 16px Inter")).concat(
@@ -483,11 +604,6 @@ async function start() {
   buildFilter()
   buildGrid()
   await loadMeta()
-  // a visitor without a saved driver sees the widgets of the table's leader
-  if (SITE && !state.driver) {
-    const first = document.querySelector("#drivers option")
-    if (first) { state.driver = first.value; $("#driver").value = first.value; await loadMeta() }
-  }
   connect()
   renderAll()
 }

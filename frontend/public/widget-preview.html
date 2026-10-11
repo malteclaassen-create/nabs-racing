@@ -77,6 +77,23 @@
   .builderr pre { margin: 8px 0 0; font: 11px/1.45 "JetBrains Mono", monospace; white-space: pre-wrap; color: #FECACA; }
   .intro { margin: 14px 20px 0; max-width: 62ch; color: var(--mute); font-size: 13px; }
   body.site .devonly { display: none !important; }
+  body:not(.site) .siteonly { display: none !important; }
+  .hero { margin: 22px 20px 0; max-width: 64ch; }
+  .hero h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
+  .hero p { margin: 0 0 8px; color: var(--mute); font-size: 14px; line-height: 1.5; }
+  .hero .note { color: #FCA5A5; }
+  .hero .loginhint { margin-top: 12px; }
+  .hero .btn { display: inline-block; text-decoration: none; color: var(--text); }
+  .prompt { margin: 6px 0 0; padding: 14px 16px; max-width: 64ch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--mute); font-size: 14px; }
+  .blurb { color: var(--mute); font-size: 13px; }
+  body.site .whead { align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+  body.site .wsec { padding: 16px 0 22px; }
+  body.site .row2 { display: flex; }
+  body.site .row2 .status { display: none; }
+  body.site .status { display: none; }
+  body.site .brand .ver { display: none; }
+  body.site .foot { display: none; }
+  body.site .card figcaption { font-size: 12px; font-family: Inter, system-ui, sans-serif; font-weight: 600; color: var(--mute); }
   #toast { position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: all 0.2s; background: #1F1F23; border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; font-size: 13px; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #toast.bad { border-color: var(--bad); color: #FCA5A5; }
@@ -112,26 +129,32 @@
   <div class="top">
     <div class="brand"><span id="live" class="live" title="Verbinde …"></span>NABS Widgets · Preview <span class="ver" id="coreVer"></span><span class="ver" id="setupVer"></span></div>
     <div class="controls">
-      <label>Driver <input type="text" id="driver" list="drivers" autocomplete="off" spellcheck="false"></label>
+      <label class="devonly">Driver <input type="text" id="driver" list="drivers" autocomplete="off" spellcheck="false"></label>
       <datalist id="drivers"></datalist>
-      <label>Series <select id="series"></select></label>
-      <label>iPhone <select id="device"></select></label>
-      <label>Zoom <select id="zoom"></select></label>
-      <label>Time <select id="time"></select><input type="datetime-local" id="customTime" hidden></label>
+      <label id="seriesLabel">Series <select id="series"></select></label>
+      <label id="scopeLabel" title="Standings, gaps and neighbours can count everybody or only the drivers in your tier">Compare with <select id="scope"><option value="all">Everybody</option><option value="tier">Only my tier</option></select></label>
+      <label>Phone <select id="device"></select></label>
+      <label class="devonly">Zoom <select id="zoom"></select></label>
+      <label class="devonly">Time <select id="time"></select><input type="datetime-local" id="customTime" hidden></label>
       <label class="devonly">Data <select id="source"><option value="live">nabsracing.com</option><option value="local">localhost:4000</option></select></label>
       <button class="btn" id="refresh" type="button" title="Fetches fresh data from the site">Reload data</button>
     </div>
   </div>
-  <div class="row2">
-    <div id="filter" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-    <label class="toggle"><input type="checkbox" id="showHome"> Home screen</label>
+  <div class="row2 sitekeep">
+    <div id="filter" class="devonly" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <label class="toggle devonly"><input type="checkbox" id="showHome"> Home screen</label>
     <label class="toggle"><input type="checkbox" id="showLock"> Lock screen</label>
     <label class="toggle devonly" title="Pretends the backend already sends 40 seats and head-to-head numbers"><input type="checkbox" id="mockGrid"> Test data: seats + head-to-head</label>
     <div class="status"><span id="fakeTime"></span><span id="dataInfo"></span><span id="stamp"></span></div>
   </div>
 </header>
 <div id="buildError" class="builderr devonly" hidden><b>Build failed</b> The widgets still show the last working state.<pre></pre></div>
-<p class="intro" id="intro" hidden>This is how the NABS Racing iPhone widgets look. Type a driver name to see your own, pick a series and a phone size. The widgets use the same data as the website, live. To get them on your phone, ask in the league for the setup file.</p>
+<section class="hero siteonly" id="intro" hidden>
+  <h1 id="hello">Your NABS widgets</h1>
+  <p id="lead">Loading your widgets …</p>
+  <p class="loginhint" id="loginHint" hidden><a class="btn" href="/">Go to nabsracing.com to sign in</a></p>
+  <p class="note" id="note" hidden></p>
+</section>
 <main id="grid"></main>
 <div id="toast"></div>
 <script>window.NABS_SITE = true</script>
