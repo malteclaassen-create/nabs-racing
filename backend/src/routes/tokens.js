@@ -75,6 +75,7 @@ import {
   setRedemptionStatus,
   adminAdjust,
   adminOverview,
+  adminLedger,
   rememberNames,
   tokenStats,
 } from "../lib/tokens.js";
@@ -560,7 +561,7 @@ adminRouter.get("/ledger/:discordId", async (req, res, next) => {
     const discordId = String(req.params.discordId || "");
     const member = (await adminOverview(prisma)).find((m) => m.discordId === discordId);
     if (!member) return res.status(404).json({ error: "No points account for that member." });
-    const ledger = await dbLedger(prisma, discordId, 5000);
+    const ledger = await adminLedger(prisma, discordId);
     res.json({ member, balance: member.balance, ledger });
   } catch (e) {
     next(e);
