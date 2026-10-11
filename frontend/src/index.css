@@ -554,16 +554,21 @@ html.update-reveal.update-reveal-go body::after {
   filter: none;
 }
 /* The live map's three sector colours, used by the coloured lap and its legend
-   alike. A notch lighter on the dark map so they keep their contrast there. */
+   alike. One lightness and one chroma for all three (OKLCH), hues spread evenly
+   around the wheel: coral, cyan, violet. The earlier pink / sky / amber were
+   three unrelated swatches, so the pink shouted and the amber went muddy next
+   to it. Deliberately no green, yellow or purple-as-"best": those already mean
+   something in timing. A notch lighter on the dark map to keep their contrast,
+   and the same hues deeper on the pale one. */
 .live-sectors {
-  --live-s1: #db2777;
-  --live-s2: #0284c7;
-  --live-s3: #d97706;
+  --live-s1: #c44323;
+  --live-s2: #008f9b;
+  --live-s3: #8557c8;
 }
 .dark .live-sectors {
-  --live-s1: #f472b6;
-  --live-s2: #38bdf8;
-  --live-s3: #fbbf24;
+  --live-s1: #ff8463;
+  --live-s2: #00cfdb;
+  --live-s3: #c295ff;
 }
 
 /* Oversized ghost numeral behind hero content. */
