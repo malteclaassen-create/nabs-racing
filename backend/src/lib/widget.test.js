@@ -269,7 +269,16 @@ describe("liveBlock", () => {
         // Nobody the roster knows: the car stands where the team would.
         { pos: 3, driver: "STRANGER", country: null, team: "Lotus", teamColor: null, time: "1:30.600", gap: "+0.270" },
       ],
+      timed: 3,
+      me: null,
     });
+  });
+
+  it("keeps only one tier's drivers when asked, counting positions inside it", () => {
+    const now = Date.parse("2026-10-18T03:09:00Z");
+    const block = liveBlock(board(), teams, now, { tier: 2 });
+    expect(block.best.map((r) => [r.pos, r.driver])).toEqual([[1, "ALIVEAXE"]]);
+    expect(block.timed).toBe(1);
   });
 
   it("keeps the session's best times when nobody is driving", () => {
@@ -516,6 +525,20 @@ describe("buildWidget", () => {
     expect((await buildWidget(prisma, { driver: "racer" })).me.tier).toBe(null);
   });
 
+  it("counts everything inside the driver's own tier with scope=tier", async () => {
+    const data = await standingsService.getDriverStandings();
+    standingsService.getDriverStandings.mockResolvedValueOnce({
+      ...data,
+      standings: data.standings.map((r) => (r.driverId === "me" || r.driverId === "back" ? { ...r, tier: 2 } : r)),
+    });
+    const body = await buildWidget(prisma, { driver: "racer", scope: "tier" });
+    expect(body.scope).toEqual({ tier: 2 });
+    expect(body.standings.map((r) => [r.pos, r.driver])).toEqual([[1, "Racer"], [2, "Back"]]);
+    expect(body.me).toMatchObject({ pos: 1, gapAhead: null, behind: "Back", gapBehind: 10 });
+    // without the switch nothing changes
+    expect((await buildWidget(prisma, { driver: "racer" })).scope).toBe(null);
+  });
+
   it("answers normally when the driver is unknown", async () => {
     const body = await buildWidget(prisma, { driver: "nobody" });
     expect(body.me).toBe(null);
@@ -569,5 +592,26 @@ describe("liveBlock size", () => {
     expect(block.best[0]).toMatchObject({ pos: 1, driver: "DRIVER20", gap: null });
     expect(block.best[11].pos).toBe(12);
     expect(block.onTrack).toBe(1);
+  });
+
+  it("adds the asking driver's own line when they are slower than the twelfth", () => {
+    const session = { trackName: "Silverstone", type: "Practice", sessionCount: 1, sessionIndex: 0, remainingMs: 600_000 };
+    const names = ["Zed Quinn", "Amy Lane"];
+    const entries = Array.from({ length: 21 }, (_, i) => ({
+      name: i === 15 ? names[0] : i === 2 ? names[1] : "pilot" + String.fromCharCode(97 + i) + "x",
+      bestLapMs: 100_000 + i * 100,
+      carName: "Formula 2010",
+    }));
+    const roster = [{ name: "Test", color: "#fff", tier: 1, drivers: [
+      { id: "d15", name: "Zed Quinn", discordName: "zedq" },
+      { id: "d2", name: "Amy Lane", discordName: "amyl" },
+    ] }];
+    const board = { ok: true, stale: false, session, entries };
+    const slow = liveBlock(board, roster, Date.now(), { driver: "zed quinn" });
+    expect(slow.best).toHaveLength(12);
+    expect(slow.timed).toBe(21);
+    expect(slow.me).toMatchObject({ pos: 16, driver: "ZED QUINN", time: "1:41.500" });
+    // somebody inside the list needs no extra line
+    expect(liveBlock(board, roster, Date.now(), { driver: "Amy Lane" }).me).toBe(null);
   });
 });

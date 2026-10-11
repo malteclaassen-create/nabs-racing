@@ -8,7 +8,7 @@ const router = Router();
 
 const one = (v) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
-// GET /api/widget[?series=<slug>][&driver=<name>] -> the iPhone home screen
+// GET /api/widget[?series=<slug>][&driver=<name>][&scope=tier] -> the iPhone home screen
 // widget's data (lib/widget.js). Public and read-only; five minutes of caching
 // is plenty for a widget iOS refreshes on its own schedule anyway. The widget
 // adds ?t=<timestamp> to get past caches when it wants to; it changes nothing
@@ -18,6 +18,7 @@ router.get("/", async (req, res, next) => {
     const body = await buildWidget(prisma, {
       series: one(req.query.series),
       driver: one(req.query.driver),
+      scope: one(req.query.scope),
       // `trust proxy` is set, so this is the address the visitor used.
       origin: `${req.protocol}://${req.get("host")}`,
     });

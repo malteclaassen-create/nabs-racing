@@ -373,7 +373,7 @@ function liveTrackName(session) {
 // Live.jsx carLabel: the car, when the driver is nobody the roster knows.
 const carLabel = (carName) => (carName ? carName.replace(/^f1\s*\d{4}\s*[-–—]\s*/i, "").trim() || null : null);
 
-export function liveBlock(board, teams, now = Date.now()) {
+export function liveBlock(board, teams, now = Date.now(), { driver = null, tier = null } = {}) {
   const s = board?.session;
   if (!s) return null;
   // Who is out on the server right now, counted the way /api/live/status
@@ -383,23 +383,27 @@ export function liveBlock(board, teams, now = Date.now()) {
   // seconds of silence), so its "Time left" is current.
   const current = !!board.ok && !board.stale;
   const match = makeDriverMatcher(teams);
-  const timed = (board.entries || [])
+  // Everybody with a time, quickest first. With a tier asked for, only that
+  // tier's drivers stay in the list, and the positions count inside it.
+  const pool = (board.entries || [])
     .filter((e) => e.bestLapMs > 0)
     .sort((a, b) => a.bestLapMs - b.bestLapMs)
-    .slice(0, LIVE_SIZE);
-  const best = timed.map((e, i) => {
-    const m = match(e.name);
-    return {
-      pos: i + 1,
-      // Upper case is how the board prints every name.
-      driver: String(m?.nabsName || e.name || "").toUpperCase() || null,
-      country: flagCode(m?.country),
-      team: m?.teamName || carLabel(e.carName) || null,
-      teamColor: m?.teamColor || null,
-      time: formatLap(e.bestLapMs),
-      gap: i === 0 ? null : formatGap(e.bestLapMs - timed[0].bestLapMs),
-    };
+    .map((e) => ({ e, m: match(e.name) }))
+    .filter((x) => !tier || x.m?.tier === tier);
+  const rowOf = ({ e, m }, i) => ({
+    pos: i + 1,
+    // Upper case is how the board prints every name.
+    driver: String(m?.nabsName || e.name || "").toUpperCase() || null,
+    country: flagCode(m?.country),
+    team: m?.teamName || carLabel(e.carName) || null,
+    teamColor: m?.teamColor || null,
+    time: formatLap(e.bestLapMs),
+    gap: i === 0 ? null : formatGap(e.bestLapMs - pool[0].e.bestLapMs),
   });
+  const best = pool.slice(0, LIVE_SIZE).map(rowOf);
+  // The asking driver's own line when the list is too short to hold it.
+  const myAt = driver ? pool.findIndex((x) => x.m && String(x.m.nabsName).toLowerCase() === String(driver).toLowerCase()) : -1;
+  const mine = myAt >= LIVE_SIZE ? rowOf(pool[myAt], myAt) : null;
   return {
     active: onTrack > 0,
     onTrack,
@@ -412,6 +416,9 @@ export function liveBlock(board, teams, now = Date.now()) {
     // The session's best times (Live page, "Classification · Session Best
     // Times"), whether or not anybody is out there now.
     best,
+    // How many have a time, and the asking driver's line when they are not in `best`.
+    timed: pool.length,
+    me: mine,
   };
 }
 
@@ -597,7 +604,7 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
 // The widget for a series (slug; empty = the primary series), or null when
 // there is no such public series or it has no season yet. `driver` fills `me`;
 // `origin` is the site's address, for the absolute picture URL in it.
-export async function buildWidget(prisma, { series, driver, origin = "" } = {}) {
+export async function buildWidget(prisma, { series, driver, origin = "", scope } = {}) {
   const seriesRow = await resolveSeries(prisma, series, { includePrivate: false });
   if (!seriesRow) return null;
   const season = await getActiveSeason(prisma, seriesRow.id);
@@ -607,18 +614,26 @@ export async function buildWidget(prisma, { series, driver, origin = "" } = {}) 
   // The arrows stop once the title is decided (Standings page).
   const decided = champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
-  const [lastResults, standingsData, t1, t2, seats, live] = await Promise.all([
+  const [lastResults, rawStandings, t1, t2, seats] = await Promise.all([
     lastRace ? raceDetailPayload(prisma, lastRace) : null,
     getDriverStandings(prisma, season.id),
     orNull("tier 1", () => getT1ConstructorStandings(prisma, season.id)),
     orNull("tier 2", () => getT2ConstructorStandings(prisma, season.id)),
     nextRace ? orNull("signed up", () => signedUpFor(prisma, nextRace)) : null,
-    orNull("live", async () => {
-      // The board the series' Live page shows (no slug = the root page's).
-      const board = getBoard(await resolveServerKey(prisma, { series }));
-      return board?.session ? liveBlock(board, await liveRoster(prisma, season.id)) : null;
-    }),
   ]);
+  // scope=tier: the driver wants to be measured against their own tier only
+  // (a tier 2 driver against tier 2). The tables, the neighbours, the gaps and
+  // the positions are then all counted inside that tier.
+  const mineRow = driver && scope === "tier" ? findDriverRow(rawStandings?.standings || [], driver) : null;
+  const tierScope = mineRow && (mineRow.tier === 1 || mineRow.tier === 2) ? mineRow.tier : null;
+  const standingsData = tierScope
+    ? { ...rawStandings, standings: (rawStandings?.standings || []).filter((r) => r.tier === tierScope) }
+    : rawStandings;
+  const live = await orNull("live", async () => {
+    // The board the series' Live page shows (no slug = the root page's).
+    const board = getBoard(await resolveServerKey(prisma, { series }));
+    return board?.session ? liveBlock(board, await liveRoster(prisma, season.id), Date.now(), { driver, tier: tierScope }) : null;
+  });
   const view = standingsView(standingsData, { decided });
   const leaderTotal = view[0]?.total ?? 0;
   const me = driver
@@ -630,6 +645,8 @@ export async function buildWidget(prisma, { series, driver, origin = "" } = {}) 
   return {
     series: seriesInfo(seriesRow),
     season: seasonLabel(season),
+    // The tier the tables are counted in, or null for everybody.
+    scope: tierScope ? { tier: tierScope } : null,
     nextRace: nextRace
       ? {
           round: nextRace.number ?? null,
