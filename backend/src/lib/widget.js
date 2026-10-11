@@ -48,7 +48,7 @@ import { avatarUrlFor } from "./widgetAvatar.js";
 import { nextUpcomingRace } from "../../../frontend/src/utils/raceFormat.js";
 import { seasonGameParts } from "../../../frontend/src/utils/seasonGame.js";
 import { seriesThemeColor } from "../../../frontend/src/utils/seriesColor.js";
-import { isIdleReserve } from "../../../frontend/src/utils/standingsRow.js";
+import { isIdleReserve, finishesOf } from "../../../frontend/src/utils/standingsRow.js";
 import { fmtGap } from "../../../frontend/src/utils/raceDuration.js";
 import { isLapTime } from "../../../frontend/src/utils/format.js";
 import { countryFor } from "../../../frontend/src/data/driverCountries.js";
@@ -500,6 +500,27 @@ async function cardRating(prisma, seasonId, driverId) {
   return g ? { rtg: g.overall, exp: g.exp, rac: g.rac, awa: g.aha, pac: g.pac } : null;
 }
 
+// The numbers the profile's head-to-head compares, counted the way its
+// statsFromRow does (frontend pages/DriverProfile.jsx): wins and podiums over every
+// classification of a round, best and average finish and the grid slots over the
+// feature race of each round.
+export function duelStats(row) {
+  const cells = Object.values(row?.perRace || {}).filter(Boolean);
+  const fin = cells.filter((r) => r.status === "FINISHED" && r.position != null).map((r) => r.position);
+  const classified = finishesOf(cells);
+  const grids = cells.map((r) => r.grid).filter((g) => g != null);
+  const avg = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null);
+  return {
+    wins: classified.filter((r) => r.position === 1).length,
+    podiums: classified.filter((r) => r.position <= 3).length,
+    bestFinish: fin.length ? Math.min(...fin) : null,
+    avgFinish: avg(fin),
+    poles: grids.filter((g) => g === 1).length,
+    bestGrid: grids.length ? Math.min(...grids) : null,
+    avgGrid: avg(grids),
+  };
+}
+
 async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, lastRace, lastResults, standingsData, view }) {
   const row = findDriverRow(standingsData?.standings || [], name);
   if (!row) return null;
@@ -555,7 +576,8 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
     rating,
     lastResult,
     form,
-    teammate: mate ? { driver: mate.name, pos: mate.position, points: mate.total } : null,
+    stats: duelStats(row),
+    teammate: mate ? { driver: mate.name, pos: mate.position, points: mate.total, stats: duelStats(mate) } : null,
     attendance,
   };
 }

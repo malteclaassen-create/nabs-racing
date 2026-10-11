@@ -44,6 +44,7 @@ const { raceDetailPayload } = await import("../services/raceDetailService.js");
 const { getCardRating } = await import("../services/cardRatingService.js");
 const { getBoard } = await import("../services/liveTiming.js");
 const { seatsFor } = await import("./waitlist.js");
+const { duelStats } = await import("./widget.js");
 const { attendanceGate } = await import("./attendanceGate.js");
 const {
   buildWidget,
@@ -486,7 +487,13 @@ describe("buildWidget", () => {
       rating: { rtg: 86, exp: 76, rac: 82, awa: 89, pac: 93 },
       lastResult: { round: 9, track: "Singapore", pos: 2, points: 30 },
       form: [{ round: 9, track: "Singapore", pos: 3 }],
-      teammate: { driver: "Mate", pos: 2, points: 132 },
+      stats: { wins: 0, podiums: 1, bestFinish: 3, avgFinish: 3, poles: 0, bestGrid: null, avgGrid: null },
+      teammate: {
+        driver: "Mate",
+        pos: 2,
+        points: 132,
+        stats: { wins: 0, podiums: 1, bestFinish: 2, avgFinish: 2, poles: 0, bestGrid: null, avgGrid: null },
+      },
       attendance: { driven: 1, total: 1, streak: 1, next: "signed", rounds: [
         { round: 9, status: "attended" },
         { round: 10, status: "signed" },
@@ -518,5 +525,32 @@ describe("buildWidget", () => {
     spy.mockRestore();
     expect(body.live).toBe(null);
     expect(body.standings.length).toBeGreaterThan(0);
+  });
+});
+
+describe("duelStats", () => {
+  it("counts the head-to-head numbers the way the profile does", () => {
+    const row = {
+      perRace: {
+        1: { status: "FINISHED", position: 1, grid: 1 },
+        2: { status: "FINISHED", position: 4, grid: 3, sprint: { status: "FINISHED", position: 2 } },
+        3: { status: "DNF", position: null, grid: 6 },
+        4: { status: "FINISHED", position: 7, grid: null },
+      },
+    };
+    expect(duelStats(row)).toEqual({
+      wins: 1, // the sprint's P2 counts for podiums, not for wins
+      podiums: 2,
+      bestFinish: 1,
+      avgFinish: 4,
+      poles: 1,
+      bestGrid: 1,
+      avgGrid: 3.3,
+    });
+  });
+
+  it("leaves everything empty for a driver without results", () => {
+    expect(duelStats({ perRace: {} })).toEqual({ wins: 0, podiums: 0, bestFinish: null, avgFinish: null, poles: 0, bestGrid: null, avgGrid: null });
+    expect(duelStats(null).bestFinish).toBe(null);
   });
 });
