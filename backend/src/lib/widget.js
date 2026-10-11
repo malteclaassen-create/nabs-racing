@@ -573,6 +573,14 @@ async function meBlock(prisma, name, { origin, season, champRaces, childrenOf, l
     gapAhead: mine && ahead ? mine.total - ahead.total : null,
     gapBehind: mine && behind ? mine.total - behind.total : null,
     gapLeader: mine && at > 0 ? mine.total - view[0].total : null,
+    // The neighbours by name: the standings list stops at the top ten, so a driver
+    // further down would otherwise see "car ahead" and "car behind".
+    ahead: ahead?.name ?? null,
+    aheadTeam: ahead?.team?.name ?? null,
+    aheadColor: ahead?.team?.color ?? null,
+    behind: behind?.name ?? null,
+    behindTeam: behind?.team?.name ?? null,
+    behindColor: behind?.team?.color ?? null,
     rating,
     lastResult,
     form,
