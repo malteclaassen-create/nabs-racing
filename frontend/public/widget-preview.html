@@ -82,7 +82,24 @@
   .hero h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
   .hero p { margin: 0 0 8px; color: var(--mute); font-size: 14px; line-height: 1.5; }
   .hero .note { color: #FCA5A5; }
-  .hero .loginhint { margin-top: 12px; }
+  .hero .gethow { margin: 14px 0 0; }
+  .howto { margin: 6px 20px 90px; max-width: 70ch; padding: 22px 22px 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
+  .howto h2 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+  .howto h3 { margin: 22px 0 8px; font-size: 14px; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; }
+  .howto .lead { margin: 0 0 16px; color: var(--mute); font-size: 14px; }
+  .howto a { color: var(--acc); }
+  .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 14px; }
+  .steps li { counter-increment: step; position: relative; padding-left: 38px; font-size: 14px; line-height: 1.55; color: var(--text); }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--acc); color: #1C1218; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .steps b { font-weight: 700; }
+  .steps .row { display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; }
+  .steps .copied { color: var(--ok); font-size: 13px; font-weight: 600; }
+  .steps details { margin-top: 6px; }
+  .steps summary { cursor: pointer; color: var(--mute); font-size: 13px; }
+  #installerCode { margin: 8px 0 0; padding: 12px; background: #0B0B0D; border: 1px solid var(--line); border-radius: 10px; font: 11px/1.5 "JetBrains Mono", monospace; color: var(--mute); white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; }
+  .tips { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: var(--mute); }
+  .tips li { margin-bottom: 4px; }
+  @media (max-width: 700px) { .howto { margin: 6px 16px 70px; padding: 18px 16px 20px; } }
   .hero .btn { display: inline-block; text-decoration: none; color: var(--text); }
   .prompt { margin: 6px 0 0; padding: 14px 16px; max-width: 64ch; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--mute); font-size: 14px; }
   .blurb { color: var(--mute); font-size: 13px; }
@@ -154,8 +171,32 @@
   <p id="lead">Loading your widgets …</p>
   <p class="loginhint" id="loginHint" hidden><a class="btn" href="/">Go to nabsracing.com to sign in</a></p>
   <p class="note" id="note" hidden></p>
+  <p class="gethow"><a class="btn" href="#howto">How to get them on your phone ↓</a></p>
 </section>
 <main id="grid"></main>
+<section class="howto siteonly" id="howto" hidden>
+  <h2>Get them on your iPhone</h2>
+  <p class="lead">It takes about two minutes and works with the free app Scriptable. You do this once.</p>
+  <ol class="steps">
+    <li><b>Install Scriptable.</b> It is the free app that draws the widgets.
+      <a href="https://apps.apple.com/app/scriptable/id1405459188" target="_blank" rel="noopener">Open it in the App Store</a>, then open the app once.</li>
+    <li><b>Copy the installer.</b> A short piece of text that fetches the NABS setup.
+      <span class="row"><button class="btn" id="copyInstaller" type="button">Copy installer</button><span id="copied" class="copied" hidden>Copied</span></span>
+      <details><summary>Show the text</summary><pre id="installerCode"></pre></details></li>
+    <li><b>Paste it into Scriptable and run it.</b> In Scriptable tap <b>+</b> (top right), paste, and tap the <b>▶︎</b> button. It loads the setup from nabsracing.com and starts it.</li>
+    <li><b>Answer the questions.</b> Your driver name, exactly as on the website (<b id="myName">your name on nabsracing.com</b>), then your series. If you race in Tier 2 you can choose to compare only with your own tier. The setup creates one script per widget, named "NABS · …".</li>
+    <li><b>Put a widget on your home screen.</b> Press and hold an empty spot, tap <b>+</b>, search <b>Scriptable</b>, pick a size and tap <b>Add Widget</b>. Then press and hold the new widget, tap <b>Edit Widget</b>, and next to <b>Script</b> choose one of the "NABS · …" scripts. The sizes you see above are the ones to pick: small, medium or large.</li>
+    <li><b>Lock screen widgets (optional).</b> Press and hold the lock screen, tap <b>Customize</b>, tap a widget slot, choose <b>Scriptable</b> and then a "NABS · …" script the same way.</li>
+  </ol>
+  <h3>Good to know</h3>
+  <ul class="tips">
+    <li>You can stack several NABS widgets on top of each other and swipe through them.</li>
+    <li>iOS decides when a widget redraws, so numbers can be a few minutes old. The countdowns tick on their own.</li>
+    <li>A widget that looks old after an update: press and hold it, tap Edit Widget and choose the script again.</li>
+    <li>To update to a newer version, run the installer in Scriptable again.</li>
+    <li>Tapping a widget opens the matching page on nabsracing.com.</li>
+  </ul>
+</section>
 <div id="toast"></div>
 <script>window.NABS_SITE = true</script>
 <script type="module" src="/widget-preview/app.js"></script>

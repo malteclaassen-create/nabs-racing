@@ -12,7 +12,7 @@
 //
 // Run it again any time to change your driver or to update.
 
-const SETUP_VERSION = "7.1"
+const SETUP_VERSION = "7.2"
 const BASE_URL = "https://nabsracing.com"
 const MAIN_SLUG = "friday-f1"
 const SUNDAY_SLUG = "sunday-championship"
@@ -51,7 +51,7 @@ const CORE_SOURCE = String.raw`
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "7.1"
+const CORE_VERSION = "7.2"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -829,8 +829,11 @@ function liveM(d, rows) {
   // widget there is also the session block underneath, which takes part of it.)
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
   const sp = n <= 5 ? 6 : n <= 8 ? 4 : 3
-  const budget = big ? (n <= 3 ? 130 : 250) - (mine ? 14 : 0) : 88
-  const rowH = Math.min(58, Math.floor((budget - (n - 1) * sp) / n))
+  // What the list may use in the large widget: its height minus the padding, the header,
+  // the title, the closing spacer and a little safety.
+  const budget = big ? (n <= 3 ? 130 : largeHeight() - 26 - 53 - 8 - 3) - (mine ? 14 : 0) : 88
+  // not rounded down: twelve rows would lose nearly ten points to the rounding
+  const rowH = Math.min(58, (budget - (n - 1) * sp) / n)
   // The text sizes come from the width, not just the height: iOS sets text wider
   // than any estimate, and text that does not fit is shrunk to a fraction of its
   // size. So every size is chosen to leave a tenth of the row free for the longest name.
@@ -1747,6 +1750,12 @@ function widgetWidth(fam) {
   }
   const last = sizes[sizes.length - 1]
   return Math.round(last[col] * sw / last[0])
+}
+
+// The height of the large widget on this phone: it is about 2.24 times the small one
+// (354 for 158, 382 for 170, 345 for 155).
+function largeHeight() {
+  return Math.round(widgetWidth("small") * 2.24)
 }
 
 // Two bars side by side (you and your teammate) that together fill the given width

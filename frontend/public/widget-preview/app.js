@@ -109,6 +109,29 @@ async function resolveMember() {
   return { state: found.length ? "ok" : "none", name, series: found, tier }
 }
 
+// The how-to: the installer text is a small file next to the page; the copy button puts it on the clipboard
+async function renderHowTo() {
+  const box = $("#howto")
+  if (!box) return
+  box.hidden = false
+  $("#myName").textContent = who.state === "ok" ? who.name : "your name on nabsracing.com"
+  let code = ""
+  try { code = await (await fetch("/widget-preview/nabs-installer.js", { cache: "no-cache" })).text() } catch (_) {}
+  $("#installerCode").textContent = code
+  const btn = $("#copyInstaller")
+  if (!code) { btn.disabled = true; return }
+  btn.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(code) } catch (_) {
+      // an older browser: select the text so it can be copied by hand
+      const d = box.querySelector("details"); d.open = true
+      const r = document.createRange(); r.selectNodeContents($("#installerCode"))
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r)
+    }
+    const c = $("#copied"); c.hidden = false
+    setTimeout(() => { c.hidden = true }, 2500)
+  })
+}
+
 function renderHello() {
   const h = $("#hello")
   const p = $("#lead")
@@ -586,6 +609,7 @@ async function start() {
     state.series = who.series.length ? who.series[0].slug : ""
     state.scope = "all"
     renderHello()
+    renderHowTo()
     $("#seriesLabel").hidden = who.series.length < 2
     $("#scopeLabel").hidden = !(who.state === "ok" && (who.tier === 1 || who.tier === 2))
     // widgets at their true size on a phone, a little larger on a desktop
