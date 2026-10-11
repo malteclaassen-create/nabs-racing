@@ -949,6 +949,14 @@ function HistoryPanel({ members }) {
                       <div className="truncate text-sm text-dark">{e.title}</div>
                       {e.detail && <div className="truncate text-xs text-light">{e.detail}</div>}
                     </div>
+                    {e.multiplier != null && (
+                      <span
+                        title="The multiplier this race was paid at (Discord activity in the week before it)"
+                        className="shrink-0 rounded bg-brand/15 px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-dark"
+                      >
+                        {Number(e.multiplier).toFixed(2)}x
+                      </span>
+                    )}
                     <span className="hidden shrink-0 text-xs text-faint sm:block">{fmtWhen(e.createdAt)}</span>
                     <span
                       className={`shrink-0 font-mono text-sm font-bold tabular-nums ${e.delta >= 0 ? "text-brand" : "text-light"}`}

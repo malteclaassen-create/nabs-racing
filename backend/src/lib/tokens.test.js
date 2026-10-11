@@ -16,6 +16,8 @@ import {
   flairFromNote,
   FLAIR_BY_KEY,
   moveRacePayouts,
+  raceRefOf,
+  adminLedger,
 } from "./tokens.js";
 
 // The rules and the shop are the two tables the league will actually edit, so
@@ -352,5 +354,31 @@ describe("moveRacePayouts", () => {
     // "_" is a LIKE wildcard: unescaped, old_s8 would also match oldXs8.
     const db = fakeDb(["race:r1:oldXs8", "race:r1:xold_s8"]);
     expect(await moveRacePayouts(db, "old_s8", "new_s8")).toBe(0);
+  });
+});
+
+describe("the admin's view of a member's ledger", () => {
+  it("reads the race and driver back off a race payment's key", () => {
+    expect(raceRefOf("race:r1:d1")).toEqual({ raceId: "r1", driverId: "d1" });
+    expect(raceRefOf("clean:r1:d1")).toEqual({ raceId: "r1", driverId: "d1" });
+    expect(raceRefOf("race-fix:r1:d1")).toEqual({ raceId: "r1", driverId: "d1" });
+    expect(raceRefOf("clean-fix:r1:d1")).toEqual({ raceId: "r1", driverId: "d1" });
+    expect(raceRefOf("invite:abc")).toBeNull();
+    expect(raceRefOf(null)).toBeNull();
+  });
+
+  it("puts the stamped multiplier on race payments and nowhere else", async () => {
+    const ledger = [
+      { id: "a", delta: 100, rule: "race_finish", title: "Finished a race", detail: "Monza", refKey: "race:r1:d1", createdAt: "x" },
+      { id: "b", delta: 30, rule: "clean_race", title: "Clean race, no penalties", detail: "Monza", refKey: "clean:r2:d1", createdAt: "x" },
+      { id: "c", delta: 50, rule: "referral_join", title: "Invite", detail: null, refKey: "invite:z", createdAt: "x" },
+    ];
+    const prisma = {
+      $queryRawUnsafe: async (sql) =>
+        sql.includes('FROM "TokenLedger"') ? ledger : [{ raceId: "r1", driverId: "d1", rate: 2 }],
+    };
+    const out = await adminLedger(prisma, "m1");
+    expect(out.map((r) => r.multiplier)).toEqual([2, null, null]);
+    expect(out[0].refKey).toBeUndefined();
   });
 });

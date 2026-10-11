@@ -641,6 +641,44 @@ export async function dbLedger(prisma, discordId, limit = 50) {
   return rows.map((r) => ({ ...r, delta: Number(r.delta) }));
 }
 
+// The race and the driver row behind a race payment, read back off its
+// refKey ("race:<raceId>:<driverId>", "clean:...", and the "-fix" corrections).
+// null for every other kind of row.
+export function raceRefOf(refKey) {
+  const m = /^(?:race|clean)(?:-fix)?:([^:]+):([^:]+)$/.exec(String(refKey || ""));
+  return m ? { raceId: m[1], driverId: m[2] } : null;
+}
+
+// One member's whole ledger for the admin: every row, and on the race payments
+// the multiplier the round was stamped with (TokenRaceRate), which is what
+// decided what that row paid. null where nothing was stamped: a round saved
+// before the stamps existed.
+export async function adminLedger(prisma, discordId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT "id","delta","rule","title","detail","refKey","createdAt" FROM "TokenLedger"
+     WHERE "discordId" = ? ORDER BY "createdAt" DESC, "rowid" DESC`,
+    discordId
+  );
+  const refs = rows.map((r) => raceRefOf(r.refKey));
+  const raceIds = [...new Set(refs.filter(Boolean).map((r) => r.raceId))];
+  const rates = new Map();
+  for (let i = 0; i < raceIds.length; i += 500) {
+    const chunk = raceIds.slice(i, i + 500);
+    const found = await prisma
+      .$queryRawUnsafe(
+        `SELECT "raceId","driverId","rate" FROM "TokenRaceRate" WHERE "raceId" IN (${chunk.map(() => "?").join(",")})`,
+        ...chunk
+      )
+      .catch(() => []);
+    for (const f of found) rates.set(`${f.raceId}:${f.driverId}`, Number(f.rate));
+  }
+  return rows.map(({ refKey, ...r }, i) => {
+    const ref = refs[i];
+    const rate = ref ? rates.get(`${ref.raceId}:${ref.driverId}`) : undefined;
+    return { ...r, delta: Number(r.delta), multiplier: Number.isFinite(rate) ? rate : null };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Reconciliation: pay for everything this member has done that isn't paid yet.
 // ---------------------------------------------------------------------------
