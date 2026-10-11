@@ -551,6 +551,22 @@ adminRouter.get("/activity", async (req, res, next) => {
   }
 });
 
+// GET /api/admin/tokens/ledger/:discordId — everything one member has earned
+// or spent, newest first: the same rows their own points page shows as "Your
+// history", but all of them and with no cap, so the league office can answer
+// "what did they get these for?".
+adminRouter.get("/ledger/:discordId", async (req, res, next) => {
+  try {
+    const discordId = String(req.params.discordId || "");
+    const member = (await adminOverview(prisma)).find((m) => m.discordId === discordId);
+    if (!member) return res.status(404).json({ error: "No points account for that member." });
+    const ledger = await dbLedger(prisma, discordId, 5000);
+    res.json({ member, balance: member.balance, ledger });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /api/admin/tokens/activity-key — the key the Discord bot signs with,
 // minted on first sight. Shown in the admin so whoever runs the bot can copy it.
 adminRouter.get("/activity-key", async (req, res, next) => {
