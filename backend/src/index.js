@@ -71,7 +71,8 @@ import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
 import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
 import { moveLentServerLapsOnce } from "./lib/practiceTokens.js";
-import { repairImportedRaceTimesOnce } from "./lib/tokens.js";
+import { repairImportedRaceTimesOnce, dropPreStartPayoutsOnce } from "./lib/tokens.js";
+import { ensureTuning } from "./lib/tokenTuning.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 import { avatarThumbRoute } from "./lib/avatarThumbs.js";
 
@@ -81,6 +82,8 @@ import { avatarThumbRoute } from "./lib/avatarThumbs.js";
 // the one-time card-unlock catch-up (guarded by its own flag) runs last, once
 // the columns it reads are guaranteed to exist.
 ensureAppSchema(prisma)
+  // The token start day and prices, before anything can pay out on defaults.
+  .then(() => ensureTuning(prisma))
   .then(() => ensureDownloadTables(prisma))
   // The results archive is filed per series; learn which season belongs to
   // which, and move the pre-series folders under the first series once.
@@ -101,6 +104,9 @@ ensureAppSchema(prisma)
   // stamped too low because of it is raised and the difference paid
   // (lib/tokens.js, flag-guarded).
   .then(() => repairImportedRaceTimesOnce(prisma))
+  // Once: what a restart paid for rounds before the token start day is taken
+  // back (lib/tokens.js, flag-guarded).
+  .then(() => dropPreStartPayoutsOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   .catch((e) => console.error("schema upkeep:", e));

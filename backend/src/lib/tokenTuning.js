@@ -23,7 +23,9 @@ export function overrides() {
 export async function ensureTuning(prisma) {
   if (current && Date.now() - readAt < TTL_MS) return current;
   readAt = Date.now();
-  const row = await prisma.setting.findUnique({ where: { key: TUNING_SETTING } }).catch(() => null);
+  const row = await Promise.resolve()
+    .then(() => prisma.setting.findUnique({ where: { key: TUNING_SETTING } }))
+    .catch(() => null);
   try {
     current = row?.value ? JSON.parse(row.value) : {};
   } catch {

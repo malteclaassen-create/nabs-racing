@@ -873,6 +873,7 @@ export async function stampRaceRates(prisma, raceId) {
 // saveRaceResults, best-effort — a reward currency must never be able to break
 // an import.
 export async function payRace(prisma, raceId) {
+  await ensureTuning(prisma); // an import is not a token route, see syncEarned
   const stamped = await stampRaceRates(prisma, raceId);
   if (!(await isEarningOn(prisma))) return { stamped, paid: 0 };
   // A sprint pays through its main race (oneFinishPerWeekend): somebody who
@@ -1305,6 +1306,11 @@ export async function syncEarned(prisma, discordId) {
   // bookings still work. Switching it back on starts a new start day (see
   // setEarning), so nothing from the pause is paid afterwards.
   if (!(await isEarningOn(prisma))) return;
+  // The start day and the league's numbers live in a Setting that only the
+  // token routes used to load. Called from anywhere else straight after a
+  // restart (the race recap does), this ran with no start day at all and paid
+  // every race back to season 1.
+  await ensureTuning(prisma);
   await ensureTokenAccount(prisma, discordId);
   // A round is worth what it was worth the night it was imported: payRace
   // stamps each driver's multiplier then (TokenRaceRate) and everything here
@@ -2143,6 +2149,7 @@ export async function repairImportedRaceTimesOnce(prisma) {
     forgetRoundStarts();
 
     // 2. Every paid round measured again, raised where it came out short.
+    await ensureTuning(prisma);
     const from = startOfStartDay();
     const now = Date.now();
     const races = await prisma.$queryRawUnsafe(
@@ -2215,6 +2222,114 @@ export async function repairImportedRaceTimesOnce(prisma) {
     return { restored: restored.length, raised, tokens };
   } catch (e) {
     console.warn(`[tokens] repairing the race times failed, will retry on the next start: ${e.message}`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Once: take back what was paid for rounds from before the start day.
+//
+// syncEarned read the start day from a Setting that only the token routes
+// loaded. The race recap calls it too, and straight after a restart (every
+// deploy) nothing had loaded it yet: no start day, so the member who opened a
+// recap first was paid every race they ever finished, back to season 1. The
+// archive rounds with no date at all landed on the day it happened.
+//
+// Everything filed under a round before the start day goes: the finish, the
+// clean-race bonus, a multiplier correction on either, and what a referral
+// paid for it. A row that the start day does allow is never touched. A row
+// that was taken back but is owed after all (a referral whose first counted
+// race is a later one) is simply paid again by the next syncEarned, under
+// the same key, on the right date.
+//
+// What was removed is kept in the marker Setting, so it can be put back if the
+// league ever decides those rounds should have counted.
+// ---------------------------------------------------------------------------
+const PRESTART_MARKER = "token_prestart_payouts_removed_v1";
+const ROUND_KEY = /^(race|clean|race-fix|clean-fix):([^:]+)/;
+const REFERRAL_ROUND_KEY = /^referral-race:[^:]+:([^:]+)$/;
+
+const msOf = (v) => {
+  if (v == null) return null;
+  if (v instanceof Date) return v.getTime();
+  const t = /^\d+$/.test(String(v)) ? Number(v) : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+};
+
+// Which of these ledger rows were paid for a round before `from`? Pure, so the
+// test can hand it rows without a database. `raceDate` maps a race id to its
+// date, `resultRace` a result id to its race (the oldest keys used the row).
+export function preStartRows(rows, { from, raceDate, resultRace }) {
+  if (from == null) return [];
+  const dateOfRound = (id) => {
+    const race = raceDate.has(id) ? id : resultRace.get(id);
+    return race == null ? undefined : msOf(raceDate.get(race));
+  };
+  return rows.filter((row) => {
+    const key = String(row.refKey || "");
+    if (key.startsWith("referral-join:")) {
+      // Filed on the day of the newcomer's first counted race.
+      const at = msOf(row.createdAt);
+      return at != null && at < from;
+    }
+    const m = ROUND_KEY.exec(key) || REFERRAL_ROUND_KEY.exec(key);
+    if (!m) return false;
+    const at = dateOfRound(m[m.length - 1]);
+    if (at === undefined) return false; // round no longer exists: leave it be
+    return at == null || at < from; // no date at all = an archive round
+  });
+}
+
+export async function dropPreStartPayoutsOnce(prisma) {
+  try {
+    const done = await prisma.setting.findUnique({ where: { key: PRESTART_MARKER } });
+    if (done) return null;
+    await ensureTuning(prisma);
+    const day = tunedStartDay();
+    const from = leagueDayStart(day);
+    let removed = [];
+    if (from != null) {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT "id","discordId","delta","rule","title","detail","refKey","createdAt" FROM "TokenLedger"
+          WHERE "refKey" LIKE 'race:%' OR "refKey" LIKE 'clean:%' OR "refKey" LIKE 'race-fix:%'
+             OR "refKey" LIKE 'clean-fix:%' OR "refKey" LIKE 'referral-race:%' OR "refKey" LIKE 'referral-join:%'`
+      );
+      const raceDate = new Map(
+        (await prisma.$queryRawUnsafe(`SELECT "id","date" FROM "Race"`)).map((r) => [r.id, r.date])
+      );
+      const resultRace = new Map(
+        (await prisma.$queryRawUnsafe(`SELECT "id","raceId" FROM "RaceResult"`)).map((r) => [r.id, r.raceId])
+      );
+      removed = preStartRows(rows, { from, raceDate, resultRace }).map((r) => ({
+        ...r,
+        delta: Number(r.delta),
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt == null ? null : String(r.createdAt),
+      }));
+      for (let i = 0; i < removed.length; i += 200) {
+        const ids = removed.slice(i, i + 200).map((r) => r.id);
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM "TokenLedger" WHERE "id" IN (${ids.map(() => "?").join(",")})`,
+          ...ids
+        );
+      }
+    }
+    await prisma.setting.upsert({
+      where: { key: PRESTART_MARKER },
+      update: {},
+      create: {
+        key: PRESTART_MARKER,
+        value: JSON.stringify({ at: new Date().toISOString(), startDay: day, removed }),
+      },
+    });
+    const byMember = new Map();
+    for (const r of removed) byMember.set(r.discordId, (byMember.get(r.discordId) || 0) + r.delta);
+    console.log(
+      `[tokens] pre-start payouts: ${removed.length} rows taken back from ${byMember.size} members` +
+        (day ? ` (start day ${day})` : " (no start day set, nothing to do)")
+    );
+    return { removed: removed.length, members: byMember.size, tokens: removed.reduce((n, r) => n + r.delta, 0) };
+  } catch (e) {
+    console.warn(`[tokens] taking back pre-start payouts failed, will retry on the next start: ${e.message}`);
     return null;
   }
 }

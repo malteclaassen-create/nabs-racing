@@ -41,6 +41,7 @@ import {
   discordForDrivers,
 } from "./tokens.js";
 import { leagueDay } from "./tokenRules.js";
+import { ensureTuning } from "./tokenTuning.js";
 import { raceKickoff } from "./raceKickoff.js";
 import { groupKeyFor, trackKeyFor } from "./trackKeys.js";
 import { LIVE_SERVERS, readLiveServerMap, serverAssignment } from "./liveServers.js";
@@ -297,6 +298,9 @@ async function countLap(prisma, { series, serverKey, scopes, steamId, car = "", 
   // number of times it happened to look.
   const many = Math.min(50, Math.max(1, Math.round(Number(laps) || 1)));
   if (!STEAM_RE.test(id) || stamp <= 0) return;
+  // The relay is not a token route: the league's switches have to be read in
+  // here, or a server switched off counts again after every restart.
+  await ensureTuning(prisma);
   // A server the league has switched off pays nothing and is not even
   // counted: a bar that fills from a server that will never pay for it is a
   // promise the site cannot keep.
@@ -520,6 +524,7 @@ async function payingNow(prisma) {
 // Safe to call as often as you like: the ledger drops the second attempt.
 export async function payPractice(prisma, discordId, { series, period, server = "", laps = 0 } = {}) {
   if (!discordId || !period || !laps) return 0;
+  await ensureTuning(prisma);
   const tiers = practiceTiers(series, period).filter((t) => t.active && t.points > 0);
   if (!tiers.length) return 0;
   if (!(await payingNow(prisma))) return 0;
