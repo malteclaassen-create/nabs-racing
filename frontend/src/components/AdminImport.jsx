@@ -503,12 +503,14 @@ export default function AdminImport({ onCommitted }) {
       date: res.date ? String(res.date).slice(0, 10) : "",
     });
     // Driver Market: pre-fill the "team this race" column for reserves who were
-    // picked to sub. Prefer takeovers whose race matches this file's track; fall
-    // back to all confirmed takeovers when none match (the admin still confirms
-    // against who actually drove).
+    // picked to sub. The target round's own takeovers win outright (the feature
+    // and the sprint alike); without a round, prefer takeovers whose race
+    // matches this file's track, then all confirmed takeovers (the admin still
+    // confirms against who actually drove).
     const takeovers = res.seatTakeovers || [];
+    const ofRound = targetRace ? takeovers.filter((t) => t.raceId === targetRace.id) : [];
     const matching = takeovers.filter((t) => t.track && t.track === trackName);
-    const pool = matching.length ? matching : takeovers;
+    const pool = ofRound.length ? ofRound : matching.length ? matching : takeovers;
     const takeoverByDriver = new Map(pool.map((t) => [t.reserveDriverId, t]));
     // A fresh file is a fresh table: an acknowledgement earned on the previous
     // one must not carry over and let this one save on a single press.
@@ -570,7 +572,7 @@ export default function AdminImport({ onCommitted }) {
     setDone(null);
     setBusy(true);
     try {
-      applyParsed(await api.importRace(file), { step: weekendStep });
+      applyParsed(await api.importRace(file, targetRace?.id), { step: weekendStep });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -588,7 +590,7 @@ export default function AdminImport({ onCommitted }) {
     try {
       if (step) setTargetSession(step === "SPRINT" ? "SPRINT" : "RACE");
       setWeekendStep(step);
-      applyParsed(await api.importRemoteResult(id), { step });
+      applyParsed(await api.importRemoteResult(id, targetRace?.id), { step });
     } catch (err) {
       setError(err.message);
       setWeekendStep(null);
@@ -783,7 +785,7 @@ export default function AdminImport({ onCommitted }) {
         setWeekendStep("SPRINT");
         setTargetSession("SPRINT");
         try {
-          applyParsed(await api.importRemoteResult(sprintRemoteId), { step: "SPRINT" });
+          applyParsed(await api.importRemoteResult(sprintRemoteId, targetRace?.id), { step: "SPRINT" });
           setDone(`${savedMsg} Now the sprint: check the drivers below and save again.`);
         } catch (err) {
           setWeekendStep(null);

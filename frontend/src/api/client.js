@@ -1023,15 +1023,22 @@ export const api = {
 
   // admin
   login: (pin) => request("/admin/login", { method: "POST", body: { pin } }),
-  importRace: (file) => {
+  // raceId: the round the file is for, so its Driver-Market takeovers come
+  // back even once the round is completed (the sprint after its feature).
+  importRace: (file, raceId) => {
     const fd = new FormData();
     fd.append("file", file);
     // Driver matching happens against the season the admin is editing.
-    return request(`/admin/races/import${seasonQ()}`, { method: "POST", body: fd, auth: true, form: true });
+    const q = seasonQ(raceId ? `race=${encodeURIComponent(raceId)}` : "");
+    return request(`/admin/races/import${q}`, { method: "POST", body: fd, auth: true, form: true });
   },
   remoteResults: (type = "RACE") => request(`/admin/results/remote?type=${type}`, { auth: true }),
-  importRemoteResult: (id) =>
-    request("/admin/results/remote/import", { method: "POST", body: { id, season: getSelectedSeason(), ...seriesBody() }, auth: true }),
+  importRemoteResult: (id, raceId) =>
+    request("/admin/results/remote/import", {
+      method: "POST",
+      body: { id, season: getSelectedSeason(), ...seriesBody(), ...(raceId ? { raceId } : {}) },
+      auth: true,
+    }),
   commitRace: (body) => request("/admin/races/commit", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   // Attach a qualifying JSON to an existing race (auto-matched, no review step).
   importQuali: (raceId, file) => {
