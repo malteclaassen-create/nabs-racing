@@ -271,7 +271,7 @@ export function resultRows(payload, limit = RESULTS_SIZE) {
 // The Home hero's podium, exactly as version 1 sent it.
 function podiumRows(payload) {
   return (payload?.results || [])
-    .filter((r) => r.position != null)
+    .filter((r) => r.position != null && isFin(r))
     .sort((a, b) => a.position - b.position)
     .slice(0, PODIUM_SIZE)
     .map((r) => ({ pos: r.position, driver: r.name, team: r.team?.name ?? null, points: r.points ?? 0 }));

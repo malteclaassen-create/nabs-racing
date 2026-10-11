@@ -3226,12 +3226,15 @@ html.update-reveal.update-reveal-go body::after {
 }
 
 /* iPhones zoom the whole page in when a field under 16px gets focus, and
-   leave it zoomed after. Only there: other browsers keep the smaller size. */
+   leave it zoomed after. Only there: other browsers keep the smaller size.
+   !important because a bare element selector loses to any class that sets a
+   size: every dropdown wearing .input (text-sm) kept its 14px, and tapping
+   the admin's season or round picker left the page zoomed and draggable. */
 @supports (-webkit-touch-callout: none) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
   select,
   textarea {
-    font-size: max(16px, 1em);
+    font-size: max(16px, 1em) !important;
   }
 }
 
