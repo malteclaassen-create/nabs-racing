@@ -961,10 +961,21 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
         ? "teamRounds"
         : "team"
       : "driver";
-  // The drop count the table's own rule uses, which caps the preview.
-  const ruleDrops = dropMode === "team" ? scoring.teamDropWorst : dropMode === "driver" ? scoring.dropWorst : 0;
-  const projecting = !partial && Number.isInteger(projectDrops) && projectDrops >= 0 && ruleDrops > 0;
-  const dropN = projecting ? Math.min(projectDrops, ruleDrops) : ruleDrops;
+  // The preview is asked in the drivers' unit: N = each driver's N worst
+  // results, the same switch as on the driver table (0..dropWorst). The team
+  // rule counts per team instead (e.g. 6 = 3 per driver of a two-seat team),
+  // so there N scales by the season's own ratio: teamDropWorst / dropWorst
+  // per driver result, and the full N is exactly the real team rule.
+  const driverDrops = scoring.dropWorst || 0;
+  const ruleDrops = dropMode === "team" ? scoring.teamDropWorst : dropMode === "driver" ? driverDrops : 0;
+  const previewable = driverDrops > 0 && ruleDrops > 0;
+  const projecting = !partial && previewable && Number.isInteger(projectDrops) && projectDrops >= 0;
+  const projectedN = projecting ? Math.min(projectDrops, driverDrops) : null;
+  const dropN = !projecting
+    ? ruleDrops
+    : dropMode === "team"
+      ? Math.min(ruleDrops, Math.round((projectedN * ruleDrops) / driverDrops))
+      : projectedN;
   const runRounds = raceNumbers.filter((n) => resultsByRound.get(n)?.length);
   const dropRoundNumbers = projecting ? runRounds : raceNumbers;
   // The whole mode dispatch as a function of its inputs, because it runs
@@ -1057,27 +1068,20 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
     teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
-    // How many driver results the late-season preview may drop (the rule's own
-    // count; 0 = no preview for this table), how many real ones the table
-    // drops today, and how many the preview dropped (null = the real table).
-    // Today's count: each unrun round soaks up one drop per driver, or under
-    // the team rule one per seat (the smallest line-up decides).
-    previewDrops: !partial && !scoring.finalStandings?.teams?.length ? ruleDrops : 0,
-    dropsNow: Math.max(0, ruleDrops - (raceNumbers.length - runRounds.length) * (dropMode === "team" ? minSeats(tier, teams, drivers) : 1)),
-    projectedDrops: projecting ? dropN : null,
+    // The late-season preview, all in the drivers' unit (worst results per
+    // driver), like the driver table's switch: how many it may drop (0 = no
+    // preview for this table), how many real ones each driver loses today
+    // (every unrun round soaks up one), and how many the preview dropped
+    // (null = the real table). projectedTeamDrops is what that came to under
+    // the team rule, per team, for the footnote and the preview note.
+    previewDrops: previewable && !partial && !scoring.finalStandings?.teams?.length ? driverDrops : 0,
+    dropsNow: Math.max(0, driverDrops - (raceNumbers.length - runRounds.length)),
+    projectedDrops: projectedN,
+    projectedTeamDrops: projecting && dropMode === "team" ? dropN : null,
     fastestLapPoints: scoring.fastestLapPoints || 0,
     officialTotals: !partial && !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };
-}
-
-// Seats of the tier's smallest line-up (at least one), which is how many ghost
-// 0-slots an unrun round gives a team under the team drop rule.
-function minSeats(tier, teams, drivers) {
-  const seats = teams
-    .filter((t) => t.tier === tier)
-    .map((t) => Math.max(1, drivers.filter((d) => d.teamId === t.id && d.tier === tier).length));
-  return seats.length ? Math.min(...seats) : 1;
 }
 
 export function getT1ConstructorStandings(prisma, seasonId, opts) {
