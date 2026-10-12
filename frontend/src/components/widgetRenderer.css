@@ -23,6 +23,20 @@
 .sw-acc-bg { background: rgba(255, 255, 255, 0.16); }
 .sw-inline { flex-direction: row; }
 
+/* The tiles sit on a plate that stands in for the phone's wallpaper: a shade
+   away from the card in both themes, because in the dark carbon design the card
+   is the very grey the widgets are made of, and their edges vanished into it.
+   The home-screen widgets also get a hairline and a shadow for the same reason. */
+.wg-plate {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c-surface2) 70%, var(--c-bg)) 0%, var(--c-bg) 100%);
+}
+.sw-small, .sw-medium, .sw-large {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.26), 0 10px 26px rgba(0, 0, 0, 0.4);
+}
+html:not(.dark) .sw-small, html:not(.dark) .sw-medium, html:not(.dark) .sw-large {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14), 0 10px 26px rgba(0, 0, 0, 0.18);
+}
+
 /* Lock screen widgets have no background of their own: they sit on the
    wallpaper. A dark plate stands in for it, so their white text shows in the
    light theme too. */
