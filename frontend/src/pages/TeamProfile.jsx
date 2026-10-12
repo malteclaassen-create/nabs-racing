@@ -14,7 +14,7 @@ import TeamMarginChart from "../components/TeamMarginChart.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { NO_VALUE } from "../utils/format.js";
-import { isIdleReserve } from "../utils/standingsRow.js";
+import { isIdleReserve, finishesOf, roundsOf } from "../utils/standingsRow.js";
 import { cumulativeTotals } from "../utils/cumulativePoints.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
@@ -323,15 +323,13 @@ export default function TeamProfile() {
     .sort((a, b) => a.position - b.position);
   const driverRowById = new Map(driverStandings.standings.map((d) => [d.driverId, d]));
 
-  // Combined wins / podiums across the team's drivers.
+  // Combined wins / podiums across the team's drivers. Every race of a sprint
+  // weekend counts, as everywhere else on the site (utils/standingsRow.js).
   let wins = 0, podiums = 0;
   for (const d of drivers) {
-    for (const num of Object.keys(d.perRace || {})) {
-      const c = d.perRace[num];
-      if (c.status === "FINISHED" && c.position != null) {
-        if (c.position === 1) wins++;
-        if (c.position <= 3) podiums++;
-      }
+    for (const c of finishesOf(roundsOf(d))) {
+      if (c.position === 1) wins++;
+      if (c.position <= 3) podiums++;
     }
   }
 
