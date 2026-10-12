@@ -11,7 +11,11 @@
 .sw-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
 .sw-stack { position: relative; display: flex; }
 .sw-text { overflow: hidden; white-space: normal; }
-.sw-one { white-space: nowrap; text-overflow: ellipsis; }
+/* A single line is never cut with "…": the layout gives it exactly the width it
+   measured, and a scaled font can render a fraction of a pixel wider than that,
+   which an ellipsis would turn into "P1…" where the phone shows "P11.2". The
+   phone lets a line that is too long run on instead, so the preview does too. */
+.sw-one { white-space: nowrap; overflow: visible; text-overflow: clip; }
 .sw-clamp { display: -webkit-box; -webkit-box-orient: vertical; }
 .sw-image { position: relative; overflow: hidden; }
 .sw-image img { display: block; width: 100%; height: 100%; }
