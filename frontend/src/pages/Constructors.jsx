@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -10,6 +10,7 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton
 import { useTilt } from "../hooks/motion.js";
 import ConstructorTable from "../components/ConstructorTable.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
 import Flag from "../components/Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
@@ -217,6 +218,22 @@ export default function Constructors() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const teams = useApi(useCallback(() => api.teams(), []));
   const races = useApi(useCallback(() => api.races(), []));
+  // The late-season "drop worst" preview, as on the driver standings: how many
+  // worst DRIVER results so far to take off, or null for the real table. Our
+  // rule drops drivers' results, never a team's whole round, so the preview
+  // does too (the backend picks the per-driver or per-seat count the season
+  // uses). Both tiers are fetched together and swapped in once they arrive,
+  // so the tables stay up. Not remembered: the real table is the default.
+  const [dropPick, setDropPick] = useState(null);
+  const [projected, setProjected] = useState(null); // { n, t1, t2 }
+  useEffect(() => {
+    if (dropPick == null || projected?.n === dropPick) return undefined;
+    let alive = true;
+    Promise.all([api.t1Standings(undefined, null, dropPick), api.t2Standings(undefined, null, dropPick)])
+      .then(([a, b]) => alive && setProjected({ n: dropPick, t1: a, t2: b }))
+      .catch(() => alive && setDropPick(null));
+    return () => { alive = false; };
+  }, [dropPick, projected]);
   const { current: season, active } = useSeason();
   // The season belongs in the heading, not only in the switcher above it.
   // Eight seasons of this page otherwise share one H1, so neither a reader
@@ -249,13 +266,18 @@ export default function Constructors() {
       </div>
     );
 
+  // The tables on show: the preview once it has arrived, otherwise the real ones.
+  const projecting = dropPick != null && projected?.n === dropPick;
+  const t1Data = projecting ? projected.t1 : t1.data;
+  const t2Data = projecting ? projected.t2 : t2.data;
+
   const t1Teams = teams.data.filter((t) => t.tier === 1);
   const t2Teams = teams.data.filter((t) => t.tier === 2);
   // The reserve pool (tier 0), shown once, after the last tier's line-ups.
   const reserveTeam = teams.data.find((t) => t.tier === 0) || null;
   // Single-class seasons (archived S1–S5) have no Tier 2 at all: hide the split
   // and the jump pills, and title the one block plainly "Constructors".
-  const hasT2 = t2.data.standings.length > 0 || t2Teams.length > 0;
+  const hasT2 = t2Data.standings.length > 0 || t2Teams.length > 0;
   // The title is decided: archived season, or the live one with every round in.
   const champRounds = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   const seasonDecided =
@@ -266,7 +288,19 @@ export default function Constructors() {
   // live seasons only (a decided table should sit still), with the dev-only
   // ?demo knob to preview on an archive.
   const demoArrows = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
-  const showMovement = !seasonDecided || demoArrows;
+  const showMovement = (!seasonDecided || demoArrows) && !projecting;
+  // Same window as the driver standings: only in the last stretch (no more
+  // rounds left than drops), live seasons only. The choices run from what the
+  // rule drops TODAY (unrun rounds soak up drops) up to the season's count.
+  const roundsLeft = t1.data.raceNumbers.length - completedRounds(t1.data).length;
+  const previewDrops = t1.data.previewDrops || 0;
+  const dropsNow = Math.min(t1.data.dropsNow ?? 0, hasT2 ? t2.data.dropsNow ?? 0 : Infinity);
+  const dropChoices =
+    !seasonDecided && previewDrops > 0 && roundsLeft > 0 && roundsLeft <= previewDrops
+      ? Array.from({ length: previewDrops - dropsNow + 1 }, (_, i) => dropsNow + i)
+      : [];
+  const pickDrops = (n) => setDropPick(n === dropsNow ? null : n);
+  const teamRule = t1.data.dropMode === "team";
 
   return (
     <div className="content-in space-y-10 sm:space-y-16">
@@ -280,8 +314,62 @@ export default function Constructors() {
         right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
       />
 
-      <TierBlock id="tier-1" tier={1} standings={t1.data} teams={t1Teams} races={races.data || []} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1.data)} decided={seasonDecided} showMovement={showMovement} reserves={hasT2 ? null : reserveTeam} />
-      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2.data} teams={t2Teams} races={races.data || []} championTeamId={champId(t2.data)} decided={seasonDecided} showMovement={showMovement} reserves={reserveTeam} />}
+      {dropChoices.length > 1 && (
+        <div className="-mt-4 space-y-2 sm:-mt-8">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-medium">Drop worst</span>
+              <SlidingTabs
+                items={dropChoices.map((n) => ({
+                  key: n,
+                  title: n === dropsNow ? "The tables as they stand" : `Preview with ${n} worst driver results dropped`,
+                  label: <span className="font-mono tabular-nums">{n}</span>,
+                }))}
+                value={dropPick ?? dropsNow}
+                onChange={pickDrops}
+                wrapClassName="flex rounded-lg bg-surface2 p-0.5"
+                btnClassName="flex h-6 min-w-[28px] items-center justify-center px-2 text-xs font-bold"
+                pillClassName="rounded-md bg-brand"
+                activeClassName="text-onbrand"
+                idleClassName="text-light hover:text-dark"
+              />
+            </div>
+            <span className="font-mono text-[11px] uppercase tracking-wider text-light">
+              <b className="tabular-nums text-dark">{t1.data.raceNumbers.length}</b> rounds
+            </span>
+          </div>
+          {dropPick != null && (
+            <p className="content-in flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
+              <span>
+                <b>Preview, not the real table.</b>{" "}
+                {teamRule ? (
+                  <>
+                    Each team&rsquo;s {dropPick} worst single-driver result{dropPick === 1 ? "" : "s"} so far{" "}
+                    {dropPick === 1 ? "is" : "are"} dropped
+                  </>
+                ) : (
+                  <>
+                    Every driver&rsquo;s {dropPick} worst result{dropPick === 1 ? "" : "s"} so far{" "}
+                    {dropPick === 1 ? "is" : "are"} dropped from the team they drove for
+                  </>
+                )}
+                , never a team&rsquo;s whole round. That only holds if nobody does worse in the last{" "}
+                {roundsLeft === 1 ? "round" : `${roundsLeft} rounds`} than in those.
+              </span>
+              <button
+                type="button"
+                onClick={() => setDropPick(null)}
+                className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-dark shadow-sm transition hover:bg-surface2"
+              >
+                Back to real table
+              </button>
+            </p>
+          )}
+        </div>
+      )}
+
+      <TierBlock id="tier-1" tier={1} standings={t1Data} teams={t1Teams} races={races.data || []} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1Data)} decided={seasonDecided} showMovement={showMovement} reserves={hasT2 ? null : reserveTeam} />
+      {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2Data} teams={t2Teams} races={races.data || []} championTeamId={champId(t2Data)} decided={seasonDecided} showMovement={showMovement} reserves={reserveTeam} />}
     </div>
   );
 }

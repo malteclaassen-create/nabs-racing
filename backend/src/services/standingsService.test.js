@@ -771,3 +771,44 @@ describe("drop rules treat a sprint weekend as one round worth both results", ()
     expect(tx.total).toBe(60);
   });
 });
+
+describe("late-season drop preview on the constructor tables (drops over run rounds only)", () => {
+  // Two of five rounds run. On the real table every driver's drop is soaked up
+  // by an unrun round; the preview takes each driver's worst RESULT so far.
+  const resultsByRound = new Map([
+    [1, [res("A", 20), res("B", 4)]],
+    [2, [res("A", 25), res("B", 10)]],
+  ]);
+  const base = { tier: 1, teams: T1_TEAMS, drivers: T1_DRIVERS, raceNumbers: [1, 2, 3, 4, 5], resultsByRound };
+
+  it("per-driver rule: each driver's own worst result leaves the team, not the team's worst round", () => {
+    const [real] = buildConstructorRows({ ...base, dropN: 1 });
+    expect(real.droppedPerRace).toEqual({});
+    const [tx] = buildConstructorRows({ ...base, dropN: 1, dropRoundNumbers: [1, 2] });
+    // A drops R1 (20), B drops R1 (4): R1 goes as a whole only because both
+    // drivers had it as their worst.
+    expect(tx.droppedPerRace).toEqual({ 1: 24 });
+    expect(tx.total).toBe(35);
+    const [ty] = buildConstructorRows({
+      ...base,
+      resultsByRound: new Map([
+        [1, [res("A", 5), res("B", 25)]],
+        [2, [res("A", 20), res("B", 4)]],
+      ]),
+      dropN: 1,
+      dropRoundNumbers: [1, 2],
+    });
+    // A drops R1, B drops R2: a single driver's result each, the team's
+    // worst round total (R2: 24) is NOT dropped whole.
+    expect(ty.droppedPerRace).toEqual({ 1: 5, 2: 4 });
+    expect(ty.total).toBe(45);
+  });
+
+  it("team rule: the team's lowest single-driver scores so far, no ghost slots for unrun rounds", () => {
+    const [real] = buildTeamDropConstructorRows({ ...base, teamDropN: 2 });
+    expect(real.droppedPerRace).toEqual({});
+    const [tx] = buildTeamDropConstructorRows({ ...base, teamDropN: 2, dropRoundNumbers: [1, 2] });
+    expect(tx.droppedPerRace).toEqual({ 1: 4, 2: 10 }); // B's 4 and B's 10
+    expect(tx.total).toBe(45);
+  });
+});

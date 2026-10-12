@@ -206,9 +206,12 @@ export function computeDriverDropRounds(resultsByRound, raceNumbers, dropN, tabl
 // contribution is excluded when that round is one of the driver's own dropped
 // rounds. perRace keeps the FULL points the team scored in the round (what
 // the race actually paid out); droppedPerRace says how much of it doesn't
-// count; total sums only the counting share. Pure / side-effect free.
-export function buildConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, dropN, table = DEFAULT_POINTS_TABLE }) {
-  const dropRounds = computeDriverDropRounds(resultsByRound, raceNumbers, dropN, table);
+// count; total sums only the counting share. `dropRoundNumbers` narrows the
+// rounds each driver's drops are picked from (the late-season preview drops
+// over the rounds already run only); default the whole calendar. Pure /
+// side-effect free.
+export function buildConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, dropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
+  const dropRounds = computeDriverDropRounds(resultsByRound, dropRoundNumbers, dropN, table);
   const contributionsFor =
     tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
   const tierTeams = teams.filter((t) => t.tier === tier);
@@ -281,8 +284,11 @@ export function applyTeamDrop({ contributions, rosterSlots, roundNumbers, dropN 
 
 // Constructor rows under the team-level drop rule. Each tier scores in its own
 // currency (T1 real points, T2 re-ranked points); a team's roster size sets how
-// many slots per round pad the drop model. Pure / side-effect free.
-export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, table = DEFAULT_POINTS_TABLE }) {
+// many slots per round pad the drop model. `dropRoundNumbers` are the rounds
+// padded with ghost 0-slots (default the whole calendar; the late-season
+// preview pads the rounds already run only, so no unrun round soaks up a
+// drop). Pure / side-effect free.
+export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
   const contributionsFor =
     tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
   const tierTeams = teams.filter((t) => t.tier === tier);
@@ -307,7 +313,7 @@ export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers
     const { total, droppedPerRace } = applyTeamDrop({
       contributions: contribs.get(team.id),
       rosterSlots: rosterSlots.get(team.id),
-      roundNumbers: raceNumbers,
+      roundNumbers: dropRoundNumbers,
       dropN: teamDropN,
     });
     return {
@@ -899,7 +905,14 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
 // `upToRound` freezes the table after that round, exactly as it does for the
 // drivers above: the later rounds leave the race list, and every total, drop
 // and tie-break below is computed from that list.
-async function getConstructorStandings(prisma, tier, seasonId, { extraResults = [], upToRound = null } = {}) {
+// `projectDrops` is the same late-season "what if it ended today" look as on
+// the driver table, and it drops DRIVER results, never whole team rounds:
+// under the per-driver rule each driver's N worst results so far come off the
+// team they drove for, under the team rule each team's N lowest single-driver
+// round scores so far. Rounds still to run soak up nothing. Not offered for
+// the sheet-style whole-round team drop or an official archived sheet, and
+// ignored on a frozen mid-season view. No movement arrows while projecting.
+async function getConstructorStandings(prisma, tier, seasonId, { extraResults = [], upToRound = null, projectDrops = null } = {}) {
   const [teams, drivers, allRaces, results, scoring] = await Promise.all([
     // ALL season teams/drivers (not just this tier): resolving a result's
     // effective team & tier needs the full grid, reserves included.
@@ -948,6 +961,12 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
         ? "teamRounds"
         : "team"
       : "driver";
+  // The drop count the table's own rule uses, which caps the preview.
+  const ruleDrops = dropMode === "team" ? scoring.teamDropWorst : dropMode === "driver" ? scoring.dropWorst : 0;
+  const projecting = !partial && Number.isInteger(projectDrops) && projectDrops >= 0 && ruleDrops > 0;
+  const dropN = projecting ? Math.min(projectDrops, ruleDrops) : ruleDrops;
+  const runRounds = raceNumbers.filter((n) => resultsByRound.get(n)?.length);
+  const dropRoundNumbers = projecting ? runRounds : raceNumbers;
   // The whole mode dispatch as a function of its inputs, because it runs
   // TWICE: once for the real table and once with the latest completed round
   // taken out, which is where the movement arrows come from. Recomputing with
@@ -960,14 +979,15 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
       : dropMode === "teamRounds"
         ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: scoring.teamDropWorst, table })
       : dropMode === "team"
-        ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: scoring.teamDropWorst, table })
+        ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: dropN, dropRoundNumbers, table })
         : buildConstructorRows({
             tier,
             teams,
             drivers,
             raceNumbers,
             resultsByRound: rbr,
-            dropN: scoring.dropWorst,
+            dropN,
+            dropRoundNumbers,
             table,
           }).map(({ team, perRace, droppedPerRace, total }) => ({
             teamId: team.id,
@@ -986,8 +1006,9 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   rows.forEach((row, i) => (row.position = i + 1));
 
   // Movement vs the previous round, same contract as the driver table: absent
-  // until two rounds are in, then prevPosition per team.
-  {
+  // until two rounds are in, then prevPosition per team. Not for the preview:
+  // the previous round's table was never ranked that way.
+  if (!projecting) {
     const playedRounds =
       dropMode === "official"
         ? [...new Set(Object.values(scoring.finalStandings.teamPerRace || {}).flatMap((m) => Object.keys(m || {}).map(Number)))]
@@ -1036,10 +1057,27 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
     teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
+    // How many driver results the late-season preview may drop (the rule's own
+    // count; 0 = no preview for this table), how many real ones the table
+    // drops today, and how many the preview dropped (null = the real table).
+    // Today's count: each unrun round soaks up one drop per driver, or under
+    // the team rule one per seat (the smallest line-up decides).
+    previewDrops: !partial && !scoring.finalStandings?.teams?.length ? ruleDrops : 0,
+    dropsNow: Math.max(0, ruleDrops - (raceNumbers.length - runRounds.length) * (dropMode === "team" ? minSeats(tier, teams, drivers) : 1)),
+    projectedDrops: projecting ? dropN : null,
     fastestLapPoints: scoring.fastestLapPoints || 0,
     officialTotals: !partial && !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };
+}
+
+// Seats of the tier's smallest line-up (at least one), which is how many ghost
+// 0-slots an unrun round gives a team under the team drop rule.
+function minSeats(tier, teams, drivers) {
+  const seats = teams
+    .filter((t) => t.tier === tier)
+    .map((t) => Math.max(1, drivers.filter((d) => d.teamId === t.id && d.tier === tier).length));
+  return seats.length ? Math.min(...seats) : 1;
 }
 
 export function getT1ConstructorStandings(prisma, seasonId, opts) {

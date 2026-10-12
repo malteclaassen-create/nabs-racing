@@ -302,10 +302,10 @@ export default function ConstructorTable({ standings, races = [], rosterByTeam =
           variant="constructor"
           raceNumbers={raceNumbers}
           rows={rows}
-          dropWorst={standings.dropWorst}
+          dropWorst={standings.dropMode === "driver" ? standings.projectedDrops ?? standings.dropWorst : standings.dropWorst}
           officialTotals={standings.officialTotals}
           dropMode={standings.dropMode}
-          teamDropWorst={standings.teamDropWorst}
+          teamDropWorst={standings.dropMode === "team" ? standings.projectedDrops ?? standings.teamDropWorst : standings.teamDropWorst}
           sprintRounds={standings.sprintRounds || []}
           fastestLapPoints={standings.fastestLapPoints || 0}
           customPoints={customPoints}
