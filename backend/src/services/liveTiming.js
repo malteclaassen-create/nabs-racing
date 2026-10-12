@@ -37,6 +37,7 @@ import { createPitFilter, speedKmhOf } from "./pitFlag.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
 import { noteBoard, sectorLinesFor } from "../lib/sectorLines.js";
+import { dropImpossibleSectors } from "../lib/impossibleSectors.js";
 import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
@@ -1843,6 +1844,10 @@ function createRelay(server) {
     }
 
     const entries = [...byGuid.values()];
+    // Best sectors no full lap backs up (a cut the server did not count): out
+    // of the boxes, the potential lap and the purple below
+    // (lib/impossibleSectors.js).
+    const droppedSectors = dropImpossibleSectors(entries);
 
     // No telemetry for STALE_MS means nobody is out there, whatever the last
     // snapshot's flags say: a car on track streams telemetry continuously. So
@@ -1946,10 +1951,14 @@ function createRelay(server) {
     // sectors are part of the board: the quickest S1 of the week is purple
     // whether it was set an hour ago or on Monday. Without them a live sector
     // went purple while a quicker one sat two rows up in green.
+    // A sector taken out above is no one's best, the session's included; the
+    // quickest that is left on the board stands in for it.
     const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp, i) => {
-      const here = sp ? nsToMs(sp.SplitTime) : null;
-      const there = carriedBestSectors[i];
-      return here == null ? there : there == null ? here : Math.min(here, there);
+      const keep = (ms) => (ms == null || droppedSectors[i].has(ms) ? null : ms);
+      const candidates = [keep(sp ? nsToMs(sp.SplitTime) : null), keep(carriedBestSectors[i])];
+      if (droppedSectors[i].size) for (const e of entries) candidates.push(e.bestSectors?.[i]?.ms ?? null);
+      const known = candidates.filter((ms) => ms != null);
+      return known.length ? Math.min(...known) : null;
     });
     for (const e of entries) {
       for (const row of [e.sectors, e.currentSectors]) {
