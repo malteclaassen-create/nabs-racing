@@ -316,6 +316,9 @@ function AppRoutes() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/style" element={<ProfileStyle />} />
+        {/* The iPhone widgets live in the profile; this is the short address
+            to hand out (and where the old standalone preview page points). */}
+        <Route path="/widgets" element={<Navigate to="/profile?tab=widgets" replace />} />
         {/* Your own feedback threads. Reached from the notification the admins'
             answer sends (/feedback?id=…) and from the feedback panel itself. */}
         <Route path="/feedback" element={<MyFeedback />} />

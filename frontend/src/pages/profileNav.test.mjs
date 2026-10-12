@@ -35,6 +35,19 @@ test("NABS Tokens appears only while the trial is on, and carries the balance", 
   assert.equal(zero.sections.find((s) => s.key === "tokens").count, 0);
 });
 
+test("Widgets appears only for those it is open to, next to Telemetry", () => {
+  const off = profileNav({ widgets: false });
+  assert.ok(!off.sections.some((s) => s.key === "widgets"));
+
+  const on = profileNav({ widgets: true });
+  const keys = on.sections.map((s) => s.key);
+  assert.equal(on.sections.find((s) => s.key === "widgets").kind, "section");
+  assert.equal(keys.indexOf("widgets"), keys.indexOf("tools") + 1);
+
+  // A link to ?tab=widgets is valid even while the answer is still on its way.
+  assert.ok(sectionKeys().includes("widgets"));
+});
+
 test("everything that is not a section says what it really does", () => {
   const { elsewhere } = profileNav({ isAdmin: true, reportsOpen: true });
   assert.deepEqual(
@@ -65,7 +78,7 @@ test("?tab= stays valid while the token balance is still loading", () => {
   // a bell link to ?tab=tokens does not flash the editor on the way in.
   assert.ok(!profileNav({ tokens: null }).sections.some((s) => s.key === "tokens"));
   assert.ok(sectionKeys(COCKPIT).includes("tokens"));
-  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "career", "tokens", "tools", "settings"]);
+  assert.deepEqual(sectionKeys(COCKPIT), ["profile", "achievements", "rating", "career", "tokens", "tools", "widgets", "settings"]);
 });
 
 test("race control members get a way to their page, admins already have theirs", () => {

@@ -153,6 +153,7 @@ import {
   PROGRESS_STATES, parseProgress, readDriverProgress, writeDriverProgress,
 } from "../lib/driverProgress.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
+import { isWidgetsPagePublic, setWidgetsPagePublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -8026,6 +8027,26 @@ router.get("/telemetry-visibility", async (req, res, next) => {
 router.put("/telemetry-visibility", async (req, res, next) => {
   try {
     const on = await setTelemetryPublic(prisma, req.body?.public === true);
+    res.json({ ok: true, public: on });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET/PUT /api/admin/widgets-visibility — the Widgets section of the profile:
+// admins only while the widgets are tried out, then everyone's
+// (lib/widgetsPage.js).
+router.get("/widgets-visibility", async (req, res, next) => {
+  try {
+    res.json({ public: await isWidgetsPagePublic(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/widgets-visibility", async (req, res, next) => {
+  try {
+    const on = await setWidgetsPagePublic(prisma, req.body?.public === true);
     res.json({ ok: true, public: on });
   } catch (e) {
     next(e);

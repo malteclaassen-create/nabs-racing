@@ -1,0 +1,30 @@
+/* ---------------------------------------------------------------------------
+   The iPhone widget renderer (public/widget-preview/scriptable.js) draws plain
+   DOM with these classes. They were the static preview page's own styles and
+   moved here with the page into the profile (components/WidgetsSection.jsx).
+   The widgets are drawn as iOS draws them, in their own dark colours, whatever
+   the site's theme.
+   --------------------------------------------------------------------------- */
+.sw-widget { position: relative; overflow: hidden; border-radius: 22px; color: #fff; -webkit-font-smoothing: antialiased; font-synthesis: none; font-kerning: normal; }
+.sw-widget * { box-sizing: border-box; }
+.sw-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.sw-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.sw-stack { position: relative; display: flex; }
+.sw-text { overflow: hidden; white-space: normal; }
+.sw-one { white-space: nowrap; text-overflow: ellipsis; }
+.sw-clamp { display: -webkit-box; -webkit-box-orient: vertical; }
+.sw-image { position: relative; overflow: hidden; }
+.sw-image img { display: block; width: 100%; height: 100%; }
+.sw-tint { position: absolute; inset: 0; mask-repeat: no-repeat; mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+.sw-border { position: absolute; inset: 0; border-style: solid; pointer-events: none; }
+.sw-flag { display: inline-block; height: 0.78em; width: 1.05em; object-fit: cover; border-radius: 0.14em; vertical-align: -0.04em; margin: 0 0.06em; }
+.sw-accessoryRectangular, .sw-accessoryCircular, .sw-accessoryInline { border-radius: 0; filter: grayscale(1); }
+.sw-accessoryCircular { border-radius: 50%; }
+.sw-acc-bg { background: rgba(255, 255, 255, 0.16); }
+.sw-inline { flex-direction: row; }
+
+/* Lock screen widgets have no background of their own: they sit on the
+   wallpaper. A dark plate stands in for it, so their white text shows in the
+   light theme too. */
+.wg-lock { border-radius: 14px; background: #1c1c22; outline: 6px solid #1c1c22; }
+.wg-lock-accessoryCircular { border-radius: 50%; }

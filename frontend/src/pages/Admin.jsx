@@ -57,6 +57,7 @@ const TAB_CHUNKS = {
   AdminWelcomeFaq: () => import("../components/AdminWelcomeFaq.jsx"),
   AdminHelp: () => import("../components/AdminHelp.jsx"),
   AdminPrivacy: () => import("../components/AdminPrivacy.jsx"),
+  AdminWidgets: () => import("../components/AdminWidgets.jsx"),
   AdminTracks: () => import("../components/AdminTracks.jsx"),
   AdminAttendance: () => import("../components/AdminAttendance.jsx"),
   AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
@@ -81,6 +82,7 @@ const AdminRaceInfo = lazy(TAB_CHUNKS.AdminRaceInfo);
 const AdminWelcomeFaq = lazy(TAB_CHUNKS.AdminWelcomeFaq);
 const AdminHelp = lazy(TAB_CHUNKS.AdminHelp);
 const AdminPrivacy = lazy(TAB_CHUNKS.AdminPrivacy);
+const AdminWidgets = lazy(TAB_CHUNKS.AdminWidgets);
 const AdminTracks = lazy(TAB_CHUNKS.AdminTracks);
 const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
 const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
@@ -167,6 +169,7 @@ function SiteTexts({ jumpView, jumpKey }) {
           { key: "social", label: "Social" },
           { key: "links", label: "Link previews" },
           { key: "privacy", label: "Privacy & app" },
+          { key: "widgets", label: "Widgets" },
         ]}
         value={view}
         onChange={(v) => confirmLeave(ask).then((ok) => ok && setView(v))}
@@ -183,6 +186,7 @@ function SiteTexts({ jumpView, jumpKey }) {
       )}
       {view === "links" && <AdminLinkPreviews />}
       {view === "privacy" && <AdminPrivacy />}
+      {view === "widgets" && <AdminWidgets />}
     </div>
   );
 }
