@@ -28,6 +28,8 @@ import { NO_VALUE } from "../utils/format.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { pickedLeague } from "./viewedLeague.mjs";
 import { useRaceControlAccess } from "../components/RaceControl.jsx";
+import WidgetsSection from "../components/WidgetsSection.jsx";
+import { useWidgetsPage } from "../hooks/useWidgetsPage.js";
 
 // The public profile shows at most this many stat tiles.
 const MAX_TILES = 9;
@@ -824,11 +826,28 @@ function CopyProfileLink({ driverId }) {
   );
 }
 
+// A link to the Widgets section for somebody it is not open to yet.
+function WidgetsClosed({ onBack }) {
+  return (
+    <div className="card p-6 text-center">
+      <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark">Widgets are coming soon</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-light">
+        The iPhone widgets are still being tried out. They show up here as soon as they are ready.
+      </p>
+      <button type="button" className="btn-secondary mt-4" onClick={onBack}>
+        Back to your profile
+      </button>
+    </div>
+  );
+}
+
 function MyProfile() {
   const { user, logout } = useAuth();
   const { total: adminAttention, summary: adminSummary } = useAdminAttention();
   const tokenBalance = useTokenBalance();
   const raceControlAccess = useRaceControlAccess();
+  // The iPhone widgets: admins only until an admin opens them to everyone.
+  const widgetsPage = useWidgetsPage();
   // `current` rather than `slug`: the Personal Area sits outside the /s/<slug>
   // URLs, so on a cold load here there is no slug at all — while the header
   // still names a series (the active one). Following the header is the rule,
@@ -936,6 +955,7 @@ function MyProfile() {
           raceControl: raceControlAccess,
           tokens: tokenBalance,
           reportsOpen: REPORTS_OPEN_TO_MEMBERS,
+          widgets: widgetsPage.visible,
           cockpitTabs: COCKPIT_TABS,
         })}
         value={tab}
@@ -963,6 +983,17 @@ function MyProfile() {
         <Tools embedded />
       ) : tab === "tokens" ? (
         <Tokens />
+      ) : tab === "widgets" ? (
+        // A link to ?tab=widgets is valid for everyone (see sectionKeys), so
+        // the gate is here: while the answer loads, a spinner; for a member
+        // the league has not opened it to yet, a short "coming soon".
+        widgetsPage.visible ? (
+          <WidgetsSection driverName={d.name} isPublic={widgetsPage.isPublic} isAdmin={widgetsPage.isAdmin} />
+        ) : widgetsPage.loading ? (
+          <Spinner label="Loading…" />
+        ) : (
+          <WidgetsClosed onBack={() => setTab("profile")} />
+        )
       ) : tab === "career" ? (
         // The same view the public page shows, minus the hero: this page
         // already knows whose career it is.

@@ -17,7 +17,7 @@
 // `kind` drives the renderer: "section" swaps the panel and owns ?tab=,
 // "panel" opens an overlay, "page" is a real navigation and is drawn as a link
 // (middle-click, open-in-new-tab, and the right announcement).
-export function profileNav({ isAdmin = false, raceControl = false, tokens = null, reportsOpen = false, cockpitTabs = [] } = {}) {
+export function profileNav({ isAdmin = false, raceControl = false, tokens = null, reportsOpen = false, widgets = false, cockpitTabs = [] } = {}) {
   return {
     sections: [
       { kind: "section", key: "profile", label: "Edit Profile", icon: "profile" },
@@ -34,6 +34,10 @@ export function profileNav({ isAdmin = false, raceControl = false, tokens = null
       ...(tokens === null ? [] : [{ kind: "section", key: "tokens", label: "NABS Tokens", icon: "tokens", count: tokens }]),
       // The key stays "tools": ?tab=tools is in bell links and bookmarks.
       { kind: "section", key: "tools", label: "Telemetry", icon: "tools" },
+      // The iPhone widgets with your own numbers, and how to get them on the
+      // phone. Admins only until an admin opens it to everyone (Admin -> Site
+      // texts -> Widgets); `widgets` is that answer, already worked out.
+      ...(widgets ? [{ kind: "section", key: "widgets", label: "Widgets", icon: "widgets" }] : []),
       // Theme, performance, where your own name in the bar leads, and the way
       // out of the account. A panel like the ones above it rather than a
       // drawer over them or a page away from them: everything about you is in
@@ -68,5 +72,5 @@ export function profileNav({ isAdmin = false, raceControl = false, tokens = null
 // ?tab=tokens invalid just long enough to flash the editor before the balance
 // lands and the real panel takes over.
 export function sectionKeys(cockpitTabs = []) {
-  return profileNav({ tokens: 0, cockpitTabs }).sections.map((s) => s.key);
+  return profileNav({ tokens: 0, widgets: true, cockpitTabs }).sections.map((s) => s.key);
 }

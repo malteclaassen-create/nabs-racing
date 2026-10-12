@@ -8,6 +8,7 @@ import {
   Shield,
   ShieldAlert,
   SlidersHorizontal,
+  Smartphone,
   TrendingUp,
   Trophy,
   TriangleAlert,
@@ -39,6 +40,7 @@ const ICONS = {
   reports: TriangleAlert,
   admin: Shield,
   racecontrol: ShieldAlert,
+  widgets: Smartphone,
 };
 
 // The points wear the league's own mark rather than a generic coin: the same

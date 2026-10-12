@@ -1589,6 +1589,12 @@ export const api = {
   telemetryVisibility: () => request("/admin/telemetry-visibility", { auth: true }),
   setTelemetryVisibility: (isPublic) =>
     request("/admin/telemetry-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
+  // The Widgets section of the profile: admins only until an admin opens it to
+  // everyone (backend lib/widgetsPage.js).
+  widgetsPageIsPublic: () => request("/settings/widgets"),
+  widgetsVisibility: () => request("/admin/widgets-visibility", { auth: true }),
+  setWidgetsVisibility: (isPublic) =>
+    request("/admin/widgets-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
   // Series- and season-scoped, through the same switchers the rest of the site
   // uses: every league has its own store, and inside it the league runs
   // different cars each season, so a lap only means something inside one.

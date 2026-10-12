@@ -81,6 +81,8 @@ export const TAB_ALIASES = {
   faq: { tab: "site", view: "faq" },
   help: { tab: "site", view: "help" },
   privacy: { tab: "site", view: "privacy" },
+  // The Widgets section's own link for admins: "Publish it in the admin".
+  widgets: { tab: "site", view: "widgets" },
   social: { tab: "live" },
   traffic: { tab: "system", view: "traffic" },
   health: { tab: "system", view: "health" },
@@ -134,6 +136,7 @@ export const TAB_VIEWS = {
     social: "Social",
     links: "Link previews",
     privacy: "Privacy & app",
+    widgets: "Widgets",
   },
   system: {
     health: "Health & backups",
@@ -665,6 +668,14 @@ export const ADMIN_INDEX = [
     hint: "Package name and signing fingerprints, which produce the assetlinks.json the app is verified against.",
     keywords:
       "assetlinks digital asset links package name fingerprint sha256 signing key twa trusted web activity address bar url bar verification play console app integrity android",
+  },
+  {
+    tab: "site",
+    view: "widgets",
+    title: "Publish the iPhone widgets",
+    hint: "The Widgets section of the profile: admins only while they are tried out, or every member.",
+    keywords:
+      "widgets iphone ios home screen lock screen scriptable publish release visible members admins only preview profile section",
   },
 
   // --- System ---------------------------------------------------------------

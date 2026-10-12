@@ -12,7 +12,7 @@
 //
 // Run it again any time to change your driver or to update.
 
-const SETUP_VERSION = "7.2"
+const SETUP_VERSION = "7.3"
 const BASE_URL = "https://nabsracing.com"
 const MAIN_SLUG = "friday-f1"
 const SUNDAY_SLUG = "sunday-championship"
@@ -51,7 +51,7 @@ const CORE_SOURCE = String.raw`
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "7.2"
+const CORE_VERSION = "7.3"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -829,9 +829,9 @@ function liveM(d, rows) {
   // widget there is also the session block underneath, which takes part of it.)
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
   const sp = n <= 5 ? 6 : n <= 8 ? 4 : 3
-  // What the list may use in the large widget: its height minus the padding, the header,
-  // the title, the closing spacer and a little safety.
-  const budget = big ? (n <= 3 ? 130 : largeHeight() - 26 - 53 - 8 - 3) - (mine ? 14 : 0) : 88
+  // What the list may use: the widget's height minus the padding, the header, the
+  // title and a little safety (in the medium one 132 - 44 - 4).
+  const budget = big ? (n <= 3 ? 130 : largeHeight() - 26 - 53 - 8 - 3) - (mine ? 14 : 0) : 84
   // not rounded down: twelve rows would lose nearly ten points to the rounding
   const rowH = Math.min(58, (budget - (n - 1) * sp) / n)
   // The text sizes come from the width, not just the height: iOS sets text wider
@@ -869,8 +869,10 @@ function liveM(d, rows) {
   const addRow = (x, i, youLine) => {
     const me = youLine || isMe(x.driver, d)
     const h = H(col, 5)
-    // with four or more drivers every row gets exactly its share of the height
-    if (big && n > 3) h.size = new Size(0, rowH)
+    // Every row gets exactly its share of the height. A row that is left to size
+    // itself can be squeezed by iOS, and it then shrinks every text in it to the
+    // smallest size it is allowed (the times on the phone were barely readable).
+    h.size = new Size(0, rowH)
     if (sz.bg) {
       h.backgroundColor = me ? new Color(ACC_HEX, 0.16) : C.rowAlt
       h.cornerRadius = 10
@@ -922,7 +924,9 @@ function liveM(d, rows) {
     w.addSpacer(8)
     line(w, n < 3 ? "Set a lap and you are on the board." : "More times appear here as laps are set.", 11, { f: "medium", c: C.mute })
   }
-  w.addSpacer()
+  // No spacer at the end: iOS hands a flexible spacer the same share of the height as
+  // the list, and the list then shrinks to fit what is left. The list fills the widget
+  // on its own.
   return w
 }
 
@@ -2257,8 +2261,17 @@ function formBars(p, form, width, height, labels) {
   const lo = fin.length ? Math.min.apply(null, fin) : 1
   const hi = fin.length ? Math.max.apply(null, fin) : 1
   const share = pos => (hi === lo ? 1 : 1 - 0.7 * (pos - lo) / (hi - lo))
-  const labelH = labels === "track" ? 24 : labels === "round" ? 12 : 0
-  const barMax = height - 14 - 4 - 8 - labelH
+  const fs = Math.min(14, Math.max(8, Math.round(cw * 0.48)))
+  const rs = Math.min(11, fs)
+  // Line heights as iOS sets them (a little over 1.2 times the size). Every column gets
+  // a fixed spacer on top instead of a flexible one: a flexible spacer takes a share of
+  // the height away from the text, and the label above the tallest bar shrank.
+  const lh = s => Math.ceil(s * 1.25)
+  const posH = lh(fs)
+  const labelH = labels === "track" ? lh(rs) + lh(8) : labels === "round" ? lh(rs) : 0
+  // the column's spacing of 3 sits between every two of its parts, the spacer included
+  const gaps = 3 * (labels === "track" ? 4 : labels === "round" ? 3 : 2)
+  const barMax = height - posH - labelH - gaps - 4
   const full = n >= 6
   const row = H(p, full ? 0 : 8)
   row.topAlignContent()
@@ -2266,15 +2279,15 @@ function formBars(p, form, width, height, labels) {
     if (full && i > 0) row.addSpacer()
     const col = V(row, 3)
     col.size = new Size(cw, height)
-    col.addSpacer()
     const pc = f.pos != null ? posColor(f.pos) : null
-    const fs = Math.min(11, Math.max(7, Math.round(cw * 0.42)))
+    const bh = f.pos == null ? 4 : Math.max(8, Math.round(barMax * share(f.pos)))
+    col.addSpacer(Math.max(0, height - bh - posH - labelH - gaps - 4))
     cellText(col, cw, f.pos == null ? "–" : "P" + f.pos, fs, { f: "black", c: pc || C.text })
     const b = col.addStack()
-    b.size = new Size(cw, f.pos == null ? 4 : Math.max(8, Math.round(barMax * share(f.pos))))
+    b.size = new Size(cw, bh)
     b.backgroundColor = pc || (f.pos == null ? C.border : new Color("#52525B"))
     b.cornerRadius = Math.min(6, Math.floor(cw / 2))
-    if (labels !== "none") cellText(col, cw, "R" + f.round, Math.min(9, fs), { f: "mono", c: C.mute })
+    if (labels !== "none") cellText(col, cw, "R" + f.round, rs, { f: "mono", c: C.mute })
     if (labels === "track") cellText(col, cw, f.track || "", 8, { f: "mono", c: C.dim })
   })
   if (!full) row.addSpacer()
@@ -2325,19 +2338,22 @@ function formM(d) {
   h.addSpacer()
   sub(h, "Last " + form.length + " races")
   w.addSpacer(6)
+  // The numbers get a column of a fixed size and there is no spacer under them: a
+  // column left to size itself was squeezed by iOS to about half its height, and every
+  // number in it shrank with it.
+  const rowH = 108
   const row = H(w, 14)
   row.topAlignContent()
-  const left = V(row, 5)
-  left.size = new Size(78, 0)
+  const left = V(row, 1)
+  left.size = new Size(84, rowH)
   ;[["BEST", st.best == null ? "–" : "P" + st.best, (st.best != null && posColor(st.best)) || C.text],
     ["AVERAGE", st.avg == null ? "–" : "P" + st.avg, C.text],
     ["PODIUMS", String(st.podiums), st.podiums ? C.gold : C.text]].forEach(([k, v, c]) => {
     const b = V(left, 0)
-    line(b, k, 8, { f: "mono", c: C.mute })
-    line(b, v, 18, { f: "black", c })
+    line(b, k, 9, { f: "mono", c: C.mute })
+    line(b, v, 20, { f: "black", c })
   })
-  formBars(row, form, widgetWidth("medium") - 28 - 78 - 14, 104, "round")
-  w.addSpacer()
+  formBars(row, form, widgetWidth("medium") - 28 - 84 - 14, rowH, "round")
   return w
 }
 
