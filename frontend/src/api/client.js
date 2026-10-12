@@ -489,6 +489,12 @@ async function wholeFile(file) {
   return new File([bytes], file.name || "upload", { type: file.type || "application/octet-stream" });
 }
 
+function constructorStandings(tier, season, upTo, drops) {
+  const base = `/standings/constructors/${tier}${seasonParam(season)}${upToQ(season, upTo)}`;
+  const dropsQ = drops == null ? "" : `${base.includes("?") ? "&" : "?"}drops=${drops}`;
+  return request(`${base}${dropsQ}`, { auth: true });
+}
+
 export const api = {
   // public (season-scoped reads honour the selected season)
   // Season-scoped reads default to the selected season; pass an explicit season
@@ -545,10 +551,10 @@ export const api = {
   myRatingCareer: (driverId = null) =>
     request(`/me/rating/career${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ""}`, { userAuth: true }),
   // `upTo` freezes the table after that round, for the constructors poster.
-  t1Standings: (season, upTo = null) =>
-    request(`/standings/constructors/t1${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
-  t2Standings: (season, upTo = null) =>
-    request(`/standings/constructors/t2${seasonParam(season)}${upToQ(season, upTo)}`, { auth: true }),
+  // `drops` is the same late-season preview as on the driver table: driver
+  // results dropped (never whole team rounds), see constructorStandings below.
+  t1Standings: (season, upTo = null, drops = null) => constructorStandings("t1", season, upTo, drops),
+  t2Standings: (season, upTo = null, drops = null) => constructorStandings("t2", season, upTo, drops),
   races: (season, { includeSprints } = {}) =>
     request(
       // includeSprints: also list the hidden sprint-classification rows of

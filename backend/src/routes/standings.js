@@ -36,7 +36,8 @@ function upToParam(req) {
 
 // ?drops=<n> is the late-season preview: each driver's n worst results so far
 // dropped, as if the rounds still to come were all better (see
-// getDriverStandings). Absent or nonsense means the real table.
+// getDriverStandings; the constructor tables drop driver results the same
+// way). Absent or nonsense means the real table.
 function dropsParam(req) {
   if (req.query.drops == null || req.query.drops === "") return null;
   const n = Number(req.query.drops);
@@ -140,7 +141,7 @@ router.get("/honours", async (req, res, next) => {
 router.get("/constructors/t1", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getT1ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req) }));
+    res.json(await getT1ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) }));
   } catch (e) {
     next(e);
   }
@@ -149,7 +150,7 @@ router.get("/constructors/t1", async (req, res, next) => {
 router.get("/constructors/t2", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    res.json(await getT2ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req) }));
+    res.json(await getT2ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) }));
   } catch (e) {
     next(e);
   }
