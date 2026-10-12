@@ -10,6 +10,13 @@ import {
   notifyAdminsOfFeedback,
   notifyAdminsOfReply,
 } from "../lib/feedback.js";
+import {
+  feedbackImageUpload,
+  checkFeedbackImages,
+  saveFeedbackImages,
+  discardFeedbackImages,
+  serveFeedbackImage,
+} from "../lib/feedbackFiles.js";
 
 // POST /api/feedback — the endpoint behind the site's Feedback button. Open to
 // everyone (a visitor who hits a broken page is exactly who we want to hear
@@ -112,26 +119,47 @@ router.get("/mine", requireUser, async (req, res, next) => {
   }
 });
 
-// The sender writing back on their own thread. Rate-limited on the same counter
-// as a new submission, and only ever on an entry that is theirs.
-router.post("/:id/reply", requireUser, async (req, res, next) => {
+// The entry behind :id, if it is the caller's own; null otherwise. Same answer
+// for "doesn't exist" and "isn't yours": whether a given id belongs to somebody
+// else is not something to confirm.
+async function ownEntry(req) {
+  const entry = await dbGetFeedback(prisma, req.params.id);
+  if (!entry || !entry.discordId || entry.discordId !== req.user.discordId) return null;
+  return entry;
+}
+
+// Everything that can turn a reply away, run BEFORE multer reads any pictures:
+// the brake, whose thread it is, and whether the admins have answered yet. A
+// stranger's request is refused without its bytes ever being taken in.
+async function replyGate(req, res, next) {
   try {
     const ip = req.ip || "unknown";
     if (tooMany(ip)) {
       return res.status(429).json({ error: "That's a lot of messages at once. Try again in a while." });
     }
-    const entry = await dbGetFeedback(prisma, req.params.id);
-    // Same answer for "doesn't exist" and "isn't yours": whether a given id
-    // belongs to somebody else is not something to confirm.
-    if (!entry || !entry.discordId || entry.discordId !== req.user.discordId) {
-      return res.status(404).json({ error: "Not found" });
-    }
+    const entry = await ownEntry(req);
+    if (!entry) return res.status(404).json({ error: "Not found" });
     // Not a way to start a conversation — writing in from nowhere would land in
     // the admin list under an entry they never opened. The Feedback button is
     // for that, and it's on every page.
     if (!entry.replies.some((r) => r.author === "ADMIN")) {
       return res.status(400).json({ error: "You can reply once the admins have answered." });
     }
+    req.feedbackEntry = entry;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+// The sender writing back on their own thread. Rate-limited on the same counter
+// as a new submission, and only ever on an entry that is theirs. Words,
+// pictures (field "images", multipart), or both.
+router.post("/:id/reply", requireUser, replyGate, feedbackImageUpload, async (req, res, next) => {
+  try {
+    const ip = req.ip || "unknown";
+    const entry = req.feedbackEntry;
+    const checked = checkFeedbackImages(req.files);
 
     // Their CURRENT name, like a new submission does — the snapshot on the entry
     // can be seasons old.
@@ -146,18 +174,39 @@ router.post("/:id/reply", requireUser, async (req, res, next) => {
       /* the token's name is good enough */
     }
 
-    const reply = await dbAddFeedbackReply(prisma, {
-      feedbackId: entry.id,
-      author: "SENDER",
-      authorName,
-      body: req.body?.body,
-    });
+    const images = saveFeedbackImages(entry.id, checked);
+    let reply;
+    try {
+      reply = await dbAddFeedbackReply(prisma, {
+        feedbackId: entry.id,
+        author: "SENDER",
+        authorName,
+        body: req.body?.body,
+        images,
+      });
+    } catch (e) {
+      discardFeedbackImages(entry.id, images);
+      throw e;
+    }
     record(ip);
     notifyAdminsOfReply(prisma, entry, reply).catch(() => {});
     res.status(201).json({
       ok: true,
       item: shapeFeedbackForSender(await dbGetFeedback(prisma, entry.id)),
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// A picture from the caller's own thread. Through here and never as a static
+// file, with the same "is it yours" check on every request; the page fetches
+// it with the session and shows it from memory (see FeedbackImages.jsx).
+router.get("/:id/images/:imageId", requireUser, async (req, res, next) => {
+  try {
+    const entry = await ownEntry(req);
+    if (!entry) return res.status(404).json({ error: "Not found" });
+    serveFeedbackImage(res, entry, req.params.imageId);
   } catch (e) {
     next(e);
   }

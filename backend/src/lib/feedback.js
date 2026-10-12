@@ -23,6 +23,7 @@
 import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
+import { removeFeedbackFiles } from "./feedbackFiles.js";
 
 // What the sender says this is. The three the widget offers, nothing else.
 export const FEEDBACK_KINDS = ["BUG", "IDEA", "OTHER"];
@@ -73,6 +74,19 @@ function shapeFeedback(r) {
   };
 }
 
+// The pictures on a reply, kept as JSON on the row: [{ id, mime, size, name }].
+// The bytes are in feedback-files/ (lib/feedbackFiles.js) and come back through
+// the thread's own routes, never by a path.
+function parseImages(raw) {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list.filter((i) => i && typeof i.id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function shapeReply(r) {
   if (!r) return null;
   return {
@@ -81,6 +95,7 @@ function shapeReply(r) {
     author: r.author, // ADMIN | SENDER
     authorName: r.authorName ?? null,
     body: r.body,
+    images: parseImages(r.images),
     createdAt: r.createdAt,
   };
 }
@@ -203,6 +218,8 @@ export async function dbDeleteFeedback(prisma, id) {
   // orphaned replies would simply sit there forever.
   await prisma.$executeRaw`DELETE FROM "FeedbackReply" WHERE "feedbackId" = ${id}`;
   await prisma.$executeRaw`DELETE FROM "Feedback" WHERE "id" = ${id}`;
+  // And the pictures in it, which have no row of their own to cascade from.
+  removeFeedbackFiles(id);
 }
 
 // --- the conversation -------------------------------------------------------
@@ -210,9 +227,12 @@ export async function dbDeleteFeedback(prisma, id) {
 // One message in a thread. `author` decides which side of the page it lands on
 // and who gets told about it (see the notify helpers below). Bumps the parent's
 // updatedAt, so "last activity" means the last message either way.
-export async function dbAddFeedbackReply(prisma, { feedbackId, author, authorName, body }) {
+//
+// `images` are the already-saved pictures (lib/feedbackFiles.js). A message
+// that carries one needs no words: the screenshot IS the answer often enough.
+export async function dbAddFeedbackReply(prisma, { feedbackId, author, authorName, body, images = [] }) {
   const text = String(body || "").trim().slice(0, MAX_REPLY);
-  if (text.length < MIN_REPLY) {
+  if (!images.length && text.length < MIN_REPLY) {
     const err = new Error("Write something first.");
     err.status = 400;
     throw err;
@@ -221,9 +241,10 @@ export async function dbAddFeedbackReply(prisma, { feedbackId, author, authorNam
   const id = randomUUID();
   const now = new Date().toISOString();
   await prisma.$executeRaw`
-    INSERT INTO "FeedbackReply" ("id","feedbackId","author","authorName","body","createdAt")
+    INSERT INTO "FeedbackReply" ("id","feedbackId","author","authorName","body","images","createdAt")
     VALUES (${id}, ${feedbackId}, ${who},
-      ${authorName ? String(authorName).slice(0, 100) : null}, ${text}, ${now})`;
+      ${authorName ? String(authorName).slice(0, 100) : null}, ${text},
+      ${images.length ? JSON.stringify(images) : null}, ${now})`;
   await prisma.$executeRaw`UPDATE "Feedback" SET "updatedAt" = ${now} WHERE "id" = ${feedbackId}`;
   const rows = await prisma.$queryRaw`SELECT * FROM "FeedbackReply" WHERE "id" = ${id}`;
   return shapeReply(rows[0]);
@@ -254,6 +275,13 @@ export async function notifyAdminsOfFeedback(prisma, entry) {
   }
 }
 
+// What a reply says in a bell: its words, or that it was a picture.
+function replyPreview(reply) {
+  if (reply?.body) return preview(reply.body);
+  const n = reply?.images?.length || 0;
+  return n > 1 ? `Sent ${n} pictures` : "Sent a picture";
+}
+
 // A bell body should read like a sentence, not a wall.
 function preview(text, max = 120) {
   const t = String(text || "");
@@ -270,7 +298,7 @@ export async function notifySenderOfReply(prisma, entry, reply) {
     await dbCreateNotification(prisma, {
       type: "FEEDBACK",
       title: "The admins replied to your feedback",
-      body: preview(reply.body),
+      body: replyPreview(reply),
       link: `/feedback?id=${entry.id}`,
       recipientId: entry.discordId,
       dedupeKey: `feedback-reply:${reply.id}`,
@@ -295,7 +323,7 @@ export async function notifyAdminsOfReply(prisma, entry, reply) {
       await dbCreateNotification(prisma, {
         type: "FEEDBACK",
         title: `${who} replied on their feedback`,
-        body: preview(reply.body),
+        body: replyPreview(reply),
         link: "/admin?tab=feedback",
         recipientId: discordId,
         dedupeKey: `feedback-reply:${reply.id}:${discordId}`,

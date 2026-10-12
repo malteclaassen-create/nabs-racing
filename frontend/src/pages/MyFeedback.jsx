@@ -7,6 +7,7 @@ import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { PageHeader, ErrorBox, EmptyState, Spinner } from "../components/ui.jsx";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import { openFeedback } from "../components/FeedbackWidget.jsx";
+import { ReplyImages, ImagePicker, acceptImages, pastedImages } from "../components/FeedbackImages.jsx";
 
 // ---------------------------------------------------------------------------
 // The sender's side of the feedback conversation: everything you have written
@@ -80,7 +81,7 @@ function LoginGate() {
 // One message inside a thread. The admins' answers are tinted and indented, your
 // own words stay plain: the same two-voice layout the admin side uses, so a
 // thread reads the same from both ends.
-function Message({ r }) {
+function Message({ r, feedbackId }) {
   const fromAdmin = r.author === "ADMIN";
   return (
     <li
@@ -94,13 +95,15 @@ function Message({ r }) {
         </span>
         <span className="font-mono text-[10px] uppercase tracking-wider text-light">{fmtWhen(r.createdAt)}</span>
       </div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-medium">{r.body}</p>
+      {r.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-medium">{r.body}</p>}
+      <ReplyImages feedbackId={feedbackId} images={r.images} />
     </li>
   );
 }
 
 function Thread({ item, highlight, onChanged, index = 0 }) {
   const [text, setText] = useState("");
+  const [images, setImages] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const ref = useRef(null);
@@ -117,15 +120,17 @@ function Thread({ item, highlight, onChanged, index = 0 }) {
   }, [highlight]);
 
   async function send() {
-    if (text.trim().length < 2) {
-      setError("Write something first.");
+    if (busy) return;
+    if (!images.length && text.trim().length < 2) {
+      setError("Write something or add a picture first.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await api.sendFeedbackReply(item.id, text);
+      await api.sendFeedbackReply(item.id, text, images);
       setText("");
+      setImages([]);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -156,7 +161,7 @@ function Thread({ item, highlight, onChanged, index = 0 }) {
       {replies.length > 0 && (
         <ul className="space-y-2">
           {replies.map((r) => (
-            <Message key={r.id} r={r} />
+            <Message key={r.id} r={r} feedbackId={item.id} />
           ))}
         </ul>
       )}
@@ -170,7 +175,17 @@ function Thread({ item, highlight, onChanged, index = 0 }) {
             placeholder="Write back to the admins"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              // A screenshot pasted straight in becomes a picture on the message.
+              const pasted = pastedImages(e);
+              if (!pasted.length) return;
+              e.preventDefault();
+              const { files, error: why } = acceptImages(images, pasted);
+              setImages(files);
+              setError(why);
+            }}
           />
+          <ImagePicker files={images} onChange={setImages} onError={setError} disabled={busy} />
           {error && <p className="text-sm font-medium text-bad">{error}</p>}
           <div className="flex items-center gap-3">
             <button type="button" onClick={send} disabled={busy} className="btn-primary py-1.5 text-xs">

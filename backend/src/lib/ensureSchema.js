@@ -486,6 +486,10 @@ export async function ensureAppSchema(prisma) {
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "FeedbackReply_feedbackId_idx" ON "FeedbackReply"("feedbackId")`
   );
+  // Pictures on a reply (migration feedback_reply_images): JSON list of
+  // { id, mime, size, name }; the bytes are in feedback-files/. See
+  // lib/feedbackFiles.js.
+  await addColumn(prisma, "FeedbackReply", "images", "TEXT");
 
   // --- Incident reports (migration reports): "someone hit me on lap 14".
   // A report is a private conversation between the person who filed it, the

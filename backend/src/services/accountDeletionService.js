@@ -39,6 +39,7 @@ import { rmSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
+import { removeFeedbackFiles } from "../lib/feedbackFiles.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { profileMediaOwner } from "../lib/profileStudio.js";
 
@@ -107,6 +108,10 @@ export async function deleteMemberAccount(prisma, discordId) {
   const account = await prisma.memberAccount.findUnique({ where: { discordId } });
   const keepBan = !!account?.banned;
 
+  // Feedback threads that go with the account; their pictures are files on disk
+  // and are only taken away once the transaction has committed.
+  let feedbackThreadIds = [];
+
   const done = await prisma.$transaction(async (tx) => {
     let seasons = 0;
     if (driverIds.length) {
@@ -138,6 +143,7 @@ export async function deleteMemberAccount(prisma, discordId) {
     // Messages to the admins are a private exchange between two parties, one of
     // whom is leaving. They go, replies included.
     const threads = await tx.feedback.findMany({ where: { discordId }, select: { id: true } });
+    feedbackThreadIds = threads.map((t) => t.id);
     if (threads.length) {
       await tx.feedbackReply.deleteMany({ where: { feedbackId: { in: threads.map((t) => t.id) } } });
     }
@@ -184,6 +190,8 @@ export async function deleteMemberAccount(prisma, discordId) {
 
     return { seasons, feedback, reportsFiled, reportMessages, notifications, banKept: keepBan };
   });
+
+  for (const id of feedbackThreadIds) removeFeedbackFiles(id);
 
   // What they wore from the profile studio, and the pictures they uploaded
   // there (named after their hashed id, see lib/profileStudio.js).
