@@ -5407,22 +5407,25 @@ function SeasonScoring({ season, onSaved, onError }) {
   return (
     <div className="space-y-1.5 rounded-lg bg-surface2/60 p-2.5">
       <div className="flex flex-wrap items-center gap-2">
+        {/* Read as two sentences: "Drivers drop their [3] worst rounds",
+            "Teams drop their [3] worst [whole rounds]". */}
         <label className="flex items-center gap-1.5 text-xs text-light">
-          Dropped rounds
+          Drivers drop
           <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="10"
             value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's lowest-scoring rounds don't count in the driver standings (0 = every round counts)" />
+          worst rounds
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
-          Team drop
+          Teams drop
           <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder={NO_VALUE}
-            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="How many the constructor standings drop per team. What gets counted depends on the style next to this. Leave blank to keep the old rule (teams inherit driver drops)." />
+            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="How many the constructor standings drop per team, counted the way the choice next to this says. Leave blank and teams simply lose whatever their drivers drop." />
         </label>
         <label className="flex items-center gap-1.5 text-xs text-light">
-          counts
+          worst
           <select className="input py-1 text-xs" value={teamMode} onChange={(e) => setTeamMode(e.target.value)}
             disabled={teamDrop.trim() === ""} title={teamModeHint}>
-            <option value="results">single results</option>
-            <option value="rounds">whole team rounds (sheet style)</option>
+            <option value="rounds">whole rounds (both drivers added up)</option>
+            <option value="results">single driver results</option>
           </select>
         </label>
         <input aria-label="Points per finishing position" className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
@@ -5448,11 +5451,30 @@ function SeasonScoring({ season, onSaved, onError }) {
         </button>
       </div>
       <p className="text-[11px] leading-relaxed text-light">
+        <b className="text-medium">Drivers:</b>{" "}
         {Number(drop) > 0
-          ? `Driver totals drop each driver's ${drop} lowest round${Number(drop) === 1 ? "" : "s"}.`
-          : "Every round counts for drivers (no dropped rounds)."}{" "}
-        {teamDrop.trim() !== "" && Number(teamDrop) > 0 && (
-          <>Teams drop their {teamDrop} lowest {teamMode === "rounds" ? "whole round totals (like the official sheet)" : "single-driver round scores"}. </>
+          ? `each driver's ${drop} worst round${Number(drop) === 1 ? " doesn't" : "s don't"} count.`
+          : "every round counts."}{" "}
+        <b className="text-medium">Constructors:</b>{" "}
+        {teamDrop.trim() === "" ? (
+          Number(drop) > 0
+            ? <>a driver&rsquo;s dropped rounds don&rsquo;t count for their team either. </>
+            : <>every round counts. </>
+        ) : Number(teamDrop) === 0 ? (
+          <>every round counts. </>
+        ) : teamMode === "rounds" ? (
+          <>
+            each team&rsquo;s {teamDrop} worst round{Number(teamDrop) === 1 ? " doesn't" : "s don't"} count, a round being both
+            drivers&rsquo; points added up (like the official sheet).{" "}
+            {Number(drop) > 0 && Number(teamDrop) !== Number(drop) && (
+              <b className="text-warn">That is not the same number as the drivers&rsquo; {drop}. </b>
+            )}
+          </>
+        ) : (
+          <>
+            each team&rsquo;s {teamDrop} worst single driver result{Number(teamDrop) === 1 ? " doesn't" : "s don't"} count, so a
+            round can count for one driver and not the other.{" "}
+          </>
         )}
         {points.trim() ? "Custom points table." : "League default points table."}{" "}
         {Number(flPoints) > 0 && (

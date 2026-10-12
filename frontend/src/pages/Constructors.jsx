@@ -219,10 +219,10 @@ export default function Constructors() {
   const teams = useApi(useCallback(() => api.teams(), []));
   const races = useApi(useCallback(() => api.races(), []));
   // The late-season "drop worst" preview, as on the driver standings: how many
-  // worst DRIVER results so far to take off, or null for the real table. Our
-  // rule drops drivers' results, never a team's whole round, so the preview
-  // does too (the backend picks the per-driver or per-seat count the season
-  // uses). Both tiers are fetched together and swapped in once they arrive,
+  // worst results so far to take off, or null for the real table. It drops
+  // by the season's own constructor rule: whole team rounds under the
+  // sheet-style rule, driver results otherwise (the backend works out the
+  // count). Both tiers are fetched together and swapped in once they arrive,
   // so the tables stay up. Not remembered: the real table is the default.
   const [dropPick, setDropPick] = useState(null);
   const [projected, setProjected] = useState(null); // { n, t1, t2 }
@@ -301,6 +301,8 @@ export default function Constructors() {
       : [];
   const pickDrops = (n) => setDropPick(n === dropsNow ? null : n);
   const teamRule = t1.data.dropMode === "team";
+  // The sheet-style rule drops whole team rounds, so the switch counts those.
+  const roundRule = t1.data.dropMode === "teamRounds";
 
   return (
     <div className="content-in space-y-10 sm:space-y-16">
@@ -322,7 +324,7 @@ export default function Constructors() {
               <SlidingTabs
                 items={dropChoices.map((n) => ({
                   key: n,
-                  title: n === dropsNow ? "The tables as they stand" : `Preview with ${n} worst driver results dropped`,
+                  title: n === dropsNow ? "The tables as they stand" : `Preview with ${n} worst ${roundRule ? "team rounds" : "driver results"} dropped`,
                   label: <span className="font-mono tabular-nums">{n}</span>,
                 }))}
                 value={dropPick ?? dropsNow}
@@ -342,7 +344,12 @@ export default function Constructors() {
             <p className="content-in flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
               <span>
                 <b>Preview, not the real table.</b>{" "}
-                {teamRule && projecting && t1Data.projectedTeamDrops != null ? (
+                {roundRule ? (
+                  <>
+                    Each team&rsquo;s {dropPick} worst round total{dropPick === 1 ? "" : "s"} so far{" "}
+                    {dropPick === 1 ? "is" : "are"} dropped
+                  </>
+                ) : teamRule && projecting && t1Data.projectedTeamDrops != null ? (
                   <>
                     {dropPick} worst result{dropPick === 1 ? "" : "s"} per driver so far: each team&rsquo;s{" "}
                     {t1Data.projectedTeamDrops} worst single-driver result{t1Data.projectedTeamDrops === 1 ? " is" : "s are"} dropped
@@ -353,7 +360,7 @@ export default function Constructors() {
                     {dropPick === 1 ? "is" : "are"} dropped from the team they drove for
                   </>
                 )}
-                , never a team&rsquo;s whole round. That only holds if nobody does worse in the last{" "}
+                {roundRule ? "" : <>, never a team&rsquo;s whole round</>}. That only holds if nobody does worse in the last{" "}
                 {roundsLeft === 1 ? "round" : `${roundsLeft} rounds`} than in those.
               </span>
               <button
