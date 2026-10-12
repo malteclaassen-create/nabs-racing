@@ -303,7 +303,7 @@ function WidgetCard({ engine, pass, widget, families, device, base }) {
         </h3>
         {BLURBS[widget.view] && <p className="mt-0.5 text-sm text-light">{BLURBS[widget.view]}</p>}
       </div>
-      <div ref={body} className="flex flex-wrap items-start gap-x-5 gap-y-4 p-4 sm:p-5">
+      <div ref={body} className="wg-plate flex flex-wrap items-start gap-x-5 gap-y-4 p-4 sm:p-5">
         {avail > 0 &&
           families.map((f) => {
             const size = device[f.key];
