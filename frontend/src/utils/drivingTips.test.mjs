@@ -131,3 +131,36 @@ test("an early stop for the first corner of a run is named after that corner", (
   assert.deepEqual(t.facts[0], { label: "Brakes before T1", me: "50 m", ref: "40 m" });
   assert.equal(t.brakeIdxMe, 17);
 });
+
+test("a viewer who is neither driver reads the tips with the driver's name", () => {
+  const out = buildTips([
+    section({ n: 1, gainMs: 230, brakeDeltaM: -15, minB: 96, minA: 104 }),
+    section({ n: 2, gainMs: -60, minB: 108, minA: 104 }),
+  ], lap("mtimmis", 82188, "1"), lap("Takoda", 82914, "2"), { n: 101, second: false });
+  assert.equal(out.you, false);
+  assert.match(out.tips[0].say, /^Takoda brakes \*\*15 m earlier\*\* than mtimmis and still carries/);
+  assert.equal(out.strengths[0].kindLabel, "Takoda's strength");
+  assert.doesNotMatch(out.strengths[0].say, /\byou\b|Keep it/i);
+  assert.equal(out.studentPoss, "Takoda's");
+});
+
+test("the quicker driver can have tips too: where the slower lap beats them", () => {
+  const out = buildTips([
+    section({ n: 1, gainMs: 230, brakeDeltaM: -15, minB: 96, minA: 104 }),
+    section({ n: 2, gainMs: -60, minB: 108, minA: 104 }),
+  ], lap("mtimmis", 82188, "1"), lap("Takoda", 82914, "2"), { n: 101, student: "A" });
+  assert.equal(out.student, "A");
+  assert.equal(out.slower, "B");
+  assert.ok(out.gapMs < 0);
+  assert.equal(out.tips.length, 1);
+  assert.equal(out.tips[0].n, 2);
+  assert.match(out.tips[0].say, /but you are \*\*4 km\/h slower\*\*/);
+  assert.equal(out.strengths[0].n, 1);
+  assert.equal(out.strengths[0].kindLabel, "Your strength");
+});
+
+test("two laps of one driver always coach the slower lap, in either voice", () => {
+  const out = buildTips([section({ gainMs: 100, brakeDeltaM: -10 })], lap("Neesh", 80000, "7"), lap("Neesh", 80300, "7"), { n: 101, student: "A", second: false });
+  assert.equal(out.student, "B");
+  assert.equal(out.refName, "their quicker lap");
+});

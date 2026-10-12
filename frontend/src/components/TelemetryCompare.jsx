@@ -503,9 +503,25 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // the lap times when both laps are one driver's.
   const names = lapNames(lapA, lapB, formatLapTime);
   const nameA = names.a, nameB = names.b;
+  // Whose tips. The viewer's own, when they drove one of the two laps, even
+  // the quicker one (then they are about where the other lap beats them);
+  // otherwise the slower lap's. Either can be picked by hand, for this pair.
+  const viewerSide = both && user?.driverId
+    ? (lapA.driverId === user.driverId ? "A" : lapB.driverId === user.driverId ? "B" : null)
+    : null;
+  const pairKey = `${aId}|${bId}`;
+  const [tipsPick, setTipsPick] = useState(null); // { pair, side }
+  const tipsSide = (tipsPick?.pair === pairKey ? tipsPick.side : null) || viewerSide;
   const tips = useMemo(
-    () => (both && insights.length ? buildTips(insights, lapA, lapB, { corners: namedCorners, dist, n }) : null),
-    [both, insights, lapA, lapB, namedCorners, dist, n]
+    () => {
+      if (!both || !insights.length) return null;
+      const sameLaps = !!lapA.steamId && lapA.steamId === lapB.steamId;
+      const student = sameLaps || !tipsSide ? (lapB.lapTimeMs >= lapA.lapTimeMs ? "B" : "A") : tipsSide;
+      // "You" only for the driver of that lap; anyone else reads their name.
+      const second = !!viewerSide && (sameLaps || student === viewerSide);
+      return buildTips(insights, lapA, lapB, { corners: namedCorners, dist, n, student, second });
+    },
+    [both, insights, lapA, lapB, namedCorners, dist, n, tipsSide, viewerSide]
   );
   // The lap neither of them drove: the quicker of the two through each
   // sector, added up. What the pair could do together — and, for one driver
@@ -873,7 +889,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             {both && lapA.car !== lapB.car && <p className="flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><TriangleAlert className="h-4 w-4 shrink-0" aria-hidden="true" />Different cars selected. Vehicle performance also affects this comparison.</p>}
             {profileA && <TelemetryOverview sectors={sectors} sectorsReal={!!sectorLines} profileA={profileA} profileB={profileB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} dist={dist} n={n}
               onSector={(s) => { selectChartRange(s.from, s.to); pickCursor(s.from); }} />}
-            {tips && <TelemetryTips key={`${aId}|${bId}`} tips={tips} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} road={track?.road}
+            {tips && <TelemetryTips key={`${pairKey}|${tips.student}`} tips={tips} viewerSide={viewerSide}
+              onPickStudent={(side) => setTipsPick({ pair: pairKey, side })} lapA={lapA} lapB={lapB} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} road={track?.road}
               onSection={(s) => { selectSection(s); document.getElementById("telemetry-traces")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
             {/* Player, replay, traces and sections share one wrapper: the
                 player bar pins itself for as long as this block is on screen,

@@ -1,11 +1,13 @@
-import { Fragment, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 import { Check, Lightbulb } from "lucide-react";
 import { Panel, Segmented } from "./TelemetryUI.jsx";
 import { formatLapTime } from "../utils/telemetryAnalysis.js";
 
 // ---------------------------------------------------------------------------
-// Tips: the comparison read out loud for the driver of the slower lap
-// (utils/drivingTips.js writes the sentences). On the left a practice plan:
+// Tips: the comparison read out loud for one of the two drivers
+// (utils/drivingTips.js writes the sentences): the viewer, when they drove
+// one of the laps, otherwise the slower lap; a switch in the header picks the
+// other one. The viewer reads "you", anyone else the driver's name. On the left a practice plan:
 // the three corners worth the most, each as one thing to do, to tick off, and
 // the lap time they add up to. On the right every corner of the lap with what
 // it costs, biggest first; one is open at a time with the sentence, what the
@@ -111,13 +113,21 @@ function MiniTrace({ me, other, row, colorMe, colorRef }) {
 // track has them, and where each started braking. What a "most likely the
 // line" tip needs, since the speed trace cannot show it. Positions are in
 // decimetres (lib/telemetryLaps.js), the road in metres, both in the same
-// world frame the big map uses.
+// world frame the big map uses. Turned a quarter clockwise when the corner
+// fills the wide box better that way (the big map does the same), and it
+// zooms: + and − in the corner, drag to move, double click to reset.
+const MINI_BTN = "flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-black/60 px-1 font-mono text-[11px] font-bold text-white backdrop-blur transition hover:bg-black/75";
+const MINI_ZOOM_MAX = 8;
 function MiniLine({ me, other, row, colorMe, colorRef, road }) {
   // The bottom 16 units hold the scale and the caption, clear of the lines.
   const W = 360, H = 150, pad = 12, plotH = H - 16;
+  const clipId = useId();
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef(null);
   if (!me.x || !me.z || !other.x || !other.z) return null;
   const from = Math.max(0, row.start);
-  const to = Math.min(me.x.length - 1, row.end);
+  const to = Math.min(me.x.length - 1, other.x.length - 1, row.end);
   if (to - from < 3) return null;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const lap of [me, other]) {
@@ -127,48 +137,89 @@ function MiniLine({ me, other, row, colorMe, colorRef, road }) {
       if (y < minY) minY = y; if (y > maxY) maxY = y;
     }
   }
-  const scale = Math.min((W - 2 * pad) / Math.max(1, maxX - minX), (plotH - 2 * pad) / Math.max(1, maxY - minY));
-  const ox = (W - (maxX - minX) * scale) / 2, oy = (plotH - (maxY - minY) * scale) / 2;
-  const px = (x) => ox + (x - minX) * scale;
-  const py = (y) => oy + (y - minY) * scale;
+  const fitOf = (sx, sy) => Math.min((W - 2 * pad) / Math.max(1, sx), (plotH - 2 * pad) / Math.max(1, sy));
+  const turn = fitOf(maxY - minY, maxX - minX) > 1.12 * fitOf(maxX - minX, maxY - minY);
+  // World metres to the (turned) drawing: clockwise with y pointing down.
+  const spanX = turn ? maxY - minY : maxX - minX, spanY = turn ? maxX - minX : maxY - minY;
+  const scale = fitOf(spanX, spanY);
+  const ox = (W - spanX * scale) / 2, oy = (plotH - spanY * scale) / 2;
+  const P = (x, y) => (turn
+    ? [ox + (maxY - y) * scale, oy + (x - minX) * scale]
+    : [ox + (x - minX) * scale, oy + (y - minY) * scale]);
+  const at = (lap, i) => P(lap.x[i] / 10, lap.z[i] / 10);
   const path = (lap) => {
     let d = "";
-    for (let i = from; i <= to; i++) d += `${i === from ? "M" : "L"}${px(lap.x[i] / 10).toFixed(1)},${py(lap.z[i] / 10).toFixed(1)}`;
+    for (let i = from; i <= to; i++) { const [x, y] = at(lap, i); d += `${i === from ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`; }
     return d;
   };
-  // The road's edges inside the frame, as runs of points: an edge leaves the
-  // frame and comes back, and joining across the gap would draw a chord.
-  const margin = 30 / scale;
-  // Clipped to the drawing area too: an edge that runs on past the corner
-  // would otherwise cross the caption.
-  const inside = ([x, y]) => x >= minX - margin && x <= maxX + margin && y >= minY - margin && y <= maxY + margin
-    && py(y) >= 2 && py(y) <= plotH && px(x) >= 2 && px(x) <= W - 2;
+  // The road's edges near the corner, as runs of points: an edge leaves the
+  // area and comes back, and joining across the gap would draw a chord. A
+  // wide margin, so there is road to see when the view is moved; the clip
+  // keeps it off the caption.
+  const margin = Math.max(30 / scale, 0.6 * Math.max(maxX - minX, maxY - minY));
+  const near = ([x, y]) => x >= minX - margin && x <= maxX + margin && y >= minY - margin && y <= maxY + margin;
   const edges = [];
   for (const edge of [road?.track?.left, road?.track?.right].filter(Boolean)) {
     let run = "";
-    for (const p of edge) {
-      if (inside(p)) run += `${run ? "L" : "M"}${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`;
+    for (const pt of edge) {
+      if (near(pt)) { const [x, y] = P(pt[0], pt[1]); run += `${run ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`; }
       else if (run) { edges.push(run); run = ""; }
     }
     if (run) edges.push(run);
   }
-  const dot = (lap, idx, color) => (idx != null && idx >= from && idx <= to
-    ? <circle cx={px(lap.x[idx] / 10)} cy={py(lap.z[idx] / 10)} r="3.5" fill={color} stroke="var(--c-card)" strokeWidth="1.2" />
-    : null);
+  // Marks stay the same size on screen at every zoom.
+  const k = 1 / zoom;
+  const dot = (lap, idx, color) => {
+    if (idx == null || idx < from || idx > to) return null;
+    const [x, y] = at(lap, idx);
+    return <circle cx={x} cy={y} r={3.5 * k} fill={color} stroke="var(--c-card)" strokeWidth={1.2 * k} />;
+  };
   // A scale bar of a round length, so "a car's width" can be judged by eye.
-  const bar = [5, 10, 20, 50, 100].find((m) => m * scale >= 36) || 100;
-  const apexX = px(me.x[row.apex] / 10), apexY = py(me.z[row.apex] / 10);
+  const bar = [2, 5, 10, 20, 50, 100].find((m) => m * scale * zoom >= 36) || 100;
+  const [apexX, apexY] = at(me, row.apex);
+  const cx = W / 2 + pan.x, cy = plotH / 2 + pan.y;
+  const view = `translate(${W / 2} ${plotH / 2}) scale(${zoom}) translate(${-cx} ${-cy})`;
+  const zoomTo = (z) => {
+    const next = Math.max(1, Math.min(MINI_ZOOM_MAX, z));
+    setZoom(next);
+    if (next === 1) setPan({ x: 0, y: 0 });
+  };
+  const line = { fill: "none", strokeWidth: 2, strokeLinejoin: "round", vectorEffect: "non-scaling-stroke" };
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={`Both racing lines through ${row.place}, seen from above`}>
-      {edges.map((d, i) => <path key={i} d={d} fill="none" stroke="var(--c-text3)" strokeOpacity="0.55" strokeWidth="1.2" />)}
-      <path d={path(me)} fill="none" stroke={colorMe} strokeWidth="2" strokeLinejoin="round" />
-      <path d={path(other)} fill="none" stroke={colorRef} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round" />
-      {row.apex >= from && row.apex <= to && <circle cx={apexX} cy={apexY} r="5.5" fill="none" stroke="var(--c-text3)" strokeWidth="1" />}
-      {dot(other, row.brakeIdxRef, colorRef)}
-      {dot(me, row.brakeIdxMe, colorMe)}
-      <line x1={pad} x2={pad + bar * scale} y1={H - 6} y2={H - 6} stroke="var(--c-faint)" strokeWidth="1.5" />
-      <text x={pad + bar * scale + 4} y={H - 3} fontSize="9" className="font-mono" fill="var(--c-faint)">{bar} m · dots: brake points · ring: apex</text>
-    </svg>
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className={`block w-full select-none ${zoom > 1 ? "cursor-grab touch-none" : ""}`} role="img" aria-label={`Both racing lines through ${row.place}, seen from above`}
+        onPointerDown={(e) => {
+          if (zoom === 1 || !e.isPrimary || e.button !== 0) return;
+          drag.current = { x: e.clientX, y: e.clientY, pan, per: W / (e.currentTarget.getBoundingClientRect().width || W) };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          setPan({ x: d.pan.x - ((e.clientX - d.x) * d.per) / zoom, y: d.pan.y - ((e.clientY - d.y) * d.per) / zoom });
+        }}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
+        onDoubleClick={() => zoomTo(1)}>
+        <defs><clipPath id={clipId}><rect x="0" y="0" width={W} height={plotH} /></clipPath></defs>
+        <g clipPath={`url(#${clipId})`}>
+          <g transform={view}>
+            {edges.map((d, i) => <path key={i} d={d} fill="none" stroke="var(--c-text3)" strokeOpacity="0.55" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
+            <path d={path(me)} {...line} stroke={colorMe} />
+            <path d={path(other)} {...line} stroke={colorRef} strokeDasharray="5 4" />
+            {row.apex >= from && row.apex <= to && <circle cx={apexX} cy={apexY} r={5.5 * k} fill="none" stroke="var(--c-text3)" strokeWidth={k} />}
+            {dot(other, row.brakeIdxRef, colorRef)}
+            {dot(me, row.brakeIdxMe, colorMe)}
+          </g>
+        </g>
+        <line x1={pad} x2={pad + bar * scale * zoom} y1={H - 6} y2={H - 6} stroke="var(--c-faint)" strokeWidth="1.5" />
+        <text x={pad + bar * scale * zoom + 4} y={H - 3} fontSize="9" className="font-mono" fill="var(--c-faint)">{bar} m · dots: brake points · ring: apex</text>
+      </svg>
+      <div className="absolute right-1 top-1 flex gap-1">
+        {zoom > 1 && <button type="button" className={MINI_BTN} onClick={() => zoomTo(1)} title="Whole corner">Reset</button>}
+        <button type="button" className={MINI_BTN} aria-label="Zoom out" disabled={zoom === 1} onClick={() => zoomTo(zoom / 1.6)}>−</button>
+        <button type="button" className={MINI_BTN} aria-label="Zoom in" disabled={zoom >= MINI_ZOOM_MAX} onClick={() => zoomTo(zoom * 1.6)}>+</button>
+      </div>
+    </div>
   );
 }
 
@@ -236,7 +287,7 @@ function CornerDetail({ row, tip, strength, refName, chart, colorMe, colorRef, o
 
 // The plan: the biggest three, each as one thing to do, ticked off by the
 // driver, and the lap they add up to.
-function PracticePlan({ steps, done, onToggle, openN, onOpen, me, refName, top3Ms, pattern }) {
+function PracticePlan({ steps, done, onToggle, openN, onOpen, me, refName, top3Ms, pattern, poss }) {
   return (
     <>
       <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Practice plan</p>
@@ -266,7 +317,7 @@ function PracticePlan({ steps, done, onToggle, openN, onOpen, me, refName, top3M
         <p className="font-display text-2xl font-black tabular-nums">
           {formatLapTime(me.lapTimeMs - top3Ms)} <span className="text-sm text-emerald-300">−{(top3Ms / 1000).toFixed(2)}</span>
         </p>
-        <p className="mt-0.5 text-[11px] text-white/60">Your {formatLapTime(me.lapTimeMs)} if {steps.length === 1 ? "this corner matches" : `these ${steps.length} corners match`} {refName}</p>
+        <p className="mt-0.5 text-[11px] text-white/60">{poss} {formatLapTime(me.lapTimeMs)} if {steps.length === 1 ? "this corner matches" : `these ${steps.length} corners match`} {refName}</p>
       </div>
       {pattern && (
         <p className="mt-3 text-[13px] leading-relaxed text-medium">
@@ -278,9 +329,9 @@ function PracticePlan({ steps, done, onToggle, openN, onOpen, me, refName, top3M
   );
 }
 
-const ROW_GRID = "grid-cols-[1.25rem_minmax(0,1fr)_auto] sm:grid-cols-[1.75rem_minmax(0,9rem)_7rem_minmax(0,1fr)_4rem]";
+const ROW_GRID = "grid-cols-[1.25rem_minmax(0,1fr)_auto] sm:grid-cols-[1.75rem_minmax(0,9rem)_9.5rem_minmax(0,1fr)_4rem]";
 
-export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA, nameB, road, onSection }) {
+export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA, nameB, road, onSection, viewerSide = null, onPickStudent }) {
   const [order, setOrder] = useState("cost");
   const [openN, setOpenN] = useState(() => tips?.tips[0]?.n ?? null);
   const student = tips?.student;
@@ -293,7 +344,9 @@ export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA,
   const names = student === "A" ? { me: nameA, ref: nameB } : { me: nameB, ref: nameA };
   const colorMe = student === "A" ? colorA : colorB;
   const colorRef = student === "A" ? colorB : colorA;
-  const level = tips.gapMs < 10;
+  const level = Math.abs(tips.gapMs) < 10;
+  // Tips for the quicker driver: the gap runs the other way.
+  const ahead = tips.gapMs < 0;
   const steps = tips.tips.slice(0, 3);
   const byTip = new Map(tips.tips.map((t) => [t.n, t]));
   const byStrength = new Map(tips.strengths.map((s) => [s.n, s]));
@@ -318,22 +371,29 @@ export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA,
       <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (Math.abs(ms) / max) * 100)}%`, background: severity(ms) }} />
     </span>
   );
-  const pill = (label, tone) => (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{label}</span>
+  // A long name ("Urmaggedon's strength") is cut short in the narrow column.
+  const pill = (label, tone, title) => (
+    <span title={title} className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold ${tone}`}>{label}</span>
   );
 
   return (
-    <Panel title={`Tips for ${tips.studentName}`} icon={Lightbulb} flush
-      note={level ? "These two laps are level" : `against ${tips.sameDriver ? "their quicker lap" : tips.refName} · ${secs(tips.gapMs)} s`}
-      actions={<Segmented label="Order" value={order} onChange={setOrder} items={[{ key: "cost", label: "By cost" }, { key: "lap", label: "Lap order" }]} />}>
+    <Panel title={tips.you ? "Tips for you" : `Tips for ${tips.studentName}`} icon={Lightbulb} flush
+      note={level ? "These two laps are level" : ahead ? `${(-tips.gapMs / 1000).toFixed(2)} s quicker than ${tips.refName} overall` : `against ${tips.refName} · ${secs(tips.gapMs)} s`}
+      actions={<>
+        {!tips.sameDriver && onPickStudent && (
+          <Segmented label="Whose tips" value={student} onChange={onPickStudent}
+            items={[{ key: "A", label: viewerSide === "A" ? "You" : nameA }, { key: "B", label: viewerSide === "B" ? "You" : nameB }]} />
+        )}
+        <Segmented label="Order" value={order} onChange={setOrder} items={[{ key: "cost", label: "By cost" }, { key: "lap", label: "Lap order" }]} />
+      </>}>
       <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="min-w-0 border-b border-border bg-surface2/50 p-3 sm:p-5 lg:border-b-0 lg:border-r">
           {steps.length ? (
-            <PracticePlan steps={steps} done={done} onToggle={toggle} openN={openN} onOpen={open} me={me} refName={tips.refName} top3Ms={tips.top3Ms} pattern={tips.pattern} />
+            <PracticePlan steps={steps} done={done} onToggle={toggle} openN={openN} onOpen={open} me={me} refName={tips.refName} top3Ms={tips.top3Ms} pattern={tips.pattern} poss={tips.studentPoss} />
           ) : (
             <p className="text-sm text-light">
-              No corner costs {tips.studentName} more than a few hundredths against {tips.refName}. The gap
-              {level ? " is too small to explain" : " is spread over the whole lap rather than in one place"}.
+              No corner costs {tips.studentObj} more than a few hundredths against {tips.refName}.
+              {ahead ? " Quicker everywhere that counts." : level ? " The gap is too small to explain." : " The gap is spread over the whole lap rather than in one place."}
             </p>
           )}
         </aside>
@@ -356,7 +416,7 @@ export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA,
                       {!r.named && <span className="ml-1.5 font-mono text-[10px] font-normal text-light">{Math.round(r.apexPct)}%</span>}
                     </span>
                     <span className="order-last col-span-2 col-start-2 sm:order-none sm:col-span-1 sm:col-start-auto">
-                      {tip ? pill(tip.kindLabel, "bg-surface2 text-medium") : strength ? pill(strength.kindLabel, "bg-ok/10 text-ok") : pill("Close", "text-light")}
+                      {tip ? pill(tip.kindLabel, "bg-surface2 text-medium") : strength ? pill(strength.kindLabel, "bg-ok/10 text-ok", strength.kindLabel) : pill("Close", "text-light")}
                     </span>
                     {bar(r.lostMs)}
                     <span className={`text-right font-mono text-xs font-bold tabular-nums ${r.lostMs < 0 ? "text-ok" : "text-bad"}`}>{secs(r.lostMs)}</span>
@@ -377,7 +437,7 @@ export default function TelemetryTips({ tips, lapA, lapB, colorA, colorB, nameA,
           </ul>
           <div className="flex items-center justify-between border-t border-border px-3 py-2.5 text-[13px] font-bold text-dark sm:px-5">
             <span>Total</span>
-            <span className="font-mono text-sm tabular-nums text-bad">{secs(tips.gapMs)} s</span>
+            <span className={`font-mono text-sm tabular-nums ${ahead ? "text-ok" : "text-bad"}`}>{secs(tips.gapMs)} s</span>
           </div>
         </div>
       </div>

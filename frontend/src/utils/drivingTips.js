@@ -4,10 +4,12 @@
 // telemetryAnalysis.js measures, per slow section, who brakes later, who
 // carries more speed through the slowest point, who is back on full throttle
 // first. It deliberately stops at numbers. This file takes the next step for
-// one reader: the driver of the SLOWER lap. For every section where that lap
-// loses time it picks the one input that differs most from the quicker lap
-// and says it plainly — "you brake 15 m earlier than Neesh" — with a
-// suggestion that is nothing more than what the quicker lap did there. It
+// one reader: by default the driver of the SLOWER lap, or whichever of the
+// two the page asks for (the one looking at it, when they drove one of the
+// laps). For every section where that lap loses time it picks the one input
+// that differs most from the other lap and says it plainly — "you brake 15 m
+// earlier than Neesh", or "Takoda brakes 15 m earlier" for somebody else —
+// with a suggestion that is nothing more than what the other lap did there. It
 // never claims to know WHY a lap was slow: a difference in the inputs is what
 // it can see, and that is what it reports.
 //
@@ -63,22 +65,38 @@ function zonePlace(brakeIdx, apex, size, corners) {
 
 const KIND_LABEL = { braking: "Braking", entry: "Entry", speed: "Corner speed", exit: "Exit", line: "Line" };
 
+// Who the sentences talk to. The driver themselves reads "you brake", anyone
+// else "Takoda brakes": every verb comes in both forms.
+const possessive = (name) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
+export function person(name, second = true) {
+  if (second) return { second, S: "You", s: "you", obj: "you", poss: "your", Poss: "Your", v: (you) => you };
+  return { second, S: name, s: name, obj: name, poss: possessive(name), Poss: possessive(name), v: (_, they) => they };
+}
+
 // Everything the Tips panel draws, out of the section insights of one
 // comparison (telemetryAnalysis.cornerInsights). null when there is nothing to
 // compare. `corners` are the circuit's named corners (lib/trackProfile.js on
 // the backend), `dist` the metres along lap A (null for laps recorded before
-// positions — the tips then say less, but still work).
-export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n } = {}) {
+// positions — the tips then say less, but still work). `student` ("A" or "B")
+// picks whose tips they are, the slower lap when it is left out; `second`
+// says whether that driver is the one reading (you) or somebody else (their
+// name).
+export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n, student: pick = null, second = true } = {}) {
   if (!lapA || !lapB || !insights?.length) return null;
   const size = n || lapA.n || lapA.speed.length;
-  const student = lapB.lapTimeMs >= lapA.lapTimeMs ? "B" : "A";
+  const slower = lapB.lapTimeMs >= lapA.lapTimeMs ? "B" : "A";
+  const sameLaps = !!lapA.steamId && lapA.steamId === lapB.steamId;
+  // Two laps of one driver: the quicker one is the reference, always.
+  const student = pick === "A" || pick === "B" ? (sameLaps ? slower : pick) : slower;
   const me = student === "B" ? lapB : lapA;
   const ref = student === "B" ? lapA : lapB;
   // Every insight is written from B's side (+ = B lost, + = B brakes later …).
   // One sign turns it into the slower lap's side.
   const sign = student === "B" ? 1 : -1;
-  const sameDriver = !!me.steamId && me.steamId === ref.steamId;
-  const refName = sameDriver ? "your quicker lap" : ref.name || "the quicker lap";
+  const sameDriver = sameLaps;
+  const studentName = me.name || (student === "A" ? "Lap A" : "Lap B");
+  const p = person(studentName, second);
+  const refName = sameDriver ? `${second ? "your" : "their"} quicker lap` : ref.name || (student === slower ? "the quicker lap" : "the other lap");
   const metresBefore = (idx, apex) => (idx != null && dist ? round(dist[apex] - dist[idx]) : null);
   const metresAfter = (idx, apex) => (idx != null && dist ? round(dist[idx] - dist[apex]) : null);
 
@@ -158,11 +176,11 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
   const tips = rows
     .filter((r) => r.lostMs >= TIP_MIN_MS)
     .sort((a, b) => b.lostMs - a.lostMs)
-    .map((r) => ({ ...r, ...explain(r, refName) }));
+    .map((r) => ({ ...r, ...explain(r, refName, p) }));
   const strengths = rows
     .filter((r) => r.lostMs <= -TIP_MIN_MS)
     .sort((a, b) => a.lostMs - b.lostMs)
-    .map((r) => ({ ...r, ...praise(r, refName) }));
+    .map((r) => ({ ...r, ...praise(r, refName, p) }));
 
   const gapMs = me.lapTimeMs - ref.lapTimeMs;
   const inSections = rows.reduce((s, r) => s + r.lostMs, 0);
@@ -188,7 +206,12 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
 
   return {
     student,
-    studentName: me.name || (student === "A" ? "Lap A" : "Lap B"),
+    slower,
+    studentName,
+    // How the panel around the sentences addresses the same driver.
+    you: second,
+    studentObj: p.obj,
+    studentPoss: p.Poss,
     refName,
     sameDriver,
     gapMs,
@@ -207,7 +230,7 @@ export function buildTips(insights, lapA, lapB, { corners = [], dist = null, n }
 // The biggest difference in the inputs, in words, for a section the slower
 // lap loses time in. `say` marks the numbers with **…** for the page to set
 // in bold; `try` is what the quicker lap did, as a suggestion.
-export function explain(r, refName) {
+export function explain(r, refName, p = person("", true)) {
   // The braking zone with the biggest early stop. Usually the section's own
   // (its slowest corner); in a run of corners it can be the first one, and
   // then the sentence says which.
@@ -233,45 +256,46 @@ export function explain(r, refName) {
   for (const [k, w] of Object.entries(weights)) if (w > top) { kind = k; top = w; }
 
   const mid = r.minMe != null && r.minRef != null ? ` (${r.minMe} vs ${r.minRef} km/h)` : "";
-  const exitNote = exitLoss >= 3 ? `, and you leave the corner **${exitLoss} km/h slower**` : "";
+  const exitNote = exitLoss >= 3 ? `, and ${p.s} ${p.v("leave", "leaves")} the corner **${exitLoss} km/h slower**` : "";
   let say;
   let tryText;
   if (kind === "braking") {
-    say = `You brake **${early} m earlier** than ${refName}${into}`
-      + (midLoss >= 3 ? ` and still carry **${midLoss} km/h less** through the slowest point${mid}.` : ".");
-    tryText = `Brake later${into}: ${refName} starts braking ${early} m after you do`
-      + (softer ? `, and presses the pedal harder at first (peak ${r.peakRef}% against your ${r.peakMe}%).` : ".");
+    say = `${p.S} ${p.v("brake", "brakes")} **${early} m earlier** than ${refName}${into}`
+      + (midLoss >= 3 ? ` and still ${p.v("carry", "carries")} **${midLoss} km/h less** through the slowest point${mid}.` : ".");
+    tryText = `Brake later${into}: ${refName} starts braking ${early} m after ${p.s} ${p.v("do", "does")}`
+      + (softer ? `, and presses the pedal harder at first (peak ${r.peakRef}% against ${p.poss} ${r.peakMe}%).` : ".");
   } else if (kind === "entry") {
-    say = `You brake **${late} m later** than ${refName}, but the corner is **${midLoss} km/h slower** at its slowest point${mid}. The late braking does not pay off here.`;
+    say = `${p.S} ${p.v("brake", "brakes")} **${late} m later** than ${refName}, but the corner is **${midLoss} km/h slower** at its slowest point${mid}. The late braking does not pay off here.`;
     tryText = `Brake a touch earlier and come off the brake more gently, so the car rolls more speed to the apex, as ${refName} does.`;
   } else if (kind === "speed") {
     // Only speak about the braking when it was measured: a lap recorded
     // before positions has no brake point in metres to compare.
     // Say the braking difference when there is one: "close" over a 12 m
     // earlier stop undersold the number printed right under it.
-    const lead = r.brakeLaterM == null ? "You are"
-      : early ? `You brake **${early} m earlier**${into} and are`
-      : late ? `You brake ${late} m later, but are`
-      : "Braking is about the same, but you are";
+    const are = p.v("are", "is");
+    const lead = r.brakeLaterM == null ? `${p.S} ${are}`
+      : early ? `${p.S} ${p.v("brake", "brakes")} **${early} m earlier**${into} and ${are}`
+      : late ? `${p.S} ${p.v("brake", "brakes")} ${late} m later, but ${are}`
+      : `Braking is about the same, but ${p.s} ${are}`;
     say = `${lead} **${midLoss} km/h slower** at the slowest point of the corner${mid}${exitNote}.`;
     tryText = `Release the brake earlier and let the car carry more speed into the corner: ${refName} keeps ${midLoss} km/h more through it.`;
   } else if (kind === "exit") {
     if (throttleLate) {
       // Quicker through the middle and still slow out: say so, since that is
       // the trade the quicker lap made the other way round.
-      const through = midLoss >= 3 ? `Your speed through the corner is ${midLoss} km/h down`
-        : midLoss <= -3 ? `You carry **${-midLoss} km/h more** through the slowest point${mid}`
-        : "Your speed through the corner is fine";
-      say = `${through}, but you are back on **full throttle ${throttleLate} m later**${exitNote}. That costs you all the way down the next straight.`;
+      const through = midLoss >= 3 ? `${p.Poss} speed through the corner is ${midLoss} km/h down`
+        : midLoss <= -3 ? `${p.S} ${p.v("carry", "carries")} **${-midLoss} km/h more** through the slowest point${mid}`
+        : `${p.Poss} speed through the corner is fine`;
+      say = `${through}, but ${p.s} ${p.v("are", "is")} back on **full throttle ${throttleLate} m later**${exitNote}. That costs ${p.obj} all the way down the next straight.`;
       tryText = midLoss <= -3
-        ? `Trade some of that corner speed for the exit: ${refName} goes through ${-midLoss} km/h slower, gets the car straight sooner and is flat out ${throttleLate} m before you.`
-        : `Get the car straight sooner so you can go to full throttle earlier: ${refName} is flat out ${throttleLate} m before you.`;
+        ? `Trade some of that corner speed for the exit: ${refName} goes through ${-midLoss} km/h slower, gets the car straight sooner and is flat out ${throttleLate} m before ${p.obj}.`
+        : `Get the car straight sooner so ${p.s} can go to full throttle earlier: ${refName} is flat out ${throttleLate} m before ${p.obj}.`;
     } else {
-      say = `You leave the corner **${exitLoss} km/h slower** than ${refName}, and that speed is missing all the way down the next straight.`;
+      say = `${p.S} ${p.v("leave", "leaves")} the corner **${exitLoss} km/h slower** than ${refName}, and that speed is missing all the way down the next straight.`;
       tryText = `Give up a little entry speed for a better exit: a later apex lets you go to full throttle earlier.`;
     }
   } else {
-    say = `You lose time here, but none of braking point, corner speed or throttle differs by much. The difference is most likely in the line.`;
+    say = `${p.S} ${p.v("lose", "loses")} time here, but none of braking point, corner speed or throttle differs by much. The difference is most likely in the line.`;
     tryText = `Open the replay zoomed in on this corner and compare the two lines: where ${refName} turns in and how close they get to the apex.`;
   }
 
@@ -294,24 +318,24 @@ export function explain(r, refName) {
   else if (kind === "entry") step = `Brake a touch earlier into ${place}, carry ${midLoss} km/h more`;
   else if (kind === "speed") step = `Carry ${midLoss} km/h more through ${place}`;
   else if (kind === "exit") step = throttleLate ? `Full throttle ${throttleLate} m sooner out of ${place}` : `Leave ${place} ${exitLoss} km/h faster`;
-  else step = `Compare your line through ${place}`;
+  else step = p.second ? `Compare your line through ${place}` : `Compare both lines through ${place}`;
 
   // Which brake points the small chart marks: the zone the tip is about.
   const marks = kind === "braking" && !zone.main ? { me: zone.brakeIdxMe ?? null, ref: zone.brakeIdxRef ?? null } : null;
   return { kind, kindLabel: KIND_LABEL[kind], say, try: tryText, step, facts: facts.slice(0, 3), ...(marks ? { brakeIdxMe: marks.me, brakeIdxRef: marks.ref } : {}) };
 }
 
-// A section the slower lap is QUICKER in: worth saying, briefly, with the one
+// A section the driver is QUICKER in: worth saying, briefly, with the one
 // input that made it.
-export function praise(r, refName) {
+export function praise(r, refName, p = person("", true)) {
   let why = "";
-  if (r.brakeLaterM != null && r.brakeLaterM >= 5) why = `you brake ${r.brakeLaterM} m later`;
-  else if (r.minMe != null && r.minRef != null && r.minMe - r.minRef >= 3) why = `you carry ${r.minMe - r.minRef} km/h more through the apex`;
-  else if (r.throttleLaterM != null && r.throttleLaterM <= -8) why = `you are on full throttle ${-r.throttleLaterM} m sooner`;
-  else if (r.exitMe != null && r.exitRef != null && r.exitMe - r.exitRef >= 3) why = `you leave it ${r.exitMe - r.exitRef} km/h faster`;
+  if (r.brakeLaterM != null && r.brakeLaterM >= 5) why = `${p.s} ${p.v("brake", "brakes")} ${r.brakeLaterM} m later`;
+  else if (r.minMe != null && r.minRef != null && r.minMe - r.minRef >= 3) why = `${p.s} ${p.v("carry", "carries")} ${r.minMe - r.minRef} km/h more through the apex`;
+  else if (r.throttleLaterM != null && r.throttleLaterM <= -8) why = `${p.s} ${p.v("are", "is")} on full throttle ${-r.throttleLaterM} m sooner`;
+  else if (r.exitMe != null && r.exitRef != null && r.exitMe - r.exitRef >= 3) why = `${p.s} ${p.v("leave", "leaves")} it ${r.exitMe - r.exitRef} km/h faster`;
   return {
     kind: "strength",
-    kindLabel: "Your strength",
-    say: `You gain ${secs(r.lostMs)} s on ${refName} here${why ? `: ${why}` : ""}. Keep it.`,
+    kindLabel: p.second ? "Your strength" : `${p.poss} strength`,
+    say: `${p.S} ${p.v("gain", "gains")} ${secs(r.lostMs)} s on ${refName} here${why ? `: ${why}` : ""}.${p.second ? " Keep it." : ""}`,
   };
 }

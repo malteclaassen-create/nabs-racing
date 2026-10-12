@@ -35,8 +35,8 @@ const roadEdges=(road)=>road?[road.track?.left,road.track?.right,road.pit?.left,
 // `keep` (one flag per point) leaves out a stretch of road no lap drove on;
 // `show` ({left, right}, one flag per point) leaves out the stretches of edge
 // that lie on tarmac, where a patch from utils/roadFit.js meets the road.
-function roadPaths(edge,projX,projY,keep=null,show=edge.show){
-  const P=(pt)=>`${projX(pt[0]*10).toFixed(1)} ${projY(pt[1]*10).toFixed(1)}`;
+function roadPaths(edge,proj,keep=null,show=edge.show){
+  const P=(pt)=>{const [x,y]=proj(pt[0]*10,pt[1]*10);return `${x.toFixed(1)} ${y.toFixed(1)}`;};
   const {left,right,closed}=edge;
   const n=Math.min(left.length,right.length);
   const quads=[];
@@ -115,16 +115,27 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
     return ()=>{alive=false;};
   },[track?.href,hasRoad]);
 
+  // A quarter turn clockwise when that fits the circuit into the box clearly
+  // bigger: Silverstone runs tall and the desktop box is wide, so upright it
+  // filled a third of it. The 12% margin keeps a near-square circuit from
+  // flipping back and forth as the box is resized.
+  const turnFor=(spanX,spanY)=>{
+    const w=Math.max(1,size.width), h=Math.max(1,size.height);
+    return Math.min(w/spanY,h/spanX)>1.12*Math.min(w/spanX,h/spanY);
+  };
+
   const geo=useMemo(()=>{
     if(!lapA?.x || !lapA?.z) return null;
-    let W,H,projX,projY,mPerUnit;
+    let W,H,projX,projY,mPerUnit,turn;
     const calib=track?.calib;
     let imageBox=null;
     if(calib?.scaleFactor>0) {
       // The published map's own frame is the lap's bounding box with almost
       // no margin, and the section numbers hang outside the line — so the
       // same screen-pixel margin as below goes around the image too.
-      const perPixel=Math.max(calib.width/Math.max(1,size.width),calib.height/Math.max(1,size.height));
+      turn=turnFor(calib.width,calib.height);
+      const [boxW,boxH]=turn?[size.height,size.width]:[size.width,size.height];
+      const perPixel=Math.max(calib.width/Math.max(1,boxW),calib.height/Math.max(1,boxH));
       const pad=40*perPixel;
       W=calib.width+2*pad; H=calib.height+2*pad; mPerUnit=calib.scaleFactor;
       imageBox={x:pad,y:pad,w:calib.width,h:calib.height};
@@ -142,24 +153,40 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       // is fine on a desktop and nothing on a phone, where a tall circuit's
       // top and bottom numbers were cut off — so it is measured in pixels of
       // the box the map is drawn in.
-      const perPixel=Math.max(spanX/Math.max(1,size.width),spanY/Math.max(1,size.height));
+      turn=turnFor(spanX,spanY);
+      const [boxW,boxH]=turn?[size.height,size.width]:[size.width,size.height];
+      const perPixel=Math.max(spanX/Math.max(1,boxW),spanY/Math.max(1,boxH));
       // 40 px: the numbers reach ~26 px out, and the padding itself shrinks
       // the scale a little once it is added to the box.
       const pad=Math.max(Math.max(spanX,spanY)*0.04,40*perPixel);
       W=spanX+2*pad; H=spanY+2*pad; mPerUnit=1;
       projX=v=>v/10-minX+pad; projY=v=>v/10-minY+pad;
     }
-    const a={x:lapA.x.slice(0,n).map(projX),y:lapA.z.slice(0,n).map(projY)};
-    const b=lapB?.x && lapB?.z ? {x:lapB.x.slice(0,n).map(projX),y:lapB.z.slice(0,n).map(projY)} : null;
+    // Everything is drawn in the turned frame, so the labels, cars and
+    // chevrons stay upright and the picking needs no extra step. Clockwise
+    // with y pointing down: (x, y) goes to (H - y, x).
+    const H0=H;
+    if(turn) [W,H]=[H,W];
+    const proj=turn?(x,z)=>[H0-projY(z),projX(x)]:(x,z)=>[projX(x),projY(z)];
+    const project=(lap)=>{
+      const len=Math.min(n,lap.x.length,lap.z.length);
+      const out={x:new Array(len),y:new Array(len)};
+      for(let i=0;i<len;i++){const [px,py]=proj(lap.x[i],lap.z[i]); out.x[i]=px; out.y[i]=py;}
+      return out;
+    };
+    const a=project(lapA);
+    const b=lapB?.x && lapB?.z ? project(lapB) : null;
     const centroid={x:a.x.reduce((s,v)=>s+v,0)/n, y:a.y.reduce((s,v)=>s+v,0)/n};
     // The tarmac, from the track's AI line: the real edges in the same world
     // metres the laps are in, so no calibration sits between line and road.
     const road=track?.road?.track&&!fit?.useless?{
-      lane:roadPaths(track.road.track,projX,projY,fit?.keep,fit?.show),
-      patches:(fit?.patches||[]).map(p=>roadPaths(p,projX,projY)),
-      pit:track.road.pit?roadPaths(track.road.pit,projX,projY):null,
+      lane:roadPaths(track.road.track,proj,fit?.keep,fit?.show),
+      patches:(fit?.patches||[]).map(p=>roadPaths(p,proj)),
+      pit:track.road.pit?roadPaths(track.road.pit,proj):null,
     }:null;
-    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor&&!road?track.href:null,imageBox,road};
+    // The published image is drawn in the unturned frame and turned as a whole.
+    const imageTurn=turn?`matrix(0 1 -1 0 ${H0} 0)`:undefined;
+    return {W,H,mPerUnit,a,b,centroid,pathA:path(a.x,a.y),pathB:b?path(b.x,b.y):null,image:calib?.scaleFactor&&!road?track.href:null,imageBox,imageTurn,road};
   },[lapA,lapB,n,track,size,fit]);
 
   const segments=useMemo(()=>{
@@ -283,7 +310,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
       <defs><pattern id={gridId} width={gridUnits} height={gridUnits} patternUnits="userSpaceOnUse"><path d={`M${gridUnits},0H0V${gridUnits}`} fill="none" stroke="var(--c-border)" strokeWidth={localPixel} opacity={0.4}/></pattern></defs>
       <g transform={transform}>
         {zoom>1&&<rect x={0} y={0} width={geo.W} height={geo.H} fill={`url(#${gridId})`} />}
-        {geo.image&&imageOpacity>0.02&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={imageOpacity} preserveAspectRatio="none" />}
+        {geo.image&&imageOpacity>0.02&&<image href={geo.image} x={geo.imageBox.x} y={geo.imageBox.y} width={geo.imageBox.w} height={geo.imageBox.h} opacity={imageOpacity} preserveAspectRatio="none" transform={geo.imageTurn} />}
         {geo.road&&<g aria-hidden="true">
           {geo.road.pit&&<g opacity={0.55}>
             <path d={geo.road.pit.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
@@ -292,7 +319,7 @@ export default function TelemetryTrackMap({lapA,lapB,n,cursor,cursorB,motionA,on
           {[geo.road.lane,...geo.road.patches].map((r,i)=><path key={i} d={r.fill} fill={ASPHALT} stroke={ASPHALT} strokeWidth={0.8} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
           {[geo.road.lane,...geo.road.patches].map((r,i)=><path key={i} d={r.edges} fill="none" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>)}
         </g>}
-        {traced&&(()=>{const sx=geo.imageBox.w/traced.w, sy=geo.imageBox.h/traced.h; return <g transform={`translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
+        {traced&&(()=>{const sx=geo.imageBox.w/traced.w, sy=geo.imageBox.h/traced.h; return <g transform={`${geo.imageTurn||''} translate(${geo.imageBox.x+0.5*sx} ${geo.imageBox.y+0.5*sy}) scale(${sx} ${sy})`} aria-hidden="true">
           <path d={traced.d} fill={ASPHALT} fillRule="evenodd" stroke={EDGE} strokeOpacity={0.8} strokeWidth={1.4} strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
         </g>;})()}
         <polyline points={geo.pathA} fill="none" stroke="var(--c-card)" strokeWidth={8} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={zoom<4?0.85:0}/>
