@@ -92,6 +92,13 @@ import {
   notifySenderOfReply,
 } from "../lib/feedback.js";
 import {
+  feedbackImageUpload,
+  checkFeedbackImages,
+  saveFeedbackImages,
+  discardFeedbackImages,
+  serveFeedbackImage,
+} from "../lib/feedbackFiles.js";
+import {
   dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId,
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
@@ -8154,7 +8161,8 @@ router.delete("/feedback/:id", async (req, res, next) => {
 // is a conversation, not a receipt. Only works for a sender who was signed in;
 // a logged-out one left a contact line instead and has to be reached there.
 // `status` may ride along, since answering and filing usually happen in one go.
-router.post("/feedback/:id/reply", async (req, res, next) => {
+// Pictures come as multipart field "images" (up to four), with or without words.
+router.post("/feedback/:id/reply", feedbackImageUpload, async (req, res, next) => {
   try {
     const entry = await dbGetFeedback(prisma, req.params.id);
     if (!entry) return res.status(404).json({ error: "Not found" });
@@ -8163,20 +8171,41 @@ router.post("/feedback/:id/reply", async (req, res, next) => {
         error: "This was sent without a login, so there's no account to answer to.",
       });
     }
-    const reply = await dbAddFeedbackReply(prisma, {
-      feedbackId: entry.id,
-      author: "ADMIN",
-      // A designated Discord admin signs with their name; the PIN admin has no
-      // name to give, so the thread simply says it came from the league office.
-      authorName: req.user?.driverName || req.user?.discordName || null,
-      body: req.body?.body,
-    });
+    const images = saveFeedbackImages(entry.id, checkFeedbackImages(req.files));
+    let reply;
+    try {
+      reply = await dbAddFeedbackReply(prisma, {
+        feedbackId: entry.id,
+        author: "ADMIN",
+        // A designated Discord admin signs with their name; the PIN admin has no
+        // name to give, so the thread simply says it came from the league office.
+        authorName: req.user?.driverName || req.user?.discordName || null,
+        body: req.body?.body,
+        images,
+      });
+    } catch (e) {
+      discardFeedbackImages(entry.id, images);
+      throw e;
+    }
     if (req.body?.status !== undefined) {
       await dbUpdateFeedback(prisma, entry.id, { status: req.body.status });
     }
     // Never make the admin's request wait on (or fail with) a bell write.
     notifySenderOfReply(prisma, entry, reply).catch(() => {});
     res.json({ ok: true, item: await dbGetFeedback(prisma, entry.id) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// A picture from a feedback thread, for the Feedback tab. Behind requireAdmin
+// like the rest of this router; fetched with the admin's token and shown from
+// memory, never linked.
+router.get("/feedback/:id/images/:imageId", async (req, res, next) => {
+  try {
+    const entry = await dbGetFeedback(prisma, req.params.id);
+    if (!entry) return res.status(404).json({ error: "Not found" });
+    serveFeedbackImage(res, entry, req.params.imageId);
   } catch (e) {
     next(e);
   }

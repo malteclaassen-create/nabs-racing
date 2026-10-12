@@ -6,6 +6,7 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import { useAsk } from "./overlay.jsx";
 import { FEEDBACK_CHANGED_EVENT } from "../data/adminEvents.js";
 import { SearchField } from "./AdminFilters.jsx";
+import { ReplyImages, ImagePicker, acceptImages, pastedImages } from "./FeedbackImages.jsx";
 
 // Everything members and visitors wrote through the Feedback button: bug
 // reports, feature wishes, the rest. Each entry can be moved along (new →
@@ -98,7 +99,7 @@ function shortAgent(ua) {
 // One message of the conversation under the original report. The admins' side
 // is tinted and sits slightly indented; the sender's side stays plain, so a
 // thread reads as two voices without any colour having to mean anything new.
-function Message({ r }) {
+function Message({ r, feedbackId }) {
   const mine = r.author === "ADMIN";
   return (
     <li
@@ -112,7 +113,8 @@ function Message({ r }) {
         </span>
         <span className="font-mono text-[10px] uppercase tracking-wider text-light">{fmtWhen(r.createdAt)}</span>
       </div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-medium">{r.body}</p>
+      {r.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-medium">{r.body}</p>}
+      <ReplyImages feedbackId={feedbackId} images={r.images} admin />
     </li>
   );
 }
@@ -124,6 +126,7 @@ function Entry({ item, onChanged }) {
   const [openNote, setOpenNote] = useState(false);
   const [openReply, setOpenReply] = useState(false);
   const [reply, setReply] = useState("");
+  const [images, setImages] = useState([]);
   const [replyError, setReplyError] = useState(null);
   // A failed status change, note or delete: said out loud instead of the row
   // just un-dimming as if it had worked.
@@ -149,8 +152,8 @@ function Entry({ item, onChanged }) {
 
   async function sendReply() {
     if (busy) return; // a double click would post the answer (and ping them) twice
-    if (reply.trim().length < 2) {
-      setReplyError("Write something first.");
+    if (!images.length && reply.trim().length < 2) {
+      setReplyError("Write something or add a picture first.");
       return;
     }
     setBusy(true);
@@ -158,8 +161,9 @@ function Entry({ item, onChanged }) {
     try {
       // Answering a new report also means it is being worked on, so it moves out
       // of the "nobody has looked at this" pile in the same click.
-      await api.replyToFeedback(item.id, reply, item.status === "NEW" ? "PLANNED" : undefined);
+      await api.replyToFeedback(item.id, reply, item.status === "NEW" ? "PLANNED" : undefined, images);
       setReply("");
+      setImages([]);
       setOpenReply(false);
       onChanged();
     } catch (e) {
@@ -221,7 +225,7 @@ function Entry({ item, onChanged }) {
       {replies.length > 0 && (
         <ul className="space-y-2">
           {replies.map((r) => (
-            <Message key={r.id} r={r} />
+            <Message key={r.id} r={r} feedbackId={item.id} />
           ))}
         </ul>
       )}
@@ -232,10 +236,20 @@ function Entry({ item, onChanged }) {
             className="input"
             rows={3}
             maxLength={2000}
-            placeholder={`Your answer to ${item.senderName || "the sender"}. They get a notification and can write back.`}
+            placeholder={`Your answer to ${item.senderName || "the sender"}. They get a notification and can write back. Paste or add pictures below.`}
             value={reply}
             onChange={(e) => setReply(e.target.value)}
+            onPaste={(e) => {
+              // A screenshot pasted straight in becomes a picture on the reply.
+              const pasted = pastedImages(e);
+              if (!pasted.length) return;
+              e.preventDefault();
+              const { files, error } = acceptImages(images, pasted);
+              setImages(files);
+              setReplyError(error);
+            }}
           />
+          <ImagePicker files={images} onChange={setImages} onError={setReplyError} disabled={busy} />
           {replyError && <p className="text-sm font-medium text-bad">{replyError}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={sendReply} disabled={busy} className="btn-primary py-1.5 text-xs">
@@ -243,7 +257,7 @@ function Entry({ item, onChanged }) {
             </button>
             <button
               type="button"
-              onClick={() => { setReply(""); setReplyError(null); setOpenReply(false); }}
+              onClick={() => { setReply(""); setImages([]); setReplyError(null); setOpenReply(false); }}
               className="btn-secondary py-1.5 text-xs"
             >
               Cancel

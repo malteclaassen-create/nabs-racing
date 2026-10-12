@@ -32,6 +32,11 @@ export const RESULTS_ARCHIVE_DIR = join(DATA_ROOT, "results-archive");
 // stewards. These come back only through an endpoint that checks the thread's
 // own read rules first.
 export const REPORT_FILES_DIR = join(DATA_ROOT, "report-files");
+// Pictures in a feedback conversation (lib/feedbackFiles.js). Private for the
+// same reason as report-files/: a screenshot of somebody's profile page or a
+// Discord message is a conversation between one member and the admins, so it
+// comes back only through a route that has checked whose thread it is.
+export const FEEDBACK_FILES_DIR = join(DATA_ROOT, "feedback-files");
 
 // Pit-lane events observed on the live feed, per race (lib/pitEventsStore.js).
 // The stored result JSON carries no pit data at all, so what is recorded here

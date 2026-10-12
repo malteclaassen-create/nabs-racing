@@ -639,6 +639,7 @@ model FeedbackReply {
   author     String // ADMIN | SENDER
   authorName String? // who wrote it, for the thread's byline
   body       String
+  images     String? // JSON [{ id, mime, size, name }]; bytes in feedback-files/
   createdAt  DateTime @default(now())
 
   @@index([feedbackId])

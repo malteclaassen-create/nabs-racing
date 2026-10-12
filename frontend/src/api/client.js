@@ -71,6 +71,21 @@ export async function reportFileUrl(file, admin = false) {
   return URL.createObjectURL(await res.blob());
 }
 
+// A picture from a feedback thread, the same way: fetched with the session and
+// handed back as a blob: URL, so nothing copied out of the page is a working
+// link to a private conversation.
+export async function feedbackImageUrl(feedbackId, imageId, admin = false) {
+  const path = admin
+    ? `/admin/feedback/${feedbackId}/images/${imageId}`
+    : `/feedback/${feedbackId}/images/${imageId}`;
+  const token = admin ? adminAuthToken() : localStorage.getItem(USER_TOKEN_KEY);
+  const res = await fetch(`${BASE}/api${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Could not load that picture");
+  return URL.createObjectURL(await res.blob());
+}
+
 const USER_TOKEN_KEY = "nabs_user_token";
 
 // Token for admin routes: the PIN admin token wins; a designated Discord admin
@@ -743,11 +758,21 @@ export const api = {
   // The conversation on a report: the admin answers (the sender's bell rings),
   // the sender writes back (the admins' bells ring). Member side needs a login,
   // so it rides on the user token.
-  replyToFeedback: (id, body, status) =>
-    request(`/admin/feedback/${id}/reply`, { method: "POST", body: { body, status }, auth: true }),
+  // Both directions take pictures too (up to four), so both are multipart.
+  replyToFeedback: async (id, body, status, images = []) => {
+    const fd = new FormData();
+    fd.append("body", body || "");
+    if (status !== undefined) fd.append("status", status);
+    for (const f of images) fd.append("images", await wholeFile(f), f.name);
+    return request(`/admin/feedback/${id}/reply`, { method: "POST", body: fd, auth: true, form: true });
+  },
   myFeedback: () => request("/feedback/mine", { userAuth: true }),
-  sendFeedbackReply: (id, body) =>
-    request(`/feedback/${id}/reply`, { method: "POST", body: { body }, userAuth: true }),
+  sendFeedbackReply: async (id, body, images = []) => {
+    const fd = new FormData();
+    fd.append("body", body || "");
+    for (const f of images) fd.append("images", await wholeFile(f), f.name);
+    return request(`/feedback/${id}/reply`, { method: "POST", body: fd, userAuth: true, form: true });
+  },
 
   // logged-in driver self-service
   me: () => request("/me", { userAuth: true }),
