@@ -12,7 +12,7 @@
 //
 // Run it again any time to change your driver or to update.
 
-const SETUP_VERSION = "7.3"
+const SETUP_VERSION = "7.4"
 const BASE_URL = "https://nabsracing.com"
 const MAIN_SLUG = "friday-f1"
 const SUNDAY_SLUG = "sunday-championship"
@@ -51,7 +51,7 @@ const CORE_SOURCE = String.raw`
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "7.3"
+const CORE_VERSION = "7.4"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -842,10 +842,11 @@ function liveM(d, rows) {
   const twoLine = rowH >= 36
   const bg = rowH >= 26
   const room = inner - (bg ? 18 : 0)
-  const tileSz = twoLine ? clamp(rowH - 10, 24, 34) : clamp(rowH - 8, 17, 26)
+  // One-line rows match the standings widget: a 20 pt tile, names around 14, times 15.
+  const tileSz = twoLine ? clamp(rowH - 10, 24, 34) : clamp(rowH - 4, 20, 26)
   const nameSize = twoLine
     ? clamp(Math.floor(0.9 * (room - tileSz - 4 - 8 - 20) / (0.7 * longest + 5.7)), 12, 19)
-    : clamp(Math.floor(0.9 * (room - tileSz - 4 - 8 - 30) / (0.7 * longest + 8.46)), 10, 16)
+    : clamp(Math.floor(0.95 * (room - tileSz - 4 - 8 - 30) / (0.66 * longest + 7.5)), 11, 16)
   const sz = {
     twoLine,
     bg,
@@ -2038,11 +2039,12 @@ function formChips(p, form, width) {
     chip.addSpacer()
     T(chip, f.pos == null ? "–" : "P" + f.pos, Math.round(cw * 0.3), { f: "black", c: pc ? C.ink : C.text })
     chip.addSpacer()
+    // A fixed height and no spacers: a label left to size itself was squeezed by iOS
+    // and shrank to a barely readable size.
     const lb = H(c, 0)
-    lb.size = new Size(cw, 0)
-    lb.addSpacer()
-    T(lb, "R" + f.round, 9, { f: "mono", c: C.mute })
-    lb.addSpacer()
+    lb.size = new Size(cw, 14)
+    lb.centerAlignContent()
+    T(lb, "R" + f.round, 11, { f: "mono", c: C.mute })
   })
   if (!full) fr.addSpacer()
 }
