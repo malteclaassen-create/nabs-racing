@@ -12,7 +12,7 @@
 //
 // Run it again any time to change your driver or to update.
 
-const SETUP_VERSION = "7.4"
+const SETUP_VERSION = "7.5"
 const BASE_URL = "https://nabsracing.com"
 const MAIN_SLUG = "friday-f1"
 const SUNDAY_SLUG = "sunday-championship"
@@ -51,7 +51,7 @@ const CORE_SOURCE = String.raw`
 // "NABS Setup" creates this file, so please don't edit or rename it.
 // To change your driver or to update, just run "NABS Setup" again.
 
-const CORE_VERSION = "7.4"
+const CORE_VERSION = "7.5"
 const BASE_URL = "https://nabsracing.com"
 const SETTINGS_FILE = "nabs-settings.json"
 let MY_DRIVER = ""
@@ -408,6 +408,11 @@ function resultS(d) {
   w.addSpacer()
   // the winner
   const n = H(w, 6)
+  // Rows get the height they need up front: a row left to size itself is offered
+  // a share of the widget's height first, and when that share is less than it
+  // needs, every text in it shrinks (the tile keeps its size and the names next
+  // to it come out at 60 %). The same fix is in every row below.
+  n.size = new Size(0, 22)
   tile(n, 1, C.gold, 22)
   T(n, x.driver, 16, { f: "heavy", c: isMe(x.driver, d) ? ACC : C.text })
   if (x.country) T(n, flag(x.country), 12)
@@ -567,6 +572,7 @@ function resultCard(p, x, d) {
   c.borderColor = new Color("#FFFFFF", 0.08)
   c.borderWidth = 1
   c.setPadding(7, 8, 7, 12)
+  c.size = new Size(0, 48)
   bar(c, pc, 3, 32)
   const box = c.addStack()
   box.size = new Size(36, 0)
@@ -581,6 +587,7 @@ function resultCard(p, x, d) {
   T(bot, x.team, 12, { f: "medium", c: C.mute })
   bot.addSpacer()
   const rt = V(c, 0)
+  rt.size = new Size(48, 0)
   rightLine(rt, x.points, 20, { f: "black" })
   rightLine(rt, "PTS", 8, { f: "mono", c: C.mute })
 }
@@ -624,7 +631,7 @@ function nextM(d) {
   tileSt.addSpacer()
   if (r.signedUp != null) {
     const su = H(right, 0)
-    su.size = new Size(92, 0)
+    su.size = new Size(92, 11)
     su.addSpacer()
     T(su, r.signedUp + " SIGNED UP", 9, { f: "monob", c: C.mute })
     su.addSpacer()
@@ -695,10 +702,12 @@ function countdownM(d) {
   raceHeader(w, "Countdown", r)
   w.addSpacer(5)
   trackLine(w, r, 20)
-  w.addSpacer()
+  // a fixed gap here: with a second flexible one the timer no longer had its
+  // full height and was drawn smaller
+  w.addSpacer(6)
   line(w, "LIGHTS OUT IN", 10, { f: "mono", c: C.mute })
   w.addSpacer(2)
-  countdownBlocks(w, r.date, 38, widgetWidth("medium") - 28)
+  countdownBlocks(w, r.date, 32, widgetWidth("medium") - 28)
   w.addSpacer()
   line(w, up(fmt(new Date(r.date), "EEE d MMM · HH:mm")) + (r.signedUp != null ? " · " + r.signedUp + " SIGNED UP" : ""), 10, { f: "mono", c: new Color("#D4D4D8") })
   return w
@@ -1165,6 +1174,7 @@ function podiumCard(p, s, d) {
   c.backgroundColor = me ? new Color(ACC_HEX, 0.16) : s.pos === 1 ? C.rowLead : C.rowAlt
   c.cornerRadius = 12
   c.setPadding(8, 8, 8, 12)
+  c.size = new Size(0, 54)
   bar(c, pc, 3, 34)
   tile(c, s.pos, pc, 26)
   const mid = V(c, 2)
@@ -1177,6 +1187,7 @@ function podiumCard(p, s, d) {
   T(bot, s.team, 12, { f: "medium", c: C.mute })
   bot.addSpacer()
   const rt = V(c, 0)
+  rt.size = new Size(56, 0)
   rightLine(rt, s.points, 22, { f: "black" })
   rightLine(rt, s.gap == null ? "LEADER" : signed(s.gap), 9, { f: "mono", c: C.mute })
 }
@@ -1191,7 +1202,8 @@ function standingsL(d) {
   line(hl, "DRIVER STANDINGS", 20, { f: "black" })
   h.addSpacer()
   w.addSpacer(8)
-  standingRows(w, d, 5, false)
+  // a point less padding per row: six rows of two lines and the title fill the widget
+  standingRows(w, d, 5, false, 4)
   w.addSpacer()
   return w
 }
@@ -1238,6 +1250,7 @@ function standingRow(p, s, d, compact, pad) {
   const h = H(p, 8)
   const vp = pad != null ? pad : compact ? 3 : 5
   h.setPadding(vp, 6, vp, 6)
+  h.size = new Size(0, (compact ? 20 : 34) + 2 * vp)
   h.cornerRadius = 8
   if (me) h.backgroundColor = new Color(ACC_HEX, 0.13)
   else if (s.pos === 1 && !compact) h.backgroundColor = C.rowLead
@@ -1257,7 +1270,10 @@ function standingRow(p, s, d, compact, pad) {
   if (s.country) T(top, flag(s.country), 10)
   top.addSpacer()
   if (!compact) line(mid, s.team + (me ? " · you" : ""), 11, { f: "medium", c: C.mute })
+  // A column of right-aligned lines takes half the row unless told its width,
+  // and the name is shrunk to make room for it. Same in the cards below.
   const rt = V(h, 0)
+  rt.size = new Size(compact ? 40 : 52, 0)
   rightLine(rt, s.points, compact ? 15 : 18, { f: "black", c: me ? ACC : C.text })
   if (!compact) rightLine(rt, s.gap == null ? "leader" : signed(s.gap), 10, { f: "mono", c: C.mute })
 }
@@ -1274,6 +1290,7 @@ function constructorRow(p, x, myTeam, o) {
   const mine = low(x.team) === myTeam
   const r = H(p, o.small ? 5 : 8)
   r.setPadding(o.pad, 0, o.pad, 0)
+  r.size = new Size(0, 20 + 2 * o.pad)
   const pc = posColor(x.pos)
   if (pc) tile(r, x.pos, pc, 20)
   else numBox(r, x.pos, 20, mine ? ACC : C.mute)
@@ -1817,6 +1834,9 @@ async function meL(d) {
   meHead(hl, me, av, true)
   head.addSpacer()
   const hr = V(head, 0)
+  // a fixed width: a column with right-aligned lines takes half the row otherwise,
+  // and the name on the left is shrunk to make room
+  hr.size = new Size(Math.max(70, 30 * String("P" + me.pos).length), 0)
   rightLine(hr, "P" + me.pos, 44, { f: "black" })
   rightLine(hr, me.points + " PTS", 12, { f: "monob", c: C.mute })
 
@@ -1918,16 +1938,19 @@ function teammateL(d) {
   kicker(h, "Head to head")
   h.addSpacer()
   teamTag(h, me, 10)
-  w.addSpacer(12)
+  w.addSpacer(10)
 
   const duel = H(w, 8)
   duel.topAlignContent()
+  // its full height up front, or the rows below are served first and the two
+  // positions are drawn at 60 %
+  duel.size = new Size(0, 79)
   const l = V(duel, 1)
   const ln = H(l, 4)
   T(ln, up(me.driver), 12, { f: "heavy", c: ACC })
   if (me.country) T(ln, flag(me.country), 10)
   ln.addSpacer()
-  line(l, "P" + me.pos, 34, { f: "black" })
+  line(l, "P" + me.pos, 32, { f: "black" })
   const lp = H(l, 4)
   T(lp, me.points, 20, { f: "black", c: ACC })
   T(lp, "PTS", 9, { f: "mono", c: C.mute })
@@ -1938,15 +1961,15 @@ function teammateL(d) {
   rn.addSpacer()
   T(rn, up(tm.driver), 12, { f: "heavy", c: teamColor(me) })
   if (tm.country) T(rn, flag(tm.country), 10)
-  rightLine(r, "P" + tm.pos, 34, { f: "black" })
+  rightLine(r, "P" + tm.pos, 32, { f: "black" })
   const rp = H(r, 4)
   rp.addSpacer()
   T(rp, "PTS", 9, { f: "mono", c: C.mute })
   T(rp, tm.points, 20, { f: "black", c: teamColor(me) })
 
-  w.addSpacer(8)
+  w.addSpacer(6)
   duelBar(w, me.points, tm.points, teamColor(me), widgetWidth("large") - 28)
-  w.addSpacer(8)
+  w.addSpacer(6)
   divider(w)
   w.addSpacer(7)
   if (me.stats && tm.stats) h2hRows(w, me, tm)
@@ -1979,9 +2002,10 @@ function h2hRows(p, me, tm) {
     ["AVG GRID", a.avgGrid == null ? "–" : "P" + a.avgGrid, b.avgGrid == null ? "–" : "P" + b.avgGrid, a.avgGrid == null || b.avgGrid == null ? 0 : b.avgGrid - a.avgGrid],
   ]
   const mateColor = teamColor(me)
-  const list = V(p, 5)
+  const list = V(p, 4)
   rows.forEach(([label, mine, theirs, cmp]) => {
     const r = H(list, 0)
+    r.size = new Size(0, 17)
     const l = r.addStack()
     l.size = new Size(78, 0)
     T(l, mine, 15, { f: "black", c: cmp > 0 ? ACC : C.text })
@@ -2373,13 +2397,18 @@ function formL(d) {
   line(hl, "RACE FORM", 20, { f: "black" })
   w.addSpacer(10)
   const tiles = H(w, 8)
-  ;[["BEST", st.best == null ? "–" : "P" + st.best], ["AVERAGE", st.avg == null ? "–" : "P" + st.avg], ["PODIUMS", String(st.podiums)], ["STARTS", st.started + "/" + form.length]].forEach(([k, v]) => {
+  const cells = [["BEST", st.best == null ? "–" : "P" + st.best], ["AVERAGE", st.avg == null ? "–" : "P" + st.avg], ["PODIUMS", String(st.podiums)], ["STARTS", st.started + "/" + form.length]]
+  // four equal tiles; the value is sized to the longest so none is shrunk
+  const tw = Math.floor((widgetWidth("large") - 28 - 24) / 4)
+  const vs = fitSize(tw - 20, longestName(cells.map(c => c[1])), 20, 13, 0)
+  cells.forEach(([k, v]) => {
     const b = V(tiles, 1)
+    b.size = new Size(tw, 0)
     b.backgroundColor = C.rowAlt
     b.cornerRadius = 10
     b.setPadding(7, 10, 7, 10)
     line(b, k, 8, { f: "mono", c: C.mute })
-    line(b, v, 20, { f: "black" })
+    line(b, v, vs, { f: "black" })
   })
   w.addSpacer()
   formBars(w, form, widgetWidth("large") - 28, 168, "track")

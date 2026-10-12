@@ -6,7 +6,6 @@
 // check always happens on the phone.
 
 const RealDate = Date
-const NONE = { h: false, v: false }
 
 // ─── Geometry ────────────────────────────────────────────────
 
@@ -760,6 +759,34 @@ function safeJson(x) {
 }
 
 // ─── Renderer: widget object → HTML ─────────────────────────
+//
+// The sizes are worked out the way the phone works them out, and only then
+// handed to CSS to draw. CSS flexbox shares space differently, and that
+// difference was exactly what the phone kept showing and the preview did not.
+// The rules below were fitted to measured screenshots of the phone (the 7.2 and
+// 7.3 widgets, see the Form, Live Timing and My Season widgets of those
+// versions), and every one of them is needed to get all of those right:
+//
+//  - a stack sets aside its spacing, its fixed spacers and 8 points for every
+//    flexible spacer, sorts the rest of its children by how much they can give
+//    or take, and offers each one, least flexible first, an equal share of what
+//    is left at that moment. A child may take more than its share (a fixed size
+//    is never argued with); the ones after it get less. The flexible spacers
+//    then split whatever remains — they take no share of their own, which is
+//    why the last flexible child of a widget gets all the room it needs while
+//    an earlier one can be squeezed;
+//  - a text offered less height than it needs shrinks towards its
+//    minimumScaleFactor: a row that is offered half its height hands that half
+//    on to its texts, and they come out at 60 % next to a tile that kept its
+//    fixed size. Offered less width, it shrinks the same way, but never below
+//    that factor and never cut: it overflows instead;
+//  - a stack holding a flexible spacer fills whatever it is offered along its
+//    axis, the spacer soaking up the rest.
+//
+// measure(node, proposal) answers what a node takes when offered a size, and the
+// stack that asked lays its children out from the answers. Infinity means
+// "as much as you like" and is only ever proposed to find out how flexible
+// something is; spacers count as their minimum in that question.
 
 function div(cls) {
   const el = document.createElement("div")
@@ -767,43 +794,191 @@ function div(cls) {
   return el
 }
 
-// Like SwiftUI: a stack grows along an axis when something inside it does
-// (a flexible spacer, a timer text, another growing stack) and it has no fixed size there.
-function flexOf(node, axis) {
-  if (node instanceof WidgetSpacer) return node.length == null ? { h: axis === "h", v: axis === "v" } : NONE
-  if (node instanceof WidgetDate) return node._style === "timer" || node._style === "relative" || node._style === "offset" ? { h: true, v: false } : NONE
-  if (node instanceof WidgetText) return NONE
-  if (node instanceof WidgetImage) return node.imageSize || !node.resizable ? NONE : { h: true, v: true }
-  if (node instanceof WidgetStack) {
-    if (node._flex) return node._flex
-    const fw = node.size && node.size.width > 0
-    const fh = node.size && node.size.height > 0
-    let h = false
-    let v = false
-    for (const c of node._children) {
-      const f = flexOf(c, node._layout)
-      h = h || f.h
-      v = v || f.v
-    }
-    node._flex = { h: h && !fw, v: v && !fh }
-    return node._flex
+const SPACER_MIN = 8
+const LINE_HEIGHT = 1.2
+
+const prop = (axis, main, cross) => (axis === "w" ? { w: main, h: cross } : { w: cross, h: main })
+
+// What a text takes: its natural single line, scaled down when offered less in
+// either direction, never below minimumScaleFactor and never cut.
+function measureText(node, p) {
+  const nat = node._nat
+  const m = node.minimumScaleFactor == null ? 1 : Math.min(1, Math.max(0.05, node.minimumScaleFactor))
+  if (node._lines === 1) {
+    let s = 1
+    if (p.w < nat.w) s = Math.min(s, p.w / nat.w)
+    if (p.h < nat.lineH) s = Math.min(s, p.h / nat.lineH)
+    s = Math.max(s, m)
+    // a timer takes its digits' width at the least and grows into whatever more it
+    // is offered (that is why it has to be right-aligned by hand)
+    const own = nat.w * s
+    const w = node._fill ? Math.max(own, p.w) : own
+    return { w, h: nat.lineH * s, s }
   }
-  return NONE
+  // several lines: wrap at the offered width, then shrink by height if allowed to
+  let w = nat.w
+  let n = 1
+  if (p.w < nat.w) {
+    n = Math.ceil(nat.w / Math.max(1, p.w))
+    if (node._lines > 0) n = Math.min(n, node._lines)
+    w = p.w
+  }
+  let h = n * nat.lineH
+  let s = 1
+  if (p.h < h) { s = Math.max(m, p.h / h); h *= s }
+  return { w, h, s }
 }
 
-function place(el, f, axis, fixedW, fixedH) {
-  el.style.minWidth = "0"
-  if (axis === "h") {
-    // Blocks start from their content width and only share what is left over, like
-    // on iOS, where a name gets its room before a spacer next to it takes anything
-    el.style.flex = fixedW ? "0 0 auto" : f.h ? "1 1 auto" : "0 1 auto"
-    if (f.v && !fixedH) el.style.alignSelf = "stretch"
-  } else {
-    if (fixedH) el.style.flex = "0 0 auto"
-    else if (f.v) { el.style.flex = "1 1 0"; el.style.minHeight = "0" } else el.style.flex = "0 0 auto"
-    if (f.h && !fixedW) el.style.alignSelf = "stretch"
-    else el.style.maxWidth = "100%"
+function measureImage(node, p) {
+  if (node.imageSize) return { w: node.imageSize.width, h: node.imageSize.height }
+  const iw = node.image && node.image.size ? node.image.size.width : 0
+  const ih = node.image && node.image.size ? node.image.size.height : 0
+  if (!node.resizable || !iw || !ih) return { w: iw, h: ih }
+  // resizable with no size of its own: fills what it is offered, keeping its shape
+  const pw = isFinite(p.w) ? p.w : iw
+  const ph = isFinite(p.h) ? p.h : ih
+  if (node._mode === "fill") return { w: pw, h: ph }
+  const k = Math.min(pw / iw, ph / ih)
+  return { w: iw * k, h: ih * k }
+}
+
+// A fixed spacer is its length. A flexible one is sized by the stack around it
+// (see measureStack); asked on its own it is its minimum.
+function measureSpacer(node, p) {
+  const len = node.length == null ? SPACER_MIN : node.length
+  return node._axis === "w" ? { w: len, h: 0 } : { w: 0, h: len }
+}
+
+// A stack: SwiftUI's HStack/VStack, with Scriptable's fixed size and padding.
+// `record` is the real pass: it keeps every child's size for drawing. Without it
+// this only answers the question (and the answers are remembered per proposal).
+function measureStack(node, p, record) {
+  const pad = node._padding || [0, 0, 0, 0]
+  const fixed = { w: node.size && node.size.width > 0 ? node.size.width : null, h: node.size && node.size.height > 0 ? node.size.height : null }
+  const padOf = { w: pad[1] + pad[3], h: pad[0] + pad[2] }
+  const inner = {
+    w: Math.max(0, (fixed.w != null ? fixed.w : p.w) - padOf.w),
+    h: Math.max(0, (fixed.h != null ? fixed.h : p.h) - padOf.h),
   }
+  const main = node._layout === "h" ? "w" : "h"
+  const cross = main === "w" ? "h" : "w"
+  const kids = node._children
+  const spacing = (node.spacing || 0) * Math.max(0, kids.length - 1)
+  const C = inner[cross]
+  // the spacers are set aside: fixed ones in full, flexible ones at their minimum
+  const flexSpacers = []
+  let setAside = spacing
+  for (let i = 0; i < kids.length; i++) {
+    const k = kids[i]
+    if (!(k instanceof WidgetSpacer)) continue
+    if (k.length == null) flexSpacers.push(i)
+    setAside += k.length == null ? SPACER_MIN : k.length
+  }
+  // least flexible first: how much each of the others can give or take along the axis
+  const order = []
+  for (let i = 0; i < kids.length; i++) {
+    if (kids[i] instanceof WidgetSpacer) continue
+    const lo = measure(kids[i], prop(main, 0, C), false)[main]
+    const hi = measure(kids[i], prop(main, Infinity, C), false)[main]
+    order.push({ i, f: hi === Infinity ? Infinity : hi - lo })
+  }
+  order.sort((a, b) => a.f - b.f)
+  const sizes = new Array(kids.length)
+  let remaining = inner[main] - setAside
+  let count = order.length
+  for (const { i } of order) {
+    const share = Math.max(0, remaining / count)
+    const s = measure(kids[i], prop(main, share, C), record)
+    sizes[i] = s
+    if (isFinite(s[main])) remaining -= s[main]
+    count--
+  }
+  // the flexible spacers split what is left, never less than their minimum
+  const each = flexSpacers.length ? Math.max(SPACER_MIN, (remaining + SPACER_MIN * flexSpacers.length) / flexSpacers.length) : 0
+  for (let i = 0; i < kids.length; i++) {
+    if (!(kids[i] instanceof WidgetSpacer)) continue
+    const k = kids[i]
+    const len = k.length == null ? each : k.length
+    sizes[i] = main === "w" ? { w: len, h: 0 } : { w: 0, h: len }
+    if (record) k._size = sizes[i]
+  }
+  let mainSize = spacing
+  let crossSize = 0
+  for (const s of sizes) {
+    mainSize += s[main]
+    crossSize = Math.max(crossSize, s[cross])
+  }
+  const out = {}
+  out[main] = fixed[main] != null ? fixed[main] : mainSize + padOf[main]
+  out[cross] = fixed[cross] != null ? fixed[cross] : crossSize + padOf[cross]
+  return out
+}
+
+function measure(node, p, record) {
+  const key = p.w + "|" + p.h
+  if (!record && node._memo && node._memo.has(key)) return node._memo.get(key)
+  let s
+  if (node instanceof WidgetSpacer) s = measureSpacer(node, p)
+  else if (node instanceof WidgetText) s = measureText(node, p)
+  else if (node instanceof WidgetImage) s = measureImage(node, p)
+  else if (node instanceof WidgetStack) s = measureStack(node, p, record)
+  else s = { w: 0, h: 0 }
+  if (record) node._size = s
+  else (node._memo || (node._memo = new Map())).set(key, s)
+  return s
+}
+
+// The sizes, once worked out, go onto the elements as they are: nothing is left
+// for CSS to share out. Cross-axis placement (left, centred, right) stays with
+// the flex alignment the stacks already carry.
+function applySizes(node) {
+  const el = node._el
+  const s = node._size
+  if (!el || !s) return
+  el.style.flex = "0 0 auto"
+  if (node instanceof WidgetText) {
+    el.style.height = s.h + "px"
+    // a text straight in the widget keeps the full width, its alignment is its own
+    if (!node._inRoot) el.style.width = s.w + "px"
+    el.style.fontSize = node._fontSize * s.s + "px"
+    return
+  }
+  el.style.width = s.w + "px"
+  el.style.height = s.h + "px"
+  if (node instanceof WidgetStack) for (const c of node._children) applySizes(c)
+}
+
+function walk(node, fn) {
+  fn(node)
+  if (node._children) for (const c of node._children) walk(c, fn)
+}
+
+// The natural single-line width of every text, measured on clones in a hidden box
+// so neither the widget's own layout nor the preview's zoom gets in the way.
+function measureNaturals(texts) {
+  const box = div("sw-widget")
+  box.style.cssText = "position:absolute;left:-100000px;top:0;width:max-content;visibility:hidden;pointer-events:none;display:block;overflow:visible"
+  const clones = texts.map(t => {
+    const c = t._el.cloneNode(true)
+    c.style.cssText += ";position:static;display:block;white-space:nowrap;width:max-content;height:auto;font-size:" + t._fontSize + "px"
+    box.appendChild(c)
+    return c
+  })
+  document.body.appendChild(box)
+  texts.forEach((t, i) => {
+    t._nat = { w: clones[i].getBoundingClientRect().width, lineH: t._fontSize * LINE_HEIGHT }
+  })
+  box.remove()
+}
+
+function layoutRoot(root) {
+  const L = root._layout
+  const texts = []
+  for (const c of L.widget._children) walk(c, n => { n._memo = null; n._size = null; if (n instanceof WidgetText) texts.push(n) })
+  measureNaturals(texts)
+  const stack = { _children: L.widget._children, _padding: L.padding, spacing: L.widget.spacing || 0, size: new Size(L.width, L.height), _layout: L.layout }
+  measureStack(stack, { w: L.width, h: L.height }, true)
+  for (const c of L.widget._children) applySizes(c)
 }
 
 function addBorder(el, width, color, radius) {
@@ -846,7 +1021,7 @@ function renderText(node, axis, inWidget, env) {
   const el = div("sw-text")
   const font = node.font || (env.inline ? Font._make("sans", 600, 16) : Font.body())
   el.style.font = cssFont(font)
-  el.style.lineHeight = "1.2"
+  el.style.lineHeight = String(LINE_HEIGHT)
   // Inter stands in for SF Pro and runs a little wider, this pulls it closer
   if (font.family !== "mono") el.style.letterSpacing = "-0.015em"
   el.style.color = cssColor(node.textColor, env.textColor)
@@ -858,9 +1033,6 @@ function renderText(node, axis, inWidget, env) {
   if (lines === 1) el.classList.add("sw-one")
   else if (lines > 1) { el.classList.add("sw-clamp"); el.style.webkitLineClamp = String(lines) }
   el.style.textAlign = node._align
-  el.dataset.size = font.size
-  el.dataset.min = node.minimumScaleFactor == null ? 1 : node.minimumScaleFactor
-  el.dataset.lines = lines
 
   if (node instanceof WidgetDate) {
     const target = new RealDate(node.date).getTime()
@@ -874,15 +1046,14 @@ function renderText(node, axis, inWidget, env) {
     appendRich(el, node.text)
   }
 
-  place(el, flexOf(node, axis), axis, false, false)
-  // SwiftUI lets short texts (a points value) keep their full width and squeezes the
-  // long ones (a name) first. Weighting the shrink by length copies that.
-  if (axis === "h") {
-    const len = Array.from(el.textContent).length + 2 * el.querySelectorAll("img").length
-    el.style.flexShrink = String(Math.max(1, len) ** 2)
-  }
-  if (inWidget) { el.style.alignSelf = "stretch"; el.style.maxWidth = "" }
+  if (inWidget) el.style.alignSelf = "stretch"
   if (node.url) el.title = node.url
+  el.dataset.size = font.size
+  node._el = el
+  node._lines = lines
+  node._fontSize = font.size
+  node._fill = node instanceof WidgetDate && (node._style === "timer" || node._style === "relative" || node._style === "offset")
+  node._inRoot = inWidget
   return el
 }
 
@@ -902,22 +1073,13 @@ function renderImage(node, axis, inWidget) {
     img.style.objectFit = node._mode === "fill" ? "cover" : "contain"
     el.appendChild(img)
   }
-  const fixed = !!node.imageSize || (!node.resizable && node.image)
-  if (node.imageSize) {
-    el.style.width = node.imageSize.width + "px"
-    el.style.height = node.imageSize.height + "px"
-  } else if (!node.resizable && node.image) {
-    el.style.width = node.image.size.width + "px"
-    el.style.height = node.image.size.height + "px"
-  }
   const radius = node.containerRelativeShape ? 14 : node.cornerRadius
   if (radius) el.style.borderRadius = radius + "px"
   if (node.imageOpacity != null && node.imageOpacity < 1) el.style.opacity = node.imageOpacity
   addBorder(el, node.borderWidth, node.borderColor, radius)
-  place(el, flexOf(node, axis), axis, fixed, fixed)
-  if (fixed) el.style.flexShrink = "0"
   if (inWidget) el.style.alignSelf = { left: "flex-start", center: "center", right: "flex-end" }[node._align]
   if (node.url) el.title = node.url
+  node._el = el
   return el
 }
 
@@ -928,10 +1090,9 @@ function renderStack(node, axis, env) {
   el.style.alignItems = { top: "flex-start", center: "center", bottom: "flex-end" }[node._align]
   if (node.spacing) el.style.gap = node.spacing + "px"
   if (node._padding) el.style.padding = padCss(node._padding)
-  const fw = !!(node.size && node.size.width > 0)
-  const fh = !!(node.size && node.size.height > 0)
-  if (fw) { el.style.width = node.size.width + "px"; if (row) el.style.justifyContent = "center" }
-  if (fh) { el.style.height = node.size.height + "px"; if (!row) el.style.justifyContent = "center" }
+  // a fixed frame centres what is inside it, however much that is
+  if (node.size && node.size.width > 0 && row) el.style.justifyContent = "center"
+  if (node.size && node.size.height > 0 && !row) el.style.justifyContent = "center"
   if (node.backgroundColor) el.style.backgroundColor = cssColor(node.backgroundColor)
   const bgs = []
   if (node.backgroundImage) bgs.push("url(\"" + node.backgroundImage._src + "\")")
@@ -940,25 +1101,15 @@ function renderStack(node, axis, env) {
   if (node.cornerRadius) { el.style.borderRadius = node.cornerRadius + "px"; el.style.overflow = "hidden" }
   for (const c of node._children) el.appendChild(renderNode(c, row ? "h" : "v", false, env))
   addBorder(el, node.borderWidth, node.borderColor, node.cornerRadius)
-  place(el, flexOf(node, axis), axis, fw, fh)
   if (node.url) el.title = node.url
+  node._el = el
   return el
 }
 
-// On iOS a flexible spacer never shrinks below about 8 points (SwiftUI's default
-// minimum). Inside small fixed boxes that eats the room the text needs, so the
-// preview copies it to show the same squeeze as the phone.
-const SPACER_MIN = 8
-
 function renderSpacer(node, axis) {
   const el = div("sw-spacer")
-  if (node.length == null) {
-    el.style.flex = "1 0 0"
-    el.style[axis === "h" ? "minWidth" : "minHeight"] = SPACER_MIN + "px"
-  } else {
-    el.style.flex = "0 0 " + node.length + "px"
-    el.style[axis === "h" ? "width" : "height"] = node.length + "px"
-  }
+  node._el = el
+  node._axis = axis === "h" ? "w" : "h"
   return el
 }
 
@@ -991,33 +1142,23 @@ export function renderWidget(widget, family, width, height, env) {
     root.appendChild(bg)
   }
 
+  const padding = widget._padding || (accessory ? [0, 0, 0, 0] : [16, 16, 16, 16])
   const body = div("sw-body")
-  body.style.padding = padCss(widget._padding || (accessory ? [0, 0, 0, 0] : [16, 16, 16, 16]))
+  body.style.padding = padCss(padding)
   if (widget.spacing) body.style.gap = widget.spacing + "px"
   if (inline) body.classList.add("sw-inline")
   for (const c of widget._children) body.appendChild(renderNode(c, inline ? "h" : "v", !inline, e))
   root.appendChild(body)
+
+  root._layout = { widget, width, height, padding, layout: inline ? "h" : "v" }
+  layoutRoot(root)
   return root
 }
 
-// Second pass once the widget is on the page: texts that do not fit shrink
-// down to their minimumScaleFactor, then get cut with "…", like on iOS.
+// A second pass once the fonts are in: the widths were measured with whatever
+// font the browser had at the time, and the layout is only as right as they are.
 export function fitTexts(root) {
-  const jobs = []
-  for (const el of root.querySelectorAll(".sw-text.sw-one")) {
-    const min = Number(el.dataset.min)
-    const cw = el.clientWidth
-    const sw = el.scrollWidth
-    // widths come back rounded to whole pixels, so leave a little headroom or a
-    // fraction of a pixel too much still shows the "…"
-    if (sw > cw + 0.5 && min < 1 && cw > 0) jobs.push([el, Math.max(min, (cw / sw) * 0.97), cw])
-  }
-  for (const [el, scale, cw] of jobs) {
-    // in a column the flex basis would be read as a height, so only rows get it
-    if (el.parentElement && getComputedStyle(el.parentElement).flexDirection === "row") el.style.flex = "0 0 " + cw + "px"
-    el.style.width = cw + "px"
-    el.style.fontSize = Number(el.dataset.size) * scale + "px"
-  }
+  if (root && root._layout) layoutRoot(root)
 }
 
 export function tickTimers(root, now) {
