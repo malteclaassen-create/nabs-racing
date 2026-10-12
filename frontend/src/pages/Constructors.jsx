@@ -342,10 +342,10 @@ export default function Constructors() {
             <p className="content-in flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn/10 px-3 py-2 text-[13px] text-warn">
               <span>
                 <b>Preview, not the real table.</b>{" "}
-                {teamRule ? (
+                {teamRule && projecting && t1Data.projectedTeamDrops != null ? (
                   <>
-                    Each team&rsquo;s {dropPick} worst single-driver result{dropPick === 1 ? "" : "s"} so far{" "}
-                    {dropPick === 1 ? "is" : "are"} dropped
+                    {dropPick} worst result{dropPick === 1 ? "" : "s"} per driver so far: each team&rsquo;s{" "}
+                    {t1Data.projectedTeamDrops} worst single-driver result{t1Data.projectedTeamDrops === 1 ? " is" : "s are"} dropped
                   </>
                 ) : (
                   <>
