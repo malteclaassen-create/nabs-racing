@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { StatusPill, Rank, TierBadge, SafetyCarBadge, NoData } from "./ui.jsx";
@@ -8,7 +9,7 @@ import { TyreBadge } from "./TyreStrategy.jsx";
 import { tyreCompound } from "../data/liveTiming.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
-import { fmtLap, isLapTime } from "../utils/format.js";
+import { fmtLap, isLapTime, NO_VALUE } from "../utils/format.js";
 
 // Small "?" help marker with a hover tooltip (native title).
 function Help({ text }) {
@@ -289,26 +290,147 @@ function QualiTable({ rows, rowsKey }) {
 // scaled to the longest race in the field, so a retirement or a lapped car
 // visibly runs short. Medium (and any other near-white compound) gets a faint
 // outline, or it would vanish into a light card.
+//
+// Hovering the strip opens the strategy card under it: every stint with its
+// compound, laps, share of the race and the laps it covered, the one under
+// the pointer highlighted (styles: .stint-bar / .stint-card in index.css). The
+// card lives in a portal, fixed to the viewport, because the table's scroll
+// box would clip anything that reaches out of a row.
+const STINT_ROW_PX = 36;
+
 function StintBar({ stints, totalLaps }) {
-  const driven = stints.reduce((s, x) => s + (x.laps || 0), 0);
-  const rest = Math.max(0, (totalLaps || driven) - driven);
+  const [open, setOpen] = useState(false);
+  const [on, setOn] = useState(null); // stint under the pointer (null over the unused rest)
+  const [place, setPlace] = useState(null); // { x, y, above } for the card
+  const barRef = useRef(null);
+  const trackRef = useRef(null);
+
+  let acc = 0;
+  const segs = stints.map((s) => {
+    const laps = s.laps || 0;
+    const seg = { t: tyreCompound(s.tyre), laps, from: acc + 1, to: acc + laps };
+    acc += laps;
+    return seg;
+  });
+  const scale = Math.max(totalLaps || 0, acc, 1);
+  const rest = Math.max(0, (totalLaps || acc) - acc);
+  const stops = segs.length - 1;
+  const lapsWord = (n) => `${n} ${n === 1 ? "lap" : "laps"}`;
+
+  // A fixed card would stay put while the page scrolls away under it.
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, { capture: true, passive: true });
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, { capture: true });
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const show = () => {
+    const bar = barRef.current.getBoundingClientRect();
+    const track = trackRef.current.getBoundingClientRect();
+    // header + rows + padding; open above when it would run off the bottom
+    const cardH = 48 + segs.length * STINT_ROW_PX + 12;
+    const above = track.bottom + 12 + cardH > window.innerHeight;
+    setPlace({ x: bar.left + bar.width / 2, y: above ? track.top - 12 : track.bottom + 12, above });
+    setOpen(true);
+  };
+
   return (
-    <span className="flex h-1.5 w-full max-w-[13rem] gap-[2px] overflow-hidden rounded-full bg-surface2">
-      {stints.map((s, idx) => {
-        const t = tyreCompound(s.tyre);
-        return (
+    <span
+      ref={barRef}
+      className={`stint-bar ${open ? "is-open" : ""} ${open && on != null ? "is-picking" : ""}`}
+      onMouseEnter={show}
+      onMouseLeave={() => {
+        setOpen(false);
+        setOn(null);
+      }}
+      role="img"
+      aria-label={segs.map((s) => `${s.t.name} ${lapsWord(s.laps)}`).join(", ")}
+      // empty title: the row's own "Show tyre strategy" hint stays off the strip
+      title=""
+    >
+      <span ref={trackRef} className="stint-bar__track">
+        {segs.map((s, idx) => (
           <span
             key={idx}
-            className="h-full"
+            className={`stint-bar__seg ${on === idx ? "is-on" : ""}`}
             style={{
-              flex: `${Math.max(1, s.laps || 0)} 1 0`,
-              backgroundColor: t.color,
-              boxShadow: t.light ? "inset 0 0 0 1px rgba(10,15,30,0.25)" : undefined,
+              flex: `${Math.max(1, s.laps)} 1 0`,
+              backgroundColor: s.t.color,
+              boxShadow: s.t.light ? "inset 0 0 0 1px rgba(10,15,30,0.25)" : undefined,
             }}
           />
-        );
-      })}
-      {rest > 0 && <span className="h-full" style={{ flex: `${rest} 1 0` }} />}
+        ))}
+        {rest > 0 && <span className="h-full" style={{ flex: `${rest} 1 0` }} />}
+      </span>
+      <span className="stint-bar__hits" aria-hidden="true">
+        {segs.map((s, idx) => (
+          <span key={idx} style={{ flex: `${Math.max(1, s.laps)} 1 0` }} onMouseEnter={() => setOn(idx)} />
+        ))}
+        {rest > 0 && <span style={{ flex: `${rest} 1 0` }} onMouseEnter={() => setOn(null)} />}
+      </span>
+
+      {place &&
+        createPortal(
+          <div
+            className={`stint-card ${open ? "is-open" : ""} ${place.above ? "is-above" : ""}`}
+            style={{ left: place.x, top: place.y }}
+            aria-hidden="true"
+          >
+            <div className="stint-card__panel w-64 rounded-xl border border-border bg-card p-3 shadow-xl">
+              <div className="mb-2 flex items-baseline justify-between px-2">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-light">Tyre strategy</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-light">
+                  {stops === 0 ? "No stop" : `${stops} ${stops === 1 ? "stop" : "stops"}`}
+                </span>
+              </div>
+              <ul className="relative">
+                <li
+                  className="stint-card__glow"
+                  style={{
+                    height: STINT_ROW_PX,
+                    transform: `translateY(${(on ?? 0) * STINT_ROW_PX}px)`,
+                    opacity: on == null ? 0 : 1,
+                  }}
+                  aria-hidden="true"
+                />
+                {segs.map((s, idx) => (
+                  <li
+                    key={idx}
+                    className="stint-card__row relative flex items-center gap-2.5 whitespace-nowrap px-2"
+                    style={{ height: STINT_ROW_PX, "--i": idx }}
+                  >
+                    <TyreBadge t={s.t} size={22} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-sm font-bold text-dark">{s.t.name}</span>
+                        <span className="font-mono text-xs font-bold tabular-nums text-medium">{lapsWord(s.laps)}</span>
+                      </span>
+                      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-border">
+                        <span
+                          className="stint-card__share block h-full rounded-full"
+                          style={{
+                            width: `${(s.laps / scale) * 100}%`,
+                            marginLeft: `${((s.from - 1) / scale) * 100}%`,
+                            backgroundColor: s.t.color,
+                          }}
+                        />
+                      </span>
+                    </span>
+                    <span className="w-12 text-right font-mono text-[10px] tabular-nums text-light">
+                      {s.laps > 0 ? `L${s.from}–${s.to}` : NO_VALUE}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>,
+          document.body
+        )}
     </span>
   );
 }

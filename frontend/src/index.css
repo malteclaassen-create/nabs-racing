@@ -3246,6 +3246,76 @@ html.update-reveal.update-reveal-go body::after {
    and for reduced motion. */
 .fx-lite .stint-drawer { transition: none; }
 @media (prefers-reduced-motion: reduce) { .stint-drawer { transition: none; } }
+/* The tyre strip in the race results (desktop). Hovering it thickens the
+   strip and opens the strategy card under it: one row per stint with the
+   compound, its laps, a share-of-the-race bar and the laps it covered. The
+   card pops in, its rows deal in one after another while their bars draw,
+   and a highlight glides to whichever stint the pointer is over (that stint
+   stays lit on the strip, the others step back). A hit layer over the strip
+   gives every stint the full height of the cell, not just the 6px line. */
+.stint-bar { position: relative; display: flex; align-items: center; height: 1.25rem; width: 100%; max-width: 13rem; }
+.stint-bar__track {
+  display: flex; width: 100%; height: 6px; gap: 2px; overflow: hidden;
+  border-radius: 9999px; background: var(--c-surface2);
+  transition: height var(--t-base) var(--e-pop);
+}
+.stint-bar.is-open .stint-bar__track { height: 10px; }
+.stint-bar__seg { height: 100%; transition: opacity var(--t-base) var(--e-soft), filter var(--t-base) var(--e-soft); }
+.stint-bar.is-picking .stint-bar__seg { opacity: 0.3; }
+.stint-bar.is-picking .stint-bar__seg.is-on { opacity: 1; filter: brightness(1.08) saturate(1.1); }
+.stint-bar__hits { position: absolute; inset: 0; display: flex; gap: 2px; }
+
+.stint-card { position: fixed; z-index: var(--z-dropdown); pointer-events: none; }
+.stint-card__panel {
+  position: relative;
+  opacity: 0;
+  transform: translate(-50%, -6px) scale(0.96);
+  transform-origin: 50% 0;
+  transition: opacity var(--t-quick) var(--e-in), transform var(--t-quick) var(--e-in);
+}
+.stint-card.is-open .stint-card__panel {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition: opacity var(--t-base) var(--e-out), transform var(--t-base) var(--e-pop);
+}
+/* the point on top of the card, aimed at the strip */
+.stint-card__panel::before {
+  content: ""; position: absolute; left: 50%; top: -5px; width: 9px; height: 9px;
+  background: var(--c-card); border-left: 1px solid var(--c-border); border-top: 1px solid var(--c-border);
+  transform: translateX(-50%) rotate(45deg);
+}
+/* Flipped above the strip when the card would run off the bottom. */
+.stint-card.is-above .stint-card__panel { transform: translate(-50%, calc(-100% + 6px)) scale(0.96); transform-origin: 50% 100%; }
+.stint-card.is-above.is-open .stint-card__panel { transform: translate(-50%, -100%) scale(1); }
+.stint-card.is-above .stint-card__panel::before {
+  top: auto; bottom: -5px; border: 0;
+  border-right: 1px solid var(--c-border); border-bottom: 1px solid var(--c-border);
+}
+/* rows deal in, their share bars draw left to right */
+.stint-card.is-open .stint-card__row { animation: stint-row-in var(--t-base) var(--e-out) both; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.stint-card.is-open .stint-card__share { animation: stint-share-in var(--t-slow) var(--e-draw) both; animation-delay: calc(var(--i, 0) * 45ms + 120ms); }
+@keyframes stint-row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes stint-share-in {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.stint-card__share { transform-origin: 0 50%; }
+/* the highlight behind the stint the pointer is on, gliding row to row */
+.stint-card__glow {
+  position: absolute; left: 0; right: 0; top: 0; border-radius: 0.5rem;
+  background: var(--c-surface2);
+  transition: transform var(--t-base) var(--e-out), opacity var(--t-quick) var(--e-soft);
+}
+.fx-lite .stint-bar__track, .fx-lite .stint-bar__seg, .fx-lite .stint-card__panel, .fx-lite .stint-card__glow { transition: none !important; }
+.fx-lite .stint-card .stint-card__row, .fx-lite .stint-card .stint-card__share { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .stint-bar__track, .stint-bar__seg, .stint-card__panel, .stint-card__glow { transition: none !important; }
+  .stint-card .stint-card__row, .stint-card .stint-card__share { animation: none !important; }
+}
+
 /* The folds on the profile's Track Strengths card: same drawer, same rules. */
 .fx-lite .ts-drawer { transition: none; }
 @media (prefers-reduced-motion: reduce) { .ts-drawer { transition: none; } }
