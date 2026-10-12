@@ -812,3 +812,19 @@ describe("late-season drop preview on the constructor tables (drops over run rou
     expect(tx.total).toBe(45);
   });
 });
+
+describe("late-season drop preview under the whole-team-round rule", () => {
+  it("drops each team's worst round totals so far, no unrun round soaking one up", () => {
+    const resultsByRound = new Map([
+      [1, [res("A", 20), res("B", 4)]], // 24
+      [2, [res("A", 25), res("B", 10)]], // 35
+      [3, [res("A", 5), res("B", 2)]], // 7
+    ]);
+    const base = { tier: 1, teams: T1_TEAMS, drivers: T1_DRIVERS, raceNumbers: [1, 2, 3, 4, 5], resultsByRound, teamDropN: 2 };
+    const [real] = buildTeamRoundDropConstructorRows(base);
+    expect(real.droppedPerRace).toEqual({}); // R4, R5 (unrun) are the two drops
+    const [tx] = buildTeamRoundDropConstructorRows({ ...base, dropRoundNumbers: [1, 2, 3] });
+    expect(tx.droppedPerRace).toEqual({ 1: 24, 3: 7 }); // the team's two worst rounds as a whole
+    expect(tx.total).toBe(35);
+  });
+});

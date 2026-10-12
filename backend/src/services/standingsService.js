@@ -334,8 +334,9 @@ export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers
 // dropped — rounds not yet run count as 0 and are dropped first, exactly how
 // the league's official sheet computes its constructor standings. Round scores
 // still come from the live per-driver contributions (subs land with the team
-// they drove for). Pure / side-effect free.
-export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, table = DEFAULT_POINTS_TABLE }) {
+// `dropRoundNumbers` are the rounds the drops are picked from (default the
+// whole calendar; the late-season preview picks from the rounds already run).
+export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
   const contributionsFor =
     tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
   const tierTeams = teams.filter((t) => t.tier === tier);
@@ -353,7 +354,7 @@ export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNu
 
   return tierTeams.map((team) => {
     const pr = perRace.get(team.id);
-    const { total, droppedRounds } = applyDropScores(pr, raceNumbers, teamDropN);
+    const { total, droppedRounds } = applyDropScores(pr, dropRoundNumbers, teamDropN);
     const droppedPerRace = {};
     for (const num of droppedRounds) if (pr[num]) droppedPerRace[num] = pr[num];
     return {
@@ -961,16 +962,18 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
         ? "teamRounds"
         : "team"
       : "driver";
-  // The preview is asked in the drivers' unit: N = each driver's N worst
-  // results, the same switch as on the driver table (0..dropWorst). The team
-  // rule counts per team instead (e.g. 6 = 3 per driver of a two-seat team),
-  // so there N scales by the season's own ratio: teamDropWorst / dropWorst
-  // per driver result, and the full N is exactly the real team rule.
+  // The preview counts in the rule's own unit, the way the switch reads:
+  //   teamRounds — N = each team's N worst whole round totals (0..teamDropWorst);
+  //   driver     — N = each driver's N worst results, as on the driver table;
+  //   team       — asked per driver too, scaled to the team's single-driver
+  //                count by the season's ratio (teamDropWorst / dropWorst, e.g.
+  //                6 / 3 = 2 per step), so the full N is the real team rule.
   const driverDrops = scoring.dropWorst || 0;
-  const ruleDrops = dropMode === "team" ? scoring.teamDropWorst : dropMode === "driver" ? driverDrops : 0;
-  const previewable = driverDrops > 0 && ruleDrops > 0;
+  const ruleDrops = dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst || 0 : dropMode === "driver" ? driverDrops : 0;
+  const unitDrops = dropMode === "teamRounds" ? ruleDrops : driverDrops;
+  const previewable = unitDrops > 0 && ruleDrops > 0;
   const projecting = !partial && previewable && Number.isInteger(projectDrops) && projectDrops >= 0;
-  const projectedN = projecting ? Math.min(projectDrops, driverDrops) : null;
+  const projectedN = projecting ? Math.min(projectDrops, unitDrops) : null;
   const dropN = !projecting
     ? ruleDrops
     : dropMode === "team"
@@ -988,7 +991,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     dropMode === "official"
       ? buildStoredConstructorRows({ tier, teams, raceNumbers, teamPerRace, dropN: scoring.dropWorst })
       : dropMode === "teamRounds"
-        ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: scoring.teamDropWorst, table })
+        ? buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: dropN, dropRoundNumbers, table })
       : dropMode === "team"
         ? buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound: rbr, teamDropN: dropN, dropRoundNumbers, table })
         : buildConstructorRows({
@@ -1068,14 +1071,14 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // (legacy inheritance) or "official" (archived verbatim totals).
     dropMode,
     teamDropWorst: dropMode === "team" || dropMode === "teamRounds" ? scoring.teamDropWorst : null,
-    // The late-season preview, all in the drivers' unit (worst results per
-    // driver), like the driver table's switch: how many it may drop (0 = no
-    // preview for this table), how many real ones each driver loses today
-    // (every unrun round soaks up one), and how many the preview dropped
-    // (null = the real table). projectedTeamDrops is what that came to under
-    // the team rule, per team, for the footnote and the preview note.
-    previewDrops: previewable && !partial && !scoring.finalStandings?.teams?.length ? driverDrops : 0,
-    dropsNow: Math.max(0, driverDrops - (raceNumbers.length - runRounds.length)),
+    // The late-season preview, in the rule's unit (whole team rounds under
+    // teamRounds, worst results per driver otherwise): how many it may drop
+    // (0 = no preview for this table), how many real ones go today (every
+    // unrun round soaks up one), and how many the preview dropped (null = the
+    // real table). projectedTeamDrops is what that came to under the team
+    // rule, per team, for the footnote and the preview note.
+    previewDrops: previewable && !partial && !scoring.finalStandings?.teams?.length ? unitDrops : 0,
+    dropsNow: Math.max(0, unitDrops - (raceNumbers.length - runRounds.length)),
     projectedDrops: projectedN,
     projectedTeamDrops: projecting && dropMode === "team" ? dropN : null,
     fastestLapPoints: scoring.fastestLapPoints || 0,
