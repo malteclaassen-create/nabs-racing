@@ -72,3 +72,87 @@ test("a lap's heights fill the points with no ground under them from either side
   assert.deepEqual(fillGaps([null, 2, null]), [2, 2, 2]);
   assert.deepEqual(fillGaps([null, null]), [0, 0]);
 });
+
+// --- utils/zipReader.js and utils/dxtDecode.js ------------------------------
+import { deflateRawSync } from "node:zlib";
+import { readerFromZip, zipEntries } from "./zipReader.js";
+import { decodeDxt } from "./dxtDecode.js";
+
+// A real ZIP, built by hand: one stored file, one deflated, in a mod folder.
+function makeZip(files) {
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const [name, text, deflate] of files) {
+    const raw = Buffer.from(text), body = deflate ? deflateRawSync(raw) : raw, nameBytes = Buffer.from(name);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(deflate ? 8 : 0, 8);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(0x800, 8);
+    central.writeUInt16LE(deflate ? 8 : 0, 10);
+    central.writeUInt32LE(body.length, 20);
+    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBytes, body);
+    centrals.push(central, nameBytes);
+    offset += 30 + nameBytes.length + body.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return new File([Buffer.concat([...locals, cd, end])], "My Track Mod v2.zip");
+}
+
+test("a mod's ZIP reads like a folder, unpacking only what is asked for", async () => {
+  const zip = makeZip([
+    ["My Mod/content/tracks/ks_test/data/surfaces.ini", "[SURFACE_0]\nKEY=ROAD\n", true],
+    ["My Mod/content/tracks/ks_test/ks_test.kn5", "model bytes", false],
+    ["My Mod/readme.txt", "hello", true],
+  ]);
+  assert.equal((await zipEntries(zip)).length, 3);
+  const reader = await readerFromZip(zip);
+  assert.equal(reader.name, "My Track Mod v2");
+  assert.equal(reader.findDir("KS_TEST"), "my mod/content/tracks/ks_test");
+  assert.equal(await reader.hasDir("my mod/content/tracks/ks_test/data"), true);
+  assert.deepEqual((await reader.list("My Mod/content/tracks/ks_test")).map((e) => [e.name, e.kind]).sort(),
+    [["data", "directory"], ["ks_test.kn5", "file"]]);
+  assert.equal(await (await reader.getFile("my mod/content/tracks/ks_test/DATA/surfaces.ini")).text(), "[SURFACE_0]\nKEY=ROAD\n");
+  assert.equal(await (await reader.getFile("My Mod/content/tracks/ks_test/ks_test.kn5")).text(), "model bytes");
+  assert.equal(await reader.getFile("My Mod/nothing.ini"), null);
+});
+
+test("a ZIP holding one track under another name is still found by its model", async () => {
+  const reader = await readerFromZip(makeZip([["rt_track_v3/rt_track.kn5", "x", false]]));
+  assert.equal(reader.findDir("rt_track"), "rt_track_v3");
+  await assert.rejects(readerFromZip(new File(["not a zip"], "a.zip")), /not a ZIP/);
+});
+
+test("DXT1 and DXT5 blocks unpack to the colours and alpha they encode", () => {
+  // DXT1: colour0 pure red (0xF800), colour1 pure blue (0x001F), every pixel index 0
+  // except the first row, index 1.
+  const dxt1 = new Uint8Array([0x00, 0xf8, 0x1f, 0x00, 0x55, 0x00, 0x00, 0x00]);
+  const a = decodeDxt(dxt1, 4, 4, 1);
+  assert.deepEqual([...a.subarray(0, 4)], [0, 0, 255, 255], "first row blue");
+  assert.deepEqual([...a.subarray(16, 20)], [255, 0, 0, 255], "second row red");
+  // DXT5: alpha 255 / 0, every alpha index 1 (= 0) except pixel 0 (index 0 = 255).
+  let bits = 0n;
+  for (let i = 15; i >= 1; i--) bits = (bits << 3n) | 1n; // pixels 1..15: index 1
+  bits <<= 3n; // pixel 0: index 0
+  const packed = [0, 1, 2, 3, 4, 5].map((k) => Number((bits >> BigInt(k * 8)) & 0xffn));
+  const dxt5 = new Uint8Array([255, 0, ...packed, 0x00, 0xf8, 0x1f, 0x00, 0, 0, 0, 0]);
+  const b = decodeDxt(dxt5, 4, 4, 5);
+  assert.equal(b[3], 255);
+  assert.equal(b[7], 0);
+  assert.deepEqual([...b.subarray(0, 3)], [255, 0, 0]);
+  // A texture smaller than a block still fills its own pixels.
+  assert.equal(decodeDxt(dxt1, 2, 2, 1).length, 16);
+});

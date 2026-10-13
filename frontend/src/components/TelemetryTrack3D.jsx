@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, FolderOpen, LoaderCircle, TriangleAlert } from "lucide-react";
+import { Box, FileArchive, FolderOpen, LoaderCircle, TriangleAlert } from "lucide-react";
 import { canPickFolder, pickAcFolder, readerFromDrop, rememberAcFolder, rememberedAcFolder } from "../utils/acFolder.js";
 import { loadTrackScene, TrackNotFoundError } from "../utils/acTrackScene.js";
 import { getLapViewer } from "../utils/lapViewer3d.js";
+import { readerFromZip } from "../utils/zipReader.js";
 
 // ---------------------------------------------------------------------------
 // The lap comparison in 3D, in the same box as the 2D map. The track comes
@@ -10,7 +11,9 @@ import { getLapViewer } from "../utils/lapViewer3d.js";
 // track and could not hand one out if it did, since most mods may not be
 // passed on. So the first time, the box asks for the folder; after that the
 // browser remembers it, and a track read once stays loaded until the page is
-// closed.
+// closed. A phone has no AC folder, so there the mod's ZIP can be opened
+// instead (utils/zipReader.js), at the driver's own risk: it is read on the
+// phone, never uploaded, and a big one can be too much for a phone's browser.
 //
 // Loaded only when someone presses 3D (TelemetryCompare lazy-imports it), so
 // three.js is never part of the page for anyone who does not.
@@ -49,6 +52,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
   const [lines, setLines] = useState(true);
   const [viewer, setViewer] = useState(null);
   const hostRef = useRef(null);
+  const zipInput = useRef(null);
   const loading = useRef(false);
 
   // WebGL is made on first sight of the box, not on import: a browser without
@@ -73,12 +77,12 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
     setProblem(null);
   }, [key]);
 
-  async function load(reader) {
+  async function load(reader, fromZip = false) {
     if (!reader || !viewer || loading.current) return;
     loading.current = true;
     setStatus("loading");
     setProblem(null);
-    setProgress({ message: "Opening the folder", fraction: 0 });
+    setProgress({ message: fromZip ? "Opening the ZIP" : "Opening the folder", fraction: 0 });
     try {
       const scene = await loadTrackScene(reader, {
         track, layout, gpu: viewer.gpu,
@@ -93,7 +97,9 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
     } catch (e) {
       setStatus("pick");
       setProblem(e instanceof TrackNotFoundError
-        ? `That folder has no content/tracks/${track}. Pick your assettocorsa folder, and check the track is installed.`
+        ? fromZip
+          ? `That ZIP has no ${track} track in it. Pick the mod for this track.`
+          : `That folder has no content/tracks/${track}. Pick your assettocorsa folder, and check the track is installed.`
         : `The track could not be read: ${e?.message || e}`);
     } finally {
       loading.current = false;
@@ -116,12 +122,30 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
       setProblem("That folder is not there any more. Pick it again.");
     }
   };
+  const openZip = async (file) => {
+    if (!file) return;
+    let reader;
+    try {
+      reader = await readerFromZip(file);
+    } catch (e) {
+      setProblem(e?.message || "That file could not be opened.");
+      return;
+    }
+    await load(reader, true);
+  };
+  const onZip = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // the same file again is a new pick
+    openZip(file);
+  };
   const onDrop = async (e) => {
     e.preventDefault();
     setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file && /\.zip$/i.test(file.name)) { await openZip(file); return; }
     const reader = await readerFromDrop(e.dataTransfer);
     if (reader) await load(reader);
-    else setProblem("That was not a folder. Drag the assettocorsa folder itself.");
+    else setProblem("That was not a folder or a ZIP. Drag the assettocorsa folder, or the track mod's ZIP.");
   };
 
   // The canvas lives in the box while the track is up.
@@ -144,6 +168,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
 
   if (ready) {
     const warnings = kept.scene.warnings;
+    const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     return (
       <div className="absolute inset-0">
         <div ref={hostRef} className="absolute inset-0" style={{ background: "#c9dbea" }} />
@@ -163,7 +188,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
           </div>
         </div>
         <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap items-end justify-between gap-2">
-          <span className="rounded bg-card px-2 py-1 text-[10px] text-medium shadow-sm">{CAMERAS.find((c) => c.key === camera)?.hint}</span>
+          <span className="rounded bg-card px-2 py-1 text-[10px] text-medium shadow-sm">{camera === "orbit" && touch ? "One finger to turn, two to zoom and move" : CAMERAS.find((c) => c.key === camera)?.hint}</span>
           {warnings.length > 0 && (
             <span className="pointer-events-auto flex max-w-full items-center gap-1 rounded bg-card px-2 py-1 text-[10px] text-warn shadow-sm" title={warnings.join("\n")}>
               <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />{warnings.length === 1 ? warnings[0] : `${warnings.length} notes on this track`}
@@ -180,6 +205,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
   return (
     <div className={`absolute inset-0 flex items-center justify-center overflow-auto p-4 transition ${dragging ? "bg-surface2" : "bg-card"}`}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
+      <input ref={zipInput} type="file" accept=".zip,application/zip,application/x-zip-compressed" className="hidden" onChange={onZip} />
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
         {status === "loading" ? (
           <>
@@ -190,16 +216,25 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
             </div>
             <p className="font-mono text-[11px] text-light">{progress.message}</p>
           </>
-        ) : phone ? (
-          <>
-            <Box className="h-7 w-7 text-light" aria-hidden="true" />
-            <p className="text-sm font-semibold text-dark">3D needs a computer</p>
-            <p className="text-xs text-light">The 3D view draws the track from your own Assetto Corsa install. Open this page on the PC you race on.</p>
-          </>
         ) : status === "error" ? (
           <>
             <TriangleAlert className="h-7 w-7 text-warn" aria-hidden="true" />
             <p className="text-sm text-dark">{problem}</p>
+          </>
+        ) : phone ? (
+          <>
+            <Box className="h-7 w-7 text-light" aria-hidden="true" />
+            <p className="text-sm font-semibold text-dark">Watch these laps on {trackName} in 3D</p>
+            <p className="text-xs text-light">
+              Choose the track mod's ZIP file from your phone. It is read on the phone itself: nothing is uploaded, and watching uses no mobile data.
+            </p>
+            <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">
+              At your own risk: a big track can take a minute, and on some phones the browser closes the page. Textures are shown in lower detail.
+            </p>
+            <button type="button" className="btn-primary h-9 gap-2 px-3 py-0 text-xs" onClick={() => zipInput.current?.click()}>
+              <FileArchive className="h-4 w-4" aria-hidden="true" />Choose track ZIP
+            </button>
+            {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
           </>
         ) : (
           <>
@@ -224,6 +259,9 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
             <p className="text-[11px] text-light">
               {canPickFolder() ? "Or drag the folder onto this box." : "Drag your assettocorsa folder onto this box."} Needs <span className="font-mono">content/tracks/{track}</span>.
             </p>
+            <button type="button" className="text-[11px] font-semibold text-link underline-offset-2 hover:underline" onClick={() => zipInput.current?.click()}>
+              Not installed? Open the track mod's ZIP instead
+            </button>
             {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
           </>
         )}

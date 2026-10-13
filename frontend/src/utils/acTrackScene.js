@@ -27,8 +27,12 @@ import { parseModelsIni, parseSurfacesIni } from "../../../track-editor/src/ac/t
 import { surfaceOfMesh, STANDARD_SURFACE_KEYS } from "../../../track-editor/src/ac/surfaceName.ts";
 import { describeLayouts, layoutProbes, pickLayout, trackBases } from "./acTrackLayout.js";
 import { groundGrid } from "./groundHeight.js";
+import { decodeDxt } from "./dxtDecode.js";
 
 const MAX_TEXTURE = 1024;
+// Without compressed-texture support (phones, mostly) textures are unpacked
+// to plain RGBA by utils/dxtDecode.js, from a mip level no bigger than this.
+const SOFT_TEXTURE = 256;
 // Custom Shaders Patch appends a 42 byte marker to models it touched; anything
 // longer after the node tree is an encrypted model whose tree is nonsense
 // (see kn5Safety in track-editor/src/ac/kn5Read.ts).
@@ -47,7 +51,9 @@ const lower = (s) => String(s || "").toLowerCase();
 async function findTrack(reader, track) {
   for (const base of trackBases(track)) if (await reader.hasDir(base)) return base;
   // The driver picked the track's own folder.
-  return lower(reader.name) === lower(track) ? "" : null;
+  if (lower(reader.name) === lower(track)) return "";
+  // A mod's ZIP can hold the track anywhere (utils/zipReader.js).
+  return reader.findDir ? reader.findDir(track) : null;
 }
 
 // A file's bytes, reporting as they come: the main model of a modern track is
@@ -113,10 +119,38 @@ function fallbackColour(name) {
   return 0x8a8d90;
 }
 
+const DXT_KIND = {
+  [THREE.RGB_S3TC_DXT1_Format]: 1,
+  [THREE.RGBA_S3TC_DXT1_Format]: 1,
+  [THREE.RGBA_S3TC_DXT3_Format]: 3,
+  [THREE.RGBA_S3TC_DXT5_Format]: 5,
+};
+
+// The same texture for a graphics chip without S3TC: one small mip level,
+// unpacked to RGBA here, with the chip making the smaller levels itself.
+function softTexture(parsed) {
+  const kind = DXT_KIND[parsed.format];
+  if (!kind && parsed.format !== THREE.RGBAFormat) return null;
+  let w = parsed.width, h = parsed.height, level = 0;
+  while ((w > SOFT_TEXTURE || h > SOFT_TEXTURE) && level < parsed.mipmaps.length - 1) {
+    w = Math.max(1, w >> 1);
+    h = Math.max(1, h >> 1);
+    level++;
+  }
+  const mip = parsed.mipmaps[level];
+  const rgba = kind ? decodeDxt(mip.data, mip.width, mip.height, kind) : new Uint8Array(mip.data);
+  const tex = new THREE.DataTexture(rgba, mip.width, mip.height, THREE.RGBAFormat);
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function ddsTexture(data, ctx) {
-  if (!ctx.s3tc) return null;
   const parsed = ddsLoader.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), true);
   if (parsed.isCubemap || !parsed.mipmaps?.length) return null;
+  if (!ctx.s3tc) return softTexture(parsed);
   let { mipmaps, width, height } = parsed;
   // Skip the largest levels down to MAX_TEXTURE. The rest of the chain is
   // untouched, so the texture stays complete.

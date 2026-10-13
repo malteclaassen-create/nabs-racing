@@ -974,7 +974,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                     : mapView === '3d' ? <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
                       <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />{nameA}</span>
                       {both && <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{borderColor:colorB}} />{nameB}</span>}
-                      <span className="ml-auto">The track is read from your own AC folder</span>
+                      <span className="ml-auto">The track is read on your device; nothing is uploaded</span>
                     </div>
                     : <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
                       <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />{nameA}{both && mapMode === 'gain' ? ' quicker' : ''}</span>
