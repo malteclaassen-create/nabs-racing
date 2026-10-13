@@ -180,7 +180,54 @@ async function entryReader(rootEntry) {
   };
 }
 
-// --- the two entry points ---------------------------------------------------
+// --- 3. A folder from <input webkitdirectory> -------------------------------
+// For browsers with neither of the above behind a button (Brave, Firefox,
+// Safari). The input hands over every file under the folder, which is why it
+// is only ever pointed at the track's own folder, never the whole install.
+// Paths come as "<picked folder>/<rest>"; the picked folder is the reader's
+// name, which is how acTrackScene recognises a track folder.
+
+export function readerFromFileList(fileList) {
+  const list = [...(fileList || [])].filter((f) => f.webkitRelativePath);
+  if (!list.length) return null;
+  const lower = (s) => s.toLowerCase();
+  const files = new Map(); // lowercased path below the picked folder -> File
+  const children = new Map(); // lowercased dir -> Map(lowercased name -> { name, kind })
+  const add = (dir, name, kind) => {
+    if (!children.has(dir)) children.set(dir, new Map());
+    const known = children.get(dir);
+    if (!known.has(lower(name)) || kind === "directory") known.set(lower(name), { name, kind });
+  };
+  const rootName = list[0].webkitRelativePath.split("/")[0];
+  children.set("", new Map());
+  for (const f of list) {
+    const parts = f.webkitRelativePath.split("/").slice(1);
+    for (let i = 0; i < parts.length; i++) add(lower(parts.slice(0, i).join("/")), parts[i], i === parts.length - 1 ? "file" : "directory");
+    files.set(lower(parts.join("/")), f);
+  }
+  const norm = pathNormaliser(children.get("").has("content"));
+  const trim = (p) => lower(norm(String(p || "")).replace(/^\/+|\/+$/g, ""));
+  return {
+    name: rootName,
+    async getFile(path) {
+      return files.get(trim(path)) || null;
+    },
+    async hasDir(path) {
+      return children.has(trim(path));
+    },
+    async list(path) {
+      return [...(children.get(trim(path))?.values() || [])];
+    },
+    // The driver picked content/tracks, or a folder holding the track: the
+    // folder named after it wins.
+    findDir(track) {
+      const named = [...children.keys()].filter((d) => d.split("/").pop() === lower(track)).sort((a, b) => a.length - b.length);
+      return named[0] ?? null;
+    },
+  };
+}
+
+// --- the entry points -------------------------------------------------------
 
 export async function pickAcFolder() {
   const root = await window.showDirectoryPicker({ id: "nabs-ac-install", mode: "read" });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, FileArchive, FolderOpen, LoaderCircle, TriangleAlert } from "lucide-react";
-import { canPickFolder, pickAcFolder, readerFromDrop, rememberAcFolder, rememberedAcFolder } from "../utils/acFolder.js";
+import { canPickFolder, pickAcFolder, readerFromDrop, readerFromFileList, rememberAcFolder, rememberedAcFolder } from "../utils/acFolder.js";
 import { loadTrackScene, TrackNotFoundError } from "../utils/acTrackScene.js";
 import { getLapViewer } from "../utils/lapViewer3d.js";
 import { readerFromZip } from "../utils/zipReader.js";
@@ -53,6 +53,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
   const [viewer, setViewer] = useState(null);
   const hostRef = useRef(null);
   const zipInput = useRef(null);
+  const dirInput = useRef(null);
   const loading = useRef(false);
 
   // WebGL is made on first sight of the box, not on import: a browser without
@@ -99,7 +100,9 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
       setProblem(e instanceof TrackNotFoundError
         ? fromZip
           ? `That ZIP has no ${track} track in it. Pick the mod for this track.`
-          : `That folder has no content/tracks/${track}. Pick your assettocorsa folder, and check the track is installed.`
+          : canPickFolder()
+            ? `That folder has no content/tracks/${track}. Pick your assettocorsa folder, and check the track is installed.`
+            : `That is not the ${track} folder. Pick assettocorsa/content/tracks/${track}.`
         : `The track could not be read: ${e?.message || e}`);
     } finally {
       loading.current = false;
@@ -147,6 +150,13 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
     const file = e.target.files?.[0];
     e.target.value = ""; // the same file again is a new pick
     openZip(file);
+  };
+  // Browsers without the folder dialog: the track's own folder through a
+  // plain file input (readerFromFileList).
+  const onDir = async (e) => {
+    const reader = readerFromFileList(e.target.files);
+    e.target.value = "";
+    if (reader) await load(reader);
   };
   const onDrop = async (e) => {
     e.preventDefault();
@@ -221,6 +231,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
       {backdrop && <div className="pointer-events-none absolute inset-0 opacity-70" aria-hidden="true">{backdrop}</div>}
       <div className={`absolute inset-0 transition ${dragging ? "bg-primary/15 ring-2 ring-inset ring-primary" : "bg-card/20"}`} />
       <input ref={zipInput} type="file" accept=".zip,application/zip,application/x-zip-compressed" className="hidden" onChange={onZip} />
+      <input ref={dirInput} type="file" webkitdirectory="" directory="" multiple className="hidden" onChange={onDir} />
       <div className="absolute inset-0 flex items-end justify-center overflow-auto p-3 sm:p-4">
         <div className="flex w-full max-w-md flex-col gap-2.5 rounded-xl border border-border bg-card/95 p-3.5 shadow-lg backdrop-blur-sm">
           {status === "loading" ? (
@@ -265,18 +276,26 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
                 </p>
               ) : (
                 <ol className="grid grid-cols-1 gap-1.5 text-[11px] leading-snug text-medium sm:grid-cols-3 sm:gap-2">
-                  <Step n={1}>{canPickFolder() ? "Press Choose AC folder" : "Open your Steam library"}</Step>
-                  <Step n={2}>
-                    {canPickFolder() ? "Open " : "Drag "}<span className="font-mono text-dark">steamapps/ common/ assettocorsa</span>
-                    {canPickFolder() ? "" : " onto the map"}
-                  </Step>
-                  <Step n={3}>{canPickFolder() ? "Allow it. Next time it loads by itself" : "The track loads in a few seconds"}</Step>
+                  {canPickFolder() ? <>
+                    <Step n={1}>Press Choose AC folder</Step>
+                    <Step n={2}>Open <span className="font-mono text-dark">steamapps/ common/ assettocorsa</span></Step>
+                    <Step n={3}>Allow it. Next time it loads by itself</Step>
+                  </> : <>
+                    <Step n={1}>Press Choose track folder</Step>
+                    <Step n={2}>Open <span className="font-mono text-dark">assettocorsa/ content/ tracks/ {track}</span></Step>
+                    <Step n={3}>Confirm. The browser says upload, but nothing leaves your computer</Step>
+                  </>}
                 </ol>
               )}
               <div className="flex flex-col gap-2 sm:flex-row">
                 {remembered && (
                   <button type="button" className="btn-primary h-10 flex-1 gap-2 py-0 text-sm" onClick={reopen}>
                     <FolderOpen className="h-4 w-4" aria-hidden="true" />Load {trackName}
+                  </button>
+                )}
+                {!canPickFolder() && (
+                  <button type="button" className="btn-primary h-10 flex-1 gap-2 py-0 text-sm" onClick={() => dirInput.current?.click()}>
+                    <FolderOpen className="h-4 w-4" aria-hidden="true" />Choose track folder
                   </button>
                 )}
                 {canPickFolder() && (
@@ -287,7 +306,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
               </div>
               {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
               <p className="text-center text-[11px] text-light">
-                Read on your computer, nothing is uploaded.{" "}
+                {canPickFolder() ? "Read on your computer, nothing is uploaded." : "Or drag the assettocorsa folder onto the map."}{" "}
                 <button type="button" className="font-semibold text-link underline-offset-2 hover:underline" onClick={openZipPicker}>
                   Track not installed? Open its ZIP
                 </button>
