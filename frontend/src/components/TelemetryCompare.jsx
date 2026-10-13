@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, ChartLine, ChevronDown, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, RefreshCw, TriangleAlert,
+  Activity, Box, ChartLine, ChevronDown, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import { api, getToken, telemetryTrackMapUrl } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -843,7 +843,20 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // The replay box's own buttons: 2D or 3D, what the 2D map colours, and full
   // screen. In the panel header normally, above the box in full screen.
   const mapControls = <>
-    <Segmented label="2D or 3D" value={mapView} items={[{ key: '2d', label: '2D' }, { key: '3d', label: '3D' }]} onChange={setMapView} />
+    {/* Bigger than the other switches, the picked side in the brand colour:
+        the 3D view is easy to miss otherwise. */}
+    <div role="group" aria-label="2D or 3D">
+      <SlidingTabs value={mapView} onChange={setMapView}
+        items={[
+          { key: '2d', label: <span className="inline-flex items-center gap-1.5"><MapIcon className="h-4 w-4" aria-hidden="true" />2D map</span> },
+          { key: '3d', label: <span className="inline-flex items-center gap-1.5"><Box className="h-4 w-4" aria-hidden="true" />3D</span> },
+        ]}
+        wrapClassName="inline-flex rounded-lg border border-border bg-surface2 p-0.5"
+        btnClassName="px-3 py-1.5 text-xs font-semibold"
+        pillClassName="rounded-md bg-primary shadow-sm"
+        activeClassName="text-onbrand"
+        idleClassName="text-medium hover:text-dark" />
+    </div>
     {both && mapView === '2d' && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
       onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}
     <ToolButton icon={mapFull ? Minimize2 : Maximize2} label={mapFull ? "Exit full screen" : "Replay full screen"} onClick={toggleMapFull} showLabel={false} className="w-8" />
