@@ -9,8 +9,8 @@ import { fmtLap, fmtLapDelta } from "../utils/format.js";
 // The live page's Telemetry button, and whether it should light up.
 //
 // The league asked for the telemetry to be findable from live timing, and then
-// for the button to notice you: it lights up when a lap of yours lands in the
-// lap store, and opens the comparison that lap asks for. Your first lap at a
+// for the button to notice you: it lights up (outlined in the brand colour, its
+// words changed) when a lap of yours lands in the lap store, and opens the comparison that lap asks for. Your first lap at a
 // track on its own; a new best against the best it beat ("see how you
 // improved"); any other lap that made your top three against your best. The
 // backend picks the pair (lib/telemetryLaps.js latestLapOf).

@@ -466,7 +466,7 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = nul
             telemetry.lit ? "border-brand/40 bg-brand/10 text-dark hover:bg-brand/20" : "border-border text-medium hover:bg-surface2 hover:text-dark"
           }`}
         >
-          {telemetry.lit ? <LitDot /> : <Activity className="h-3.5 w-3.5 shrink-0 text-eyebrow" aria-hidden="true" />}
+          <Activity className="h-3.5 w-3.5 shrink-0 text-eyebrow" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{telemetry.long}</span>
           <span aria-hidden="true">→</span>
         </Link>
@@ -1909,20 +1909,10 @@ function MobileLinks({ links, patreonUrl }) {
   );
 }
 
-// Lit: a lap of yours has just landed (hooks/useTelemetryNews.js). The same
-// ping as the live Standings tab, so it reads as "something new here".
-function LitDot() {
-  return (
-    <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
-      <span className="absolute inline-flex h-full w-full rounded-full bg-brand opacity-75 motion-safe:animate-ping" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
-    </span>
-  );
-}
-
-// The telemetry button's look, plain or lit. Lit is outlined in the brand
-// colour rather than filled with it, so it never competes with "Join the
-// server", which is.
+// The telemetry button's look, plain or lit (a lap of yours has just landed,
+// hooks/useTelemetryNews.js). Lit is outlined in the brand colour rather than
+// filled with it, so it never competes with "Join the server", which is. No
+// pulsing dot: the outline and the words say it.
 const telemetryLook = (lit) =>
   lit ? "border border-brand bg-brand/15 text-dark ring-2 ring-brand/30 hover:bg-brand/25" : "border border-border bg-card text-dark hover:bg-surface2";
 
@@ -1962,7 +1952,7 @@ function ExternalButtons({ links, patreonUrl, telemetry = null }) {
           the league has opened it, like the page it leads to. */}
       {telemetry && (
         <Link to={telemetry.href} onClick={telemetry.onOpen} title={telemetry.title} className={`transition ${base} ${telemetryLook(telemetry.lit)}`}>
-          {telemetry.lit ? <LitDot /> : <Activity className="h-4 w-4" aria-hidden="true" />}
+          <Activity className="h-4 w-4" aria-hidden="true" />
           {telemetry.short}
         </Link>
       )}
@@ -2620,7 +2610,7 @@ function OffAir({ nextRace, telemetry = null }) {
             title={telemetry.title}
             className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold uppercase tracking-wide transition ${telemetryLook(telemetry.lit)}`}
           >
-            {telemetry.lit ? <LitDot /> : <Activity className="h-4 w-4" aria-hidden="true" />}
+            <Activity className="h-4 w-4" aria-hidden="true" />
             {telemetry.short}
           </Link>
         )}
