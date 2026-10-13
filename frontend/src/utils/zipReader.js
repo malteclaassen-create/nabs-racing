@@ -6,8 +6,8 @@
 // For phones above all, which cannot pick a folder but can pick a file. A mod
 // is hundreds of megabytes, and unpacking all of it in a phone's browser tab
 // is how the tab dies. So only the zip's table of contents is read up front;
-// a file is unpacked when it is asked for (an ini, then one model at a time),
-// by the browser's own DecompressionStream, and nothing else is ever touched.
+// a file is unpacked as it is read (an ini, then one model at a time), by the
+// browser's own DecompressionStream, and nothing else is ever touched.
 //
 // Nothing is uploaded: the file never leaves the device.
 // ---------------------------------------------------------------------------
@@ -84,15 +84,51 @@ export async function zipEntries(blob) {
   return out;
 }
 
-async function unpack(blob, entry) {
+// One entry's bytes as a stream, unpacked as they are read.
+async function unpacking(blob, entry) {
   const head = await bytesOf(blob, entry.local, entry.local + 30);
   if (head.getUint32(0, true) !== LOCAL) throw new ZipError(`${entry.name} is damaged in the ZIP.`);
   const start = entry.local + 30 + head.getUint16(26, true) + head.getUint16(28, true);
-  const data = blob.slice(start, start + entry.compressed);
+  const data = blob.slice(start, start + entry.compressed).stream();
   if (entry.method === 0) return data;
   if (entry.method !== 8) throw new ZipError(`${entry.name} is packed in a way the browser cannot unpack.`);
   if (typeof DecompressionStream === "undefined") throw new ZipError("This browser is too old to unpack ZIP files. Update it and try again.");
-  return new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+  return data.pipeThrough(new DecompressionStream("deflate-raw"));
+}
+
+// An entry that looks like a File (name, size, stream, arrayBuffer, text) but
+// holds nothing until it is read. Asking for a file is how the 3D view checks
+// it is there and how big it is, for every model at once: unpacking them all
+// right then put a whole track in a phone's memory before the first was read,
+// and the browser closed the page.
+class ZipEntryFile {
+  constructor(zip, entry) {
+    this.zip = zip;
+    this.entry = entry;
+    this.name = entry.name.split("/").pop();
+    this.size = entry.length;
+  }
+
+  stream() {
+    let inner = null;
+    return new ReadableStream({
+      pull: async (controller) => {
+        inner ??= (await unpacking(this.zip, this.entry)).getReader();
+        const { done, value } = await inner.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      cancel: (reason) => inner?.cancel(reason),
+    });
+  }
+
+  arrayBuffer() {
+    return new Response(this.stream()).arrayBuffer();
+  }
+
+  text() {
+    return new Response(this.stream()).text();
+  }
 }
 
 const lower = (s) => s.toLowerCase();
@@ -121,9 +157,7 @@ export async function readerFromZip(file) {
     name: String(file.name || "track").replace(/\.zip$/i, ""),
     async getFile(path) {
       const entry = files.get(lower(trim(path)));
-      if (!entry) return null;
-      const blob = await unpack(file, entry);
-      return new File([blob], entry.name.split("/").pop());
+      return entry ? new ZipEntryFile(file, entry) : null;
     },
     async hasDir(path) {
       return children.has(lower(trim(path)));
