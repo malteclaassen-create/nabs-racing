@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lapHeights } from "./groundHeight.js";
 import { tvCameraAt } from "./acTrackLayout.js";
 
@@ -27,17 +28,79 @@ const SKY = 0xc9dbea;
 const LINE_HALF = 0.18; // metres either side of the recorded line
 const LINE_LIFT = 0.07; // above the road, so it does not flicker into it
 
-// A single-seater in one colour, nose along +x, sized like the real thing
-// (about 5 m by 1.9 m). Recognisable from a TV camera a hundred metres away,
-// which is all it has to be.
+// The site's car: Kenney's CC0 formula car, the same model the 2D map draws
+// from above (public/models/kenney-race, see its README). Loaded once, the
+// first time a viewer is made; until it is in, each car is a stand-in built
+// from boxes below.
+const CAR_URL = "/models/kenney-race/race.glb";
+const CAR_LENGTH = 5.2; // metres, nose to rear wing
+
+let carModel = null;
+function loadCarModel() {
+  if (!carModel) {
+    carModel = new GLTFLoader().loadAsync(CAR_URL).then((gltf) => {
+      const root = gltf.scene;
+      // Nose along +x, like everything else here: the front wheels say which
+      // way the model faces.
+      let front = 0;
+      root.traverse((o) => { if (/wheel-front/.test(o.name)) front += o.position.z; });
+      root.rotation.y = front >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      const holder = new THREE.Group();
+      holder.add(root);
+      const size = new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3());
+      holder.scale.setScalar(CAR_LENGTH / size.x);
+      // Wheels on the ground, centred on the recorded point.
+      const box = new THREE.Box3().setFromObject(holder);
+      const centre = box.getCenter(new THREE.Vector3());
+      holder.position.set(-centre.x, -box.min.y, -centre.z);
+      let image = null;
+      root.traverse((o) => { if (o.isMesh && !image) image = o.material.map?.image || null; });
+      return { template: holder, image };
+    });
+  }
+  return carModel;
+}
+
+// The model's colour map with its paint (the red-orange swatches) turned into
+// one lap's colour, keeping each swatch's shading. Tyres, rims, the halo and
+// the wings keep the model's own colours.
+function paintTexture(image, color) {
+  const c = document.createElement("canvas");
+  c.width = image.width;
+  c.height = image.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const px = ctx.getImageData(0, 0, c.width, c.height);
+  const d = px.data, paint = new THREE.Color(color);
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    if (r > 180 && g < 125 && b < 95 && r - g > 90) {
+      const shade = r / 235;
+      d[i] = Math.min(255, paint.r * 255 * shade);
+      d[i + 1] = Math.min(255, paint.g * 255 * shade);
+      d[i + 2] = Math.min(255, paint.b * 255 * shade);
+    }
+  }
+  ctx.putImageData(px, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.flipY = false; // glTF's convention
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  return tex;
+}
+
+// A car: the stand-in boxes until the model is in, then the model, painted.
+// Nose along +x, about 5 m long. `paint(color)` repaints it.
 function makeCar(color, label) {
   const g = new THREE.Group();
+  const shape = new THREE.Group();
+  g.add(shape);
   const body = new THREE.MeshLambertMaterial({ color });
   const dark = new THREE.MeshLambertMaterial({ color: 0x1b1f27 });
   const box = (w, h, d, m, x, y, z) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
     mesh.position.set(x, y, z);
-    g.add(mesh);
+    shape.add(mesh);
   };
   box(3.0, 0.45, 0.85, body, 0.1, 0.38, 0);
   box(1.5, 0.28, 0.42, body, 2.2, 0.3, 0);
@@ -53,14 +116,33 @@ function makeCar(color, label) {
     const w = new THREE.Mesh(wheel, dark);
     w.rotation.x = Math.PI / 2;
     w.position.set(x, 0.34, z);
-    g.add(w);
+    shape.add(w);
   }
   const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(color, label), depthTest: false }));
   tag.scale.set(1.5, 1.5, 1);
   tag.position.set(0, 2.5, 0);
   tag.renderOrder = 10;
   g.add(tag);
-  g.userData = { body, tag };
+  let current = color, model = null, skin = null;
+  const paint = (next) => {
+    current = next;
+    body.color.set(next);
+    if (!model) return;
+    skin.map?.dispose();
+    skin.map = paintTexture(model.image, next);
+    skin.needsUpdate = true;
+  };
+  loadCarModel().then((loaded) => {
+    if (!loaded.image) return;
+    model = loaded;
+    skin = new THREE.MeshLambertMaterial();
+    const car = loaded.template.clone(true);
+    car.traverse((o) => { if (o.isMesh) o.material = skin; });
+    g.remove(shape);
+    g.add(car);
+    paint(current);
+  }).catch(() => {}); // no model: the stand-in stays, which is a car too
+  g.userData = { paint, tag };
   g.rotation.order = "YZX";
   return g;
 }
@@ -266,8 +348,8 @@ export function createLapViewer() {
     if (pathA) lines.add(lineMesh(pathA, colorA, false));
     if (pathB) lines.add(lineMesh(pathB, colorB, true));
     lines.visible = showLines;
-    carA.userData.body.color.set(colorA);
-    carB.userData.body.color.set(colorB);
+    carA.userData.paint(colorA);
+    carB.userData.paint(colorB);
   }
 
   let laps = null;
