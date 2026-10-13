@@ -130,6 +130,18 @@ test("a mod's ZIP reads like a folder, unpacking only what is asked for", async 
   assert.equal(await reader.getFile("My Mod/nothing.ini"), null);
 });
 
+test("a ZIP entry is unpacked only when read, and streams its bytes", async () => {
+  const model = "kn5 ".repeat(50000);
+  const reader = await readerFromZip(makeZip([["ks_test/ks_test.kn5", model, true]]));
+  const file = await reader.getFile("ks_test/ks_test.kn5");
+  assert.equal(file.name, "ks_test.kn5");
+  assert.equal(file.size, model.length, "the size comes from the table of contents");
+  const chunks = [];
+  for await (const chunk of file.stream()) chunks.push(chunk);
+  assert.equal(Buffer.concat(chunks).toString(), model);
+  assert.equal(new TextDecoder().decode(await file.arrayBuffer()), model, "and can be read again");
+});
+
 test("a ZIP holding one track under another name is still found by its model", async () => {
   const reader = await readerFromZip(makeZip([["rt_track_v3/rt_track.kn5", "x", false]]));
   assert.equal(reader.findDir("rt_track"), "rt_track_v3");
