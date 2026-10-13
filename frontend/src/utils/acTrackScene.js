@@ -193,18 +193,22 @@ function textureFrom(data, ctx) {
   return tex;
 }
 
-// AC's alpha tested shaders end in AT; trees and grass are alpha tested by
-// nature. Tested, never blended, so they stay in the opaque pass.
-const alphaTestedShader = (shader) => /AT($|_)/.test(shader) || shader === "ksTree" || shader === "ksGrass";
+// AC's alpha tested shaders end in AT, and trees are alpha tested by nature.
+// Tested, never blended, so they stay in the opaque pass. ksGrass is not one:
+// it is the shader for grass on the ground, and its alpha is not a cut-out.
+const alphaTestedShader = (shader) => /AT($|_)/.test(shader) || shader === "ksTree";
 
-function makeMaterial(def, textures, ctx) {
+// `solid` is for the ground the cars drive on, which is never see-through. A
+// grass or road material may keep something else in its alpha, and testing
+// that punched the grass full of holes with the sky showing through.
+function makeMaterial(def, textures, ctx, solid) {
   const diffuse = def?.slots.find((s) => s.sampler === "txDiffuse")?.texture;
   const map = diffuse ? textures(diffuse) : null;
-  const tested = !!def && (def.alphaTested !== 0 || alphaTestedShader(def.shader));
+  const tested = !!def && !solid && (def.alphaTested !== 0 || alphaTestedShader(def.shader));
   // Blend mode 1 is alpha blending: tyre marks, shadows painted on the road,
   // glass. Drawn see-through and without writing depth, or the road under a
   // skid mark disappears.
-  const blended = !!def && def.blend === 1 && !tested;
+  const blended = !!def && !solid && def.blend === 1 && !tested;
   const material = new THREE.MeshLambertMaterial({
     color: map ? 0xffffff : fallbackColour(def?.name),
     map,
@@ -244,6 +248,7 @@ function buildModel(kn5, ref, ctx) {
   };
   const materials = new Map();
   const byMaterial = new Map();
+  const groundMaterials = new Set();
 
   const visit = (node, parent) => {
     if (node.kind === "dummy") {
@@ -270,6 +275,7 @@ function buildModel(kn5, ref, ctx) {
         const list = byMaterial.get(node.materialId);
         if (list) list.push(geo);
         else byMaterial.set(node.materialId, [geo]);
+        if (ground) groundMaterials.add(node.materialId);
       } else {
         geo.dispose();
       }
@@ -284,7 +290,7 @@ function buildModel(kn5, ref, ctx) {
     const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
     if (merged !== geos[0]) for (const g of geos) g.dispose();
     if (!merged) continue;
-    if (!materials.has(materialId)) materials.set(materialId, makeMaterial(kn5.materials[materialId], textures, ctx));
+    if (!materials.has(materialId)) materials.set(materialId, makeMaterial(kn5.materials[materialId], textures, ctx, groundMaterials.has(materialId)));
     ctx.disposables.push(merged);
     group.add(new THREE.Mesh(merged, materials.get(materialId)));
   }

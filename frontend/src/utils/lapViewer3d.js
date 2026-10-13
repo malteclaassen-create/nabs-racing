@@ -174,42 +174,66 @@ function lapPath(lap, n, ground) {
   const x = new Float64Array(len), z = new Float64Array(len);
   for (let i = 0; i < len; i++) { x[i] = lap.x[i] / 10; z[i] = lap.z[i] / 10; }
   const y = ground ? lapHeights(ground, lap.x, lap.z, len) : new Array(len).fill(0);
-  return { x, y, z, n: len };
+  return len < 2 ? null : { x, y, z, n: len };
 }
 
-function poseOf(path, f) {
+// The lap at slice `f`, on a Catmull-Rom curve through the recorded points,
+// with the direction it runs in there. Straight lines from point to point made
+// every corner a run of short straights, and a car or camera following them
+// turned in steps, once per point.
+function sampleAt(path, f) {
   const n = path.n;
   const t = Math.max(0, Math.min(n - 1, f));
   const i = Math.min(n - 2, Math.floor(t)), u = t - i;
-  const lerp = (a) => a[i] + (a[i + 1] - a[i]) * u;
-  // Direction from a little behind to a little ahead: one slice is a few
-  // metres, and its own step jitters.
-  const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 2);
-  const dx = path.x[b] - path.x[a], dz = path.z[b] - path.z[a], dy = path.y[b] - path.y[a];
-  const flat = Math.hypot(dx, dz) || 1;
+  const i0 = Math.max(0, i - 1), i3 = Math.min(n - 1, i + 2);
+  const u2 = u * u, u3 = u2 * u;
+  const curve = (a) => {
+    const p0 = a[i0], p1 = a[i], p2 = a[i + 1], p3 = a[i3];
+    const b = p2 - p0, c = 2 * p0 - 5 * p1 + 4 * p2 - p3, d = 3 * (p1 - p2) + p3 - p0;
+    return [p1 + 0.5 * (b * u + c * u2 + d * u3), 0.5 * (b + 2 * c * u + 3 * d * u2)];
+  };
+  const [x, dx] = curve(path.x), [y, dy] = curve(path.y), [z, dz] = curve(path.z);
+  // Standing still the curve has no direction; the points around it do.
+  if (Math.hypot(dx, dz) < 1e-6) {
+    return { t, x, y, z, dx: path.x[i3] - path.x[i0], dy: path.y[i3] - path.y[i0], dz: path.z[i3] - path.z[i0] };
+  }
+  return { t, x, y, z, dx, dy, dz };
+}
+
+function poseOf(path, f) {
+  const s = sampleAt(path, f);
+  const flat = Math.hypot(s.dx, s.dz) || 1;
   return {
-    pos: new THREE.Vector3(lerp(path.x), lerp(path.y), lerp(path.z)),
-    dir: new THREE.Vector3(dx / flat, 0, dz / flat),
-    pitch: Math.atan2(dy, flat),
-    spline: t / n,
+    pos: new THREE.Vector3(s.x, s.y, s.z),
+    dir: new THREE.Vector3(s.dx / flat, 0, s.dz / flat),
+    pitch: Math.atan2(s.dy, flat),
+    spline: s.t / path.n,
   };
 }
 
-// The lap as a thin strip lying on the road. `dashed` leaves gaps, for lap B,
-// as the 2D map does.
+// The lap as a thin strip lying on the road, along the same curve the car
+// drives, in steps of about LINE_STEP. `dashed` leaves gaps, for lap B, as
+// the 2D map does.
+const LINE_STEP = 1.5; // metres
 function lineMesh(path, color, dashed) {
   const pos = [], idx = [];
   let open = false;
-  for (let i = 0; i < path.n; i++) {
-    const on = !dashed || Math.floor(i / 3) % 2 === 0;
-    if (!on) { open = false; continue; }
-    const a = Math.max(0, i - 1), b = Math.min(path.n - 1, i + 1);
-    const dx = path.x[b] - path.x[a], dz = path.z[b] - path.z[a], l = Math.hypot(dx, dz) || 1;
-    const px = (-dz / l) * LINE_HALF, pz = (dx / l) * LINE_HALF, y = path.y[i] + LINE_LIFT;
-    pos.push(path.x[i] + px, y, path.z[i] + pz, path.x[i] - px, y, path.z[i] - pz);
+  const add = (t) => {
+    const s = sampleAt(path, t);
+    const l = Math.hypot(s.dx, s.dz) || 1;
+    const px = (-s.dz / l) * LINE_HALF, pz = (s.dx / l) * LINE_HALF, y = s.y + LINE_LIFT;
+    pos.push(s.x + px, y, s.z + pz, s.x - px, y, s.z - pz);
     const v = pos.length / 3 - 2;
     if (open) idx.push(v - 2, v - 1, v, v - 1, v + 1, v);
     open = true;
+  };
+  const on = (i) => !dashed || Math.floor(i / 3) % 2 === 0;
+  for (let i = 0; i < path.n - 1; i++) {
+    if (!on(i)) { open = false; continue; }
+    const gap = Math.hypot(path.x[i + 1] - path.x[i], path.z[i + 1] - path.z[i]);
+    const steps = Math.min(16, Math.max(1, Math.ceil(gap / LINE_STEP)));
+    for (let k = 0; k < steps; k++) add(i + k / steps);
+    if (i === path.n - 2 || !on(i + 1)) add(i + 1);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -258,6 +282,8 @@ export function createLapViewer() {
   const lookAt = new THREE.Vector3();
   const want = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const chaseDir = new THREE.Vector3(1, 0, 0);
+  let chaseFrom = false; // chaseDir holds a heading to swing from
 
   function place(car, path, f) {
     if (!path || f == null) { car.visible = false; return null; }
@@ -283,6 +309,7 @@ export function createLapViewer() {
     const a = place(carA, pathA, pose.a);
     const b = place(carB, pathB, pose.b ?? pose.a);
     const p = target === "B" && b ? b : a;
+    if (mode !== "chase" || !p) chaseFrom = false;
     if (p && !framed) { frameOn(p); framed = true; }
 
     if (mode === "orbit" || !p) {
@@ -301,9 +328,15 @@ export function createLapViewer() {
       controls.update();
     } else if (mode === "chase") {
       controls.enabled = false;
-      want.copy(p.pos).addScaledVector(p.dir, -9).addScaledVector(up, 3.1);
-      camera.position.lerp(want, 1 - Math.exp(-dt * 7));
-      lookAt.copy(p.pos).addScaledVector(p.dir, 7).addScaledVector(up, 1);
+      // The camera swings round behind the car a moment after the car turns,
+      // the way a chase camera on a crane would, rather than snapping to its
+      // every heading. Seated by the car, so the car never drifts in frame.
+      // A jump of the cursor (half a turn or more) cuts straight there.
+      if (!chaseFrom || chaseDir.dot(p.dir) < 0) chaseDir.copy(p.dir);
+      else chaseDir.lerp(p.dir, 1 - Math.exp(-dt * 5)).normalize();
+      chaseFrom = true;
+      camera.position.copy(p.pos).addScaledVector(chaseDir, -9).addScaledVector(up, 3.1);
+      lookAt.copy(p.pos).addScaledVector(chaseDir, 7).addScaledVector(up, 1);
       camera.lookAt(lookAt);
       if (camera.fov !== 58) { camera.fov = 58; camera.updateProjectionMatrix(); }
     } else {
@@ -403,7 +436,7 @@ export function createLapViewer() {
       lastFollowed = null;
       if (next === "orbit") framed = false;
     },
-    setTarget(side) { target = side; lastFollowed = null; framed = false; },
+    setTarget(side) { target = side; lastFollowed = null; framed = false; chaseFrom = false; },
     setFollow(on) { follow = on; lastFollowed = null; },
     setLines(on) { showLines = on; lines.visible = on; },
   };
