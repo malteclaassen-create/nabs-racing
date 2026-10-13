@@ -15,6 +15,10 @@ Rebuild from `frontend/` with Blender:
 
     blender --background --factory-startup --python scripts/render-telemetry-car.py
 
-The runtime displays the two small render layers. It does not load the original
+The 2D map displays the two small render layers. It does not load the original
 model or require WebGL. The nose points right and rotation follows the recorded
 heading. Marker size is adjusted for readability, not vehicle collision bounds.
+
+The 3D replay (`src/utils/lapViewer3d.js`) loads `race.glb` itself and repaints
+the red-orange paint swatches of `Textures/colormap.png` in the lap's colour,
+so both views show the same car.
