@@ -1638,6 +1638,9 @@ export const api = {
   telemetryTrackMap: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}/map${telemetryQ(series)}`, { auth: true }),
   telemetryTrackRoad: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}/road${telemetryQ(series)}`, { auth: true }),
   telemetryLaps: (trackKey, series = null) => request(`/telemetry-laps/${trackKey}${telemetryQ(series)}`, { auth: true }),
+  // The signed-in member's newest lap and the lap to read it against, for the
+  // live page's Telemetry button (hooks/useTelemetryNews.js).
+  telemetryMyLatest: (series = null) => request(`/telemetry-laps/me/latest${telemetryQ(series)}`, { userAuth: true }),
   // A driver has up to three laps per track; `lapId` is the lap time in ms.
   // Omitted, the endpoint answers with their fastest, which is what this call
   // meant when everybody had exactly one.

@@ -475,6 +475,56 @@ export function listLaps(series, season, trackKey, legacy = false) {
   return out.sort((a, b) => a.lapTimeMs - b.lapTimeMs);
 }
 
+// One driver's newest lap in a season of a series, wherever it was driven, and
+// the lap it is best read against. For the live page's telemetry button, which
+// lights up when a lap of yours lands and opens the comparison that lap asks
+// for:
+//
+//   "first"     the only lap you have at that track: nothing to compare yet;
+//   "improved"  your new best: against the best it beat, which is now second;
+//   "lap"       a lap that made your top three without beating your best:
+//               against your best.
+//
+// Polled, so it reads what storedSummary reads: file names for the times and
+// mtimes for when each landed, which is exactly when the ingest wrote it. Only
+// the newest lap's file is opened, for the track and layout it was driven on.
+// Null when the driver has nothing stored.
+export function latestLapOf(series, season, steamId, legacy = false) {
+  if (!isSteamId(steamId)) return null;
+  const tracks = new Set();
+  for (const dir of [seasonDir(series, season), ...(legacy ? [seriesDir(series)] : [])]) {
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) if (isTrackKey(name) && !SEASON_DIR_RE.test(name)) tracks.add(name);
+  }
+  let newest = null;
+  for (const trackKey of tracks) {
+    const laps = [];
+    for (const f of lapFilesOf(series, season, trackKey, steamId, legacy)) {
+      try {
+        laps.push({ lapId: String(f.lapTimeMs), lapTimeMs: f.lapTimeMs, path: f.path, at: statSync(f.path).mtimeMs });
+      } catch {
+        /* gone between the listing and the stat: not a lap any more */
+      }
+    }
+    if (!laps.length) continue;
+    const latest = laps.reduce((m, l) => (l.at > m.at ? l : m));
+    if (!newest || latest.at > newest.lap.at) newest = { trackKey, laps, lap: latest };
+  }
+  if (!newest) return null;
+
+  const { trackKey, laps, lap } = newest; // laps fastest first (lapFilesOf)
+  const kind = laps.length === 1 ? "first" : lap === laps[0] ? "improved" : "lap";
+  const against = kind === "improved" ? laps[1] : kind === "lap" ? laps[0] : null;
+  let track = null, layout = null;
+  try {
+    ({ track = null, layout = null } = JSON.parse(readFileSync(lap.path, "utf8")));
+  } catch {
+    /* the button can do without the circuit's name */
+  }
+  const shape = (l) => ({ lapId: l.lapId, lapTimeMs: l.lapTimeMs, storedAt: new Date(l.at).toISOString() });
+  return { trackKey, track, layout, kind, lap: shape(lap), against: against ? shape(against) : null };
+}
+
 // How much is on disk for one season of one series, and when the newest of it
 // landed — the half of the ingest diagnostic that survives a restart
 // (lib/telemetryIngestLog.js holds the other half, and only for as long as the

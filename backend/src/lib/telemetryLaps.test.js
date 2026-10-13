@@ -19,7 +19,7 @@
 // IS the file layout (a lap's time is its file name), and a mock would be
 // asserting that my idea of the layout matches my idea of the layout.
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readdirSync, rmSync, utimesSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -38,6 +38,7 @@ const {
   pruneSeasonsBefore,
   adoptRootLaps,
   seriesKeyOf,
+  latestLapOf,
 } = await import("./telemetryLaps.js");
 
 const TRACK = "watkins-glen";
@@ -509,5 +510,61 @@ describe("laps from before the store had series", () => {
   it("does nothing when there is no store yet", () => {
     expect(adoptRootLaps(F1)).toEqual([]);
     expect(existsSync(TELEMETRY_LAPS_DIR)).toBe(false);
+  });
+});
+
+describe("a driver's newest lap, for the live page's button", () => {
+  // Store a lap and say when it landed: the store goes by the file's time.
+  let clock = Date.UTC(2026, 9, 13, 19, 0, 0);
+  const arrive = (steamId, ms, trackKey = TRACK, track = "watkins_glen") => {
+    keepIfFaster({ ...lap(steamId, ms), trackKey, track });
+    const f = lapFilesOf(F1, S8, trackKey, steamId).find((x) => x.lapTimeMs === ms);
+    clock += 60_000;
+    utimesSync(f.path, clock / 1000, clock / 1000);
+  };
+
+  it("is nothing for a driver with no laps", () => {
+    expect(latestLapOf(F1, S8, ME)).toBeNull();
+    arrive(OTHER, 91000);
+    expect(latestLapOf(F1, S8, ME)).toBeNull();
+  });
+
+  it("calls the only lap at a track the first, with nothing to compare", () => {
+    arrive(ME, 92000);
+    const got = latestLapOf(F1, S8, ME);
+    expect(got).toMatchObject({ trackKey: TRACK, track: "watkins_glen", kind: "first", lap: { lapId: "92000" }, against: null });
+  });
+
+  it("puts a new best against the best it beat", () => {
+    arrive(ME, 92000);
+    arrive(ME, 93000);
+    arrive(ME, 91500);
+    const got = latestLapOf(F1, S8, ME);
+    expect(got.kind).toBe("improved");
+    expect(got.lap.lapId).toBe("91500");
+    expect(got.against.lapId).toBe("92000");
+  });
+
+  it("puts a lap that is not a best against the best", () => {
+    arrive(ME, 91000);
+    arrive(ME, 92500);
+    const got = latestLapOf(F1, S8, ME);
+    expect(got.kind).toBe("lap");
+    expect(got.lap.lapId).toBe("92500");
+    expect(got.against.lapId).toBe("91000");
+  });
+
+  it("follows the driver to whichever track they drove last", () => {
+    arrive(ME, 91000);
+    arrive(ME, 121000, "spa", "spa");
+    expect(latestLapOf(F1, S8, ME)).toMatchObject({ trackKey: "spa", kind: "first" });
+    arrive(ME, 90000);
+    expect(latestLapOf(F1, S8, ME)).toMatchObject({ trackKey: TRACK, kind: "improved", against: { lapId: "91000" } });
+  });
+
+  it("stays inside its series and season", () => {
+    arrive(ME, 91000);
+    expect(latestLapOf(GT, S8, ME)).toBeNull();
+    expect(latestLapOf(F1, S7, ME)).toBeNull();
   });
 });

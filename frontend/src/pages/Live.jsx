@@ -9,6 +9,7 @@ import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { useNow } from "../hooks/useNow.js";
 import { motionOff, useSwapClass } from "../hooks/motion.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
+import { useTelemetryNews } from "../hooks/useTelemetryNews.js";
 import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
@@ -133,7 +134,7 @@ function agoLabel(ts, now = Date.now()) {
   return m ? `${h} h ${m} min ago` : `${h} h ago`;
 }
 
-function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = false, lastDataAt = null, serverKey = null }) {
+function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = null, lastDataAt = null, serverKey = null }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
   const isRace = session.type === "Race";
@@ -458,11 +459,15 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = fal
           full. See ExternalButtons. */}
       {telemetry && (
         <Link
-          to="/tools"
-          className="flex items-center gap-2 border-t border-border px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wide text-medium transition hover:bg-surface2 hover:text-dark sm:hidden"
+          to={telemetry.href}
+          onClick={telemetry.onOpen}
+          title={telemetry.title}
+          className={`flex items-center gap-2 border-t px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wide transition sm:hidden ${
+            telemetry.lit ? "border-brand/40 bg-brand/10 text-dark hover:bg-brand/20" : "border-border text-medium hover:bg-surface2 hover:text-dark"
+          }`}
         >
-          <Activity className="h-3.5 w-3.5 shrink-0 text-eyebrow" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">Telemetry · your laps against the field</span>
+          {telemetry.lit ? <LitDot /> : <Activity className="h-3.5 w-3.5 shrink-0 text-eyebrow" aria-hidden="true" />}
+          <span className="min-w-0 flex-1 truncate">{telemetry.long}</span>
           <span aria-hidden="true">→</span>
         </Link>
       )}
@@ -1904,7 +1909,24 @@ function MobileLinks({ links, patreonUrl }) {
   );
 }
 
-function ExternalButtons({ links, patreonUrl, telemetry = false }) {
+// Lit: a lap of yours has just landed (hooks/useTelemetryNews.js). The same
+// ping as the live Standings tab, so it reads as "something new here".
+function LitDot() {
+  return (
+    <span className="relative inline-flex h-2 w-2 shrink-0" aria-hidden="true">
+      <span className="absolute inline-flex h-full w-full rounded-full bg-brand opacity-75 motion-safe:animate-ping" />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+    </span>
+  );
+}
+
+// The telemetry button's look, plain or lit. Lit is outlined in the brand
+// colour rather than filled with it, so it never competes with "Join the
+// server", which is.
+const telemetryLook = (lit) =>
+  lit ? "border border-brand bg-brand/15 text-dark ring-2 ring-brand/30 hover:bg-brand/25" : "border border-border bg-card text-dark hover:bg-surface2";
+
+function ExternalButtons({ links, patreonUrl, telemetry = null }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
   if (!timing && !join && !patreonUrl && !telemetry) return null;
@@ -1939,13 +1961,9 @@ function ExternalButtons({ links, patreonUrl, telemetry = false }) {
           where people are when they wonder how their lap compares. Only once
           the league has opened it, like the page it leads to. */}
       {telemetry && (
-        <Link
-          to="/tools"
-          title="Your recorded laps against the field's"
-          className={`transition ${base} border border-border bg-card text-dark hover:bg-surface2`}
-        >
-          <Activity className="h-4 w-4" aria-hidden="true" />
-          Telemetry
+        <Link to={telemetry.href} onClick={telemetry.onOpen} title={telemetry.title} className={`transition ${base} ${telemetryLook(telemetry.lit)}`}>
+          {telemetry.lit ? <LitDot /> : <Activity className="h-4 w-4" aria-hidden="true" />}
+          {telemetry.short}
         </Link>
       )}
       {timing && (
@@ -2544,7 +2562,7 @@ function liveTrackName(session) {
 // reading "Waiting for the server…" — which says "this is broken" far more than
 // it says "come back on Friday". Say so plainly instead, and answer the
 // question the visitor actually came with: when is the next one.
-function OffAir({ nextRace, telemetry = false }) {
+function OffAir({ nextRace, telemetry = null }) {
   const kick = nextRace?.date ? raceKickoff(nextRace.date) : null;
   return (
     <div className="card flex flex-col items-center px-6 py-14 text-center sm:py-20">
@@ -2597,12 +2615,13 @@ function OffAir({ nextRace, telemetry = false }) {
         </Link>
         {telemetry && (
           <Link
-            to="/tools"
-            title="Your recorded laps against the field's"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark transition hover:bg-surface2"
+            to={telemetry.href}
+            onClick={telemetry.onOpen}
+            title={telemetry.title}
+            className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold uppercase tracking-wide transition ${telemetryLook(telemetry.lit)}`}
           >
-            <Activity className="h-4 w-4" aria-hidden="true" />
-            Telemetry
+            {telemetry.lit ? <LitDot /> : <Activity className="h-4 w-4" aria-hidden="true" />}
+            {telemetry.short}
           </Link>
         )}
       </div>
@@ -3480,9 +3499,11 @@ export default function Live() {
   // League social links — the Patreon button on the buttons row uses them.
   const social = useSocial();
   // Whether the league has opened the telemetry, for the link to it (see
-  // MobileLinks). Asked once; no link while the answer is out or on an error.
+  // ExternalButtons). Asked once; no button while the answer is out or on an error.
   const { data: telemetrySetting } = useApi(useCallback(() => api.telemetryIsPublic().catch(() => ({ public: false })), []));
   const telemetryOpen = telemetrySetting?.public === true;
+  // The button itself: where it goes and whether a lap of yours lights it up.
+  const telemetry = useTelemetryNews(telemetryOpen);
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
   // Timing / Strategy / Standings: one fade per switch; the strategy section's
@@ -3948,7 +3969,7 @@ export default function Live() {
         </div>
       ) : offAir ? (
         <div className="space-y-8">
-          <OffAir nextRace={nextRace} telemetry={telemetryOpen} />
+          <OffAir nextRace={nextRace} telemetry={telemetry} />
           {/* The next round's lap, under the "next up" card that names it: the
               week before is exactly when somebody opens this page to learn it. */}
           {nextRace?.track && (
@@ -3968,7 +3989,7 @@ export default function Live() {
             receivedAt={receivedAt}
             links={extLinks}
             patreonUrl={social.data?.patreon}
-            telemetry={telemetryOpen}
+            telemetry={telemetry}
             lastDataAt={board?.lastDataAt ?? null}
             // Whose board this is, so the training bar under it is that
             // server's week and not the other one's.
