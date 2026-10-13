@@ -8,7 +8,7 @@ import { deltaTrend, formatLapTime } from "../utils/telemetryAnalysis.js";
 // to claim a side and only `exit` to keep it (hysteresis), and any change has
 // to hold for `holdMs` before it is shown. Re-renders itself when a pending
 // change comes due, so a paused readout settles too.
-function useSteadySide(value, enter, exit, holdMs = 400) {
+export function useSteadySide(value, enter, exit, holdMs = 400) {
   const ref = useRef({ shown: null, pending: null, since: 0 });
   const [, tick] = useState(0);
   const s = ref.current;
@@ -34,7 +34,7 @@ function useSteadySide(value, enter, exit, holdMs = 400) {
 // ---------------------------------------------------------------------------
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const gearLabel = (g) => (g === 0 ? "N" : g < 0 ? "R" : String(Math.round(g)));
+export const gearLabel = (g) => (g === 0 ? "N" : g < 0 ? "R" : String(Math.round(g)));
 
 function Wheel({ angle, color, className = "h-6 w-6" }) {
   return (
@@ -46,7 +46,7 @@ function Wheel({ angle, color, className = "h-6 w-6" }) {
   );
 }
 
-function Meter({ value, color }) {
+export function Meter({ value, color }) {
   return (
     <span className="block h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-surface2" aria-hidden="true">
       <span className="block h-full transition-[width] duration-75" style={{ width: `${clamp(value || 0, 0, 100)}%`, background: color }} />

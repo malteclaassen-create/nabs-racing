@@ -39,7 +39,10 @@ function Pill({ on, onClick, children, label }) {
   );
 }
 
-export default function TelemetryTrack3D({ track, layout, trackName, backdrop, lapA, lapB, n, at, motionA, bIdx, colorA, colorB, nameA, nameB }) {
+// `hud` is the heads-up display drawn over the view and `hudMenu` the button
+// that sets it up (TelemetryHud.jsx); the caller only passes them in full
+// screen. With a HUD on the view, the hint line at the bottom gives way to it.
+export default function TelemetryTrack3D({ track, layout, trackName, backdrop, lapA, lapB, n, at, motionA, bIdx, colorA, colorB, nameA, nameB, hud = null, hudMenu = null }) {
   const key = keyOf(track, layout);
   const [status, setStatus] = useState(kept?.key === key ? "ready" : "pick");
   const [progress, setProgress] = useState({ message: "", fraction: 0 });
@@ -192,6 +195,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
     return (
       <div className="absolute inset-0">
         <div ref={hostRef} className="absolute inset-0" style={{ background: "#c9dbea" }} />
+        {hud}
         <div className="absolute left-2 top-2 flex flex-wrap items-center gap-1.5">
           <div role="group" aria-label="Camera" className="inline-flex rounded-lg border border-border bg-surface2 p-0.5 shadow-md">
             {CAMERAS.map((c) => <Pill key={c.key} on={camera === c.key} onClick={() => setCamera(c.key)} label={`${c.label} camera`}>{c.label}</Pill>)}
@@ -206,15 +210,21 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
             {camera === "orbit" && <Pill on={follow} onClick={() => setFollow((v) => !v)} label="Camera follows the car">Follow</Pill>}
             <Pill on={lines} onClick={() => setLines((v) => !v)} label="Racing lines on the road">Lines</Pill>
           </div>
+          {hudMenu}
+          {hud && warnings.length > 0 && (
+            <span className="flex h-8 items-center gap-1 rounded-lg border border-border bg-card px-2 text-[10px] text-warn shadow-md" title={warnings.join("\n")}>
+              <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />{warnings.length}
+            </span>
+          )}
         </div>
-        <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap items-end justify-between gap-2">
+        {!hud && <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap items-end justify-between gap-2">
           <span className="rounded bg-card px-2 py-1 text-[10px] text-medium shadow-sm">{camera === "orbit" && touch ? "One finger to turn, two to zoom and move" : CAMERAS.find((c) => c.key === camera)?.hint}</span>
           {warnings.length > 0 && (
             <span className="pointer-events-auto flex max-w-full items-center gap-1 rounded bg-card px-2 py-1 text-[10px] text-warn shadow-sm" title={warnings.join("\n")}>
               <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />{warnings.length === 1 ? warnings[0] : `${warnings.length} notes on this track`}
             </span>
           )}
-        </div>
+        </div>}
       </div>
     );
   }
