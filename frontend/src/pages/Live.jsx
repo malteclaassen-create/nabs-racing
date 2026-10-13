@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
@@ -2552,7 +2551,7 @@ function liveTrackName(session) {
 // reading "Waiting for the server…" — which says "this is broken" far more than
 // it says "come back on Friday". Say so plainly instead, and answer the
 // question the visitor actually came with: when is the next one.
-function OffAir({ nextRace, telemetry = null }) {
+function OffAir({ nextRace, telemetry = null, patreonUrl = null }) {
   const kick = nextRace?.date ? raceKickoff(nextRace.date) : null;
   return (
     <div className="card flex flex-col items-center px-6 py-14 text-center sm:py-20">
@@ -2613,6 +2612,21 @@ function OffAir({ nextRace, telemetry = null }) {
             <Activity className="h-4 w-4" aria-hidden="true" />
             {telemetry.short}
           </Link>
+        )}
+        {/* The league's Patreon, so it is on this page whatever the server is
+            doing, not only beside a running session. Last and in Patreon's own
+            red, as in the session card. */}
+        {patreonUrl && (
+          <a
+            href={patreonUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Support the league on Patreon"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#FF424D]/40 bg-[#FF424D]/10 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-[#FF424D] transition hover:bg-[#FF424D]/20"
+          >
+            <SocialIcon name="patreon" className="h-4 w-4" />
+            Patreon
+          </a>
         )}
       </div>
     </div>
@@ -3476,7 +3490,6 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
 }
 
 export default function Live() {
-  const { isNew: liveFeatureNew, dismiss: dismissLiveFeature } = useLiveFeatureNotice();
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
@@ -3934,16 +3947,6 @@ export default function Live() {
       />
       </div>
 
-      {liveFeatureNew && (
-        <aside aria-label="New live timing feature" className="mb-6 flex items-start gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3">
-          <span className="mt-0.5 shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">New</span>
-          <p className="min-w-0 flex-1 text-sm text-dark">
-            <strong>Satellite track map</strong>
-            <span className="text-light"> — Available for selected circuits: select Satellite on the map, then click a car to follow it.</span>
-          </p>
-          <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-brand/20 hover:text-dark">×</button>
-        </aside>
-      )}
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts
         // a moment — it used to be the ONLY state, which meant the page spun
@@ -3959,7 +3962,7 @@ export default function Live() {
         </div>
       ) : offAir ? (
         <div className="space-y-8">
-          <OffAir nextRace={nextRace} telemetry={telemetry} />
+          <OffAir nextRace={nextRace} telemetry={telemetry} patreonUrl={social.data?.patreon} />
           {/* The next round's lap, under the "next up" card that names it: the
               week before is exactly when somebody opens this page to learn it. */}
           {nextRace?.track && (

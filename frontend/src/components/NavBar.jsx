@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
@@ -484,7 +483,7 @@ const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
 // every floating toast read, so nothing ends up hidden behind it. The glass
 // look (.liquid-glass) is in index.css, with why it can afford the blur the top
 // bar gives up on phones.
-function BottomNav({ seriesPath, liveNow, liveFeatureNew, onTap }) {
+function BottomNav({ seriesPath, liveNow, onTap }) {
   const location = useLocation();
   const { user, isLoggedIn } = useAuth();
   const { total, summary } = useAdminAttention();
@@ -648,9 +647,6 @@ function BottomNav({ seriesPath, liveNow, liveFeatureNew, onTap }) {
                 <span className="absolute -right-3 -top-1 min-w-[1.1rem] rounded-full bg-brand px-1 text-center font-mono text-[10px] font-bold leading-[1.1rem] tabular-nums text-ink">
                   {liveNow}
                 </span>
-              )}
-              {t.key === "live" && !liveNow && liveFeatureNew && (
-                <span className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-brand" />
               )}
             </span>
             <span className="max-w-full truncate text-[11px] font-semibold leading-none">{t.label}</span>
@@ -909,7 +905,6 @@ function NavGlidePill({ box }) {
 }
 
 export default function NavBar() {
-  const { isNew: liveFeatureNew } = useLiveFeatureNotice();
   const { seriesPath, slug: viewedSeries } = useSeriesPath();
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
@@ -1229,7 +1224,6 @@ export default function NavBar() {
                   <span className="ml-1.5 font-mono text-[11px] font-bold tabular-nums opacity-70">{liveNow}</span>
                 )}
                 {l.label === "Live" && liveNow > 0 && <span className="sr-only"> ({liveNow} on track)</span>}
-                {l.label === "Live" && liveFeatureNew && <span className="ml-1.5 hidden rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink xl:inline">New</span>}
                 {/* Same shape as Live's count, for the same reason: the number
                     is the interesting fact, not a dot. It is brand-coloured and
                     breathes because unlike cars on track this is something the
@@ -1382,15 +1376,13 @@ export default function NavBar() {
                   to={seriesPath("/live")}
                   Icon={Radio}
                   label="Live"
-                  hint={liveFeatureNew ? "New: satellite track map" : liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
+                  hint={liveNow > 0 ? `${liveNow} on track right now` : "Live timing"}
                   badge={
                     liveNow > 0 ? (
                       <span className="absolute -right-2.5 -top-1 min-w-[1.1rem] rounded-full bg-brand px-1 text-center font-mono text-[10px] font-bold leading-[1.1rem] tabular-nums text-ink">
                         {liveNow}
                         <span className="sr-only"> on track</span>
                       </span>
-                    ) : liveFeatureNew ? (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-brand" />
                     ) : null
                   }
                 />
@@ -1428,7 +1420,7 @@ export default function NavBar() {
         </div>
       )}
     </header>
-    <BottomNav seriesPath={seriesPath} liveNow={liveNow} liveFeatureNew={liveFeatureNew} onTap={closeMenu} />
+    <BottomNav seriesPath={seriesPath} liveNow={liveNow} onTap={closeMenu} />
     </>
   );
 }
