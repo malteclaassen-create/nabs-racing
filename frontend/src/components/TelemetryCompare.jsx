@@ -954,7 +954,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                       {mapView === '3d' ? (
                         <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-xs text-light">Loading 3D…</div>}>
                           <TelemetryTrack3D track={rawTrack} layout={rawLayout} trackName={trackName} lapA={lapA} lapB={both ? lapB : null} n={n} at={at} motionA={motionA} bIdx={bIdx}
-                            colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} />
+                            colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB}
+                            backdrop={<TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={() => {}} onReset={() => {}} mode="lines" track={track} colorA={colorA} colorB={colorB} sectors={sectors || []} />} />
                         </Suspense>
                       ) : <>
                       <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}

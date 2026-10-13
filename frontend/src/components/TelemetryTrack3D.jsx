@@ -39,7 +39,7 @@ function Pill({ on, onClick, children, label }) {
   );
 }
 
-export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB, n, at, motionA, bIdx, colorA, colorB, nameA, nameB }) {
+export default function TelemetryTrack3D({ track, layout, trackName, backdrop, lapA, lapB, n, at, motionA, bIdx, colorA, colorB, nameA, nameB }) {
   const key = keyOf(track, layout);
   const [status, setStatus] = useState(kept?.key === key ? "ready" : "pick");
   const [progress, setProgress] = useState({ message: "", fraction: 0 });
@@ -113,6 +113,16 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
       if (e?.name !== "AbortError") setProblem("The folder could not be opened.");
     }
   };
+  // The folder from last time, still allowed: load the track straight away
+  // instead of showing buttons. Once per track, so a failed try (track not
+  // installed) leaves the buttons and its message up rather than looping.
+  const autoTried = useRef(null);
+  useEffect(() => {
+    if (!viewer || !remembered || status !== "pick" || autoTried.current === key) return;
+    autoTried.current = key;
+    remembered.granted().then((ok) => { if (ok) reopen(); });
+  }, [viewer, remembered, status, key]);
+
   const reopen = async () => {
     try {
       const reader = await remembered?.open();
@@ -202,70 +212,108 @@ export default function TelemetryTrack3D({ track, layout, trackName, lapA, lapB,
   const pct = Math.round(progress.fraction * 100);
   // A phone has no AC install to read and no folder to pick or drop.
   const phone = !canPickFolder() && typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  const openZipPicker = () => zipInput.current?.click();
   return (
-    <div className={`absolute inset-0 flex items-center justify-center overflow-auto p-4 transition ${dragging ? "bg-surface2" : "bg-card"}`}
+    <div className="absolute inset-0 overflow-hidden"
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
+      {/* The 2D map of the same laps, still moving with the player, so the box
+          shows the track it is about to load instead of standing empty. */}
+      {backdrop && <div className="pointer-events-none absolute inset-0 opacity-70" aria-hidden="true">{backdrop}</div>}
+      <div className={`absolute inset-0 transition ${dragging ? "bg-primary/15 ring-2 ring-inset ring-primary" : "bg-card/20"}`} />
       <input ref={zipInput} type="file" accept=".zip,application/zip,application/x-zip-compressed" className="hidden" onChange={onZip} />
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        {status === "loading" ? (
-          <>
-            <LoaderCircle className="h-7 w-7 animate-spin text-light" aria-hidden="true" />
-            <p className="text-sm font-semibold text-dark">Loading {trackName} in 3D</p>
-            <div className="h-1.5 w-56 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+      <div className="absolute inset-0 flex items-end justify-center overflow-auto p-3 sm:p-4">
+        <div className="flex w-full max-w-md flex-col gap-2.5 rounded-xl border border-border bg-card/95 p-3.5 shadow-lg backdrop-blur-sm">
+          {status === "loading" ? (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <LoaderCircle className="h-7 w-7 animate-spin text-light" aria-hidden="true" />
+              <p className="text-sm font-semibold text-dark">Loading {trackName} in 3D</p>
+              <div className="h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+              </div>
+              <p className="font-mono text-[11px] text-light">{progress.message}</p>
             </div>
-            <p className="font-mono text-[11px] text-light">{progress.message}</p>
-          </>
-        ) : status === "error" ? (
-          <>
-            <TriangleAlert className="h-7 w-7 text-warn" aria-hidden="true" />
-            <p className="text-sm text-dark">{problem}</p>
-          </>
-        ) : phone ? (
-          <>
-            <Box className="h-7 w-7 text-light" aria-hidden="true" />
-            <p className="text-sm font-semibold text-dark">Watch these laps on {trackName} in 3D</p>
-            <p className="text-xs text-light">
-              Choose the track mod's ZIP file from your phone. It is read on the phone itself: nothing is uploaded, and watching uses no mobile data.
-            </p>
-            <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn">
-              At your own risk: a big track can take a minute, and on some phones the browser closes the page. Textures are shown in lower detail.
-            </p>
-            <button type="button" className="btn-primary h-9 gap-2 px-3 py-0 text-xs" onClick={() => zipInput.current?.click()}>
-              <FileArchive className="h-4 w-4" aria-hidden="true" />Choose track ZIP
-            </button>
-            {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
-          </>
-        ) : (
-          <>
-            <Box className="h-7 w-7 text-light" aria-hidden="true" />
-            <p className="text-sm font-semibold text-dark">Watch these laps on {trackName} in 3D</p>
-            <p className="text-xs text-light">
-              The 3D view draws the track from your own Assetto Corsa install, curbs and all. Pick your <span className="font-mono">assettocorsa</span> folder
-              (usually <span className="font-mono">steamapps/common/assettocorsa</span>). It is read on your computer; nothing is uploaded.
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {remembered && (
-                <button type="button" className="btn-primary h-9 gap-2 px-3 py-0 text-xs" onClick={reopen}>
-                  <FolderOpen className="h-4 w-4" aria-hidden="true" />Use {remembered.name} again
-                </button>
-              )}
-              {canPickFolder() && (
-                <button type="button" className={`${remembered ? "btn-secondary" : "btn-primary"} h-9 gap-2 px-3 py-0 text-xs`} onClick={pick}>
-                  <FolderOpen className="h-4 w-4" aria-hidden="true" />{remembered ? "Pick another folder" : "Choose AC folder"}
-                </button>
-              )}
+          ) : status === "error" ? (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <TriangleAlert className="h-7 w-7 text-warn" aria-hidden="true" />
+              <p className="text-sm text-dark">{problem}</p>
             </div>
-            <p className="text-[11px] text-light">
-              {canPickFolder() ? "Or drag the folder onto this box." : "Drag your assettocorsa folder onto this box."} Needs <span className="font-mono">content/tracks/{track}</span>.
-            </p>
-            <button type="button" className="text-[11px] font-semibold text-link underline-offset-2 hover:underline" onClick={() => zipInput.current?.click()}>
-              Not installed? Open the track mod's ZIP instead
-            </button>
-            {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
-          </>
-        )}
+          ) : dragging ? (
+            <div className="flex flex-col items-center gap-2 py-4 text-center">
+              <FolderOpen className="h-7 w-7 text-primary" aria-hidden="true" />
+              <p className="text-sm font-semibold text-dark">Drop it here</p>
+            </div>
+          ) : phone ? (
+            <>
+              <Title trackName={trackName} />
+              <p className="text-xs text-light">
+                Choose the track mod's ZIP file from your phone. It is read on the phone itself: nothing is uploaded, and it uses no mobile data.
+              </p>
+              <p className="rounded-lg bg-warn/10 px-3 py-2 text-[11px] text-warn">
+                At your own risk: a big track can take a minute, and on some phones the browser closes the page.
+              </p>
+              <button type="button" className="btn-primary h-10 w-full gap-2 py-0 text-sm" onClick={openZipPicker}>
+                <FileArchive className="h-4 w-4" aria-hidden="true" />Choose track ZIP
+              </button>
+              {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
+            </>
+          ) : (
+            <>
+              <Title trackName={trackName} />
+              {remembered ? (
+                <p className="text-xs text-light">
+                  Your Assetto Corsa folder <span className="font-mono text-medium">{remembered.name}</span> is remembered. One click and the track loads.
+                </p>
+              ) : (
+                <ol className="grid grid-cols-1 gap-1.5 text-[11px] leading-snug text-medium sm:grid-cols-3 sm:gap-2">
+                  <Step n={1}>{canPickFolder() ? "Press Choose AC folder" : "Open your Steam library"}</Step>
+                  <Step n={2}>
+                    {canPickFolder() ? "Open " : "Drag "}<span className="font-mono text-dark">steamapps/ common/ assettocorsa</span>
+                    {canPickFolder() ? "" : " onto the map"}
+                  </Step>
+                  <Step n={3}>{canPickFolder() ? "Allow it. Next time it loads by itself" : "The track loads in a few seconds"}</Step>
+                </ol>
+              )}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {remembered && (
+                  <button type="button" className="btn-primary h-10 flex-1 gap-2 py-0 text-sm" onClick={reopen}>
+                    <FolderOpen className="h-4 w-4" aria-hidden="true" />Load {trackName}
+                  </button>
+                )}
+                {canPickFolder() && (
+                  <button type="button" className={`${remembered ? "btn-secondary h-10 text-xs sm:flex-none sm:px-3" : "btn-primary h-10 flex-1 text-sm"} gap-2 py-0`} onClick={pick}>
+                    <FolderOpen className="h-4 w-4" aria-hidden="true" />{remembered ? "Other folder" : "Choose AC folder"}
+                  </button>
+                )}
+              </div>
+              {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
+              <p className="text-center text-[11px] text-light">
+                Read on your computer, nothing is uploaded.{" "}
+                <button type="button" className="font-semibold text-link underline-offset-2 hover:underline" onClick={openZipPicker}>
+                  Track not installed? Open its ZIP
+                </button>
+              </p>
+            </>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function Title({ trackName }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface2 text-medium"><Box className="h-4 w-4" aria-hidden="true" /></span>
+      <p className="text-sm font-semibold leading-tight text-dark">See these laps on {trackName} in 3D</p>
+    </div>
+  );
+}
+
+function Step({ n, children }) {
+  return (
+    <li className="flex items-start gap-1.5">
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-surface2 font-mono text-[9px] font-bold text-dark">{n}</span>
+      <span className="min-w-0 break-words">{children}</span>
+    </li>
   );
 }

@@ -249,6 +249,15 @@ export async function rememberedAcFolder() {
     if (!handle?.queryPermission) return null;
     return {
       name: handle.name,
+      // True when the browser still holds the read grant ("Allow on every
+      // visit" in Chrome): then open() needs no click and no dialog.
+      async granted() {
+        try {
+          return (await handle.queryPermission({ mode: "read" })) === "granted";
+        } catch {
+          return false;
+        }
+      },
       async open() {
         let state = await handle.queryPermission({ mode: "read" });
         if (state !== "granted") state = await handle.requestPermission({ mode: "read" });
