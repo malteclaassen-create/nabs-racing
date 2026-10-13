@@ -212,35 +212,35 @@ function poseOf(path, f) {
 }
 
 // The lap as a thin strip lying on the road, along the same curve the car
-// drives, in steps of about LINE_STEP. `dashed` leaves gaps, for lap B, as
-// the 2D map does.
+// drives, in steps of about LINE_STEP. Both laps are solid: dashes left lap B
+// in pieces. Lap B is narrower and drawn over lap A instead, so where the two
+// take the same line, A shows as an edge either side of B.
 const LINE_STEP = 1.5; // metres
-function lineMesh(path, color, dashed) {
+function lineMesh(path, color, onTop) {
+  const half = onTop ? LINE_HALF * 0.55 : LINE_HALF;
   const pos = [], idx = [];
   let open = false;
   const add = (t) => {
     const s = sampleAt(path, t);
     const l = Math.hypot(s.dx, s.dz) || 1;
-    const px = (-s.dz / l) * LINE_HALF, pz = (s.dx / l) * LINE_HALF, y = s.y + LINE_LIFT;
+    const px = (-s.dz / l) * half, pz = (s.dx / l) * half, y = s.y + LINE_LIFT;
     pos.push(s.x + px, y, s.z + pz, s.x - px, y, s.z - pz);
     const v = pos.length / 3 - 2;
     if (open) idx.push(v - 2, v - 1, v, v - 1, v + 1, v);
     open = true;
   };
-  const on = (i) => !dashed || Math.floor(i / 3) % 2 === 0;
   for (let i = 0; i < path.n - 1; i++) {
-    if (!on(i)) { open = false; continue; }
     const gap = Math.hypot(path.x[i + 1] - path.x[i], path.z[i + 1] - path.z[i]);
     const steps = Math.min(16, Math.max(1, Math.ceil(gap / LINE_STEP)));
     for (let k = 0; k < steps; k++) add(i + k / steps);
-    if (i === path.n - 2 || !on(i + 1)) add(i + 1);
   }
+  add(path.n - 1);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geo.setIndex(idx);
   const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = 2;
+  mesh.renderOrder = onTop ? 3 : 2;
   return mesh;
 }
 
