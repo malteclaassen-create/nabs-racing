@@ -193,20 +193,65 @@ function textureFrom(data, ctx) {
   return tex;
 }
 
-// AC's alpha tested shaders end in AT; trees and grass are alpha tested by
-// nature. Tested, never blended, so they stay in the opaque pass.
-const alphaTestedShader = (shader) => /AT($|_)/.test(shader) || shader === "ksTree" || shader === "ksGrass";
+// A texture's average colour, 0..1 per channel, from a small mip level.
+// Null for anything but a DDS this file can unpack.
+function averageColour(data) {
+  if (!data || data.length < 4 || String.fromCharCode(data[0], data[1], data[2], data[3]) !== "DDS ") return null;
+  try {
+    const parsed = ddsLoader.parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), true);
+    if (parsed.isCubemap || !parsed.mipmaps?.length) return null;
+    const kind = DXT_KIND[parsed.format];
+    if (!kind && parsed.format !== THREE.RGBAFormat) return null;
+    let mip = parsed.mipmaps[0];
+    for (const m of parsed.mipmaps) if (m.width >= 16 && m.height >= 16) mip = m;
+    const px = kind ? decodeDxt(mip.data, mip.width, mip.height, kind) : new Uint8Array(mip.data);
+    const sum = [0, 0, 0, 0];
+    for (let i = 0; i < px.length; i += 4) for (let c = 0; c < 4; c++) sum[c] += px[i + c];
+    const count = px.length / 4 || 1;
+    return sum.map((v) => v / count / 255);
+  } catch {
+    return null;
+  }
+}
 
-function makeMaterial(def, textures, ctx) {
+// ksMultilayer draws txDiffuse multiplied by four tiled detail textures,
+// mixed by the channels of txMask. Drawn with txDiffuse alone, a light base
+// texture comes out white (grass, mostly), so the base is tinted by what the
+// details add up to on average. Null when the details cannot be read.
+const DETAIL_SLOTS = ["txDetailR", "txDetailG", "txDetailB", "txDetailA"];
+function multilayerTint(def, raw) {
+  const slot = (sampler) => def.slots.find((s) => s.sampler === sampler)?.texture;
+  const mask = averageColour(raw(slot("txMask"))) || [1, 0, 0, 0];
+  const tint = [0, 0, 0];
+  let any = false;
+  DETAIL_SLOTS.forEach((sampler, i) => {
+    const detail = averageColour(raw(slot(sampler)));
+    if (!detail || !mask[i]) return;
+    for (let c = 0; c < 3; c++) tint[c] += detail[c] * mask[i];
+    any = true;
+  });
+  return any ? new THREE.Color(...tint.map((v) => Math.min(1, v))) : null;
+}
+
+// AC's alpha tested shaders end in AT, and trees are alpha tested by nature.
+// Tested, never blended, so they stay in the opaque pass. ksGrass is not one:
+// it is the shader for grass on the ground, and its alpha is not a cut-out.
+const alphaTestedShader = (shader) => /AT($|_)/.test(shader) || shader === "ksTree";
+
+// `solid` is for the ground the cars drive on, which is never see-through. A
+// grass or road material may keep something else in its alpha, and testing
+// that punched the grass full of holes with the sky showing through.
+function makeMaterial(def, textures, raw, ctx, solid) {
   const diffuse = def?.slots.find((s) => s.sampler === "txDiffuse")?.texture;
   const map = diffuse ? textures(diffuse) : null;
-  const tested = !!def && (def.alphaTested !== 0 || alphaTestedShader(def.shader));
+  const tint = map && /^ksMultilayer/i.test(def?.shader || "") ? multilayerTint(def, raw) : null;
+  const tested = !!def && !solid && (def.alphaTested !== 0 || alphaTestedShader(def.shader));
   // Blend mode 1 is alpha blending: tyre marks, shadows painted on the road,
   // glass. Drawn see-through and without writing depth, or the road under a
   // skid mark disappears.
-  const blended = !!def && def.blend === 1 && !tested;
+  const blended = !!def && !solid && def.blend === 1 && !tested;
   const material = new THREE.MeshLambertMaterial({
-    color: map ? 0xffffff : fallbackColour(def?.name),
+    color: tint || (map ? 0xffffff : fallbackColour(def?.name)),
     map,
     alphaTest: tested ? 0.5 : 0,
     transparent: blended,
@@ -244,18 +289,23 @@ function buildModel(kn5, ref, ctx) {
   };
   const materials = new Map();
   const byMaterial = new Map();
+  const groundMaterials = new Set();
 
-  const visit = (node, parent) => {
+  // `marker` is for what sits under one of AC's AC_ markers (pit boxes, grid
+  // slots, timing gates): each has a small box under it, which the game
+  // never draws and a replay should not either.
+  const visit = (node, parent, marker) => {
+    const isMarker = marker || /^AC_/i.test(node.name);
     if (node.kind === "dummy") {
       const here = new THREE.Matrix4().multiplyMatrices(parent, new THREE.Matrix4().fromArray(node.matrix));
-      for (const child of node.children) visit(child, here);
+      for (const child of node.children) visit(child, here, isMarker);
       return;
     }
     const surface = surfaceOfMesh(node.name, ctx.surfaceKeys);
     const ground = surface !== null && surface !== "WALL";
     // A mesh that only shows from far away (lodIn above zero) is a stand-in
     // for one drawn up close; drawing both stacks them on top of each other.
-    const drawn = node.renderable !== 0 && !(node.lodIn > 0);
+    const drawn = !isMarker && node.renderable !== 0 && !(node.lodIn > 0);
     if (ground || drawn) {
       ctx.triangles += node.indexCount / 3;
       const d = decodeMesh(node);
@@ -270,13 +320,14 @@ function buildModel(kn5, ref, ctx) {
         const list = byMaterial.get(node.materialId);
         if (list) list.push(geo);
         else byMaterial.set(node.materialId, [geo]);
+        if (ground) groundMaterials.add(node.materialId);
       } else {
         geo.dispose();
       }
     }
-    for (const child of node.children) visit(child, parent);
+    for (const child of node.children) visit(child, parent, isMarker);
   };
-  visit(kn5.root, baseMatrix(ref));
+  visit(kn5.root, baseMatrix(ref), false);
 
   // One draw call per material: a circuit is hundreds of meshes, and drawing
   // them one by one costs more than the triangles do.
@@ -284,7 +335,7 @@ function buildModel(kn5, ref, ctx) {
     const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
     if (merged !== geos[0]) for (const g of geos) g.dispose();
     if (!merged) continue;
-    if (!materials.has(materialId)) materials.set(materialId, makeMaterial(kn5.materials[materialId], textures, ctx));
+    if (!materials.has(materialId)) materials.set(materialId, makeMaterial(kn5.materials[materialId], textures, (name) => byName.get(name)?.data, ctx, groundMaterials.has(materialId)));
     ctx.disposables.push(merged);
     group.add(new THREE.Mesh(merged, materials.get(materialId)));
   }
