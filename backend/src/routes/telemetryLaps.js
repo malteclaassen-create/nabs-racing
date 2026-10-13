@@ -17,7 +17,7 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { telemetryScript } from "../lib/telemetryScript.js";
 import { telemetryReadGate } from "../lib/telemetryAccess.js";
-import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
+import { parseLapPayload, keepIfFaster, listTracks, listLaps, readLap, latestLapOf, isTrackKey, isSteamId, isLapId, pruneSeasonsBefore } from "../lib/telemetryLaps.js";
 import { recordTelemetryEvent } from "../lib/telemetryIngestLog.js";
 import { getNameOverrides } from "../lib/persons.js";
 import { ensureTrackMap, ensureTrackRoad } from "../lib/trackMaps.js";
@@ -26,7 +26,8 @@ import { circuitBests } from "../lib/liveBestLaps.js";
 import { groupKeyFor, trackKeyFor, displayNameFor } from "../lib/trackKeys.js";
 import { resolveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
-import { isAdminRequest } from "../middleware/auth.js";
+import { isAdminRequest, requireUser } from "../middleware/auth.js";
+import { dbGetMember } from "../lib/members.js";
 import { telemetryIdentities } from "../lib/telemetryIdentity.js";
 import { seriesForKey, anyIngestKey } from "../lib/telemetryKeys.js";
 
@@ -356,6 +357,31 @@ router.get("/", async (req, res, next) => {
       // The circuit's own name beside the AC folder names ("Marina Bay" for
       // singapore_2020), null for a track the site has no name for.
       tracks: listTracks(scope.series, scope.season, scope.legacy).map((t) => ({ ...t, name: circuitName(t.track) })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/telemetry-laps/me/latest?series= -> the signed-in member's newest
+// lap in the series' running season, and the lap it is best compared with
+// (lib/telemetryLaps.js latestLapOf). The live page polls it so its telemetry
+// button can light up when a lap of yours lands. Your own laps only: the Steam
+// id is the one linked to your account, never one from the request. A member
+// without a linked Steam account gets nulls, not an error.
+//
+// Declared before the track route below, or "me" is read as a track.
+router.get("/me/latest", requireUser, async (req, res, next) => {
+  try {
+    const member = await dbGetMember(prisma, req.user.discordId).catch(() => null);
+    const steamId = member?.steamId && isSteamId(member.steamId) ? member.steamId : null;
+    const scope = await scopeAsked(req);
+    if (!scope) return res.status(404).json({ error: "Series not found" });
+    const latest = steamId ? latestLapOf(scope.series, scope.season, steamId, scope.legacy) : null;
+    res.json({
+      series: scope.series,
+      steamId,
+      latest: latest ? { ...latest, name: circuitName(latest.track) } : null,
     });
   } catch (e) {
     next(e);

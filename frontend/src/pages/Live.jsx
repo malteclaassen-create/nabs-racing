@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLiveFeatureNotice } from "../hooks/useLiveFeatureNotice.js";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
@@ -9,11 +8,12 @@ import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { useNow } from "../hooks/useNow.js";
 import { motionOff, useSwapClass } from "../hooks/motion.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
+import { useTelemetryNews } from "../hooks/useTelemetryNews.js";
 import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
-import { ShieldAlert } from "lucide-react";
+import { Activity, ShieldAlert } from "lucide-react";
 import {
   useRaceControlAccess,
   useRaceControl,
@@ -133,7 +133,7 @@ function agoLabel(ts, now = Date.now()) {
   return m ? `${h} h ${m} min ago` : `${h} h ago`;
 }
 
-function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = null, serverKey = null }) {
+function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = null, lastDataAt = null, serverKey = null }) {
   const code = countryCodeFromName(session.country);
   const weather = prettyWeather(session.weather);
   const isRace = session.type === "Race";
@@ -423,7 +423,7 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
             open ? "lg:col-span-2 lg:col-start-3 lg:row-start-1" : "lg:col-span-1"
           }`}
         >
-          <ExternalButtons links={links} patreonUrl={patreonUrl} />
+          <ExternalButtons links={links} patreonUrl={patreonUrl} telemetry={telemetry} />
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -454,6 +454,22 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, lastDataAt = nu
         </button>
         <MobileLinks links={links} patreonUrl={patreonUrl} />
       </div>
+      {/* Phones: the telemetry on a line of its own, since the row above is
+          full. See ExternalButtons. */}
+      {telemetry && (
+        <Link
+          to={telemetry.href}
+          onClick={telemetry.onOpen}
+          title={telemetry.title}
+          className={`flex items-center gap-2 border-t px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wide transition sm:hidden ${
+            telemetry.lit ? "border-brand/40 bg-brand/10 text-dark hover:bg-brand/20" : "border-border text-medium hover:bg-surface2 hover:text-dark"
+          }`}
+        >
+          <Activity className="h-3.5 w-3.5 shrink-0 text-eyebrow" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{telemetry.long}</span>
+          <span aria-hidden="true">→</span>
+        </Link>
+      )}
     </div>
   );
 }
@@ -1892,10 +1908,17 @@ function MobileLinks({ links, patreonUrl }) {
   );
 }
 
-function ExternalButtons({ links, patreonUrl }) {
+// The telemetry button's look, plain or lit (a lap of yours has just landed,
+// hooks/useTelemetryNews.js). Lit is outlined in the brand colour rather than
+// filled with it, so it never competes with "Join the server", which is. No
+// pulsing dot: the outline and the words say it.
+const telemetryLook = (lit) =>
+  lit ? "border border-brand bg-brand/15 text-dark ring-2 ring-brand/30 hover:bg-brand/25" : "border border-border bg-card text-dark hover:bg-surface2";
+
+function ExternalButtons({ links, patreonUrl, telemetry = null }) {
   const timing = links?.liveTimingUrl;
   const join = links?.cmJoinUrl;
-  if (!timing && !join && !patreonUrl) return null;
+  if (!timing && !join && !patreonUrl && !telemetry) return null;
   // SHORT labels, at every width. Three buttons spelled out in full cost 560px
   // of a 1488px card, and that is where the squeeze on the left came from: the
   // track name was left with 261px, needed 340, and wrapped onto two lines.
@@ -1920,6 +1943,17 @@ function ExternalButtons({ links, patreonUrl }) {
           <ExternalIcon />
           Join the server
         </a>
+      )}
+      {/* The one button here that stays on the site. It is on the live page
+          because the league kept asking where the telemetry was: it lived
+          behind the upcoming-race panel and the profile, and the live board is
+          where people are when they wonder how their lap compares. Only once
+          the league has opened it, like the page it leads to. */}
+      {telemetry && (
+        <Link to={telemetry.href} onClick={telemetry.onOpen} title={telemetry.title} className={`transition ${base} ${telemetryLook(telemetry.lit)}`}>
+          <Activity className="h-4 w-4" aria-hidden="true" />
+          {telemetry.short}
+        </Link>
       )}
       {timing && (
         <a
@@ -2517,7 +2551,7 @@ function liveTrackName(session) {
 // reading "Waiting for the server…" — which says "this is broken" far more than
 // it says "come back on Friday". Say so plainly instead, and answer the
 // question the visitor actually came with: when is the next one.
-function OffAir({ nextRace }) {
+function OffAir({ nextRace, telemetry = null, patreonUrl = null }) {
   const kick = nextRace?.date ? raceKickoff(nextRace.date) : null;
   return (
     <div className="card flex flex-col items-center px-6 py-14 text-center sm:py-20">
@@ -2568,6 +2602,32 @@ function OffAir({ nextRace }) {
         >
           Standings
         </Link>
+        {telemetry && (
+          <Link
+            to={telemetry.href}
+            onClick={telemetry.onOpen}
+            title={telemetry.title}
+            className={`inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold uppercase tracking-wide transition ${telemetryLook(telemetry.lit)}`}
+          >
+            <Activity className="h-4 w-4" aria-hidden="true" />
+            {telemetry.short}
+          </Link>
+        )}
+        {/* The league's Patreon, so it is on this page whatever the server is
+            doing, not only beside a running session. Last and in Patreon's own
+            red, as in the session card. */}
+        {patreonUrl && (
+          <a
+            href={patreonUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            title="Support the league on Patreon"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#FF424D]/40 bg-[#FF424D]/10 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-[#FF424D] transition hover:bg-[#FF424D]/20"
+          >
+            <SocialIcon name="patreon" className="h-4 w-4" />
+            Patreon
+          </a>
+        )}
       </div>
     </div>
   );
@@ -3430,7 +3490,6 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
 }
 
 export default function Live() {
-  const { isNew: liveFeatureNew, dismiss: dismissLiveFeature } = useLiveFeatureNotice();
   const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
@@ -3442,6 +3501,12 @@ export default function Live() {
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
   // League social links — the Patreon button on the buttons row uses them.
   const social = useSocial();
+  // Whether the league has opened the telemetry, for the link to it (see
+  // ExternalButtons). Asked once; no button while the answer is out or on an error.
+  const { data: telemetrySetting } = useApi(useCallback(() => api.telemetryIsPublic().catch(() => ({ public: false })), []));
+  const telemetryOpen = telemetrySetting?.public === true;
+  // The button itself: where it goes and whether a lap of yours lights it up.
+  const telemetry = useTelemetryNews(telemetryOpen);
   // Timing ⇄ Strategy switch (the track map sits above both).
   const [view, setView] = useState("timing");
   // Timing / Strategy / Standings: one fade per switch; the strategy section's
@@ -3882,16 +3947,6 @@ export default function Live() {
       />
       </div>
 
-      {liveFeatureNew && (
-        <aside aria-label="New live timing feature" className="mb-6 flex items-start gap-3 rounded-xl border border-brand/40 bg-brand/10 px-4 py-3">
-          <span className="mt-0.5 shrink-0 rounded bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">New</span>
-          <p className="min-w-0 flex-1 text-sm text-dark">
-            <strong>Satellite track map</strong>
-            <span className="text-light"> — Available for selected circuits: select Satellite on the map, then click a car to follow it.</span>
-          </p>
-          <button type="button" onClick={dismissLiveFeature} aria-label="Dismiss satellite feature notice" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-brand/20 hover:text-dark">×</button>
-        </aside>
-      )}
       {!heardFromRelay && !board ? (
         // Still asking. This is the only case that gets a spinner, and it lasts
         // a moment — it used to be the ONLY state, which meant the page spun
@@ -3907,7 +3962,7 @@ export default function Live() {
         </div>
       ) : offAir ? (
         <div className="space-y-8">
-          <OffAir nextRace={nextRace} />
+          <OffAir nextRace={nextRace} telemetry={telemetry} patreonUrl={social.data?.patreon} />
           {/* The next round's lap, under the "next up" card that names it: the
               week before is exactly when somebody opens this page to learn it. */}
           {nextRace?.track && (
@@ -3927,6 +3982,7 @@ export default function Live() {
             receivedAt={receivedAt}
             links={extLinks}
             patreonUrl={social.data?.patreon}
+            telemetry={telemetry}
             lastDataAt={board?.lastDataAt ?? null}
             // Whose board this is, so the training bar under it is that
             // server's week and not the other one's.
