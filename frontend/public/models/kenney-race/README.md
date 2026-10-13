@@ -19,6 +19,5 @@ The 2D map displays the two small render layers. It does not load the original
 model or require WebGL. The nose points right and rotation follows the recorded
 heading. Marker size is adjusted for readability, not vehicle collision bounds.
 
-The 3D replay (`src/utils/lapViewer3d.js`) loads `race.glb` itself and repaints
-the red-orange paint swatches of `Textures/colormap.png` in the lap's colour,
-so both views show the same car.
+The 3D replay (`src/utils/lapViewer3d.js`) draws a different model, the Racing
+Kit car in `../kenney-racing-kit`, at the size of a 2010 Formula 1 car.
