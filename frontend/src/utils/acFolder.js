@@ -11,7 +11,8 @@
 //      driver drops their assettocorsa (or content) folder onto the page.
 //
 // Nothing read here leaves the browser; the page only ever sends the hashes it
-// computed to the screen (see pages/ContentCheck.jsx).
+// computed to the screen (see pages/ContentCheck.jsx), and the 3D lap view
+// draws the track it reads (utils/acTrackScene.js).
 // ---------------------------------------------------------------------------
 
 export const canPickFolder = () =>
@@ -68,6 +69,7 @@ async function fsaReader(root) {
 
   return {
     name: root.name,
+    handle: root,
     async getFile(path) {
       const parts = norm(path).split("/").filter(Boolean);
       const file = parts.pop();
@@ -76,6 +78,17 @@ async function fsaReader(root) {
         return await (await child(dir, file, "file")).getFile();
       } catch {
         return null; // not there — which is an answer, not a failure
+      }
+    },
+    // One folder's children, by name and kind. Empty when it is not there.
+    async list(path) {
+      try {
+        const dir = await dirOf(norm(path).split("/").filter(Boolean));
+        const out = [];
+        for await (const [name, handle] of dir.entries()) out.push({ name, kind: handle.kind });
+        return out;
+      } catch {
+        return [];
       }
     },
     async hasDir(path) {
@@ -157,6 +170,13 @@ async function entryReader(rootEntry) {
       const parts = norm(path).split("/").filter(Boolean);
       return (await walk(parts)) != null;
     },
+    async list(path) {
+      const parts = norm(path).split("/").filter(Boolean);
+      const dir = await walk(parts);
+      if (!dir) return [];
+      const children = await childrenOf(dir, parts.join("/"));
+      return [...children.values()].map((e) => ({ name: e.name, kind: e.isDirectory ? "directory" : "file" }));
+    },
   };
 }
 
@@ -176,4 +196,66 @@ export async function readerFromDrop(dataTransfer) {
     if (entry?.isDirectory) return entryReader(entry);
   }
   return null;
+}
+
+// --- remembering the folder -------------------------------------------------
+// A picked folder's handle can be stored (IndexedDB keeps it as it is), so the
+// next visit asks one "allow" click instead of the whole folder dialog again.
+// Only the File System Access reader has a handle; a dropped folder is gone
+// once the page closes. Every step may fail (private window, storage off, the
+// folder moved) and then the driver simply picks it again.
+
+const DB_NAME = "nabs-ac-folder";
+const STORE = "handles";
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function withStore(mode, fn) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      const req = fn(tx.objectStore(STORE));
+      tx.oncomplete = () => resolve(req?.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function rememberAcFolder(reader) {
+  if (!reader?.handle || typeof indexedDB === "undefined") return;
+  try {
+    await withStore("readwrite", (store) => store.put(reader.handle, "install"));
+  } catch {
+    // Not remembered: the next visit asks for the folder again.
+  }
+}
+
+// The folder picked last time, or null. `open()` must run inside a click: the
+// browser only re-grants read access in answer to the driver doing something.
+export async function rememberedAcFolder() {
+  if (!canPickFolder() || typeof indexedDB === "undefined") return null;
+  try {
+    const handle = await withStore("readonly", (store) => store.get("install"));
+    if (!handle?.queryPermission) return null;
+    return {
+      name: handle.name,
+      async open() {
+        let state = await handle.queryPermission({ mode: "read" });
+        if (state !== "granted") state = await handle.requestPermission({ mode: "read" });
+        return state === "granted" ? fsaReader(handle) : null;
+      },
+    };
+  } catch {
+    return null;
+  }
 }

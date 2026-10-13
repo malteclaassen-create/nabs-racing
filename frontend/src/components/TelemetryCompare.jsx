@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ChartLine, ChevronDown, ClipboardCopy, Download, FileDown, ImageDown, Link2, Map as MapIcon, Maximize2, Minimize2, MoreHorizontal, RefreshCw, TriangleAlert,
 } from "lucide-react";
@@ -29,6 +29,10 @@ import {
   resampleLap, indexAtTime, sectionAt, neighbourSection, formatLapTime, lapProfile,
 } from "../utils/telemetryAnalysis.js";
 import { comparisonCsv, comparisonSummary, downloadText, exportSvgPng } from "../utils/telemetryExport.js";
+
+// The 3D replay brings three.js and the AC model reader with it, so it loads
+// the first time someone presses 3D and never for anyone who does not.
+const TelemetryTrack3D = lazy(() => import("./TelemetryTrack3D.jsx"));
 
 // The card shell this was drawn in on the Tools page. Copied rather than
 // imported: reaching into pages/Tools.jsx for it would pull the whole
@@ -251,6 +255,14 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const [track, setTrack] = useState(null); // { calib, href }
   const [mapMode, setMapMode] = useState("gain");
   const [zoom, setZoom] = useState(1);
+  // The replay box shows the 2D map or the 3D view. 3D is opt-in and stays
+  // on for the visit: picking other laps keeps whichever view was showing.
+  const [mapView, setMapView] = useState("2d");
+  // The replay box on its own in full screen, in either view. "api" is the
+  // browser's own full screen; "css" is for a browser that has none for an
+  // element (iPhone Safari), where the box simply covers the window.
+  const [mapFull, setMapFull] = useState(null);
+  const mapWrapRef = useRef(null);
   const [revision, setRevision] = useState(0);
   const [loadError, setLoadError] = useState(null);
   const [aError, setAError] = useState(null);
@@ -636,7 +648,10 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // Full screen: the card becomes the page. Tracked from the document, so
   // Escape (which the browser handles itself) is reflected too.
   useEffect(() => {
-    const sync = () => setFull(!!document.fullscreenElement && document.fullscreenElement === cardRef.current);
+    const sync = () => {
+      setFull(!!document.fullscreenElement && document.fullscreenElement === cardRef.current);
+      setMapFull((m) => (document.fullscreenElement && document.fullscreenElement === mapWrapRef.current ? "api" : m === "css" ? "css" : null));
+    };
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
@@ -645,6 +660,15 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     if (!el) return;
     if (document.fullscreenElement) document.exitFullscreen?.();
     else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  };
+  const toggleMapFull = () => {
+    const el = mapWrapRef.current;
+    if (!el) return;
+    if (mapFull === "css") { setMapFull(null); return; }
+    if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+    const enter = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (enter) Promise.resolve(enter.call(el)).catch(() => setMapFull("css"));
+    else setMapFull("css");
   };
 
   // Keys only work while the comparison is actually on screen: on a long page
@@ -737,7 +761,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const keys = useRef(null);
   keys.current = (e) => {
     const tag = e.target?.tagName;
-    if (!lapA || !onScreen.current || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!lapA || (!onScreen.current && !mapFull) || e.metaKey || e.ctrlKey || e.altKey) return;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
     const step = e.shiftKey ? 10 : 1;
     switch (e.key) {
@@ -748,7 +772,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
       case "]": jumpSection(1); break;
       case "Home": e.preventDefault(); pickCursor(0); break;
       case "End": e.preventDefault(); pickCursor(n - 1); break;
-      case "f": case "F": toggleFull(); break;
+      case "f": case "F": if (mapFull) toggleMapFull(); else toggleFull(); break;
+      case "Escape": if (mapFull === "css") setMapFull(null); break;
       default:
     }
   };
@@ -809,6 +834,20 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   const playLabel = playing ? 'Pause' : cursor != null && cursor > 0 && cursor < n - 1 ? 'Resume' : 'Play lap';
   const minSpan = Math.min(n - 1, Math.max(8, Math.ceil((n - 1) / 20)));
   const shows = (key) => channels.includes(key);
+  const playerProps = {
+    playing, onToggle: togglePlay, playLabel, at, n, sections, activeN: active?.n ?? null,
+    onPick: pickCursor, onJump: jumpSection, hasPrev: !!neighbourSection(sections, at, -1), hasNext: !!neighbourSection(sections, at, 1),
+    rate: playbackRate, onRate: (r) => { startAtRef.current = at; setPlaybackRate(r); },
+    position: `${position(at)} of lap${active ? ` · ${active.tag}` : ''}`, gapAt: delta ? delta.d[at] : null, colorA, colorB,
+  };
+  // The replay box's own buttons: 2D or 3D, what the 2D map colours, and full
+  // screen. In the panel header normally, above the box in full screen.
+  const mapControls = <>
+    <Segmented label="2D or 3D" value={mapView} items={[{ key: '2d', label: '2D' }, { key: '3d', label: '3D' }]} onChange={setMapView} />
+    {both && mapView === '2d' && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
+      onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}
+    <ToolButton icon={mapFull ? Minimize2 : Maximize2} label={mapFull ? "Exit full screen" : "Replay full screen"} onClick={toggleMapFull} showLabel={false} className="w-8" />
+  </>;
 
   return (
     <ToolCard id="telemetry" cardRef={cardRef} full={full} stage={stage} title="Lap comparison" subtitle={copied ? `${copied === "link" ? "Link" : "Summary"} copied` : subtitle}
@@ -821,7 +860,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             <Menu icon={Download} label="Export" summary={<><span>{copied === "summary" ? "Summary copied" : "Export"}</span><ChevronDown className="h-3 w-3" aria-hidden="true" /></>}>
               <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>
               <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>
-              {hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+              {hasMap && mapView === "2d" && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
             </Menu>
           )}
           {lapA && <ToolButton icon={full ? Minimize2 : Maximize2} label={full ? "Exit full screen" : "Full screen"} title="Full screen (F)" aria-pressed={full} onClick={toggleFull} showLabel={false} className="w-8" />}
@@ -832,7 +871,7 @@ function TelemetryCompare({ series: fixedSeries = null }) {
             {lapA && <MenuItem icon={Link2} onClick={copyLink}>Copy link</MenuItem>}
             {lapA && <MenuItem icon={ClipboardCopy} onClick={copySummary}>Copy summary as text</MenuItem>}
             {lapA && <MenuItem icon={FileDown} onClick={downloadCsv}>Download CSV</MenuItem>}
-            {lapA && hasMap && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
+            {lapA && hasMap && mapView === "2d" && <MenuItem icon={ImageDown} onClick={saveMap}>Save map as PNG</MenuItem>}
             {lapA && <MenuItem icon={full ? Minimize2 : Maximize2} onClick={toggleFull}>{full ? "Exit full screen" : "Full screen"}</MenuItem>}
             <MenuItem icon={RefreshCw} onClick={refresh} disabled={tracks.loading}>Refresh laps</MenuItem>
           </Menu>
@@ -898,19 +937,26 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                 sits above the map it drives and pins to the top; on a phone it
                 goes last (order-last) and floats on the bottom edge. */}
             <div className="flex flex-col gap-3 sm:gap-4">
-              <TelemetryPlayer playing={playing} onToggle={togglePlay} playLabel={playLabel} at={at} n={n} sections={sections} activeN={active?.n ?? null}
-                onPick={pickCursor} onJump={jumpSection} hasPrev={!!neighbourSection(sections, at, -1)} hasNext={!!neighbourSection(sections, at, 1)}
-                rate={playbackRate} onRate={(r) => { startAtRef.current = at; setPlaybackRate(r); }}
-                position={`${position(at)} of lap${active ? ` · ${active.tag}` : ''}`} gapAt={delta ? delta.d[at] : null} colorA={colorA} colorB={colorB} />
+              <TelemetryPlayer {...playerProps} />
               <Panel title="Replay" icon={MapIcon} note={hasMap ? null : "This lap was recorded before positions were, so there is no map."}
-                actions={hasMap && both && <Segmented label="Map view" value={mapMode} items={[{ key: 'gain', label: 'Time gain' }, { key: 'lines', label: 'Racing lines' }]}
-                  onChange={(key) => { setMapMode(key); if (key === 'lines' && zoom < 20) { focusSomewhere(); setZoom(30); } }} />}>
+                actions={hasMap && mapControls}>
                 <div className={`grid min-w-0 gap-4 ${hasMap ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start' : ''}`}>
-                  {hasMap && <div className="min-w-0">
+                  {hasMap && <div ref={mapWrapRef} className={mapFull ? `flex h-full w-full flex-col gap-2 bg-card p-2 sm:p-3 ${mapFull === "css" ? "fixed inset-0 z-[80]" : ""}` : "min-w-0"}>
+                    {mapFull && <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-sm font-semibold text-dark">{trackName}</span>
+                      <div className="flex flex-wrap items-center gap-2">{mapControls}</div>
+                    </div>}
                     {/* Square on a phone: a circuit that runs taller than wide
                         gets the height it needs; a fixed box from a desktop
-                        layout squashed it. */}
-                    <div className="relative aspect-square max-h-[460px] w-full overflow-hidden rounded-lg border border-border sm:aspect-auto sm:h-[400px]">
+                        layout squashed it. In full screen it takes what the
+                        bars above and below leave. */}
+                    <div className={`relative w-full overflow-hidden rounded-lg border border-border ${mapFull ? "min-h-0 flex-1" : "aspect-square max-h-[460px] sm:aspect-auto sm:h-[400px]"}`}>
+                      {mapView === '3d' ? (
+                        <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-xs text-light">Loading 3D…</div>}>
+                          <TelemetryTrack3D track={rawTrack} layout={rawLayout} trackName={trackName} lapA={lapA} lapB={both ? lapB : null} n={n} at={at} motionA={motionA} bIdx={bIdx}
+                            colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} />
+                        </Suspense>
+                      ) : <>
                       <TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={pickCursor} onReset={()=>setZoom(1)} mode={mapMode} zoom={zoom} track={track} colorA={colorA} colorB={colorB}
                         sections={sections} sectors={sectors || []} activeSection={active?.n ?? null} onSection={selectSection} markers={markers} focusRange={chartZoomed ? visibleRange : null} exportRef={mapSvg}/>
                       {/* Top left on a phone, where the scale bar (bottom left) and the
@@ -922,15 +968,22 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                         <button type="button" className={ZOOM_BTN} aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(1, z / 1.5))}>−</button>
                         <button type="button" className={ZOOM_BTN} aria-label="Zoom in" onClick={() => { focusSomewhere(); setZoom((z) => Math.min(240, z * 1.5)); }}>+</button>
                       </div>
+                      </>}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
+                    {mapFull ? <TelemetryPlayer {...playerProps} />
+                    : mapView === '3d' ? <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
+                      <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />{nameA}</span>
+                      {both && <span className="flex items-center gap-1.5"><span className="w-4 border-t-2 border-dashed" style={{borderColor:colorB}} />{nameB}</span>}
+                      <span className="ml-auto">The track is read from your own AC folder</span>
+                    </div>
+                    : <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
                       <span className="flex items-center gap-1.5"><span className="w-4 border-t-2" style={{borderColor:colorA}} />{nameA}{both && mapMode === 'gain' ? ' quicker' : ''}</span>
                       {both && <span className="flex items-center gap-1.5"><span className={`w-4 border-t-2 ${mapMode === 'gain' ? '' : 'border-dashed'}`} style={{borderColor:colorB}} />{nameB}{mapMode === 'gain' ? ' quicker, thicker for more' : ''}</span>}
                       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-medium" />brake point</span>
                       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border border-medium" />full throttle</span>
                       <span>labels: corners</span>
                       <span className="ml-auto">{zoom>1?'Drag to pan, double-click to reset':'Select a point on the line'}</span>
-                    </div>
+                    </div>}
                   </div>}
                   <TelemetryDashboard lapA={lapA} lapB={lapB} at={at} atB={playing && bIdx != null ? bIdx : at} colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB} gA={gA} gB={gB} dist={dist} n={n} section={active?.label ?? null} />
                 </div>
