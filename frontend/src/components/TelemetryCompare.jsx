@@ -16,6 +16,7 @@ import TelemetryDuel from "./TelemetryDuel.jsx";
 import TelemetryPlayer from "./TelemetryPlayer.jsx";
 import { Chip, Menu, MenuItem, Panel, Segmented, ToolButton } from "./TelemetryUI.jsx";
 import TelemetryDashboard from "./TelemetryDashboard.jsx";
+import TelemetryHud, { HudMenu, useHudPrefs, useWide } from "./TelemetryHud.jsx";
 import { SectionsPanel } from "./TelemetrySections.jsx";
 import TelemetryOverview from "./TelemetryOverview.jsx";
 import TelemetryTips from "./TelemetryTips.jsx";
@@ -262,6 +263,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
   // browser's own full screen; "css" is for a browser that has none for an
   // element (iPhone Safari), where the box simply covers the window.
   const [mapFull, setMapFull] = useState(null);
+  const [hudPrefs, setHudPrefs] = useHudPrefs();
+  const wide = useWide();
   const mapWrapRef = useRef(null);
   const [revision, setRevision] = useState(0);
   const [loadError, setLoadError] = useState(null);
@@ -840,6 +843,16 @@ function TelemetryCompare({ series: fixedSeries = null }) {
     rate: playbackRate, onRate: (r) => { startAtRef.current = at; setPlaybackRate(r); },
     position: `${position(at)} of lap${active ? ` · ${active.tag}` : ''}`, gapAt: delta ? delta.d[at] : null, colorA, colorB,
   };
+  // The 3D view's heads-up display, in full screen only: there "At cursor"
+  // and the overview are out of sight. Cards or a bar over the view, or a
+  // panel beside it, as picked in its HUD menu; under the view on a phone.
+  const hudOn = !!mapFull && mapView === '3d' && !!lapA;
+  const hudPlacement = wide ? hudPrefs.layout : 'side';
+  const hudSide = hudOn && hudPlacement === 'side';
+  const hudProps = {
+    prefs: hudPrefs, lapA, lapB: both ? lapB : null, at, atB: playing && bIdx != null ? bIdx : at, n,
+    colorA, colorB, nameA, nameB, sectors, sections, dist,
+  };
   // The replay box's own buttons: 2D or 3D, what the 2D map colours, and full
   // screen. In the panel header normally, above the box in full screen.
   const mapControls = <>
@@ -963,11 +976,14 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                         gets the height it needs; a fixed box from a desktop
                         layout squashed it. In full screen it takes what the
                         bars above and below leave. */}
+                    <div className={hudSide ? "flex min-h-0 flex-1 flex-col gap-2 md:flex-row" : "contents"}>
                     <div className={`relative w-full overflow-hidden rounded-lg border border-border ${mapFull ? "min-h-0 flex-1" : "aspect-square max-h-[460px] sm:aspect-auto sm:h-[400px]"}`}>
                       {mapView === '3d' ? (
                         <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-xs text-light">Loading 3D…</div>}>
                           <TelemetryTrack3D track={rawTrack} layout={rawLayout} trackName={trackName} lapA={lapA} lapB={both ? lapB : null} n={n} at={at} motionA={motionA} bIdx={bIdx}
                             colorA={colorA} colorB={colorB} nameA={nameA} nameB={nameB}
+                            hud={hudOn && !hudSide ? <TelemetryHud placement={hudPlacement} {...hudProps} /> : null}
+                            hudMenu={hudOn ? <HudMenu prefs={hudPrefs} onChange={setHudPrefs} narrow={!wide} /> : null}
                             backdrop={<TelemetryTrackMap lapA={lapA} lapB={lapB} n={n} cursor={at} cursorB={bIdx} motionA={motionA} onPick={() => {}} onReset={() => {}} mode="lines" track={track} colorA={colorA} colorB={colorB} sectors={sectors || []} />} />
                         </Suspense>
                       ) : <>
@@ -983,6 +999,8 @@ function TelemetryCompare({ series: fixedSeries = null }) {
                         <button type="button" className={ZOOM_BTN} aria-label="Zoom in" onClick={() => { focusSomewhere(); setZoom((z) => Math.min(240, z * 1.5)); }}>+</button>
                       </div>
                       </>}
+                    </div>
+                    {hudSide && <TelemetryHud placement="side" {...hudProps} className="max-h-[45%] shrink-0 overflow-y-auto md:max-h-none md:w-80" />}
                     </div>
                     {mapFull ? <TelemetryPlayer {...playerProps} />
                     : mapView === '3d' ? <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-light">
