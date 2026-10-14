@@ -584,20 +584,26 @@ function circuitScene(ctx, spec) {
   };
 
   const LAP = [0.8, 6.9];
+  const SWAY = 0.22;
   const update = (t) => {
     camera.aspect = ctx.aspect;
     camera.updateProjectionMatrix();
     const pitch = 0.98;
-    const w = maxX - minX + 30;
-    const h = (maxZ - minZ) * Math.sin(pitch) + 40;
-    const d = fitDistance(camera, w / 0.92, h / 0.6) * lerp(1.25, 1, easeOut(span(t, 0, 2.2)));
+    // The box the circuit takes up however far the camera has swung (it
+    // sways by up to SWAY either way), with room for perspective: the near
+    // end of a tilted circuit draws bigger than the far one.
+    const W0 = maxX - minX;
+    const D0 = maxZ - minZ;
+    const w = W0 * Math.cos(SWAY) + D0 * Math.sin(SWAY) + 30;
+    const h = (D0 * Math.cos(SWAY) + W0 * Math.sin(SWAY)) * Math.sin(pitch) + 40;
+    const d = fitDistance(camera, w / 0.92, h / 0.6) * 1.08 * lerp(1.25, 1, easeOut(span(t, 0, 2.2)));
     // The fog starts past the circuit, however far back a wide one puts the
     // camera, so only the ground beyond it fades.
     if (scene.fog) {
       scene.fog.near = d * 1.05;
       scene.fog.far = d * 2.4;
     }
-    const yaw = Math.sin(t * 0.22) * 0.22;
+    const yaw = Math.sin(t * 0.22) * SWAY;
     camera.position.set(centre.x + Math.sin(yaw) * Math.cos(pitch) * d, Math.sin(pitch) * d, centre.z + Math.cos(yaw) * Math.cos(pitch) * d);
     camera.lookAt(centre);
 
