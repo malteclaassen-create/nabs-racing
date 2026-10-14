@@ -145,15 +145,11 @@ function CarFilm({ src, poster, wide, clock, running, reduced }) {
   return (
     <div aria-hidden="true" className={`story-film pointer-events-none absolute ${box}`}>
       {src ? (
-        <video
-          ref={ref}
-          src={src}
-          muted
-          playsInline
-          preload="auto"
-          className="h-full w-full object-cover"
-          onError={(e) => (e.currentTarget.style.display = "none")}
-        />
+        // WebM where the browser plays it (and where it was rendered), else MP4.
+        <video ref={ref} muted playsInline preload="auto" className="h-full w-full object-cover">
+          <source src={src.replace(/\.mp4$/, ".webm")} type="video/webm" />
+          <source src={src} type="video/mp4" onError={(e) => (e.currentTarget.parentElement.style.display = "none")} />
+        </video>
       ) : (
         <img src={poster} alt="" className="story-film-still h-full w-full object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
       )}

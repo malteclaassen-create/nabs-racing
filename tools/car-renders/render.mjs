@@ -129,6 +129,10 @@ async function film(l, kind) {
   }
   const enc = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(SIZE.fps), "-i", join(frames, "f%04d.jpg"), "-c:v", "libx264", "-preset", "slow", "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4], { stdio: "inherit" });
   if (enc.status !== 0) throw new Error(`encoding failed: ${mp4}`);
+  // And as WebM, for the browsers that play no MP4.
+  const webm = mp4.replace(/\.mp4$/, ".webm");
+  const vp9 = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(SIZE.fps), "-i", join(frames, "f%04d.jpg"), "-c:v", "libvpx-vp9", "-crf", "36", "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", "-pix_fmt", "yuv420p", webm], { stdio: "inherit" });
+  if (vp9.status !== 0) throw new Error(`encoding failed: ${webm}`);
   rmSync(frames, { recursive: true, force: true });
   console.log(l.key, kind, "done");
 }

@@ -16,7 +16,8 @@ keeps the story's own 3D scenes.
 ## What gets rendered
 
 Per livery, 720 x 900 at 24 frames a second, on the colour of the slide it
-plays on and fading into it at the edges:
+plays on and fading into it at the edges, each as MP4 and as WebM (for the
+browsers that play no MP4):
 
 - `intro.mp4` (6.5 s): out of the dark, the camera swinging round the nose.
 - `climb.mp4` (8.5 s): at speed, passing three other liveries.

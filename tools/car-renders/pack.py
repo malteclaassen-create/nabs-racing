@@ -25,6 +25,11 @@ for l in spec["liveries"]:
         os.makedirs(dst, exist_ok=True)
         for f in FILES:
             shutil.copyfile(os.path.join(src, f), os.path.join(dst, f))
+        # The WebM copies, where they were made.
+        for f in FILES:
+            webm = os.path.join(src, f.replace(".mp4", ".webm"))
+            if f.endswith(".mp4") and os.path.exists(webm):
+                shutil.copyfile(webm, os.path.join(dst, os.path.basename(webm)))
     liveries.append(entry)
 # A driver's own livery only where its team's films are there.
 have = {e["key"] for e in liveries if "films" not in e}
