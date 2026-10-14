@@ -300,8 +300,8 @@ function Frame({ slide, variant = 0, marquee = null, children }) {
       <div
         className={
           wide
-            ? "relative flex h-full flex-col px-[6vw] pb-[5.5vh] pt-[9.5rem]"
-            : "relative flex h-full flex-col px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-[5.75rem] sm:px-7 [@media(max-height:640px)]:pb-4 [@media(max-height:640px)]:pt-[5rem]"
+            ? "relative flex h-full flex-col px-[6vw] pb-[max(5.5vh,env(safe-area-inset-bottom))] pt-[calc(9.5rem_+_env(safe-area-inset-top))]"
+            : "relative flex h-full flex-col px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-[calc(max(0.75rem,env(safe-area-inset-top))_+_5rem)] sm:px-7 [@media(max-height:640px)]:pb-4 [@media(max-height:640px)]:pt-[calc(max(0.75rem,env(safe-area-inset-top))_+_4.25rem)]"
         }
       >
         {children}

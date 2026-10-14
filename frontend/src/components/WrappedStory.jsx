@@ -420,7 +420,7 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS }
 
           {/* The bars, one per slide, and the two buttons. */}
           <div
-            className={`absolute inset-x-0 top-0 z-10 ${wide ? "px-8 pt-6" : "px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"}`}
+            className={`absolute inset-x-0 top-0 z-10 ${wide ? "px-8 pt-[calc(1.5rem_+_env(safe-area-inset-top))]" : "px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"}`}
             style={{ color: ink }}
           >
             <div className="flex gap-1" aria-hidden="true">
