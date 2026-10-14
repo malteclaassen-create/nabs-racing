@@ -111,7 +111,10 @@ Season Wrapped
   pause, swipe down to close. Behind the words are 3D scenes with the
   driver's own car in the team's colours: a lap of the circuit of their best
   result, a climb through the field, trophies, the championship as a 3D chart
-  the car rides along, the podium or their slot on the grid. The last slide
+  the car rides along, the podium or their slot on the grid. Where the
+  league's real car has been rendered for that season (tools/car-renders),
+  it is the real car in the driver's own livery, the rest of the grid in
+  theirs; otherwise the season's car photo opens the story. The last slide
   is the season on one card, and "Share your season" turns it into a picture
   sized for an Instagram story or WhatsApp status. On a computer the story
   takes the whole screen: the 3D fills it and the words stand on the left.

@@ -9,9 +9,10 @@ import { useEffect, useRef, useState } from "react";
 // `onUnavailable` is called when there is no 3D to be had (no WebGL, the GPU
 // taken back mid-story, the module failing to load); the story then draws its
 // flat pictures instead. `stageRef` hands the stage to the story for the
-// summary card's picture.
+// summary card's picture. `art`: a promise of the season's real car in
+// pictures (utils/carArt.js), or null for the 3D car.
 // ---------------------------------------------------------------------------
-export default function WrappedStage({ spec, clock, still, onUnavailable, stageRef }) {
+export default function WrappedStage({ spec, clock, still, art = null, onUnavailable, stageRef }) {
   const canvasRef = useRef(null);
   const [stage, setStage] = useState(null);
   const [shown, setShown] = useState(false);
@@ -25,7 +26,7 @@ export default function WrappedStage({ spec, clock, still, onUnavailable, stageR
     import("../utils/wrappedScenes.js")
       .then(({ createWrappedStage }) => {
         if (gone || !canvasRef.current) return;
-        made = createWrappedStage(canvasRef.current, { still });
+        made = createWrappedStage(canvasRef.current, { still, art });
         if (!made) {
           lost.current?.();
           return;
@@ -40,7 +41,7 @@ export default function WrappedStage({ spec, clock, still, onUnavailable, stageR
       if (stageRef && stageRef.current === made) stageRef.current = null;
       made?.dispose();
     };
-  }, [still, stageRef]);
+  }, [still, art, stageRef]);
 
   // Its size follows the frame.
   useEffect(() => {

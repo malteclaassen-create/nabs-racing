@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/frontend/node_modules/three/build/three.module.js","three/addons/":"/frontend/node_modules/three/examples/jsm/"}}</script>
+<!-- The car as pictures (README.md): served from the repository root by render.mjs. -->
+<body style="margin:0;background:#222">
+<canvas id="c"></canvas>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.setPixelRatio(1);
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+const key = new THREE.DirectionalLight(0xffffff, 2.6);
+key.position.set(-3, 9, 4);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+fill.position.set(-6, 3, -4);
+scene.add(fill);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x111111, 0.25));
+
+// Paint gets a lacquer; the GLB marks each material's kind in extras.
+function upgrade(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    const kind = m.userData?.kind;
+    if (kind === "paint" || kind === "carbon") {
+      const p = new THREE.MeshPhysicalMaterial({
+        map: m.map, color: m.color, metalness: m.metalness, roughness: m.roughness,
+        clearcoat: kind === "paint" ? 1 : 0.6, clearcoatRoughness: 0.08, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side,
+      });
+      p.name = m.name;
+      o.material = p;
+    }
+    if (m.map) m.map.anisotropy = 8;
+  });
+}
+
+window.loadCar = async (url) => {
+  const gltf = await new GLTFLoader().loadAsync(url);
+  const car = gltf.scene;
+  upgrade(car);
+  const box = new THREE.Box3().setFromObject(car);
+  window.carBox = { min: box.min.toArray(), max: box.max.toArray() };
+  // Centre on x/z, wheels on y = 0.
+  const c = box.getCenter(new THREE.Vector3());
+  car.position.set(-c.x, -box.min.y, -c.z);
+  if (window.car) scene.remove(window.car);
+  window.car = new THREE.Group();
+  window.car.add(car);
+  // Nose along +x, as the site's scenes have every car.
+  window.car.rotation.y = Math.PI / 2;
+  scene.add(window.car);
+  return window.carBox;
+};
+
+// The car from every side, packed in one picture: for each livery row block,
+// for each pitch, `yaws` frames round the car (frame i: the camera at angle
+// i * 2pi / yaws from the nose, towards the car's +z side). Orthographic, the
+// box `boxW` x `boxH` metres centred `cy` above the ground. Rendered `ss`
+// times larger and scaled down, for clean edges.
+window.atlas = ({ cellW, cellH, boxW, boxH, cy, yaws, pitches, yawFrom = 0, yawStep = null, ss = 2, maxW = 4096, quality = 0.86 }) => {
+  const step = yawStep ?? (Math.PI * 2) / yaws;
+  const n = yaws * pitches.length;
+  const cols = Math.min(n, Math.floor(maxW / cellW));
+  const rows = Math.ceil(n / cols);
+  const out = document.createElement("canvas");
+  out.width = cols * cellW;
+  out.height = rows * cellH;
+  const g = out.getContext("2d");
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  renderer.setSize(cellW * ss, cellH * ss, false);
+  renderer.setClearColor(0x000000, 0);
+  const cam = new THREE.OrthographicCamera(-boxW / 2, boxW / 2, boxH / 2, -boxH / 2, 0.1, 100);
+  let k = 0;
+  for (const pitch of pitches) {
+    for (let i = 0; i < yaws; i++, k++) {
+      const yaw = yawFrom + i * step;
+      const d = 30;
+      cam.position.set(Math.cos(yaw) * Math.cos(pitch) * d, cy + Math.sin(pitch) * d, Math.sin(yaw) * Math.cos(pitch) * d);
+      cam.up.set(0, 1, 0);
+      cam.lookAt(0, cy, 0);
+      renderer.render(scene, cam);
+      g.drawImage(canvas, 0, 0, cellW * ss, cellH * ss, (k % cols) * cellW, Math.floor(k / cols) * cellH, cellW, cellH);
+    }
+  }
+  return { url: out.toDataURL("image/webp", quality), cols, rows, width: out.width, height: out.height };
+};
+
+// One frame: the camera at `yaw` round the car (0 = looking at its nose) and
+// `pitch` above the ground, orthographic, framing a box of `w` x `h` metres.
+window.frame = (w, h, pxW, pxH, yaw, pitch, { bg = null, persp = false, fov = 30, dist = 9 } = {}) => {
+  renderer.setSize(pxW, pxH, false);
+  renderer.setClearColor(bg ?? 0x000000, bg == null ? 0 : 1);
+  let cam;
+  if (persp) {
+    cam = new THREE.PerspectiveCamera(fov, pxW / pxH, 0.1, 200);
+  } else {
+    cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
+  }
+  const d = persp ? dist : 30;
+  const cy = 0.5;
+  cam.position.set(Math.sin(yaw) * Math.cos(pitch) * d, cy + Math.sin(pitch) * d, Math.cos(yaw) * Math.cos(pitch) * d);
+  cam.lookAt(0, cy, 0);
+  renderer.render(scene, cam);
+  return canvas.toDataURL("image/png");
+};
+window.ready = true;
+</script>

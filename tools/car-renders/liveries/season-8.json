@@ -1,0 +1,192 @@
+{
+ "season": 8,
+ "model": "formula_2010",
+ "note": "Season 8 (formula_2010): each league team's livery, and a driver's own where the mod has one. skin = the folder under the car's skins/.",
+ "liveries": [
+  {
+   "key": "mclaren",
+   "skin": "m17_44_mclaren_44",
+   "teams": [
+    "mclaren_s8"
+   ]
+  },
+  {
+   "key": "ferrari",
+   "skin": "m17_07_ferrari_7",
+   "teams": [
+    "ferrari_s8"
+   ]
+  },
+  {
+   "key": "red-bull",
+   "skin": "m17_05_red_bull_5",
+   "teams": [
+    "redbull_s8"
+   ]
+  },
+  {
+   "key": "mercedes",
+   "skin": "m17_03_mercedes_3",
+   "teams": [
+    "s6_mercedes_s8"
+   ]
+  },
+  {
+   "key": "williams",
+   "skin": "m17_09_williams_9",
+   "teams": [
+    "williams_s8"
+   ]
+  },
+  {
+   "key": "renault",
+   "skin": "m17_1_renault_1",
+   "teams": [
+    "renault_s8"
+   ]
+  },
+  {
+   "key": "force-india",
+   "skin": "m17_14_force_india_14",
+   "teams": [
+    "s6_force_india_s8"
+   ]
+  },
+  {
+   "key": "toro-rosso",
+   "skin": "m17_16_toro_rosso_16",
+   "teams": [
+    "torro_rosso_s8"
+   ]
+  },
+  {
+   "key": "lotus",
+   "skin": "m17_18_lotus_18",
+   "teams": [
+    "lotus_s8"
+   ]
+  },
+  {
+   "key": "sauber",
+   "skin": "m17_22_sauber_37",
+   "teams": [
+    "s3_sauber_s8"
+   ]
+  },
+  {
+   "key": "virgin",
+   "skin": "m17_24_virgin_24",
+   "teams": [
+    "s3_virgin_s8"
+   ]
+  },
+  {
+   "key": "hrt",
+   "skin": "m17_20_hrt_20",
+   "teams": [
+    "s3_hrt_s8"
+   ]
+  },
+  {
+   "key": "audi",
+   "skin": "28_Audi_F1_Team",
+   "teams": [
+    "s6_audi_s8"
+   ]
+  },
+  {
+   "key": "brawn",
+   "skin": "27_BrawnGP_Honda",
+   "teams": [
+    "s6_brawn_gp_s8"
+   ]
+  },
+  {
+   "key": "skoda",
+   "skin": "34_Skoda_F1_Team",
+   "teams": [
+    "skoda_s8"
+   ],
+   "drivers": [
+    "Laluch"
+   ]
+  },
+  {
+   "key": "skoda-35",
+   "skin": "35_Skoda_F1_Team",
+   "of": "skoda",
+   "drivers": [
+    "Endriu"
+   ]
+  },
+  {
+   "key": "axn",
+   "skin": "AXN_67",
+   "teams": [
+    "axn-rb_s8"
+   ],
+   "drivers": [
+    "DRAS"
+   ]
+  },
+  {
+   "key": "axn-69",
+   "skin": "AXN_69",
+   "of": "axn",
+   "drivers": [
+    "Justyn"
+   ]
+  },
+  {
+   "key": "arrows",
+   "skin": "Arrows_30",
+   "teams": [
+    "s3_arrows_s8"
+   ],
+   "drivers": [
+    "Elka Gado"
+   ]
+  },
+  {
+   "key": "arrows-31",
+   "skin": "Arrows_31",
+   "of": "arrows",
+   "drivers": [
+    "Larry Kapinga"
+   ]
+  },
+  {
+   "key": "ncb",
+   "skin": "NCB RaceTech - Kalervo77",
+   "teams": [
+    "ncb_mugen_s8"
+   ],
+   "drivers": [
+    "Kalervo77",
+    "Kalervo"
+   ]
+  },
+  {
+   "key": "ncb-23",
+   "skin": "NCB RaceTech - Naigouu",
+   "of": "ncb",
+   "drivers": [
+    "Naigouu"
+   ]
+  },
+  {
+   "key": "usf1",
+   "skin": "2010_USF1_Team_32",
+   "teams": [
+    "usf1_s8"
+   ]
+  },
+  {
+   "key": "reserve",
+   "skin": "reserve_team_00",
+   "teams": [
+    "reserve_s8"
+   ]
+  }
+ ]
+}
