@@ -5,6 +5,7 @@ import { buildStory } from "../utils/wrappedStory.mjs";
 import { prettyTrack } from "../utils/pageTitle.js";
 import { copyText } from "../utils/copyText.js";
 import { motionOff } from "../hooks/motion.js";
+import { carFor } from "../utils/heroImage.js";
 import { useFocusTrap, useScrollLock } from "./overlay.jsx";
 import WrappedStage from "./WrappedStage.jsx";
 import StorySlide, { StoryClock, StoryLayout, describe } from "./WrappedStorySlides.jsx";
@@ -84,6 +85,28 @@ const WIDE = "(min-width: 960px) and (min-aspect-ratio: 4/3)";
 const FROM_RIGHT = { x: "100%", y: "50%" };
 const FROM_LEFT = { x: "0%", y: "50%" };
 
+// The season's real car (utils/heroImage.js carFor: the shot an admin
+// uploaded, else the public/cars drop-in), loaded up front. `el` is the
+// loaded picture, `failed` says there is none to show.
+function useCarPhoto(season) {
+  const src = carFor(season);
+  const [got, setGot] = useState({ src: null, el: null });
+  useEffect(() => {
+    if (!src) return undefined;
+    let gone = false;
+    const el = new Image();
+    el.decoding = "async";
+    el.onload = () => !gone && setGot({ src, el });
+    el.onerror = () => !gone && setGot({ src, el: null });
+    el.src = src;
+    return () => {
+      gone = true;
+    };
+  }, [src]);
+  const settled = got.src === src;
+  return { src: settled && got.el ? src : null, el: settled ? got.el : null, failed: !src || (settled && !got.el) };
+}
+
 // The league's mark in both colours: `dark` (the pink one, or the series' own
 // upload) on the dark slides, `light` (black) on the pale ones.
 const LOGOS = { dark: "/logo-dark.png", light: "/logo-light.png" };
@@ -97,6 +120,7 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS }
   const [hidden, setHidden] = useState(typeof document !== "undefined" && document.hidden);
   const [flat, setFlat] = useState(liteMode);
   const [share, setShare] = useState({ busy: false, msg: "" });
+  const car = useCarPhoto(data.season);
   const sideways = useMedia(SIDEWAYS);
   const wide = useMedia(WIDE);
   // The slide whose colour lies under the opening circle, and where it opens.
@@ -254,30 +278,40 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS }
   // The scene for the stage, with the slide's colours for its fog and grid and
   // the layout it is framed for. On a computer the summary has the car turning
   // beside the card, where a phone has no room for it.
-  const scene = slide?.scene || (wide && slide?.kind === "summary" ? slides[0]?.scene : null);
+  //
+  // Where the season has a picture of its real car, the intro (and that
+  // summary) show the picture instead: no 3D car while it loads, and the 3D
+  // one back only when there turns out to be no picture.
+  const carSlide = slide?.key === "intro" || (wide && slide?.kind === "summary");
+  const photoed = carSlide && !car.failed;
+  const scene = photoed ? null : slide?.scene || (wide && slide?.kind === "summary" ? slides[0]?.scene : null);
   const spec = useMemo(
     () => (scene ? { ...scene, bg: slide.colors.bg, accent: slide.colors.accent, round, wide } : null),
     [scene, slide, round, wide]
   );
   // A slide with white words is a dark one, and gets the pink mark.
   const logo = slide?.colors.ink.toUpperCase() === "#FFFFFF" ? logos.dark : logos.light;
-  const layout = useMemo(() => ({ wide, scened: !!spec && !flat, logo }), [wide, spec, flat, logo]);
+  const photo = photoed ? car.src || "" : null; // "" = on its way
+  const layout = useMemo(() => ({ wide, scened: !!spec && !flat, logo, photo }), [wide, spec, flat, logo, photo]);
 
   // The summary card's buttons.
   const summary = slides[last];
   const fileName = `${data.driver.name}-${data.season.label}-wrapped.jpg`.replace(/[^\w.-]+/g, "-");
   const makePicture = useCallback(async () => {
     const { drawShareCard } = await import("../utils/wrappedShareCard.js");
+    // The real car where there is a picture of it (from this site: one from
+    // anywhere else would leave the canvas unreadable), else the 3D one.
+    const photo = car.el && new URL(car.el.src, location.href).origin === location.origin ? car.el : null;
     const intro = slides[0]?.scene;
-    let car = null;
+    let still3d = null;
     try {
-      car = intro && stageRef.current ? stageRef.current.still({ ...intro, bg: "#0B0A12" }, 3.4, 1080, 820) : null;
+      still3d = !photo && intro && stageRef.current ? stageRef.current.still({ ...intro, bg: "#0B0A12" }, 3.4, 1080, 820) : null;
     } catch {
-      car = null;
+      still3d = null;
     }
     const address = url ? url.replace(/^https?:\/\//, "") : "";
-    return drawShareCard({ card: summary, data, car, address, logo: logos.dark });
-  }, [slides, summary, data, url]);
+    return drawShareCard({ card: summary, data, car: still3d, photo, address, logo: logos.dark });
+  }, [slides, summary, data, url, car.el]);
   const download = (blob) => {
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");

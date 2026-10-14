@@ -27,7 +27,7 @@ export const StoryClock = createContext(null);
 // The layout: { wide, scened, logo } — wide is the computer layout, scened
 // that the slide has a 3D scene behind it right now, logo the league's mark in
 // the colour that shows on this slide.
-export const StoryLayout = createContext({ wide: false, scened: false, logo: null });
+export const StoryLayout = createContext({ wide: false, scened: false, logo: null, photo: null });
 const useLayout = () => useContext(StoryLayout);
 
 const MEDAL_ON_DARK = ["#F5C542", "#DFE3EA", "#E39A5F"];
@@ -208,6 +208,23 @@ function Scrims({ bg }) {
   );
 }
 
+// The season's real car, the picture an admin uploaded, where the 3D car
+// would be: it comes up out of the dark, the camera travels slowly along it,
+// a light runs over the paint and the team's colour glows in from below.
+// Tall: the whole frame. Wide: the right of the screen, fading into the words.
+function CarPhoto({ src, paint }) {
+  const { wide } = useLayout();
+  return (
+    <div aria-hidden="true" className={`pointer-events-none absolute overflow-hidden ${wide ? "story-photo-edge inset-y-0 right-0 w-[72%]" : "inset-0"}`}>
+      <div className="story-photo absolute inset-0">
+        <img src={src} alt="" draggable={false} className={`story-photo-img h-full w-full object-cover ${wide ? "story-photo-wide" : ""}`} />
+        <div className="story-photo-sweep absolute inset-0" />
+      </div>
+      <div className="absolute inset-0 mix-blend-screen" style={{ background: `radial-gradient(90% 50% at 70% 100%, ${paint}66, ${paint}00 70%)` }} />
+    </div>
+  );
+}
+
 // --- the flat pictures, where there is no 3D ---------------------------------------
 
 function CircuitArt({ track, paint, ink }) {
@@ -291,12 +308,15 @@ function FlatArt({ scene, colors }) {
 // without a scene) or the fades over the scene, and the words in front.
 function Frame({ slide, variant = 0, marquee = null, children }) {
   const { colors } = slide;
-  const { wide, scened } = useLayout();
+  const { wide, scened, photo } = useLayout();
+  // The car's picture stands where a scene would ("" while it loads).
+  const backed = scened || photo != null;
   return (
     <div className="absolute inset-0" style={{ color: colors.ink }}>
-      {!scened && <Shapes colors={colors} variant={variant} />}
-      {!scened && marquee && <Marquee text={marquee} colors={colors} top={wide ? "62%" : "64%"} />}
-      {scened && <Scrims bg={colors.bg} />}
+      {photo && <CarPhoto src={photo} paint={slide.scene?.paint || slide.paint || colors.accent} />}
+      {!backed && <Shapes colors={colors} variant={variant} />}
+      {!backed && marquee && <Marquee text={marquee} colors={colors} top={wide ? "62%" : "64%"} />}
+      {backed && <Scrims bg={colors.bg} />}
       <div
         className={
           wide
@@ -312,8 +332,9 @@ function Frame({ slide, variant = 0, marquee = null, children }) {
 
 // Top words, the scene's place, bottom words. Wide: the words as a column on
 // the left and the scene (or its flat picture) to the right of them.
-function SceneLayout({ slide, flat, top, bottom }) {
-  const { wide } = useLayout();
+function SceneLayout({ slide, flat: noScene, top, bottom }) {
+  const { wide, photo } = useLayout();
+  const flat = noScene && photo == null;
   if (wide) {
     return (
       <Frame slide={slide}>

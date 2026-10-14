@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // The picture at the end of a Season Wrapped story: one driver's season on a
 // 9:16 card, the size a phone's story or status takes (Instagram, WhatsApp),
-// with the driver's car from the story's 3D on it where there is one.
+// with the season's real car on it (its uploaded picture), or else the car
+// from the story's 3D.
 //
 // Drawn here, in the browser, rather than on the server like the link
 // previews (backend lib/sharePictures.js): the car is a WebGL render, and the
@@ -59,10 +60,46 @@ async function loadImage(src) {
   }
 }
 
-// `card`: the summary slide (utils/wrappedStory.mjs). `car`: a canvas with the
-// car on a transparent background, or null. `logo`: the address of the
-// league's mark for a dark background. Resolves to a JPEG Blob.
-export async function drawShareCard({ card, data, car = null, address = "", logo = null }) {
+// The season's car across the top, filling the width, fading into the night
+// above (under the masthead) and below (where the name sits on it), the
+// team's colour in it.
+const PHOTO_TOP = 40;
+const PHOTO_H = 980;
+function drawCarPhoto(g, img, paint) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const s = Math.max(CARD_W / iw, PHOTO_H / ih);
+  const sw = CARD_W / s;
+  const sh = PHOTO_H / s;
+  g.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, PHOTO_TOP, CARD_W, PHOTO_H);
+  const top = g.createLinearGradient(0, PHOTO_TOP, 0, PHOTO_TOP + 340);
+  top.addColorStop(0, "#0B0A12");
+  top.addColorStop(0.45, "rgba(11,10,18,0.7)");
+  top.addColorStop(1, "rgba(11,10,18,0)");
+  g.fillStyle = top;
+  g.fillRect(0, PHOTO_TOP, CARD_W, 340);
+  const bottom = g.createLinearGradient(0, PHOTO_TOP + PHOTO_H - 380, 0, PHOTO_TOP + PHOTO_H);
+  bottom.addColorStop(0, "rgba(11,10,18,0)");
+  bottom.addColorStop(0.75, "rgba(11,10,18,0.92)");
+  bottom.addColorStop(1, "#0B0A12");
+  g.fillStyle = bottom;
+  g.fillRect(0, PHOTO_TOP + PHOTO_H - 380, CARD_W, 380);
+  g.save();
+  g.globalCompositeOperation = "screen";
+  const glow = g.createRadialGradient(CARD_W * 0.7, PHOTO_TOP + PHOTO_H, 40, CARD_W * 0.7, PHOTO_TOP + PHOTO_H, 700);
+  glow.addColorStop(0, `${paint}66`);
+  glow.addColorStop(1, `${paint}00`);
+  g.fillStyle = glow;
+  g.fillRect(0, PHOTO_TOP, CARD_W, PHOTO_H);
+  g.restore();
+}
+
+// `card`: the summary slide (utils/wrappedStory.mjs). `photo`: the season's
+// real car, a loaded picture from this site, or null. `car`: a canvas with the
+// 3D car on a transparent background, for a season without a picture, or
+// null. `logo`: the address of the league's mark for a dark background.
+// Resolves to a JPEG Blob.
+export async function drawShareCard({ card, data, photo = null, car = null, address = "", logo = null }) {
   const [mark] = await Promise.all([loadImage(logo), fontsIn()]);
   const c = document.createElement("canvas");
   c.width = CARD_W;
@@ -71,11 +108,13 @@ export async function drawShareCard({ card, data, car = null, address = "", logo
   const paint = card.paint;
   const { driver, season, championship } = data;
 
-  // Night, the team's colour glowing in from the top, a band of it across.
+  // Night (the real car in it), the team's colour glowing in from the top, a
+  // band of it across.
   g.fillStyle = "#0B0A12";
   g.fillRect(0, 0, CARD_W, CARD_H);
+  if (photo) drawCarPhoto(g, photo, paint);
   const glow = g.createRadialGradient(CARD_W * 0.85, 260, 40, CARD_W * 0.85, 260, 1100);
-  glow.addColorStop(0, `${paint}99`);
+  glow.addColorStop(0, `${paint}${photo ? "4d" : "99"}`);
   glow.addColorStop(1, `${paint}00`);
   g.fillStyle = glow;
   g.fillRect(0, 0, CARD_W, CARD_H);
@@ -100,12 +139,13 @@ export async function drawShareCard({ card, data, car = null, address = "", logo
   g.fillText(`${season.label} WRAPPED`.toUpperCase(), textX, 168);
   spaced(g, 0);
 
-  // The car, or the race number where there is no 3D.
-  if (car) {
+  // Without the real car's picture (drawn first, under the band): the 3D
+  // car, else the race number.
+  if (!photo && car) {
     const w = CARD_W;
     const h = (car.height / car.width) * w;
     g.drawImage(car, 0, 190, w, h);
-  } else {
+  } else if (!photo) {
     g.strokeStyle = paint;
     g.lineWidth = 18;
     g.beginPath();

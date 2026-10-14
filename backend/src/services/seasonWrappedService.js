@@ -335,7 +335,17 @@ async function readSeasonBook(prisma, seasonId) {
   }
 
   const honours = complete ? await getSeasonHonours(prisma, seasonId).catch(() => null) : null;
-  return { season, roundsRun: run.length, totalRounds: rounds.length, complete, finalRows, after, dotd, honours };
+  return { season, roundsRun: run.length, totalRounds: rounds.length, complete, finalRows, after, dotd, honours, car: await seasonCarOf(prisma, seasonId) };
+}
+
+// The season's real car, the shot an admin uploads for it (Season.carImageUrl,
+// raw SQL like the other columns ensureAppSchema manages). The story opens on
+// it; without one the browser tries the public/cars/s<n>.jpg drop-in, then
+// falls back to the 3D car.
+export async function seasonCarOf(prisma, seasonId) {
+  if (typeof prisma.$queryRawUnsafe !== "function") return null;
+  const rows = await prisma.$queryRawUnsafe(`SELECT "carImageUrl" FROM "Season" WHERE "id" = ?`, seasonId).catch(() => []);
+  return rows?.[0]?.carImageUrl || null;
 }
 
 // --- one driver -------------------------------------------------------------------
@@ -419,6 +429,7 @@ async function buildSeasonWrapped(prisma, driverId) {
       complete: book.complete,
       roundsRun: book.roundsRun,
       totalRounds: book.totalRounds,
+      carImageUrl: book.car,
     },
     series: profile.driver.seriesSlug ? { slug: profile.driver.seriesSlug, name: profile.driver.seriesName } : null,
     driver: {

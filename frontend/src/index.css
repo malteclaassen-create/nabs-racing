@@ -3428,8 +3428,35 @@ html.update-reveal.update-reveal-go body::after {
 /* The circuit drawing itself, where there is no 3D. */
 @keyframes story-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .story-trace { stroke-dasharray: 1; animation: story-trace 2.6s var(--e-soft) both; animation-delay: var(--d, 0ms); animation-play-state: var(--story-play, running); }
+/* The season's real car (WrappedStorySlides CarPhoto): up out of the dark,
+   then the camera travelling along it while a light runs over the paint. */
+.story-photo { animation: story-photo-in 1500ms var(--e-out) both; animation-play-state: var(--story-play, running); }
+@keyframes story-photo-in {
+  from { opacity: 0; transform: scale(1.3); filter: brightness(0.15) blur(8px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.story-photo-img { object-position: 45% 50%; filter: brightness(1.2) saturate(1.12); animation: story-photo-pan 7s cubic-bezier(0.3, 0, 0.4, 1) both; animation-play-state: var(--story-play, running); }
+@keyframes story-photo-pan {
+  from { object-position: 82% 50%; transform: scale(1.14); }
+  to { object-position: 30% 50%; transform: scale(1); }
+}
+.story-photo-img.story-photo-wide { animation-name: story-photo-pan-wide; }
+@keyframes story-photo-pan-wide {
+  from { object-position: 64% 50%; transform: scale(1.14); }
+  to { object-position: 40% 50%; transform: scale(1.02); }
+}
+.story-photo-sweep {
+  background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.4) 47%, rgb(255 255 255 / 0.12) 54%, transparent 66%);
+  mix-blend-mode: overlay;
+  transform: translateX(-110%);
+  animation: story-photo-sweep 1800ms var(--e-soft) 1000ms both;
+  animation-play-state: var(--story-play, running);
+}
+@keyframes story-photo-sweep { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
+.story-photo-edge { -webkit-mask-image: linear-gradient(to right, transparent, #000 34%); mask-image: linear-gradient(to right, transparent, #000 34%); }
 @media (prefers-reduced-motion: reduce) {
-  .st, .story-shape, .story-slide-in, .story-trace, .story-wipe, .story-marquee { animation: none !important; }
+  .st, .story-shape, .story-slide-in, .story-trace, .story-wipe, .story-marquee, .story-photo, .story-photo-img, .story-photo-sweep { animation: none !important; }
   .story-frame, .story-canvas { transition: none; }
 }
-.fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace, .fx-lite .story-wipe, .fx-lite .story-marquee { animation: none !important; }
+.fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace, .fx-lite .story-wipe, .fx-lite .story-marquee,
+.fx-lite .story-photo, .fx-lite .story-photo-img, .fx-lite .story-photo-sweep { animation: none !important; }
