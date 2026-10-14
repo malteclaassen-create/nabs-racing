@@ -10,17 +10,24 @@ import { motionOff } from "../hooks/motion.js";
 // The slides of the Season Wrapped story (components/WrappedStory.jsx plays
 // them; utils/wrappedStory.mjs decides which there are and what they say).
 //
-// Each slide is laid out for a tall frame: its words at the top and the
-// bottom, and where it has a 3D scene (components/WrappedStage.jsx) the scene
-// in the band between, under soft fades in the slide's colour so the words
-// stay readable over it. Without 3D (no WebGL, Lite mode) the same band shows
-// a flat picture of the same idea.
+// Two layouts. Tall, for a phone held upright (and the 9:16 card on a tablet):
+// the words at the top and the bottom, and where a slide has a 3D scene
+// (components/WrappedStage.jsx) the scene in the band between. Wide, for a
+// computer: the whole screen is the scene, the words stand in a column on the
+// left, larger, and the 3D fills the rest. Either way soft fades in the
+// slide's colour keep the words readable over the scene, and without 3D (no
+// WebGL, Lite mode) the scene's place holds a flat picture of the same idea.
 //
-// Numbers count up on the story's clock, so a paused story holds them too.
+// Headlines arrive word by word, numbers count up on the story's clock, and
+// everything holds still while the story is paused.
 // ---------------------------------------------------------------------------
 
 // The story's clock: seconds into the current slide, ticking with the story.
 export const StoryClock = createContext(null);
+// The layout: { wide, scened } — wide is the computer layout, scened that the
+// slide has a 3D scene behind it right now.
+export const StoryLayout = createContext({ wide: false, scened: false });
+const useLayout = () => useContext(StoryLayout);
 
 const MEDAL_ON_DARK = ["#F5C542", "#DFE3EA", "#E39A5F"];
 const medalColor = (p) => (p >= 1 && p <= 3 ? MEDAL_ON_DARK[p - 1] : null);
@@ -68,22 +75,33 @@ function St({ as: Tag = "div", kind = "rise", d = 0, className = "", style, chil
   );
 }
 
-const Eyebrow = ({ children, d = 0 }) => (
-  <St kind="fade" d={d} className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] opacity-90">
-    {children}
-  </St>
-);
+const Eyebrow = ({ children, d = 0 }) => {
+  const { wide } = useLayout();
+  return (
+    <St kind="fade" d={d} className={`font-mono font-bold uppercase tracking-[0.22em] opacity-90 ${wide ? "text-[13px]" : "text-[11px]"}`}>
+      {children}
+    </St>
+  );
+};
 
-const Title = ({ children, d = 150, size = 9.5, max = 2.6 }) => (
-  <St
-    as="h2"
-    d={d}
-    className="font-display font-black uppercase leading-[0.95] tracking-tight [text-wrap:balance]"
-    style={{ fontSize: `min(${size}cqw, ${max}rem)` }}
-  >
-    {children}
-  </St>
-);
+// A headline, each word rising out of its own line, one after the other.
+function Title({ children, d = 150, tall = "min(9.5cqw, 2.6rem)", wide: wideSize = "min(4.6vw, 4.8rem)" }) {
+  const { wide } = useLayout();
+  const words = String(children).split(/\s+/).filter(Boolean);
+  return (
+    <h2 className="font-display font-black uppercase leading-[0.98] tracking-tight [text-wrap:balance]" style={{ fontSize: wide ? wideSize : tall }}>
+      {words.map((w, i) => (
+        <span key={i}>
+          <span className="inline-block overflow-hidden pb-[0.06em] align-bottom">
+            <span className="st st-up inline-block" style={{ "--d": `${d + i * 75}ms` }}>
+              {w}
+            </span>
+          </span>{" "}
+        </span>
+      ))}
+    </h2>
+  );
+}
 
 // A big number or word that has to fit the frame's width.
 const fitSize = (text, max = 9.5, share = 0.86) => `min(${max}rem, calc(${share * 100}cqw / ${Math.max(2.2, String(text).length * 0.6)}))`;
@@ -121,22 +139,26 @@ function useFit(ref, max, key) {
   }, [ref, max, key]);
 }
 
-// The big soft shapes drifting behind a slide's words.
+// The big soft shapes drifting behind a slide's words. Sized against both
+// sides of the frame, so a wide screen does not blow them up past it.
 function Shapes({ colors, variant = 0 }) {
   const ink = colors.ink;
   const accent = colors.accent;
+  const v = (n) => `min(${n}cqw, ${n}vh)`;
   const sets = [
     [
-      { cls: "rounded-full", style: { width: "70cqw", height: "70cqw", right: "-28cqw", top: "-14cqw", background: accent, opacity: 0.16, "--dx": "-18px", "--dy": "26px" } },
-      { cls: "rounded-full", style: { width: "48cqw", height: "48cqw", left: "-20cqw", bottom: "8%", border: `10cqw solid ${ink}`, opacity: 0.07, "--rot": "-12deg" } },
+      { cls: "rounded-full", style: { width: v(70), height: v(70), right: `calc(${v(70)} * -0.4)`, top: `calc(${v(70)} * -0.2)`, background: accent, opacity: 0.16, "--dx": "-18px", "--dy": "26px" } },
+      { cls: "rounded-full", style: { width: v(48), height: v(48), left: `calc(${v(48)} * -0.4)`, bottom: "8%", border: `${v(10)} solid ${ink}`, opacity: 0.07, "--rot": "-12deg" } },
+      { cls: "story-spin rounded-full", style: { width: v(26), height: v(26), right: "12%", bottom: "14%", border: `${v(1.6)} dashed ${ink}`, opacity: 0.18 } },
     ],
     [
-      { cls: "", style: { width: "150cqw", height: "22cqw", left: "-25cqw", top: "34%", background: ink, opacity: 0.06, transform: "rotate(-12deg)", "--rot": "-4deg", "--dy": "18px" } },
-      { cls: "rounded-full", style: { width: "36cqw", height: "36cqw", right: "-8cqw", bottom: "16%", background: accent, opacity: 0.18, "--dx": "-30px" } },
+      { cls: "", style: { width: "150%", height: v(22), left: "-25%", top: "34%", background: ink, opacity: 0.06, transform: "rotate(-12deg)", "--rot": "-4deg", "--dy": "18px" } },
+      { cls: "rounded-full", style: { width: v(36), height: v(36), right: `calc(${v(36)} * -0.2)`, bottom: "16%", background: accent, opacity: 0.18, "--dx": "-30px" } },
+      { cls: "story-spin rounded-[28%]", style: { width: v(20), height: v(20), left: "8%", top: "16%", border: `${v(1.4)} solid ${accent}`, opacity: 0.3 } },
     ],
     [
-      { cls: "rounded-[30%]", style: { width: "58cqw", height: "58cqw", left: "-16cqw", top: "10%", border: `6cqw solid ${accent}`, opacity: 0.2, "--rot": "40deg" } },
-      { cls: "rounded-full", style: { width: "84cqw", height: "84cqw", right: "-40cqw", bottom: "-20cqw", background: ink, opacity: 0.06, "--dx": "-20px", "--dy": "-20px" } },
+      { cls: "rounded-[30%]", style: { width: v(58), height: v(58), left: `calc(${v(58)} * -0.28)`, top: "10%", border: `${v(6)} solid ${accent}`, opacity: 0.2, "--rot": "40deg" } },
+      { cls: "rounded-full", style: { width: v(84), height: v(84), right: `calc(${v(84)} * -0.48)`, bottom: `calc(${v(84)} * -0.24)`, background: ink, opacity: 0.06, "--dx": "-20px", "--dy": "-20px" } },
     ],
   ];
   return (
@@ -148,8 +170,35 @@ function Shapes({ colors, variant = 0 }) {
   );
 }
 
-// Fades in the slide's colour at the top and bottom, over a 3D scene.
+// A word repeated in outline across the slide, sliding by: the kind of texture
+// Spotify's Wrapped puts behind its big statements.
+function Marquee({ text, colors, top = "58%", size = "min(26cqw, 24vh)" }) {
+  const row = `${String(text).toUpperCase()} • `.repeat(6);
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 overflow-hidden" style={{ top }}>
+      <div
+        className="story-marquee font-display font-black leading-none"
+        style={{ fontSize: size, color: "transparent", WebkitTextStroke: `2px ${colors.ink}`, opacity: 0.1 }}
+      >
+        <span className="pr-[0.3em]">{row}</span>
+        <span className="pr-[0.3em]">{row}</span>
+      </div>
+    </div>
+  );
+}
+
+// Fades in the slide's colour over a 3D scene: top and bottom in the tall
+// layout, from the left in the wide one, where the words are.
 function Scrims({ bg }) {
+  const { wide } = useLayout();
+  if (wide) {
+    return (
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-y-0 left-0 w-[64%]" style={{ background: `linear-gradient(to right, ${bg} 0%, ${bg} 30%, ${bg}d9 46%, ${bg}00 100%)` }} />
+        <div className="absolute inset-x-0 top-0 h-[22%]" style={{ background: `linear-gradient(to bottom, ${bg}cc 0%, ${bg}00 100%)` }} />
+      </div>
+    );
+  }
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0">
       <div className="absolute inset-x-0 top-0 h-[40%]" style={{ background: `linear-gradient(to bottom, ${bg} 0%, ${bg}e6 32%, ${bg}00 100%)` }} />
@@ -164,7 +213,7 @@ function CircuitArt({ track, paint, ink }) {
   const c = circuitFor(track);
   if (!c) return <Trophy className="h-28 w-28" style={{ color: paint }} aria-hidden="true" />;
   return (
-    <svg viewBox={c.box} className="h-full max-h-[38cqh] w-[70cqw]" aria-hidden="true" fill="none">
+    <svg viewBox={c.box} className="h-full max-h-[56vh] w-full max-w-[70vh]" aria-hidden="true" fill="none">
       <path d={c.path} stroke={ink} strokeOpacity="0.25" strokeWidth="6" strokeLinejoin="round" />
       <path d={c.path} pathLength="1" className="story-trace" style={{ "--d": "400ms" }} stroke={paint} strokeWidth="3.4" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
@@ -181,7 +230,7 @@ function JourneyArt({ journey, paint, ink }) {
   const y = (p) => 10 + ((p - 1) / (F - 1)) * (H - 20);
   const d = journey.map((j, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(j.position).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-[78cqw]" aria-hidden="true" fill="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[80vh]" aria-hidden="true" fill="none">
       <line x1="10" x2={W - 10} y1={y(1)} y2={y(1)} stroke={ink} strokeOpacity="0.25" strokeDasharray="4 6" />
       <path d={d} pathLength="1" className="story-trace" stroke={paint} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
       {journey.map((j, i) => (
@@ -195,22 +244,23 @@ function FlatArt({ scene, colors }) {
   if (!scene) return null;
   const { paint } = scene;
   const ink = colors.ink;
+  const v = (n) => `min(${n}cqw, ${n * 0.8}vh)`;
   let art = null;
   if (scene.kind === "intro") {
     art = (
-      <div className="flex h-[52cqw] w-[52cqw] items-center justify-center rounded-full font-display font-black" style={{ border: `3cqw solid ${paint}`, fontSize: "22cqw" }}>
+      <div className="flex items-center justify-center rounded-full font-display font-black" style={{ width: v(52), height: v(52), border: `${v(3)} solid ${paint}`, fontSize: v(22) }}>
         {scene.number ?? "★"}
       </div>
     );
   } else if (scene.kind === "circuit") art = <CircuitArt track={scene.track} paint={paint} ink={ink} />;
-  else if (scene.kind === "climb") art = <ArrowUp className="h-[40cqw] w-[40cqw]" style={{ color: paint }} strokeWidth={2.4} aria-hidden="true" />;
+  else if (scene.kind === "climb") art = <ArrowUp style={{ color: paint, width: v(40), height: v(40) }} strokeWidth={2.4} aria-hidden="true" />;
   else if (scene.kind === "trophies") {
     const tone = { gold: MEDAL_ON_DARK[0], silver: MEDAL_ON_DARK[1], bronze: MEDAL_ON_DARK[2] };
     art = (
       <div className="flex flex-wrap justify-center gap-3">
         {scene.tones.map((t, i) => (
           <St key={i} kind="pop" d={300 + i * 200}>
-            <Trophy className="h-[17cqw] w-[17cqw]" style={{ color: tone[t] || paint }} aria-hidden="true" />
+            <Trophy style={{ color: tone[t] || paint, width: v(17), height: v(17) }} aria-hidden="true" />
           </St>
         ))}
       </div>
@@ -222,8 +272,8 @@ function FlatArt({ scene, colors }) {
         {[2, 1, 3].map((p) => (
           <div
             key={p}
-            className="flex w-[20cqw] items-start justify-center rounded-t-lg pt-2 font-display text-[7cqw] font-black"
-            style={{ height: `${p === 1 ? 34 : p === 2 ? 25 : 18}cqw`, background: scene.kind === "podium" && p === scene.position ? paint : `${ink}22` }}
+            className="flex items-start justify-center rounded-t-lg pt-2 font-display font-black"
+            style={{ width: v(20), fontSize: v(7), height: v(p === 1 ? 34 : p === 2 ? 25 : 18), background: scene.kind === "podium" && p === scene.position ? paint : `${ink}22` }}
           >
             {p}
           </div>
@@ -231,30 +281,56 @@ function FlatArt({ scene, colors }) {
       </div>
     );
   }
-  return <div className="flex h-full items-center justify-center">{art}</div>;
+  return <div className="flex h-full w-full items-center justify-center">{art}</div>;
 }
 
 // --- the slides --------------------------------------------------------------------
 
-// The frame every slide sits in: its colours, the shapes behind, the fades
-// over the 3D, and the words in front.
-function Frame({ slide, flat, variant = 0, children }) {
+// The frame every slide sits in: its colours, the shapes behind (a slide
+// without a scene) or the fades over the scene, and the words in front.
+function Frame({ slide, variant = 0, marquee = null, children }) {
   const { colors } = slide;
+  const { wide, scened } = useLayout();
   return (
     <div className="absolute inset-0" style={{ color: colors.ink }}>
-      {!slide.scene && <Shapes colors={colors} variant={variant} />}
-      {slide.scene && !flat && <Scrims bg={colors.bg} />}
-      <div className="relative flex h-full flex-col px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-[5.75rem] sm:px-7 [@media(max-height:640px)]:pb-4 [@media(max-height:640px)]:pt-[5rem]">
+      {!scened && <Shapes colors={colors} variant={variant} />}
+      {!scened && marquee && <Marquee text={marquee} colors={colors} top={wide ? "62%" : "64%"} />}
+      {scened && <Scrims bg={colors.bg} />}
+      <div
+        className={
+          wide
+            ? "relative flex h-full flex-col px-[6vw] pb-[5.5vh] pt-[9.5rem]"
+            : "relative flex h-full flex-col px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-[5.75rem] sm:px-7 [@media(max-height:640px)]:pb-4 [@media(max-height:640px)]:pt-[5rem]"
+        }
+      >
         {children}
       </div>
     </div>
   );
 }
 
-// Top words, the scene's band, bottom words.
+// Top words, the scene's place, bottom words. Wide: the words as a column on
+// the left and the scene (or its flat picture) to the right of them.
 function SceneLayout({ slide, flat, top, bottom }) {
+  const { wide } = useLayout();
+  if (wide) {
+    return (
+      <Frame slide={slide}>
+        <div className="flex h-full max-w-[min(42vw,42rem)] flex-col">
+          <div className="space-y-4">{top}</div>
+          <div className="flex-1" />
+          <div className="space-y-3">{bottom}</div>
+        </div>
+        {flat && (
+          <div className="absolute inset-y-[18%] right-[6vw] w-[46vw]">
+            <FlatArt scene={slide.scene} colors={slide.colors} />
+          </div>
+        )}
+      </Frame>
+    );
+  }
   return (
-    <Frame slide={slide} flat={flat}>
+    <Frame slide={slide}>
       <div className="space-y-2.5">{top}</div>
       <div className="min-h-0 flex-1">{flat && <FlatArt scene={slide.scene} colors={slide.colors} />}</div>
       <div className="space-y-2">{bottom}</div>
@@ -262,15 +338,52 @@ function SceneLayout({ slide, flat, top, bottom }) {
   );
 }
 
+// The headline number of a scene slide (P1, +30, 2).
+// `share`: how much of a phone's width it may take (less where a word sits
+// beside it).
+function BigLine({ text, medal, color, d = 500, share = 0.9 }) {
+  const { wide } = useLayout();
+  return (
+    <St
+      kind="pop"
+      d={d}
+      className="font-display font-black leading-[0.85] tracking-tighter"
+      style={{ fontSize: wide ? "min(24vh, 15rem)" : fitSize(text, 8.5, share), color: medalColor(medal) || color || undefined }}
+    >
+      {text}
+    </St>
+  );
+}
+
+// A line under the headline number (where, which round).
+function Place({ children, d = 800 }) {
+  const { wide } = useLayout();
+  return (
+    <St d={d} className={`font-display font-extrabold uppercase tracking-tight ${wide ? "text-3xl" : "text-xl"}`}>
+      {children}
+    </St>
+  );
+}
+
+function Small({ children, d = 1000 }) {
+  const { wide } = useLayout();
+  return (
+    <St d={d} className={`font-mono font-bold uppercase tracking-wider opacity-90 ${wide ? "text-sm" : "text-xs"}`}>
+      {children}
+    </St>
+  );
+}
+
 function IntroSlide({ slide, data, flat }) {
   const d = data.driver;
+  const { wide } = useLayout();
   return (
     <SceneLayout
       slide={slide}
       flat={flat}
       top={
         <>
-          <St kind="fade" className="flex items-center gap-2 font-display text-lg font-black tracking-tight">
+          <St kind="fade" className={`flex items-center gap-2 font-display font-black tracking-tight ${wide ? "text-2xl" : "text-lg"}`}>
             <span className="h-2 w-2 rounded-full" style={{ background: slide.colors.accent }} />
             NABS RACING
           </St>
@@ -279,13 +392,13 @@ function IntroSlide({ slide, data, flat }) {
       }
       bottom={
         <>
-          <Title d={250} size={11} max={3.1}>
+          <Title d={250} tall="min(11cqw, 3.1rem)" wide="min(6vw, 6.4rem)">
             {slide.title}
           </Title>
-          <St d={700} className="text-[15px] font-semibold leading-snug opacity-90">
+          <St d={900} className={`font-semibold leading-snug opacity-90 ${wide ? "text-xl" : "text-[15px]"}`}>
             {slide.sub}
           </St>
-          <St d={1000} className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[11px] font-bold uppercase tracking-wider">
+          <St d={1100} className={`flex flex-wrap items-center gap-2 pt-1 font-mono font-bold uppercase tracking-wider ${wide ? "text-sm" : "text-[11px]"}`}>
             {d.number != null && (
               <span className="rounded-md px-2 py-1" style={{ background: slide.scene.paint, color: readableInkOn(slide.scene.paint) }}>
                 #{d.number}
@@ -304,38 +417,62 @@ function IntroSlide({ slide, data, flat }) {
 }
 
 function NumbersSlide({ slide }) {
+  const { wide } = useLayout();
+  const lead = (
+    <St d={150} className="font-display font-extrabold leading-tight" style={{ fontSize: wide ? "min(3.4vw, 3.4rem)" : "min(7.6cqw,2rem)" }}>
+      {slide.lead}
+    </St>
+  );
+  const count = (
+    <St kind="pop" d={450} className="font-display font-black leading-[0.82] tracking-tighter" style={{ fontSize: wide ? "min(52vh, 34vw)" : "min(42cqw, 11rem)" }}>
+      <Count value={slide.count} delay={500} dur={1300} />
+    </St>
+  );
+  const unit = (
+    <St d={700} className="font-display font-extrabold leading-tight" style={{ fontSize: wide ? "min(3.4vw, 3.4rem)" : "min(7.6cqw,2rem)" }}>
+      {slide.unit}
+    </St>
+  );
+  const then = (
+    <St d={1900} className={`font-semibold leading-snug ${wide ? "mt-8 max-w-[30rem] text-2xl" : "mt-6 max-w-[22rem] text-[min(5cqw,1.25rem)]"}`}>
+      {slide.then}
+    </St>
+  );
+  const points = (
+    <St d={3000} className={`flex items-baseline gap-3 ${wide ? "mt-8" : "mt-6"}`}>
+      <span className="font-display font-black leading-none tracking-tight" style={{ fontSize: wide ? "min(10vh, 6.5rem)" : "min(17cqw, 4.5rem)" }}>
+        <Count value={slide.points} delay={3100} dur={1200} />
+      </span>
+      <span className="font-display font-extrabold" style={{ fontSize: wide ? "2rem" : "min(6cqw,1.6rem)" }}>
+        {slide.pointsLine.replace(/^\S+\s/, "")}
+      </span>
+    </St>
+  );
   return (
     <Frame slide={slide} variant={0}>
       <Eyebrow>{slide.eyebrow}</Eyebrow>
-      <div className="flex flex-1 flex-col justify-center">
-        <St d={150} className="font-display text-[min(7.6cqw,2rem)] font-extrabold leading-tight">
-          {slide.lead}
-        </St>
-        <St kind="pop" d={450} className="font-display font-black leading-[0.85] tracking-tighter" style={{ fontSize: "min(42cqw, 11rem)" }}>
-          <Count value={slide.count} delay={500} dur={1300} />
-        </St>
-        <St d={700} className="font-display text-[min(7.6cqw,2rem)] font-extrabold leading-tight">
-          {slide.unit}
-        </St>
-        <St d={1900} className="mt-6 max-w-[22rem] text-[min(5cqw,1.25rem)] font-semibold leading-snug">
-          {slide.then}
-        </St>
-        <St d={3000} className="mt-6 flex items-baseline gap-3">
-          <span className="font-display font-black leading-none tracking-tight" style={{ fontSize: "min(17cqw, 4.5rem)" }}>
-            <Count value={slide.points} delay={3100} dur={1200} />
-          </span>
-          <span className="font-display text-[min(6cqw,1.6rem)] font-extrabold">{slide.pointsLine.replace(/^\S+\s/, "")}</span>
-        </St>
-      </div>
+      {wide ? (
+        <div className="grid flex-1 grid-cols-[minmax(0,1fr)_auto] items-center gap-[4vw]">
+          <div>
+            {lead}
+            {then}
+            {points}
+          </div>
+          <div className="text-right">
+            {count}
+            {unit}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col justify-center">
+          {lead}
+          {count}
+          {unit}
+          {then}
+          {points}
+        </div>
+      )}
     </Frame>
-  );
-}
-
-function BigLine({ slide, text, medal, d = 500 }) {
-  return (
-    <St kind="pop" d={d} className="font-display font-black leading-[0.85] tracking-tighter" style={{ fontSize: fitSize(text, 8.5, 0.9), color: medalColor(medal) || undefined }}>
-      {text}
-    </St>
   );
 }
 
@@ -352,15 +489,9 @@ function BestSlide({ slide, flat }) {
       }
       bottom={
         <>
-          <BigLine slide={slide} text={slide.big} medal={slide.medal} />
-          <St d={800} className="font-display text-xl font-extrabold uppercase tracking-tight">
-            {slide.place}
-          </St>
-          {slide.sub && (
-            <St d={1000} className="font-mono text-xs font-bold uppercase tracking-wider opacity-90">
-              {slide.sub}
-            </St>
-          )}
+          <BigLine text={slide.big} medal={slide.medal} />
+          <Place>{slide.place}</Place>
+          {slide.sub && <Small>{slide.sub}</Small>}
         </>
       }
     />
@@ -368,6 +499,7 @@ function BestSlide({ slide, flat }) {
 }
 
 function ClimbSlide({ slide, flat }) {
+  const { wide } = useLayout();
   return (
     <SceneLayout
       slide={slide}
@@ -380,17 +512,13 @@ function ClimbSlide({ slide, flat }) {
       }
       bottom={
         <>
-          <div className="flex items-end gap-3">
-            <St kind="pop" d={5600} className="font-display font-black leading-[0.85] tracking-tighter" style={{ fontSize: "min(30cqw, 8rem)", color: slide.colors.accent }}>
-              {slide.big}
-            </St>
-            <St d={5900} className="pb-2 font-display text-2xl font-black uppercase">
+          <div className="flex flex-wrap items-end gap-x-3">
+            <BigLine text={slide.big} color={slide.colors.accent} d={5600} share={0.6} />
+            <St d={5900} className={`pb-2 font-display font-black uppercase ${wide ? "text-4xl" : "text-2xl"}`}>
               {slide.unit}
             </St>
           </div>
-          <St d={6100} className="font-display text-lg font-extrabold uppercase tracking-tight">
-            {slide.place}
-          </St>
+          <Place d={6100}>{slide.place}</Place>
         </>
       }
     />
@@ -398,6 +526,7 @@ function ClimbSlide({ slide, flat }) {
 }
 
 function WinsSlide({ slide, flat }) {
+  const { wide } = useLayout();
   return (
     <SceneLayout
       slide={slide}
@@ -410,18 +539,22 @@ function WinsSlide({ slide, flat }) {
       }
       bottom={
         <>
-          <div className="flex items-end gap-3">
-            <St kind="pop" d={400} className="font-display font-black leading-[0.85] tracking-tighter" style={{ fontSize: "min(32cqw, 8.5rem)" }}>
-              {slide.big}
-            </St>
-            <St d={600} className="pb-2 font-display text-2xl font-black uppercase">
+          <div className="flex flex-wrap items-end gap-x-3">
+            <BigLine text={slide.big} d={400} share={0.6} />
+            <St d={600} className={`pb-2 font-display font-black uppercase ${wide ? "text-4xl" : "text-2xl"}`}>
               {slide.unit}
             </St>
           </div>
           {slide.list.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {slide.list.slice(0, 6).map((w, i) => (
-                <St key={i} d={900 + i * 160} className="rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wide" style={{ background: `${slide.colors.ink}14` }}>
+                <St
+                  key={i}
+                  kind="pop"
+                  d={900 + i * 160}
+                  className={`rounded-lg px-2.5 py-1 font-mono font-bold uppercase tracking-wide ${wide ? "text-sm" : "text-[11px]"}`}
+                  style={{ background: `${slide.colors.ink}14` }}
+                >
                   {w}
                 </St>
               ))}
@@ -432,11 +565,7 @@ function WinsSlide({ slide, flat }) {
               )}
             </div>
           )}
-          {slide.sub && (
-            <St d={1500} className="font-mono text-xs font-bold uppercase tracking-wider">
-              {slide.sub}
-            </St>
-          )}
+          {slide.sub && <Small d={1500}>{slide.sub}</Small>}
         </>
       }
     />
@@ -445,42 +574,44 @@ function WinsSlide({ slide, flat }) {
 
 function TeammateSlide({ slide }) {
   const { colors } = slide;
+  const { wide } = useLayout();
+  const face = wide ? 132 : 76;
   return (
     <Frame slide={slide} variant={1}>
       <Eyebrow>{slide.eyebrow}</Eyebrow>
       <div className="mt-2">
         <Title>{slide.title}</Title>
       </div>
-      <div className="flex flex-1 flex-col justify-center gap-7 [@media(max-height:640px)]:gap-3">
+      <div className={`flex flex-1 flex-col justify-center gap-7 [@media(max-height:640px)]:gap-3 ${wide ? "mx-auto w-full max-w-5xl gap-12" : ""}`}>
         <div className="flex items-center justify-between gap-3 [@media(max-height:640px)]:-my-2 [@media(max-height:640px)]:scale-[0.8]">
           <St kind="left" d={400} className="flex min-w-0 flex-col items-center gap-2 text-center">
-            <DriverAvatar name={slide.me.name} photoUrl={slide.me.photoUrl} color={slide.paint} size={76} />
-            <span className="max-w-[34cqw] truncate font-display text-lg font-black uppercase">{slide.me.name}</span>
+            <DriverAvatar name={slide.me.name} photoUrl={slide.me.photoUrl} color={slide.paint} size={face} />
+            <span className={`truncate font-display font-black uppercase ${wide ? "max-w-[30vw] text-3xl" : "max-w-[34cqw] text-lg"}`}>{slide.me.name}</span>
           </St>
-          <St kind="pop" d={700} className="font-display text-2xl font-black opacity-80">
+          <St kind="pop" d={700} className={`font-display font-black opacity-80 ${wide ? "text-6xl" : "text-2xl"}`}>
             VS
           </St>
           <St kind="right" d={400} className="flex min-w-0 flex-col items-center gap-2 text-center">
-            <DriverAvatar name={slide.other.name} photoUrl={slide.other.photoUrl} color="#6b7280" size={76} />
-            <span className="max-w-[34cqw] truncate font-display text-lg font-black uppercase">{slide.other.name}</span>
+            <DriverAvatar name={slide.other.name} photoUrl={slide.other.photoUrl} color="#6b7280" size={face} />
+            <span className={`truncate font-display font-black uppercase ${wide ? "max-w-[30vw] text-3xl" : "max-w-[34cqw] text-lg"}`}>{slide.other.name}</span>
           </St>
         </div>
-        <div className="space-y-5 [@media(max-height:640px)]:space-y-2.5">
+        <div className={`space-y-5 [@media(max-height:640px)]:space-y-2.5 ${wide ? "space-y-8" : ""}`}>
           {slide.rows.map((r, i) => {
             const total = r.a + r.b;
             const share = total ? r.a / total : 0.5;
             return (
               <St key={r.label} d={1100 + i * 450}>
                 <div className="flex items-baseline justify-between font-display font-black">
-                  <span className="text-4xl tabular-nums">
+                  <span className={`tabular-nums ${wide ? "text-7xl" : "text-4xl"}`}>
                     <Count value={r.a} delay={1200 + i * 450} dur={900} />
                   </span>
-                  <span className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] opacity-90">{r.label}</span>
-                  <span className="text-4xl tabular-nums">
+                  <span className={`font-mono font-bold uppercase tracking-[0.18em] opacity-90 ${wide ? "text-sm" : "text-[11px]"}`}>{r.label}</span>
+                  <span className={`tabular-nums ${wide ? "text-7xl" : "text-4xl"}`}>
                     <Count value={r.b} delay={1200 + i * 450} dur={900} />
                   </span>
                 </div>
-                <div className="mt-2 flex h-3 gap-[3px] overflow-hidden rounded-full" style={{ background: `${colors.ink}26` }}>
+                <div className={`mt-2 flex gap-[3px] overflow-hidden rounded-full ${wide ? "h-4" : "h-3"}`} style={{ background: `${colors.ink}26` }}>
                   <div className="st st-grow h-full rounded-l-full" style={{ "--d": `${1300 + i * 450}ms`, width: `${share * 100}%`, background: slide.paint }} />
                 </div>
               </St>
@@ -493,17 +624,18 @@ function TeammateSlide({ slide }) {
 }
 
 function RivalSlide({ slide }) {
+  const { wide } = useLayout();
   const nameRef = useRef(null);
-  useFit(nameRef, 96, slide.name);
+  useFit(nameRef, wide ? 220 : 96, `${slide.name}:${wide}`);
   return (
-    <Frame slide={slide} variant={2}>
+    <Frame slide={slide} variant={2} marquee={slide.name}>
       <Eyebrow>{slide.eyebrow}</Eyebrow>
       <div className="mt-2">
         <Title>{slide.title}</Title>
       </div>
-      <div className="flex flex-1 flex-col justify-center gap-4">
+      <div className={`flex flex-1 flex-col justify-center gap-4 ${wide ? "max-w-[70vw]" : ""}`}>
         <St kind="pop" d={500}>
-          <DriverAvatar name={slide.name} photoUrl={slide.photoUrl} color={slide.color || "#111"} size={96} />
+          <DriverAvatar name={slide.name} photoUrl={slide.photoUrl} color={slide.color || "#111"} size={wide ? 140 : 96} />
         </St>
         <div ref={nameRef} className="w-full">
           <St kind="wipe" d={800} className="font-display font-black uppercase leading-[0.9] tracking-tight">
@@ -512,11 +644,9 @@ function RivalSlide({ slide }) {
             </span>
           </St>
         </div>
-        <St d={1400} className="font-display text-xl font-extrabold uppercase">
-          {slide.detail}
-        </St>
+        <Place d={1400}>{slide.detail}</Place>
         {slide.h2h && (
-          <St d={1900} className="max-w-[22rem] text-[15px] font-semibold leading-snug">
+          <St d={1900} className={`font-semibold leading-snug ${wide ? "max-w-[34rem] text-xl" : "max-w-[22rem] text-[15px]"}`}>
             {slide.h2h}
           </St>
         )}
@@ -536,16 +666,14 @@ function JourneySlide({ slide, flat }) {
           <Title>{slide.title}</Title>
         </>
       }
-      bottom={
-        <St d={7600} className="font-display text-xl font-extrabold uppercase leading-tight tracking-tight">
-          {slide.sub}
-        </St>
-      }
+      bottom={<Place d={7600}>{slide.sub}</Place>}
     />
   );
 }
 
 function FinalSlide({ slide, flat }) {
+  const { wide } = useLayout();
+  const late = slide.scene?.kind === "grid";
   return (
     <SceneLayout
       slide={slide}
@@ -553,22 +681,20 @@ function FinalSlide({ slide, flat }) {
       top={
         <>
           <Eyebrow>{slide.eyebrow}</Eyebrow>
-          <St kind="fade" d={250} className="font-display text-[min(7.6cqw,2rem)] font-extrabold leading-tight">
+          <St kind="fade" d={250} className="font-display font-extrabold leading-tight" style={{ fontSize: wide ? "min(3.4vw, 3.4rem)" : "min(7.6cqw,2rem)" }}>
             {slide.lead}
           </St>
         </>
       }
       bottom={
         <>
-          <BigLine slide={slide} text={slide.big} medal={slide.medal} d={slide.scene?.kind === "grid" ? 4700 : 1700} />
+          <BigLine text={slide.big} medal={slide.medal} d={late ? 4700 : 1700} />
           {slide.title && (
-            <St d={slide.scene?.kind === "grid" ? 5100 : 2100} className="font-display text-3xl font-black uppercase" style={{ color: medalColor(slide.medal) || undefined }}>
+            <St kind="pop" d={late ? 5100 : 2100} className={`font-display font-black uppercase ${wide ? "text-6xl" : "text-3xl"}`} style={{ color: medalColor(slide.medal) || undefined }}>
               {slide.title}
             </St>
           )}
-          <St d={slide.scene?.kind === "grid" ? 5300 : 2400} className="font-mono text-xs font-bold uppercase tracking-wider opacity-90">
-            {slide.sub}
-          </St>
+          <Small d={late ? 5300 : 2400}>{slide.sub}</Small>
         </>
       }
     />
@@ -578,6 +704,7 @@ function FinalSlide({ slide, flat }) {
 const HONOUR_ICONS = { champion: Crown, vice: Medal, third: Medal, team: Trophy, newcomer: Rocket, "fastest-lap": Timer, overtakes: Rocket, "laps-led": FlagIcon, cleanest: ShieldCheck, dotd: Sparkles };
 
 function HonoursSlide({ slide, flat }) {
+  const { wide } = useLayout();
   return (
     <SceneLayout
       slide={slide}
@@ -589,16 +716,16 @@ function HonoursSlide({ slide, flat }) {
         </>
       }
       bottom={
-        <ul className="space-y-2">
+        <ul className={wide ? "space-y-4" : "space-y-2"}>
           {slide.items.slice(0, 5).map((h, i) => {
             const Icon = HONOUR_ICONS[h.key] || Trophy;
             const detail = h.ms ? `${fmtLap(h.ms)}${h.detail ? ` at ${prettyTrack(h.detail)}` : ""}` : h.detail;
             return (
-              <St as="li" key={h.key} d={700 + i * 260} className="flex items-start gap-3">
-                <Icon className="mt-0.5 h-5 w-5 shrink-0" style={{ color: slide.colors.accent }} aria-hidden="true" />
+              <St as="li" kind="left" key={h.key} d={700 + i * 260} className="flex items-start gap-3">
+                <Icon className={`mt-0.5 shrink-0 ${wide ? "h-8 w-8" : "h-5 w-5"}`} style={{ color: slide.colors.accent }} aria-hidden="true" />
                 <span className="min-w-0">
-                  <span className="block font-display text-lg font-black uppercase leading-tight">{h.title}</span>
-                  {detail && <span className="block text-[13px] font-semibold opacity-90">{detail}</span>}
+                  <span className={`block font-display font-black uppercase leading-tight ${wide ? "text-3xl" : "text-lg"}`}>{h.title}</span>
+                  {detail && <span className={`block font-semibold opacity-90 ${wide ? "text-base" : "text-[13px]"}`}>{detail}</span>}
                 </span>
               </St>
             );
@@ -615,14 +742,15 @@ function HonoursSlide({ slide, flat }) {
 }
 
 function TypeSlide({ slide }) {
+  const { wide } = useLayout();
   const words = slide.big.split(/\s+/);
   const wordsRef = useRef(null);
-  useFit(wordsRef, 120, slide.big);
+  useFit(wordsRef, wide ? 260 : 120, `${slide.big}:${wide}`);
   return (
-    <Frame slide={slide} variant={2}>
+    <Frame slide={slide} variant={2} marquee={slide.big}>
       <Eyebrow>{slide.eyebrow}</Eyebrow>
       <div className="flex flex-1 flex-col justify-center">
-        <div ref={wordsRef} className="w-full">
+        <div ref={wordsRef} className={wide ? "w-full max-w-[74vw]" : "w-full"}>
           {words.map((w, i) => (
             <St key={i} kind="wipe" d={400 + i * 350} className="font-display font-black uppercase leading-[0.86] tracking-tighter">
               <span data-fit className="inline-block whitespace-nowrap">
@@ -631,7 +759,7 @@ function TypeSlide({ slide }) {
             </St>
           ))}
         </div>
-        <St d={400 + words.length * 350 + 400} className="mt-6 max-w-[22rem] text-[min(5cqw,1.25rem)] font-bold leading-snug">
+        <St d={400 + words.length * 350 + 400} className={`mt-6 font-bold leading-snug ${wide ? "max-w-[36rem] text-2xl" : "max-w-[22rem] text-[min(5cqw,1.25rem)]"}`}>
           {slide.line}
         </St>
       </div>
@@ -642,69 +770,81 @@ function TypeSlide({ slide }) {
 function SummarySlide({ slide, data, actions }) {
   const d = data.driver;
   const medal = medalColor(slide.position);
+  const { wide } = useLayout();
+  const small = "[@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:text-xs";
+  const secondary = `inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-2.5 text-sm font-bold transition hover:bg-white/20 disabled:opacity-60 ${small}`;
   return (
-    <Frame slide={slide} variant={0}>
-      <Eyebrow>{slide.eyebrow}</Eyebrow>
-      <St kind="pop" d={200} className="relative mt-3 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] p-4 [@media(max-height:640px)]:mt-2 [@media(max-height:640px)]:p-3">
-        <div className="pointer-events-none absolute inset-0 opacity-30" style={{ background: `radial-gradient(120% 90% at 100% 0%, ${slide.paint}, transparent 60%)` }} />
-        <div className="relative flex items-center gap-3">
-          <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={slide.paint} size={52} />
-          <div className="min-w-0">
-            <div className="truncate font-display text-[min(7cqw,1.6rem)] font-black uppercase leading-none">{d.name}</div>
-            {d.team?.name && <div className="mt-1 truncate text-xs font-semibold opacity-90">{d.team.name}</div>}
-          </div>
-          {slide.position != null && (
-            <div className="ml-auto text-right">
-              <div className="font-display text-[min(13cqw,3.2rem)] font-black leading-none" style={{ color: medal || undefined }}>
-                P{slide.position}
+    <Frame slide={slide} variant={0} marquee={wide ? null : d.name}>
+      <div className={wide ? "flex h-full w-full max-w-[30rem] flex-col justify-center" : "contents"}>
+        <Eyebrow>{slide.eyebrow}</Eyebrow>
+        <St kind="pop" d={200} className="relative mt-3 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm [@media(max-height:640px)]:mt-2 [@media(max-height:640px)]:p-3">
+          <div className="pointer-events-none absolute inset-0 opacity-30" style={{ background: `radial-gradient(120% 90% at 100% 0%, ${slide.paint}, transparent 60%)` }} />
+          <div className="relative flex items-center gap-3">
+            <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={slide.paint} size={52} />
+            <div className="min-w-0">
+              <div className="truncate font-display font-black uppercase leading-none" style={{ fontSize: wide ? "1.75rem" : "min(7cqw,1.6rem)" }}>
+                {d.name}
               </div>
-              {slide.fieldSize && <div className="font-mono text-[10px] font-bold uppercase tracking-wider opacity-90">of {slide.fieldSize}</div>}
+              {d.team?.name && <div className="mt-1 truncate text-xs font-semibold opacity-90">{d.team.name}</div>}
+            </div>
+            {slide.position != null && (
+              <div className="ml-auto text-right">
+                <div className="font-display font-black leading-none" style={{ color: medal || undefined, fontSize: wide ? "3.4rem" : "min(13cqw,3.2rem)" }}>
+                  P{slide.position}
+                </div>
+                {slide.fieldSize && <div className="font-mono text-[10px] font-bold uppercase tracking-wider opacity-90">of {slide.fieldSize}</div>}
+              </div>
+            )}
+          </div>
+          <div className="relative mt-4 grid grid-cols-3 gap-x-2 gap-y-3 [@media(max-height:640px)]:mt-3 [@media(max-height:640px)]:gap-y-2">
+            {slide.stats.map((s, i) => (
+              <St key={s.key} kind="rise" d={500 + i * 90}>
+                <div className="font-display font-black leading-none tabular-nums" style={{ fontSize: wide ? "2.2rem" : "min(8.5cqw,2.1rem)" }}>
+                  {s.prefix}
+                  {Number(s.value).toLocaleString("en-US")}
+                </div>
+                <div className="mt-1 font-mono text-[9.5px] font-bold uppercase tracking-wider opacity-90">{s.label}</div>
+              </St>
+            ))}
+          </div>
+          {slide.type && (
+            <div className="relative mt-4 inline-flex rounded-full px-3 py-1 font-display text-sm font-black uppercase [@media(max-height:640px)]:mt-2.5" style={{ background: "#C6F432", color: "#0B0F00" }}>
+              {slide.type}
             </div>
           )}
-        </div>
-        <div className="relative mt-4 grid grid-cols-3 gap-x-2 gap-y-3 [@media(max-height:640px)]:mt-3 [@media(max-height:640px)]:gap-y-2">
-          {slide.stats.map((s) => (
-            <div key={s.key}>
-              <div className="font-display text-[min(8.5cqw,2.1rem)] font-black leading-none tabular-nums">
-                {s.prefix}
-                {Number(s.value).toLocaleString("en-US")}
-              </div>
-              <div className="mt-1 font-mono text-[9.5px] font-bold uppercase tracking-wider opacity-90">{s.label}</div>
-            </div>
-          ))}
-        </div>
-        {slide.type && (
-          <div className="relative mt-4 inline-flex rounded-full px-3 py-1 font-display text-sm font-black uppercase [@media(max-height:640px)]:mt-2.5" style={{ background: "#C6F432", color: "#0B0F00" }}>
-            {slide.type}
-          </div>
-        )}
-      </St>
-      <div className="mt-auto space-y-2.5 pt-4 [@media(max-height:640px)]:space-y-1 [@media(max-height:640px)]:pt-2" data-story-interactive>
-        <St d={500} className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={actions.share} disabled={actions.busy} className="col-span-2 inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-3 font-display text-base font-black uppercase text-[#0B0A12] transition hover:bg-white/90 disabled:opacity-60 [@media(max-height:640px)]:py-2.5 [@media(max-height:640px)]:text-sm">
-            <Share2 className="h-5 w-5" aria-hidden="true" />
-            {actions.busy ? "Making the picture…" : "Share your season"}
-          </button>
-          <button type="button" onClick={actions.save} disabled={actions.busy} className="inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-2.5 text-sm font-bold transition hover:bg-white/20 [@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:text-xs disabled:opacity-60">
-            <Download className="h-4 w-4" aria-hidden="true" />
-            Save picture
-          </button>
-          <button type="button" onClick={actions.copy} className="inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-2.5 text-sm font-bold transition hover:bg-white/20 [@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:text-xs">
-            <LinkIcon className="h-4 w-4" aria-hidden="true" />
-            Copy link
-          </button>
-          <button type="button" onClick={actions.replay} className="inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-2.5 text-sm font-bold transition hover:bg-white/20 [@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:text-xs">
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Watch again
-          </button>
-          <button type="button" onClick={actions.close} className="inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-3 py-2.5 text-sm font-bold transition hover:bg-white/20 [@media(max-height:640px)]:py-1.5 [@media(max-height:640px)]:text-xs">
-            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-            All the cards
-          </button>
         </St>
-        <p role="status" className="min-h-[1.25rem] text-center text-xs font-semibold opacity-90">
-          {actions.msg}
-        </p>
+        <div className={`space-y-2.5 pt-4 [@media(max-height:640px)]:space-y-1 [@media(max-height:640px)]:pt-2 ${wide ? "mt-2" : "mt-auto"}`} data-story-interactive>
+          <St d={700} className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={actions.share}
+              disabled={actions.busy}
+              className="col-span-2 inline-flex items-center justify-center gap-2 rounded-full bg-white px-4 py-3 font-display text-base font-black uppercase text-[#0B0A12] transition hover:scale-[1.02] hover:bg-white/90 disabled:opacity-60 [@media(max-height:640px)]:py-2.5 [@media(max-height:640px)]:text-sm"
+            >
+              <Share2 className="h-5 w-5" aria-hidden="true" />
+              {actions.busy ? "Making the picture…" : "Share your season"}
+            </button>
+            <button type="button" onClick={actions.save} disabled={actions.busy} className={secondary}>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Save picture
+            </button>
+            <button type="button" onClick={actions.copy} className={secondary}>
+              <LinkIcon className="h-4 w-4" aria-hidden="true" />
+              Copy link
+            </button>
+            <button type="button" onClick={actions.replay} className={secondary}>
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Watch again
+            </button>
+            <button type="button" onClick={actions.close} className={secondary}>
+              <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+              All the cards
+            </button>
+          </St>
+          <p role="status" className="min-h-[1.25rem] text-center text-xs font-semibold opacity-90">
+            {actions.msg}
+          </p>
+        </div>
       </div>
     </Frame>
   );

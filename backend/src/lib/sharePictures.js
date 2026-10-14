@@ -513,7 +513,7 @@ async function wrappedPicture(prisma, ctx) {
     const label = upper(hub.season.label);
     return {
       pill: `${hub.season.label} Wrapped`,
-      eyebrow: ["SEASON WRAPPED", hub.season.complete ? "FINAL STANDINGS" : `AFTER ROUND ${hub.season.roundsRun}`],
+      eyebrow: ["SEASON WRAPPED", "FINAL STANDINGS"],
       title: "Season Wrapped",
       sub: `EVERY DRIVER'S ${label}, TOLD IN CARDS`,
       cards: hub.drivers.slice(0, 3).map((r, i) => driverCard(r, i, r.points)),
@@ -525,7 +525,7 @@ async function wrappedPicture(prisma, ctx) {
   const row = await prisma.driver.findUnique({ where: { id: hit.id }, select: { seasonId: true } });
   if (!row?.seasonId || (await getPrivateSeasonIds(prisma)).has(row.seasonId)) return null;
   const w = await getSeasonWrapped(prisma, hit.id).catch(() => null);
-  if (!w || w.empty) return null;
+  if (!w || w.empty || w.notFinished) return null;
   const season = await prisma.season.findUnique({ where: { id: row.seasonId } });
   const cards = [];
   if (w.best) {

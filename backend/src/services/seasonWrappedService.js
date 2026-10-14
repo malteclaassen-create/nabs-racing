@@ -362,8 +362,11 @@ async function buildSeasonWrapped(prisma, driverId) {
   const [profile, book] = await Promise.all([getDriverProfile(prisma, driverId), seasonBook(prisma, row.seasonId)]);
   if (!profile || !book) return null;
   const stats = profile.stats || {};
+  const seasonHead = { number: book.season.number, name: book.season.name, label: seasonLabelOf(book.season), complete: book.complete };
+  // Not until the season is over: a Wrapped is the end of the story.
+  if (!book.complete) return { notFinished: true, driver: profile.driver, season: seasonHead };
   // Nothing to tell about a season they never started a race in.
-  if (!stats.starts) return { empty: true, driver: profile.driver, season: { number: book.season.number, name: book.season.name, label: seasonLabelOf(book.season), complete: book.complete } };
+  if (!stats.starts) return { empty: true, driver: profile.driver, season: seasonHead };
 
   const me = book.finalRows.find((r) => r.driverId === driverId) || null;
   const position = profile.championship?.position ?? null;
@@ -473,17 +476,27 @@ async function buildSeasonWrapped(prisma, driverId) {
 
 // The season a hub opens on when the address names none: the newest season of
 // the series that is over, or, before the first one ends, the running one.
-async function defaultSeason(prisma, seriesRow, includePrivate) {
+// A season gets its Wrapped once it is over, and not before: a Wrapped is the
+// end of the story. These are the series' finished seasons, newest first.
+async function finishedSeasons(prisma, seriesRow, includePrivate) {
   const priv = includePrivate ? new Set() : await getPrivateSeasonIds(prisma);
   const seasons = (await seasonIdsOfSeries(prisma, seriesRow.id)).filter((s) => !priv.has(s.id)).sort((a, b) => b.number - a.number);
+  const out = [];
   for (const s of seasons) {
-    const races = await prisma.race.findMany({ where: { seasonId: s.id, isSpecialEvent: false }, select: { number: true, isCompleted: true } });
-    if (seasonCompleteFromRaces(races)) return prisma.season.findUnique({ where: { id: s.id } });
+    const races = await prisma.race.findMany({ where: { seasonId: s.id, isSpecialEvent: false }, select: { number: true, isCompleted: true, isSpecialEvent: true } });
+    if (seasonCompleteFromRaces(races)) out.push(s);
   }
-  return getActiveSeason(prisma, seriesRow.id);
+  return out;
 }
 
-// The member's own row in that season, through the person links.
+// The numbers of a series' finished, public seasons: the ones that have a
+// Wrapped. The site shows the way to Wrapped only where this is not empty.
+export async function wrappedSeasonNumbers(prisma, series = null) {
+  const seriesRow = await resolveSeries(prisma, series || undefined, { includePrivate: false });
+  if (!seriesRow) return [];
+  return (await finishedSeasons(prisma, seriesRow, false)).map((s) => s.number);
+}
+
 // Whether `driverId` is the signed-in member's own row (any of their linked
 // rows counts), so the story can say "you". Worked out per request: the
 // Wrapped itself is cached and the same for everybody.
@@ -494,6 +507,7 @@ export async function isOwnWrapped(prisma, discordId, driverId) {
   return (await myRowIn(prisma, discordId, row.seasonId)) === driverId;
 }
 
+// The member's own row in that season, through the person links.
 async function myRowIn(prisma, discordId, seasonId) {
   if (!discordId) return null;
   const own = await prisma.driver.findFirst({ where: { discordUserId: discordId }, select: { id: true } });
@@ -503,20 +517,38 @@ async function myRowIn(prisma, discordId, seasonId) {
   return row?.id || null;
 }
 
+// The hub of one finished season (the newest when the address names none).
+// A season still being raced has no Wrapped yet: asked for by number it
+// answers { notFinished: true }; with nothing finished at all the hub is
+// empty (season null) and says what it is waiting for.
 export async function getWrappedHub(prisma, { series = null, season = null, includePrivate = false, discordId = null } = {}) {
   const seriesRow = await resolveSeries(prisma, series || undefined, { includePrivate });
   if (!seriesRow) return null;
-  const picked =
-    season != null && season !== ""
-      ? await resolveSeason(prisma, season, { includePrivate, series: seriesRow.slug })
-      : await defaultSeason(prisma, seriesRow, includePrivate);
-  if (!picked) return null;
+  const finished = await finishedSeasons(prisma, seriesRow, includePrivate);
+  let picked = null;
+  if (season != null && season !== "") {
+    const asked = await resolveSeason(prisma, season, { includePrivate, series: seriesRow.slug });
+    if (!asked) return null;
+    if (!finished.some((s) => s.id === asked.id)) return { notFinished: true, season: { number: asked.number, label: seasonLabelOf(asked) } };
+    picked = asked;
+  } else if (finished.length) {
+    picked = await prisma.season.findUnique({ where: { id: finished[0].id } });
+  }
+  if (!picked) {
+    const active = await getActiveSeason(prisma, seriesRow.id).catch(() => null);
+    return {
+      series: { slug: seriesRow.slug, name: seriesRow.name },
+      season: null,
+      seasons: [],
+      drivers: [],
+      mine: null,
+      waitingFor: active ? seasonLabelOf(active) : null,
+    };
+  }
   const book = await seasonBook(prisma, picked.id);
   if (!book) return null;
 
-  const priv = includePrivate ? new Set() : await getPrivateSeasonIds(prisma);
-  const seasons = (await seasonIdsOfSeries(prisma, seriesRow.id)).filter((s) => !priv.has(s.id)).sort((a, b) => b.number - a.number);
-  const seasonRows = await prisma.season.findMany({ where: { id: { in: seasons.map((s) => s.id) } }, select: { number: true, name: true } });
+  const seasonRows = await prisma.season.findMany({ where: { id: { in: finished.map((s) => s.id) } }, select: { number: true, name: true } });
 
   const drivers = book.finalRows.map((r, i) => {
     const fin = finishesOf(roundsOf(r));

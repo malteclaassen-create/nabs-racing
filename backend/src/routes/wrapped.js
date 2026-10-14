@@ -1,7 +1,9 @@
 // ---------------------------------------------------------------------------
 // Season Wrapped (services/seasonWrappedService.js), public while it is on.
 //
-//   GET /api/wrapped/status?series=        { open } — does this visitor get it
+//   GET /api/wrapped/status?series=        { open, seasons } — does this visitor
+//                                          get it, and which seasons have one
+//                                          (finished ones only)
 //   GET /api/wrapped?series=&season=       the hub: every driver of a season
 //   GET /api/wrapped/driver/:key?series=&season=
 //                                          one driver's Wrapped. :key is the
@@ -12,24 +14,27 @@
 //                                          signed-in member's own
 //
 // "Not open" answers 404 with a sentence, so the page can say so instead of
-// pretending the driver does not exist.
+// pretending the driver does not exist. So does a season still being raced:
+// a Wrapped comes when the season is over, and not before.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import { resolveDriverRow } from "../lib/driverHandles.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { getSeasonWrapped, getWrappedHub, isOwnWrapped, wrappedVisibleTo } from "../services/seasonWrappedService.js";
+import { getSeasonWrapped, getWrappedHub, isOwnWrapped, wrappedSeasonNumbers, wrappedVisibleTo } from "../services/seasonWrappedService.js";
 
 const router = Router();
 router.use(optionalUser);
 
 const NOT_OPEN = "Season Wrapped isn't open yet.";
+const NOT_FINISHED = "Season Wrapped comes when the season is over.";
 const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
 router.get("/status", async (req, res, next) => {
   try {
-    res.json({ open: await wrappedVisibleTo(prisma, req) });
+    const open = await wrappedVisibleTo(prisma, req);
+    res.json({ open, seasons: open ? await wrappedSeasonNumbers(prisma, str(req.query.series)) : [] });
   } catch (e) {
     next(e);
   }
@@ -45,6 +50,7 @@ router.get("/", async (req, res, next) => {
       discordId: req.user?.discordId || null,
     });
     if (!hub) return res.status(404).json({ error: "No such season" });
+    if (hub.notFinished) return res.status(404).json({ error: NOT_FINISHED, notFinished: true });
     res.json(hub);
   } catch (e) {
     next(e);
@@ -68,6 +74,7 @@ router.get("/driver/:key", async (req, res, next) => {
     }
     const body = await getSeasonWrapped(prisma, row.id);
     if (!body) return res.status(404).json({ error: "Driver not found" });
+    if (body.notFinished) return res.status(404).json({ error: NOT_FINISHED, notFinished: true, season: body.season });
     // `mine`: the viewer is this driver, and the story talks to them.
     res.json({ ...body, mine: await isOwnWrapped(prisma, req.user?.discordId, row.id).catch(() => false) });
   } catch (e) {

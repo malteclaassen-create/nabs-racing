@@ -46,7 +46,7 @@
 // ---------------------------------------------------------------------------
 import { getSiteIndex } from "./siteIndex.js";
 import { TRACK_EDITOR_ENABLED } from "./features.js";
-import { wrappedMode } from "../services/seasonWrappedService.js";
+import { wrappedMode, wrappedSeasonNumbers } from "../services/seasonWrappedService.js";
 
 // PAGES that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -164,10 +164,11 @@ export async function buildSitemapXml(prisma, origin) {
     // hooks/useTransfersVisible.js); it goes back in here when it opens up.
     urls.push(`${s.base}/drivers`, `${s.base}/constructors`, `${s.base}/races`, `${s.base}/records`);
     // The league in numbers, this season and all of them; and the Season
-    // Wrapped hub once it is open to everyone (before that it answers "not
-    // open yet", which is no page to send a crawler to).
+    // Wrapped hub once it is open to everyone and the series has a finished
+    // season (before that it answers "not open yet" or "when the season is
+    // over", which is no page to send a crawler to).
     urls.push(`${s.base}/numbers`, `${s.base}/numbers?season=all`);
-    if (wrappedOpen) urls.push(`${s.base}/wrapped`);
+    if (wrappedOpen && (await wrappedSeasonNumbers(prisma, s.slug).catch(() => [])).length) urls.push(`${s.base}/wrapped`);
 
     for (const season of s.seasons) {
       if (season.isActive) {

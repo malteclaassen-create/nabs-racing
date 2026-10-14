@@ -22,6 +22,7 @@ import { readSocialLinks } from "./leagueSocials.js";
 import { primarySlug, seasonLabel, disciplineOf } from "./seo.js";
 import { raceKickoff } from "./raceKickoff.js";
 import { wrappedMode } from "../services/seasonWrappedService.js";
+import { isSeasonComplete } from "./seasonComplete.js";
 
 const esc = (s) =>
   String(s ?? "")
@@ -128,6 +129,8 @@ async function wrappedMeta(prisma, seriesSlug, key, query) {
   if (!driver?.seasonId) return null;
   const priv = await getPrivateSeasonIds(prisma).catch(() => new Set());
   if (priv.has(driver.seasonId)) return null;
+  // A season still being raced has no Wrapped yet (the page says so).
+  if (!(await isSeasonComplete(prisma, driver.seasonId).catch(() => false))) return null;
   const label = seasonLabel(driver.season) || "Season";
   let line = null;
   try {

@@ -27,7 +27,7 @@ import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
-import { useWrappedOpen } from "../hooks/useWrappedOpen.js";
+import { useWrappedSeasons } from "../hooks/useWrappedOpen.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -545,7 +545,7 @@ export default function Home() {
   const { user, isLoggedIn } = useAuth();
   // A finished season's honours lead on to every driver's Season Wrapped,
   // once the league has opened it.
-  const wrappedOpen = useWrappedOpen();
+  const wrappedSeasons = useWrappedSeasons();
   const social = useSocial();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
@@ -1536,7 +1536,7 @@ export default function Home() {
                 <HonourCell key={key} {...c} index={i} className={i === cells.length - 1 ? lastClass : ""} />
               ))}
             </div>
-            {wrappedOpen && season?.number != null && (
+            {season?.number != null && wrappedSeasons.includes(season.number) && (
               <Link
                 to={`/wrapped?season=${season.number}`}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"

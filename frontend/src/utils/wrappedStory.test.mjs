@@ -67,19 +67,18 @@ test("slides without data are left out, the way the card page leaves out cards",
   assert.deepEqual(keys, ["intro", "numbers", "final", "summary"]);
 });
 
-test("a season still running says so far, and never crowns anybody", () => {
+test("the story always tells the ending: the final table, the champion crowned", () => {
   const d = full();
-  d.season.complete = false;
-  d.season.roundsRun = 6;
   d.championship.position = 1;
   const story = buildStory(d);
-  assert.match(story[0].eyebrow, /so far/);
-  assert.equal(story[0].sub, "6 of 10 rounds in. The story so far.");
+  assert.equal(story[0].eyebrow, "Season 7 Wrapped");
+  assert.equal(story[0].sub, "10 rounds, every result: the whole season in a few taps.");
   const final = story.find((s) => s.key === "final");
-  assert.equal(final.eyebrow, "The table right now");
-  assert.equal(final.title, null);
-  assert.match(story.find((s) => s.key === "numbers").pointsLine, /so far\.$/);
-  assert.match(story.find((s) => s.key === "journey").sub, /now\.$/);
+  assert.equal(final.eyebrow, "The final table");
+  assert.equal(final.title, "Champion.");
+  assert.equal(story.find((s) => s.key === "numbers").pointsLine, "163 points in the end.");
+  assert.match(story.find((s) => s.key === "journey").sub, /at the end\.$/);
+  assert.ok(!JSON.stringify(story).includes("so far"));
 });
 
 test("a podium finish gets the podium scene, anything lower the grid", () => {

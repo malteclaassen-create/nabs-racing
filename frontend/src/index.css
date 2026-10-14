@@ -3360,7 +3360,22 @@ html.update-reveal.update-reveal-go body::after {
     box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.65);
   }
 }
+/* A computer: the story takes the whole screen, the 3D scene filling it. */
+.story-frame.story-wide {
+  width: 100vw;
+  height: 100dvh;
+  aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
+}
 .story-frame.is-paused { --story-play: paused; }
+/* The next slide's colour opening out over the last one as a circle, from
+   wherever the tap was (the right edge for "next", the left for "back"). */
+@keyframes story-wipe {
+  from { clip-path: circle(0% at var(--wx, 50%) var(--wy, 50%)); }
+  to { clip-path: circle(150% at var(--wx, 50%) var(--wy, 50%)); }
+}
+.story-wipe { animation: story-wipe 760ms cubic-bezier(0.65, 0, 0.35, 1) both; animation-play-state: var(--story-play, running); }
 .story-bar { transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
 .story-canvas { transition: opacity 320ms ease; }
 .st {
@@ -3384,6 +3399,14 @@ html.update-reveal.update-reveal-go body::after {
 .st-right { animation-name: st-right; }
 .st-fade { animation-name: st-fade; animation-duration: 900ms; }
 .st-grow { animation-name: st-grow; animation-duration: 1100ms; transform-origin: 0 50%; }
+/* A word rising out of its own line (its parent clips it). */
+@keyframes st-up { from { transform: translateY(108%); } to { transform: none; } }
+.st-up { animation-name: st-up; animation-duration: 800ms; animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* Outlined words sliding across the back of a slide. */
+@keyframes story-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.story-marquee { display: inline-flex; white-space: nowrap; animation: story-marquee 28s linear infinite; animation-play-state: var(--story-play, running); }
+@keyframes story-spin { to { rotate: 360deg; } }
+.story-shape.story-spin { animation: story-drift 13s ease-in-out infinite alternate, story-spin 30s linear infinite; animation-play-state: var(--story-play, running); }
 .story-slide-in { animation: st-fade 380ms ease both; }
 /* The intro's hint, in the words of whatever the viewer is holding. */
 .story-hint-touch { display: none; }
@@ -3406,7 +3429,7 @@ html.update-reveal.update-reveal-go body::after {
 @keyframes story-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .story-trace { stroke-dasharray: 1; animation: story-trace 2.6s var(--e-soft) both; animation-delay: var(--d, 0ms); animation-play-state: var(--story-play, running); }
 @media (prefers-reduced-motion: reduce) {
-  .st, .story-shape, .story-slide-in, .story-trace { animation: none !important; }
+  .st, .story-shape, .story-slide-in, .story-trace, .story-wipe, .story-marquee { animation: none !important; }
   .story-frame, .story-canvas { transition: none; }
 }
-.fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace { animation: none !important; }
+.fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace, .fx-lite .story-wipe, .fx-lite .story-marquee { animation: none !important; }

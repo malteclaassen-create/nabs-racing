@@ -9,9 +9,10 @@
 // best result"), and the last card is the share row: the link, and the
 // picture Discord shows under it (backend lib/sharePictures.js).
 //
-// A season still running gets the same page as "so far". A card whose data
-// the season does not have (no grid slots in the archive, no team-mate for a
-// reserve, no win) is simply not there.
+// Only a finished season has one: a Wrapped is the end of the story, and a
+// season still being raced answers that it comes when the season is over. A
+// card whose data the season does not have (no grid slots in the archive, no
+// team-mate for a reserve, no win) is simply not there.
 //
 // The same season also plays as a story, full screen, slide by slide, with 3D
 // (components/WrappedStory.jsx). It starts by itself the first time a Wrapped
@@ -57,6 +58,7 @@ export default function SeasonWrapped() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [closed, setClosed] = useState(false);
+  const [notFinished, setNotFinished] = useState(null);
   const [story, setStory] = useState(false);
 
   useEffect(() => {
@@ -65,12 +67,14 @@ export default function SeasonWrapped() {
     setStory(false);
     setError(null);
     setClosed(false);
+    setNotFinished(null);
     api
       .wrappedDriver(key, season)
       .then((d) => !gone && setData(d))
       .catch((e) => {
         if (gone) return;
         if (e.data?.closed) setClosed(true);
+        else if (e.data?.notFinished) setNotFinished(e.data.season || {});
         else setError(e.message);
       });
     return () => {
@@ -89,6 +93,14 @@ export default function SeasonWrapped() {
 
   if (closed) {
     return <EmptyState title="Season Wrapped isn't open yet" hint="The league switches it on once it has been checked. Have a look again soon." />;
+  }
+  if (notFinished) {
+    return (
+      <EmptyState
+        title={`${notFinished.label || "This season"} isn't over yet`}
+        hint="Season Wrapped comes when the last round has been raced: every driver's season, told as a story."
+      />
+    );
   }
   if (error) return <ErrorBox message={error} />;
   if (!data) {
@@ -165,7 +177,7 @@ function Cover({ data, onPlay }) {
       />
       <div className="relative">
         <Label>
-          {season.label} Wrapped{season.complete ? "" : " · so far"}
+          {season.label} Wrapped
         </Label>
         <div className="mt-4 flex items-center gap-4 sm:gap-5">
           <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={driver.team?.color || "#888"} size={84} className="shrink-0 text-2xl" />
@@ -199,7 +211,7 @@ function Cover({ data, onPlay }) {
                 </span>
               </div>
               <div className="mt-1 font-mono text-[11px] text-light">
-                of {c.fieldSize} drivers{season.complete ? "" : " so far"}
+                of {c.fieldSize} drivers
               </div>
             </div>
           )}
@@ -207,12 +219,6 @@ function Cover({ data, onPlay }) {
           <Big value={stats.starts} label={stats.starts === 1 ? "start" : "starts"} />
           {stats.wins > 0 && <Big value={stats.wins} label={stats.wins === 1 ? "win" : "wins"} />}
         </div>
-        {!season.complete && (
-          <p className="mt-5 text-sm leading-relaxed text-light">
-            The season is still running, {season.roundsRun} of {season.totalRounds} rounds in. This is the story so far; the
-            finale writes the last chapter.
-          </p>
-        )}
         <button type="button" onClick={onPlay} className="btn-primary mt-6 inline-flex items-center gap-2">
           <Play className="h-4 w-4" aria-hidden="true" />
           {data.mine ? "Play your season" : "Play the season"}
@@ -383,7 +389,7 @@ function JourneyCard({ data }) {
           </span>
         )}
         <span>
-          {data.season.complete ? "Finished" : "Now"} <b className="text-dark">P{last.position}</b> with {plural(last.points, "point")}
+          Finished <b className="text-dark">P{last.position}</b> with {plural(last.points, "point")}
         </span>
       </div>
       <details className="mt-3 text-sm">

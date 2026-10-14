@@ -7,7 +7,7 @@ import { copyText } from "../utils/copyText.js";
 import { motionOff } from "../hooks/motion.js";
 import { useFocusTrap, useScrollLock } from "./overlay.jsx";
 import WrappedStage from "./WrappedStage.jsx";
-import StorySlide, { StoryClock, describe } from "./WrappedStorySlides.jsx";
+import StorySlide, { StoryClock, StoryLayout, describe } from "./WrappedStorySlides.jsx";
 
 // ---------------------------------------------------------------------------
 // Season Wrapped as a story, the way Spotify tells a year: full screen, one
@@ -61,21 +61,28 @@ const liteMode = () => {
   }
 };
 
-// A phone turned on its side: the story is made for a phone held upright and
-// waits for that (the slides do not fit a frame 390 pixels tall).
-const SIDEWAYS = "(orientation: landscape) and (max-height: 500px) and (pointer: coarse)";
-function useSideways() {
-  const [on, setOn] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(SIDEWAYS).matches);
+function useMedia(query) {
+  const [on, setOn] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
   useEffect(() => {
-    const mq = window.matchMedia?.(SIDEWAYS);
+    const mq = window.matchMedia?.(query);
     if (!mq) return undefined;
     const fn = () => setOn(mq.matches);
     fn();
     mq.addEventListener?.("change", fn);
     return () => mq.removeEventListener?.("change", fn);
-  }, []);
+  }, [query]);
   return on;
 }
+// A phone turned on its side: the story is made for a phone held upright and
+// waits for that (the slides do not fit a frame 390 pixels tall).
+const SIDEWAYS = "(orientation: landscape) and (max-height: 500px) and (pointer: coarse)";
+// A computer (or a tablet on its side): the story takes the whole screen, the
+// 3D filling it and the words in a column on the left.
+const WIDE = "(min-width: 960px) and (min-aspect-ratio: 4/3)";
+// Where the next slide's colour opens out from, for "next" and "back" without
+// a tap to start from.
+const FROM_RIGHT = { x: "100%", y: "50%" };
+const FROM_LEFT = { x: "0%", y: "50%" };
 
 export default function WrappedStory({ data, mine, url, onClose }) {
   const slides = useMemo(() => buildStory(data, { mine, fmtTrack: prettyTrack }), [data, mine]);
@@ -86,7 +93,11 @@ export default function WrappedStory({ data, mine, url, onClose }) {
   const [hidden, setHidden] = useState(typeof document !== "undefined" && document.hidden);
   const [flat, setFlat] = useState(liteMode);
   const [share, setShare] = useState({ busy: false, msg: "" });
-  const sideways = useSideways();
+  const sideways = useMedia(SIDEWAYS);
+  const wide = useMedia(WIDE);
+  // The slide whose colour lies under the opening circle, and where it opens.
+  const [wipe, setWipe] = useState({ from: 0, ...FROM_RIGHT, x: "50%" });
+  const indexRef = useRef(0);
   const clock = useMemo(makeClock, []);
   const elapsed = useRef(0);
   const barRef = useRef(null);
@@ -102,11 +113,13 @@ export default function WrappedStory({ data, mine, url, onClose }) {
   useFocusTrap(true, panelRef, { initialFocus: panelRef });
 
   const go = useCallback(
-    (to) => {
+    (to, from = FROM_RIGHT) => {
       const next = Math.max(0, Math.min(last, to));
       elapsed.current = 0;
       clock.set(0);
       barRef.current?.style.setProperty("--p", "0");
+      setWipe({ from: indexRef.current, x: from.x, y: from.y });
+      indexRef.current = next;
       setIndex(next);
       // Moving on plays again: a paused story would otherwise hold the next
       // slide's words before their entrance, which is to say invisible.
@@ -114,17 +127,23 @@ export default function WrappedStory({ data, mine, url, onClose }) {
     },
     [clock, last]
   );
-  const next = useCallback(() => {
-    if (index < last) go(index + 1);
-  }, [go, index, last]);
-  const prev = useCallback(() => {
-    if (index > 0) go(index - 1);
-    else {
-      // The first slide: start it again.
-      go(0);
-      setRound((r) => r + 1);
-    }
-  }, [go, index]);
+  const next = useCallback(
+    (from = FROM_RIGHT) => {
+      if (index < last) go(index + 1, from);
+    },
+    [go, index, last]
+  );
+  const prev = useCallback(
+    (from = FROM_LEFT) => {
+      if (index > 0) go(index - 1, from);
+      else {
+        // The first slide: start it again.
+        go(0, from);
+        setRound((r) => r + 1);
+      }
+    },
+    [go, index]
+  );
 
   // The story stops when the page is not being looked at.
   useEffect(() => {
@@ -166,8 +185,8 @@ export default function WrappedStory({ data, mine, url, onClose }) {
   const keys = useRef(null);
   keys.current = (e) => {
     if (e.key === "Escape") onClose();
-    else if (e.key === "ArrowRight") next();
-    else if (e.key === "ArrowLeft") prev();
+    else if (e.key === "ArrowRight") next(FROM_RIGHT);
+    else if (e.key === "ArrowLeft") prev(FROM_LEFT);
     else if (e.key === " " && !e.target.closest?.("button, a")) setPaused((p) => !p);
     else return;
     e.preventDefault();
@@ -213,11 +232,13 @@ export default function WrappedStory({ data, mine, url, onClose }) {
     const dy = e.clientY - p.y;
     // Swipes count however long they took.
     if (dy > 90 && Math.abs(dx) < 80) return onClose();
-    if (Math.abs(dx) > 60 && Math.abs(dy) < 80) return dx < 0 ? next() : prev();
-    // A hold let go of just plays on; a tap moves.
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 80) return dx < 0 ? next(FROM_RIGHT) : prev(FROM_LEFT);
+    // A hold let go of just plays on; a tap moves, the next slide opening out
+    // from under the finger.
     if (p.held || Math.hypot(dx, dy) > 20) return undefined;
     const r = frameRef.current.getBoundingClientRect();
-    return e.clientX - r.left < r.width * 0.3 ? prev() : next();
+    const at = { x: `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`, y: `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%` };
+    return e.clientX - r.left < r.width * 0.3 ? prev(at) : next(at);
   };
   const onPointerCancel = () => {
     clearTimeout(holdTimer.current);
@@ -226,11 +247,15 @@ export default function WrappedStory({ data, mine, url, onClose }) {
   };
   useEffect(() => () => clearTimeout(holdTimer.current), []);
 
-  // The scene for the stage, with the slide's colours for its fog and grid.
+  // The scene for the stage, with the slide's colours for its fog and grid and
+  // the layout it is framed for. On a computer the summary has the car turning
+  // beside the card, where a phone has no room for it.
+  const scene = slide?.scene || (wide && slide?.kind === "summary" ? slides[0]?.scene : null);
   const spec = useMemo(
-    () => (slide?.scene ? { ...slide.scene, bg: slide.colors.bg, accent: slide.colors.accent, round } : null),
-    [slide, round]
+    () => (scene ? { ...scene, bg: slide.colors.bg, accent: slide.colors.accent, round, wide } : null),
+    [scene, slide, round, wide]
   );
+  const layout = useMemo(() => ({ wide, scened: !!spec && !flat }), [wide, spec, flat]);
 
   // The summary card's buttons.
   const summary = slides[last];
@@ -298,7 +323,7 @@ export default function WrappedStory({ data, mine, url, onClose }) {
     replay() {
       setShare({ busy: false, msg: "" });
       setRound((r) => r + 1);
-      go(0);
+      go(0, { x: "50%", y: "50%" });
       setPaused(false);
     },
     close: onClose,
@@ -320,18 +345,20 @@ export default function WrappedStory({ data, mine, url, onClose }) {
         tabIndex={-1}
         className="flex items-center gap-5 outline-none"
       >
-        <button
-          type="button"
-          onClick={prev}
-          aria-label="Previous slide"
-          className="hidden h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:inline-flex"
-        >
-          <ChevronLeft className="h-6 w-6" aria-hidden="true" />
-        </button>
+        {!wide && (
+          <button
+            type="button"
+            onClick={() => prev()}
+            aria-label="Previous slide"
+            className="hidden h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:inline-flex"
+          >
+            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+          </button>
+        )}
 
         <div
           ref={frameRef}
-          className={`story-frame ${running ? "" : "is-paused"}`}
+          className={`story-frame ${wide ? "story-wide" : ""} ${running ? "" : "is-paused"}`}
           style={{ backgroundColor: slide.colors.bg }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -340,18 +367,56 @@ export default function WrappedStory({ data, mine, url, onClose }) {
           onPointerLeave={(e) => press.current && onPointerUp(e)}
           onContextMenu={(e) => e.preventDefault()}
         >
+          {/* The last slide's colour, and this one's opening out over it. */}
+          <div aria-hidden="true" className="absolute inset-0" style={{ background: (slides[wipe.from] || slide).colors.bg }} />
+          <div
+            aria-hidden="true"
+            key={`wipe:${index}:${round}`}
+            className="story-wipe absolute inset-0"
+            style={{ background: slide.colors.bg, "--wx": wipe.x, "--wy": wipe.y }}
+          />
+
           {!flat && (
             <WrappedStage spec={spec} clock={clock} still={still} stageRef={stageRef} onUnavailable={() => setFlat(true)} />
           )}
 
           <StoryClock.Provider value={clock}>
-            <div key={`${index}:${round}`} className="story-slide-in absolute inset-0">
-              <StorySlide slide={slide} data={data} flat={flat} actions={actions} />
-            </div>
+            <StoryLayout.Provider value={layout}>
+              <div key={`${index}:${round}`} className="story-slide-in absolute inset-0">
+                <StorySlide slide={slide} data={data} flat={flat} actions={actions} />
+              </div>
+            </StoryLayout.Provider>
           </StoryClock.Provider>
 
+          {wide && (
+            <>
+              <button
+                type="button"
+                onClick={() => prev()}
+                aria-label="Previous slide"
+                className="absolute left-5 top-1/2 z-10 inline-flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full transition hover:scale-105"
+                style={{ background: `${ink}1a`, color: ink }}
+              >
+                <ChevronLeft className="h-7 w-7" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => next()}
+                disabled={index === last}
+                aria-label="Next slide"
+                className="absolute right-5 top-1/2 z-10 inline-flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full transition hover:scale-105 disabled:opacity-0"
+                style={{ background: `${ink}1a`, color: ink }}
+              >
+                <ChevronRight className="h-7 w-7" aria-hidden="true" />
+              </button>
+            </>
+          )}
+
           {/* The bars, one per slide, and the two buttons. */}
-          <div className="absolute inset-x-0 top-0 z-10 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]" style={{ color: ink }}>
+          <div
+            className={`absolute inset-x-0 top-0 z-10 ${wide ? "px-8 pt-6" : "px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"}`}
+            style={{ color: ink }}
+          >
             <div className="flex gap-1" aria-hidden="true">
               {slides.map((s, i) => (
                 <div key={s.key} className="h-[3px] flex-1 overflow-hidden rounded-full" style={{ background: `${ink}40` }}>
@@ -362,6 +427,7 @@ export default function WrappedStory({ data, mine, url, onClose }) {
             </div>
             <div className="mt-2.5 flex items-center justify-between gap-2">
               <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] opacity-90">
+                {wide ? `${data.season.label} Wrapped · ` : ""}
                 {index + 1} / {slides.length}
               </span>
               <span className="flex items-center gap-1">
@@ -401,15 +467,17 @@ export default function WrappedStory({ data, mine, url, onClose }) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={next}
-          disabled={index === last}
-          aria-label="Next slide"
-          className="hidden h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-30 sm:inline-flex"
-        >
-          <ChevronRight className="h-6 w-6" aria-hidden="true" />
-        </button>
+        {!wide && (
+          <button
+            type="button"
+            onClick={() => next()}
+            disabled={index === last}
+            aria-label="Next slide"
+            className="hidden h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-30 sm:inline-flex"
+          >
+            <ChevronRight className="h-6 w-6" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>,
     document.body

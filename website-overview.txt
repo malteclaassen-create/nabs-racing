@@ -102,9 +102,10 @@ Season Wrapped
   team-mate battle, the closest rival, the honours, and a one-line label for
   the kind of season it was ("The Charger", "The Ever-Present"). Standings ->
   Season Wrapped lists every driver; each driver's page has its own link
-  preview picture for Discord and WhatsApp. A finished season gets the
-  honours; a running one reads as "so far". When a season's last round is
-  saved, everyone with a login gets a note that their Wrapped is ready.
+  preview picture for Discord and WhatsApp. Only a finished season has a
+  Wrapped: there is none for the season being raced. When a season's last
+  round is saved, everyone with a login gets a note that their Wrapped is
+  ready.
   It plays first as a story the way Spotify Wrapped does: full screen, a
   slide at a time with a bar per slide along the top, tap to go on, hold to
   pause, swipe down to close. Behind the words are 3D scenes with the
@@ -112,8 +113,11 @@ Season Wrapped
   result, a climb through the field, trophies, the championship as a 3D chart
   the car rides along, the podium or their slot on the grid. The last slide
   is the season on one card, and "Share your season" turns it into a picture
-  sized for an Instagram story or WhatsApp status. After the first time in a
-  visit the page opens on the cards, with a Play button for the story.
+  sized for an Instagram story or WhatsApp status. On a computer the story
+  takes the whole screen: the 3D fills it and the words stand on the left.
+  Slides open out of each other as a circle of the next colour, headlines
+  come in word by word. After the first time in a visit the page opens on
+  the cards, with a Play button for the story.
   Admin -> Content -> Season Wrapped switches it off, on for admins only (to
   check a season first), or on for everyone.
 

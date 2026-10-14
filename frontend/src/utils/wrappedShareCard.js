@@ -81,7 +81,7 @@ export async function drawShareCard({ card, data, car = null, address = "" }) {
   g.font = `700 28px ${MONO}`;
   g.fillStyle = "rgba(255,255,255,0.85)";
   spaced(g, 4);
-  g.fillText(`${season.label} WRAPPED${season.complete ? "" : " · SO FAR"}`.toUpperCase(), 72, 168);
+  g.fillText(`${season.label} WRAPPED`.toUpperCase(), 72, 168);
   spaced(g, 0);
 
   // The car, or the race number where there is no 3D.
@@ -126,9 +126,8 @@ export async function drawShareCard({ card, data, car = null, address = "" }) {
     g.fillStyle = "rgba(255,255,255,0.85)";
     spaced(g, 3);
     g.font = `700 30px ${MONO}`;
-    const champion = season.complete && card.position === 1;
-    g.fillText(champion ? "CHAMPION" : `OF ${card.fieldSize || championship.fieldSize} DRIVERS`, 64 + bw + 34, 1300);
-    g.fillText(season.complete ? "FINAL TABLE" : "SO FAR", 64 + bw + 34, 1350);
+    g.fillText(card.position === 1 ? "CHAMPION" : `OF ${card.fieldSize || championship.fieldSize} DRIVERS`, 64 + bw + 34, 1300);
+    g.fillText("FINAL TABLE", 64 + bw + 34, 1350);
     spaced(g, 0);
   }
 

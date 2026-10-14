@@ -2,9 +2,10 @@
 // /s/<series>/wrapped: every driver's Season Wrapped for one season, in
 // championship order, and the signed-in driver's own one first.
 //
-// Opens on the newest finished season (a Wrapped is about a season that is
-// over); the picker reaches the others, the running one included as "so far".
-// Each entry opens that driver's page (pages/SeasonWrapped.jsx).
+// Opens on the newest finished season: a Wrapped is about a season that is
+// over, so the season being raced has none until its last round. The picker
+// reaches the other finished ones. Each entry opens that driver's story and
+// cards (pages/SeasonWrapped.jsx).
 // ---------------------------------------------------------------------------
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -24,17 +25,20 @@ export default function WrappedHub() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [closed, setClosed] = useState(false);
+  const [notFinished, setNotFinished] = useState(null);
 
   useEffect(() => {
     let gone = false;
     setError(null);
     setClosed(false);
+    setNotFinished(null);
     api
       .wrappedHub(season)
       .then((d) => !gone && setData(d))
       .catch((e) => {
         if (gone) return;
         if (e.data?.closed) setClosed(true);
+        else if (e.data?.notFinished) setNotFinished(true);
         else setError(e.message);
       });
     return () => {
@@ -42,10 +46,19 @@ export default function WrappedHub() {
     };
   }, [season]);
 
-  useSpecificTitle(data ? `${data.season.label} Wrapped` : "Season Wrapped");
+  useSpecificTitle(data?.season ? `${data.season.label} Wrapped` : "Season Wrapped");
 
   if (closed) {
     return <EmptyState title="Season Wrapped isn't open yet" hint="The league switches it on once it has been checked. Have a look again soon." />;
+  }
+  if (notFinished) {
+    return (
+      <EmptyState title="That season isn't over yet" hint="Its Wrapped comes when the last round has been raced.">
+        <Link to={seriesPath("/wrapped")} className="btn-secondary mt-4">
+          The finished seasons
+        </Link>
+      </EmptyState>
+    );
   }
   if (error) return <ErrorBox message={error} />;
   if (!data) {
@@ -54,6 +67,15 @@ export default function WrappedHub() {
         <PageHeaderSkeleton />
         <CardsSkeleton count={9} />
       </div>
+    );
+  }
+
+  if (!data.season) {
+    return (
+      <EmptyState
+        title="Season Wrapped comes at the end of the season"
+        hint={`When ${data.waitingFor || "the season"} is over, every driver gets their season told as a story, with their car in 3D and a picture to share.`}
+      />
     );
   }
 
@@ -68,7 +90,7 @@ export default function WrappedHub() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={data.season.complete ? `${data.season.label} · final` : `${data.season.label} · so far`}
+        eyebrow={`${data.season.label} · final`}
         title="Season Wrapped"
         subtitle="Every driver's season, told in cards: the best night, the biggest climb, the team-mate battle, the rival and the awards. Pick a driver."
         right={
@@ -92,12 +114,6 @@ export default function WrappedHub() {
         }
       />
 
-      {!data.season.complete && (
-        <p className="text-sm leading-relaxed text-light">
-          {data.season.label} is still running, {data.season.roundsRun} of {data.season.totalRounds} rounds in. These are the
-          stories so far.
-        </p>
-      )}
 
       {mine && (
         <Link

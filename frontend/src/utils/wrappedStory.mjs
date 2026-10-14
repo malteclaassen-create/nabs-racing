@@ -6,8 +6,8 @@
 //
 // Pure on purpose (no React, no DOM), so the wording can be tested: a slide
 // whose data the season does not have is not there, the same rule the card
-// page follows, and a season still running says "so far" instead of claiming
-// an ending it has not had.
+// page follows. Only a finished season has a Wrapped (the API answers "not
+// over yet" for the one being raced), so the story always tells an ending.
 //
 // The story talks TO the driver when the viewer is that driver ("You lined
 // up...") and ABOUT them otherwise ("Siggsta lined up..."), which is why most
@@ -100,7 +100,6 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
   if (!data || data.empty || !data.driver || !data.season) return [];
   const { driver, season, championship: c = {}, stats: st = {} } = data;
   const v = voiceFor(driver.name, mine);
-  const done = !!season.complete;
   const paint = hexColor(driver.team?.color) || FALLBACK_PAINT;
   const where = (r) => [fmtTrack(r.track || ""), r.round != null ? `Round ${r.round}` : null, r.sprint ? "Sprint" : null].filter(Boolean).join(" · ");
   const slides = [];
@@ -109,11 +108,9 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
 
   // 1. Who and when.
   push("intro", "night", {
-    eyebrow: `${season.label} Wrapped${done ? "" : " · so far"}`,
+    eyebrow: `${season.label} Wrapped`,
     title: mine ? `Your ${season.label}, wrapped.` : `${driver.name}'s ${season.label}, wrapped.`,
-    sub: done
-      ? "Every round, every result: the whole season in a few taps."
-      : `${season.roundsRun} of ${season.totalRounds} rounds in. The story so far.`,
+    sub: `${plural(season.roundsRun || season.totalRounds || 0, "round")}, every result: the whole season in a few taps.`,
     scene: { kind: "intro", paint, number: driver.number ?? null },
   });
 
@@ -134,7 +131,7 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
           ? "The chequered flag? Not this time."
           : `And took the chequered flag ${plural(finishes, "time")}.`,
     points: c.points ?? 0,
-    pointsLine: `${plural(c.points ?? 0, "point")}${done ? "" : " so far"}.`,
+    pointsLine: `${plural(c.points ?? 0, "point")} in the end.`,
   });
 
   // 3. The best night.
@@ -221,7 +218,7 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
     const gap = r.gap || 0;
     push("rival", "red", {
       eyebrow: "The rival",
-      title: c.position === 1 ? `The one who chased ${v.s} all season.` : done ? "The one to beat next season." : "The one to beat.",
+      title: c.position === 1 ? `The one who chased ${v.s} all season.` : "The one to beat next season.",
       name: r.name,
       photoUrl: r.photoUrl || null,
       driverId: r.driverId,
@@ -245,7 +242,7 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
           : peak
             ? `As high as P${peak.position}, after Round ${peak.round}.`
             : "Every round, a new table.",
-      sub: `P${first.position} after Round ${first.round}, P${last.position} ${done ? "at the end" : "now"}.`,
+      sub: `P${first.position} after Round ${first.round}, P${last.position} at the end.`,
       scene: {
         kind: "journey",
         paint,
@@ -259,11 +256,11 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
   if (c.position != null) {
     const p = c.position;
     push("final", "black", {
-      eyebrow: done ? "The final table" : "The table right now",
-      lead: done ? "And the championship says…" : "And right now, the table says…",
+      eyebrow: "The final table",
+      lead: "And the championship says…",
       big: `P${p}`,
       medal: p <= 3 ? p : null,
-      title: done ? (p === 1 ? "Champion." : p === 2 ? "Runner-up." : p === 3 ? "Third overall." : null) : null,
+      title: p === 1 ? "Champion." : p === 2 ? "Runner-up." : p === 3 ? "Third overall." : null,
       sub: `${plural(c.points ?? 0, "point")} · ${plural(c.fieldSize || 0, "driver")}`,
       scene: p <= 3 ? { kind: "podium", paint, position: p } : { kind: "grid", paint, position: p, fieldSize: c.fieldSize || p },
     });
@@ -292,7 +289,7 @@ export function buildStory(data, { mine = false, fmtTrack = (t) => t } = {}) {
 
   // 12. The card to keep.
   push("summary", "night", {
-    eyebrow: `${season.label} Wrapped${done ? "" : " · so far"}`,
+    eyebrow: `${season.label} Wrapped`,
     stats: summaryStats(data),
     position: c.position ?? null,
     fieldSize: c.fieldSize || null,

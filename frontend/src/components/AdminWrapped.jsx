@@ -92,8 +92,8 @@ export default function AdminWrapped() {
             the Play button on top. Lite graphics mode gets it without the 3D.
           </li>
           <li>
-            Every number is the one the driver's profile and the standings show. A finished season gets the honours; a
-            running one reads as &ldquo;so far&rdquo;.
+            Only a finished season has a Wrapped: it appears when the last round is saved, and the season being raced
+            has none until then. Every number is the one the driver's profile and the standings show.
           </li>
           <li>
             When a season's last round is saved, every driver with a login gets a note in their bell (and a push, if they

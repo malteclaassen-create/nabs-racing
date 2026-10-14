@@ -248,10 +248,18 @@ function ribbonGeometry(points, sideAt, width, { closed = false, lift = 0 } = {}
 }
 
 // Where a camera has to stand to see a box `w` wide and `h` tall, whole.
-function fitDistance(camera, w, h) {
+function fitDistance(camera, w, h, aspect = camera.aspect) {
   const v = THREE.MathUtils.degToRad(camera.fov) / 2;
-  const hz = Math.atan(Math.tan(v) * camera.aspect);
+  const hz = Math.atan(Math.tan(v) * aspect);
   return Math.max(h / 2 / Math.tan(v), w / 2 / Math.tan(hz));
+}
+
+// The same, for the part of the frame a scene's subject has: the band between
+// the words in the tall layout (`vs` of the height), the right of the screen
+// in the wide one (ctx.hShare of the width, the picture shifted over by the
+// stage, see draw()). `hs` is how much of that width the subject may take.
+function fit(ctx, camera, w, h, { hs = 1, vs = ctx.vShare } = {}) {
+  return fitDistance(camera, w / hs, h / vs, ctx.aspect * ctx.hShare);
 }
 
 function lights(scene, { key = 0xffffff, rim = 0xffffff, rimStrength = 1.4 } = {}) {
@@ -356,7 +364,7 @@ function introScene(ctx, spec) {
     // Nose towards the camera at first, turning to show its side; a front
     // three-quarter view at `still`, the frame the summary card's picture uses.
     car.rotation.y = -1.53 + t * 0.32;
-    const far = fitDistance(camera, 5.4, 3.4);
+    const far = fit(ctx, camera, 5.4, 3.4, { vs: 1 });
     const d = lerp(far * 0.5, far, easeOut(span(t, 0, 2.8)));
     const h = lerp(0.7, 2.1, easeOut(span(t, 0, 2.8)));
     camera.position.set(Math.sin(0.35) * d, h, Math.cos(0.35) * d);
@@ -370,8 +378,9 @@ function introScene(ctx, spec) {
 // --- circuits ---
 
 // The outline of a circuit as points on the ground, an even step apart, the
-// long side running away from the camera (a phone's frame is tall).
-function circuitPoints(track, count = 420) {
+// long side running away from the camera on a phone (a tall frame) and across
+// the screen on a computer (a wide one).
+function circuitPoints(track, count = 420, wide = false) {
   const c = circuitFor(track);
   let raw = [];
   if (c?.path) {
@@ -397,7 +406,7 @@ function circuitPoints(track, count = 420) {
   }
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  const turn = maxX - minX > (maxY - minY) * 1.1;
+  const turn = wide ? maxY - minY > (maxX - minX) * 1.1 : maxX - minX > (maxY - minY) * 1.1;
   const scale = 200 / Math.max(maxX - minX, maxY - minY);
   let pts = raw.map(([x, y]) => {
     const px = (x - cx) * scale;
@@ -458,7 +467,7 @@ function circuitScene(ctx, spec) {
   camera.fov = 40;
   camera.near = 2;
   lights(scene, { rim: spec.paint, rimStrength: 1.2 });
-  const { points, curv } = circuitPoints(spec.track);
+  const { points, curv } = circuitPoints(spec.track, 420, !!spec.wide);
   const n = points.length;
   const tangents = points.map((p, i) => points[(i + 1) % n].clone().sub(points[(i + n - 1) % n]).normalize());
   const up = new THREE.Vector3(0, 1, 0);
@@ -596,7 +605,7 @@ function circuitScene(ctx, spec) {
     const D0 = maxZ - minZ;
     const w = W0 * Math.cos(SWAY) + D0 * Math.sin(SWAY) + 30;
     const h = (D0 * Math.cos(SWAY) + W0 * Math.sin(SWAY)) * Math.sin(pitch) + 40;
-    const d = fitDistance(camera, w / 0.92, h / 0.6) * 1.08 * lerp(1.25, 1, easeOut(span(t, 0, 2.2)));
+    const d = fit(ctx, camera, w, h, { hs: ctx.wide ? 1 : 0.92, vs: ctx.wide ? 0.95 : ctx.vShare }) * 1.08 * lerp(1.25, 1, easeOut(span(t, 0, 2.2)));
     // The fog starts past the circuit, however far back a wide one puts the
     // camera, so only the ground beyond it fades.
     if (scene.fog) {
@@ -700,6 +709,26 @@ function climbScene(ctx, spec) {
   scene.add(glow);
   const label = textSprite(bag, `P${from}`, { height: 1.9 });
   scene.add(label.sprite);
+  // Streaks of light rushing past both sides of the road: the field is at
+  // racing speed, and the driver's car quicker still.
+  const STREAKS = 70;
+  const streakGeo = bag.add(new THREE.BoxGeometry(0.06, 0.06, 7));
+  const streaks = new THREE.InstancedMesh(
+    streakGeo,
+    bag.add(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })),
+    STREAKS
+  );
+  bag.add(streaks);
+  streaks.frustumCulled = false;
+  const lanes = Array.from({ length: STREAKS }, (_, i) => ({
+    x: (i % 2 ? 1 : -1) * (7.2 + Math.random() * 9),
+    y: 0.3 + Math.random() * 3.2,
+    z: Math.random(),
+    v: 0.55 + Math.random() * 0.6,
+  }));
+  scene.add(streaks);
+  const streakSpan = roadLen;
+  const streakAt = new THREE.Matrix4();
 
   // Ahead of the car it finished behind, in the middle of the road.
   const endZ = slotZ(to) - GAP / 2 + 1;
@@ -708,6 +737,14 @@ function climbScene(ctx, spec) {
     camera.aspect = ctx.aspect;
     camera.updateProjectionMatrix();
     roadTex.offset.y = t * 1.6;
+    // The streaks run back past the car, quickest while it is overtaking.
+    const zBase = road.position.z - streakSpan / 2;
+    lanes.forEach((l, i) => {
+      const along = (((l.z + t * l.v * 0.35) % 1) + 1) % 1;
+      streakAt.makeTranslation(l.x, l.y, zBase + along * streakSpan);
+      streaks.setMatrixAt(i, streakAt);
+    });
+    streaks.instanceMatrix.needsUpdate = true;
     const m = easeInOut(span(t, MOVE[0], MOVE[1]));
     const z = lerp(slotZ(from), endZ, m);
     // Out of its lane into the gap between the two columns, then through.
@@ -802,7 +839,7 @@ function trophiesScene(ctx, spec) {
       it.cup.rotation.y = (t - it.at) * 0.7;
     }
     sparkle.update(t);
-    const d = fitDistance(camera, width / 0.9, height / 0.55) * lerp(1.12, 1, easeOut(span(t, 0, 3)));
+    const d = fit(ctx, camera, width, height, { hs: 0.9, vs: ctx.wide ? 0.72 : 0.55 }) * lerp(1.12, 1, easeOut(span(t, 0, 3)));
     const a = 0.25 + Math.sin(t * 0.3) * 0.12;
     camera.position.set(Math.sin(a) * d, height * 0.55 + 1.6, Math.cos(a) * d);
     camera.lookAt(0, height * 0.32 + 0.4, -(rows - 1));
@@ -827,7 +864,7 @@ function journeyScene(ctx, spec) {
   // The chart runs from P1 down to just below the lowest place it needs.
   const bottom = Math.max(6, worst + 1);
   const H = 24;
-  const W = Math.min(26, Math.max(10, (n - 1) * 4.5));
+  const W = spec.wide ? Math.min(46, Math.max(16, (n - 1) * 5.5)) : Math.min(26, Math.max(10, (n - 1) * 4.5));
   const dx = n > 1 ? W / (n - 1) : 0;
   const x0 = -W / 2;
   const yOf = (pos) => 1.5 + ((bottom - pos) / (bottom - 1)) * H;
@@ -911,7 +948,7 @@ function journeyScene(ctx, spec) {
     // Ride along beside the car, then step back for the whole chart.
     const chase = p.clone().add(new THREE.Vector3(-6.5, 3.2, 11));
     const chaseLook = p.clone().add(new THREE.Vector3(3, 0.4, 0));
-    const d = fitDistance(camera, (W + 12) / 0.92, (H + 6) / 0.6);
+    const d = fit(ctx, camera, W + 12, H + 6, { hs: ctx.wide ? 1 : 0.92, vs: ctx.wide ? 0.92 : ctx.vShare });
     const whole = centre.clone().add(new THREE.Vector3(Math.sin(-0.28) * d, 3, Math.cos(-0.28) * d));
     const s = easeInOut(span(t, RIDE[1] - 0.5, RIDE[1] + 1.3));
     camera.position.copy(chase.lerp(whole, s));
@@ -972,7 +1009,7 @@ function podiumScene(ctx, spec) {
     car.position.set(mine.x, mine.h + Math.max(0, bounce) * 7 + (k <= 0 ? 7 : 0), 0);
     car.visible = t >= DROP[0] - 0.05;
     paper.update(t);
-    const d = fitDistance(camera, 13.5 / 0.92, 7 / 0.5) * lerp(1.15, 1, easeOut(span(t, 0, 5)));
+    const d = fit(ctx, camera, 13.5, 7, { hs: 0.92, vs: ctx.wide ? 0.7 : 0.5 }) * lerp(1.15, 1, easeOut(span(t, 0, 5)));
     camera.position.set(Math.sin(-0.18) * d, 3.2 + d * 0.12, Math.cos(-0.18) * d);
     camera.lookAt(0, 1.9, 0);
   };
@@ -1100,7 +1137,18 @@ export function createWrappedStage(canvas, { still = false } = {}) {
   room.dispose();
   pmrem.dispose();
 
-  const ctx = { aspect: 1, env, template: null, maxAnisotropy: renderer.capabilities.getMaxAnisotropy() };
+  // The frame's shape and layout. Tall: the whole width for the subject and
+  // the middle 60% of the height (the words take the rest). Wide: the right
+  // 55% of the screen, the picture shifted a fifth of the way over so the
+  // subject sits there, clear of the words on the left.
+  const ctx = { aspect: 1, w: 1, h: 1, env, template: null, maxAnisotropy: renderer.capabilities.getMaxAnisotropy() };
+  const setLayout = (wide) => {
+    ctx.wide = wide;
+    ctx.hShare = wide ? 0.55 : 1;
+    ctx.vShare = wide ? 0.8 : 0.6;
+    ctx.shift = wide ? 0.21 : 0;
+  };
+  setLayout(false);
   let current = null;
   let currentKey = null;
   let lastT = 0;
@@ -1123,6 +1171,8 @@ export function createWrappedStage(canvas, { still = false } = {}) {
       return;
     }
     current.update(still ? current.still : lastT);
+    if (ctx.shift) current.camera.setViewOffset(ctx.w, ctx.h, -ctx.shift * ctx.w, 0, ctx.w, ctx.h);
+    else current.camera.clearViewOffset();
     renderer.render(current.scene, current.camera);
   }
 
@@ -1137,6 +1187,7 @@ export function createWrappedStage(canvas, { still = false } = {}) {
       current?.dispose();
       current = null;
       currentKey = key;
+      setLayout(!!spec?.wide);
       if (spec && BUILDERS[spec.kind]) current = BUILDERS[spec.kind](ctx, spec);
       draw();
     },
@@ -1148,6 +1199,8 @@ export function createWrappedStage(canvas, { still = false } = {}) {
       if (dead || !(w > 0 && h > 0)) return;
       renderer.setSize(w, h, false);
       ctx.aspect = w / h;
+      ctx.w = w;
+      ctx.h = h;
       draw();
     },
     // One frame of a scene, drawn off screen at its own size, handed back as
@@ -1156,8 +1209,11 @@ export function createWrappedStage(canvas, { still = false } = {}) {
       if (dead || !spec || !BUILDERS[spec.kind]) return null;
       const target = new THREE.WebGLRenderTarget(w, h, { samples: 4 });
       const aspect = ctx.aspect;
+      const wasWide = ctx.wide;
       ctx.aspect = w / h;
-      const built = BUILDERS[spec.kind](ctx, spec);
+      // A picture is framed on its own, whatever the screen is doing.
+      setLayout(false);
+      const built = BUILDERS[spec.kind](ctx, { ...spec, wide: false });
       try {
         built.update(t ?? built.still);
         renderer.setRenderTarget(target);
@@ -1182,6 +1238,7 @@ export function createWrappedStage(canvas, { still = false } = {}) {
         target.dispose();
         built.dispose();
         ctx.aspect = aspect;
+        setLayout(wasWide);
         draw();
       }
     },

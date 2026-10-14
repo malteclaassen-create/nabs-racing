@@ -10,7 +10,7 @@ import { landsOnPublicPage } from "../hooks/profileHome.mjs";
 import AttentionDot from "../components/AttentionDot.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
-import { useWrappedOpen } from "../hooks/useWrappedOpen.js";
+import { useWrappedSeasons } from "../hooks/useWrappedOpen.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, FlairBadge, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
@@ -1500,7 +1500,7 @@ function AchievementBadge({ name, tagline, cat }) {
 function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true }) {
   // The way to this row's Season Wrapped, once the league has opened it and
   // there is a season to tell (pages/SeasonWrapped.jsx).
-  const wrappedOpen = useWrappedOpen();
+  const wrappedSeasons = useWrappedSeasons();
   const { seriesPath } = useSeriesPath();
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
@@ -1631,12 +1631,12 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                   Career record
                   <span aria-hidden="true">↗</span>
                 </Link>
-                {wrappedOpen && stats?.starts > 0 && (
+                {stats?.starts > 0 && driver.seasonNumber != null && wrappedSeasons.includes(driver.seasonNumber) && (
                   <Link
                     to={seriesPath(`/wrapped/${encodeURIComponent(driver.id)}`)}
                     className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
                   >
-                    {driver.seasonNumber != null ? `Season ${driver.seasonNumber} Wrapped` : "Season Wrapped"}
+                    {`Season ${driver.seasonNumber} Wrapped`}
                     <span aria-hidden="true">✦</span>
                   </Link>
                 )}
