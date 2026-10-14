@@ -38,11 +38,12 @@ const { chromium } = require("playwright");
 
 // Each film on its slide's colour (frontend/src/utils/wrappedStory.mjs
 // STORY_THEMES) and as long as the slide (STORY_DURATIONS).
+// `version` goes up when a film's scene changes, so it is made again.
 const FILMS = {
-  intro: { bg: "#0B0A12", secs: 6.5, others: false, moving: false },
-  climb: { bg: "#0E3B2E", secs: 8.5, others: true, moving: true },
-  podium: { bg: "#050507", secs: 8, others: false, moving: false },
-  grid: { bg: "#050507", secs: 8, others: true, moving: false },
+  intro: { bg: "#0B0A12", secs: 6.5, others: false, moving: false, version: 1 },
+  climb: { bg: "#0E3B2E", secs: 8.5, others: true, moving: true, version: 2 },
+  podium: { bg: "#050507", secs: 8, others: false, moving: false, version: 1 },
+  grid: { bg: "#050507", secs: 8, others: true, moving: false, version: 1 },
 };
 const SIZE = { w: 720, h: 900, fps: 24 };
 
@@ -63,7 +64,7 @@ function glb(source, skin, out, extra = []) {
 const field = spec.liveries.filter((l) => !l.of).slice(0, 4);
 for (const l of field) {
   glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb.glb`), ["--textures", kn5]);
-  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb-moving.glb`), ["--textures", kn5, "--moving"]);
+  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb-moving2.glb`), ["--textures", kn5, "--moving"]);
 }
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".glb": "model/gltf-binary" };
@@ -110,10 +111,13 @@ async function page() {
 async function film(l, kind) {
   const dir = join(workDir, l.key);
   const mp4 = join(dir, `${kind}.mp4`);
-  if (existsSync(mp4)) return;
+  // A film made by an older version of its scene is made again.
+  const stamp = join(dir, `${kind}.version`);
+  const made = existsSync(stamp) ? Number(readFileSync(stamp, "utf8")) : 1;
+  if (existsSync(mp4) && made >= FILMS[kind].version) return;
   const f = FILMS[kind];
-  const me = `/work/glb2/${l.key}${f.moving ? "-moving" : ""}.glb`;
-  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb2/${x.key}-lodb${f.moving ? "-moving" : ""}.glb`) : [];
+  const me = `/work/glb2/${l.key}${f.moving ? "-moving2" : ""}.glb`;
+  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb2/${x.key}-lodb${f.moving ? "-moving2" : ""}.glb`) : [];
   const frames = join(dir, `frames-${kind}`);
   mkdirSync(frames, { recursive: true });
   const p = await page();
@@ -134,6 +138,7 @@ async function film(l, kind) {
   const vp9 = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(SIZE.fps), "-i", join(frames, "f%04d.jpg"), "-c:v", "libvpx-vp9", "-crf", "36", "-b:v", "0", "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", "-pix_fmt", "yuv420p", webm], { stdio: "inherit" });
   if (vp9.status !== 0) throw new Error(`encoding failed: ${webm}`);
   rmSync(frames, { recursive: true, force: true });
+  writeFileSync(stamp, String(FILMS[kind].version));
   console.log(l.key, kind, "done");
 }
 
@@ -153,7 +158,7 @@ async function still(l) {
 const tasks = [];
 for (const l of own) {
   glb(kn5, l.skin, join(workDir, "glb2", `${l.key}.glb`));
-  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}-moving.glb`), ["--moving"]);
+  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}-moving2.glb`), ["--moving"]);
   tasks.push(() => still(l));
   for (const kind of Object.keys(FILMS)) tasks.push(() => film(l, kind));
 }

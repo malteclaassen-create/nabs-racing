@@ -170,6 +170,10 @@ def main():
         g = {"name": m["name"], "extras": {"kind": kind, "shader": m["shader"]},
              "pbrMetallicRoughness": {"metallicFactor": metal, "roughnessFactor": rough}}
         diff = m["maps"].get("txDiffuse")
+        # At speed the game draws the tyres with their blurred texture (the
+        # tread and the lettering smeared round): so do we.
+        if moving and m["shader"] == "ksTyres" and m["maps"].get("txBlur"):
+            diff = m["maps"]["txBlur"]
         detail = m["maps"].get("txDetail") if "MultiMap" in m["shader"] or "Skinned" in m["shader"] else None
         t = texture_for(diff, blend or m["alphaTested"], detail) if diff else None
         if t is not None:
