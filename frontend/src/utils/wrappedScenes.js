@@ -22,7 +22,6 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { loadRaceCar, CAR_PAINT } from "./raceCarModel.js";
-import { atlasTexture, imposterCar, imposterField } from "./carImposter.js";
 import { circuitFor } from "../data/circuits.js";
 
 // The same switch the replay sets (utils/lapViewer3d.js): colours are used as
@@ -95,10 +94,38 @@ function standInCar(mats) {
   return g;
 }
 
-// One car, its own colour. Nose along +x, wheels on y = 0. Where the season's
-// real car has been rendered (ctx.art), the driver's own car in its livery.
+// Where the story shows the real car in its films (spec.marker), the scenes
+// in between mark the driver with a light in the team's colour rather than a
+// model that would not match it.
+function markerCar(mats, bag) {
+  const g = new THREE.Group();
+  const paint = mats[CAR_PAINT].color;
+  const core = new THREE.Mesh(
+    bag.add(new THREE.SphereGeometry(0.42, 32, 16)),
+    bag.add(new THREE.MeshBasicMaterial({ color: paint.clone().lerp(new THREE.Color(0xffffff), 0.55) }))
+  );
+  core.position.y = 0.6;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d");
+  const grad = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, `#${paint.getHexString()}ff`);
+  grad.addColorStop(0.35, `#${paint.getHexString()}88`);
+  grad.addColorStop(1, `#${paint.getHexString()}00`);
+  x.fillStyle = grad;
+  x.fillRect(0, 0, 128, 128);
+  const halo = new THREE.Sprite(bag.add(new THREE.SpriteMaterial({ map: bag.add(new THREE.CanvasTexture(c)), blending: THREE.AdditiveBlending, depthWrite: false })));
+  halo.scale.setScalar(3.4);
+  halo.position.y = 0.6;
+  const light = new THREE.PointLight(paint, 6, 9, 2);
+  light.position.y = 0.8;
+  g.add(core, halo, light);
+  return g;
+}
+
+// One car, its own colour. Nose along +x, wheels on y = 0.
 function paintedCar(ctx, mats, bag) {
-  if (ctx.art) return imposterCar(bag, ctx.art);
+  if (ctx.marker) return markerCar(mats, bag);
   if (!ctx.template) return standInCar(mats);
   const car = ctx.template.clone(true);
   car.traverse((o) => {
@@ -114,10 +141,6 @@ function paintedCar(ctx, mats, bag) {
 function carField(ctx, bag, mats, places) {
   const group = new THREE.Group();
   if (!places.length) return group;
-  if (ctx.art) {
-    group.add(imposterField(bag, ctx.art, places, ctx.art.others.length ? ctx.art.others : [ctx.art.livery]));
-    return group;
-  }
   if (!ctx.template) {
     for (const m of places) {
       const car = standInCar(mats);
@@ -368,12 +391,9 @@ function introScene(ctx, spec) {
   const update = (t) => {
     camera.aspect = ctx.aspect;
     camera.updateProjectionMatrix();
-    // Nose towards the camera at first, turning to show its side and back
-    // again, for as long as the slide lasts (the summary on a computer waits
-    // for the viewer); a front three-quarter view at `still`, the frame the
-    // summary card's picture uses. It stays on the sides the real car's
-    // pictures were drawn from (utils/carImposter.js).
-    car.rotation.y = -1.53 + 1.04 * (1 - Math.cos((t * 0.32) / 1.04));
+    // Nose towards the camera at first, turning to show its side; a front
+    // three-quarter view at `still`, the frame the summary card's picture uses.
+    car.rotation.y = -1.53 + t * 0.32;
     const far = fit(ctx, camera, 5.4, 3.4, { vs: 1 });
     const d = lerp(far * 0.5, far, easeOut(span(t, 0, 2.8)));
     const h = lerp(0.7, 2.1, easeOut(span(t, 0, 2.8)));
@@ -382,7 +402,7 @@ function introScene(ctx, spec) {
     // The light walks round the car, a highlight sliding along the paint.
     key.position.set(Math.cos(t * 0.6) * 9, 11, Math.sin(t * 0.6) * 9);
   };
-  return { scene, camera, update, still: 5.3, dispose: () => bag.dispose() };
+  return { scene, camera, update, still: 3.4, dispose: () => bag.dispose() };
 }
 
 // --- circuits ---
@@ -1131,8 +1151,7 @@ function fontsReady() {
 //   still(spec, t, w, h)   one frame of a scene as a 2D canvas, for pictures
 //   onLost(fn)             called if the browser takes the GPU back
 //   dispose()
-// `art`: a promise of the season's car pictures (utils/carArt.js), or null.
-export function createWrappedStage(canvas, { still = false, art = null } = {}) {
+export function createWrappedStage(canvas, { still = false } = {}) {
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -1173,21 +1192,7 @@ export function createWrappedStage(canvas, { still = false, art = null } = {}) {
   };
   canvas.addEventListener("webglcontextlost", onLostEvent);
 
-  // The real car's pictures, where the season has them: given a few seconds,
-  // after which the scenes go ahead with the 3D car.
-  const pictures = [];
-  const loadArt = Promise.resolve(art)
-    .then((d) =>
-      d
-        ? Promise.all([atlasTexture(d.hero, { crisp: true }), atlasTexture(d.field)]).then(([hero, field]) => {
-            pictures.push(hero, field);
-            if (!dead) ctx.art = { ...d, hero, field };
-          })
-        : null
-    )
-    .catch(() => null);
-  const artOrGiveUp = Promise.race([loadArt, new Promise((r) => setTimeout(r, 6000))]);
-  const ready = Promise.all([loadRaceCar().then((t) => (ctx.template = t)).catch(() => null), fontsReady(), artOrGiveUp]);
+  const ready = Promise.all([loadRaceCar().then((t) => (ctx.template = t)).catch(() => null), fontsReady()]);
 
   function draw() {
     if (dead) return;
@@ -1196,7 +1201,6 @@ export function createWrappedStage(canvas, { still = false, art = null } = {}) {
       return;
     }
     current.update(still ? current.still : lastT);
-    current.scene.traverse((o) => o.userData.pick?.(current.camera));
     if (ctx.shift) current.camera.setViewOffset(ctx.w, ctx.h, -ctx.shift * ctx.w, 0, ctx.w, ctx.h);
     else current.camera.clearViewOffset();
     renderer.render(current.scene, current.camera);
@@ -1214,6 +1218,7 @@ export function createWrappedStage(canvas, { still = false, art = null } = {}) {
       current = null;
       currentKey = key;
       setLayout(!!spec?.wide);
+      ctx.marker = !!spec?.marker;
       if (spec && BUILDERS[spec.kind]) current = BUILDERS[spec.kind](ctx, spec);
       draw();
     },
@@ -1239,10 +1244,10 @@ export function createWrappedStage(canvas, { still = false, art = null } = {}) {
       ctx.aspect = w / h;
       // A picture is framed on its own, whatever the screen is doing.
       setLayout(false);
+      ctx.marker = !!spec.marker;
       const built = BUILDERS[spec.kind](ctx, { ...spec, wide: false });
       try {
         built.update(t ?? built.still);
-        built.scene.traverse((o) => o.userData.pick?.(built.camera));
         renderer.setRenderTarget(target);
         renderer.setClearColor(0x000000, 0);
         renderer.clear();
@@ -1277,7 +1282,6 @@ export function createWrappedStage(canvas, { still = false, art = null } = {}) {
       current?.dispose();
       current = null;
       canvas.removeEventListener("webglcontextlost", onLostEvent);
-      for (const p of pictures) p.dispose();
       env.dispose();
       renderer.dispose();
       // Phones keep only a few WebGL contexts; hand this one back now rather

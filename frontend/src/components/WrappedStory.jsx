@@ -6,7 +6,7 @@ import { prettyTrack } from "../utils/pageTitle.js";
 import { copyText } from "../utils/copyText.js";
 import { motionOff } from "../hooks/motion.js";
 import { carFor } from "../utils/heroImage.js";
-import { carArtFor } from "../utils/carArt.js";
+import { carFilmsFor } from "../utils/carFilms.js";
 import { useFocusTrap, useScrollLock } from "./overlay.jsx";
 import WrappedStage from "./WrappedStage.jsx";
 import StorySlide, { StoryClock, StoryLayout, describe } from "./WrappedStorySlides.jsx";
@@ -108,6 +108,59 @@ function useCarPhoto(season) {
   return { src: settled && got.el ? src : null, el: settled ? got.el : null, failed: !src || (settled && !got.el) };
 }
 
+// A picture from this site, loaded, or null.
+function loadPicture(src) {
+  return new Promise((ok) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => ok(null);
+    img.src = src;
+  });
+}
+
+// One of the real car's films (or, with no film, its still), where the 3D
+// scene would be: the middle of a phone's frame, the right of a computer's.
+// It plays and pauses with the story and keeps to its clock; with reduced
+// motion it is its last frame.
+function CarFilm({ src, poster, wide, clock, running, reduced }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (running && !reduced) v.play().catch(() => {});
+    else v.pause();
+  }, [running, reduced]);
+  useEffect(() => {
+    if (!src) return undefined;
+    return clock.subscribe((t) => {
+      const v = ref.current;
+      if (!v || !v.duration) return;
+      const want = reduced ? v.duration - 0.05 : Math.min(t, v.duration - 0.05);
+      if (Math.abs(v.currentTime - want) > 0.3) v.currentTime = want;
+    });
+  }, [clock, src, reduced]);
+  const box = wide
+    ? "right-[3vw] top-1/2 h-[88vh] -translate-y-1/2 aspect-[4/5]"
+    : "inset-x-0 top-1/2 w-full -translate-y-1/2 aspect-[4/5] max-h-[66%]";
+  return (
+    <div aria-hidden="true" className={`story-film pointer-events-none absolute ${box}`}>
+      {src ? (
+        <video
+          ref={ref}
+          src={src}
+          muted
+          playsInline
+          preload="auto"
+          className="h-full w-full object-cover"
+          onError={(e) => (e.currentTarget.style.display = "none")}
+        />
+      ) : (
+        <img src={poster} alt="" className="story-film-still h-full w-full object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+      )}
+    </div>
+  );
+}
+
 // The league's mark in both colours: `dark` (the pink one, or the series' own
 // upload) on the dark slides, `light` (black) on the pale ones.
 const LOGOS = { dark: "/logo-dark.png", light: "/logo-light.png" };
@@ -122,21 +175,20 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS, 
   const [flat, setFlat] = useState(liteMode);
   const [share, setShare] = useState({ busy: false, msg: "" });
   const car = useCarPhoto(data.season);
-  // The real car, rendered in the driver's livery, for the 3D scenes (where
-  // the season has it). `hasArt`: undefined until the answer is in.
-  const art = useMemo(
-    () => carArtFor({ season: data.season?.number, team: data.driver?.team?.id, driver: data.driver?.name }, cars).catch(() => null),
-    [data, cars]
-  );
-  const [hasArt, setHasArt] = useState(undefined);
+  // The real car in films rendered from the mod, in the driver's livery
+  // (utils/carFilms.js): undefined until the answer is in, null where the
+  // season has none.
+  const [films, setFilms] = useState(undefined);
   useEffect(() => {
     let gone = false;
-    setHasArt(undefined);
-    art.then((d) => !gone && setHasArt(!!d));
+    setFilms(undefined);
+    carFilmsFor({ season: data.season?.number, team: data.driver?.team?.id, driver: data.driver?.name }, cars)
+      .catch(() => null)
+      .then((f) => !gone && setFilms(f || null));
     return () => {
       gone = true;
     };
-  }, [art]);
+  }, [data, cars]);
   const sideways = useMedia(SIDEWAYS);
   const wide = useMedia(WIDE);
   // The slide whose colour lies under the opening circle, and where it opens.
@@ -295,40 +347,58 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS, 
   // the layout it is framed for. On a computer the summary has the car turning
   // beside the card, where a phone has no room for it.
   //
-  // The real car rendered in the driver's livery is best of all. Without it,
-  // where the season has a photo of its car, the intro (and that summary)
-  // show the photo instead: nothing while either is still on its way, and
-  // the 3D car back only when there turns out to be neither.
+  // Best of all is the real car in its films: the intro, the climb and the
+  // final table (on the podium or on the grid) play one, the summary on a
+  // computer stands its still beside the card, and the scenes in between
+  // mark the driver with a light rather than a model that would not match.
+  // Without films, where the season has a photo of its car, the intro (and
+  // that summary) show the photo instead; nothing while either answer is
+  // still on its way, and the 3D car back only when there is neither.
+  const filmSlide = slide?.key === "intro" || slide?.key === "climb" || slide?.key === "final";
   const carSlide = slide?.key === "intro" || (wide && slide?.kind === "summary");
-  const photoed = carSlide && hasArt !== true && !car.failed;
-  const scene = photoed ? null : slide?.scene || (wide && slide?.kind === "summary" ? slides[0]?.scene : null);
+  const film =
+    films && slide
+      ? slide.key === "final"
+        ? films[slide.scene?.kind === "podium" ? "podium" : "grid"]
+        : filmSlide
+          ? films[slide.key]
+          : null
+      : null;
+  const filmStill = films && wide && slide?.kind === "summary" ? films.still : null;
+  const waiting = films === undefined && (filmSlide || carSlide);
+  const photoed = carSlide && films === null && !car.failed;
+  const scene =
+    film || filmStill || photoed || waiting ? null : slide?.scene || (wide && slide?.kind === "summary" ? slides[0]?.scene : null);
   const spec = useMemo(
-    () => (scene ? { ...scene, bg: slide.colors.bg, accent: slide.colors.accent, round, wide } : null),
-    [scene, slide, round, wide]
+    () => (scene ? { ...scene, bg: slide.colors.bg, accent: slide.colors.accent, round, wide, marker: !!films } : null),
+    [scene, slide, round, wide, films]
   );
   // A slide with white words is a dark one, and gets the pink mark.
   const logo = slide?.colors.ink.toUpperCase() === "#FFFFFF" ? logos.dark : logos.light;
-  const photo = photoed ? (hasArt === false && car.src) || "" : null; // "" = on its way
-  const layout = useMemo(() => ({ wide, scened: !!spec && !flat, logo, photo }), [wide, spec, flat, logo, photo]);
+  const photo = photoed ? car.src || "" : carSlide && waiting ? "" : null; // "" = on its way
+  const filmed = !!(film || filmStill);
+  const layout = useMemo(() => ({ wide, scened: (!!spec && !flat) || filmed, logo, photo, film: filmed }), [wide, spec, flat, logo, photo, filmed]);
 
   // The summary card's buttons.
   const summary = slides[last];
   const fileName = `${data.driver.name}-${data.season.label}-wrapped.jpg`.replace(/[^\w.-]+/g, "-");
   const makePicture = useCallback(async () => {
     const { drawShareCard } = await import("../utils/wrappedShareCard.js");
-    // The real car where there is a picture of it (from this site: one from
-    // anywhere else would leave the canvas unreadable), else the 3D one.
-    const photo = !hasArt && car.el && new URL(car.el.src, location.href).origin === location.origin ? car.el : null;
+    // The real car: its still from the films, else the season's photo (from
+    // this site: one from anywhere else would leave the canvas unreadable),
+    // else the 3D one.
+    const filmCar = films?.still ? await loadPicture(films.still) : null;
+    const photo = !filmCar && car.el && new URL(car.el.src, location.href).origin === location.origin ? car.el : null;
     const intro = slides[0]?.scene;
-    let still3d = null;
+    let still3d = filmCar;
     try {
-      still3d = !photo && intro && stageRef.current ? stageRef.current.still({ ...intro, bg: "#0B0A12" }, null, 1080, 820) : null;
+      if (!still3d && !photo && intro && stageRef.current) still3d = stageRef.current.still({ ...intro, bg: "#0B0A12" }, null, 1080, 820);
     } catch {
       still3d = null;
     }
     const address = url ? url.replace(/^https?:\/\//, "") : "";
     return drawShareCard({ card: summary, data, car: still3d, photo, address, logo: logos.dark });
-  }, [slides, summary, data, url, car.el, hasArt]);
+  }, [slides, summary, data, url, car.el, films]);
   const download = (blob) => {
     const href = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -434,8 +504,9 @@ export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS, 
           />
 
           {!flat && (
-            <WrappedStage spec={spec} clock={clock} still={still} art={art} stageRef={stageRef} onUnavailable={() => setFlat(true)} />
+            <WrappedStage spec={spec} clock={clock} still={still} stageRef={stageRef} onUnavailable={() => setFlat(true)} />
           )}
+          {filmed && <CarFilm key={`film:${index}:${round}`} src={film} poster={filmStill} wide={wide} clock={clock} running={running} reduced={still} />}
 
           <StoryClock.Provider value={clock}>
             <StoryLayout.Provider value={layout}>

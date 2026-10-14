@@ -1,7 +1,9 @@
-# Assetto Corsa car (.kn5 + a skin folder) -> one GLB, for rendering pictures
-# of the car offline. Never shipped: only the pictures leave this machine.
+# Assetto Corsa car (.kn5 + a skin folder) -> one GLB, for rendering the
+# Wrapped films offline (README.md). Never shipped: only the films leave this
+# machine.
 #
 #   python3 kn5_to_glb.py <car.kn5> <skin dir or -> <out.glb> [--max-tex 2048]
+#                         [--moving] [--textures <main car.kn5>]
 import io, json, os, struct, sys
 import numpy as np
 from PIL import Image
@@ -34,7 +36,12 @@ PBR = {  # metalness, roughness
 def main():
     src, skin, out = sys.argv[1], sys.argv[2], sys.argv[3]
     max_tex = int(sys.argv[sys.argv.index("--max-tex") + 1]) if "--max-tex" in sys.argv else 2048
+    # --moving: the blurred rims the game shows at speed instead of the still ones.
+    moving = "--moving" in sys.argv
     M = kn5.read(src)
+    # --textures <main.kn5>: a LOD file carries no textures of its own.
+    if "--textures" in sys.argv:
+        M["textures"] = {**kn5.read(sys.argv[sys.argv.index("--textures") + 1])["textures"], **M["textures"]}
     skin_files = {}
     if skin != "-" and os.path.isdir(skin):
         for f in os.listdir(skin):
@@ -49,7 +56,11 @@ def main():
     meshes = []  # (name, material index, positions, normals, uvs, indices)
 
     def walk(n, parent):
-        if not n["active"] or n["name"] in HIDE_NODES:
+        name = n["name"].upper()
+        blur_rim = name.startswith("RIM_BLUR")
+        if moving and name.startswith("RIM_") and not blur_rim:
+            return
+        if (not n["active"] and not (moving and blur_rim)) or n["name"] in HIDE_NODES:
             return
         world = parent
         if n["cls"] == 1:

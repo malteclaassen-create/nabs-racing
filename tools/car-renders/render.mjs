@@ -1,15 +1,18 @@
-// Renders one car's liveries into the pictures the Wrapped scenes use
-// (README.md). Needs Python 3 with Pillow + numpy, and Playwright's Chromium.
+// Renders the Season Wrapped films of one car (README.md): for each livery,
+// four short videos (intro, climb, podium, grid) and a still. Needs Python 3
+// with Pillow + numpy, ffmpeg, and Playwright's Chromium.
 //
-//   node tools/car-renders/render.mjs <car folder> <liveries json> <work dir> [--jobs 3]
+//   NODE_PATH=$(npm root -g) node tools/car-renders/render.mjs <car folder> <liveries json> <work dir> [--jobs 3] [--only key,key] [--gpu]
 //
-// For each livery: the model with that skin's textures as a GLB (in the work
-// dir, deleted after), then its hero atlas (79 frames, 640x275, from 24
-// degrees off the nose round the left side to 30 past the tail, every 3
-// degrees, 12 degrees up) and its field strip (16 frames all the way round at
-// 15 and 55 degrees up, 128x128). A livery already rendered is skipped.
+// --gpu: draw on the graphics card (a visible browser window, Direct3D on
+// Windows) instead of on the processor; minutes instead of hours.
+// render-windows.bat does all of it on a Windows PC.
+//
+// Liveries with "of" (a driver's own, played with their team's films) are
+// not rendered. A film already in the work dir is skipped, so a stopped run
+// picks up where it was.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -19,9 +22,13 @@ import { createRequire } from "node:module";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
 const [carDir, liveriesPath, workDir] = process.argv.slice(2);
-const jobs = Number(process.argv[process.argv.indexOf("--jobs") + 1]) || 3;
+const flag = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : null);
+const jobs = Number(flag("--jobs")) || 3;
+const only = flag("--only")?.split(",");
+const gpu = process.argv.includes("--gpu");
+const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 if (!carDir || !liveriesPath || !workDir) {
-  console.error("usage: node tools/car-renders/render.mjs <car folder> <liveries json> <work dir> [--jobs 3]");
+  console.error("usage: node tools/car-renders/render.mjs <car folder> <liveries json> <work dir> [--jobs 3] [--only key,key]");
   process.exit(1);
 }
 // Playwright from wherever it is installed (NODE_PATH=$(npm root -g) for a
@@ -29,18 +36,37 @@ if (!carDir || !liveriesPath || !workDir) {
 const require = createRequire(join(root, "frontend/package.json"));
 const { chromium } = require("playwright");
 
-const DEG = Math.PI / 180;
-const HERO = { cellW: 640, cellH: 275, boxW: 5.6, boxH: 2.4, cy: 0.55, yawFrom: -24 * DEG, yawStep: 3 * DEG, yaws: 79, pitches: [0.21], ss: 2, quality: 0.8 };
-const FIELD = { cellW: 128, cellH: 128, boxW: 5.6, boxH: 5.6, cy: 0.55, yaws: 16, pitches: [0.26, 0.96], ss: 2, quality: 0.9 };
+// Each film on its slide's colour (frontend/src/utils/wrappedStory.mjs
+// STORY_THEMES) and as long as the slide (STORY_DURATIONS).
+const FILMS = {
+  intro: { bg: "#0B0A12", secs: 6.5, others: false, moving: false },
+  climb: { bg: "#0E3B2E", secs: 8.5, others: true, moving: true },
+  podium: { bg: "#050507", secs: 8, others: false, moving: false },
+  grid: { bg: "#050507", secs: 8, others: true, moving: false },
+};
+const SIZE = { w: 720, h: 900, fps: 24 };
 
 const spec = JSON.parse(readFileSync(liveriesPath, "utf8"));
 const model = basename(resolve(carDir));
 const kn5 = join(carDir, `${model}.kn5`);
-mkdirSync(workDir, { recursive: true });
+// The rest of the field in the lighter model, where the car has one.
+const lodB = existsSync(join(carDir, `${model}_LOD_B.kn5`)) ? join(carDir, `${model}_LOD_B.kn5`) : kn5;
+const own = spec.liveries.filter((l) => !l.of && (!only || only.includes(l.key)));
+mkdirSync(join(workDir, "glb"), { recursive: true });
 
-// The repository over HTTP, for the render page and three.js; plus the work
-// dir's GLBs under /work/.
-const types = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".glb": "model/gltf-binary" };
+function glb(source, skin, out, extra = []) {
+  if (existsSync(out)) return;
+  const r = spawnSync(python, [join(here, "kn5_to_glb.py"), source, join(carDir, "skins", skin), out, "--max-tex", "4096", ...extra], { stdio: "inherit" });
+  if (r.status !== 0) throw new Error(`conversion failed: ${out}`);
+}
+// The rest of the field: three liveries from the list, lighter (LOD B).
+const field = spec.liveries.filter((l) => !l.of).slice(0, 4);
+for (const l of field) {
+  glb(lodB, l.skin, join(workDir, "glb", `${l.key}-lodb.glb`), ["--textures", kn5]);
+  glb(lodB, l.skin, join(workDir, "glb", `${l.key}-lodb-moving.glb`), ["--textures", kn5, "--moving"]);
+}
+
+const types = { ".html": "text/html", ".js": "text/javascript", ".glb": "model/gltf-binary" };
 const server = createServer(async (req, res) => {
   const url = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = url.startsWith("/work/") ? join(workDir, url.slice(6)) : join(root, url);
@@ -55,37 +81,83 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+const browser = await chromium.launch(
+  gpu
+    ? { headless: false, args: ["--ignore-gpu-blocklist", "--enable-gpu-rasterization", ...(process.platform === "win32" ? ["--use-angle=d3d11"] : [])] }
+    : { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] }
+);
 
-async function renderOne(l) {
-  const hero = join(workDir, `${l.key}.hero.webp`);
-  const field = join(workDir, `${l.key}.field.webp`);
-  if (existsSync(hero) && existsSync(field)) return console.log(l.key, "already rendered");
-  const glb = join(workDir, `${l.key}.glb`);
-  const conv = spawnSync("python3", [join(here, "kn5_to_glb.py"), kn5, join(carDir, "skins", l.skin), glb, "--max-tex", "4096"], { stdio: "inherit" });
-  if (conv.status !== 0) throw new Error(`${l.key}: conversion failed`);
-  const page = await browser.newPage();
+async function page() {
+  const p = await browser.newPage();
+  p.on("pageerror", (e) => console.log("page error:", e.message));
+  await p.goto(`${base}/tools/car-renders/video.html`);
+  await p.waitForFunction(() => window.ready);
+  return p;
+}
+
+// Say what is drawing: a graphics card's name, or SwiftShader (the processor).
+{
+  const p = await page();
+  const name = await p.evaluate(() => {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unknown";
+  });
+  console.log("drawing on:", name);
+  await p.close();
+}
+
+async function film(l, kind) {
+  const dir = join(workDir, l.key);
+  const mp4 = join(dir, `${kind}.mp4`);
+  if (existsSync(mp4)) return;
+  const f = FILMS[kind];
+  const me = `/work/glb/${l.key}${f.moving ? "-moving" : ""}.glb`;
+  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb/${x.key}-lodb${f.moving ? "-moving" : ""}.glb`) : [];
+  const frames = join(dir, `frames-${kind}`);
+  mkdirSync(frames, { recursive: true });
+  const p = await page();
   try {
-    await page.goto(`${base}/tools/car-renders/render.html`);
-    await page.waitForFunction(() => window.ready);
-    await page.evaluate((u) => window.loadCar(u), `/work/${l.key}.glb`);
-    for (const [file, layout] of [[hero, HERO], [field, FIELD]]) {
-      const r = await page.evaluate((x) => window.atlas(x), layout);
-      writeFileSync(file, Buffer.from(r.url.split(",")[1], "base64"));
-      console.log(l.key, basename(file), `${r.width}x${r.height}`, `${Math.round(statSync(file).size / 1024)} KB`);
+    await p.evaluate((o) => window.setup(o), { kind, cars: [me, ...others], w: SIZE.w, h: SIZE.h, team: l.colour || "#F4AFC6", bg: f.bg });
+    const n = Math.round(f.secs * SIZE.fps);
+    for (let i = 0; i < n; i++) {
+      const url = await p.evaluate(([t, d]) => window.frameAt(t, d), [i / SIZE.fps, f.secs]);
+      writeFileSync(join(frames, `f${String(i).padStart(4, "0")}.jpg`), Buffer.from(url.split(",")[1], "base64"));
     }
   } finally {
-    await page.close();
-    rmSync(glb, { force: true });
+    await p.close();
+  }
+  const enc = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-framerate", String(SIZE.fps), "-i", join(frames, "f%04d.jpg"), "-c:v", "libx264", "-preset", "slow", "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4], { stdio: "inherit" });
+  if (enc.status !== 0) throw new Error(`encoding failed: ${mp4}`);
+  rmSync(frames, { recursive: true, force: true });
+  console.log(l.key, kind, "done");
+}
+
+async function still(l) {
+  const png = join(workDir, l.key, "still.png");
+  if (existsSync(png)) return;
+  mkdirSync(join(workDir, l.key), { recursive: true });
+  const p = await page();
+  try {
+    const url = await p.evaluate((o) => window.stillPng(o), { car: `/work/glb/${l.key}.glb`, w: 1080, h: 820, team: l.colour || "#F4AFC6" });
+    writeFileSync(png, Buffer.from(url.split(",")[1], "base64"));
+  } finally {
+    await p.close();
   }
 }
 
-const queue = [...spec.liveries];
+const tasks = [];
+for (const l of own) {
+  glb(kn5, l.skin, join(workDir, "glb", `${l.key}.glb`));
+  glb(kn5, l.skin, join(workDir, "glb", `${l.key}-moving.glb`), ["--moving"]);
+  tasks.push(() => still(l));
+  for (const kind of Object.keys(FILMS)) tasks.push(() => film(l, kind));
+}
 await Promise.all(
   Array.from({ length: jobs }, async () => {
-    for (let l = queue.shift(); l; l = queue.shift()) await renderOne(l);
+    for (let t = tasks.shift(); t; t = tasks.shift()) await t();
   })
 );
 await browser.close();
 server.close();
-console.log(`done: ${spec.liveries.length} liveries in ${workDir}; next: python3 tools/car-renders/pack.py ${liveriesPath} ${workDir} frontend/public/cars`);
+console.log(`done: ${own.length} liveries in ${workDir}; next: ${python} tools/car-renders/pack.py ${liveriesPath} ${workDir} frontend/public/cars`);

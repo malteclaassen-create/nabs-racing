@@ -1,11 +1,12 @@
 {
  "season": 8,
  "model": "formula_2010",
- "note": "Season 8 (formula_2010): each league team's livery, and a driver's own where the mod has one. skin = the folder under the car's skins/.",
+ "note": "Season 8 (formula_2010): each league team's livery (skin = its folder under the car's skins/, colour = the team's on the site). A driver's own livery (\"of\") plays with their team's films.",
  "liveries": [
   {
    "key": "mclaren",
    "skin": "m17_44_mclaren_44",
+   "colour": "#F58220",
    "teams": [
     "mclaren_s8"
    ]
@@ -13,6 +14,7 @@
   {
    "key": "ferrari",
    "skin": "m17_07_ferrari_7",
+   "colour": "#E10600",
    "teams": [
     "ferrari_s8"
    ]
@@ -20,6 +22,7 @@
   {
    "key": "red-bull",
    "skin": "m17_05_red_bull_5",
+   "colour": "#5A4FC4",
    "teams": [
     "redbull_s8"
    ]
@@ -27,6 +30,7 @@
   {
    "key": "mercedes",
    "skin": "m17_03_mercedes_3",
+   "colour": "#00D2BE",
    "teams": [
     "s6_mercedes_s8"
    ]
@@ -34,6 +38,7 @@
   {
    "key": "williams",
    "skin": "m17_09_williams_9",
+   "colour": "#0067C0",
    "teams": [
     "williams_s8"
    ]
@@ -41,6 +46,7 @@
   {
    "key": "renault",
    "skin": "m17_1_renault_1",
+   "colour": "#BFA900",
    "teams": [
     "renault_s8"
    ]
@@ -48,6 +54,7 @@
   {
    "key": "force-india",
    "skin": "m17_14_force_india_14",
+   "colour": "#FF80C7",
    "teams": [
     "s6_force_india_s8"
    ]
@@ -55,6 +62,7 @@
   {
    "key": "toro-rosso",
    "skin": "m17_16_toro_rosso_16",
+   "colour": "#4F0000",
    "teams": [
     "torro_rosso_s8"
    ]
@@ -62,6 +70,7 @@
   {
    "key": "lotus",
    "skin": "m17_18_lotus_18",
+   "colour": "#E6A700",
    "teams": [
     "lotus_s8"
    ]
@@ -69,6 +78,7 @@
   {
    "key": "sauber",
    "skin": "m17_22_sauber_37",
+   "colour": "#9B0000",
    "teams": [
     "s3_sauber_s8"
    ]
@@ -76,6 +86,7 @@
   {
    "key": "virgin",
    "skin": "m17_24_virgin_24",
+   "colour": "#C8102E",
    "teams": [
     "s3_virgin_s8"
    ]
@@ -83,6 +94,7 @@
   {
    "key": "hrt",
    "skin": "m17_20_hrt_20",
+   "colour": "#9AA0A6",
    "teams": [
     "s3_hrt_s8"
    ]
@@ -90,6 +102,7 @@
   {
    "key": "audi",
    "skin": "28_Audi_F1_Team",
+   "colour": "#BB0A30",
    "teams": [
     "s6_audi_s8"
    ]
@@ -97,6 +110,7 @@
   {
    "key": "brawn",
    "skin": "27_BrawnGP_Honda",
+   "colour": "#B6FF00",
    "teams": [
     "s6_brawn_gp_s8"
    ]
@@ -104,6 +118,7 @@
   {
    "key": "skoda",
    "skin": "34_Skoda_F1_Team",
+   "colour": "#32C757",
    "teams": [
     "skoda_s8"
    ],
@@ -113,7 +128,6 @@
   },
   {
    "key": "skoda-35",
-   "skin": "35_Skoda_F1_Team",
    "of": "skoda",
    "drivers": [
     "Endriu"
@@ -122,6 +136,7 @@
   {
    "key": "axn",
    "skin": "AXN_67",
+   "colour": "#EFE627",
    "teams": [
     "axn-rb_s8"
    ],
@@ -131,7 +146,6 @@
   },
   {
    "key": "axn-69",
-   "skin": "AXN_69",
    "of": "axn",
    "drivers": [
     "Justyn"
@@ -140,6 +154,7 @@
   {
    "key": "arrows",
    "skin": "Arrows_30",
+   "colour": "#FF7A00",
    "teams": [
     "s3_arrows_s8"
    ],
@@ -149,7 +164,6 @@
   },
   {
    "key": "arrows-31",
-   "skin": "Arrows_31",
    "of": "arrows",
    "drivers": [
     "Larry Kapinga"
@@ -158,6 +172,7 @@
   {
    "key": "ncb",
    "skin": "NCB RaceTech - Kalervo77",
+   "colour": "#5FEFEC",
    "teams": [
     "ncb_mugen_s8"
    ],
@@ -168,7 +183,6 @@
   },
   {
    "key": "ncb-23",
-   "skin": "NCB RaceTech - Naigouu",
    "of": "ncb",
    "drivers": [
     "Naigouu"
@@ -177,6 +191,7 @@
   {
    "key": "usf1",
    "skin": "2010_USF1_Team_32",
+   "colour": "#0B2F82",
    "teams": [
     "usf1_s8"
    ]
@@ -184,6 +199,7 @@
   {
    "key": "reserve",
    "skin": "reserve_team_00",
+   "colour": "#F4AFC6",
    "teams": [
     "reserve_s8"
    ]

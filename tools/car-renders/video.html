@@ -1,0 +1,410 @@
+<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/frontend/node_modules/three/build/three.module.js","three/addons/":"/frontend/node_modules/three/examples/jsm/"}}</script>
+<body style="margin:0;background:#000">
+<canvas id="c"></canvas>
+<script type="module">
+// The league's car, rendered into the short videos Season Wrapped plays
+// (README.md): intro, climb, podium, grid. Each is drawn on its slide's own
+// colour and fades into it at the edges, so the video sits on the slide
+// without a frame.
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { Reflector } from "three/addons/objects/Reflector.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(1);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const ENV = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+const easeInOut = (x) => { x = Math.min(1, Math.max(0, x)); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const lerp = (a, b, t) => a + (b - a) * t;
+const span = (t, a, b) => Math.min(1, Math.max(0, (t - a) / (b - a)));
+
+function upgrade(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    const m = o.material;
+    const kind = m.userData?.kind;
+    if (kind === "paint" || kind === "carbon") {
+      o.material = new THREE.MeshPhysicalMaterial({ map: m.map, color: m.color, metalness: m.metalness, roughness: m.roughness,
+        clearcoat: kind === "paint" ? 1 : 0.6, clearcoatRoughness: 0.06, transparent: m.transparent, alphaTest: m.alphaTest, side: m.side });
+    }
+    if (o.material.map) o.material.map.anisotropy = 8;
+  });
+}
+
+const loader = new GLTFLoader();
+async function loadCar(url) {
+  const model = (await loader.loadAsync(url)).scene;
+  upgrade(model);
+  const box = new THREE.Box3().setFromObject(model);
+  const c = box.getCenter(new THREE.Vector3());
+  model.position.set(-c.x, -box.min.y, -c.z);
+  const g = new THREE.Group();
+  g.add(model);
+  model.rotation.y = 0;
+  const holder = new THREE.Group();
+  g.rotation.y = Math.PI / 2; // nose along +x
+  holder.add(g);
+  return holder;
+}
+
+function radial(color, alpha, size = 256) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  const hex = `#${new THREE.Color(color).getHexString()}`;
+  grad.addColorStop(0, hex + Math.round(alpha * 255).toString(16).padStart(2, "0"));
+  grad.addColorStop(1, hex + "00");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+
+// A dark mirror for a floor: the car stands in its own reflection.
+function mirrorFloor(scene, w, h, bg, { dim = 0.8, radius = 60 } = {}) {
+  const mirror = new Reflector(new THREE.CircleGeometry(radius, 64), { textureWidth: w, textureHeight: h, color: 0x777777 });
+  mirror.rotation.x = -Math.PI / 2;
+  scene.add(mirror);
+  const veil = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), new THREE.MeshBasicMaterial({ color: bg, transparent: true, opacity: dim }));
+  veil.rotation.x = -Math.PI / 2;
+  veil.position.y = 0.002;
+  scene.add(veil);
+  const shade = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), new THREE.ShadowMaterial({ opacity: 0.55 }));
+  shade.rotation.x = -Math.PI / 2;
+  shade.position.y = 0.004;
+  shade.receiveShadow = true;
+  scene.add(shade);
+}
+
+function pool(scene, color, alpha, w, d) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: radial(color, alpha), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.01;
+  scene.add(m);
+  return m;
+}
+
+function spot(color, intensity, pos, target, { angle = 0.5, penumbra = 0.7, shadow = false, distance = 40 } = {}) {
+  const l = new THREE.SpotLight(color, intensity, distance, angle, penumbra, 1.6);
+  l.position.set(...pos);
+  l.target.position.set(...target);
+  if (shadow) {
+    l.castShadow = true;
+    l.shadow.mapSize.set(2048, 2048);
+    l.shadow.bias = -0.0004;
+  }
+  return l;
+}
+
+// --- the scenes: each returns frame(t, dur) ----------------------------------
+
+function introScene({ scene, camera, cars, paint, w, h, bg }) {
+  const car = cars[0];
+  scene.add(car);
+  mirrorFloor(scene, w, h, bg);
+  const glow = pool(scene, paint, 0.25, 9, 5);
+  const key = spot(0xffffff, 200, [2, 11, 4], [0, 0, 0], { shadow: true });
+  const rim = spot(paint, 160, [-5, 6, -6], [0, 0.8, 0], { angle: 0.6, penumbra: 0.8 });
+  const sweep = spot(0xffffff, 120, [4, 3.2, 3.2], [3, 0.5, 0], { angle: 0.2, penumbra: 0.9, distance: 20 });
+  scene.add(key, key.target, rim, rim.target, sweep, sweep.target, new THREE.HemisphereLight(0xffffff, bg, 0.35));
+  return (t, dur) => {
+    const p = ease(t / dur);
+    // From the nose, close and low, swinging round to a front three-quarter
+    // view and pulling back until the whole car is in the frame.
+    const az = lerp(0.18, 0.95, p);
+    const dist = fitDistance(camera, 5.2) * lerp(0.55, 0.95, p);
+    camera.position.set(Math.cos(az) * dist, lerp(0.45, 1.5, p), Math.sin(az) * dist);
+    camera.lookAt(lerp(0.9, 0, p), lerp(0.45, 0.5, p), 0);
+    const s = ease(t / 1.4);
+    scene.environmentIntensity = 0.45 * s;
+    key.intensity = 200 * s;
+    rim.intensity = 160 * s;
+    const sp = (t / dur) * 1.6 - 0.3; // the sweep runs nose to tail
+    sweep.position.set(lerp(4, -4, sp), 3.2, 3.2);
+    sweep.target.position.set(lerp(3, -3, sp), 0.5, 0);
+    sweep.intensity = 120 * Math.sin(Math.PI * Math.min(1, Math.max(0, sp)));
+    glow.material.opacity = s;
+  };
+}
+
+// A strip of track running along x, its markings scrolling past.
+function track(scene, length = 400, groundColor = 0x16181d) {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 1024;
+  const g = c.getContext("2d");
+  g.fillStyle = "#2a2c33";
+  g.fillRect(0, 0, 512, 1024);
+  for (let i = 0; i < 9000; i++) {
+    const v = 30 + Math.random() * 30;
+    g.fillStyle = `rgba(${v},${v},${v + 6},0.5)`;
+    g.fillRect(Math.random() * 512, Math.random() * 1024, 2, 2);
+  }
+  g.fillStyle = "#e9e9ee";
+  g.fillRect(18, 0, 14, 1024);
+  g.fillRect(480, 0, 14, 1024);
+  g.fillStyle = "rgba(233,233,238,0.85)";
+  for (let y = 0; y < 1024; y += 256) g.fillRect(250, y, 12, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  const width = 12;
+  tex.repeat.set(1, length / 24);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(width, length), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 }));
+  road.rotation.x = -Math.PI / 2;
+  road.rotation.z = Math.PI / 2; // length along x
+  road.receiveShadow = true;
+  scene.add(road);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(length, 400), new THREE.MeshStandardMaterial({ color: groundColor, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  return { tex, metresPerRepeat: 24 };
+}
+
+function climbScene({ scene, camera, cars, paint, bg }) {
+  const me = cars[0];
+  scene.add(me);
+  const road = track(scene, 400, new THREE.Color(bg).lerp(new THREE.Color(0x000000), 0.35));
+  scene.fog.near = 10;
+  scene.fog.far = 42;
+  // The cars being passed, in the two lanes, falling back one by one.
+  const others = cars.slice(1);
+  // On the far side of the car from the camera, one after another.
+  const field = others.map((c, i) => {
+    scene.add(c);
+    return { car: c, lane: 3.4 + (i % 2) * 0.5, start: 9 + i * 13 };
+  });
+  me.position.z = 0;
+  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  key.position.set(8, 14, 6);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 60 });
+  key.shadow.bias = -0.0004;
+  scene.add(key, key.target);
+  const rim = spot(paint, 140, [-8, 5, -6], [0, 0.6, 0], { angle: 0.6 });
+  scene.add(rim, rim.target, new THREE.HemisphereLight(0xffffff, bg, 0.6));
+  const glow = pool(scene, paint, 0.35, 9, 5);
+  const SPEED = 62; // m/s, the road under the leader
+  return (t, dur) => {
+    road.tex.offset.y = -(t * SPEED) / road.metresPerRepeat;
+    // The others go a little slower: each starts ahead and is passed.
+    for (const f of field) {
+      const x = f.start - t * 7.5;
+      f.car.position.set(x, 0, f.lane);
+    }
+    me.position.z = Math.sin(t * 0.9) * 0.6; // weaving between them
+    glow.position.set(me.position.x, 0.01, me.position.z);
+    const p = easeInOut(t / dur);
+    // Low on the car's left, from behind round to its front, following it.
+    const az = lerp(-2.5, -0.7, p);
+    const dist = fitDistance(camera, 5.4) * 0.92;
+    camera.position.set(Math.cos(az) * dist, lerp(1.2, 1.6, p), me.position.z + Math.sin(az) * dist);
+    camera.lookAt(0.2, 0.55, me.position.z);
+  };
+}
+
+function confetti(scene, colors, count = 420) {
+  const geo = new THREE.PlaneGeometry(0.09, 0.05);
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.4, metalness: 0.3 }), count);
+  const color = new THREE.Color();
+  const bits = [];
+  for (let i = 0; i < count; i++) {
+    mesh.setColorAt(i, color.set(colors[i % colors.length]));
+    bits.push({ x: (Math.random() - 0.5) * 12, z: (Math.random() - 0.5) * 10, y0: 6 + Math.random() * 10, v: 0.9 + Math.random() * 0.8, s: Math.random() * 6, r: Math.random() * 6 });
+  }
+  scene.add(mesh);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const one = new THREE.Vector3(1, 1, 1);
+  return (t) => {
+    bits.forEach((b, i) => {
+      const y = b.y0 - ((t * b.v + b.s) % 14);
+      e.set(t * 3 + b.r, t * 2 + b.r, b.r);
+      q.setFromEuler(e);
+      m.compose(new THREE.Vector3(b.x + Math.sin(t + b.r) * 0.3, y, b.z), q, one);
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+}
+
+function podiumScene({ scene, camera, cars, paint, w, h, bg }) {
+  const me = cars[0];
+  // A round stage, the car on it, turning slowly under the lights.
+  const stage = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.75, 0.5, 96), new THREE.MeshPhysicalMaterial({ color: 0x111116, metalness: 0.6, roughness: 0.25, clearcoat: 1 }));
+  stage.position.y = 0.25;
+  stage.receiveShadow = true;
+  const rimRing = new THREE.Mesh(new THREE.TorusGeometry(3.68, 0.035, 12, 128), new THREE.MeshBasicMaterial({ color: 0xf5c542 }));
+  rimRing.rotation.x = Math.PI / 2;
+  rimRing.position.y = 0.5;
+  const turn = new THREE.Group();
+  turn.add(stage, rimRing);
+  me.position.y = 0.5;
+  turn.add(me);
+  scene.add(turn);
+  mirrorFloor(scene, w, h, bg, { dim: 0.86 });
+  const key = spot(0xffffff, 320, [0, 13, 2], [0, 0.5, 0], { angle: 0.42, penumbra: 0.5, shadow: true });
+  const gold = spot(0xffd36b, 150, [6, 7, 5], [0, 0.8, 0], { angle: 0.5 });
+  const rim = spot(paint, 45, [-6, 8, -6], [0, 1.2, 0], { angle: 0.5 });
+  scene.add(key, key.target, gold, gold.target, rim, rim.target, new THREE.HemisphereLight(0xffffff, bg, 0.25));
+  // The beam of light the car stands in.
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.4, 4.2, 13, 64, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.018, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+  );
+  beam.position.y = 6.5;
+  scene.add(beam);
+  const fall = confetti(scene, [paint, "#F5C542", "#FFFFFF", paint]);
+  return (t, dur) => {
+    const p = easeInOut(t / dur);
+    turn.rotation.y = lerp(-0.9, 0.5, p);
+    const s = ease(t / 1.2);
+    scene.environmentIntensity = 0.35 * s;
+    key.intensity = 320 * s;
+    beam.material.opacity = 0.018 * s;
+    fall(t);
+    const dist = fitDistance(camera, 6.2) * lerp(1.0, 0.86, p);
+    const az = lerp(0.65, 0.35, p);
+    camera.position.set(Math.cos(az) * dist, lerp(2.9, 2.0, p), Math.sin(az) * dist);
+    camera.lookAt(0, 0.9, 0);
+  };
+}
+
+function gridScene({ scene, camera, cars, paint, bg }) {
+  const me = cars[0];
+  scene.add(me);
+  const road = track(scene, 200);
+  road.tex.offset.y = 0.37;
+  // The grid boxes: white brackets in front of each car.
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0xeeeeee });
+  const slots = [];
+  for (let i = -3; i <= 3; i++) {
+    const x = -i * 8;
+    const z = i % 2 ? 2.6 : -2.6;
+    slots.push([x, z]);
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 2.6), lineMat);
+    bar.rotation.x = -Math.PI / 2;
+    bar.position.set(x + 2.9, 0.012, z);
+    scene.add(bar);
+  }
+  me.position.set(0, 0, slots[3][1]);
+  cars.slice(1).forEach((c, i) => {
+    const [x, z] = slots[[2, 4, 1, 5, 0, 6][i % 6]];
+    c.position.set(x, 0, z);
+    scene.add(c);
+  });
+  const floods = [[-10, 12, 8], [10, 12, -8]].map((p) => spot(0xdfe6ff, 300, p, [0, 0, 0], { angle: 0.7, penumbra: 0.9, shadow: p[0] < 0, distance: 60 }));
+  floods.forEach((l) => scene.add(l, l.target));
+  const rim = spot(paint, 160, [-6, 5, me.position.z - 6], [0, 0.6, me.position.z], { angle: 0.5 });
+  scene.add(rim, rim.target, new THREE.HemisphereLight(0xffffff, bg, 0.3));
+  const glow = pool(scene, paint, 0.4, 8, 4.5);
+  glow.position.set(0, 0.01, me.position.z);
+  return (t, dur) => {
+    const p = easeInOut(t / dur);
+    // From high above the grid, down to the car's slot, ending low beside it.
+    const z = me.position.z;
+    const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-22, 19, z - 9), new THREE.Vector3(8, 9, z - 14), new THREE.Vector3(5.2, 1.05, z - 4.8));
+    camera.position.copy(curve.getPoint(p));
+    camera.lookAt(lerp(-6, 0.3, p), lerp(0, 0.55, p), z);
+    const s = ease(t / 1.2);
+    floods.forEach((l) => (l.intensity = 300 * s));
+  };
+}
+
+// How far back a camera stands for a width of `w` metres to fill its frame.
+function fitDistance(camera, w) {
+  const hf = 2 * Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
+  return w / 2 / Math.tan(hf / 2) + 1.2;
+}
+
+const SCENES = { intro: introScene, climb: climbScene, podium: podiumScene, grid: gridScene };
+let frame = null;
+let composer = null;
+const out = document.createElement("canvas");
+let vignette = null;
+
+window.setup = async ({ kind, cars: urls, w, h, team, bg }) => {
+  renderer.setSize(w, h, false);
+  out.width = w;
+  out.height = h;
+  const bgColor = new THREE.Color(bg);
+  const scene = new THREE.Scene();
+  scene.background = bgColor;
+  scene.fog = new THREE.Fog(bgColor, 18, 60);
+  scene.environment = ENV;
+  scene.environmentIntensity = 0.45;
+  const camera = new THREE.PerspectiveCamera(w < h ? 40 : 30, w / h, 0.1, 300);
+  const cars = [];
+  for (const u of urls) cars.push(await loadCar(u));
+  frame = SCENES[kind]({ scene, camera, cars, paint: new THREE.Color(team), w, h, bg: bgColor });
+  composer = new EffectComposer(renderer);
+  composer.setPixelRatio(1);
+  composer.setSize(w, h);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.18, 0.5, 0.92));
+  composer.addPass(new OutputPass());
+  // The edges fade into the slide's colour.
+  const g = out.getContext("2d");
+  vignette = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.36, w / 2, h / 2, Math.hypot(w, h) * 0.52);
+  vignette.addColorStop(0, `#${bgColor.getHexString()}00`);
+  vignette.addColorStop(1, `#${bgColor.getHexString()}ff`);
+  return true;
+};
+
+window.frameAt = (t, dur) => {
+  frame(t, dur);
+  composer.render();
+  const g = out.getContext("2d");
+  g.drawImage(canvas, 0, 0);
+  g.fillStyle = vignette;
+  g.fillRect(0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", 0.94);
+};
+// The car alone on a clear background, front three-quarter, for the share
+// picture and the summary beside the card: a PNG.
+window.stillPng = async ({ car: url, w, h, team }) => {
+  renderer.setSize(w, h, false);
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  scene.environment = ENV;
+  scene.environmentIntensity = 0.5;
+  const car = await loadCar(url);
+  scene.add(car);
+  const shade = new THREE.Mesh(new THREE.CircleGeometry(12, 64), new THREE.ShadowMaterial({ opacity: 0.6 }));
+  shade.rotation.x = -Math.PI / 2;
+  shade.receiveShadow = true;
+  scene.add(shade);
+  const key = spot(0xffffff, 220, [2, 11, 4], [0, 0, 0], { shadow: true });
+  const rim = spot(new THREE.Color(team), 160, [-5, 6, -6], [0, 0.8, 0], { angle: 0.6, penumbra: 0.8 });
+  scene.add(key, key.target, rim, rim.target, new THREE.HemisphereLight(0xffffff, 0x0b0a12, 0.4));
+  const camera = new THREE.PerspectiveCamera(30, w / h, 0.1, 100);
+  const az = 0.8;
+  const dist = fitDistance(camera, 5.6) * 0.98;
+  camera.position.set(Math.cos(az) * dist, 1.6, Math.sin(az) * dist);
+  camera.lookAt(0, 0.45, 0);
+  renderer.render(scene, camera);
+  return canvas.toDataURL("image/png");
+};
+window.ready = true;
+</script>

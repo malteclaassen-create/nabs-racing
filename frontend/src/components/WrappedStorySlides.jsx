@@ -27,7 +27,7 @@ export const StoryClock = createContext(null);
 // The layout: { wide, scened, logo } — wide is the computer layout, scened
 // that the slide has a 3D scene behind it right now, logo the league's mark in
 // the colour that shows on this slide.
-export const StoryLayout = createContext({ wide: false, scened: false, logo: null, photo: null });
+export const StoryLayout = createContext({ wide: false, scened: false, logo: null, photo: null, film: false });
 const useLayout = () => useContext(StoryLayout);
 
 const MEDAL_ON_DARK = ["#F5C542", "#DFE3EA", "#E39A5F"];
@@ -333,8 +333,8 @@ function Frame({ slide, variant = 0, marquee = null, children }) {
 // Top words, the scene's place, bottom words. Wide: the words as a column on
 // the left and the scene (or its flat picture) to the right of them.
 function SceneLayout({ slide, flat: noScene, top, bottom }) {
-  const { wide, photo } = useLayout();
-  const flat = noScene && photo == null;
+  const { wide, photo, film } = useLayout();
+  const flat = noScene && photo == null && !film;
   if (wide) {
     return (
       <Frame slide={slide}>

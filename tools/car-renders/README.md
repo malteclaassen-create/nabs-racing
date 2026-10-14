@@ -1,43 +1,54 @@
-# The league's car, as pictures for Season Wrapped
+# The league's car, filmed for Season Wrapped
 
-Season Wrapped's 3D scenes (`frontend/src/utils/wrappedScenes.js`) show the
-car the league actually raced, in the driver's team livery. The car is a mod
-built on somebody else's model, so the model itself never goes on the site:
-anything a browser can draw in 3D, anyone can download. Instead it is rendered
-here, from every side the scenes need, into pictures, and the scenes stand the
-right picture up where the car is (`frontend/src/utils/carImposter.js`). No
-model, texture or skin file is committed; only the rendered pictures under
-`frontend/public/cars/`.
+Season Wrapped plays short films of the car the league actually raced, in
+the driver's team livery: the intro, the climb through the field, and the
+final table (on the podium, or on the grid). The car is a mod built on
+somebody else's model, so the model itself never goes on the site: anything a
+browser can draw in 3D, anyone can download. Instead it is rendered here into
+videos, and only the videos are committed (`frontend/public/cars/`). No
+model, texture or skin file is.
 
-A season without pictures keeps the scenes' own 3D car.
+The story plays them in `frontend/src/components/WrappedStory.jsx`
+(`CarFilm`); `frontend/src/utils/carFilms.js` picks the season's car and the
+driver's livery from `frontend/public/cars/index.json`. A season without films
+keeps the story's own 3D scenes.
 
 ## What gets rendered
 
-Per livery:
+Per livery, 720 x 900 at 24 frames a second, on the colour of the slide it
+plays on and fading into it at the edges:
 
-- `<key>.hero.webp`: 79 frames, 640 x 275, from 24 degrees off the nose round
-  the car's left side to 30 degrees past the tail, every 3 degrees, seen from
-  12 degrees up. The driver's own car, up close; neighbouring frames are
-  faded into each other as it turns.
-- a field strip: 16 frames all the way round at 15 and 55 degrees up, 128 x
-  128. The rest of the grid, and the driver's car from high up. All the team
-  liveries' strips are packed into one `field.webp`.
+- `intro.mp4` (6.5 s): out of the dark, the camera swinging round the nose.
+- `climb.mp4` (8.5 s): at speed, passing three other liveries.
+- `podium.mp4` (8 s): on a stage under the lights, confetti in the team's
+  colour.
+- `grid.mp4` (8 s): from high above the grid down to the car in its slot.
+- `still.png` (1080 x 820, clear background): the car from the front three
+  quarters, for the share picture and the summary on a computer.
 
-`frontend/public/cars/index.json` names the car each season raced and, per
-livery, the teams (by team id) and the drivers (by name, where a livery is
-one driver's own) it belongs to (`frontend/src/utils/carArt.js`).
+## On a Windows PC with a graphics card
 
-## Doing it
+Much the quickest way (minutes; on a processor alone it is hours):
+`render-windows.bat`. Double-click it; the first time it checks for Node.js,
+Python and ffmpeg (and says where to get whichever is missing), installs what
+it needs, asks for the car's folder (the Assetto Corsa one by default), then
+renders every livery in `liveries/season-8.json` in a browser window that has
+to stay open, and packs the result into `tools/car-renders/nabs-wrapped-films.zip`.
+Stopped half way, it carries on where it was when started again.
 
-Needs Python 3 with Pillow and numpy, and Playwright's Chromium.
+## Doing it by hand
+
+Needs Python 3 with Pillow and numpy, ffmpeg, and Playwright's Chromium.
+`--gpu` draws on the graphics card.
 
 1. Unpack the car's folder from Assetto Corsa (`content/cars/<model>`, with
    `skins/`) somewhere outside the repository.
-2. Write the season's livery list, like `liveries/season-8.json`: a `key` per
-   livery, its `skin` folder, the `teams` that ran it, and `drivers` where it
-   is one driver's own. A driver's own livery points at its team's with
-   `"of": "<team livery key>"`.
-3. Render (about two minutes per livery):
+2. Write the season's livery list, like `liveries/season-8.json`: per livery
+   its `key`, its `skin` folder, the team `colour` (lights and glow), the
+   `teams` that ran it (team ids), and `drivers` where it is one driver's
+   own. A driver's own livery can play its team's films instead: `"of":
+   "<team livery key>"`, no skin.
+3. Render (a few minutes per film; a stopped run picks up where it was):
 
    ```
    NODE_PATH=$(npm root -g) node tools/car-renders/render.mjs <car folder> tools/car-renders/liveries/season-8.json <work dir>
@@ -50,4 +61,4 @@ Needs Python 3 with Pillow and numpy, and Playwright's Chromium.
    ```
 
 `kn5.py` reads the model (`.kn5`), `kn5_to_glb.py` turns it plus one skin into
-a GLB for the render page (`render.html`, three.js from `frontend/`).
+a GLB for the film page (`video.html`, three.js from `frontend/`).

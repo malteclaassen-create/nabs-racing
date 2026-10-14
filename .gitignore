@@ -79,3 +79,7 @@ dev.db.local-backup-*
 # Pictures and clips attached to an incident report. Private by design (they
 # are NOT under uploads/, which is served statically) and never in the repo.
 backend/report-files/
+
+# Season Wrapped film renders (tools/car-renders): the work folder and the zip to hand over
+tools/car-renders/out/
+tools/car-renders/*.zip

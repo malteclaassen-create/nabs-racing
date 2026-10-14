@@ -3440,6 +3440,14 @@ html.update-reveal.update-reveal-go body::after {
 }
 .fx-lite .wrapped-banner-bar { animation: none; transform: none; }
 .fx-lite .wrapped-banner-car { animation: none; }
+/* The real car's films (WrappedStory CarFilm): drawn on the slide's colour,
+   their edges faded into it. */
+.story-film {
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 72%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 72%, transparent 100%);
+  animation: st-fade 500ms ease both;
+}
+.story-film-still { animation: story-drift 9s ease-in-out infinite alternate; --dx: 0px; --dy: -10px; --rot: 0deg; animation-play-state: var(--story-play, running); }
 /* The season's real car (WrappedStorySlides CarPhoto): up out of the dark,
    then the camera travelling along it while a light runs over the paint. */
 .story-photo { animation: story-photo-in 1500ms var(--e-out) both; animation-play-state: var(--story-play, running); }
@@ -3467,7 +3475,7 @@ html.update-reveal.update-reveal-go body::after {
 @keyframes story-photo-sweep { from { transform: translateX(-110%); } to { transform: translateX(110%); } }
 .story-photo-edge { -webkit-mask-image: linear-gradient(to right, transparent, #000 34%); mask-image: linear-gradient(to right, transparent, #000 34%); }
 @media (prefers-reduced-motion: reduce) {
-  .st, .story-shape, .story-slide-in, .story-trace, .story-wipe, .story-marquee, .story-photo, .story-photo-img, .story-photo-sweep { animation: none !important; }
+  .st, .story-shape, .story-slide-in, .story-trace, .story-wipe, .story-marquee, .story-photo, .story-photo-img, .story-photo-sweep, .story-film, .story-film-still { animation: none !important; }
   .story-frame, .story-canvas { transition: none; }
 }
 .fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace, .fx-lite .story-wipe, .fx-lite .story-marquee,

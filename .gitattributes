@@ -1,2 +1,3 @@
 # Normalize line endings: LF in the repo, native on checkout.
 * text=auto eol=lf
+tools/car-renders/*.bat text eol=crlf
