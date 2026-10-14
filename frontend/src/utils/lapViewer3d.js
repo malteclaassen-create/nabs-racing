@@ -16,9 +16,9 @@
 // ---------------------------------------------------------------------------
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { lapHeights } from "./groundHeight.js";
 import { tvCameraAt } from "./acTrackLayout.js";
+import { loadRaceCar as loadCarModel, CAR_PAINT as PAINT } from "./raceCarModel.js";
 
 // What you set is what you see: the track's textures are drawn as they are,
 // with no colour-space conversion either way.
@@ -28,51 +28,11 @@ const SKY = 0xc9dbea;
 const LINE_HALF = 0.18; // metres either side of the recorded line
 const LINE_LIFT = 0.07; // above the road, so it does not flicker into it
 
-// The car: Kenney's CC0 formula car from the Racing Kit
-// (public/models/kenney-racing-kit, see its README). Loaded once, the first
-// time a viewer is made; until it is in, each car is a stand-in built from
-// boxes below.
-//
-// Drawn at the size of the car the league races, formula_2010: a 2010 Formula
-// 1 car is at most 1.8 m wide and 0.95 m tall, and about 4.8 m long. The model
-// is a toy's proportions, so it is scaled to each of the three on its own
-// rather than by its length alone, which made it a car 2.6 m wide. The wheels
-// are then scaled back round, at the height's scale: 0.67 m across, as a 2010
-// tyre is.
-const CAR_URL = "/models/kenney-racing-kit/raceCar.glb";
-const CAR_SIZE = { length: 4.8, width: 1.8, height: 0.95 }; // metres
-const PAINT = "red"; // the model's material that takes the lap's colour
-const WHEEL = /^wheel[-_]?(front|back)/i;
-
-let carModel = null;
-function loadCarModel() {
-  if (!carModel) {
-    carModel = new GLTFLoader().loadAsync(CAR_URL).then((gltf) => {
-      const root = gltf.scene;
-      // The model runs along z; the front wheels say which way it faces.
-      let front = 0;
-      root.traverse((o) => { if (WHEEL.test(o.name) && /front/i.test(o.name)) front += o.position.z; });
-      const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
-      const scale = new THREE.Vector3(CAR_SIZE.width / size.x, CAR_SIZE.height / size.y, CAR_SIZE.length / size.z);
-      root.scale.copy(scale);
-      root.traverse((o) => { if (o !== root && WHEEL.test(o.name)) o.scale.set(1, 1, scale.y / scale.z); });
-      // Nose along +x, like everything else here.
-      root.rotation.y = front >= 0 ? Math.PI / 2 : -Math.PI / 2;
-      const holder = new THREE.Group();
-      holder.add(root);
-      // Wheels on the ground, centred on the recorded point.
-      const box = new THREE.Box3().setFromObject(holder);
-      const centre = box.getCenter(new THREE.Vector3());
-      holder.position.set(-centre.x, -box.min.y, -centre.z);
-      return holder;
-    });
-  }
-  return carModel;
-}
-
 // A car: the stand-in boxes until the model is in, then the model, its paint
 // in the lap's colour and everything else (tyres, rims, the screen) in the
-// model's own. Nose along +x. `paint(color)` repaints it.
+// model's own. Nose along +x. `paint(color)` repaints it. The model is Kenney's
+// CC0 formula car at the size of a 2010 F1 car (utils/raceCarModel.js, loaded
+// once and shared with Season Wrapped's story).
 function makeCar(color, label) {
   const g = new THREE.Group();
   const shape = new THREE.Group();

@@ -7,7 +7,9 @@
 //                                          one driver's Wrapped. :key is the
 //                                          row id (what the site links), or
 //                                          the handle with ?season= naming
-//                                          which season (lib/driverHandles.js)
+//                                          which season (lib/driverHandles.js);
+//                                          `mine` says whether it is the
+//                                          signed-in member's own
 //
 // "Not open" answers 404 with a sentence, so the page can say so instead of
 // pretending the driver does not exist.
@@ -17,7 +19,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import { resolveDriverRow } from "../lib/driverHandles.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { getSeasonWrapped, getWrappedHub, wrappedVisibleTo } from "../services/seasonWrappedService.js";
+import { getSeasonWrapped, getWrappedHub, isOwnWrapped, wrappedVisibleTo } from "../services/seasonWrappedService.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -66,7 +68,8 @@ router.get("/driver/:key", async (req, res, next) => {
     }
     const body = await getSeasonWrapped(prisma, row.id);
     if (!body) return res.status(404).json({ error: "Driver not found" });
-    res.json(body);
+    // `mine`: the viewer is this driver, and the story talks to them.
+    res.json({ ...body, mine: await isOwnWrapped(prisma, req.user?.discordId, row.id).catch(() => false) });
   } catch (e) {
     next(e);
   }

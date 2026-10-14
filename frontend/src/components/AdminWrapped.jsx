@@ -86,6 +86,12 @@ export default function AdminWrapped() {
             a one-line label for the kind of season it was.
           </li>
           <li>
+            It plays as a story first, Spotify Wrapped style: full screen, slide by slide, with the driver's car in 3D in
+            their team colour, and a picture of the season at the end made to be posted as a story or status. It starts
+            by itself the first time a Wrapped is opened in a visit; after that the cards are the page and the story is
+            the Play button on top. Lite graphics mode gets it without the 3D.
+          </li>
+          <li>
             Every number is the one the driver's profile and the standings show. A finished season gets the honours; a
             running one reads as &ldquo;so far&rdquo;.
           </li>

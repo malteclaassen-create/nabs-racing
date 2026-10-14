@@ -3329,3 +3329,84 @@ html.update-reveal.update-reveal-go body::after {
   .rcard-frame[data-edition="holo"] .rcard-innerline::before,
   .rcard-frame[data-edition="gold"] .rcard-innerline::before { animation: none; }
 }
+
+/* --- Season Wrapped, the story (components/WrappedStory.jsx) -----------------
+   A full-screen run of slides, Spotify Wrapped style. The frame is the whole
+   phone screen, or a 9:16 card in the middle of a bigger one. Every animated
+   piece is a `.st` with one of the named entrances below; they all read the
+   frame's --story-play, so pausing the story (the button, Space, a finger
+   held down) holds the words where they are along with the 3D scene and the
+   progress bar. Reduced motion and Lite mode drop the entrances: the words
+   are simply there. */
+.story-frame {
+  --story-play: running;
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  container-type: inline-size;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: background-color 450ms var(--e-soft);
+}
+@media (min-width: 640px) and (min-height: 560px) {
+  .story-frame {
+    width: auto;
+    height: min(calc(100dvh - 48px), 900px);
+    aspect-ratio: 9 / 16;
+    border-radius: 22px;
+    box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.65);
+  }
+}
+.story-frame.is-paused { --story-play: paused; }
+.story-bar { transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
+.story-canvas { transition: opacity 320ms ease; }
+.st {
+  animation-duration: 650ms;
+  animation-timing-function: var(--e-out);
+  animation-fill-mode: both;
+  animation-delay: var(--d, 0ms);
+  animation-play-state: var(--story-play, running);
+}
+@keyframes st-rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+@keyframes st-pop { from { opacity: 0; transform: scale(0.55); } to { opacity: 1; transform: none; } }
+@keyframes st-wipe { from { clip-path: inset(-10% 100% -10% 0); } to { clip-path: inset(-10% -2% -10% 0); } }
+@keyframes st-left { from { opacity: 0; transform: translateX(-56px); } to { opacity: 1; transform: none; } }
+@keyframes st-right { from { opacity: 0; transform: translateX(56px); } to { opacity: 1; transform: none; } }
+@keyframes st-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes st-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.st-rise { animation-name: st-rise; }
+.st-pop { animation-name: st-pop; animation-duration: 720ms; animation-timing-function: var(--e-pop); }
+.st-wipe { animation-name: st-wipe; animation-duration: 900ms; animation-timing-function: var(--e-soft); }
+.st-left { animation-name: st-left; }
+.st-right { animation-name: st-right; }
+.st-fade { animation-name: st-fade; animation-duration: 900ms; }
+.st-grow { animation-name: st-grow; animation-duration: 1100ms; transform-origin: 0 50%; }
+.story-slide-in { animation: st-fade 380ms ease both; }
+/* The intro's hint, in the words of whatever the viewer is holding. */
+.story-hint-touch { display: none; }
+@media (pointer: coarse) {
+  .story-hint-touch { display: inline; }
+  .story-hint-mouse { display: none; }
+}
+/* The big soft shapes behind a slide's words, drifting. */
+.story-shape {
+  position: absolute;
+  pointer-events: none;
+  animation: story-drift 13s ease-in-out infinite alternate;
+  animation-play-state: var(--story-play, running);
+}
+@keyframes story-drift {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(var(--dx, 24px), var(--dy, -32px), 0) rotate(var(--rot, 16deg)); }
+}
+/* The circuit drawing itself, where there is no 3D. */
+@keyframes story-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.story-trace { stroke-dasharray: 1; animation: story-trace 2.6s var(--e-soft) both; animation-delay: var(--d, 0ms); animation-play-state: var(--story-play, running); }
+@media (prefers-reduced-motion: reduce) {
+  .st, .story-shape, .story-slide-in, .story-trace { animation: none !important; }
+  .story-frame, .story-canvas { transition: none; }
+}
+.fx-lite .st, .fx-lite .story-shape, .fx-lite .story-slide-in, .fx-lite .story-trace { animation: none !important; }

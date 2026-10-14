@@ -12,10 +12,15 @@
 // A season still running gets the same page as "so far". A card whose data
 // the season does not have (no grid slots in the archive, no team-mate for a
 // reserve, no win) is simply not there.
+//
+// The same season also plays as a story, full screen, slide by slide, with 3D
+// (components/WrappedStory.jsx). It starts by itself the first time a Wrapped
+// is opened in a visit; closing it leaves these cards, and the cover's Play
+// button runs it again.
 // ---------------------------------------------------------------------------
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Crown, Medal, Timer, Rocket, ShieldCheck, Flag as FlagIcon, Sparkles, Trophy, Share2, Download, Link as LinkIcon } from "lucide-react";
+import { Crown, Medal, Timer, Rocket, ShieldCheck, Flag as FlagIcon, Sparkles, Trophy, Share2, Download, Link as LinkIcon, Play } from "lucide-react";
 import { api, withApiBase } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
@@ -28,6 +33,23 @@ import { countryFor } from "../data/driverCountries.js";
 import { fmtLap } from "../utils/format.js";
 import { useBoxWidth } from "../hooks/useBoxWidth.js";
 
+// The story (Spotify Wrapped style, with its 3D) loads only when it is played.
+const WrappedStory = lazy(() => import("../components/WrappedStory.jsx"));
+
+// A Wrapped opens as its story once per visit; after that, and with ?cards=1,
+// the page opens on the cards and the story is a button away.
+const STORY_SEEN = "nabs_wrapped_story_seen";
+function storyDue(driverId) {
+  try {
+    const seen = JSON.parse(sessionStorage.getItem(STORY_SEEN) || "[]");
+    if (seen.includes(driverId)) return false;
+    sessionStorage.setItem(STORY_SEEN, JSON.stringify([...seen, driverId].slice(-50)));
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 export default function SeasonWrapped() {
   const { key } = useParams();
   const [params] = useSearchParams();
@@ -35,10 +57,12 @@ export default function SeasonWrapped() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [closed, setClosed] = useState(false);
+  const [story, setStory] = useState(false);
 
   useEffect(() => {
     let gone = false;
     setData(null);
+    setStory(false);
     setError(null);
     setClosed(false);
     api
@@ -53,6 +77,12 @@ export default function SeasonWrapped() {
       gone = true;
     };
   }, [key, season]);
+
+  useEffect(() => {
+    if (data && !data.empty && params.get("cards") !== "1" && storyDue(data.driver.id)) setStory(true);
+    // Once per loaded Wrapped; the address's other parameters do not restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   useStoryReveal(data);
   useSpecificTitle(data?.driver ? `${data.driver.name}'s ${data.season.label} Wrapped` : "Season Wrapped");
@@ -81,7 +111,12 @@ export default function SeasonWrapped() {
   const teamColor = data.driver.team?.color || "rgb(var(--c-brand))";
   return (
     <div className="mx-auto max-w-4xl space-y-5" style={{ "--wrap-team": teamColor }}>
-      <Cover data={data} />
+      {story && (
+        <Suspense fallback={<div className="fixed inset-0 z-overlay bg-black/90" aria-hidden="true" />}>
+          <WrappedStory data={data} mine={!!data.mine} url={shareUrlOf(data)} onClose={() => setStory(false)} />
+        </Suspense>
+      )}
+      <Cover data={data} onPlay={() => setStory(true)} />
       {data.type && <TypeCard type={data.type} />}
       <NumbersCard data={data} />
       {(data.best || data.climb) && (
@@ -119,7 +154,7 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // --- the cover ------------------------------------------------------------------
 
-function Cover({ data }) {
+function Cover({ data, onPlay }) {
   const { driver, season, championship: c, stats } = data;
   const code = countryFor(driver.id, driver.country);
   return (
@@ -178,9 +213,20 @@ function Cover({ data }) {
             finale writes the last chapter.
           </p>
         )}
+        <button type="button" onClick={onPlay} className="btn-primary mt-6 inline-flex items-center gap-2">
+          <Play className="h-4 w-4" aria-hidden="true" />
+          {data.mine ? "Play your season" : "Play the season"}
+        </button>
       </div>
     </section>
   );
+}
+
+// The address a Wrapped is shared under (what the share buttons hand out).
+function shareUrlOf(data) {
+  const slug = data.series?.slug;
+  const path = `${slug ? `/s/${slug}` : ""}/wrapped/${encodeURIComponent(data.driver.id)}`;
+  return typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
 }
 
 function Big({ value, label, decimals = 0 }) {

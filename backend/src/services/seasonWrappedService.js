@@ -484,6 +484,16 @@ async function defaultSeason(prisma, seriesRow, includePrivate) {
 }
 
 // The member's own row in that season, through the person links.
+// Whether `driverId` is the signed-in member's own row (any of their linked
+// rows counts), so the story can say "you". Worked out per request: the
+// Wrapped itself is cached and the same for everybody.
+export async function isOwnWrapped(prisma, discordId, driverId) {
+  if (!discordId || !driverId) return false;
+  const row = await prisma.driver.findUnique({ where: { id: driverId }, select: { seasonId: true } });
+  if (!row?.seasonId) return false;
+  return (await myRowIn(prisma, discordId, row.seasonId)) === driverId;
+}
+
 async function myRowIn(prisma, discordId, seasonId) {
   if (!discordId) return null;
   const own = await prisma.driver.findFirst({ where: { discordUserId: discordId }, select: { id: true } });
