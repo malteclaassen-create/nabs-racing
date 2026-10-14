@@ -23,4 +23,13 @@ describe("drawnPageOf", () => {
     expect(drawnPageOf("/downloads")).toBeNull();
     expect(drawnPageOf("/admin")).toBeNull();
   });
+
+  it("draws the league in numbers, the Wrapped hub, and each driver's Wrapped", () => {
+    expect(drawnPageOf("/s/friday-f1/numbers")).toEqual({ page: "numbers", slug: "friday-f1" });
+    expect(drawnPageOf("/s/friday-f1/wrapped")).toEqual({ page: "wrapped", slug: "friday-f1" });
+    // A driver's Wrapped is the one page below a section with a picture of its own.
+    expect(drawnPageOf("/s/friday-f1/wrapped/13bot")).toEqual({ page: "wrapped", slug: "friday-f1", key: "13bot" });
+    expect(drawnPageOf("/s/friday-f1/numbers/13bot")).toBeNull();
+    expect(drawnPageOf("/s/friday-f1/wrapped/13bot/more")).toBeNull();
+  });
 });

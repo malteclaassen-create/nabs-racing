@@ -108,11 +108,16 @@ const SECTIONS = {
   transfers: (label) => `${label} transfers and team history`,
   live: () => "Live timing",
   attendance: (label) => `${label} sign-ups and attendance`,
+  // Both pages pick their own season (?season=, "all" for every season of the
+  // league in numbers) and claim the tab with useSpecificTitle once they know
+  // which; this is only what shows until then.
+  numbers: () => "The league in numbers",
+  wrapped: () => "Season Wrapped",
 };
 // Sections whose title stands without a season in it (the Hall of Fame is
 // all-time, live timing is now), so they can be titled before the season list
 // has even loaded.
-const SEASONLESS = new Set(["records", "live"]);
+const SEASONLESS = new Set(["records", "live", "numbers", "wrapped"]);
 
 // The full title for an address, brand included. `season` and `series` are the
 // context rows; `multi` says whether more than one series exists, which is the

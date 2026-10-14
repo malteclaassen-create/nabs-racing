@@ -9,7 +9,8 @@ import { useProfileHome } from "../hooks/useProfileHome.js";
 import { landsOnPublicPage } from "../hooks/profileHome.mjs";
 import AttentionDot from "../components/AttentionDot.jsx";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { useSeries } from "../context/SeriesContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
+import { useWrappedOpen } from "../hooks/useWrappedOpen.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
 import {
   ErrorBox, PageHeaderSkeleton, Skeleton, TierBadge, SafetyCarBadge, FlairBadge, DriverAvatar, MEDAL, MEDAL_TEXT, CountUp, CardBar, NoData,
@@ -1497,6 +1498,10 @@ function AchievementBadge({ name, tagline, cat }) {
 }
 
 function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true }) {
+  // The way to this row's Season Wrapped, once the league has opened it and
+  // there is a season to tell (pages/SeasonWrapped.jsx).
+  const wrappedOpen = useWrappedOpen();
+  const { seriesPath } = useSeriesPath();
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -1618,7 +1623,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
               <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
               {/* Out to the page that has no season and no league: everything
                   this person has ever done, in one place. */}
-              <div className="mt-3.5 flex justify-center lg:justify-start">
+              <div className="mt-3.5 flex flex-wrap justify-center gap-2 lg:justify-start">
                 <Link
                   to={`/career/${driver.handle || driver.id}`}
                   className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
@@ -1626,6 +1631,15 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                   Career record
                   <span aria-hidden="true">↗</span>
                 </Link>
+                {wrappedOpen && stats?.starts > 0 && (
+                  <Link
+                    to={seriesPath(`/wrapped/${encodeURIComponent(driver.id)}`)}
+                    className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
+                  >
+                    {driver.seasonNumber != null ? `Season ${driver.seasonNumber} Wrapped` : "Season Wrapped"}
+                    <span aria-hidden="true">✦</span>
+                  </Link>
+                )}
               </div>
             </div>
 

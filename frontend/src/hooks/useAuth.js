@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { rememberDevSignOut } from "../devAutoLogin.js";
+import { dropLocalSubscription } from "../utils/push.js";
 
 const TOKEN_KEY = "nabs_user_token";
 const USER_KEY = "nabs_user";
@@ -101,6 +102,12 @@ export function useAuth() {
     };
   }, []);
 
-  const logout = useCallback(() => clearUser(), []);
+  // Signing out also stops this device's push notifications: the account's
+  // messages have no business on a phone nobody is signed in on any more.
+  // Fire and forget (utils/push.js), so the sign-out itself never waits.
+  const logout = useCallback(() => {
+    dropLocalSubscription().catch(() => {});
+    clearUser();
+  }, []);
   return { user, isLoggedIn: !!user, logout };
 }

@@ -446,8 +446,33 @@ export async function ensureAppSchema(prisma) {
   // this account then acts as the main one (lib/accountLinks.js). Null for an
   // ordinary account.
   await addColumn(prisma, "MemberAccount", "mainDiscordId", "TEXT");
+  // Which kinds of bell entry this member also wants as a push on their
+  // devices, JSON ({ reminders: true, news: false, ... }); null = all of them.
+  // See lib/push.js.
+  await addColumn(prisma, "MemberAccount", "pushPrefs", "TEXT");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
+  );
+
+  // --- Push notifications (migration push_subscriptions): one row per device
+  // a member switched push on for. `endpoint` is the browser's address at its
+  // push service, unique per browser per device. `discordId` is who the
+  // member acts as, `loginId` the account that signed in on the device (admin
+  // rights belong to that one). See lib/push.js.
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PushSubscription" (
+    "endpoint" TEXT NOT NULL PRIMARY KEY,
+    "discordId" TEXT NOT NULL,
+    "loginId" TEXT,
+    "p256dh" TEXT NOT NULL,
+    "auth" TEXT NOT NULL,
+    "device" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastSuccessAt" DATETIME,
+    "failures" INTEGER NOT NULL DEFAULT 0
+  )`);
+  await prisma.$executeRawUnsafe(
+    `CREATE INDEX IF NOT EXISTS "PushSubscription_discordId_idx" ON "PushSubscription"("discordId")`
   );
 
   // --- Feedback from the site's visitors (migration feedback): bug reports and

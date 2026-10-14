@@ -7,6 +7,7 @@ import { useSeries } from "../context/SeriesContext.jsx";
 import { ErrorBox, Field, CheckField, Notice } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import { useAttendanceReminder, LastReminder } from "./AdminAttendanceReminder.jsx";
+import AdminPush from "./AdminPush.jsx";
 
 // Admin tab "Notifications": league-wide control over the nav-bar bell.
 // Which events post a notification, who hears about seat offers, and when the
@@ -491,9 +492,9 @@ export default function AdminNotifications() {
     <div className="max-w-2xl space-y-6">
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm leading-relaxed text-medium">
         Controls the <b>notification bell</b> in the site&rsquo;s top bar. These are league-wide
-        settings: members can&rsquo;t change what they receive. Notifications reach members who
-        have logged in with Discord; personal ones additionally need the driver&rsquo;s Discord id
-        (Drivers tab).
+        settings: members can&rsquo;t change what lands in their bell, only which of it also arrives
+        as a push notification. Notifications reach members who have logged in with Discord;
+        personal ones additionally need the driver&rsquo;s Discord id (Drivers tab).
       </div>
 
       {/* An action rather than a setting, so it sends on its own button and
@@ -501,6 +502,10 @@ export default function AdminNotifications() {
           it is the part of this tab used every week; the settings below are
           set once. */}
       <AnnouncementComposer />
+
+      {/* Push: the same entries on members' phones. Its own switch that saves
+          on the click, so it sits outside the block the Save bar belongs to. */}
+      <AdminPush />
 
       {/* The settings, with the Save bar that belongs to them. Wrapped so the
           bar can only stick inside this block: over the composer above it

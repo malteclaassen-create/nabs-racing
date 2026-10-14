@@ -9,6 +9,8 @@ import { existsSync, readFileSync } from "fs";
 import standingsRoutes from "./routes/standings.js";
 import driversRoutes from "./routes/drivers.js";
 import careerRoutes from "./routes/career.js";
+import wrappedRoutes from "./routes/wrapped.js";
+import numbersRoutes from "./routes/numbers.js";
 import racesRoutes from "./routes/races.js";
 import tracksRoutes from "./routes/tracks.js";
 import telemetryLapsRoutes from "./routes/telemetryLaps.js";
@@ -25,6 +27,7 @@ import discordAuthRoutes from "./routes/discordAuth.js";
 import steamAuthRoutes from "./routes/steamAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
+import pushRoutes from "./routes/push.js";
 import feedbackRoutes from "./routes/feedback.js";
 import reportsRoutes from "./routes/reports.js";
 import liveIncidentsRoutes from "./routes/liveIncidents.js";
@@ -345,6 +348,8 @@ app.get("/api/live/championship", async (req, res, next) => {
 app.use("/api/standings", standingsRoutes);
 app.use("/api/drivers", driversRoutes);
 app.use("/api/career", careerRoutes);
+app.use("/api/wrapped", wrappedRoutes);
+app.use("/api/numbers", numbersRoutes);
 app.use("/api/races", racesRoutes);
 app.use("/api/tracks", tracksRoutes);
 // Telemetry laps: the in-game recorder posts here (key-gated), /tools reads.
@@ -363,6 +368,7 @@ app.use("/api/downloads", downloadsRoutes);
 // "Checksum failed" self-service: the race server's own file hashes.
 app.use("/api/content-check", contentCheckRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/push", pushRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportsRoutes);
 // Signing in as any driver, for testing both sides of a report on one machine.

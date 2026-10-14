@@ -8,6 +8,8 @@ import { readTransfers, byDriver, teamForRound, syncRosterToTransfers } from "./
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateCareerCache } from "./careerService.js";
+import { invalidateWrappedCache } from "./seasonWrappedService.js";
+import { invalidateLeagueNumbersCache } from "./leagueNumbersService.js";
 import { invalidateTrackStrengthCache } from "./trackStrengthService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 import { invalidateCardRatingCache } from "./cardRatingService.js";
@@ -273,6 +275,9 @@ export async function saveRaceResults(prisma, raceId, results) {
   invalidateRecordsCache();
   invalidateCareerCache();
   invalidateTrackStrengthCache();
+  // ...and every Season Wrapped of the season and the league's numbers.
+  invalidateWrappedCache();
+  invalidateLeagueNumbersCache();
   // New results also reshape the round-by-round rating curves — and the last
   // round of a season turns that season into the next one's card values.
   invalidateRatingHistoryCache();

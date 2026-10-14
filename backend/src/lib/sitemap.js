@@ -46,6 +46,7 @@
 // ---------------------------------------------------------------------------
 import { getSiteIndex } from "./siteIndex.js";
 import { TRACK_EDITOR_ENABLED } from "./features.js";
+import { wrappedMode } from "../services/seasonWrappedService.js";
 
 // PAGES that have no business in a search index. Written as a denylist because
 // the interesting pages are all public by default.
@@ -138,6 +139,7 @@ const esc = (s) =>
 
 export async function buildSitemapXml(prisma, origin) {
   const index = await getSiteIndex(prisma);
+  const wrappedOpen = (await wrappedMode(prisma).catch(() => "off")) === "all";
   const urls = ["/"];
 
   // The track editor. On the site itself its card (on /tools) is shown to
@@ -161,6 +163,11 @@ export async function buildSitemapXml(prisma, origin) {
     // /transfers is held back from the public for now (frontend
     // hooks/useTransfersVisible.js); it goes back in here when it opens up.
     urls.push(`${s.base}/drivers`, `${s.base}/constructors`, `${s.base}/races`, `${s.base}/records`);
+    // The league in numbers, this season and all of them; and the Season
+    // Wrapped hub once it is open to everyone (before that it answers "not
+    // open yet", which is no page to send a crawler to).
+    urls.push(`${s.base}/numbers`, `${s.base}/numbers?season=all`);
+    if (wrappedOpen) urls.push(`${s.base}/wrapped`);
 
     for (const season of s.seasons) {
       if (season.isActive) {

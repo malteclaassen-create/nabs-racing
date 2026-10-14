@@ -34,7 +34,7 @@ import { useApi } from "../hooks/useApi.js";
 // so and points at Discord, which is the honest state, not a broken one.
 // ---------------------------------------------------------------------------
 
-const LAST_UPDATED = "26 August 2026";
+const LAST_UPDATED = "14 October 2026";
 
 function Section({ title, children }) {
   return (
@@ -242,6 +242,13 @@ export default function Privacy() {
             the entries behind the bell, and the moment you last opened it, so that unread ones can
             stay marked unread.
           </Item>
+          <Item term="Push notifications, if you switch them on:">
+            for each device you switched them on for, the address your browser&rsquo;s push service
+            gave it and the keys the messages are encrypted with, a label like &ldquo;Chrome on
+            Android&rdquo; so you can tell your devices apart, and when the last message arrived. On
+            the account, which kinds of news you want pushed. Switching it off on a device, signing
+            out there or deleting your account removes the device.
+          </Item>
         </List>
       </Section>
 
@@ -263,8 +270,8 @@ export default function Privacy() {
           </Item>
           <Item term="Because you switched it on yourself.">
             Everything optional: the Steam link, a profile picture you upload, your social links,
-            what the notification bell may tell you. You can switch each of them off again, and doing
-            so is not a favour you have to ask for.
+            what the notification bell may tell you, push notifications on your devices. You can
+            switch each of them off again, and doing so is not a favour you have to ask for.
           </Item>
         </List>
       </Section>
@@ -281,6 +288,12 @@ export default function Privacy() {
             when one is shown. The league also lives there.
           </Item>
           <Item term="Steam">only if you use the optional account link.</Item>
+          <Item term="Your browser's push service">
+            only if you switch push notifications on: Google for Chrome and Android, Apple for Safari
+            and the iPhone, Mozilla for Firefox, Microsoft for Edge. It carries each message to your
+            device. The message is encrypted for your browser before it leaves our server, so the
+            push service delivers it without being able to read it.
+          </Item>
           <Item term="YouTube and Twitch">
             only on pages that embed a stream or a video. Those players are loaded from their
             providers, which means your browser contacts them and their own privacy terms apply. We
@@ -308,6 +321,10 @@ export default function Privacy() {
             the same is true for YouTube or Twitch.
           </Item>
           <Item term="When you use the optional Steam link,">the same is true for Steam.</Item>
+          <Item term="When you switch on push notifications,">
+            your browser&rsquo;s push service (Google, Apple, Mozilla or Microsoft) delivers each
+            message to your device. It sees that a message is on its way to you, not what it says.
+          </Item>
           <Item term="The site's own database and files">
             sit with our hosting provider, wherever that company runs the server.
           </Item>

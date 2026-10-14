@@ -517,6 +517,21 @@ export const api = {
   seasonRatings: (season) => request(`/standings/ratings${seasonParam(season)}`, { auth: true }),
   // All-time records of the viewed series (Hall of Fame page). Series-scoped.
   seriesRecords: () => request(`/standings/records${seriesQ()}`, { auth: true }),
+  // The league in numbers (backend services/leagueNumbersService.js): one
+  // season of the viewed series (null = the active one) or "all" of them.
+  leagueNumbers: (season = null) =>
+    request(`/numbers${andQ(seriesQ(), season != null ? `season=${encodeURIComponent(season)}` : "")}`, { auth: true }),
+  // Season Wrapped (backend services/seasonWrappedService.js): whether this
+  // visitor gets it, a season's hub, and one driver's. `key` is a row id, or a
+  // handle with the season named.
+  wrappedStatus: () => request(`/wrapped/status${seriesQ()}`, { auth: true }),
+  wrappedHub: (season = null) =>
+    request(`/wrapped${andQ(seriesQ(), season != null ? `season=${encodeURIComponent(season)}` : "")}`, { auth: true }),
+  wrappedDriver: (key, season = null) =>
+    request(
+      `/wrapped/driver/${encodeURIComponent(key)}${andQ(seriesQ(), season != null ? `season=${encodeURIComponent(season)}` : "")}`,
+      { auth: true }
+    ),
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
   // the season the site is currently viewing (within the current series).
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
@@ -739,6 +754,16 @@ export const api = {
   adminNotificationSettings: () => request("/admin/notification-settings", { auth: true }),
   saveNotificationSettings: (settings) =>
     request("/admin/notification-settings", { method: "PUT", body: { settings }, auth: true }),
+  // Push notifications (backend routes/push.js): this member's devices and
+  // categories, and the league's switch for the admin.
+  pushStatus: () => request("/push", { userAuth: true }),
+  pushSubscribe: (subscription) =>
+    request("/push/subscribe", { method: "POST", body: { subscription }, userAuth: true }),
+  pushUnsubscribe: (endpoint) => request("/push/unsubscribe", { method: "POST", body: { endpoint }, userAuth: true }),
+  pushSavePrefs: (prefs) => request("/push/prefs", { method: "PUT", body: { prefs }, userAuth: true }),
+  pushTest: () => request("/push/test", { method: "POST", userAuth: true }),
+  adminPush: () => request("/admin/push", { auth: true }),
+  setAdminPushMode: (mode) => request("/admin/push", { method: "PUT", body: { mode }, auth: true }),
   // The reminder goes to the drivers who have not answered, and only them. The
   // GET is the count the confirmation reads before anything is sent; the POST
   // answers with { sent, withoutLogin, lastSentAt }.
@@ -1003,6 +1028,9 @@ export const api = {
   markRaceRecapSeen: (raceId) => request("/me/race-recap/seen", { method: "POST", body: { raceId }, userAuth: true }),
   adminRaceRecap: () => request("/admin/race-recap", { auth: true }),
   setRaceRecapMode: (mode) => request("/admin/race-recap", { method: "PUT", body: { mode }, auth: true }),
+  // Season Wrapped's switch (off | admins | all).
+  adminWrapped: () => request("/admin/wrapped", { auth: true }),
+  setAdminWrappedMode: (mode) => request("/admin/wrapped", { method: "PUT", body: { mode }, auth: true }),
   adminRaceRecapPreview: (raceId, driverId) =>
     request(
       `/admin/race-recap/preview?raceId=${encodeURIComponent(raceId)}${driverId ? `&driverId=${encodeURIComponent(driverId)}` : ""}`,

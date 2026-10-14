@@ -168,6 +168,9 @@ data could not otherwise be represented faithfully:
 | POST | `/api/events/:id/rsvp` | Set your attendance (Discord login required) |
 | GET | `/api/auth/discord/config` | Whether Discord login is enabled |
 | POST | `/api/auth/discord/callback` | Exchange Discord code for a session |
+| GET | `/api/numbers?season=` | League in numbers: totals, superlatives and per-round figures for one season or `all` |
+| GET | `/api/wrapped`, `/api/wrapped/driver/:key` | Season Wrapped: the season's drivers, and one driver's season story (behind the `season_wrapped` switch) |
+| GET/POST/PUT | `/api/push/*` | Web push: status, subscribe/unsubscribe a device, categories, test push (Discord login required) |
 
 ### Admin (JWT required — `Authorization: Bearer <token>`)
 | Method | Path | Description |

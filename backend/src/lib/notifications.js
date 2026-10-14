@@ -22,6 +22,7 @@ import { getAdminDiscordIds } from "./adminUsers.js";
 import { dbListSeries } from "./series.js";
 import { stillToAnswer, reachableDiscordIds, splitByReach } from "./stillToAnswer.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
+import { queuePush } from "./push.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
 // New kinds (achievements, card frames, ...) just add a key + an icon.
@@ -40,16 +41,33 @@ function shapeNotification(r) {
 
 // dedupeKey makes an event idempotent: re-saving the same race's results or
 // re-registering reminders can never post twice (unique index + OR IGNORE).
+//
+// A row that was really written, and not swallowed by its dedupe key, goes to
+// the members' phones too (lib/push.js): queued, so the caller never waits on a
+// push service. `push` is { ttl, urgency } for the phone only, from a writer
+// that knows how long its news stays news (a race reminder, until kickoff).
+// Returns whether the row was new.
 export async function dbCreateNotification(
   prisma,
-  { type, title, body = null, link = null, recipientId = null, dedupeKey = null }
+  { type, title, body = null, link = null, recipientId = null, dedupeKey = null, push = null }
 ) {
   const id = randomUUID();
   const now = new Date().toISOString();
-  await prisma.$executeRaw`
+  const inserted = await prisma.$executeRaw`
     INSERT OR IGNORE INTO "Notification"
       ("id","type","title","body","link","recipientId","dedupeKey","createdAt")
     VALUES (${id}, ${type}, ${title}, ${body}, ${link}, ${recipientId}, ${dedupeKey}, ${now})`;
+  const fresh = Number(inserted) > 0;
+  if (fresh) queuePush(prisma, { id, type, title, body, link, recipientId, dedupeKey }, push || undefined);
+  return fresh;
+}
+
+// What a reminder tells the push services about itself: keep it until kickoff
+// and no longer ("starting soon" after the flag is worse than nothing), and
+// wake the phone for it on race day.
+function reminderPush(kick, now = Date.now()) {
+  const left = kick ? kick.getTime() - now : 0;
+  return { ttl: Math.max(60, Math.round(left / 1000)), urgency: left <= 6 * 3_600_000 ? "high" : "normal" };
 }
 
 // Admin to-dos (type ADMIN: a server reset to answer, a login without a
@@ -779,6 +797,7 @@ export async function sendAttendancePing(prisma, raceId) {
   const isTraining = (types.get(race.id) || "CHAMPIONSHIP") === "TRAINING";
   const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
   const at = new Date().toISOString();
+  const kick = raceKickoff(race.date);
   for (const discordId of recipients) {
     await dbCreateNotification(prisma, {
       type: "REMINDER",
@@ -789,6 +808,7 @@ export async function sendAttendancePing(prisma, raceId) {
       // Per press and per person: a second reminder a day later is a new
       // note, the same press can never write two.
       dedupeKey: `attendance-ping:${race.id}:${at}:${discordId}`,
+      ...(kick ? { push: { ttl: reminderPush(kick).ttl } } : {}),
     });
   }
   await writeAttendancePing(prisma, race.id, { at, sent: recipients.length, withoutLogin });
@@ -1231,6 +1251,7 @@ export async function ensureRaceReminders(prisma) {
               body: `Attendance for ${race.track} is open now. Let us know if you're on the grid.`,
               link: `${prefix}/attendance?race=${race.id}`,
               dedupeKey: `attendance-open:${race.id}`,
+              push: { ttl: reminderPush(kick, now).ttl },
             });
           }
         }
@@ -1247,6 +1268,7 @@ export async function ensureRaceReminders(prisma) {
           // session that also switches the explorer onto the Training tab.
           link: await racePageLink(prisma, race),
           dedupeKey: `reminder:${race.id}:${offsets[idx]}`,
+          push: reminderPush(kick, now),
         });
       }
     }

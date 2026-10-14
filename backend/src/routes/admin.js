@@ -162,6 +162,11 @@ import {
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 import { isWidgetsPagePublic, setWidgetsPagePublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
+import { readPushMode, setPushMode, dbPushStats } from "../lib/push.js";
+import {
+  wrappedMode, setWrappedMode, notifyWrappedReady, invalidateWrappedCache,
+} from "../services/seasonWrappedService.js";
+import { invalidateLeagueNumbersCache } from "../services/leagueNumbersService.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
 import {
@@ -750,6 +755,9 @@ router.post("/races/commit", async (req, res, next) => {
     // seals titles) — reconcile the season's linked drivers' bells. A sprint
     // scores too, so its points can be the ones that tip someone over.
     if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
+    // The finale tells every driver their Season Wrapped is there (once, and
+    // only when this save completed the season; see seasonWrappedService).
+    if (results.length) notifyWrappedReady(prisma, race.seasonId);
     // Move the raw JSON into its season folder so this round's telemetry can be
     // recomputed later. Best-effort: never fails the commit.
     if (archiveKey) {
@@ -1071,6 +1079,79 @@ router.get("/race-recap", async (req, res, next) => {
 router.put("/race-recap", async (req, res, next) => {
   try {
     res.json({ ok: true, mode: await setRecapMode(prisma, req.body?.mode) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// SEASON WRAPPED (services/seasonWrappedService.js): its switch. Off, admins
+// only (to look at it on a real season first), or everyone.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/wrapped -> { mode }
+router.get("/wrapped", async (req, res, next) => {
+  try {
+    res.json({ mode: await wrappedMode(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/wrapped { mode: off | admins | all }
+//
+// Opening it to everyone tells everyone, once (deduped): the newest finished
+// season's Wrapped is the reason to look, and nobody finds a page by chance.
+router.put("/wrapped", async (req, res, next) => {
+  try {
+    const mode = await setWrappedMode(prisma, req.body?.mode);
+    if (mode === "all") {
+      await dbCreateNotification(prisma, {
+        type: "WRAPPED",
+        title: "New: Season Wrapped",
+        body: "Every driver's season, told in cards: the best night, the biggest climb, the team-mate battle, the rival and the awards. Find yours.",
+        link: "/wrapped",
+        dedupeKey: "feature:wrapped",
+      }).catch(() => {});
+    }
+    res.json({ ok: true, mode });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUSH NOTIFICATIONS (lib/push.js): the league's switch, and how many devices
+// are listening. Each member's own devices and choices are routes/push.js.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/push -> { mode, devices, members }
+router.get("/push", async (req, res, next) => {
+  try {
+    res.json({ mode: await readPushMode(prisma), ...(await dbPushStats(prisma)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/push { mode: off | admins | all }
+//
+// The first time it opens to everyone, the bell says so: nobody goes looking
+// in their settings for a switch they have never heard of. Deduped, so
+// switching back and forth announces it once.
+router.put("/push", async (req, res, next) => {
+  try {
+    const mode = await setPushMode(prisma, req.body?.mode);
+    if (mode === "all") {
+      await dbCreateNotification(prisma, {
+        type: "NEWS",
+        title: "New: notifications on your phone",
+        body: "Race reminders, results and anything addressed to you can now arrive as a push notification, even with the site closed. Switch it on in your settings, on every device you want them on.",
+        link: "/profile?tab=settings",
+        dedupeKey: "feature:push",
+      }).catch(() => {});
+    }
+    res.json({ ok: true, mode, ...(await dbPushStats(prisma)) });
   } catch (e) {
     next(e);
   }
@@ -2720,6 +2801,7 @@ router.put("/races/:id/results", async (req, res, next) => {
     // on import — the evening's bell rings once, with the feature.
     if (results.length && !isSprint) notifyResultsSaved(prisma, race);
     if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
+    if (results.length) notifyWrappedReady(prisma, race.seasonId);
     res.json({ ok: true, raceId: race.id, session: isSprint ? "SPRINT" : "RACE" });
   } catch (e) {
     next(e);
@@ -2882,6 +2964,8 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateWrappedCache();
+    invalidateLeagueNumbersCache();
     invalidateTrackStrengthCache();
     invalidateRatingHistoryCache();
     invalidateCardRatingCache();

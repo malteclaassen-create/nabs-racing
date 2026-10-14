@@ -8,6 +8,7 @@ import AdminResultGraphic from "./AdminResultGraphic.jsx";
 import AdminStandingsGraphic from "./AdminStandingsGraphic.jsx";
 import AdminDiscordPost from "./AdminDiscordPost.jsx";
 import AdminRaceRecap from "./AdminRaceRecap.jsx";
+import AdminWrapped from "./AdminWrapped.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
 import { useSharedRound } from "../hooks/useSharedRound.js";
 import { latestPastRace } from "../utils/sharedRound.js";
@@ -33,7 +34,11 @@ const VIEWS = [
   // turned into. It has its own round picker (it previews any driver's), so
   // the round select above steps aside for it.
   { key: "recap", label: "Race recap" },
+  // The same for a whole season, once it is over (no round picker either).
+  { key: "wrapped", label: "Season Wrapped" },
 ];
+// The views that bring their own controls instead of the round select.
+const OWN_PICKER = new Set(["recap", "wrapped"]);
 
 const fmtDate = (d) => (d ? fmtDateShort(d) : "no date");
 
@@ -84,7 +89,7 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
       {/* The round, then what you are making of it. Both live in the same
           bar so it always reads as one sentence. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {view !== "recap" && finished.length > 0 ? (
+        {!OWN_PICKER.has(view) && finished.length > 0 ? (
           <select
             aria-label="Round"
             className="input w-auto max-w-[18rem] py-2 text-sm font-semibold"
@@ -104,8 +109,9 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
       </div>
 
       {view === "recap" && <AdminRaceRecap />}
+      {view === "wrapped" && <AdminWrapped />}
 
-      {view !== "recap" && finished.length === 0 ? (
+      {!OWN_PICKER.has(view) && finished.length === 0 ? (
         <p className="card p-5 text-sm text-light">No finished round in this season yet.</p>
       ) : finished.length > 0 && (
         <>

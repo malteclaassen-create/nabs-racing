@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
+import { useWrappedOpen } from "../hooks/useWrappedOpen.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useProfileHome } from "../hooks/useProfileHome.js";
@@ -29,6 +30,7 @@ import ErrorBoundary from "./ErrorBoundary.jsx";
 import {
   ArrowDownUp,
   CalendarCheck,
+  ChartColumn,
   Check,
   ChevronRight,
   CircleHelp,
@@ -38,6 +40,7 @@ import {
   Mail,
   MessageSquare,
   Radio,
+  Sparkles,
   TriangleAlert,
   Trophy,
   User,
@@ -350,8 +353,9 @@ const desktopLinkClass = ({ isActive }) =>
 // The pages under "Standings", in menu order, for the desktop flyout and the
 // phone sheet alike. `preview` is what the panel beside the desktop menu shows
 // while that row is pointed at: the drivers' table, the teams', the latest
-// moves or the Hall of Fame (components/StandingsPreview.jsx).
-function standingsPages(seriesPath, transfers, multiTier) {
+// moves or the Hall of Fame (components/StandingsPreview.jsx). A row without
+// one (the league in numbers, Season Wrapped) folds the panel away.
+function standingsPages(seriesPath, transfers, multiTier, wrapped = false) {
   return [
     { to: seriesPath("/drivers"), Icon: User, title: "Drivers", sub: "Driver standings", tour: "nav-drivers", preview: "drivers" },
     {
@@ -363,6 +367,8 @@ function standingsPages(seriesPath, transfers, multiTier) {
     },
     transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
     { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "records" },
+    { to: seriesPath("/numbers"), Icon: ChartColumn, title: "In numbers", sub: "The season added up" },
+    wrapped && { to: seriesPath("/wrapped"), Icon: Sparkles, title: "Season Wrapped", sub: "Every driver's season in cards" },
   ].filter(Boolean);
 }
 
@@ -468,7 +474,7 @@ const TAB_ICONS = {
 
 // The pages the "Standings" item covers (matched with the series prefix
 // stripped, so it lights up inside every series).
-const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
+const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records", "/numbers", "/wrapped"];
 
 // The phone's tab bar: the five places a member goes on a race night, one tap
 // away at the bottom edge where the thumb already is, the way native apps do
@@ -675,6 +681,8 @@ function StandingsNav({ seriesPath }) {
   const [open, setOpen] = useState(false);
   // The transfer market is held back from the public for now (hooks/useTransfersVisible.js).
   const transfers = useTransfersVisible();
+  // Season Wrapped, once the league has opened it to this visitor.
+  const wrappedOpen = useWrappedOpen();
   const location = useLocation();
   const ref = useRef(null);
   const closeTimer = useRef(null);
@@ -774,7 +782,7 @@ function StandingsNav({ seriesPath }) {
     `glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
       isActive ? "liquid-glass-lens" : "hover:bg-surface2"
     }`;
-  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier);
+  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier, wrappedOpen);
 
   return (
     <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
@@ -910,6 +918,7 @@ export default function NavBar() {
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
   const transfersVisible = useTransfersVisible();
+  const wrappedOpen = useWrappedOpen();
   // …and neither has a member who has never written one. "Your messages" only
   // earns its row once there is a message in it, otherwise it is a row that
   // leads to an empty page.
@@ -1103,7 +1112,7 @@ export default function NavBar() {
 
   // No preview in the phone sheet: the rows are what it is for, and asking for
   // three tables every time the menu opens would cost more than it shows.
-  const sheetPages = standingsPages(seriesPath, transfersVisible, false);
+  const sheetPages = standingsPages(seriesPath, transfersVisible, false, wrappedOpen);
 
   // Pulling the sheet down by its grip. It follows the finger straight, with
   // no React render per frame; let go far enough down and it closes from where

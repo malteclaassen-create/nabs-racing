@@ -7,6 +7,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useProfileHome } from "../hooks/useProfileHome.js";
 import { useChangelogUnseen } from "../hooks/useChangelogSeen.js";
 import { PROFILE_HOME_PERSONAL, PROFILE_HOME_PUBLIC } from "../hooks/profileHome.mjs";
+import PushSettings from "./PushSettings.jsx";
 
 // ---------------------------------------------------------------------------
 // The settings themselves: theme, design, performance, where your own name in the bar
@@ -26,7 +27,9 @@ import { PROFILE_HOME_PERSONAL, PROFILE_HOME_PUBLIC } from "../hooks/profileHome
 // account: the theme and the performance mode always were, and "where your
 // picture takes you" belongs to the device you are reading on for the same
 // reason — a phone and a desktop are used differently. The panel says so,
-// so nobody wonders why their laptop did not follow.
+// so nobody wonders why their laptop did not follow. The one exception is
+// the Notifications card (components/PushSettings.jsx), which says what it
+// keeps where on its own.
 // ---------------------------------------------------------------------------
 
 function SunIcon() {
@@ -259,6 +262,12 @@ export default function SettingsSections() {
           </Setting>
         </Card>
       )}
+
+      {/* Push notifications. Unlike everything above, partly on the account
+          (what gets pushed) and partly on this device (whether it gets
+          anything); the card draws itself only while the league offers push
+          to this member. */}
+      {isLoggedIn && <PushSettings />}
 
       {/* Account: the sign-out that used to live in the settings drawer. */}
       {isLoggedIn && (
