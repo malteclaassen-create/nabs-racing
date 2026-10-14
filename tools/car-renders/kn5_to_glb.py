@@ -33,6 +33,17 @@ PBR = {  # metalness, roughness
     "glass": (0.0, 0.05), "mirror": (1.0, 0.05), "plastic": (0.0, 0.6),
 }
 
+# DXT1/3/5 written with the newer DX10 header (DXGI formats 70-78), which
+# older Pillow builds refuse ("Unimplemented DXGI format 77"): the same
+# blocks under the old header, which every build reads.
+LEGACY_FOURCC = {70: b"DXT1", 71: b"DXT1", 72: b"DXT1", 73: b"DXT3", 74: b"DXT3", 75: b"DXT3", 76: b"DXT5", 77: b"DXT5", 78: b"DXT5"}
+
+def legacy_dds(data):
+    if data[:4] != b"DDS " or data[84:88] != b"DX10" or len(data) < 148:
+        return data
+    fourcc = LEGACY_FOURCC.get(struct.unpack_from("<I", data, 128)[0])
+    return data[:84] + fourcc + data[88:128] + data[148:] if fourcc else data
+
 def main():
     src, skin, out = sys.argv[1], sys.argv[2], sys.argv[3]
     max_tex = int(sys.argv[sys.argv.index("--max-tex") + 1]) if "--max-tex" in sys.argv else 2048
@@ -105,6 +116,7 @@ def main():
         data = texture_bytes(name) if name else None
         if not data:
             return None
+        data = legacy_dds(data)
         try:
             im = Image.open(io.BytesIO(data)); im.load()
             return im

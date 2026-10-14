@@ -52,7 +52,7 @@ const kn5 = join(carDir, `${model}.kn5`);
 // The rest of the field in the lighter model, where the car has one.
 const lodB = existsSync(join(carDir, `${model}_LOD_B.kn5`)) ? join(carDir, `${model}_LOD_B.kn5`) : kn5;
 const own = spec.liveries.filter((l) => !l.of && (!only || only.includes(l.key)));
-mkdirSync(join(workDir, "glb"), { recursive: true });
+mkdirSync(join(workDir, "glb2"), { recursive: true });
 
 function glb(source, skin, out, extra = []) {
   if (existsSync(out)) return;
@@ -62,8 +62,8 @@ function glb(source, skin, out, extra = []) {
 // The rest of the field: three liveries from the list, lighter (LOD B).
 const field = spec.liveries.filter((l) => !l.of).slice(0, 4);
 for (const l of field) {
-  glb(lodB, l.skin, join(workDir, "glb", `${l.key}-lodb.glb`), ["--textures", kn5]);
-  glb(lodB, l.skin, join(workDir, "glb", `${l.key}-lodb-moving.glb`), ["--textures", kn5, "--moving"]);
+  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb.glb`), ["--textures", kn5]);
+  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb-moving.glb`), ["--textures", kn5, "--moving"]);
 }
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".glb": "model/gltf-binary" };
@@ -112,8 +112,8 @@ async function film(l, kind) {
   const mp4 = join(dir, `${kind}.mp4`);
   if (existsSync(mp4)) return;
   const f = FILMS[kind];
-  const me = `/work/glb/${l.key}${f.moving ? "-moving" : ""}.glb`;
-  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb/${x.key}-lodb${f.moving ? "-moving" : ""}.glb`) : [];
+  const me = `/work/glb2/${l.key}${f.moving ? "-moving" : ""}.glb`;
+  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb2/${x.key}-lodb${f.moving ? "-moving" : ""}.glb`) : [];
   const frames = join(dir, `frames-${kind}`);
   mkdirSync(frames, { recursive: true });
   const p = await page();
@@ -143,7 +143,7 @@ async function still(l) {
   mkdirSync(join(workDir, l.key), { recursive: true });
   const p = await page();
   try {
-    const url = await p.evaluate((o) => window.stillPng(o), { car: `/work/glb/${l.key}.glb`, w: 1080, h: 820, team: l.colour || "#F4AFC6" });
+    const url = await p.evaluate((o) => window.stillPng(o), { car: `/work/glb2/${l.key}.glb`, w: 1080, h: 820, team: l.colour || "#F4AFC6" });
     writeFileSync(png, Buffer.from(url.split(",")[1], "base64"));
   } finally {
     await p.close();
@@ -152,8 +152,8 @@ async function still(l) {
 
 const tasks = [];
 for (const l of own) {
-  glb(kn5, l.skin, join(workDir, "glb", `${l.key}.glb`));
-  glb(kn5, l.skin, join(workDir, "glb", `${l.key}-moving.glb`), ["--moving"]);
+  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}.glb`));
+  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}-moving.glb`), ["--moving"]);
   tasks.push(() => still(l));
   for (const kind of Object.keys(FILMS)) tasks.push(() => film(l, kind));
 }
