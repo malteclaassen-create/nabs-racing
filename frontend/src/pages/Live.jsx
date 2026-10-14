@@ -1166,7 +1166,7 @@ const TIMING_COLUMNS = [
     cell: (e, ctx) => (
       <DriverCell
         e={e}
-        match={ctx.match(e.name)}
+        match={ctx.match(e)}
         showLiveDot
         mobileBadges={ctx.badges === "mobile"}
         badgesAlways={ctx.badges === "always"}
@@ -2213,7 +2213,7 @@ function DrivingNowSection({ onTrack, match, flip = false, isRace = false, raceS
                 <OnTrackRow
                   key={e.guid}
                   e={e}
-                  match={match(e.name)}
+                  match={match(e)}
                   index={i}
                   isRace={isRace}
                   raceStartedAt={raceStartedAt}
@@ -2293,7 +2293,7 @@ function PitLaneSection({ entries, match, className = "" }) {
       {inPits.length > 0 ? (
         <div className="scrollbar-slim h-[174px] divide-y divide-border overflow-y-auto">
           {inPits.map((e) => {
-            const m = match ? match(e.name) : null;
+            const m = match ? match(e) : null;
             const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
             return (
               <div key={e.guid} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
@@ -2367,7 +2367,7 @@ function BestSectorsSection({ entries, match, className = "" }) {
       {any ? (
         <div className="grid h-[174px] grid-rows-3 divide-y divide-border">
           {rows.map((r, i) => {
-            const m = r && match ? match(r.e.name) : null;
+            const m = r && match ? match(r.e) : null;
             return (
               <div key={i} className="flex items-center gap-3 px-4 sm:px-5">
                 <span className="w-6 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -2746,7 +2746,7 @@ function TvGroup({ label, count, gap = false }) {
 }
 
 function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
-  const m = match ? match(e.name) : null;
+  const m = match ? match(e) : null;
   const name = m?.nabsName || e.name;
   const color = m?.teamColor || "var(--c-border)";
   // The bleed only happens for a driver we can put a team colour to. Appending
@@ -2969,7 +2969,7 @@ function TvSectors({ entries, match }) {
     <TvPanel title="Best sectors" className="shrink-0">
       <div className="divide-y divide-border">
         {rows.map((r, i) => {
-          const m = r && match ? match(r.e.name) : null;
+          const m = r && match ? match(r.e) : null;
           return (
             <div key={i} className="flex items-center gap-3 px-4 py-2">
               <span className="w-6 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
@@ -3010,7 +3010,7 @@ function TvPitLane({ entries, match, className = "" }) {
       {inPits.length > 0 ? (
         <div className="scrollbar-slim min-h-0 flex-1 divide-y divide-border overflow-y-auto">
           {inPits.map((e) => {
-            const m = match ? match(e.name) : null;
+            const m = match ? match(e) : null;
             const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
             return (
               <div key={e.guid} className="flex items-center gap-3 px-4 py-2">
@@ -3181,7 +3181,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
     null
   );
   const fastestBy = fastestLapMs ? (entries || []).find((e) => e.bestLapMs === fastestLapMs) : null;
-  const fastestName = fastestBy ? (match ? match(fastestBy.name)?.nabsName : null) || fastestBy.name : null;
+  const fastestName = fastestBy ? (match ? match(fastestBy)?.nabsName : null) || fastestBy.name : null;
   // The lap being DRIVEN, not the one last completed: lapsLeft counts down from
   // the leader's completed laps, and a board reading LAP 14 while the leader is
   // on their fifteenth is a lap behind the television.
