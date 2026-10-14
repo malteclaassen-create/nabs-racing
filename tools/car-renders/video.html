@@ -339,13 +339,15 @@ function fitDistance(camera, w) {
 }
 
 const SCENES = { intro: introScene, climb: climbScene, podium: podiumScene, grid: gridScene };
+// Drawn at twice the size (and multisampled) and scaled down: clean edges.
+const SS = 2;
 let frame = null;
 let composer = null;
 const out = document.createElement("canvas");
 let vignette = null;
 
 window.setup = async ({ kind, cars: urls, w, h, team, bg }) => {
-  renderer.setSize(w, h, false);
+  renderer.setSize(w * SS, h * SS, false);
   out.width = w;
   out.height = h;
   const bgColor = new THREE.Color(bg);
@@ -357,12 +359,12 @@ window.setup = async ({ kind, cars: urls, w, h, team, bg }) => {
   const camera = new THREE.PerspectiveCamera(w < h ? 40 : 30, w / h, 0.1, 300);
   const cars = [];
   for (const u of urls) cars.push(await loadCar(u));
-  frame = SCENES[kind]({ scene, camera, cars, paint: new THREE.Color(team), w, h, bg: bgColor });
-  composer = new EffectComposer(renderer);
+  frame = SCENES[kind]({ scene, camera, cars, paint: new THREE.Color(team), w: w * SS, h: h * SS, bg: bgColor });
+  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(w * SS, h * SS, { samples: 4, type: THREE.HalfFloatType }));
   composer.setPixelRatio(1);
-  composer.setSize(w, h);
+  composer.setSize(w * SS, h * SS);
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.18, 0.5, 0.92));
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(w * SS, h * SS), 0.18, 0.5, 0.92));
   composer.addPass(new OutputPass());
   // The edges fade into the slide's colour.
   const g = out.getContext("2d");
@@ -376,7 +378,9 @@ window.frameAt = (t, dur) => {
   frame(t, dur);
   composer.render();
   const g = out.getContext("2d");
-  g.drawImage(canvas, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(canvas, 0, 0, out.width, out.height);
   g.fillStyle = vignette;
   g.fillRect(0, 0, out.width, out.height);
   return out.toDataURL("image/jpeg", 0.94);
@@ -384,7 +388,7 @@ window.frameAt = (t, dur) => {
 // The car alone on a clear background, front three-quarter, for the share
 // picture and the summary beside the card: a PNG.
 window.stillPng = async ({ car: url, w, h, team }) => {
-  renderer.setSize(w, h, false);
+  renderer.setSize(w * SS, h * SS, false);
   renderer.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
   scene.environment = ENV;
@@ -404,7 +408,13 @@ window.stillPng = async ({ car: url, w, h, team }) => {
   camera.position.set(Math.cos(az) * dist, 1.6, Math.sin(az) * dist);
   camera.lookAt(0, 0.45, 0);
   renderer.render(scene, camera);
-  return canvas.toDataURL("image/png");
+  const small = document.createElement("canvas");
+  small.width = w;
+  small.height = h;
+  const g = small.getContext("2d");
+  g.imageSmoothingQuality = "high";
+  g.drawImage(canvas, 0, 0, w, h);
+  return small.toDataURL("image/png");
 };
 window.ready = true;
 </script>

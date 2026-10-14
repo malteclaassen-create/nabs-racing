@@ -40,12 +40,13 @@ const { chromium } = require("playwright");
 // STORY_THEMES) and as long as the slide (STORY_DURATIONS).
 // `version` goes up when a film's scene changes, so it is made again.
 const FILMS = {
-  intro: { bg: "#0B0A12", secs: 6.5, others: false, moving: false, version: 1 },
-  climb: { bg: "#0E3B2E", secs: 8.5, others: true, moving: true, version: 2 },
-  podium: { bg: "#050507", secs: 8, others: false, moving: false, version: 1 },
-  grid: { bg: "#050507", secs: 8, others: true, moving: false, version: 1 },
+  intro: { bg: "#0B0A12", secs: 6.5, others: false, moving: false, version: 2 },
+  climb: { bg: "#0E3B2E", secs: 8.5, others: true, moving: true, version: 3 },
+  podium: { bg: "#050507", secs: 8, others: false, moving: false, version: 2 },
+  grid: { bg: "#050507", secs: 8, others: true, moving: false, version: 2 },
 };
-const SIZE = { w: 720, h: 900, fps: 24 };
+const SIZE = { w: 1080, h: 1350, fps: 24 };
+const STILL_VERSION = 2;
 
 const spec = JSON.parse(readFileSync(liveriesPath, "utf8"));
 const model = basename(resolve(carDir));
@@ -53,7 +54,7 @@ const kn5 = join(carDir, `${model}.kn5`);
 // The rest of the field in the lighter model, where the car has one.
 const lodB = existsSync(join(carDir, `${model}_LOD_B.kn5`)) ? join(carDir, `${model}_LOD_B.kn5`) : kn5;
 const own = spec.liveries.filter((l) => !l.of && (!only || only.includes(l.key)));
-mkdirSync(join(workDir, "glb2"), { recursive: true });
+mkdirSync(join(workDir, "glb3"), { recursive: true });
 
 function glb(source, skin, out, extra = []) {
   if (existsSync(out)) return;
@@ -63,8 +64,8 @@ function glb(source, skin, out, extra = []) {
 // The rest of the field: three liveries from the list, lighter (LOD B).
 const field = spec.liveries.filter((l) => !l.of).slice(0, 4);
 for (const l of field) {
-  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb.glb`), ["--textures", kn5]);
-  glb(lodB, l.skin, join(workDir, "glb2", `${l.key}-lodb-moving2.glb`), ["--textures", kn5, "--moving"]);
+  glb(lodB, l.skin, join(workDir, "glb3", `${l.key}-lodb.glb`), ["--textures", kn5]);
+  glb(lodB, l.skin, join(workDir, "glb3", `${l.key}-lodb-moving2.glb`), ["--textures", kn5, "--moving"]);
 }
 
 const types = { ".html": "text/html", ".js": "text/javascript", ".glb": "model/gltf-binary" };
@@ -116,8 +117,8 @@ async function film(l, kind) {
   const made = existsSync(stamp) ? Number(readFileSync(stamp, "utf8")) : 1;
   if (existsSync(mp4) && made >= FILMS[kind].version) return;
   const f = FILMS[kind];
-  const me = `/work/glb2/${l.key}${f.moving ? "-moving2" : ""}.glb`;
-  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb2/${x.key}-lodb${f.moving ? "-moving2" : ""}.glb`) : [];
+  const me = `/work/glb3/${l.key}${f.moving ? "-moving2" : ""}.glb`;
+  const others = f.others ? field.filter((x) => x.key !== l.key).slice(0, 3).map((x) => `/work/glb3/${x.key}-lodb${f.moving ? "-moving2" : ""}.glb`) : [];
   const frames = join(dir, `frames-${kind}`);
   mkdirSync(frames, { recursive: true });
   const p = await page();
@@ -144,12 +145,14 @@ async function film(l, kind) {
 
 async function still(l) {
   const png = join(workDir, l.key, "still.png");
-  if (existsSync(png)) return;
+  const stamp = join(workDir, l.key, "still.version");
+  if (existsSync(png) && existsSync(stamp) && Number(readFileSync(stamp, "utf8")) >= STILL_VERSION) return;
   mkdirSync(join(workDir, l.key), { recursive: true });
   const p = await page();
   try {
-    const url = await p.evaluate((o) => window.stillPng(o), { car: `/work/glb2/${l.key}.glb`, w: 1080, h: 820, team: l.colour || "#F4AFC6" });
+    const url = await p.evaluate((o) => window.stillPng(o), { car: `/work/glb3/${l.key}.glb`, w: 1080, h: 820, team: l.colour || "#F4AFC6" });
     writeFileSync(png, Buffer.from(url.split(",")[1], "base64"));
+    writeFileSync(stamp, String(STILL_VERSION));
   } finally {
     await p.close();
   }
@@ -157,8 +160,8 @@ async function still(l) {
 
 const tasks = [];
 for (const l of own) {
-  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}.glb`));
-  glb(kn5, l.skin, join(workDir, "glb2", `${l.key}-moving2.glb`), ["--moving"]);
+  glb(kn5, l.skin, join(workDir, "glb3", `${l.key}.glb`));
+  glb(kn5, l.skin, join(workDir, "glb3", `${l.key}-moving2.glb`), ["--moving"]);
   tasks.push(() => still(l));
   for (const kind of Object.keys(FILMS)) tasks.push(() => film(l, kind));
 }

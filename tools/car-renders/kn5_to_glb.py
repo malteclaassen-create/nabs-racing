@@ -112,6 +112,7 @@ def main():
         return len(accessors) - 1
 
     images, textures, tex_index = [], [], {}
+    unreadable = []
     def open_image(name):
         data = texture_bytes(name) if name else None
         if not data:
@@ -122,6 +123,7 @@ def main():
             return im
         except Exception as e:
             print("texture", name, "unreadable:", e)
+            unreadable.append(name)
             return None
     detail_means = {}
     def detail_mean(name):
@@ -220,6 +222,10 @@ def main():
         f.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(blob)))
         f.write(struct.pack("<II", len(js), 0x4E4F534A)); f.write(js)
         f.write(struct.pack("<II", len(blob), 0x004E4942)); f.write(blob)
+    if unreadable:
+        # A car without its paint would be filmed white: stop instead.
+        os.remove(out)
+        sys.exit(f"{out}: could not read {', '.join(sorted(set(unreadable)))}")
     print(f"{out}: {len(meshes)} meshes, {sum(len(m[2]) for m in meshes)} verts, {len(materials)} materials, {len(images)} images, {os.path.getsize(out) >> 20} MB")
 
 main()
