@@ -3428,6 +3428,18 @@ html.update-reveal.update-reveal-go body::after {
 /* The circuit drawing itself, where there is no 3D. */
 @keyframes story-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .story-trace { stroke-dasharray: 1; animation: story-trace 2.6s var(--e-soft) both; animation-delay: var(--d, 0ms); animation-play-state: var(--story-play, running); }
+/* Home's Season Wrapped banner (components/WrappedBanner.jsx): the story's
+   bars filling one after another once it is on screen, the car drifting. */
+.wrapped-banner-bar { transform-origin: 0 50%; transform: scaleX(0); animation: st-grow 700ms var(--e-out) forwards; animation-delay: calc(var(--i, 0) * 260ms + 300ms); }
+.reveal:not(.is-visible) .wrapped-banner-bar { animation-play-state: paused; }
+.wrapped-banner-car { animation: wrapped-banner-drift 16s ease-in-out infinite alternate; }
+@keyframes wrapped-banner-drift { from { transform: scale(1.04); } to { transform: scale(1.12) translateX(-2%); } }
+@media (prefers-reduced-motion: reduce) {
+  .wrapped-banner-bar { animation: none; transform: none; }
+  .wrapped-banner-car { animation: none; }
+}
+.fx-lite .wrapped-banner-bar { animation: none; transform: none; }
+.fx-lite .wrapped-banner-car { animation: none; }
 /* The season's real car (WrappedStorySlides CarPhoto): up out of the dark,
    then the camera travelling along it while a light runs over the paint. */
 .story-photo { animation: story-photo-in 1500ms var(--e-out) both; animation-play-state: var(--story-play, running); }

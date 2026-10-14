@@ -28,6 +28,7 @@ import SocialFeed from "../components/SocialFeed.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
 import { useWrappedSeasons } from "../hooks/useWrappedOpen.js";
+import WrappedBanner from "../components/WrappedBanner.jsx";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -981,6 +982,11 @@ export default function Home() {
       ) || null
     : null;
   const myDriverId = myRow?.driverId || (isLoggedIn ? user?.driverId : null);
+  // Season Wrapped's banner: for the live season once every round is run, or,
+  // while the next season waits for its opener, for the one just finished.
+  const lastSeason = showComingSoonHero && !isUpcomingSeason ? (seasons || []).find((s) => s.number === season?.number - 1) : null;
+  const wrappedBanner =
+    seasonOver && wrappedSeasons.includes(season?.number) ? season : lastSeason && wrappedSeasons.includes(lastSeason.number) ? lastSeason : null;
   // Every race of a sprint weekend counts, here as everywhere else on the site
   // (utils/standingsRow.js): a sprint driven is a start, a sprint won a win.
   const myRounds = myRow ? Object.values(myRow.perRace || {}) : [];
@@ -1422,6 +1428,11 @@ export default function Home() {
           )}
         </div>
       </section>
+
+      {/* ===================== SEASON WRAPPED (season over) ================== */}
+      {/* The season just finished, or the one before a new season's opener:
+          its Wrapped, as soon as the league has opened it. */}
+      {wrappedBanner && <WrappedBanner season={wrappedBanner} driverId={wrappedBanner === season ? myRow?.driverId : null} />}
 
       {/* ===================== TITLE FIGHT (running seasons) ================= */}
       {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a
