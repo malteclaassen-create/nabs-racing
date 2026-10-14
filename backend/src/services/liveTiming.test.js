@@ -17,7 +17,8 @@ vi.mock("../lib/notifications.js", async (importOriginal) => ({
   notifyAdminsServerReset: vi.fn(async () => {}),
 }));
 
-const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey } = __testing;
+const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey, buildSteamIdentities, setSteamIdentities } =
+  __testing;
 
 // Build a minimal EventType-200 snapshot for one driver, enough to exercise the
 // stint accumulator (session type, laps, current tyre, pit count, in-pits flag).
@@ -220,6 +221,38 @@ function fullSnap({ type = 3, name = "Race", laps: raceLaps = 0, drivers }) {
 }
 
 const T0 = Date.UTC(2026, 7, 9, 18, 0, 0);
+
+describe("liveTiming: which roster rows a car is, by Steam id", () => {
+  beforeEach(() => reset());
+  afterEach(() => setSteamIdentities(new Map()));
+
+  it("names every row with the Steam id, and the rows linked to them as one person", () => {
+    const map = buildSteamIdentities(
+      [
+        { id: "manro45gt", steamId: "7656" },
+        { id: "other", steamId: "9999" },
+      ],
+      [
+        { personId: "p1", driverId: "manro45gt" },
+        { personId: "p1", driverId: "manro45gt-s8" },
+        { personId: "p2", driverId: "unrelated" },
+      ]
+    );
+    expect(map.get("7656")).toEqual(["manro45gt", "manro45gt-s8"]);
+    expect(map.get("9999")).toEqual(["other"]);
+  });
+
+  it("puts them on the board entry, whatever name the car is driven under", () => {
+    setSteamIdentities(new Map([["g1", ["manro45gt"]]]));
+    ingest(snap({ guid: "g1", laps: 3, name: "Menry Cespedes" }));
+    expect(getBoard().entries[0].driverIds).toEqual(["manro45gt"]);
+  });
+
+  it("an unknown Steam id carries no rows, and the page falls back to the name", () => {
+    ingest(snap({ guid: "g9", laps: 3, name: "Guest" }));
+    expect(getBoard().entries[0].driverIds).toEqual([]);
+  });
+});
 
 describe("liveTiming race gap", () => {
   beforeEach(() => reset());

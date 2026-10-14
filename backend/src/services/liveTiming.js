@@ -56,8 +56,8 @@ import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
 //
 // The frontend only ever uses this value as an identity key: React keys, the
 // flip-animation id, and the track map's per-car state. It never sends it back
-// and never matches a driver with it (that is done by name). So a stable stand-in
-// is all it needs.
+// and never matches a driver with it (that is done by the entry's driverIds and
+// its name, see refreshSteamIdentities). So a stable stand-in is all it needs.
 //
 // The salt is required, not decoration: a SteamID64 is "7656119" plus ten
 // digits, so an unsalted hash is a ten-digit brute force and reverses in
@@ -102,6 +102,64 @@ export function realGuidForPublicId(publicId) {
   if (!publicId) return null;
   for (const [guid, id] of publicIdCache) if (id === publicId) return guid;
   return null;
+}
+
+// Which roster rows a car on the board belongs to, by Steam id. The page used
+// to tell who somebody was from the name they typed into the game alone, and
+// that name drifts from the roster without anyone saying so: Manro45GT races as
+// "Menry Cespedes", which matches neither his roster name nor his Discord one,
+// and stood on the board with no flag and his car where his team should be.
+// The result import has long stored each driver's Steam id (Driver.steamId), so
+// the board says outright which rows a car is — every row with that Steam id,
+// plus every row linked to one of them as the same person (PersonLink), so a
+// new season's row the import has not stamped yet is still found through last
+// season's. Driver ids are public already (the roster endpoint lists them);
+// the Steam id itself stays here.
+//
+// Read in raw SQL: steamId and PersonLink are both raw-managed (see the schema
+// and lib/persons.js), so the generated client may not know them.
+let driverIdsBySteam = new Map(); // steam id -> sorted driver ids
+
+export async function refreshSteamIdentities(db = prisma) {
+  try {
+    const stamped = await db.$queryRawUnsafe(
+      `SELECT "id", "steamId" FROM "Driver" WHERE "steamId" IS NOT NULL AND "steamId" <> ''`
+    );
+    let links = [];
+    try {
+      links = await db.$queryRawUnsafe(`SELECT "personId", "driverId" FROM "PersonLink"`);
+    } catch {
+      /* no PersonLink table yet: the stamped rows alone */
+    }
+    driverIdsBySteam = buildSteamIdentities(stamped, links);
+  } catch (e) {
+    // The last good map stays; the page falls back to the name for anyone new.
+    console.warn("[live] steam identities not refreshed:", e?.message || e);
+  }
+}
+
+function buildSteamIdentities(stamped, links) {
+  const personOf = new Map();
+  const rowsOf = new Map();
+  for (const l of links || []) {
+    personOf.set(l.driverId, l.personId);
+    if (!rowsOf.has(l.personId)) rowsOf.set(l.personId, []);
+    rowsOf.get(l.personId).push(l.driverId);
+  }
+  const bySteam = new Map();
+  for (const r of stamped || []) {
+    const steam = String(r.steamId);
+    if (!bySteam.has(steam)) bySteam.set(steam, new Set());
+    const ids = bySteam.get(steam);
+    ids.add(r.id);
+    const person = personOf.get(r.id);
+    if (person) for (const id of rowsOf.get(person)) ids.add(id);
+  }
+  return new Map([...bySteam].map(([steam, ids]) => [steam, [...ids].sort()]));
+}
+
+function driverIdsForGuid(guid) {
+  return (guid && driverIdsBySteam.get(String(guid))) || [];
 }
 
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
@@ -1466,6 +1524,9 @@ function createRelay(server) {
       // The real GUID stays server-side (it keys the stint and race-position
       // maps above); what leaves the building is the pseudonymous stand-in.
       guid: publicDriverId(guid),
+      // The roster rows this car is, by Steam id (refreshSteamIdentities). The
+      // page tries these before the name.
+      driverIds: driverIdsForGuid(guid),
       name: ci.DriverName || "—",
       initials: ci.DriverInitials || "",
       // AC reports 0 for a car that was never given a number. That is "no
@@ -2358,6 +2419,10 @@ export const __testing = {
   getBoard: testRelay.__getBoard,
   raceSecond: testRelay.raceSecond,
   reset: testRelay.__reset,
+  buildSteamIdentities,
+  setSteamIdentities: (map) => {
+    driverIdsBySteam = map;
+  },
 };
 
 // ---- Demo board -------------------------------------------------------------
@@ -2771,6 +2836,10 @@ export function initLiveTiming(server) {
   for (const r of relays.values()) r.connect();
   refreshBoardScopes();
   setInterval(refreshBoardScopes, SCOPES_REFRESH_MS).unref?.();
+  // On the same minute: a result import that stamps a new Steam id, or a
+  // person link made in the admin, reaches the board within it.
+  refreshSteamIdentities();
+  setInterval(refreshSteamIdentities, SCOPES_REFRESH_MS).unref?.();
 
   const wss = new WebSocketServer({ server, path: "/api/live/ws" });
   clientWss = wss; // memory diagnostics read the viewer count from here

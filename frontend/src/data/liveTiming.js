@@ -56,7 +56,15 @@ const FUZZY_LEAD = 0.15;
 // Build a matcher from the /api/teams payload. Indexes each driver by their id,
 // name and discordName (normalised) so an Assetto Corsa DriverName resolves to
 // the NABS driver, their team colour and their flag.
+//
+// Ask it with the board ENTRY rather than the bare name where there is one: the
+// entry carries driverIds, the roster rows the server put to that car by its
+// Steam id, and those win over any name. A name typed into the game is only a
+// guess at who somebody is — "Menry Cespedes" is Manro45GT, and nothing in the
+// roster says so — while the Steam id is the identity the result import has
+// always trusted.
 export function makeDriverMatcher(teams) {
+  const byId = new Map();
   const index = new Map();
   const all = [];
   for (const team of teams || []) {
@@ -80,6 +88,7 @@ export function makeDriverMatcher(teams) {
         // which asks whether the car on track right now is the pace car.
         role: d.role || null,
       };
+      byId.set(d.id, entry);
       for (const key of [d.id, d.name, d.discordName]) {
         const k = norm(key);
         if (k && !index.has(k)) index.set(k, entry);
@@ -94,7 +103,14 @@ export function makeDriverMatcher(teams) {
   // answer is remembered per in-game name — the names change when somebody
   // joins the server, not between frames.
   const cache = new Map();
-  return (acName) => {
+  return (entryOrName) => {
+    if (entryOrName && typeof entryOrName === "object") {
+      for (const id of entryOrName.driverIds || []) {
+        const hit = byId.get(id);
+        if (hit) return hit;
+      }
+    }
+    const acName = entryOrName && typeof entryOrName === "object" ? entryOrName.name : entryOrName;
     const key = norm(acName);
     if (!key) return null;
     const exact = index.get(key);
