@@ -23,7 +23,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Crown, Medal, Timer, Rocket, ShieldCheck, Flag as FlagIcon, Sparkles, Trophy, Share2, Download, Link as LinkIcon, Play } from "lucide-react";
 import { api, withApiBase } from "../api/client.js";
-import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { copyText } from "../utils/copyText.js";
 import { useStoryReveal, Tween } from "../components/storyMotion.jsx";
@@ -52,6 +52,8 @@ function storyDue(driverId) {
 }
 
 export default function SeasonWrapped() {
+  // The series' own mark (an admin upload), for the story's corner.
+  const { current: series } = useSeries();
   const { key } = useParams();
   const [params] = useSearchParams();
   const season = params.get("season");
@@ -125,7 +127,13 @@ export default function SeasonWrapped() {
     <div className="mx-auto max-w-4xl space-y-5" style={{ "--wrap-team": teamColor }}>
       {story && (
         <Suspense fallback={<div className="fixed inset-0 z-overlay bg-black/90" aria-hidden="true" />}>
-          <WrappedStory data={data} mine={!!data.mine} url={shareUrlOf(data)} onClose={() => setStory(false)} />
+          <WrappedStory
+            data={data}
+            mine={!!data.mine}
+            url={shareUrlOf(data)}
+            logos={{ dark: series?.logoDarkUrl || "/logo-dark.png", light: "/logo-light.png" }}
+            onClose={() => setStory(false)}
+          />
         </Suspense>
       )}
       <Cover data={data} onPlay={() => setStory(true)} />

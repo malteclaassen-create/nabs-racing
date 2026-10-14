@@ -84,7 +84,11 @@ const WIDE = "(min-width: 960px) and (min-aspect-ratio: 4/3)";
 const FROM_RIGHT = { x: "100%", y: "50%" };
 const FROM_LEFT = { x: "0%", y: "50%" };
 
-export default function WrappedStory({ data, mine, url, onClose }) {
+// The league's mark in both colours: `dark` (the pink one, or the series' own
+// upload) on the dark slides, `light` (black) on the pale ones.
+const LOGOS = { dark: "/logo-dark.png", light: "/logo-light.png" };
+
+export default function WrappedStory({ data, mine, url, onClose, logos = LOGOS }) {
   const slides = useMemo(() => buildStory(data, { mine, fmtTrack: prettyTrack }), [data, mine]);
   const [index, setIndex] = useState(0);
   const [round, setRound] = useState(0); // bumps on "watch again", replaying every entrance
@@ -255,7 +259,9 @@ export default function WrappedStory({ data, mine, url, onClose }) {
     () => (scene ? { ...scene, bg: slide.colors.bg, accent: slide.colors.accent, round, wide } : null),
     [scene, slide, round, wide]
   );
-  const layout = useMemo(() => ({ wide, scened: !!spec && !flat }), [wide, spec, flat]);
+  // A slide with white words is a dark one, and gets the pink mark.
+  const logo = slide?.colors.ink.toUpperCase() === "#FFFFFF" ? logos.dark : logos.light;
+  const layout = useMemo(() => ({ wide, scened: !!spec && !flat, logo }), [wide, spec, flat, logo]);
 
   // The summary card's buttons.
   const summary = slides[last];
@@ -270,7 +276,7 @@ export default function WrappedStory({ data, mine, url, onClose }) {
       car = null;
     }
     const address = url ? url.replace(/^https?:\/\//, "") : "";
-    return drawShareCard({ card: summary, data, car, address });
+    return drawShareCard({ card: summary, data, car, address, logo: logos.dark });
   }, [slides, summary, data, url]);
   const download = (blob) => {
     const href = URL.createObjectURL(blob);
@@ -426,9 +432,17 @@ export default function WrappedStory({ data, mine, url, onClose }) {
               ))}
             </div>
             <div className="mt-2.5 flex items-center justify-between gap-2">
-              <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] opacity-90">
-                {wide ? `${data.season.label} Wrapped · ` : ""}
-                {index + 1} / {slides.length}
+              {/* The league's mark in the corner, as Spotify keeps its own
+                  there; the intro shows it large instead. */}
+              <span className="flex min-w-0 items-center gap-2">
+                {index > 0 && (
+                  <>
+                    <img src={logo} alt="NABS Racing" width={36} height={36} className={`shrink-0 ${wide ? "h-11 w-11" : "h-9 w-9"}`} />
+                    <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] opacity-90">
+                      {`${data.season.label} Wrapped`}
+                    </span>
+                  </>
+                )}
               </span>
               <span className="flex items-center gap-1">
                 <button

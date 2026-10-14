@@ -24,9 +24,10 @@ import { motionOff } from "../hooks/motion.js";
 
 // The story's clock: seconds into the current slide, ticking with the story.
 export const StoryClock = createContext(null);
-// The layout: { wide, scened } — wide is the computer layout, scened that the
-// slide has a 3D scene behind it right now.
-export const StoryLayout = createContext({ wide: false, scened: false });
+// The layout: { wide, scened, logo } — wide is the computer layout, scened
+// that the slide has a 3D scene behind it right now, logo the league's mark in
+// the colour that shows on this slide.
+export const StoryLayout = createContext({ wide: false, scened: false, logo: null });
 const useLayout = () => useContext(StoryLayout);
 
 const MEDAL_ON_DARK = ["#F5C542", "#DFE3EA", "#E39A5F"];
@@ -376,15 +377,15 @@ function Small({ children, d = 1000 }) {
 
 function IntroSlide({ slide, data, flat }) {
   const d = data.driver;
-  const { wide } = useLayout();
+  const { wide, logo } = useLayout();
   return (
     <SceneLayout
       slide={slide}
       flat={flat}
       top={
         <>
-          <St kind="fade" className={`flex items-center gap-2 font-display font-black tracking-tight ${wide ? "text-2xl" : "text-lg"}`}>
-            <span className="h-2 w-2 rounded-full" style={{ background: slide.colors.accent }} />
+          <St kind="pop" className={`-ml-2 flex items-center gap-1.5 font-display font-black tracking-tight ${wide ? "text-3xl" : "text-xl"}`}>
+            {logo && <img src={logo} alt="" width={64} height={64} className={wide ? "h-24 w-24" : "h-16 w-16"} />}
             NABS RACING
           </St>
           <Eyebrow d={150}>{slide.eyebrow}</Eyebrow>

@@ -46,10 +46,24 @@ function pill(g, x, y, w, h) {
   else g.rect(x, y, w, h);
 }
 
+// The league's mark, or null when it cannot be had (it then reads as text).
+async function loadImage(src) {
+  if (!src) return null;
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    return img;
+  } catch {
+    return null;
+  }
+}
+
 // `card`: the summary slide (utils/wrappedStory.mjs). `car`: a canvas with the
-// car on a transparent background, or null. Resolves to a JPEG Blob.
-export async function drawShareCard({ card, data, car = null, address = "" }) {
-  await fontsIn();
+// car on a transparent background, or null. `logo`: the address of the
+// league's mark for a dark background. Resolves to a JPEG Blob.
+export async function drawShareCard({ card, data, car = null, address = "", logo = null }) {
+  const [mark] = await Promise.all([loadImage(logo), fontsIn()]);
   const c = document.createElement("canvas");
   c.width = CARD_W;
   c.height = CARD_H;
@@ -72,16 +86,18 @@ export async function drawShareCard({ card, data, car = null, address = "" }) {
   g.fillRect(-200, 0, CARD_W + 400, 220);
   g.restore();
 
-  // The masthead.
+  // The masthead: the league's mark in the corner, the name beside it.
+  const textX = mark ? 212 : 72;
+  if (mark) g.drawImage(mark, 44, 36, 160, 160);
   g.fillStyle = "#FFFFFF";
   g.textBaseline = "alphabetic";
   spaced(g, 6);
   g.font = `900 40px ${DISPLAY}`;
-  g.fillText("NABS RACING", 72, 118);
+  g.fillText("NABS RACING", textX, 118);
   g.font = `700 28px ${MONO}`;
   g.fillStyle = "rgba(255,255,255,0.85)";
   spaced(g, 4);
-  g.fillText(`${season.label} WRAPPED`.toUpperCase(), 72, 168);
+  g.fillText(`${season.label} WRAPPED`.toUpperCase(), textX, 168);
   spaced(g, 0);
 
   // The car, or the race number where there is no 3D.
