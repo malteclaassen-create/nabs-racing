@@ -37,11 +37,3 @@ export const DATA = {
   ],
   type: { title: "The Podium Regular", line: "6 podiums from 12 starts." },
 };
-
-// The real car, filmed from the league's mod (test/wrapped's films, shared).
-const FILMS = "../wrapped/cars/formula_2010/brawn/";
-export const FILM = {
-  intro: { src: `${FILMS}intro.mp4`, poster: `${FILMS}intro.jpg` },
-  climb: { src: `${FILMS}climb.mp4`, poster: `${FILMS}climb.jpg` },
-  podium: { src: `${FILMS}podium.mp4`, poster: `${FILMS}podium.jpg` },
-};
