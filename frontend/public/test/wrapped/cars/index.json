@@ -1,0 +1,193 @@
+{
+ "seasons": {
+  "8": "formula_2010"
+ },
+ "cars": {
+  "formula_2010": {
+   "dir": "formula_2010/",
+   "liveries": [
+    {
+     "key": "mclaren",
+     "teams": [
+      "mclaren_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "ferrari",
+     "teams": [
+      "ferrari_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "red-bull",
+     "teams": [
+      "redbull_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "mercedes",
+     "teams": [
+      "s6_mercedes_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "williams",
+     "teams": [
+      "williams_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "renault",
+     "teams": [
+      "renault_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "force-india",
+     "teams": [
+      "s6_force_india_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "toro-rosso",
+     "teams": [
+      "torro_rosso_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "lotus",
+     "teams": [
+      "lotus_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "sauber",
+     "teams": [
+      "s3_sauber_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "virgin",
+     "teams": [
+      "s3_virgin_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "hrt",
+     "teams": [
+      "s3_hrt_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "audi",
+     "teams": [
+      "s6_audi_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "brawn",
+     "teams": [
+      "s6_brawn_gp_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "skoda",
+     "teams": [
+      "skoda_s8"
+     ],
+     "drivers": [
+      "Laluch"
+     ]
+    },
+    {
+     "key": "skoda-35",
+     "teams": [],
+     "drivers": [
+      "Endriu"
+     ],
+     "films": "skoda"
+    },
+    {
+     "key": "axn",
+     "teams": [
+      "axn-rb_s8"
+     ],
+     "drivers": [
+      "DRAS"
+     ]
+    },
+    {
+     "key": "axn-69",
+     "teams": [],
+     "drivers": [
+      "Justyn"
+     ],
+     "films": "axn"
+    },
+    {
+     "key": "arrows",
+     "teams": [
+      "s3_arrows_s8"
+     ],
+     "drivers": [
+      "Elka Gado"
+     ]
+    },
+    {
+     "key": "arrows-31",
+     "teams": [],
+     "drivers": [
+      "Larry Kapinga"
+     ],
+     "films": "arrows"
+    },
+    {
+     "key": "ncb",
+     "teams": [
+      "ncb_mugen_s8"
+     ],
+     "drivers": [
+      "Kalervo77",
+      "Kalervo"
+     ]
+    },
+    {
+     "key": "ncb-23",
+     "teams": [],
+     "drivers": [
+      "Naigouu"
+     ],
+     "films": "ncb"
+    },
+    {
+     "key": "usf1",
+     "teams": [
+      "usf1_s8"
+     ],
+     "drivers": []
+    },
+    {
+     "key": "reserve",
+     "teams": [
+      "reserve_s8"
+     ],
+     "drivers": []
+    }
+   ]
+  }
+ }
+}
