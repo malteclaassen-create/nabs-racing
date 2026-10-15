@@ -987,25 +987,22 @@ export async function notifyAchievements(prisma, driverId, state) {
 }
 
 // --- feature announcements ------------------------------------------------------
-// One-off "look what's new" broadcasts to every member's bell. Each entry runs
-// exactly once ever — the dedupeKey's unique index makes re-running a no-op —
-// so shipping the NEXT announcement is just another array entry. Best-effort
-// at boot, like the card-intro backfill.
+// One-off "look what's new" broadcasts to every member's bell. Each entry is
+// posted exactly once ever, so shipping the NEXT announcement is just another
+// array entry. Best-effort at boot, like the card-intro backfill.
+//
+// "Once ever" is kept by a ledger in Setting (ANNOUNCED_LEDGER), NOT by the
+// Notification row alone: the reminder housekeeping deletes every bell entry
+// older than 90 days, and the dedupe key went with it, so the next boot posted
+// a months-old announcement again as brand new (Hall of Fame and the Cards
+// view came back that way in October 2026).
+const ANNOUNCED_LEDGER = "announcedFeatures";
+
+// Announcements taken back out of everyone's bell. Their rows are deleted at
+// every boot, so a stray copy can never come back.
+const RETRACTED_ANNOUNCEMENTS = ["feature:hall-of-fame", "feature:cards-view"];
+
 const FEATURE_ANNOUNCEMENTS = [
-  {
-    dedupeKey: "feature:hall-of-fame",
-    type: "NEWS",
-    title: "New: Hall of Fame",
-    body: "All-time records are live: every champion, single-season records and the career top 10s. Find it under Standings.",
-    link: "/records",
-  },
-  {
-    dedupeKey: "feature:cards-view",
-    type: "NEWS",
-    title: "New: the field as driver cards",
-    body: "The driver standings got a Cards view: everyone's rating card in championship order, with each driver's own edition and picture.",
-    link: "/drivers",
-  },
   {
     dedupeKey: "feature:achievements",
     type: "NEWS",
@@ -1109,17 +1106,58 @@ export async function announceFeatures(prisma) {
   } catch {
     /* best-effort */
   }
+  for (const key of RETRACTED_ANNOUNCEMENTS) {
+    try {
+      await prisma.$executeRaw`DELETE FROM "Notification" WHERE "dedupeKey" = ${key}`;
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  // The ledger of announcements already posted. Missing means this is the
+  // first boot with the ledger: everything in the array has gone out before
+  // (some of it may since have been swept by the 90-day housekeeping), so it
+  // all counts as posted and nothing is sent again.
+  let ledger = null;
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: ANNOUNCED_LEDGER } });
+    const parsed = row ? JSON.parse(row.value) : null;
+    if (Array.isArray(parsed)) ledger = new Set(parsed.map(String));
+  } catch {
+    /* unreadable ledger: treated as missing below */
+  }
+  const firstRun = ledger === null;
+  if (firstRun) ledger = new Set(FEATURE_ANNOUNCEMENTS.map((a) => a.dedupeKey));
+  let ledgerChanged = firstRun;
+
   for (const a of [...FEATURE_ANNOUNCEMENTS, ...personal]) {
     try {
-      await dbCreateNotification(prisma, a); // broadcast: recipientId null
+      // Personal entries (one per member) stay on the dedupe key alone.
+      const isBroadcast = !a.recipientId;
+      if (!isBroadcast || !ledger.has(a.dedupeKey)) {
+        await dbCreateNotification(prisma, a); // broadcast: recipientId null
+        if (isBroadcast) {
+          ledger.add(a.dedupeKey);
+          ledgerChanged = true;
+        }
+      }
       // Keep an already-posted announcement's wording in sync with the array,
-      // so a copy fix here reaches bells that got the old text (the dedupe
-      // key makes the INSERT above a no-op in that case).
+      // so a copy fix here reaches bells that got the old text. Swept rows
+      // are simply not there to update.
       await prisma.$executeRaw`
         UPDATE "Notification" SET "title" = ${a.title}, "body" = ${a.body}, "link" = ${a.link}
         WHERE "dedupeKey" = ${a.dedupeKey}`;
     } catch {
       /* best-effort */
+    }
+  }
+
+  if (ledgerChanged) {
+    try {
+      const value = JSON.stringify([...ledger]);
+      await prisma.setting.upsert({ where: { key: ANNOUNCED_LEDGER }, update: { value }, create: { key: ANNOUNCED_LEDGER, value } });
+    } catch {
+      /* best-effort: the dedupe key still stops a repeat while the row lives */
     }
   }
 }
