@@ -20,8 +20,8 @@ export default function numbers(stage, d, { slide }) {
   scene.background = new THREE.Color(slide.bg);
   const camera = new THREE.PerspectiveCamera(38, stage.size.aspect, 0.1, 100);
   camera.position.set(0, 1.5, 17);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x001a80, 1.1));
-  const key = new THREE.DirectionalLight(0xffffff, 2);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x001a80, 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(4, 8, 10);
   scene.add(key);
 
@@ -74,6 +74,8 @@ export default function numbers(stage, d, { slide }) {
   return {
     scene,
     camera,
+    // The blocks are bright green already: a little glow, or the numbers wash out.
+    glow: 0.14,
     update(t, dt) {
       clock = t;
       dust.update(t);

@@ -10,6 +10,7 @@
 // and mounts its own layer into the story's frame for the slide on show.
 import css from "./addons.css?inline";
 import { createStage } from "../../wrapped-v2/src/stage.js";
+import { setBand } from "../../wrapped-v2/src/scenes/kit.js";
 import { DATA } from "../../wrapped-v2/src/data.js";
 import { view, words, count, fade, slam, marquee, hint } from "../../wrapped-v2/src/ui.js";
 import numbers from "../../wrapped-v2/src/scenes/numbers.js";
@@ -53,6 +54,15 @@ const climbUi = (d) =>
     ${fade(`<div class="mono" style="margin-top:12px">P${d.climb.grid} → P${d.climb.position} · ${d.climb.track} · Round ${d.climb.round}</div>`, 1.8)}`);
 
 let layer = null; // { kind, el, stage, restore() }
+
+// The 3D keeps to the room the layer's words leave (their spacer).
+setBand(() => {
+  const g = layer?.el.querySelector(".grow");
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  const c = layer.el.getBoundingClientRect();
+  return { top: (r.top - c.top) / c.height, bottom: (r.bottom - c.top) / c.height };
+});
 
 function frameEl() {
   return document.querySelector(".story-canvas")?.parentElement || null;

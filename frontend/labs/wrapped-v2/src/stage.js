@@ -37,7 +37,8 @@ export function createStage(canvas, { onFrame } = {}) {
   const renderPass = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera());
   // A soft glow on what is really bright (emissive bands, sparkle), not on
   // ordinary lit colour.
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.35, 0.94);
+  const BLOOM = 0.32;
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), BLOOM, 0.35, 0.94);
   composer.addPass(renderPass);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -51,6 +52,9 @@ export function createStage(canvas, { onFrame } = {}) {
   // Frame times, for dropping quality on a phone that can't keep up.
   let slow = 0;
   let samples = 0;
+  let strikes = 0;
+  let grace = 0; // seconds to ignore after a new scene (shaders compiling)
+  let bloomFade = 1; // the glow fades out instead of vanishing
 
   function resize() {
     const w = canvas.clientWidth || window.innerWidth;
@@ -78,7 +82,7 @@ export function createStage(canvas, { onFrame } = {}) {
       return;
     }
     const { scene, camera } = current;
-    if (current.transparent || !bloomOn || current.bloom === false) {
+    if (current.transparent || bloomFade <= 0 || current.bloom === false) {
       renderer.setClearColor(0x000000, 0);
       renderer.render(scene, camera);
     } else {
@@ -104,12 +108,23 @@ export function createStage(canvas, { onFrame } = {}) {
     }
     // Watch the frame rate for a few seconds at a time.
     if (dt > 0) {
-      samples += 1;
-      if (dt > 0.026) slow += 1;
-      if (samples >= 120) {
-        if (slow > 60) degrade();
-        samples = 0;
-        slow = 0;
+      if (!bloomOn && bloomFade > 0) bloomFade = Math.max(0, bloomFade - dt / 1.5);
+      // A scene can ask for less glow (bright colours that would wash out).
+      bloom.strength = (current?.glow ?? BLOOM) * bloomFade;
+      if (grace > 0) grace -= dt;
+      else {
+        samples += 1;
+        if (dt > 0.026) slow += 1;
+        if (samples >= 120) {
+          // Two slow stretches in a row before anything gives way.
+          strikes = slow > 84 ? strikes + 1 : 0;
+          if (strikes >= 2) {
+            degrade();
+            strikes = 0;
+          }
+          samples = 0;
+          slow = 0;
+        }
       }
     }
   }
@@ -117,17 +132,20 @@ export function createStage(canvas, { onFrame } = {}) {
 
   // ?hq keeps full quality, for looking at it in a slow test browser.
   const keep = new URLSearchParams(location.search).has("hq");
+  // First a few pixels (hard to see), then the glow (faded out), then the
+  // rest of the pixels.
   function degrade() {
     if (keep) return;
-    if (bloomOn) {
+    if (dpr > 1.2) {
+      dpr = 1.2;
+    } else if (bloomOn) {
       bloomOn = false;
       return;
-    }
-    if (dpr > 1) {
+    } else if (dpr > 1) {
       dpr = 1;
-      renderer.setPixelRatio(1);
-      resize();
-    }
+    } else return;
+    renderer.setPixelRatio(dpr);
+    resize();
   }
 
   return {
@@ -140,6 +158,7 @@ export function createStage(canvas, { onFrame } = {}) {
     },
     set(sceneDef) {
       const old = current;
+      grace = 1.5;
       current = sceneDef;
       if (current?.camera?.isPerspectiveCamera) {
         current.camera.aspect = size.aspect;
