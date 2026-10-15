@@ -5,18 +5,13 @@ site links here, and each page asks search engines not to list it.
 
 - `wrapped/`: a Season 8 Wrapped story (sample driver, Brawn GP films), at
   `/test/wrapped/index.html`. A ready-built copy, not built from `src/`.
-  It takes four parts from v2 through `app/addons.js` (built from
-  `frontend/labs/wrapped-v1-addons/`): the ribbons on the intro (behind the
-  car) and the summary, v2's block wall as the second slide, and v2's
-  climb slide without its chevrons. The intro plays
-  `cars/formula_2010/brawn/intro-alpha.mp4`, the intro rendered on a clear
-  background: the picture in its top half, its alpha (as grey) in the bottom
-  half. `intro.mp4` stays the plain film, which v2 plays.
-- `wrapped-v2/`: Season Wrapped reworked, with a 3D scene to play with on
-  every slide, at `/test/wrapped-v2/index.html`. Built from
-  `frontend/labs/wrapped-v2/` (`npx vite build --config
-  labs/wrapped-v2/vite.config.js` in `frontend/`). It plays the films in
-  `wrapped/`, so it needs that folder.
+  It takes four parts from an earlier rework through `app/addons.js` (built
+  from `frontend/labs/wrapped-v1-addons/`, with the parts in
+  `frontend/labs/wrapped-v2/src/`): the ribbons on the intro (behind the
+  car) and the summary, the block wall as the second slide, and the climb
+  slide. The intro plays `cars/formula_2010/brawn/intro-alpha.mp4`, the
+  intro rendered on a clear background: the picture in its top half, its
+  alpha (as grey) in the bottom half.
 
-To remove them, delete this folder (and `frontend/labs/wrapped-v2/` and
+To remove it, delete this folder (and `frontend/labs/wrapped-v2/` and
 `frontend/labs/wrapped-v1-addons/`).
