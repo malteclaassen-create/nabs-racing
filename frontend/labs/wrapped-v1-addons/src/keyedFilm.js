@@ -1,6 +1,7 @@
 // The intro with the ribbons running behind the car: the ribbons first, then
-// the film on top with its black background keyed out, so only the car (and
-// what is lit) covers them.
+// the film on top. The film is rendered on a clear background and carries its
+// own alpha: the picture in its top half, the alpha (as grey) in its bottom
+// half, so only the car, its shadow and its reflection cover the ribbons.
 import { THREE, bag, sparkle, spinner } from "../../wrapped-v2/src/scenes/kit.js";
 import { ribbons } from "../../wrapped-v2/src/scenes/intro.js";
 
@@ -21,16 +22,13 @@ export default function keyedFilm(stage, video, { opacity = 0.9 } = {}) {
 
   // The film on a plane that fills the view, cropped like object-fit: cover.
   const tex = B.add(new THREE.VideoTexture(video));
-  tex.colorSpace = THREE.SRGBColorSpace;
-  // The film is light on black: read it as light with its own coverage
-  // (premultiplied), so the glow round the car adds to the ribbons instead
-  // of cutting a dark, blocky edge into them. Coverage comes from a softened
-  // brightness, so compression blocks in the glow don't show.
+  // Read raw (whether a video texture arrives decoded from sRGB differs by
+  // browser): the shader decodes it itself.
+  tex.colorSpace = THREE.NoColorSpace;
   const uniforms = {
     map: { value: tex },
     uvScale: { value: new THREE.Vector2(1, 1) },
     uvOffset: { value: new THREE.Vector2() },
-    texel: { value: new THREE.Vector2(1 / 1080, 1 / 1920) },
   };
   const mat = B.add(
     new THREE.ShaderMaterial({
@@ -43,24 +41,13 @@ export default function keyedFilm(stage, video, { opacity = 0.9 } = {}) {
       depthTest: false,
       depthWrite: false,
       vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-      fragmentShader: `uniform sampler2D map; uniform vec2 uvScale; uniform vec2 uvOffset; uniform vec2 texel; varying vec2 vUv;
-        float lum(vec3 c) { return pow(max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0), 1.0 / 2.2); }
+      fragmentShader: `uniform sampler2D map; uniform vec2 uvScale; uniform vec2 uvOffset; varying vec2 vUv;
         void main(){
           vec2 uv = vUv * uvScale + uvOffset;
-          vec4 c = texture2D(map, uv);
-          float lc = lum(c.rgb);
-          // A soft brightness: the average over a small ring round the pixel.
-          float soft = lc;
-          for (int i = 0; i < 8; i++) {
-            float a = float(i) * 0.785398;
-            soft += lum(texture2D(map, uv + vec2(cos(a), sin(a)) * texel * 5.0).rgb);
-          }
-          soft /= 9.0;
-          float solid = smoothstep(0.1, 0.24, lc);
-          float glow = smoothstep(0.0, 0.3, soft) * 0.8;
-          float a = max(solid, glow);
-          vec4 col = vec4(c.rgb, a);
-          gl_FragColor = col;
+          // The picture is premultiplied (drawn over black), so it adds as is.
+          vec3 c = texture2D(map, vec2(uv.x, 0.5 + uv.y * 0.5)).rgb;
+          float a = texture2D(map, vec2(uv.x, uv.y * 0.5)).g;
+          gl_FragColor = vec4(pow(c, vec3(2.2)), a);
           #include <colorspace_fragment>
           gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(1.0));
         }`,
@@ -76,8 +63,7 @@ export default function keyedFilm(stage, video, { opacity = 0.9 } = {}) {
   function fit(size) {
     const h = 2 * D * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     plane.scale.set(h * size.aspect, h, 1);
-    uniforms.texel.value.set(1 / (video.videoWidth || 1080), 1 / (video.videoHeight || 1920));
-    const va = (video.videoWidth || 9) / (video.videoHeight || 16);
+    const va = (video.videoWidth || 9) / ((video.videoHeight || 32) / 2);
     if (va > size.aspect) {
       uniforms.uvScale.value.set(size.aspect / va, 1);
       uniforms.uvOffset.value.set((1 - size.aspect / va) / 2, 0);

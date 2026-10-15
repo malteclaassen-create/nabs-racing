@@ -8,7 +8,10 @@ site links here, and each page asks search engines not to list it.
   It takes four parts from v2 through `app/addons.js` (built from
   `frontend/labs/wrapped-v1-addons/`): the ribbons on the intro (behind the
   car) and the summary, v2's block wall as the second slide, and v2's
-  climb slide without its chevrons.
+  climb slide without its chevrons. The intro plays
+  `cars/formula_2010/brawn/intro-alpha.mp4`, the intro rendered on a clear
+  background: the picture in its top half, its alpha (as grey) in the bottom
+  half. `intro.mp4` stays the plain film, which v2 plays.
 - `wrapped-v2/`: Season Wrapped reworked, with a 3D scene to play with on
   every slide, at `/test/wrapped-v2/index.html`. Built from
   `frontend/labs/wrapped-v2/` (`npx vite build --config
