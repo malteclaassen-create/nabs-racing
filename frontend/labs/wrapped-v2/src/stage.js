@@ -70,6 +70,7 @@ export function createStage(canvas, { onFrame } = {}) {
   }
   window.addEventListener("resize", resize);
   resize();
+  let dead = false;
 
   function draw() {
     if (!current) {
@@ -88,7 +89,7 @@ export function createStage(canvas, { onFrame } = {}) {
   }
 
   function frame(now) {
-    if (!running) return;
+    if (!running || dead) return;
     requestAnimationFrame(frame);
     // At most 60 draws a second.
     if (now - lastDraw < 15.5) return;
@@ -168,5 +169,15 @@ export function createStage(canvas, { onFrame } = {}) {
       }
     },
     resize,
+    // Let go of everything (the canvas stays, empty).
+    destroy() {
+      dead = true;
+      window.removeEventListener("resize", resize);
+      current?.dispose?.();
+      current = null;
+      env.dispose();
+      composer.dispose?.();
+      renderer.dispose();
+    },
   };
 }

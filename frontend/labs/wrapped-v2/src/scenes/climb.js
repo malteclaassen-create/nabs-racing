@@ -3,7 +3,7 @@
 // per place gained flying up past them. Drag to put your foot down.
 import { THREE, bag, label, span } from "./kit.js";
 
-export default function climb(stage, d) {
+export default function climb(stage, d, { chevrons = true } = {}) {
   const B = bag();
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(40, stage.size.aspect, 0.1, 100);
@@ -23,6 +23,7 @@ export default function climb(stage, d) {
   const per = 9;
   const chev = new THREE.InstancedMesh(geo, mat, per * 2);
   chev.frustumCulled = false;
+  chev.visible = chevrons;
   scene.add(chev);
 
   // The plates: P14, P13 ... up to the finish.
