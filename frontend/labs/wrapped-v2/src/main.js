@@ -7,7 +7,7 @@ import "./style.css";
 import { createStage } from "./stage.js";
 import { DATA, FILM } from "./data.js";
 import { SLIDES } from "./slides.js";
-import { loadCar } from "./scenes/kit.js";
+import { loadCar, setBand } from "./scenes/kit.js";
 import { shareCard } from "./share.js";
 
 const $ = (s) => document.querySelector(s);
@@ -373,6 +373,14 @@ ui.addEventListener("pointerdown", (e) => {
 
 // --- go -----------------------------------------------------------------------
 stage = createStage($("#stage"), { onFrame });
+// The 3D keeps to the room the slide's words leave (their spacer).
+setBand(() => {
+  const g = ui.querySelector(".grow");
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  const c = $("#stage").getBoundingClientRect();
+  return { top: (r.top - c.top) / c.height, bottom: (r.bottom - c.top) / c.height };
+});
 showStart(false);
 preload();
 

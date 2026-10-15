@@ -283,8 +283,20 @@ export async function paintedCar(color) {
 // tighter, looking along `dir`, and sitting `ndcY` up from the middle of the
 // screen (the words take the top and the bottom of a phone).
 const _t = new THREE.Vector3();
+// Where the words leave room, as fractions of the frame's height from the
+// top ({ top, bottom }), when the page can say (the slide's free space).
+let bandOf = null;
+export function setBand(fn) {
+  bandOf = fn;
+}
 export function frameBox(camera, aspect, { center = new THREE.Vector3(), w = 4, h = 4, dir = new THREE.Vector3(0, 0.25, 1), wFrac = 0.9, hFrac = 0.42, ndcY = 0.14 } = {}) {
   const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  // Fit the free space between the words, on a short screen too.
+  const band = bandOf?.();
+  if (band && band.bottom - band.top > 0.12) {
+    hFrac = Math.min(hFrac, (band.bottom - band.top) * 0.92);
+    ndcY = 1 - (band.top + band.bottom);
+  }
   const d = Math.max(h / (2 * t * hFrac), w / (2 * t * aspect * wFrac));
   _t.copy(dir).normalize();
   camera.position.copy(center).addScaledVector(_t, d);
