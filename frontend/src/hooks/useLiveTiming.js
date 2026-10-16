@@ -15,8 +15,8 @@ import { noteBoardClock } from "./useNow.js";
 //
 // The map has a fast-lane of its own: while something is subscribed through
 // `onPositions(cb)`, the backend sends the cars that moved as `{p: [[id, x, z,
-// spline], …]}` frames at the race server's pace (~5 a second), outside React
-// state for the same reason.
+// spline, age], …], t}` frames at the race server's pace (~5 a second), outside
+// React state for the same reason; `cb(rows, t, arrivedAt)`.
 export function useLiveTiming() {
   const [board, setBoard] = useState(null);
   const [socketState, setSocketState] = useState("connecting"); // connecting | open | closed
@@ -110,7 +110,10 @@ export function useLiveTiming() {
             return; // fast-lane frame, not a board
           }
           if (data.p) {
-            posListeners.current.forEach((cb) => cb(data.p));
+            // When it got here, on this page's clock: the map plays positions
+            // back on the server's, and needs both to tell them apart.
+            const at = performance.now();
+            posListeners.current.forEach((cb) => cb(data.p, data.t, at));
             return; // map positions, not a board
           }
           // Every lap time on the page is measured against a stamp from the

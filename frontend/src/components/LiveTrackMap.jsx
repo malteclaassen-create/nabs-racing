@@ -36,7 +36,8 @@ import SlidingTabs from "./SlidingTabs.jsx";
 // Lite graphics / reduced motion snap to the newest data instead.
 //
 // The positions themselves come from the socket's position fast-lane
-// (onPositions, ~5 a second) wherever it is running, and from the board only
+// (onPositions, ~5 a second) wherever it is running, played back on the
+// server's clock from a small buffer (see PLAYOUT), and from the board only
 // for a car the fast-lane has not mentioned lately: the board decides WHICH
 // cars are on the map, the fast-lane WHERE they are.
 //
@@ -74,18 +75,10 @@ function interpNow(st, now) {
 // the board's position is the same reading, up to 700ms older.
 const FAST_LANE_HOLD_MS = 1500;
 
-// Glide one car's state towards a new point. The glide starts from wherever
-// the car is drawn right now and lasts as long as the gap since its previous
-// update, so it arrives about when the next one is due. `smooth` is for the
-// fast-lane, whose frames are only 200ms apart: it evens the gap out over a
-// few updates (a phone's network bunching two frames would otherwise make the
-// car sprint for one and crawl for the next), and stretches the glide a little
-// past it, because a car's telemetry can miss one 200ms frame and land in the
-// next — a glide that had already arrived would stand the car still for that
-// beat. A glide cut short by the next update just carries on from where the
-// car is, so the stretch costs a few tens of milliseconds of delay, no jumps.
-const FAST_GLIDE_STRETCH = 1.5;
-function glideTo(st, x, y, now, smooth) {
+// Glide one car's state towards a new board point. The glide starts from
+// wherever the car is drawn right now and lasts as long as the gap since its
+// previous update, so it arrives about when the next one is due.
+function glideTo(st, x, y, now) {
   // Only a real movement counts as an update. The upstream's per-car
   // telemetry is often sparser than the board tick, so the same position
   // arrives on several boards in a row — and re-stamping those made the car
@@ -96,21 +89,88 @@ function glideTo(st, x, y, now, smooth) {
   if (x === st.next.x && y === st.next.y) return;
   const cur = interpNow(st, now);
   // (next.t - prev.t is useless here: both are stamped at the update.)
-  const gap = now - st.lastAt;
+  st.dur = Math.min(2000, Math.max(120, now - st.lastAt));
   st.lastAt = now;
-  if (smooth) {
-    st.gapAvg = st.gapAvg ? st.gapAvg * 0.7 + Math.min(gap, 1000) * 0.3 : Math.min(gap, 1000);
-    st.dur = Math.max(80, st.gapAvg * FAST_GLIDE_STRETCH);
-  } else {
-    st.dur = Math.min(2000, Math.max(120, gap));
-  }
   st.prev = { ...cur, t: now };
   st.next = { x, y, t: now };
 }
 
+// PLAYBACK for the fast-lane. Every reading carries the moment the backend got
+// it (frame `t` minus the row's age), so the map plays the cars back on the
+// SERVER's clock, a little behind it, instead of moving them when a frame
+// happens to arrive. The server sends as evenly as a metronome (700/200ms,
+// measured), but a phone's network does not deliver that way: it holds frames
+// for half a second and hands them over in a bunch. Moved on arrival, every
+// car stood still for that half second at once and then sprinted; played back
+// from a buffer, they keep rolling at their real speed through anything
+// shorter than the delay.
+//
+// The delay is measured, not fixed. A car can only be drawn between two of its
+// readings, so the playback must stay behind its newest one until the next
+// arrives: the delay needed is how long after a car's PREVIOUS reading the
+// next one reached this page. That sums everything on the way — the race
+// server's own pace, the wait for the backend's next frame (longer when its
+// timer runs late), the network. The longest of those over the last
+// PLAYOUT_WINDOW frames, plus a margin, is the delay. A steady connection plays
+// ~0.5s behind, a jumpy phone up to a second (still less than the board
+// alone ever managed). It changes gently
+// (PLAYOUT_SLOW / PLAYOUT_FAST), so the cars run a few per cent slow or fast
+// for a while rather than jumping when it does. The first hiccup on a smooth
+// connection is still seen once; after that the buffer has grown to cover it.
+const PLAYOUT_WINDOW = 150; // frames, ~30s at 200ms
+const PLAYOUT_MARGIN_MS = 80;
+const PLAYOUT_MAX_MS = 1000;
+// A car whose previous reading is older than this was away (garage, pit
+// reset, a dropped subscription), not late: its gap says nothing about the
+// connection.
+const PLAYOUT_AWAY_MS = 1500;
+const PLAYOUT_SLOW = 0.15; // the delay grows by at most this share of real time
+const PLAYOUT_FAST = 0.05; // …and shrinks by at most this
+
+// A frame arrived: what it says about this connection. Both clocks are mixed
+// in every number here (page time minus server time), which is fine: only
+// differences between them are ever used, and the lag below is one of them.
+// `need` is the frame's longest wait between a car's previous reading (server
+// time) and this arrival (page time), or null when no car in it had one.
+function notePlayout(pc, t, arrival, need) {
+  pc.frames.push([arrival - t, need ?? arrival - t]);
+  if (pc.frames.length > PLAYOUT_WINDOW) pc.frames.shift();
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [transit, wait] of pc.frames) {
+    if (transit < lo) lo = transit;
+    if (wait > hi) hi = wait;
+  }
+  // page time minus this = the server time to show
+  pc.target = Math.min(lo + PLAYOUT_MAX_MS, hi + PLAYOUT_MARGIN_MS);
+  pc.lag ??= pc.target;
+}
+
+// Ease the playback lag towards its target; called once per animation frame.
+function stepPlayout(pc, dt) {
+  if (pc.lag == null) return;
+  const d = pc.target - pc.lag;
+  pc.lag += d > 0 ? Math.min(d, dt * PLAYOUT_SLOW) : Math.max(d, -dt * PLAYOUT_FAST);
+}
+
+// Where a fast-lane car is at server time `ts`, from its buffered readings.
+function sampleAt(buf, ts) {
+  if (ts <= buf[0].ts) return buf[0];
+  for (let i = 1; i < buf.length; i++) {
+    const b = buf[i];
+    if (ts < b.ts) {
+      const a = buf[i - 1];
+      const f = (ts - a.ts) / (b.ts - a.ts);
+      return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+    }
+  }
+  return buf[buf.length - 1]; // nothing newer yet: wait where the last one was
+}
+
 function useSmoothCars({ dots, focusGuid, zoom, camInfo, onPositions, project }) {
   const els = useRef(new Map()); // guid -> { el, car, k }
-  const states = useRef(new Map()); // guid -> { prev, next }
+  const states = useRef(new Map()); // guid -> { prev, next, buf? }
+  const playout = useRef({ frames: [], target: null, lag: null });
   const camRef = useRef(null);
   const liveRef = useRef({ focusGuid, zoom, camInfo, zoomShown: 1, cameraX: null, cameraY: null });
   liveRef.current.focusGuid = focusGuid;
@@ -137,30 +197,48 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo, onPositions, project })
           dur: 700,
         });
       } else if (!(st.fastAt && now - st.fastAt < FAST_LANE_HOLD_MS)) {
-        glideTo(st, d.x, d.y, now, false);
+        // The fast-lane has gone quiet (a held result, a dropped
+        // subscription): the board takes the car over from where it is drawn.
+        if (st.buf) {
+          st.prev = st.next = { ...(st.shown || st.next), t: now };
+          st.buf = null;
+          st.fastAt = null;
+        }
+        glideTo(st, d.x, d.y, now);
       }
     }
     for (const g of [...states.current.keys()]) if (!seen.has(g)) states.current.delete(g);
   }, [dots]);
 
-  // The position fast-lane: moves the cars the board has put on the map,
-  // straight into their glide states — no React render per frame.
+  // The position fast-lane: buffers the readings of the cars the board has put
+  // on the map, for the playback below — no React render per frame.
   const projectRef = useRef(project);
   projectRef.current = project;
   useEffect(() => {
     if (!onPositions) return undefined;
-    return onPositions((rows) => {
+    return onPositions((rows, t, arrival) => {
       const proj = projectRef.current;
-      if (!proj || !Array.isArray(rows)) return;
-      const now = performance.now();
-      for (const [guid, x, z, spline] of rows) {
+      if (!proj || !Array.isArray(rows) || typeof t !== "number") return;
+      let need = null;
+      for (const [guid, x, z, spline, age] of rows) {
         const st = states.current.get(guid);
         if (!st) continue;
         const pt = proj(x, z, spline);
         if (!pt) continue;
-        glideTo(st, pt[0], pt[1], now, !!st.fastAt);
-        st.fastAt = now;
+        const ts = t - (Number(age) || 0);
+        st.buf ??= [];
+        // Out of order or repeated (a server switch, a reconnect): dropped.
+        const prev = st.buf.length ? st.buf[st.buf.length - 1].ts : null;
+        if (prev != null && ts <= prev) continue;
+        if (prev != null && t - prev < PLAYOUT_AWAY_MS) need = Math.max(need ?? -Infinity, arrival - prev);
+        // Back after being away: start over from here, rather than glide
+        // across the infield from wherever the car was last seen.
+        else if (prev != null) st.buf.length = 0;
+        st.buf.push({ ts, x: pt[0], y: pt[1] });
+        if (st.buf.length > 40) st.buf.shift(); // ~8s, far more than the delay
+        st.fastAt = arrival;
       }
+      notePlayout(playout.current, t, arrival, need);
     });
   }, [onPositions]);
 
@@ -176,10 +254,22 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo, onPositions, project })
         document.documentElement.classList.contains("fx-lite") ||
         (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
       const k = 1 / Math.sqrt(liveRef.current.zoomShown);
+      const pc = playout.current;
+      stepPlayout(pc, dt);
+      const playAt = pc.lag == null ? null : now - pc.lag; // server time on show
       let focusPos = null;
       for (const [guid, st] of states.current) {
         const reg = els.current.get(guid);
-        const p = instant ? { x: st.next.x, y: st.next.y } : interpNow(st, now);
+        let p;
+        if (st.buf?.length && playAt != null) {
+          // Readings already played are dropped, all but the one the car is
+          // gliding away from.
+          while (st.buf.length > 2 && st.buf[1].ts <= playAt) st.buf.shift();
+          p = instant ? st.buf[st.buf.length - 1] : sampleAt(st.buf, playAt);
+        } else {
+          p = instant ? { x: st.next.x, y: st.next.y } : interpNow(st, now);
+        }
+        st.shown = p;
         if (reg) {
           reg.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
           if (reg.car && reg.k !== k) {
