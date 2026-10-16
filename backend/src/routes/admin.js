@@ -4661,7 +4661,8 @@ router.post("/races/:id/results-post", resultPostImages, async (req, res, next) 
 });
 
 // Validate the optional announcement fields shared by create & edit below:
-// info (free text for rules/mods), qualiMinutes, raceLaps, and the race-day
+// info (free text for rules/mods), qualiMinutes (+ the optional tier split
+// qualiT2Minutes/qualiT1Minutes), raceLaps, and the race-day
 // shape (raceFormat + sprintLaps). Returns { error } or
 // { info?, qualiMinutes?, raceLaps?, raceFormat?, sprintLaps? } with only the
 // supplied keys set.
@@ -4675,6 +4676,14 @@ function parseEventExtras(body) {
   const quali = parseFormatNumber(body.qualiMinutes, "Qualifying minutes", 240);
   if (quali.error) return { error: quali.error };
   if (quali.ok) out.qualiMinutes = quali.value;
+  // Tier split (T2 first, T1 last). A set split also sets the total above.
+  const t2 = parseFormatNumber(body.qualiT2Minutes, "Tier 2 qualifying minutes", 240);
+  if (t2.error) return { error: t2.error };
+  const t1 = parseFormatNumber(body.qualiT1Minutes, "Tier 1 qualifying minutes", 240);
+  if (t1.error) return { error: t1.error };
+  const split = combineQualiSplit(t2, t1);
+  if (split.error) return { error: split.error };
+  Object.assign(out, split);
   const laps = parseFormatNumber(body.raceLaps, "Race laps", 999);
   if (laps.error) return { error: laps.error };
   if (laps.ok) out.raceLaps = laps.value;
@@ -4699,6 +4708,12 @@ function parseEventExtras(body) {
 async function writeRaceFormat(raceId, extras) {
   if (extras.qualiMinutes !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "qualiMinutes" = ? WHERE "id" = ?`, extras.qualiMinutes, raceId);
+  }
+  if (extras.qualiT2Minutes !== undefined) {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Race" SET "qualiT2Minutes" = ?, "qualiT1Minutes" = ? WHERE "id" = ?`,
+      extras.qualiT2Minutes, extras.qualiT1Minutes, raceId
+    );
   }
   if (extras.raceLaps !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Race" SET "raceLaps" = ? WHERE "id" = ?`, extras.raceLaps, raceId);

@@ -164,6 +164,8 @@ router.get("/", async (req, res, next) => {
         hasQuali: withQuali.has(r.id),
         info: r.info || null,
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
+        qualiT2Minutes: format.get(r.id)?.qualiT2Minutes ?? null,
+        qualiT1Minutes: format.get(r.id)?.qualiT1Minutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
         raceFormat: format.get(r.id)?.raceFormat ?? "SINGLE",
         sprintLaps: format.get(r.id)?.sprintLaps ?? null,
@@ -268,6 +270,8 @@ router.get("/calendar.ics", async (req, res, next) => {
         parentRaceId: parentOf.get(r.id) ?? null,
         type: types.get(r.id) || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP"),
         qualiMinutes: format.get(r.id)?.qualiMinutes ?? null,
+        qualiT2Minutes: format.get(r.id)?.qualiT2Minutes ?? null,
+        qualiT1Minutes: format.get(r.id)?.qualiT1Minutes ?? null,
         raceLaps: format.get(r.id)?.raceLaps ?? null,
       })),
       {

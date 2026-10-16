@@ -27,6 +27,7 @@ import AdminSearch from "../components/AdminSearch.jsx";
 import AdminNav, { AdminNavToggle } from "../components/AdminNav.jsx";
 import { NAV_RAIL, useAdminNavMode } from "../hooks/useAdminNavMode.js";
 import RacePreview from "../components/RacePreview.jsx";
+import QualiInput, { qualiPayload } from "../components/QualiInput.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
 import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
@@ -2074,7 +2075,7 @@ function parseRaceTimeInput(text) {
 // The classification is compared on what the save sends, not on the row
 // objects: those also carry the baselines the overwrite guard asks from, and
 // a row added and removed again is no change at all.
-const EMPTY_META = { track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" };
+const EMPTY_META = { track: "", date: "", qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" };
 const EMPTY_HONOURS = { pole: "", poleTime: "", fl: "", flTime: "" };
 function resultsSnap(rs) {
   return JSON.stringify(
@@ -2167,7 +2168,7 @@ function EditResults() {
   const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
-  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
+  const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
   const [dotd, setDotd] = useState(""); // Driver of the Day pick
   const [dotdBy, setDotdBy] = useState(""); // who made the pick (streamer)
   // Manually recorded honours (pole / fastest lap, each with an optional lap
@@ -2261,6 +2262,8 @@ function EditResults() {
           track: d.race?.track || "",
           date: toLocalInput(d.race?.date),
           qualiMinutes: d.race?.qualiMinutes ?? "",
+          qualiT2Minutes: d.race?.qualiT2Minutes ?? "",
+          qualiT1Minutes: d.race?.qualiT1Minutes ?? "",
           raceFormat: d.race?.raceFormat || "SINGLE",
           sprintLaps: d.race?.sprintLaps ?? "",
           raceLaps: d.race?.raceLaps ?? "",
@@ -2711,7 +2714,7 @@ function EditResults() {
       await api.updateEvent(raceId, {
         track: meta.track,
         date: fromLocalInput(meta.date),
-        qualiMinutes: meta.qualiMinutes === "" ? null : meta.qualiMinutes,
+        ...qualiPayload(meta),
         raceFormat: meta.raceFormat,
         sprintLaps: meta.raceFormat === "SPRINT_FEATURE" && meta.sprintLaps !== "" ? meta.sprintLaps : null,
         raceLaps: meta.raceLaps === "" ? null : meta.raceLaps,
@@ -2905,10 +2908,7 @@ function EditResults() {
               <option value="SPRINT_FEATURE">Feature + sprint race</option>
             </select>
           </Field>
-          <Field label="Qualifying (min)" tone="plain">
-            <input className="input w-32" type="number" min="1" value={meta.qualiMinutes}
-              onChange={(e) => setMeta({ ...meta, qualiMinutes: e.target.value })} />
-          </Field>
+          <QualiInput key={raceId} className="w-56" value={meta} onChange={(patch) => setMeta({ ...meta, ...patch })} />
           <Field label={meta.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
             <input className="input w-32" type="number" min="1" value={meta.raceLaps}
               onChange={(e) => setMeta({ ...meta, raceLaps: e.target.value })} />
@@ -4666,7 +4666,7 @@ function DiscordEvents({ onJump }) {
   const [busy, setBusy] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
-    qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
+    qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
   });
 
   async function createEvent(e) {
@@ -4682,7 +4682,7 @@ function DiscordEvents({ onJump }) {
         date: fromLocalInput(event.date),
         type: event.type,
         seasonId: current?.id,
-        qualiMinutes: event.qualiMinutes || null,
+        ...qualiPayload(event),
         raceFormat: event.raceFormat,
         sprintLaps: event.raceFormat === "SPRINT_FEATURE" ? event.sprintLaps || null : null,
         raceLaps: event.raceLaps || null,
@@ -4698,7 +4698,7 @@ function DiscordEvents({ onJump }) {
       );
       setEvent({
         number: "", track: "", date: "", type: "CHAMPIONSHIP",
-        qualiMinutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
+        qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
       });
       reloadRaces();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -4755,6 +4755,8 @@ function DiscordEvents({ onJump }) {
       number: r.number ?? "",
       hasResults: (r.resultCount || 0) > 0,
       qualiMinutes: r.qualiMinutes ?? "",
+      qualiT2Minutes: r.qualiT2Minutes ?? "",
+      qualiT1Minutes: r.qualiT1Minutes ?? "",
       raceFormat: r.raceFormat || "SINGLE",
       sprintLaps: r.sprintLaps ?? "",
       raceLaps: r.raceLaps ?? "",
@@ -4773,7 +4775,7 @@ function DiscordEvents({ onJump }) {
         date: fromLocalInput(edit.date),
         type: edit.type,
         number: edit.type === "CHAMPIONSHIP" && edit.number !== "" ? Number(edit.number) : undefined,
-        qualiMinutes: edit.qualiMinutes === "" ? null : edit.qualiMinutes,
+        ...qualiPayload(edit),
         raceFormat: edit.raceFormat,
         sprintLaps: edit.raceFormat === "SPRINT_FEATURE" && edit.sprintLaps !== "" ? edit.sprintLaps : null,
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
@@ -4856,10 +4858,7 @@ function DiscordEvents({ onJump }) {
           {/* Labelled rather than placeholder-only: a sprint day puts three bare
               numbers in a row, and "15 12 20" says nothing once they're typed. */}
           <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
-            <Field label="Qualifying (min)" tone="plain">
-              <input aria-label="Qualifying (min)" className="input" type="number" min="1" placeholder="e.g. 15" value={event.qualiMinutes}
-                onChange={(e) => setEvent({ ...event, qualiMinutes: e.target.value })} />
-            </Field>
+            <QualiInput placeholder="e.g. 15" value={event} onChange={(patch) => setEvent({ ...event, ...patch })} />
             <Field label={event.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
               <input
                 aria-label={event.raceFormat === "SPRINT_FEATURE" ? "Feature race laps" : "Race laps"}
@@ -4977,10 +4976,7 @@ function DiscordEvents({ onJump }) {
                           <RacePointsInput value={edit.pointsTable} onChange={(v) => setEdit({ ...edit, pointsTable: v })} />
                         </Field>
                       )}
-                      <Field label="Qualifying (min)" tone="plain">
-                        <input className="input" type="number" min="1" value={edit.qualiMinutes}
-                          onChange={(e) => setEdit({ ...edit, qualiMinutes: e.target.value })} />
-                      </Field>
+                      <QualiInput value={edit} onChange={(patch) => setEdit({ ...edit, ...patch })} />
                       <Field label={edit.raceFormat === "SPRINT_FEATURE" ? "Feature laps" : "Race laps"} tone="plain">
                         <input className="input" type="number" min="1" value={edit.raceLaps}
                           onChange={(e) => setEdit({ ...edit, raceLaps: e.target.value })} />

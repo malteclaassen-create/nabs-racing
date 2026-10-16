@@ -296,6 +296,8 @@ export async function raceDetailPayload(prisma, race) {
       isCompleted: race.isCompleted,
       info: race.info || null,
       qualiMinutes: format.qualiMinutes ?? null,
+      qualiT2Minutes: format.qualiT2Minutes ?? null,
+      qualiT1Minutes: format.qualiT1Minutes ?? null,
       raceLaps: format.raceLaps ?? null,
       raceFormat: format.raceFormat ?? "SINGLE",
       sprintLaps: format.sprintLaps ?? null,

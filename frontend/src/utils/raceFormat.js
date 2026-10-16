@@ -6,7 +6,12 @@
 // need to know. A normal round keeps saying "Race 20 laps" exactly as before.
 export function sessionSummary(race = {}) {
   const out = [];
-  if (race.qualiMinutes) out.push(`Qualifying ${race.qualiMinutes} min`);
+  // Split by tier: one session, Tier 2 on track first, Tier 1 for the rest.
+  if (race.qualiT2Minutes && race.qualiT1Minutes) {
+    out.push(`Qualifying T2 ${race.qualiT2Minutes} min, then T1 ${race.qualiT1Minutes} min`);
+  } else if (race.qualiMinutes) {
+    out.push(`Qualifying ${race.qualiMinutes} min`);
+  }
   if (race.raceFormat === "SPRINT_FEATURE") {
     out.push(race.raceLaps ? `Feature ${race.raceLaps} laps` : "Feature race");
     out.push(race.sprintLaps ? `Sprint ${race.sprintLaps} laps` : "Sprint race");

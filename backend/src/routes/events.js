@@ -244,6 +244,8 @@ router.get("/", async (req, res, next) => {
         // whole width instead of sitting beside a gap.
         showHotlaps,
         qualiMinutes: format.get(race.id)?.qualiMinutes ?? null,
+        qualiT2Minutes: format.get(race.id)?.qualiT2Minutes ?? null,
+        qualiT1Minutes: format.get(race.id)?.qualiT1Minutes ?? null,
         raceLaps: format.get(race.id)?.raceLaps ?? null,
         raceFormat: format.get(race.id)?.raceFormat ?? "SINGLE",
         sprintLaps: format.get(race.id)?.sprintLaps ?? null,

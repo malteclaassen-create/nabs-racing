@@ -98,7 +98,11 @@ function summaryFor(race) {
 function descriptionFor(race, link) {
   const lines = [];
   const fmt = [];
-  if (race.qualiMinutes) fmt.push(`Qualifying ${race.qualiMinutes} min`);
+  if (race.qualiT2Minutes && race.qualiT1Minutes) {
+    fmt.push(`Qualifying ${race.qualiT2Minutes + race.qualiT1Minutes} min (T2 first ${race.qualiT2Minutes}, T1 last ${race.qualiT1Minutes})`);
+  } else if (race.qualiMinutes) {
+    fmt.push(`Qualifying ${race.qualiMinutes} min`);
+  }
   if (race.raceLaps) fmt.push(`Race ${race.raceLaps} laps`);
   if (fmt.length) lines.push(fmt.join(", "));
   if (race.info) lines.push(String(race.info).trim());

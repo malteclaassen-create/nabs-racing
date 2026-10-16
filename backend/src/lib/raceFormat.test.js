@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseRaceFormat, sessionLines } from "./raceFormat.js";
+import { combineQualiSplit, parseFormatNumber, parseRaceFormat, sessionLines } from "./raceFormat.js";
 
 // The sessions line is the whole point of the sprint format: an F2 event has to
 // announce two races, and a normal round must keep reading exactly as it did
@@ -45,5 +45,35 @@ describe("parseRaceFormat", () => {
 
   it("rejects anything else", () => {
     expect(parseRaceFormat("SPRINT").error).toMatch(/one of/);
+  });
+});
+
+// Qualifying split by tier: one session, Tier 2 first, Tier 1 for the rest.
+describe("qualifying tier split", () => {
+  const num = (v, label) => parseFormatNumber(v, label, 240);
+
+  it("announces both halves with the total", () => {
+    expect(sessionLines({ qualiMinutes: 20, qualiT2Minutes: 12, qualiT1Minutes: 8, raceLaps: 20 })).toEqual([
+      "20 min qualifying (T2 first 12 min, T1 last 8 min)",
+      "20 lap race",
+    ]);
+  });
+
+  it("sets the total to the sum of both halves", () => {
+    expect(combineQualiSplit(num(12, "T2"), num("8", "T1"))).toEqual({
+      qualiT2Minutes: 12,
+      qualiT1Minutes: 8,
+      qualiMinutes: 20,
+    });
+  });
+
+  it("refuses one half without the other", () => {
+    expect(combineQualiSplit(num(12, "T2"), num(null, "T1")).error).toMatch(/both/);
+    expect(combineQualiSplit(num("", "T2"), num(8, "T1")).error).toMatch(/both/);
+  });
+
+  it("clears the split when both are emptied, and leaves it alone when not sent", () => {
+    expect(combineQualiSplit(num(null, "T2"), num("", "T1"))).toEqual({ qualiT2Minutes: null, qualiT1Minutes: null });
+    expect(combineQualiSplit(num(undefined, "T2"), num(undefined, "T1"))).toEqual({});
   });
 });

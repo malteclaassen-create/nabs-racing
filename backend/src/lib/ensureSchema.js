@@ -109,6 +109,12 @@ export async function ensureAppSchema(prisma) {
   // The round's own points table (JSON array, null = the season's).
   await addColumn(prisma, "Race", "pointsTable", "TEXT");
   await addColumn(prisma, "Race", "raceLaps", "INTEGER");
+  // Qualifying split by tier: one session where Tier 2 has the track first and
+  // Tier 1 the rest of it (e.g. 12 + 8 of 20 minutes). Both or neither; when
+  // set, qualiMinutes above is their sum, so every reader of the plain total
+  // keeps working. Raw-SQL only (lib/raceFormat.js), not in the Prisma client.
+  await addColumn(prisma, "Race", "qualiT2Minutes", "INTEGER");
+  await addColumn(prisma, "Race", "qualiT1Minutes", "INTEGER");
 
   // --- Sprint + feature weekends (migration race_sprint_format): an F2-style
   // event runs a short sprint before the main race. SINGLE is what every round
