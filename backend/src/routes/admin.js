@@ -25,7 +25,7 @@ import { memoryReport, writeHeapSnapshotFile } from "../services/memoryDiagnosti
 import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
-import { parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
+import { combineQualiSplit, parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
 import { leagueDay } from "../lib/tokenRules.js";
 import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds, resultsBellRace } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
