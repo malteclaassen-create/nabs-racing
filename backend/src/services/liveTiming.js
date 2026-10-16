@@ -31,6 +31,7 @@ import { parkLaps, markNotified } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
+import { createDeltaTracker } from "./liveDelta.js";
 import * as liveIncidents from "./liveIncidents.js";
 import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
@@ -684,6 +685,9 @@ function createRelay(server) {
   // Six crossings each is plenty: further back than that and the board says
   // how many laps down, not how many seconds. Cleared with the stints.
   const crossingsByGuid = new Map(); // guid -> [{ lap, at }], oldest first
+  // Each driver's live delta to their own best lap, measured from the
+  // telemetry (services/liveDelta.js). Cleared with the stints.
+  const deltaTracker = createDeltaTracker();
   const CROSSINGS_KEPT = 6;
 
   // IsInPits, cleaned up. See pitFlag.js for why the raw flag cannot be shown
@@ -1002,6 +1006,7 @@ function createRelay(server) {
       lastRacePosByGuid.clear();
       raceRosterByGuid.clear();
       crossingsByGuid.clear();
+      deltaTracker.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -1442,6 +1447,7 @@ function createRelay(server) {
     const guid = carIdToGuid.get(live.CarID);
     const inPits = guid ? pitFilter.read(guid, live.IsInPits, speedKmhOf(live)) : undefined;
     pitRecorder.onTelemetry(server.key, guid, live, inPits);
+    if (guid) deltaTracker.onFrame(guid, live.NormalisedSplinePos, Date.now(), !!inPits);
     liveIncidents.onTelemetry(server.key, {
       guid,
       carId: live.CarID,
@@ -1601,7 +1607,14 @@ function createRelay(server) {
       rpm: onTrack ? live.EngineRPM ?? null : null,
       ping: live.Ping ?? d.Ping ?? null,
       drs: live.DRSActive ?? d.DRSActive ?? false,
-      deltaSelfMs: onTrack ? live.DeltaToSelf ?? d.DeltaToSelf ?? null : null,
+      // Our own measurement first (services/liveDelta.js); the server
+      // manager's figure only for a driver whose best lap we did not watch
+      // whole. Nothing in the pit lane or on an out lap: there is no lap
+      // being compared.
+      deltaSelfMs:
+        onTrack && !inPits && !outLap
+          ? deltaTracker.deltaFor(guid, car ? nsToMs(car.BestLap) : null) ?? live.DeltaToSelf ?? d.DeltaToSelf ?? null
+          : null,
       spline,
       // Real world position (X/Z ground plane) for the real-map dots. Only on-track
       // cars carry live telemetry, so it's null otherwise; rounded to keep the board
@@ -2236,6 +2249,7 @@ function createRelay(server) {
       stintDrivers: stintsByGuid.size,
       heldPositions: lastRacePosByGuid.size,
       crossingDrivers: crossingsByGuid.size, // capped at CROSSINGS_KEPT each
+      deltaDrivers: deltaTracker.size(), // four 2 KB buffers each at most
 
       raceRoster: raceRosterByGuid.size,
       resultHold: !!finishedRace,
@@ -2255,6 +2269,7 @@ function createRelay(server) {
       raceRosterByGuid.clear();
       lastRacePosByGuid.clear();
       crossingsByGuid.clear();
+      deltaTracker.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
