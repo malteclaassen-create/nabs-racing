@@ -317,7 +317,7 @@ export default function Attendance() {
                     "Date to be confirmed"
                   )}
                 </div>
-                <SessionPlan race={ev} className="mt-4 w-[22rem] max-w-full" />
+                <SessionPlan race={ev} className="mt-1.5 text-medium" />
               </div>
               {ev.date && <RaceCountdown date={ev.date} className="w-full sm:w-80" />}
             </div>

@@ -231,7 +231,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
                 "Date to be confirmed"
               )}
             </div>
-            <SessionPlan race={race} className="mt-4 w-[22rem] max-w-full" />
+            <SessionPlan race={race} className="mt-1.5 text-medium" />
           </div>
           <div className="flex w-full flex-col gap-2.5 sm:w-80">
             {race.date && <RaceCountdown date={race.date} />}

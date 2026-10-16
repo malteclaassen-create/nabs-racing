@@ -106,7 +106,7 @@ export default function NextRaceCard({ race, className = "", style = null }) {
       )}
       {/* The session line — on a sprint weekend "there is a sprint" is exactly
           what this card exists to announce. Same wording as the sign-up page. */}
-      <SessionPlan race={race} className="mt-4" />
+      <SessionPlan race={race} className="mt-2 text-ink/75 dark:text-white/80" />
 
       <RaceCountdown date={race.date} className="mt-5" />
 
