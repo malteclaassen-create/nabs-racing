@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
@@ -782,6 +782,56 @@ function carLabel(carName) {
 // they ride along with the driver's name (see TIMING_COLUMNS).
 // `badgesAlways`: same thing at every width, for a reader who switched the flags
 // column off entirely — the badges are the only place PIT is visible.
+// Click a driver anywhere on the page and the track map puts them in focus,
+// exactly as tapping their car on the map does. Only a driver who is out there
+// can be found, so only their rows answer. Shared through context rather than
+// threaded through every table: the Live page provides { focusGuid, onPick },
+// and each row asks it.
+const MapPick = createContext(null);
+
+// What a row needs to be clickable: the handler, the pointer, and the tint that
+// marks the driver the map is following. Clicks on the row's own buttons and
+// links stay theirs, and a click that ends a text selection is not a pick.
+function usePickRow(e) {
+  const pick = useContext(MapPick);
+  if (!pick || !e.onTrack) return { props: {}, cls: "" };
+  const followed = pick.focusGuid === e.guid;
+  return {
+    props: {
+      onClick: (ev) => {
+        if (ev.target.closest?.("a, button, input, select, textarea, label")) return;
+        if (window.getSelection?.()?.toString()) return;
+        pick.onPick(e);
+      },
+      title: followed ? "Followed on the map" : "Show on the map",
+    },
+    cls: `cursor-pointer ${followed ? "bg-sky-500/10" : ""}`,
+  };
+}
+
+// The driver's name, as a button where the map can find them (so the keyboard
+// gets there too), as plain text where it cannot.
+function PickName({ e, className, children }) {
+  const pick = useContext(MapPick);
+  if (!pick || !e.onTrack) {
+    return (
+      <span className={className} title={e.name}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`${className} text-left hover:underline focus-visible:underline`}
+      title={`${e.name} · show on the map`}
+      onClick={() => pick.onPick(e)}
+    >
+      {children}
+    </button>
+  );
+}
+
 function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
@@ -817,9 +867,9 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           one that has to give. */}
       <span className="min-w-0 sm:min-w-[9rem] lg:min-w-[8rem] 2xl:min-w-[9rem]">
         <span className="flex items-center gap-1.5">
-          <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
+          <PickName e={e} className="truncate font-display text-base font-bold uppercase tracking-tight text-dark">
             {name}
-          </span>
+          </PickName>
           {match?.country && (
             <Flag code={match.country} title={match.teamName} w={15} h={11} className="sm:hidden" />
           )}
@@ -856,6 +906,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
 // A row in the "On Track Now" table — live current lap, and either the delta to
 // the driver's own best (practice, qualifying) or the gap to the leader (race).
 function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null, narrow = false }) {
+  const pickRow = usePickRow(e);
   const deltaCls = e.deltaSelfMs == null ? "text-light" : e.deltaSelfMs < 0 ? "text-ok" : "text-warn";
   const posChip = (
     <span
@@ -921,7 +972,8 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
       <tr
         data-flip-id={e.guid}
         style={{ "--i": Math.min(index, 16) }}
-        className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"}`}
+        {...pickRow.props}
+        className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"} ${pickRow.cls}`}
       >
         {/* The position sits on the name's line: the cell is top-aligned and
             padded so the 32px chip is centred on the 24px first line. */}
@@ -937,9 +989,9 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
                   name and the number share a floor. */}
               <div className="flex items-baseline justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-display text-base font-bold uppercase tracking-tight text-dark" title={e.name}>
+                  <PickName e={e} className="truncate font-display text-base font-bold uppercase tracking-tight text-dark">
                     {name}
-                  </span>
+                  </PickName>
                   {match?.country && <Flag code={match.country} title={match.teamName} w={15} h={11} className="shrink-0" />}
                   {match?.role === "safety" && <SafetyCarBadge compact />}
                 </span>
@@ -978,7 +1030,8 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
       style={{ "--i": Math.min(index, 16) }}
       // A leaver (race sessions keep them listed so the finishing order holds)
       // dims but stays in their slot.
-      className={`border-b border-border last:border-0 transition hover:bg-surface2 ${e.onTrack ? "" : "opacity-55"}`}
+      {...pickRow.props}
+      className={`border-b border-border last:border-0 transition hover:bg-surface2 ${e.onTrack ? "" : "opacity-55"} ${pickRow.cls}`}
     >
       <td className="py-3 pl-3.5 pr-2 text-center sm:pl-5">
         {/* The safety car is on the road but not in the race, so it carries no
@@ -1515,6 +1568,7 @@ function SortArrow({ dir }) {
 
 function TimingRow({ e, cols, ctx, index = 0 }) {
   const isP1 = e.position === 1;
+  const pickRow = usePickRow(e);
   return (
     <tr
       // Whenever the order changes — someone sets a faster lap, or the sort key
@@ -1522,9 +1576,10 @@ function TimingRow({ e, cols, ctx, index = 0 }) {
       // table snapping (useFlipList, keyed on this id).
       data-flip-id={e.guid}
       style={{ "--i": Math.min(index, 16) }}
+      {...pickRow.props}
       className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
         isP1 ? "bg-brand/5" : ""
-      }`}
+      } ${pickRow.cls}`}
     >
       {cols.map((col, i) => (
         <td
@@ -2060,6 +2115,20 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
   // No stream link, no switch — the card is the map, exactly as before.
   const stream = useMemo(() => streamEmbed(streamUrl), [streamUrl]);
   const [view, setView] = useState("map");
+  // A driver picked in one of the tables below: back to the map if the stream
+  // or the hotlap was on, and the map brought into view if it has scrolled off.
+  const pick = useContext(MapPick);
+  const sectionRef = useRef(null);
+  const pickSeq = pick?.seq ?? 0;
+  useEffect(() => {
+    if (!pickSeq) return;
+    setView("map");
+    const el = sectionRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top >= 0 && r.bottom <= window.innerHeight) return;
+    el.scrollIntoView({ block: r.height > window.innerHeight ? "start" : "center", behavior: motionOff() ? "auto" : "smooth" });
+  }, [pickSeq]);
   // Map / stream / hotlap: the new one fades over the old instead of cutting.
   const mapSwap = useSwapClass(view);
   const showStream = !!stream && view === "stream";
@@ -2074,7 +2143,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
     ...(hasHotlap ? [{ key: "hotlap", label: "Hotlap" }] : []),
   ];
   return (
-    <section className={`reveal card flex flex-col overflow-hidden ${className}`}>
+    <section ref={sectionRef} className={`reveal card flex flex-col overflow-hidden ${className}`}>
       {/* No header strip over the map. A card that says "Track map" above a
           picture of a track is a line of chrome charging rent on the one panel
           that is better for being bigger — the same reason the fullscreen board
@@ -2114,6 +2183,8 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
               follow={follow}
               onCarTelemetry={onCarTelemetry}
               onPositions={onPositions}
+              focusGuid={pick?.focusGuid ?? null}
+              onFocusChange={pick?.setFocus}
               server={server}
               sectorLines={session.sectorLines}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
@@ -2122,7 +2193,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
             {cars.length > 0 && (
               <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 font-mono text-[10px] uppercase tracking-wider text-light">
                 <span>
-                  {mapCarCount} {mapCarCount === 1 ? "car" : "cars"} · tap a car to follow
+                  {mapCarCount} {mapCarCount === 1 ? "car" : "cars"} · tap a car or a name to follow
                 </span>
                 {cars.some((c) => c.inPits) && (
                   <span className="flex items-center gap-1.5">
@@ -2277,6 +2348,17 @@ function PitClocks({ pitSince, stoppedSince }) {
   );
 }
 
+// One car in the pit lane: a row of its own so it can ask whether it is
+// clickable (usePickRow is a hook, and the list is built in a loop).
+function PitLaneRow({ e, children }) {
+  const pickRow = usePickRow(e);
+  return (
+    <div {...pickRow.props} className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface2 sm:px-5 ${pickRow.cls}`}>
+      {children}
+    </div>
+  );
+}
+
 function PitLaneSection({ entries, match, className = "" }) {
   const inPits = entries.filter((e) => e.onTrack && e.inPits);
   return (
@@ -2297,12 +2379,12 @@ function PitLaneSection({ entries, match, className = "" }) {
             const m = match ? match(e) : null;
             const t = e.currentTyre ? tyreCompound(e.currentTyre) : null;
             return (
-              <div key={e.guid} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+              <PitLaneRow key={e.guid} e={e}>
                 <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: m?.teamColor || "var(--c-border)" }} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                  <PickName e={e} className="block max-w-full truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
                     {m?.nabsName || e.name}
-                  </span>
+                  </PickName>
                   <span className="block truncate text-[11px] text-light">{m?.teamName || NO_VALUE}</span>
                 </span>
                 <PitClocks pitSince={e.pitSince} stoppedSince={e.stoppedSince} />
@@ -2315,7 +2397,7 @@ function PitLaneSection({ entries, match, className = "" }) {
                     <TyreBadge t={t} size={22} />
                   </span>
                 )}
-              </div>
+              </PitLaneRow>
             );
           })}
         </div>
@@ -2384,9 +2466,13 @@ function BestSectorsSection({ entries, match, className = "" }) {
                   />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
-                    {r ? m?.nabsName || r.e.name : NO_VALUE}
-                  </span>
+                  {r ? (
+                    <PickName e={r.e} className="block max-w-full truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                      {m?.nabsName || r.e.name}
+                    </PickName>
+                  ) : (
+                    <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{NO_VALUE}</span>
+                  )}
                   {r && <span className="block truncate text-[11px] text-light">{m?.teamName || carLabel(r.e.carName) || NO_VALUE}</span>}
                 </span>
               </div>
@@ -2748,6 +2834,7 @@ function TvGroup({ label, count, gap = false }) {
 
 function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
   const m = match ? match(e) : null;
+  const pickRow = usePickRow(e);
   const name = m?.nabsName || e.name;
   const color = m?.teamColor || "var(--c-border)";
   // The bleed only happens for a driver we can put a team colour to. Appending
@@ -2780,7 +2867,8 @@ function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
       // between runs is what everybody is doing most of the evening, and the
       // whole field came out grey. In a race, having left is said in a word
       // instead (below), which is the thing that was worth saying anyway.
-      className="relative flex min-h-[56px] max-h-[84px] flex-1 items-center gap-3 border-b border-border/60 px-2"
+      {...pickRow.props}
+      className={`relative flex min-h-[56px] max-h-[84px] flex-1 items-center gap-3 border-b border-border/60 px-2 ${pickRow.cls}`}
     >
       {/* The team's colour, bled in from the left and gone by a third of the
           way across. The bar alone was a 6px stripe on a screen two metres
@@ -3045,6 +3133,7 @@ function TvPitLane({ entries, match, className = "" }) {
 }
 
 function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, onPositions, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
+  const pick = useContext(MapPick);
   // The page underneath is still mounted, and without this it scrolls away
   // behind the board on any stray wheel event.
   useScrollLock(true);
@@ -3433,6 +3522,8 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
                   follow={follow}
                   onCarTelemetry={onCarTelemetry}
                   onPositions={onPositions}
+                  focusGuid={pick?.focusGuid ?? null}
+                  onFocusChange={pick?.setFocus}
                   server={server}
                   sectorLines={session.sectorLines}
                   wrapClassName={mapFrame}
@@ -3493,6 +3584,20 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
 
 export default function Live() {
   const { board: feed, socketState, follow, onCarTelemetry, onPositions, setServer, serverKey } = useLiveTiming();
+  // The car the track map follows, held here so a click on a driver's name
+  // anywhere on the page can set it (MapPick). `seq` counts the picks, so the
+  // map card can answer each one — even a second click on the same name, after
+  // the reader has scrolled away from the map.
+  const [mapFocus, setMapFocus] = useState(null);
+  const [pickSeq, setPickSeq] = useState(0);
+  const onPick = useCallback((e) => {
+    setMapFocus(e.guid);
+    setPickSeq((n) => n + 1);
+  }, []);
+  const mapPick = useMemo(
+    () => ({ focusGuid: mapFocus, setFocus: setMapFocus, onPick, seq: pickSeq }),
+    [mapFocus, onPick, pickSeq]
+  );
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
   const liveServers = useLiveServers();
@@ -3855,6 +3960,7 @@ export default function Live() {
   // relay which car to stream on the fast lane.
   if (tv)
     return (
+      <MapPick.Provider value={mapPick}>
       <TvMode
         onSeen={markTvSeen}
         rcAllowed={rcAllowed}
@@ -3870,12 +3976,14 @@ export default function Live() {
         connected={connected}
         onExit={exitTv}
       />
+      </MapPick.Provider>
     );
 
   return (
     // content-in on the root, which is what every other page does. This one had
     // it on the inner board only, so the title and the buttons above simply
     // appeared while everything under them arrived.
+    <MapPick.Provider value={mapPick}>
     <div className="content-in">
       {/* No live/offline badge up here — the session card below already tells
           the story; only the admin-facing Demo pill remains. */}
@@ -4109,5 +4217,6 @@ export default function Live() {
         </div>
       )}
     </div>
+    </MapPick.Provider>
   );
 }
