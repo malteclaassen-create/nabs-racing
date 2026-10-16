@@ -13,7 +13,7 @@ import { circuitFor, flagFor } from "../data/circuits.js";
 import { exportSvgToPng } from "../utils/svgExport.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { fmtLap, fmtRaceDate } from "../utils/format.js";
-import { sessionSummary } from "../utils/raceFormat.js";
+import SessionPlan from "./SessionPlan.jsx";
 
 // The sign-up button's own curfew, matching the backend gate
 // (SIGNUP_CLOSE_AFTER_START_MS in lib/attendanceGate.js): an hour past
@@ -231,11 +231,7 @@ export default function UpcomingRacePanel({ race, ev = null, canSignUp = false }
                 "Date to be confirmed"
               )}
             </div>
-            {sessionSummary(race).length > 0 && (
-              <div className="mt-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                {sessionSummary(race).join(" · ")}
-              </div>
-            )}
+            <SessionPlan race={race} className="mt-4 w-[22rem] max-w-full" />
           </div>
           <div className="flex w-full flex-col gap-2.5 sm:w-80">
             {race.date && <RaceCountdown date={race.date} />}

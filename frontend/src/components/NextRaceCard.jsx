@@ -4,7 +4,7 @@ import CircuitMap from "./CircuitMap.jsx";
 import RaceCountdown from "./RaceCountdown.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
-import { sessionSummary } from "../utils/raceFormat.js";
+import SessionPlan from "./SessionPlan.jsx";
 
 // ---------------------------------------------------------------------------
 // The next round, as a card: country, round number, the circuit's outline, the
@@ -106,11 +106,7 @@ export default function NextRaceCard({ race, className = "", style = null }) {
       )}
       {/* The session line — on a sprint weekend "there is a sprint" is exactly
           what this card exists to announce. Same wording as the sign-up page. */}
-      {sessionSummary(race).length > 0 && (
-        <div className="mt-2 font-mono text-[11px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/65">
-          {sessionSummary(race).join(" · ")}
-        </div>
-      )}
+      <SessionPlan race={race} className="mt-4" />
 
       <RaceCountdown date={race.date} className="mt-5" />
 
