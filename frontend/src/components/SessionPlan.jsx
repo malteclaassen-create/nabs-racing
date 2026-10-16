@@ -1,10 +1,10 @@
 // The race day in one line of text, e.g.
-//   QUALI  T2 12 MIN → T1 8 MIN  ·  RACE 25 LAPS
+//   QUALI 20 MIN (T2 12 → T1 8)  ·  RACE 25 LAPS
 //
 // A tier-split qualifying is ONE session in which Tier 2 has the track first
-// and Tier 1 the rest, so the two halves are joined by an arrow in that
-// order. Labels are muted and the numbers carry the line, so it scans at a
-// glance. Each part keeps together (no wrap inside "T2 12 MIN"); the line
+// and Tier 1 the rest: the whole session first, then the two halves joined
+// by an arrow in that order. Labels are muted and the numbers carry the line, so it scans at a
+// glance. Each part keeps together (no wrap inside "20 MIN (T2 12 → T1 8)"); the line
 // itself wraps between parts on a narrow phone.
 //
 // Only what the admin entered is shown. A sprint weekend names both races
@@ -32,7 +32,10 @@ export default function SessionPlan({ race, className = "" }) {
   if (split) {
     parts.push(
       <Part key="q" label="Quali">
-        T2 {t2} min <span className="opacity-60">→</span> T1 {t1} min
+        {t2 + t1} min{" "}
+        <span className="opacity-60">
+          (T2 {t2} → T1 {t1})
+        </span>
       </Part>
     );
   } else if (quali) {
