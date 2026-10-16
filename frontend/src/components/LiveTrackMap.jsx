@@ -1003,8 +1003,13 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
 // a caller's `absolute` are the same property and the stylesheet, not the class
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned.
-export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null }) {
-  const [focusGuid, setFocusGuid] = useState(null);
+export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, focusGuid: focusProp = null, onFocusChange = null }) {
+  // Which car the camera follows. The map keeps that itself, unless the page
+  // around it does (onFocusChange): the Live page lets a click on a driver's
+  // name in its tables put the map on them, so the choice has to live there.
+  const [focusOwn, setFocusOwn] = useState(null);
+  const focusGuid = onFocusChange ? focusProp : focusOwn;
+  const setFocusGuid = onFocusChange || setFocusOwn;
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   const [mapMode, setMapMode] = useState("track");
   const [imageFailed, setImageFailed] = useState(false);
