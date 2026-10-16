@@ -65,19 +65,22 @@ export default function RaceRecapHost() {
   const { isLoggedIn } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const pathRef = useRef(location.pathname);
+  pathRef.current = location.pathname;
 
   useEffect(() => {
     if (!isLoggedIn) {
       asked = false; // the next login on this tab asks afresh
       return;
     }
-    if (asked) return settle();
-    // Not on race night: the live page is left up for hours, and being sent
-    // to last week's recap in the middle of this week's timing would be
-    // rude. Nor from the admin, where the office is busy saving the very
-    // result, and not from the recap page itself.
-    const p = location.pathname;
-    if (p.startsWith("/admin") || p.startsWith("/auth") || /\/live(\/|$)/.test(p) || /\/recap\//.test(p)) return settle();
+    // Asked already, unless the answer was held back on the live page and
+    // the member has just left it: then it is due now, not two minutes on.
+    if (asked && !(heldOnLive && !onLive(location.pathname))) return settle();
+    heldOnLive = false;
+    // Not from the admin, where the office is busy saving the very result,
+    // and not from the recap page itself. The live page is fine, but only
+    // for tonight's round (see mayShow).
+    if (offLimits(location.pathname)) return settle();
     let gone = false;
     // A beat after the page, so the hand-over happens on a settled page.
     const t = setTimeout(() => {
@@ -87,6 +90,10 @@ export default function RaceRecapHost() {
         .then((r) => {
           setEnabled(!!r?.enabled);
           if (gone || !r?.recap) return;
+          if (!mayShow(pathRef.current, r.recap)) {
+            heldOnLive = true;
+            return;
+          }
           navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
         })
         .catch(() => {})
@@ -103,8 +110,6 @@ export default function RaceRecapHost() {
   // the host asks again now and then, and when the tab comes back into view,
   // under the same rules as above. Not while they are typing, so a form is
   // never pulled away under them.
-  const pathRef = useRef(location.pathname);
-  pathRef.current = location.pathname;
   useEffect(() => {
     if (!isLoggedIn) return undefined;
     let busy = false;
@@ -116,15 +121,18 @@ export default function RaceRecapHost() {
     const askAgain = () => {
       if (busy || !asked || enabledState === false || document.visibilityState !== "visible") return;
       if (Date.now() - last < RECHECK_MIN_GAP_MS || typing()) return;
-      const p = pathRef.current;
-      if (p.startsWith("/admin") || p.startsWith("/auth") || /\/live(\/|$)/.test(p) || /\/recap\//.test(p)) return;
+      if (offLimits(pathRef.current)) return;
       busy = true;
       last = Date.now();
       api
         .myRaceRecap()
         .then((r) => {
           setEnabled(!!r?.enabled);
-          if (!r?.recap || /\/recap\//.test(pathRef.current) || typing()) return;
+          if (!r?.recap || offLimits(pathRef.current) || typing()) return;
+          if (!mayShow(pathRef.current, r.recap)) {
+            heldOnLive = true;
+            return;
+          }
           navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
         })
         .catch(() => {})
@@ -147,6 +155,23 @@ export default function RaceRecapHost() {
 // (a tab flicking in and out of view does not ask every time).
 const RECHECK_EVERY_MS = 2 * 60_000;
 const RECHECK_MIN_GAP_MS = 60_000;
+
+// Where the host never takes a member away: the admin (the office saving the
+// result) and the recap page itself.
+const offLimits = (p) => p.startsWith("/admin") || p.startsWith("/auth") || /\/recap\//.test(p);
+
+// The live page is left up for hours, and being sent to last week's recap in
+// the middle of this week's timing would be rude. But once tonight's round is
+// saved, the live page is exactly where everybody is, so tonight's recap may
+// take them from there.
+const TONIGHT_MS = 12 * 3_600_000;
+const onLive = (p) => /\/live(\/|$)/.test(p);
+let heldOnLive = false; // a recap is waiting, held back because the member is on the live page
+function mayShow(path, recap) {
+  if (!onLive(path)) return true;
+  const ran = recap?.race?.date ? new Date(recap.race.date).getTime() : NaN;
+  return Number.isFinite(ran) && Date.now() - ran < TONIGHT_MS;
+}
 
 // The Recap button on a race page: the same page, read again. Only for a
 // member with a seat, only when the feature is on for them, only once the
