@@ -118,23 +118,18 @@
   background-size: 6px 6px;
 }
 
-/* Lower-thirds slide in and settle, their layers travelling different
-   distances on the same spring (a gentle parallax: the slab, then its mark,
-   then each line from a little further out), all coming to rest together.
-   The one before glides off to the right as it fades. */
-.rr-l3 { animation: rr-l3 1050ms var(--rr-soft) both, rr-fade 520ms ease-out both; }
-@keyframes rr-l3 { from { transform: translateX(-22px); } to { transform: none; } }
-.rr-l3 .rr-l3-mark { animation: rr-l3-mark 1150ms var(--rr-soft) 60ms both; }
-@keyframes rr-l3-mark { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
-.rr-l3 .rr-l3-line1 { animation: rr-l3-a 1100ms var(--rr-soft) 70ms both, rr-fade 600ms ease-out 70ms both; }
-.rr-l3 .rr-l3-line2 { animation: rr-l3-b 1150ms var(--rr-soft) 110ms both, rr-fade 600ms ease-out 110ms both; }
-.rr-l3 .rr-l3-line3 { animation: rr-l3-c 1200ms var(--rr-soft) 150ms both, rr-fade 600ms ease-out 150ms both; }
-@keyframes rr-l3-a { from { transform: translateX(-30px); } to { transform: none; } }
-@keyframes rr-l3-b { from { transform: translateX(-44px); } to { transform: none; } }
-@keyframes rr-l3-c { from { transform: translateX(-58px); } to { transform: none; } }
-.rr-l3 .rr-l3-stripe { transform-origin: left center; animation: rr-grow 1300ms var(--rr-expo) 200ms both; }
-.rr-l3-out { animation: rr-l3-out 500ms cubic-bezier(0.4, 0, 0.2, 1) both; }
-@keyframes rr-l3-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(16px); } }
+/* A moment comes on as one piece: it fades in and rises a few pixels. The
+   one before simply fades out. */
+.rr-l3 { animation: rr-l3-in 280ms ease-out both; }
+@keyframes rr-l3-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* The moment card: the panel colour, a little see-through over the lines. */
+.rr-ev {
+  background: color-mix(in srgb, var(--c-surface2) 92%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.rr-l3-out { animation: rr-fade-out 200ms ease-in both; }
+@keyframes rr-fade-out { from { opacity: 1; } to { opacity: 0; } }
 .rr-lane-note { animation: rr-fade 600ms ease 140ms both; }
 
 /* The flag: a soft light sweeps the player (above), the result card rises

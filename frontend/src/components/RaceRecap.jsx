@@ -1,13 +1,15 @@
 // ---------------------------------------------------------------------------
 // The race recap's doorways. The page itself is pages/RaceRecapPage.jsx.
 //
-// RaceRecapHost sits at the root of the app and asks the server once per
-// page load whether a recap is waiting; when one is, it takes the member to
-// the recap page with the payload in hand, and arriving there counts as seen.
+// RaceRecapHost sits at the root of the app and asks the server on page load
+// whether a recap is waiting, then again every couple of minutes while the
+// tab is open (for the member who is on the site when the round is saved);
+// when one is, it takes the member to the recap page with the payload in
+// hand, and arriving there counts as seen.
 // RaceRecapButton is the "read it again" button on a race page. Both keep out
 // of the way unless the feature is on for this member.
 // ---------------------------------------------------------------------------
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -96,8 +98,55 @@ export default function RaceRecapHost() {
     };
   }, [isLoggedIn, location.pathname, navigate]);
 
+  // Somebody already on the site when the office saves the round asked once,
+  // on arrival, before there was anything to show. So while the tab is open
+  // the host asks again now and then, and when the tab comes back into view,
+  // under the same rules as above. Not while they are typing, so a form is
+  // never pulled away under them.
+  const pathRef = useRef(location.pathname);
+  pathRef.current = location.pathname;
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    let busy = false;
+    let last = Date.now();
+    const typing = () => {
+      const el = document.activeElement;
+      return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    };
+    const askAgain = () => {
+      if (busy || !asked || enabledState === false || document.visibilityState !== "visible") return;
+      if (Date.now() - last < RECHECK_MIN_GAP_MS || typing()) return;
+      const p = pathRef.current;
+      if (p.startsWith("/admin") || p.startsWith("/auth") || /\/live(\/|$)/.test(p) || /\/recap\//.test(p)) return;
+      busy = true;
+      last = Date.now();
+      api
+        .myRaceRecap()
+        .then((r) => {
+          setEnabled(!!r?.enabled);
+          if (!r?.recap || /\/recap\//.test(pathRef.current) || typing()) return;
+          navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
+        })
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const timer = setInterval(askAgain, RECHECK_EVERY_MS);
+    document.addEventListener("visibilitychange", askAgain);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", askAgain);
+    };
+  }, [isLoggedIn, navigate]);
+
   return null;
 }
+
+// How often an open tab asks again, and the least time between two asks
+// (a tab flicking in and out of view does not ask every time).
+const RECHECK_EVERY_MS = 2 * 60_000;
+const RECHECK_MIN_GAP_MS = 60_000;
 
 // The Recap button on a race page: the same page, read again. Only for a
 // member with a seat, only when the feature is on for them, only once the

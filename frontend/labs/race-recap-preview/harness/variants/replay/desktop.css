@@ -1,0 +1,59 @@
+/* Race recap on a desktop screen: the type a size up.
+   The page is set for a phone first, where 10 and 11 px mono labels are
+   fine at arm's length. On a wide screen they were hard to read, so from
+   1024 px every small size steps up (10 to 13, 11 to 14, text-xs to 15 and
+   so on, smallest to largest, so where an element has a phone size and a
+   sm: size the larger one still wins). Only font-size changes; line heights
+   and letter spacing stay with their classes. Text inside the SVG charts is
+   left alone, it already scales with the chart. */
+@media (min-width: 1024px) {
+  .rr .text-\[8px\]:where(:not(text)),
+  .rr .sm\:text-\[8px\]:where(:not(text)),
+  .rr .lg\:text-\[8px\]:where(:not(text)) { font-size: 11px; }
+  .rr .text-\[9px\]:where(:not(text)),
+  .rr .sm\:text-\[9px\]:where(:not(text)),
+  .rr .lg\:text-\[9px\]:where(:not(text)) { font-size: 12px; }
+  .rr .text-\[10px\]:where(:not(text)),
+  .rr .sm\:text-\[10px\]:where(:not(text)),
+  .rr .lg\:text-\[10px\]:where(:not(text)) { font-size: 13px; }
+  .rr .text-\[11px\]:where(:not(text)),
+  .rr .sm\:text-\[11px\]:where(:not(text)),
+  .rr .lg\:text-\[11px\]:where(:not(text)) { font-size: 14px; }
+  .rr .text-xs:where(:not(text)),
+  .rr .sm\:text-xs:where(:not(text)),
+  .rr .lg\:text-xs:where(:not(text)) { font-size: 15px; }
+  .rr .text-\[13px\]:where(:not(text)),
+  .rr .sm\:text-\[13px\]:where(:not(text)),
+  .rr .lg\:text-\[13px\]:where(:not(text)) { font-size: 16px; }
+  .rr .text-sm:where(:not(text)),
+  .rr .sm\:text-sm:where(:not(text)),
+  .rr .lg\:text-sm:where(:not(text)) { font-size: 16px; }
+  .rr .text-\[15px\]:where(:not(text)),
+  .rr .sm\:text-\[15px\]:where(:not(text)),
+  .rr .lg\:text-\[15px\]:where(:not(text)) { font-size: 17px; }
+  .rr .text-base:where(:not(text)),
+  .rr .sm\:text-base:where(:not(text)),
+  .rr .lg\:text-base:where(:not(text)) { font-size: 18px; }
+  .rr .text-\[16px\]:where(:not(text)),
+  .rr .sm\:text-\[16px\]:where(:not(text)),
+  .rr .lg\:text-\[16px\]:where(:not(text)) { font-size: 18px; }
+  .rr .text-lg:where(:not(text)),
+  .rr .sm\:text-lg:where(:not(text)),
+  .rr .lg\:text-lg:where(:not(text)) { font-size: 20px; }
+  .rr .text-xl:where(:not(text)),
+  .rr .sm\:text-xl:where(:not(text)),
+  .rr .lg\:text-xl:where(:not(text)) { font-size: 23px; }
+  .rr .text-2xl:where(:not(text)),
+  .rr .sm\:text-2xl:where(:not(text)),
+  .rr .lg\:text-2xl:where(:not(text)) { font-size: 28px; }
+  .rr .text-3xl:where(:not(text)),
+  .rr .sm\:text-3xl:where(:not(text)),
+  .rr .lg\:text-3xl:where(:not(text)) { font-size: 34px; }
+
+  /* The chapter headers carry the page: a clear step above the cards. */
+  .rr .rr-ch-title { font-size: 2.75rem; }
+  .rr .rr-ch-num { font-size: 3.25rem; }
+
+  /* The replay bar: the track name reads like a title, not a label. */
+  .rr .rr-bar-l .font-display { font-size: 1.625rem; }
+}

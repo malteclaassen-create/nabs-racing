@@ -11,6 +11,7 @@
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { countryFor } from "../../src/data/driverCountries.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -62,7 +63,8 @@ for (const { recap } of mocks) {
     recap.card?.driver,
   ].filter(Boolean);
   for (const r of people) {
-    if (r.country) countries.add(r.country);
+    const cc = countryFor(r.driverId, r.country);
+    if (cc) countries.add(cc);
     for (const t of [r.team, r.effectiveTeam, r.subForTeam]) if (t) teams.add(t);
   }
   if (recap.team) teams.add(recap.team);

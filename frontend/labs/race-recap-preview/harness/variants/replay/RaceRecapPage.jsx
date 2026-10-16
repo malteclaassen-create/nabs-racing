@@ -52,6 +52,7 @@ import "./replay.css";
 import "./polish.css";
 import "./g3.css";
 import "./cmp.css";
+import "./desktop.css";
 import { Timer, Gauge, Activity, ArrowLeftRight, ShieldCheck, Flag as FlagIcon, Hourglass, Rocket, Crown, ChevronRight } from "lucide-react";
 
 export default function RaceRecapPage() {
@@ -386,7 +387,8 @@ function useCardDepth(...deps) {
 }
 
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
-const nth = (n) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
+// 1st, 2nd, 3rd, 11th, 12th, 13th, 21st, 32nd ...
+const nth = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`);
 
 // --- the header ---------------------------------------------------------------
 
@@ -834,7 +836,8 @@ function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIco
             className="rr-g3-badge -my-1 -mr-1.5 inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1.5 font-mono text-[10px] font-bold uppercase leading-none tracking-[0.16em] text-accent transition-colors hover:bg-surface2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             style={{ "--gd": `${gd + 750}ms` }}
           >
-            Compare
+            {/* On a phone the tile is narrow: the arrow alone, the rank keeps its room. */}
+            <span className="max-sm:sr-only">Compare</span>
             <ChevronRight className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
           </button>
         )}

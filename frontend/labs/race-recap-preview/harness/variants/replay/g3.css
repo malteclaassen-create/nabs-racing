@@ -49,15 +49,22 @@
    cmp.css); the inner one makes the entrance, from --x0 to the place. */
 .rr-fs-run { position: absolute; inset: 0; pointer-events: none; transform: translateX(var(--x)); }
 .rr-fs-run-in { position: absolute; inset: 0; }
+/* The ring, the gap and the dot are one box (border, padding, content), so
+   they are always drawn around the same centre, at any zoom. A box-shadow
+   ring is rounded to the pixel on its own and drifts off the dot. */
 .rr-fs-dot {
   position: absolute;
-  left: -6px;
-  top: calc(50% - 6px);
-  width: 12px;
-  height: 12px;
+  left: -9px;
+  top: calc(50% - 9px);
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
   border-radius: 9999px;
-  background: var(--recap-team);
-  box-shadow: 0 0 0 2px var(--c-card), 0 0 0 3.5px color-mix(in srgb, var(--c-text) 85%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--c-text) 85%, transparent);
+  background:
+    linear-gradient(var(--recap-team), var(--recap-team)) content-box,
+    linear-gradient(var(--c-card), var(--c-card)) padding-box;
 }
 
 /* Laps: a cell a lap, the led ones in the team colour, lit a touch so a dark

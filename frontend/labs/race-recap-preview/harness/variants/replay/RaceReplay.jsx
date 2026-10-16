@@ -21,17 +21,19 @@
 // the lap changes.
 // ---------------------------------------------------------------------------
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, SkipForward } from "lucide-react";
+import { Play, Pause, RotateCcw, SkipForward, ArrowRight } from "lucide-react";
 import { motionOff } from "@site/hooks/motion.js";
 import { TyreBadge } from "@site/components/TyreStrategy.jsx";
 import { tyreCompound } from "@site/data/liveTiming.js";
 import Flag from "@site/components/Flag.jsx";
 import { flagFor } from "@site/data/circuits.js";
+import { countryFor } from "@site/data/driverCountries.js";
 import { fmtLap, fmtLapDelta } from "@site/utils/format.js";
 import { Spring, onFrame, countEase, useSpringRows } from "./spring.js";
 
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
-const nth = (n) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
+// 1st, 2nd, 3rd, 11th, 12th, 13th, 21st, 32nd ...
+const nth = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`);
 
 export function rgba(hex, a) {
   const h = String(hex || "").replace("#", "");
@@ -71,6 +73,7 @@ export function buildReplay(laps, shown) {
       return {
         id: d.driverId || d.name,
         name: d.name || r?.name || "?",
+        country: countryFor(d.driverId, r?.country) || null,
         color: d.color || team?.color || "#64748b",
         team,
         grid: r?.grid ?? null,
@@ -319,6 +322,8 @@ const TONE = {
   gold: "var(--medal-1)",
   fl: "rgb(var(--c-fl))",
 };
+const KIND = { start: "Start", lap1: "Opening lap", contact: "Contact", pit: "Pit stop", lead: "Lead" };
+const kindOf = (e) => (e.id === "fl" ? (e.label.includes("Fastest") ? "Fastest lap" : "Best lap") : KIND[e.id === "lap1" ? "lap1" : e.id.replace(/\d+$/, "")] || "Moment");
 const toneOf = (e) => (e.tone === "tyre" ? e.tyreColor : TONE[e.tone] || TONE.brand);
 
 export default function RaceReplay({ R, recap }) {
@@ -659,43 +664,31 @@ export default function RaceReplay({ R, recap }) {
   const ev = view.event && !view.finished ? view.event : null;
   // The graphic that was on before this one glides off while the new one
   // settles in.
-  const leaving = useOutgoing(ev, 520);
+  const leaving = useOutgoing(ev, 200);
   const third = (e, out) => (
     <div
       key={`${e.id}${out ? "-out" : ""}`}
-      className={`${out ? "rr-l3-out" : "rr-l3"} pointer-events-none ${wide ? "absolute bottom-3 left-3 z-10 max-w-[26rem]" : "absolute inset-x-2 top-0"}`}
+      className={`${out ? "rr-l3-out" : "rr-l3"} pointer-events-none ${wide ? "absolute bottom-14 left-[3.25rem] z-10 w-[min(20rem,calc(100%-4.5rem))]" : "absolute inset-x-2 top-0"}`}
       role={out ? undefined : "status"}
       aria-live={out ? undefined : "polite"}
       aria-hidden={out || undefined}
     >
-      <div className="flex items-stretch overflow-hidden rounded-lg border border-border bg-surface2 shadow-card">
-        <div className="flex w-11 shrink-0 items-center justify-center overflow-hidden sm:w-12" style={{ background: toneOf(e) }}>
-          <span className="rr-l3-mark flex">
-            {e.tyres ? (
-              <TyreBadge t={e.tyres[1]} size={22} />
-            ) : (
-              <span className="font-display text-base font-black leading-none" style={{ color: inkFor(e.tone === "brand" ? "#f4afc6" : e.tone === "gold" ? "#eab308" : e.tone === "fl" ? "#c084fc" : e.tone === "ok" ? "#34d399" : e.tone === "warn" ? "#fbbf24" : e.tone === "bad" ? "#f87171" : "#9aa8be") }}>
-                {e.lap === 0 ? "GO" : e.lap}
-              </span>
-            )}
-          </span>
+      <div className="rr-ev rounded-lg border border-border px-3 py-2 shadow-card">
+        <div className="rr-l3-line1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">
+          <span style={{ color: toneOf(e) }}>{kindOf(e)}</span> · {e.lap === 0 ? "Grid" : `Lap ${e.lap}`}
         </div>
-        <div className="min-w-0 flex-1 px-3 py-2">
-          <div className="rr-l3-line1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">{e.label}</div>
-          <div className="rr-l3-line2 mt-0.5 flex items-center gap-2 font-display text-lg font-black uppercase leading-tight tracking-tight sm:text-xl" style={{ color: e.tone === "fl" ? "rgb(var(--c-fl))" : e.tone === "gold" ? "var(--medal-1)" : "var(--c-text)" }}>
-            {e.tyres && (
-              <span className="flex items-center gap-1">
-                <TyreBadge t={e.tyres[0]} size={18} />
-                <span className="font-mono text-xs text-light">→</span>
-                <TyreBadge t={e.tyres[1]} size={18} />
-              </span>
-            )}
-            <span className="truncate">{e.title}</span>
-          </div>
-          {e.sub && <div className="rr-l3-line3 truncate font-mono text-[11px] text-light">{e.sub}</div>}
+        <div className="rr-l3-line2 mt-1 flex min-w-0 items-center gap-2 font-display text-base font-black uppercase leading-tight tracking-tight" style={{ color: e.tone === "fl" ? "rgb(var(--c-fl))" : "var(--c-text)" }}>
+          {e.tyres && (
+            <span className="flex shrink-0 items-center gap-1">
+              <TyreBadge t={e.tyres[0]} size={16} />
+              <ArrowRight className="h-3 w-3 text-light" strokeWidth={2.5} aria-hidden="true" />
+              <TyreBadge t={e.tyres[1]} size={16} />
+            </span>
+          )}
+          <span className="truncate">{e.title}</span>
         </div>
+        {e.sub && <div className="rr-l3-line3 mt-0.5 truncate font-mono text-[11px] text-light">{e.sub}</div>}
       </div>
-      <div className="rr-l3-stripe mt-1 h-[3px] w-24 rounded-full" style={{ background: toneOf(e) }} />
     </div>
   );
   const lowerThird = (
@@ -754,10 +747,10 @@ export default function RaceReplay({ R, recap }) {
               chart, so they never sit on the lines; between moments it says
               what is coming up. */}
           {!wide && (
-            <div className="rr-lane relative h-[70px] px-2 pb-1.5">
+            <div className="rr-lane relative h-[80px] px-2 pb-1.5">
               {lowerThird}
               {!ev && (
-                <div key={view.finished ? "fin" : view.next?.id || "none"} className="rr-lane-note absolute inset-x-2 top-0 flex h-[60px] items-center gap-2 rounded-lg border border-dashed border-border px-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-faint">
+                <div key={view.finished ? "fin" : view.next?.id || "none"} className="rr-lane-note absolute inset-x-2 top-0 flex h-[70px] items-center gap-2 rounded-lg border border-dashed border-border px-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-faint">
                   {view.finished ? (
                     "Drag the bar to look back at any lap"
                   ) : view.next ? (
@@ -894,6 +887,7 @@ function Tower({ R, lap, N, rowH, team, you, pit, lt, ltFastest, st, finished })
                 {/* At the flag a soft light passes along your row. */}
                 {isMe && finished && <span className="rr-row-sheen pointer-events-none absolute inset-y-0 left-0 w-full" aria-hidden="true" />}
                 <span className="h-3.5 w-[3px] shrink-0 rounded-full" style={{ background: d.color }} />
+                {d.country && <Flag code={d.country} w={18} h={13} className="shrink-0 rounded-[2px]" />}
                 <span className={`min-w-0 flex-1 truncate font-display text-[13px] font-black uppercase tracking-tight sm:text-sm ${isMe ? "text-dark" : "text-medium"}`}>{d.name}</span>
                 {isMe ? (
                   <span className="flex shrink-0 items-center gap-1.5 pr-1.5">

@@ -42,14 +42,14 @@ export function RatingBreakdown({ rating: r, card }) {
           <Label>Driver rating</Label>
           <div className="mt-2 flex items-end gap-4">
             <span className="font-display text-[4.5rem] font-black leading-none tracking-tighter text-dark sm:text-[6rem]">
-              <Tween from={was} to={r.after.overall} decimals={1} />
+              <Tween from={was} to={r.after.overall} />
             </span>
             {r.delta && (
               <div className="recap-tag mb-2 sm:mb-3">
                 <span className={`inline-flex items-center rounded-md border px-2 py-0.5 ${r.delta.overall > 0.05 ? "border-ok/40 bg-ok/10" : r.delta.overall < -0.05 ? "border-bad/40 bg-bad/10" : "border-border"}`}>
-                  <Delta value={r.delta.overall} decimals={1} className="text-sm" arrow />
+                  <Delta value={r.delta.overall} className="text-sm" arrow />
                 </span>
-                {was != null && <div className="mt-1.5 font-mono text-[11px] text-light">was {was.toFixed(1)}</div>}
+                {was != null && <div className="mt-1.5 font-mono text-[11px] text-light">was {Math.round(was)}</div>}
               </div>
             )}
           </div>
@@ -107,7 +107,7 @@ export function RatingBreakdown({ rating: r, card }) {
                   <span className="flex items-baseline justify-end gap-2">
                     {d != null && Math.abs(d) >= 0.05 && (
                       <span className="recap-tag" style={{ "--tag-delay": `${1300 + i * 120}ms` }}>
-                        <Delta value={d} decimals={1} className="text-[11px]" />
+                        <Delta value={d} className="text-[11px]" />
                       </span>
                     )}
                     <span className="font-mono text-xl font-bold tabular-nums leading-none text-dark">
@@ -386,22 +386,16 @@ export function TokensCard({ points: p }) {
             {owed.map((e, i) => (
               <span key={`p${i}`} className="rounded-md border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-light" style={{ "--i": p.entries.length + i + 6 }}>
                 {e.title} <span className="font-bold">+{e.delta}</span>
-                {e.race && <span> · {e.race.toLowerCase()}</span>} · once the stewards are done
+                {e.race && <span> · {e.race.toLowerCase()}</span>} · after the stewards
               </span>
             ))}
           </div>
           {p.rate > 1 && !p.hypothetical && <p className="mt-3 font-mono text-[11px] text-light">Paid at ×{p.rate.toFixed(2)}: your Discord week counted.</p>}
           {p.hypothetical && <p className="mt-3 font-mono text-[11px] text-light">Preview: nothing has been paid for this round yet. This is what the rules pay a finish like this.</p>}
-          {p.fromRules && !p.hypothetical && <p className="recap-tag mt-3 font-mono text-[11px] leading-relaxed text-light" style={{ "--tag-delay": "1300ms" }}>{p.pending?.length ? <>What the league&rsquo;s token rules pay for this result: the finish now. The clean-race bonus only counts once the stewards have been through the reports, and is dropped if a report ends in a penalty.</> : <>What the league&rsquo;s token rules pay for this result: a finish, and no penalty once the stewards were done.</>}</p>}
         </div>
         {p.balance != null && (
           <div className="flex flex-col justify-center">
             <div className="grid grid-cols-[1fr,auto,1fr] items-end gap-3 rounded-xl border border-border bg-surface2/50 p-3 sm:p-4">
-              {p.sample?.balance && (
-                <div className="col-span-3 -mb-1 flex justify-end">
-                  <span className="rounded border border-dashed border-light/50 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase leading-none tracking-[0.16em] text-light">Sample values</span>
-                </div>
-              )}
               <div>
                 <Label tone="text-light">Before</Label>
                 <div className="mt-1 font-mono text-xl font-bold tabular-nums text-light sm:text-2xl">{before?.toLocaleString("en-US")}</div>
@@ -425,33 +419,35 @@ export function TokensCard({ points: p }) {
               </div>
             </div>
             {next && (
-              <div className="mt-4">
-                <div className="mb-2 flex items-baseline justify-between gap-2 font-mono text-[11px] text-light">
-                  <span>{p.balance >= next.cost ? "Enough for the next card design" : `${(next.cost - p.balance).toLocaleString("en-US")} to the next card design`}</span>
-                  <span className="shrink-0 whitespace-nowrap rounded-md border border-border px-2 py-0.5">
-                    <span className="font-bold uppercase tracking-wider text-dark">{next.name}</span> {next.cost.toLocaleString("en-US")}
-                  </span>
+              <div className="mt-5">
+                <div className="mb-2 flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <Label tone="text-light">Next card design</Label>
+                    <div className="mt-1 truncate font-display text-lg font-black uppercase leading-tight tracking-tight text-dark">{next.name}</div>
+                  </div>
+                  <div className="shrink-0 text-right font-mono text-sm font-bold tabular-nums text-dark">
+                    {p.balance >= next.cost ? "Unlocked" : `${(next.cost - p.balance).toLocaleString("en-US")} to go`}
+                    <span className="ml-1.5 font-normal text-light">of {next.cost.toLocaleString("en-US")}</span>
+                  </div>
                 </div>
-                <Bar pct={pct} h="h-2.5" fill="bg-brand" delay={1500}>
+                <Bar pct={pct} h="h-2.5" fill="bg-brand" delay={1500} cursor={false}>
                   {owedPct > 0 && (
                     <div
-                      className="recap-tag absolute top-0 h-full rounded-r-full border border-dashed border-light/70"
-                      style={{ left: `${pct}%`, width: `${owedPct}%`, "--tag-delay": "2700ms" }}
-                      title={`+${owedSum} once the stewards are done`}
+                      className="recap-tag absolute top-0 h-full rounded-r-full"
+                      style={{ left: `${pct}%`, width: `${owedPct}%`, background: "rgb(var(--c-brand) / 0.3)", "--tag-delay": "2700ms" }}
                     />
                   )}
                 </Bar>
                 {owedSum > 0 && (
-                  <div className="recap-tag mt-2 font-mono text-[10px] text-faint" style={{ "--tag-delay": "2800ms" }}>
-                    dashed: +{owedSum} still to come once the stewards are done
+                  <div className="recap-tag mt-2 flex items-center gap-2 font-mono text-[11px] text-light" style={{ "--tag-delay": "2800ms" }}>
+                    <span className="h-2 w-3 rounded-sm" style={{ background: "rgb(var(--c-brand) / 0.3)" }} aria-hidden="true" />
+                    +{owedSum} more after the stewards
                   </div>
                 )}
               </div>
             )}
             {(p.sample?.balance || p.sample?.nextCard) && (
-              <p className="mt-3 font-mono text-[10px] leading-relaxed text-light">
-                {p.sample.balance && p.sample.nextCard ? "Balance and the road to the next card: sample values in this preview." : p.sample.balance ? "Balance: a sample value in this preview." : "Next card: a sample in this preview."} Each member&rsquo;s real ones are private.
-              </p>
+              <p className="mt-4 font-mono text-[11px] text-faint">Sample values in this preview. Each member&rsquo;s real balance is private.</p>
             )}
           </div>
         )}
@@ -462,111 +458,127 @@ export function TokensCard({ points: p }) {
 
 // --- the team-mate split ---------------------------------------------------------------
 
-// The two of you as a split screen: your half in the team colour from the
-// left, theirs from the right, and between you the rows, with bars growing out
-// from the middle where a number can be measured.
+// The two of you, in two parts. On the left this race: your numbers against
+// theirs, with bars growing out from the middle where a number can be
+// measured. On the right the season: the duel in races and on the grid, and
+// where the two of you stand in the championship. On a phone the season part
+// sits under the race.
 export function TeammateSplit({ you, mates, standings, card, field }) {
   const m = mates[0];
   const color = you.team?.color || "#94a3b8";
   const posScore = (p) => (p == null || !field ? null : ((field - p + 1) / field) * 100);
   const better = (a, b, lowerWins = true) => (a == null || b == null || a === b ? 0 : (lowerWins ? a < b : a > b) ? 1 : -1);
   const myPts = standings?.after?.total ?? null;
+  const myChamp = standings?.after?.position ?? null;
   const maxPts = Math.max(1, myPts || 0, m.seasonPoints || 0);
   const lapWin = better(you.bestLapMs, m.bestLapMs);
+  const lapGap = lapWin !== 0 && you.bestLapMs && m.bestLapMs ? `${(Math.abs(you.bestLapMs - m.bestLapMs) / 1000).toFixed(3)} s faster` : null;
   const rows = [
     { label: "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position), sa: posScore(you.finished ? you.position : null), sb: posScore(m.position) },
     { label: "Grid", a: you.grid != null ? `P${you.grid}` : NO_VALUE, b: m.grid != null ? `P${m.grid}` : NO_VALUE, win: better(you.grid, m.grid), sa: posScore(you.grid), sb: posScore(m.grid) },
-    {
-      label: "Best lap",
-      a: fmtLap(you.bestLapMs) || NO_VALUE,
-      b: fmtLap(m.bestLapMs) || NO_VALUE,
-      win: lapWin,
-      note: lapWin !== 0 && you.bestLapMs && m.bestLapMs ? fmtLapDelta(-Math.abs(you.bestLapMs - m.bestLapMs)) : null,
-    },
+    { label: "Best lap", a: fmtLap(you.bestLapMs) || NO_VALUE, b: fmtLap(m.bestLapMs) || NO_VALUE, win: lapWin, note: lapGap },
     { label: "Season points", a: myPts ?? NO_VALUE, b: m.seasonPoints ?? NO_VALUE, win: better(myPts, m.seasonPoints, false), sa: myPts != null ? (myPts / maxPts) * 100 : null, sb: m.seasonPoints != null ? (m.seasonPoints / maxPts) * 100 : null },
   ];
   const tone = (w) => (w > 0 ? "text-ok" : w < 0 ? "text-light" : "text-dark");
   const narrow = useNarrow();
-  const av = narrow ? 32 : 44;
+  const av = narrow ? 32 : 48;
   const duel = m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) ? m.duel : null;
+  const duels = duel
+    ? [
+        { k: "races", label: "Races", w: duel.raceWins, l: duel.raceLosses },
+        { k: "grid", label: "Grid", w: duel.qualiWins, l: duel.qualiLosses },
+      ].filter((d) => d.w + d.l > 0)
+    : [];
+  const table = [
+    { label: "Championship", a: myChamp != null ? `P${myChamp}` : null, b: m.seasonPosition != null ? `P${m.seasonPosition}` : null, win: better(myChamp, m.seasonPosition) },
+    { label: "Points", a: myPts, b: m.seasonPoints, win: better(myPts, m.seasonPoints, false) },
+  ].filter((r) => r.a != null && r.b != null);
+  const season = duels.length > 0 || table.length > 0;
   return (
     <Card className="!p-0">
-      <div className="grid grid-cols-2">
-        <div className="rr-split-l relative flex min-w-0 items-center gap-2 px-3 py-4 sm:gap-3 sm:p-6" style={{ background: `linear-gradient(90deg, ${rgba(color, 0.2)}, ${rgba(color, 0.04)})` }}>
-          <DriverAvatar name={you.name} photoUrl={card?.driver?.photoUrl || null} color={color} size={av} />
-          <div className="min-w-0">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">You</div>
-            <div className="truncate font-display text-[15px] font-black uppercase leading-tight tracking-tight text-dark min-[400px]:text-base sm:text-2xl">{you.name}</div>
-          </div>
-        </div>
-        <Link to={`/drivers/${m.driverId}`} className="rr-split-r relative flex min-w-0 flex-row-reverse items-center gap-2 px-3 py-4 text-right transition hover:text-brand sm:gap-3 sm:p-6" style={{ background: `linear-gradient(270deg, ${rgba(color, 0.12)}, transparent)` }}>
-          <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={color} size={av} />
-          <div className="min-w-0">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">Team-mate</div>
-            <div className="truncate font-display text-[15px] font-black uppercase leading-tight tracking-tight text-dark min-[400px]:text-base sm:text-2xl">{m.name}</div>
-          </div>
-        </Link>
-      </div>
-      <div className="relative flex items-center justify-center border-y border-border bg-surface2/60 py-2">
-        <span className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
-          {you.team && <TeamLogo id={you.team.id} name={you.team.name} color={you.team.color} logoUrl={you.team.logoUrl} size={16} />}
-          Team-mate head to head · {you.team?.name}
-        </span>
-      </div>
-      <div className="divide-y divide-border px-4 sm:px-6">
-        {rows.map((r, i) => (
-          <div key={r.label} className="py-3">
-            <div className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-3">
-              <span className={`font-mono text-base font-bold tabular-nums sm:text-lg ${tone(r.win)}`}>
-                {r.a}
-                {r.note && r.win > 0 && <span className="ml-2 text-[11px] text-light">{r.note}</span>}
-              </span>
-              <Label tone="text-light" className="text-center">
-                {r.label}
-              </Label>
-              <span className={`text-right font-mono text-base font-bold tabular-nums sm:text-lg ${tone(-r.win)}`}>
-                {r.note && r.win < 0 && <span className="mr-2 text-[11px] text-light">{r.note}</span>}
-                {r.b}
-              </span>
+      <div className={season ? "grid lg:grid-cols-[1.55fr,1fr]" : ""}>
+        {/* This race */}
+        <div className="min-w-0 px-4 pb-4 pt-5 sm:px-8 sm:pb-7 sm:pt-6">
+          <div className="grid grid-cols-2 gap-3 pb-3 sm:gap-4">
+            <div className="rr-split-l flex min-w-0 items-center gap-2 sm:gap-3">
+              <DriverAvatar name={you.name} photoUrl={card?.driver?.photoUrl || null} color={color} size={av} />
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-eyebrow">You</div>
+                <div className="truncate font-display text-[15px] font-black uppercase leading-tight tracking-tight text-dark min-[400px]:text-base sm:text-xl">{you.name}</div>
+              </div>
             </div>
-            {(r.sa != null || r.sb != null) && (
-              <div className="mt-2 grid grid-cols-2 gap-1">
-                <div className="relative h-1.5 rounded-l-full bg-surface2">
-                  {r.sa != null && <div className="bar-fill rr-from-right absolute right-0 top-0 h-full rounded-l-full" style={{ "--w": `${Math.max(3, r.sa)}%`, background: r.win >= 0 ? color : "var(--c-text3)", "--bar-delay": `${i * 120}ms` }} />}
+            <Link to={`/drivers/${m.driverId}`} className="rr-split-r flex min-w-0 flex-row-reverse items-center gap-2 text-right transition hover:text-brand sm:gap-3">
+              <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={color} size={av} />
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">Team-mate</div>
+                <div className="truncate font-display text-[15px] font-black uppercase leading-tight tracking-tight text-dark min-[400px]:text-base sm:text-xl">{m.name}</div>
+              </div>
+            </Link>
+          </div>
+          {rows.map((r, i) => (
+            <div key={r.label} className="grid grid-cols-[minmax(0,5.5rem),1fr,minmax(0,5.5rem)] items-center gap-3 border-t border-border py-3 sm:grid-cols-[minmax(0,7.5rem),1fr,minmax(0,7.5rem)] sm:gap-4">
+              <span className={`truncate font-mono text-base font-bold tabular-nums sm:text-lg ${tone(r.win)}`}>{r.a}</span>
+              <div className="grid min-w-0 gap-1.5">
+                <Label tone="text-light" className="text-center">
+                  {r.label}
+                </Label>
+                {r.sa != null || r.sb != null ? (
+                  <div className="grid grid-cols-2 gap-1">
+                    <div className="relative h-1.5 rounded-l-full bg-surface2">
+                      {r.sa != null && <div className="bar-fill rr-from-right absolute right-0 top-0 h-full rounded-l-full" style={{ "--w": `${Math.max(3, r.sa)}%`, background: r.win >= 0 ? color : "var(--c-text3)", "--bar-delay": `${i * 120}ms` }} />}
+                    </div>
+                    <div className="relative h-1.5 rounded-r-full bg-surface2">
+                      {r.sb != null && <div className="bar-fill absolute left-0 top-0 h-full rounded-r-full" style={{ "--w": `${Math.max(3, r.sb)}%`, background: r.win <= 0 ? rgba(color, 0.7) : "var(--c-text3)", "--bar-delay": `${i * 120}ms` }} />}
+                    </div>
+                  </div>
+                ) : r.note ? (
+                  <div className={`truncate font-mono text-[11px] font-bold text-ok ${r.win > 0 ? "text-left" : "text-right"}`}>
+                    {r.note}
+                  </div>
+                ) : null}
+              </div>
+              <span className={`truncate text-right font-mono text-base font-bold tabular-nums sm:text-lg ${tone(-r.win)}`}>{r.b}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* The season */}
+        {season && (
+          <div className="grid min-w-0 content-start gap-5 border-t border-border bg-surface2/50 px-4 pb-5 pt-5 sm:px-8 sm:pb-7 sm:pt-6 lg:border-l lg:border-t-0">
+            <Label>Season duel{you.team?.name ? ` · ${you.team.name}` : ""}</Label>
+            <div className="flex items-baseline justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
+              <span className="truncate">{you.name}</span>
+              <span className="truncate text-right">{m.name}</span>
+            </div>
+            {duels.map((d, j) => (
+              <div key={d.k} className="grid grid-cols-[auto,1fr,auto] items-center gap-4">
+                <Label tone="text-light" className="col-span-3">
+                  {d.label}
+                </Label>
+                <span className={`font-display text-4xl font-black leading-none tabular-nums ${d.w > d.l ? "text-ok" : d.w < d.l ? "text-light" : "text-dark"}`}>{d.w}</span>
+                <div className="flex items-center gap-1" aria-label={`${d.label}: ${d.w} to ${d.l}`}>
+                  {Array.from({ length: d.w + d.l }, (_, i) => (
+                    <span key={i} className="rr-pip h-2.5 flex-1 rounded-[2px]" style={{ background: i < d.w ? color : "var(--c-border)", "--i": i + j * 8 }} />
+                  ))}
                 </div>
-                <div className="relative h-1.5 rounded-r-full bg-surface2">
-                  {r.sb != null && <div className="bar-fill absolute left-0 top-0 h-full rounded-r-full" style={{ "--w": `${Math.max(3, r.sb)}%`, background: r.win <= 0 ? rgba(color, 0.7) : "var(--c-text3)", "--bar-delay": `${i * 120}ms` }} />}
-                </div>
+                <span className={`text-right font-display text-4xl font-black leading-none tabular-nums ${d.l > d.w ? "text-ok" : d.l < d.w ? "text-light" : "text-dark"}`}>{d.l}</span>
+              </div>
+            ))}
+            {table.length > 0 && (
+              <div className="border-t border-border">
+                {table.map((r) => (
+                  <div key={r.label} className="grid grid-cols-[1fr,auto,auto] items-baseline gap-5 border-b border-border py-2.5">
+                    <Label tone="text-light">{r.label}</Label>
+                    <span className={`min-w-[4ch] text-right font-mono text-base font-bold tabular-nums ${tone(r.win)}`}>{r.a}</span>
+                    <span className={`min-w-[4ch] text-right font-mono text-base font-bold tabular-nums ${tone(-r.win)}`}>{r.b}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        ))}
-        {duel && (
-          <div className="mx-auto max-w-xl py-3">
-            <Label tone="text-light" className="text-center">
-              Season duel
-            </Label>
-            {[
-              { k: "races", w: duel.raceWins, l: duel.raceLosses, word: "races" },
-              { k: "grid", w: duel.qualiWins, l: duel.qualiLosses, word: "grid" },
-            ]
-              .filter((d) => d.w + d.l > 0)
-              .map((d, j) => (
-                <div key={d.k} className="mt-2 grid grid-cols-[2.5rem,1fr,2.5rem] items-center gap-3">
-                  <span className={`font-mono text-sm font-bold tabular-nums ${d.w > d.l ? "text-ok" : d.w < d.l ? "text-bad" : "text-dark"}`}>{d.w}</span>
-                  <div className="flex items-center gap-1" aria-label={`${d.word}: ${d.w} to ${d.l}`}>
-                    {Array.from({ length: d.w + d.l }, (_, i) => (
-                      <span key={i} className="rr-pip h-2.5 flex-1 rounded-[2px]" style={{ background: i < d.w ? color : "var(--c-border)", "--i": i + j * 8 }} />
-                    ))}
-                  </div>
-                  <span className={`text-right font-mono text-sm font-bold tabular-nums ${d.l > d.w ? "text-ok" : d.l < d.w ? "text-bad" : "text-dark"}`}>{d.l}</span>
-                  <span className="col-span-3 -mt-1 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-faint">{d.word}</span>
-                </div>
-              ))}
-          </div>
         )}
       </div>
-      {mates.length > 1 && <p className="px-4 pb-4 font-mono text-[11px] text-light sm:px-6">Also in your colours: {mates.slice(1).map((x) => `${x.name} (${x.position != null ? `P${x.position}` : x.status})`).join(", ")}.</p>}
+      {mates.length > 1 && <p className="border-t border-border px-4 py-3 font-mono text-[11px] text-light sm:px-8">Also in your colours: {mates.slice(1).map((x) => `${x.name} (${x.position != null ? `P${x.position}` : x.status})`).join(", ")}.</p>}
     </Card>
   );
 }
@@ -687,7 +699,7 @@ export function Finale({ recap, shown, actions }) {
   const stats = [
     you?.raced ? { k: "result", label: shown.half === "sprint" ? "Sprint" : twoRaces ? "Feature race" : "Result", value: you.finished ? `P${you.position}` : you.status, sub: you.finished && you.grid != null ? `from P${you.grid}` : null, tone: you.finished && you.position <= 3 ? "var(--medal-1)" : "var(--c-text)" } : null,
     you ? { k: "pts", label: twoRaces ? "Round total" : "Points", value: `+${twoRaces ? weekend.total : you.points || 0}`, sub: twoRaces ? `${weekend.sprint} + ${weekend.feature}` : "championship", tone: "rgb(var(--c-accent))" } : null,
-    rating?.after ? { k: "rating", label: "Rating", value: rating.after.overall.toFixed(1), sub: rating.delta ? `${rating.delta.overall >= 0 ? "▲ +" : "▼ −"}${Math.abs(rating.delta.overall).toFixed(1)}` : null, subTone: rating.delta?.overall >= 0 ? "text-ok" : "text-bad" } : null,
+    rating?.after ? { k: "rating", label: "Rating", value: String(Math.round(rating.after.overall)), sub: rating.delta ? `${rating.delta.overall >= 0 ? "▲ +" : "▼ −"}${Math.round(Math.abs(rating.delta.overall))}` : null, subTone: rating.delta?.overall >= 0 ? "text-ok" : "text-bad" } : null,
     standings?.after ? { k: "champ", label: "Championship", value: `P${standings.after.position}`, sub: standings.before && standings.before.position !== standings.after.position ? `was P${standings.before.position}` : `${standings.after.total} pts`, subTone: standings.before?.position > standings.after.position ? "text-ok" : "text-light" } : null,
     points && (points.entries.length || points.pending?.length) ? { k: "tok", label: "NABS Tokens", value: `+${points.earned}`, sub: points.balance != null ? (points.sample?.balance ? `${points.balance.toLocaleString("en-US")} total · sample` : `${points.balance.toLocaleString("en-US")} total`) : null, tone: "rgb(var(--c-accent))" } : null,
   ].filter(Boolean);

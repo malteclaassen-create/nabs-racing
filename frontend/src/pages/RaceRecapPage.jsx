@@ -21,7 +21,7 @@
 // the admin preview opens it with ?seat=<driverId> to see any driver's version
 // of any round, which never counts as seen for anybody.
 // ---------------------------------------------------------------------------
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
@@ -41,7 +41,24 @@ import { fmtLap, fmtLapDelta, fmtRaceDateFull, NO_VALUE } from "../utils/format.
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 // The tile icons, all from Lucide, all the same size and stroke.
+import RaceReplay, { buildReplay, ReplaySkeleton, inkFor } from "./recap/RaceReplay.jsx";
+import { Card, Label, Delta, Row, Tween, Ticker, Bar, Chapter } from "./recap/parts.jsx";
+import { RatingBreakdown, StandingsTower, SeasonCurve, TokensCard, TeammateSplit, HonoursBadges, Finale } from "./recap/cards.jsx";
+import { sineInOutInverse } from "./recap/spring.js";
+import { CmpProvider, TierSwitch, useCmp, useCmpValue, cmpLine, tierPlaces } from "./recap/cmp.jsx";
+import "./recap/replay.css";
+import "./recap/polish.css";
+import "./recap/g3.css";
+import "./recap/cmp.css";
+import "./recap/desktop.css";
 import { Timer, Gauge, Activity, ArrowLeftRight, ShieldCheck, Flag as FlagIcon, Hourglass, Rocket, Crown, ChevronRight } from "lucide-react";
+import RaceRecapPageClassic from "./RaceRecapPageClassic.jsx";
+
+// This page (with the race replay) is for rounds raced from 16 Oct 2026 on.
+// Every round before that keeps the recap it was shown with, so a recap read
+// again from a race page looks the way it did on the night.
+const NEW_RECAP_FROM = new Date("2026-10-16T00:00:00+02:00");
+const isClassicRecap = (recap) => !!recap?.race?.date && new Date(recap.race.date) < NEW_RECAP_FROM;
 
 export default function RaceRecapPage() {
   const { raceId } = useParams();
@@ -57,11 +74,24 @@ export default function RaceRecapPage() {
   // The lap chart of the race being shown, kept under its race id: a sprint
   // weekend has one per half and they must never be drawn over each other.
   const [laps, setLaps] = useState(null);
+  // Which race's lap chart request has come back (with data or without), so
+  // the player's frame can stand in while it is on its way and step aside
+  // when there is nothing to replay.
+  const [lapsDone, setLapsDone] = useState(null);
   // Which race of the weekend the detail cards are about. A plain round has
   // only one and never shows the switch; ?session=sprint is the Sprint tab's
   // own Recap button, and falls back to the feature race when the round ran
   // only the one.
   const [half, setHalf] = useState(params.get("session") === "sprint" ? "sprint" : "feature");
+  // Who the numbers are set against: the whole field, or one tier. One choice
+  // for the whole page (cmp.jsx); `live` once the reader has used it, so what
+  // changes then moves at once instead of waiting for its card's entrance.
+  const [cmpTier, setCmpTier] = useState("all");
+  const [cmpLive, setCmpLive] = useState(false);
+  const pickTier = useCallback((t) => {
+    setCmpTier(t);
+    setCmpLive(true);
+  }, []);
 
   useEffect(() => {
     if (handed) return;
@@ -73,10 +103,11 @@ export default function RaceRecapPage() {
     };
   }, [raceId, seat, handed]);
 
-  // Arriving is seeing: the member is on the page now, whatever they click next.
+  // Arriving is seeing: the member is on the page now, whatever they click
+  // next. (An older round goes to the classic page, which marks it itself.)
   useEffect(() => {
-    if (pending) api.markRaceRecapSeen(raceId).catch(() => {});
-  }, [pending, raceId]);
+    if (pending && recap && !isClassicRecap(recap)) api.markRaceRecapSeen(raceId).catch(() => {});
+  }, [pending, raceId, recap]);
 
   // The race the detail cards are about: the feature race, or the sprint of a
   // sprint weekend. Both halves come back in the same shape, so everything
@@ -85,24 +116,38 @@ export default function RaceRecapPage() {
   // NABS Tokens) keeps being read off `recap`.
   const shown = half === "sprint" && recap?.sprint ? { ...recap, ...recap.sprint, half: "sprint" } : recap && { ...recap, half: "feature" };
   const shownId = shown?.race?.id || null;
+  const classic = isClassicRecap(recap);
 
   useEffect(() => {
     setLaps(null);
-    if (!shown?.race?.hasLapChart || !shown.you?.raced || !shownId) return;
+    if (classic || !shown?.race?.hasLapChart || !shown.you?.raced || !shownId) return;
     let gone = false;
     api
       .raceLaps(shownId)
-      .then((d) => !gone && d?.available && setLaps({ raceId: shownId, ...d }))
-      .catch(() => {});
+      .then((d) => {
+        if (gone) return;
+        if (d?.available) setLaps({ raceId: shownId, ...d });
+        setLapsDone(shownId);
+      })
+      .catch(() => !gone && setLapsDone(shownId));
     return () => {
       gone = true;
     };
-  }, [shown?.race?.hasLapChart, shown?.you?.raced, shownId]);
+  }, [classic, shown?.race?.hasLapChart, shown?.you?.raced, shownId]);
 
-  useRecapReveal(recap, laps, half);
-  useSpecificTitle(recap ? `Race recap · ${recap.race.track}` : "Race recap");
+  // The replay of the race being shown, worked out once per lap chart.
+  const shownChart = laps && laps.raceId === shownId ? laps : null;
+  const replay = useMemo(() => (shownChart && shown?.you?.raced ? buildReplay(shownChart, shown) : null), [shownChart]); // eslint-disable-line react-hooks/exhaustive-deps
+  const replayWaiting = !!(shown?.race?.hasLapChart && shown?.you?.raced && lapsDone !== shownId && !shownChart);
+
+  const cmp = useCmpValue(shown?.results, shown?.you, cmpTier, pickTier, cmpLive);
+
+  useRecapReveal(recap, laps, half, lapsDone);
+  const rootRef = useCardDepth(recap, laps, half, lapsDone);
+  useSpecificTitle(recap ? `NABS Race Recap · ${recap.race.track}` : "NABS Race Recap");
 
   if (error) return <ErrorBox message={error} />;
+  if (classic) return <RaceRecapPageClassic initialRecap={recap} />;
   if (!recap) {
     return (
       <div className="space-y-5">
@@ -118,65 +163,114 @@ export default function RaceRecapPage() {
   const { career, season, teammates, standings, team, rating, points, card, sprint, weekend } = recap;
   const resultsLink = seriesPath(`/races?race=${recap.race.id}`);
   const showPoints = points && (points.entries.length > 0 || points.pending?.length > 0);
-  const chart = laps && laps.raceId === shownId ? laps : null;
   const leave = () => (pending ? navigate(-1) : navigate(resultsLink));
 
+  // The chapters, numbered as they come: only the ones this round has.
+  let chapterNo = 0;
+  const ch = () => String((chapterNo += 1)).padStart(2, "0");
+  const teamColor = you?.team?.color || null;
+  const actions = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Link to={resultsLink} className="btn-primary">
+          Full race results
+        </Link>
+        {you && (
+          <Link to={`/drivers/${you.driverId}`} className="btn-secondary">
+            My driver page
+          </Link>
+        )}
+      </div>
+      <button type="button" onClick={leave} className="text-sm font-semibold text-light transition hover:text-dark">
+        {pending ? "Carry on to the site" : "Done"}
+      </button>
+    </div>
+  );
+  const hasStrategy = you?.raced && (story?.stints?.length > 0 || incidents);
+  const shownWord = shown.half === "sprint" ? "the sprint" : sprint ? "the feature race" : "the race";
+
   return (
-    <div className="space-y-5" style={{ "--recap-team": you?.team?.color || "var(--c-text)" }}>
+    <CmpProvider value={cmp}>
+    <div ref={rootRef} className={`rr space-y-4 sm:space-y-5 ${cmp.live ? "rr-live" : ""}`} style={{ "--recap-team": teamColor || "var(--c-text)", "--recap-ink": teamColor ? inkFor(teamColor) : "var(--c-card)" }}>
       <Header recap={recap} shown={shown} preview={seat != null} />
       {/* A sprint weekend is one round with two races. Both are shown here,
           each with what it finished and what it paid, and the round's total
           is the two of them added up where everybody can see it. Picking one
-          turns the cards below over to that race. */}
+          turns the replay and the chapters below over to that race. */}
       {sprint && (recap.you || sprint.you) && <WeekendCard recap={recap} half={half} onHalf={setHalf} />}
-      {/* Keyed on the race being shown: switching halves rebuilds these cards
-          rather than swapping numbers inside them, so each race arrives with
-          the same motion the page opened with. */}
+      {/* The race played back, lap by lap, ending on the result. While the
+          lap chart is on its way its frame holds the place; with no lap chart
+          the finishing card tells the result the way it always has. */}
+      {replay ? <RaceReplay key={`replay-${shownId}`} R={replay} recap={shown} /> : replayWaiting ? <ReplaySkeleton recap={shown} /> : null}
+
+      {/* Below the replay the round is told in chapters, each called in like
+          a broadcast segment. Keyed on the race being shown: switching halves
+          rebuilds them, so each race arrives with the same motion. */}
       {you && (
-        <div key={`finish-${shownId}`} className="grid gap-5 lg:grid-cols-[1.75fr,1fr]">
-          <FinishCard recap={shown} />
-          <RoundCard recap={shown} weekend={weekend} />
-        </div>
+        <section key={`result-${shownId}`} className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Result" sub={shownWord === "the race" ? "Finish and points" : `Finish and points, ${shownWord.replace("the ", "")}`} />
+          <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.75fr,1fr]">
+            <FinishCard recap={shown} compact={!!replay} />
+            <RoundCard recap={shown} weekend={weekend} />
+          </div>
+        </section>
       )}
-      {you?.raced && <StatCards key={`stats-${shownId}`} you={you} story={story} race={race} results={results} />}
-      {you?.raced && (story?.stints?.length > 0 || incidents) && (
-        <div key={`drive-${shownId}`} className="grid gap-5 lg:grid-cols-2">
-          {story?.stints?.length > 0 && <StintsCard stints={story.stints} />}
-          {incidents && <IncidentsCard incidents={incidents} you={you} />}
-        </div>
+      {(you?.raced || rating?.after) && (
+        <section key={`pace-${shownId}`} className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Pace" sub="Laps, pace and rating" />
+          {you?.raced && cmp.available && <CompareBar />}
+          {you?.raced && <StatCards you={you} story={story} race={race} results={results} chart={shownChart} />}
+          {rating?.after && <RatingBreakdown rating={rating} card={card} />}
+        </section>
       )}
-      {chart && you?.raced && (
-        <Card key={`trace-${shownId}`}>
-          <RaceTrace laps={chart} driverId={you.driverId} lapsDriven={you.laps} />
-        </Card>
+      {hasStrategy && (
+        <section key={`strategy-${shownId}`} className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Strategy" sub="Tyres, stops, contact" />
+          <div className={`grid gap-4 sm:gap-5 ${story?.stints?.length > 0 && incidents ? "lg:grid-cols-[1.2fr,1fr]" : ""}`}>
+            {story?.stints?.length > 0 && (
+              <StintsCard
+                stints={story.stints}
+                raceLaps={race.raceLaps}
+                wide={!incidents}
+                // Whether this round has the lap times a tyre reading is made
+                // from at all. Without them every stint would read "too short",
+                // which is not what happened, so the line is left out.
+                wearKnown={story.stints.some((st) => st.degMsPerLap != null) || (story.laps || []).some((l) => l.timeMs > 0)}
+              />
+            )}
+            {incidents && <IncidentsCard incidents={incidents} you={you} />}
+          </div>
+        </section>
       )}
-      {rating?.after && <RatingCard rating={rating} card={card} />}
       {season && standings?.after && (
-        <div className="grid gap-5 lg:grid-cols-[1.75fr,1fr]">
-          <SeasonCurve season={season} you={you} />
-          <ChampionshipCard standings={standings} team={team} season={season} />
-        </div>
+        <section className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Championship" sub={recap.race.number != null ? `The table after round ${recap.race.number}` : "The table"} />
+          <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1fr,1.45fr]">
+            <StandingsTower standings={standings} team={team} season={season} you={you} />
+            <SeasonCurve season={season} />
+          </div>
+          {career && you && <CareerCard career={career} you={you} race={recap.race} />}
+        </section>
       )}
-      {career && you && <CareerCard career={career} you={you} race={recap.race} />}
-      {showPoints && <PointsCard points={points} />}
-      {teammates?.length > 0 && you && <TeammateCard you={you} mates={teammates} standings={standings} card={card} />}
-      <HonoursRow key={`honours-${shownId}`} race={race} results={results} quali={quali} sprint={shown.half === "sprint"} />
-      <div className="recap-reveal flex flex-wrap items-center justify-between gap-3 pt-2">
-        <div className="flex flex-wrap gap-2">
-          <Link to={resultsLink} className="btn-primary">
-            Full race results
-          </Link>
-          {you && (
-            <Link to={`/drivers/${you.driverId}`} className="btn-secondary">
-              My driver page
-            </Link>
-          )}
-        </div>
-        <button type="button" onClick={leave} className="text-sm font-semibold text-light transition hover:text-dark">
-          {pending ? "Carry on to the site" : "Done"}
-        </button>
-      </div>
+      {showPoints && (
+        <section className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Rewards" sub="NABS Tokens" />
+          <TokensCard points={points} />
+        </section>
+      )}
+      {teammates?.length > 0 && you && (
+        <section className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Team" sub={you.team?.name ? `Inside ${you.team.name}` : "Your team-mate"} />
+          <TeammateSplit you={you} mates={teammates} standings={standings} card={card} field={recap.race.starters || recap.race.fieldSize} />
+        </section>
+      )}
+      <section key={`flag-${shownId}`} className="space-y-4 sm:space-y-5">
+        <Chapter n={ch()} title="The flag" sub="Honours and classification" />
+        <HonoursBadges race={race} results={results} quali={quali} sprint={shown.half === "sprint"} youId={you?.driverId} />
+        <Finale recap={recap} shown={shown} actions={actions} />
+      </section>
     </div>
+    </CmpProvider>
   );
 }
 
@@ -207,8 +301,9 @@ function useRecapReveal(...deps) {
         .map((el) => ({ el, top: el.getBoundingClientRect().top }))
         .filter((x) => x.top < line)
         .sort((a, b) => a.top - b.top);
+      // Calm steps: cards arriving together follow one another 140 ms apart.
       due.forEach(({ el }, i) => {
-        el.style.setProperty("--reveal-delay", `${Math.min(i, 6) * 110}ms`);
+        el.style.setProperty("--reveal-delay", `${Math.min(i, 6) * 140}ms`);
         el.classList.add("is-visible");
       });
     };
@@ -227,105 +322,81 @@ function useRecapReveal(...deps) {
   }, deps);
 }
 
-// Whether the card this element sits in has been let in yet. Numbers wait
-// for that rather than for being on screen, or they would count up behind
-// a card that is still invisible.
-function useRevealed() {
+// Scroll-linked depth: a card still low on the screen sits a little further
+// down, and glides up into its place as it is scrolled towards the reading
+// line (35% down the screen), where it comes to rest. Chapter headers sit on
+// a nearer layer and travel a touch more. It writes the `translate` property
+// only, which composes with the entrance's `transform` and never touches
+// layout; positions are read from the layout (offsetTop), never from the
+// moved boxes, so it cannot feed back on itself. Off with reduced motion.
+function useCardDepth(...deps) {
   const ref = useRef(null);
-  const [on, setOn] = useState(false);
   useEffect(() => {
-    const host = ref.current?.closest(".recap-reveal");
-    if (!host) {
-      setOn(true);
-      return;
-    }
-    if (host.classList.contains("is-visible")) {
-      setOn(true);
-      return;
-    }
-    const mo = new MutationObserver(() => {
-      if (host.classList.contains("is-visible")) {
-        setOn(true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(host, { attributes: true, attributeFilter: ["class"] });
-    return () => mo.disconnect();
-  }, []);
-  return [ref, on];
-}
-
-// A number that ticks from what it was to what it is, once its card is in.
-function Tween({ from = 0, to, decimals = 0, duration = 1400, delay = 350, prefix = "", suffix = "", className = "" }) {
-  const [ref, on] = useRevealed();
-  const start = from == null || !Number.isFinite(from) ? to : from;
-  const [n, setN] = useState(start);
-  useEffect(() => {
-    if (!on || !Number.isFinite(to)) return;
-    if (motionOff() || start === to) {
-      setN(to);
-      return;
-    }
+    const root = ref.current;
+    if (!root || motionOff()) return undefined;
+    let items = [];
     let raf = 0;
-    const t0 = performance.now() + delay;
-    const tick = (t) => {
-      const p = Math.min(1, Math.max(0, (t - t0) / duration));
-      const e = 1 - Math.pow(1 - p, 3);
-      setN(start + (to - start) * e);
-      if (p < 1) raf = requestAnimationFrame(tick);
+    const docTop = (el) => {
+      let y = 0;
+      for (let n = el; n; n = n.offsetParent) y += n.offsetTop;
+      return y;
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [on, start, to, duration, delay]);
-  const shown = decimals ? n.toFixed(decimals) : Math.round(n).toLocaleString("en-US");
-  return (
-    <span ref={ref} className={`tabular-nums ${className}`}>
-      {prefix}
-      {shown}
-      {suffix}
-    </span>
-  );
-}
-
-// --- the pieces every card shares --------------------------------------------
-
-function Card({ children, className = "" }) {
-  return <div className={`recap-reveal card p-5 sm:p-6 ${className}`}>{children}</div>;
-}
-
-function Label({ children, className = "", tone = "text-eyebrow" }) {
-  return <div className={`font-mono text-[10px] font-bold uppercase tracking-[0.2em] ${tone} ${className}`}>{children}</div>;
-}
-
-// "+3" in green, "−1" in red. `goodWhen` says which way is the good one:
-// "up" for places gained and points, "down" for lap time lost per lap.
-function Delta({ value, decimals = 0, suffix = "", className = "", arrow = false, goodWhen = "up" }) {
-  if (value == null || !Number.isFinite(value)) return null;
-  const zero = Math.abs(value) < (decimals ? 0.005 : 0.5);
-  const up = value > 0;
-  const good = goodWhen === "up" ? up : !up;
-  const text = zero ? `±0${suffix}` : `${up ? "+" : "−"}${Math.abs(value).toFixed(decimals)}${suffix}`;
-  return (
-    <span className={`font-mono font-bold tabular-nums ${zero ? "text-light" : good ? "text-ok" : "text-bad"} ${className}`}>
-      {arrow && !zero && (up ? "▲ " : "▼ ")}
-      {text}
-    </span>
-  );
-}
-
-// A label on the left, a mono value on the right.
-function Row({ label, value, tone = "text-dark" }) {
-  if (value == null || value === "") return null;
-  return (
-    <div className="flex items-baseline justify-between gap-4 py-2.5">
-      <Label tone="text-light">{label}</Label>
-      <span className={`font-mono text-sm font-bold tabular-nums ${tone}`}>{value}</span>
-    </div>
-  );
+    const measure = () => {
+      items = [...root.querySelectorAll(".recap-reveal")].slice(1).map((el) => ({
+        el,
+        top: docTop(el),
+        k: el.classList.contains("rr-chapter") ? 0.075 : 0.06,
+        max: el.classList.contains("rr-chapter") ? 44 : 36,
+        last: null,
+      }));
+    };
+    const update = () => {
+      raf = 0;
+      if (motionOff()) {
+        items.forEach((it) => it.el.style.removeProperty("translate"));
+        return;
+      }
+      const vh = window.innerHeight;
+      const line = vh * 0.35;
+      const sy = window.scrollY;
+      for (const it of items) {
+        const top = it.top - sy;
+        if (top > vh * 1.4 || top < -vh) continue;
+        const off = Math.max(0, Math.min(it.max, (top - line) * it.k));
+        const r = Math.round(off * 10) / 10;
+        if (r !== it.last) {
+          it.last = r;
+          it.el.style.translate = r ? `0 ${r}px` : "";
+        }
+      }
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    const remeasure = () => {
+      measure();
+      onScroll();
+    };
+    measure();
+    update();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(remeasure) : null;
+    ro?.observe(root);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", remeasure);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", remeasure);
+      ro?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return ref;
 }
 
 const teamOf = (row) => row?.effectiveTeam || row?.team || null;
-const nth = (n) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
+// 1st, 2nd, 3rd, 11th, 12th, 13th, 21st, 32nd ...
+const nth = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`);
 
 // --- the header ---------------------------------------------------------------
 
@@ -341,8 +412,11 @@ function Header({ recap, shown, preview }) {
   const time = race.date ? fmtRaceTime(race.date) : "";
   const weekend = !!recap.sprint;
   return (
-    <div className="recap-reveal flex flex-wrap items-end justify-between gap-6 border-b border-border pb-6">
+    <div className="recap-reveal rr-head-block flex flex-wrap items-end justify-between gap-6 border-b border-border pb-6">
       <div className="min-w-0">
+        {/* Each line slides up out of its own mask, one after another. */}
+        <div className="rr-mask rr-hl rr-hl-1">
+          <div className="rr-mask-in">
         <Label>
           {[
             you ? "Your race summary" : "Race summary",
@@ -354,11 +428,16 @@ function Header({ recap, shown, preview }) {
             .filter(Boolean)
             .join(" · ")}
         </Label>
-        <h1 className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 font-display text-[clamp(2.25rem,9vw,3.75rem)] font-black uppercase leading-none tracking-tight text-dark">
+          </div>
+        </div>
+        <div className="rr-mask rr-hl rr-hl-2 mt-2">
+        <h1 className="rr-mask-in flex flex-wrap items-center gap-x-4 gap-y-2 font-display text-[clamp(2.25rem,9vw,3.75rem)] font-black uppercase leading-none tracking-tight text-dark">
           {flag && <Flag code={flag.country} w={40} h={30} className="rounded-sm" />}
           <span className="min-w-0">{race.track}</span>
         </h1>
-        <div className="mt-3 text-sm text-medium">
+        </div>
+        <div className="rr-mask rr-hl rr-hl-3 mt-3">
+        <div className="rr-mask-in text-sm text-medium">
           {[
             race.date ? fmtRaceDateFull(race.date) : null,
             time || null,
@@ -374,9 +453,10 @@ function Header({ recap, shown, preview }) {
             .filter(Boolean)
             .join(" · ")}
         </div>
+        </div>
       </div>
       {you && (
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+        <div className="rr-chip flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
           <DriverAvatar name={you.name} photoUrl={photo} color={you.team?.color || "#232833"} size={44} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -492,17 +572,19 @@ function GridToFlag({ grid, finish, field }) {
           from the left when places were gained, from the right when they
           were lost, so it follows the car instead of filling in backwards. */}
       <div
-        className="recap-sweep-trail absolute top-[19px] h-[3px]"
+        className={`rr-sweep-trail absolute top-[19px] h-[3px] ${to >= from ? "" : "rr-from-right"}`}
         style={{
           ...(to >= from ? { left: `${from}%` } : { right: `${100 - from}%` }),
-          "--w": `${w}%`,
+          width: `${w}%`,
           background: "var(--recap-team)",
           opacity: 0.6,
         }}
       />
       <div className="absolute top-5 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-card" style={{ left: `${from}%` }} title={`Grid P${grid}`} />
-      <div className="recap-sweep-dot absolute top-5 -translate-x-1/2 -translate-y-1/2" style={{ "--from": `${from}%`, "--to": `${to}%`, left: `${to}%` }}>
-        <div className="h-4 w-4 rounded-full ring-4 ring-card" style={{ background: "var(--recap-team)" }} />
+      <div className="rr-sweep-layer pointer-events-none absolute inset-x-0 top-5" style={{ "--from": `${from}%`, "--to": `${to}%` }}>
+        <div className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2">
+          <div className="h-4 w-4 rounded-full ring-4 ring-card" style={{ background: "var(--recap-team)" }} />
+        </div>
       </div>
     </div>
   );
@@ -538,9 +620,14 @@ function finishStory(recap) {
   return bits.join(" ");
 }
 
-function FinishCard({ recap }) {
+function FinishCard({ recap, compact = false }) {
   const { you, race } = recap;
+  const c = useCmp();
   const story = finishStory(recap);
+  // Picked one tier: the track below is drawn on that tier's places, the big
+  // number stays the race's own classification.
+  const tp = tierPlaces({ c, you, results: recap.results, chart: null });
+  const onTier = !!(tp && you.finished && tp.place != null && tp.grid != null && tp.field > 1);
   const headline = !you.raced
     ? "Did not start"
     : !you.finished
@@ -563,18 +650,26 @@ function FinishCard({ recap }) {
   // is showing, or the big number means nothing.
   const which = recap.sprint ? (recap.half === "sprint" ? "Sprint · finishing position" : "Feature race · finishing position") : "Finishing position";
   return (
-    <Card className="flex flex-col">
+    <Card bodyClassName="flex h-full flex-col">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <Label>{which}</Label>
-        {you.finished && <Label tone="text-light">of {race.finishers} classified · {field} starters</Label>}
+        {you.finished && (
+          <Label tone="text-light">
+            <span key={`${c.tier}`} className="rr-cmp-in inline-block">
+              {c.tier === "all" ? `of ${race.finishers} classified · ${field} starters` : onTier ? `P${tp.place} of ${tp.field} in ${c.label}` : `Not in ${c.label}`}
+            </span>
+          </Label>
+        )}
       </div>
-      <div className="mt-2 flex flex-wrap items-end gap-x-8 gap-y-3">
+      <div className={`mt-2 flex flex-wrap items-end gap-x-8 gap-y-3 ${compact ? "gap-x-5" : ""}`}>
+        {/* Next to the replay, which has just landed the big number, the card
+            keeps it smaller and lets the words carry it. */}
         <div className="recap-pop flex items-start font-display font-black leading-none tracking-tighter text-dark">
-          <span className="mt-3 text-4xl text-light sm:mt-5 sm:text-5xl">P</span>
-          <span className="text-[6.5rem] sm:text-[8.5rem]">{you.finished ? you.position : you.raced ? you.status : "DNS"}</span>
+          <span className={compact ? "mt-1.5 text-2xl text-light sm:mt-2 sm:text-3xl" : "mt-3 text-4xl text-light sm:mt-5 sm:text-5xl"}>P</span>
+          <span className={compact ? "text-[4rem] sm:text-[5rem]" : "text-[6.5rem] sm:text-[8.5rem]"}>{you.finished ? you.position : you.raced ? you.status : "DNS"}</span>
         </div>
         <div className="mb-3 min-w-0 flex-1">
-          <div className="font-display text-2xl font-black uppercase tracking-tight sm:text-3xl" style={{ color: you.finished && you.position <= 3 ? "var(--medal-1)" : "var(--c-text)" }}>
+          <div className="font-display text-[1.3rem] font-black uppercase leading-[1.12] tracking-tight sm:text-3xl sm:leading-tight" style={{ color: you.finished && you.position <= 3 ? "var(--medal-1)" : "var(--c-text)" }}>
             {headline}
           </div>
           {you.finished && you.grid != null && (
@@ -596,15 +691,30 @@ function FinishCard({ recap }) {
         </div>
       </div>
       {you.finished && you.grid != null && field > 1 && (
-        <div className="mt-2">
-          <GridToFlag grid={you.grid} finish={you.position} field={field} />
+        <div className={`mt-2 ${c.live ? "rr-cmp-roll" : ""}`}>
+          {/* Keyed on the field: a switch runs the car from the grid again,
+              on the new scale. */}
+          {onTier ? <GridToFlag key={`t${c.tier}`} grid={tp.grid} finish={tp.place} field={tp.field} /> : <GridToFlag key="all" grid={you.grid} finish={you.position} field={field} />}
+          {c.tier !== "all" && (
+            <div key={`n${c.tier}`} className="rr-cmp-in -mt-1 font-mono text-[10px] leading-snug text-faint">
+              {onTier
+                ? `Places among the ${tp.field} ${c.label} starters: P${tp.grid} on the grid, P${tp.place} at the flag.`
+                : `You're not in ${c.label}: the track shows your places in the whole field.`}
+            </div>
+          )}
         </div>
       )}
       {(story || (you.finished && you.rawPosition != null && you.rawPosition !== you.position)) && (
         <div className="recap-tag mt-auto border-t border-border pt-4" style={{ "--tag-delay": "1400ms" }}>
           {story && <p className="text-sm leading-relaxed text-medium">{story}</p>}
           {you.finished && you.rawPosition != null && you.rawPosition !== you.position && (
-            <p className="mt-1 text-xs text-light">Crossed the line P{you.rawPosition}; the stewards made it P{you.position}.</p>
+            <p className="mt-1.5 text-xs text-light">
+              {/* Places won back off other drivers' penalties are not the
+                  stewards ruling on you: say where it came from. */}
+              {!(you.penaltySeconds > 0) && you.rawPosition > you.position
+                ? `Crossed the line P${you.rawPosition}; classified P${you.position} after penalties to cars ahead.`
+                : `Crossed the line P${you.rawPosition}; the stewards made it P${you.position}.`}
+            </p>
           )}
         </div>
       )}
@@ -614,6 +724,13 @@ function FinishCard({ recap }) {
 
 function RoundCard({ recap, weekend }) {
   const { you, results, race, standings } = recap;
+  const c = useCmp();
+  const tp = tierPlaces({ c, you, results, chart: null });
+  const swap = (k, v) => (
+    <span key={k} className="rr-cmp-in inline-block">
+      {v}
+    </span>
+  );
   const twoRaces = !!weekend?.isSprintWeekend;
   const mine = results.find((r) => r.driverId === you.driverId);
   const finished = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position);
@@ -639,7 +756,13 @@ function RoundCard({ recap, weekend }) {
         <Row label="Race time" value={myMs ? fmtDuration(myMs) : null} />
         <Row label="Gap to winner" value={you.position === 1 ? "Winner" : lapsDown(mine) || gapTo(winMs)} />
         {ahead && <Row label={`Gap to P${ahead.position}`} value={gapTo(aheadMs) || (lapsDown(mine) && !lapsDown(ahead) ? lapsDown(mine) : null)} />}
-        {you.finished && race.starters > 0 && <Row label="Starters beaten" value={`${race.starters - you.position} of ${race.starters}`} />}
+        {you.finished && race.starters > 0 && (
+          <Row
+            label={c.tier === "all" ? "Starters beaten" : `Starters beaten · ${c.label}`}
+            value={swap(c.tier, c.tier === "all" ? `${race.starters - you.position} of ${race.starters}` : tp?.place != null ? `${tp.field - tp.place} of ${tp.field}` : `not in ${c.label}`)}
+            tone={c.tier !== "all" && !tp ? "text-light" : "text-dark"}
+          />
+        )}
         {you.fastestLapBonus > 0 && <Row label="Fastest lap bonus" value={`+${you.fastestLapBonus}`} tone="text-fl" />}
         {twoRaces && <Row label="Round total, both races" value={`${weekend.total > 0 ? "+" : ""}${weekend.total}`} tone="text-accent" />}
         {standings?.roundDropped && <Row label="Drop rule" value="this round does not count" tone="text-light" />}
@@ -650,73 +773,301 @@ function RoundCard({ recap, weekend }) {
 
 // --- the stat cards -----------------------------------------------------------
 
-// One number, its word, an icon that says which kind of number, and where it
-// has a place in the field, a thin bar for that.
-// With `onOpen` the tile is a button and says so in its last line.
-function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIcon, bar = null, index = 0, onOpen = null, openLabel = "Compare with everyone" }) {
-  const Tag = onOpen ? "button" : "div";
+// One number, its word, an icon that says which kind of number, and where
+// that number stands in the field. Every tile is the same five parts: the
+// label and icon, the value, the note, a slim graphic of the field (or of the
+// race, where the number has no field to stand in), and a foot with the rank
+// and a small Compare link that opens the whole list.
+// The graphics all read the same way: further right is further forward.
+// The field is the one picked with the tier switch (cmp.jsx): `out` is the
+// tier's name when the driver is not in it, and the foot says so instead of
+// giving a rank. What changes when the switch is used rolls in on its own
+// short beat (`live`), not on the card's entrance.
+function Stat({ label, value, note, tone = "text-dark", icon: TileIcon = FlagIcon, graphic = null, rank = null, caption = null, out = null, index = 0, onOpen = null, span = "" }) {
+  const { live } = useCmp();
+  const gd = 420 + index * 90; // the graphic's own beat, after the value has rolled in
+  const chip = rank || out;
+  const footKey = rank ? `r${rank.rank}/${rank.of}` : out ? `o${out}` : caption ? `c${caption}` : "-";
   return (
-    <Tag
-      type={onOpen ? "button" : undefined}
-      onClick={onOpen || undefined}
-      className={`card flex flex-col p-5 text-left ${onOpen ? "cursor-pointer transition hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" : ""}`}
-      style={{ "--i": index }}
-    >
+    <div className={`rr-ftile card flex min-w-0 flex-col p-3 text-left sm:p-4 ${span}`} style={{ "--i": index }}>
       <div className="flex items-start justify-between gap-3">
-        <Label tone="text-light">{label}</Label>
-        <TileIcon className={`-mt-0.5 h-4 w-4 shrink-0 ${tone === "text-dark" ? "text-faint" : tone}`} strokeWidth={2} aria-hidden="true" />
+        <Label tone="text-light" className="leading-[1.45]">{label}</Label>
+        <span className="rr-tile-icon -mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md">
+          <TileIcon className={`h-3.5 w-3.5 ${tone === "text-dark" ? "text-light" : tone}`} strokeWidth={2.25} aria-hidden="true" />
+        </span>
       </div>
-      <div className={`mt-3 font-mono text-2xl font-bold tabular-nums leading-none sm:text-[1.7rem] ${tone}`}>{value ?? NO_VALUE}</div>
-      {note && <div className="mt-2 text-xs text-light">{note}</div>}
-      {bar && (
-        <div className="mt-auto pt-3">
-          <div className="h-1 w-full rounded-full bg-surface2">
-            <div className={`bar-fill h-1 rounded-full ${bar.tone || "bg-light"}`} style={{ "--w": `${Math.max(3, Math.min(100, bar.pct))}%`, "--bar-delay": `${200 + index * 90}ms` }} />
-          </div>
-          {bar.text && <div className="mt-1 font-mono text-[10px] text-faint">{bar.text}</div>}
+      {/* The value settles like a timing screen: the digits roll, then lock. */}
+      <div className={`mt-1.5 font-mono text-xl font-bold leading-none tracking-tight sm:mt-2 sm:text-[1.7rem] ${tone}`}>
+        <Ticker key={String(value)} value={value ?? NO_VALUE} delay={live ? 40 : 260 + index * 90} className={live ? "rr-cmp-roll" : ""} />
+      </div>
+      {note && (
+        <div className="mt-1.5 text-[11px] leading-snug text-light sm:text-xs">
+          <span key={note} className="rr-cmp-in block">
+            {note}
+          </span>
         </div>
       )}
-      {onOpen && (
-        <div className={`flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent ${bar ? "mt-2" : "mt-auto pt-3"}`}>
-          {openLabel}
-          <ChevronRight className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-        </div>
-      )}
-    </Tag>
+      {graphic && <div className="mt-auto pt-3">{graphic(gd)}</div>}
+      {/* The foot is always there, empty or not, so graphics and feet sit level across a row. */}
+      <div className={`flex min-h-[22px] items-center justify-between gap-2 ${graphic ? "mt-2.5" : "mt-auto pt-3"}`}>
+        {chip || caption ? (
+          <span
+            className={
+              chip
+                ? "rr-g3-badge inline-flex min-w-0 shrink items-center overflow-hidden whitespace-nowrap rounded-md px-1.5 py-[3px] font-mono text-[10px] font-bold leading-none tabular-nums"
+                : "rr-g3-badge min-w-0 truncate font-mono text-[10px] font-medium leading-none text-light"
+            }
+            style={{ "--gd": `${gd + 650}ms`, color: rank && rank.rank <= 3 ? `var(--medal-${rank.rank})` : undefined }}
+          >
+            <span key={footKey} className={`rr-cmp-in ${chip ? "inline-flex items-center gap-1" : "block truncate"}`}>
+              {rank ? (
+                <>
+                  {rank.rank <= 3 && <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} aria-hidden="true" />}
+                  <span className={rank.rank <= 3 ? "" : "text-dark"}>{nth(rank.rank)}</span>
+                  <span className="font-medium text-light">of {rank.of}</span>
+                </>
+              ) : out ? (
+                <span className="font-medium text-light">Not in {out.replace("Tier ", "T")}</span>
+              ) : (
+                caption
+              )}
+            </span>
+          </span>
+        ) : (
+          <span />
+        )}
+        {onOpen && (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`Compare ${label.toLowerCase()} with everyone`}
+            className="rr-g3-badge -my-1 -mr-1.5 inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1.5 font-mono text-[10px] font-bold uppercase leading-none tracking-[0.16em] text-accent transition-colors hover:bg-surface2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{ "--gd": `${gd + 750}ms` }}
+          >
+            {/* On a phone the tile is narrow: the arrow alone, the rank keeps its room. */}
+            <span className="max-sm:sr-only">Compare</span>
+            <ChevronRight className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
-// One list for the whole field, the driver's own row marked: what the tile
-// says, for everyone. `columns` are { key, label, align, wide, render }; a
-// wide column stays off phones.
-function CompareTable({ title, description, footnote, columns, rows, onClose }) {
+// The two faint words under a graphic, one at each end.
+function Ends({ left, right, children }) {
   return (
-    <Modal open onClose={onClose} title={title} size="lg" description={description}>
-      <div className="scrollbar-slim -mx-1 max-h-[65vh] overflow-auto">
+    <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.14em] text-faint">
+      <span>{left}</span>
+      {children}
+      <span>{right}</span>
+    </div>
+  );
+}
+
+const pctOf = (x) => `${(Math.max(0, Math.min(1, x)) * 100).toFixed(2)}%`;
+
+// Everything on a strip rides a full-width lane moved by transform alone
+// (translateX of N% is N% of the strip), so when the field changes each mark
+// glides to its new place, and a car that leaves the field fades where it is.
+function Lane({ x, on = true, className = "", children }) {
+  return (
+    <span className={`rr-xlane ${on ? "" : "is-off"} ${className}`} style={{ "--x": pctOf(x) }} aria-hidden="true">
+      {children}
+    </span>
+  );
+}
+
+// The driver's own mark: a dot in the team colour that slides in from the
+// back of the field (or from `x0`) and settles at `x` (0..1, 1 = in front).
+// The entrance is the inner layer's; the outer one glides when `x` moves.
+function YouDot({ x, x0 = 0, delay, on = true }) {
+  return (
+    <div className={`rr-fs-run ${on ? "" : "is-off"}`} style={{ "--x": pctOf(x), "--x0": pctOf(x0), "--gd": `${delay}ms` }} aria-hidden="true">
+      <div className="rr-fs-run-in">
+        <span className="rr-fs-dot" />
+      </div>
+    </div>
+  );
+}
+
+// One tick per car at its number, the driver's dot among them. `lanes` is
+// every car of the whole field ({ id, x, on }): the ones outside the chosen
+// tier are faded out, so switching back brings them back to their places.
+function FieldStrip({ lanes, you, youOn = true, ends, delay, label }) {
+  return (
+    <div role="img" aria-label={label}>
+      <div className="relative mx-1 h-3">
+        <div className="rr-fs-base" aria-hidden="true" />
+        {lanes.map((l, i) => (
+          <Lane key={l.id} x={l.x} on={l.on}>
+            <span className="rr-fs-tick" style={{ "--t": i, "--gd": `${delay - 200}ms` }} />
+          </Lane>
+        ))}
+        {you != null && <YouDot x={you} on={youOn} delay={delay} />}
+      </div>
+      <Ends left={ends[0]} right={ends[1]} />
+    </div>
+  );
+}
+
+// Places on the field's own scale, from the back on the left to P1 on the
+// right: a tick per place, the driver's dot at the place in question. With
+// `from` the dot starts at that place and slides to `at`, the place it
+// started from left as a ring. `maxField` is the whole field: its places are
+// all kept on the strip, the ones outside the scale faded, so a smaller field
+// (one tier) is the same ticks gliding apart.
+function PlaceScale({ at, from = null, field, delay, label, window = null, maxField = field }) {
+  const [lo, hi] = window || [1, field];
+  const n = hi - lo + 1;
+  const xOf = (p) => (n <= 1 ? 1 : (hi - p) / (hi - lo));
+  const total = Math.max(maxField, hi);
+  const slots = Array.from({ length: total }, (_, i) => total - i);
+  const labelled = n <= 10;
+  const ring = from != null && from !== at;
+  return (
+    <div role="img" aria-label={label}>
+      <div className="relative mx-1 h-3">
+        <div className="rr-fs-base" aria-hidden="true" />
+        {slots.map((p) => (
+          <Lane key={p} x={xOf(p)} on={p >= lo && p <= hi}>
+            <span className={`rr-fs-tick ${labelled ? "rr-fs-tick-slot" : ""}`} style={{ "--t": Math.max(0, hi - p), "--gd": `${delay - 200}ms` }} />
+          </Lane>
+        ))}
+        <Lane x={xOf(from ?? at)} on={ring}>
+          <span className="rr-fs-ring" style={{ "--gd": `${delay - 100}ms` }} />
+        </Lane>
+        <YouDot x={xOf(at)} x0={from != null ? xOf(from) : 0} delay={delay} />
+      </div>
+      {labelled ? (
+        <div className="relative mx-1 mt-1.5 h-[9px] font-mono text-[9px] font-medium uppercase leading-none tracking-[0.06em] text-faint" aria-hidden="true">
+          {slots
+            .filter((p) => p >= lo && p <= hi)
+            .map((p) => (
+              <Lane key={p} x={xOf(p)} className="rr-cmp-fade">
+                <span className={`absolute left-0 top-0 -translate-x-1/2 ${p === at ? "font-bold text-dark" : ""}`}>P{p}</span>
+              </Lane>
+            ))}
+        </div>
+      ) : (
+        <Ends left={`P${hi}`} right={`P${lo}`} />
+      )}
+    </div>
+  );
+}
+
+// The race lap by lap, the laps the driver led filled in.
+function LapStrip({ led, delay, label }) {
+  const n = led.length;
+  return (
+    <div role="img" aria-label={label}>
+      <div className="flex h-3 items-stretch gap-[2px]">
+        {led.map((on, i) => (
+          <span key={i} className={`rr-g3-lap flex-1 rounded-[1px] ${on ? "rr-g3-lap-on" : "bg-surface2"}`} style={{ "--t": i, "--gd": `${delay - 100}ms` }} aria-hidden="true" />
+        ))}
+      </div>
+      <Ends left="Lap 1" right={`Lap ${n}`} />
+    </div>
+  );
+}
+
+// The driver's share as a bar, the field's average as a mark across it; the
+// mark glides when the field changes.
+function AvgBar({ pct, avg, tone, delay, label, ends }) {
+  return (
+    <div role="img" aria-label={label}>
+      <div className="flex h-3 items-center">
+        <Bar pct={Math.max(3, Math.min(100, pct))} h="h-1.5" fill={tone} delay={delay - 260} cursor={false}>
+          <Lane x={avg / 100}>
+            <span className="rr-g3-avg" style={{ left: 0, "--gd": `${delay + 500}ms` }} />
+          </Lane>
+        </Bar>
+      </div>
+      <Ends left={ends[0]} right={ends[1]} />
+    </div>
+  );
+}
+
+// An odd tile out at the end of the grid takes the rest of its row, so no
+// row is left with a hole in it: on a phone (two across) and on a wide
+// screen (four across) separately.
+function tileSpans(n) {
+  const out = Array.from({ length: n }, () => []);
+  if (n % 2 === 1) {
+    out[n - 1].push("col-span-2", n % 4 === 3 ? "lg:col-span-2" : "lg:col-span-4");
+  } else if (n % 4 === 2) {
+    out[n - 2].push("lg:col-span-2");
+    out[n - 1].push("lg:col-span-2");
+  }
+  return out.map((c) => c.join(" "));
+}
+
+// One list for the field, the driver's own row marked: what the tile says,
+// for everyone (or for one tier: the switch sits at the head of the list and
+// is the page's own, so the tiles behind follow it). `columns` are
+// { key, label, align, wide, render }; a wide column stays off phones.
+// Its rows rise in softly one after another, again on every switch. The
+// modal lives outside the page, so it is handed the team colour.
+function CompareTable({ title, description, footnote, columns, rows, onClose, team }) {
+  const c = useCmp();
+  // A `sub` column (a gap, a net change) is its own column from sm up; on a
+  // phone it sits small under the number it qualifies, so the table fits the
+  // screen instead of running off its right edge.
+  const subOf = (i) => (columns[i + 1]?.sub ? columns[i + 1] : null);
+  const hide = (col) => (col.wide || col.sub ? "hidden sm:table-cell" : "");
+  const count = rows.length === 1 ? "1 driver" : `${rows.length} drivers`;
+  return (
+    <Modal open onClose={onClose} title={c.tier === "all" ? title : `${title} · ${c.label}`} size="lg" description={description}>
+      {c.available && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" style={{ "--recap-team": team || "rgb(var(--c-brand))" }}>
+          <div className="min-w-0 font-mono text-[10px] font-bold uppercase leading-snug tracking-[0.16em] text-light">
+            <span key={`${c.tier}-${rows.length}`} className="rr-trow block">
+              {c.tier === "all" ? `${count}, whole field` : c.youIn ? `${count} in ${c.label}, you among them` : `${rows.length} in ${c.label} · you're not in this tier`}
+            </span>
+          </div>
+          <TierSwitch className="w-full sm:w-auto" />
+        </div>
+      )}
+      <div className="rr-modal scrollbar-slim relative -mx-1 max-h-[65vh] overflow-auto" style={{ "--recap-team": team || "rgb(var(--c-brand))" }}>
         <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-card">
-            <tr className="border-b border-border font-mono text-[10px] uppercase tracking-[0.2em] text-light">
-              {columns.map((c) => (
-                <th key={c.key} className={`px-2 py-2 ${c.align === "left" ? "text-left" : "text-right"} ${c.wide ? "hidden sm:table-cell" : ""}`}>
-                  {c.label}
+          <thead className="sticky top-0 z-[1] bg-card">
+            <tr className="border-b border-border font-mono text-[10px] uppercase tracking-[0.12em] text-light sm:tracking-[0.18em]">
+              {columns.map((col) => (
+                <th key={col.key} className={`whitespace-nowrap px-2 py-2.5 font-bold ${col.align === "left" ? "text-left" : "text-right"} ${hide(col)}`}>
+                  {col.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.driverId || r.name} className={`border-b border-border/60 ${r.you ? "bg-surface2 font-semibold text-accent" : "text-dark"}`}>
-                {columns.map((c) => (
-                  <td
-                    key={c.key}
-                    className={`px-2 py-2 ${c.align === "left" ? "truncate" : "text-right font-mono tabular-nums"} ${c.wide ? "hidden sm:table-cell" : ""} ${c.muted && !r.you ? "text-light" : ""}`}
-                  >
-                    {c.render(r)}
-                    {c.key === "name" && r.you && <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.2em]">you</span>}
-                  </td>
-                ))}
+          {/* Keyed on the field shown: a switch lets the new list rise in. */}
+          <tbody key={String(c.tier)}>
+            {rows.map((r, ri) => (
+              <tr key={r.driverId || r.name} className={`rr-trow rr-crow border-b border-border/60 ${r.you ? "rr-crow-you font-semibold text-accent" : "text-dark"}`} style={{ "--i": Math.min(ri, 18) }}>
+                {columns.map((col, ci) => {
+                  const sub = subOf(ci);
+                  const subValue = sub ? sub.render(r) : null;
+                  const medal = col.key === "rank" && r.rank >= 1 && r.rank <= 3 ? `var(--medal-${r.rank})` : null;
+                  return (
+                    <td
+                      key={col.key}
+                      className={`px-2 py-2.5 align-middle ${col.align === "left" ? "max-w-[9.5rem] truncate sm:max-w-none" : "whitespace-nowrap text-right font-mono tabular-nums"} ${hide(col)} ${col.muted && !r.you && !medal ? "text-light" : ""}`}
+                      style={medal ? { color: medal, fontWeight: 800 } : undefined}
+                    >
+                      {col.render(r)}
+                      {col.key === "name" && r.you && <span className="rr-you-tag ml-2 align-middle font-mono text-[9px] uppercase tracking-[0.18em]">you</span>}
+                      {subValue ? <div className="mt-0.5 font-mono text-[11px] font-medium leading-none text-light sm:hidden">{subValue}</div> : null}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length} className="px-2 py-6 text-center text-sm text-light">
+                  Nobody in {c.label} has this number for this race.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -732,51 +1083,67 @@ const COL = {
   finish: { key: "finish", label: "Finish", muted: true, render: (r) => finishOf(r) },
 };
 
-// The four lists behind the tiles. Each one ranks the classified field by
-// the tile's own number and marks the driver's row; `null` when the round
-// has no such numbers, and then the tile is a plain tile.
-function compareLists({ you, story, results }) {
-  const raced = (results || []).filter((r) => r.status !== "DNS");
+// The four lists behind the tiles. Each one ranks the classified field (or
+// the cars of one tier, `keep`) by the tile's own number and marks the
+// driver's row. A list is left out when the round has no such numbers, and
+// then the tile is a plain tile; within a tier it is kept even when short.
+function compareLists({ you, story, results, keep = null }) {
+  const tiered = !!keep;
+  const ok = keep || (() => true);
+  const min = tiered ? 0 : 1;
+  const raced = (results || []).filter((r) => r.status !== "DNS" && ok(r));
   const mark = (rows) => rows.map((r, i) => ({ ...r, rank: i + 1, you: r.driverId === you.driverId }));
   const lists = {};
 
   if (story?.paceTable?.rows?.length > 1) {
     const t = story.paceTable;
-    lists.pace = {
-      title: "Race pace",
-      description: `Median of each driver's clean laps. Ranked across the ${t.field || t.rows.length} cars that ran at least 60% of the distance.`,
-      footnote: "A clean lap is within 8% of the driver's own typical lap, so pit stops, safety car laps and spins stay out. Cars without a rank ran too little of the race.",
-      rows: t.rows,
-      columns: [
-        COL.rank,
-        COL.name,
-        COL.finish,
-        { key: "laps", label: "Laps", muted: true, wide: true, render: (r) => r.laps },
-        { key: "pace", label: "Pace", render: (r) => fmtLap(r.paceMs) },
-        { key: "gap", label: "Gap", muted: true, render: (r) => (r.gapMs == null ? NO_VALUE : r.gapMs === 0 ? "" : fmtLapDelta(r.gapMs)) },
-      ],
-    };
+    // Within a tier the ranked cars are numbered again among themselves, and
+    // the gap is to the quickest of them.
+    let rows = t.rows.map((r) => ({ ...r, you: r.you ?? r.driverId === you.driverId }));
+    if (tiered) {
+      rows = rows.filter(ok);
+      const ranked = rows.filter((r) => r.rank != null && r.paceMs > 0);
+      const best = ranked.length ? Math.min(...ranked.map((r) => r.paceMs)) : null;
+      let k = 0;
+      rows = rows.map((r) => (r.rank != null ? { ...r, rank: (k += 1), gapMs: best != null && r.paceMs > 0 ? r.paceMs - best : r.gapMs } : r));
+    }
+    const field = tiered ? rows.filter((r) => r.rank != null).length : t.field || t.rows.length;
+    if (rows.length > min)
+      lists.pace = {
+        title: "Race pace",
+        description: `Median of each driver's clean laps. Ranked across the ${field} cars that ran at least 60% of the distance.`,
+        footnote: "A clean lap is within 8% of the driver's own typical lap, so pit stops, safety car laps and spins stay out. Cars without a rank ran too little of the race.",
+        rows,
+        columns: [
+          COL.rank,
+          COL.name,
+          COL.finish,
+          { key: "laps", label: "Laps", muted: true, wide: true, render: (r) => r.laps },
+          { key: "pace", label: "Pace", render: (r) => fmtLap(r.paceMs) },
+          { key: "gap", label: "Gap", muted: true, sub: true, render: (r) => (r.gapMs == null ? NO_VALUE : r.gapMs === 0 ? "" : fmtLapDelta(r.gapMs)) },
+        ],
+      };
   }
 
   const lapRows = raced.filter((r) => r.bestLapMs > 0).sort((a, b) => a.bestLapMs - b.bestLapMs);
-  if (lapRows.length > 1) {
-    const best = lapRows[0].bestLapMs;
+  if (lapRows.length > min) {
+    const best = lapRows[0]?.bestLapMs;
     lists.bestLap = {
       title: "Best lap",
-      description: "Everyone's quickest lap of the race, fastest first.",
+      description: tiered ? "Each driver's quickest lap of the race, fastest first. The gap is to the quickest of the tier." : "Everyone's quickest lap of the race, fastest first.",
       rows: mark(lapRows),
       columns: [
         COL.rank,
         COL.name,
         COL.finish,
         { key: "best", label: "Best lap", render: (r) => fmtLap(r.bestLapMs) },
-        { key: "gap", label: "Gap", muted: true, render: (r) => (r.bestLapMs === best ? "" : fmtLapDelta(r.bestLapMs - best)) },
+        { key: "gap", label: "Gap", muted: true, sub: true, render: (r) => (r.bestLapMs === best ? "" : fmtLapDelta(r.bestLapMs - best)) },
       ],
     };
   }
 
   const consRows = raced.filter((r) => r.consistencyPct > 0).sort((a, b) => b.consistencyPct - a.consistencyPct);
-  if (consRows.length > 1) {
+  if (consRows.length > min) {
     lists.consistency = {
       title: "Consistency",
       description: "How close each driver's laps stayed to their own best, steadiest first.",
@@ -793,7 +1160,7 @@ function compareLists({ you, story, results }) {
   }
 
   const otRows = raced.filter((r) => r.overtakes != null).sort((a, b) => b.overtakes - a.overtakes || (a.position ?? 99) - (b.position ?? 99));
-  if (otRows.length > 1) {
+  if (otRows.length > min) {
     lists.overtakes = {
       title: "Overtakes",
       description: "Estimated on-track passes per driver, most first.",
@@ -809,6 +1176,7 @@ function compareLists({ you, story, results }) {
           key: "net",
           label: "Net",
           muted: true,
+          sub: true,
           render: (r) => {
             if (r.grid == null || r.position == null || r.status !== "FINISHED") return NO_VALUE;
             const n = r.grid - r.position;
@@ -822,13 +1190,105 @@ function compareLists({ you, story, results }) {
   return lists;
 }
 
-function StatCards({ you, story, race, results }) {
+// Where a number sits on the field's spread, 0 at the back, 1 in front. The
+// back end is cut at the tenth car from the back, so one car that barely got
+// going does not squash the whole field into a corner; anyone past the cut
+// sits at the end of the strip.
+function spread(values, lowIsGood) {
+  const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return () => 1;
+  const q = (p) => v[Math.min(v.length - 1, Math.max(0, Math.round(p * (v.length - 1))))];
+  const good = lowIsGood ? v[0] : v[v.length - 1];
+  const bad = lowIsGood ? q(0.9) : q(0.1);
+  return (x) => (good === bad ? 1 : Math.max(0, Math.min(1, (x - bad) / (good - bad))));
+}
+
+// The rank and the field strip a tile gets from its compare lists: `full` is
+// the whole field's list, `list` the one for the field picked (the same list
+// for the whole field). Every car of the whole field keeps a lane on the
+// strip; the spread is the picked field's, the others are faded out.
+function fromList(full, list, valueOf, lowIsGood, keep) {
+  if (!full) return {};
+  const all = full.rows.filter((r) => Number.isFinite(valueOf(r)));
+  const mineAll = all.find((r) => r.you);
+  if (!mineAll) return {};
+  const pool = all.filter(keep);
+  const at = spread((pool.length ? pool : all).map(valueOf), lowIsGood);
+  const mine = list?.rows.find((r) => r.you && Number.isFinite(valueOf(r))) || null;
+  return {
+    rank: mine?.rank != null ? { rank: mine.rank, of: list.rows.filter((r) => r.rank != null).length } : null,
+    lanes: all.filter((r) => !r.you).map((r) => ({ id: r.driverId || r.name, x: at(valueOf(r)), on: keep(r) })),
+    you: at(valueOf(mineAll)),
+    youOn: !!mine,
+  };
+}
+
+function StatCards({ you, story, race, results, chart }) {
+  const c = useCmp();
   const [openList, setOpenList] = useState(null);
-  const lists = compareLists({ you, story, results });
-  const opener = (key) => (lists[key] ? () => setOpenList(key) : null);
+  const full = compareLists({ you, story, results });
+  const lists = c.tier === "all" ? full : compareLists({ you, story, results, keep: c.keep });
+  const opener = (key) => (full[key] ? () => setOpenList(key) : null);
   const fastest = you.bestLapMs != null && you.lapGapMs === 0;
   const field = race.starters || race.fieldSize || 1;
-  const rankBar = (rank, of, text) => (rank && of ? { pct: ((of - rank + 1) / of) * 100, text: text || `P${rank} of ${of}` } : null);
+  // Not in the tier picked: the tiles that rank say so instead of ranking.
+  const out = c.youIn ? null : c.label;
+  const strip = (f, ends, label) => (f.lanes ? (d) => <FieldStrip lanes={f.lanes} you={f.you} youOn={f.youOn} ends={ends} delay={d} label={label} /> : null);
+  const rankText = (f, what) => (f.rank ? `${what} ${nth(f.rank.rank)} of ${f.rank.of}${c.tier === "all" ? "" : ` in ${c.label}`}` : `${what} across the ${c.tier === "all" ? "field" : c.label}`);
+
+  const lapF = fromList(full.bestLap, lists.bestLap, (r) => r.bestLapMs, true, c.keep);
+  const paceF = fromList(full.pace, lists.pace, (r) => r.paceMs, true, c.keep);
+  const consF = fromList(full.consistency, lists.consistency, (r) => r.consistencyPct, false, c.keep);
+  const otF = fromList(full.overtakes, lists.overtakes, (r) => r.overtakes, false, c.keep);
+  // The field's clean laps, as a share of each car's own laps.
+  const cleanShares = (results || []).filter((r) => r.status !== "DNS" && r.laps > 0 && r.cleanLaps != null && c.keep(r)).map((r) => (r.cleanLaps / r.laps) * 100);
+  const cleanAvg = cleanShares.length > 1 ? cleanShares.reduce((a, b) => a + b, 0) / cleanShares.length : null;
+  // The driver's places within the tier picked (null for the whole field, or
+  // a tier the driver is not in): the race as places among those cars only.
+  const tp = tierPlaces({ c, you, results, chart });
+  // The laps led, lap by lap, where the lap list agrees with the count.
+  const ledLaps = (story?.laps || []).map((l) => l.position === 1);
+  const ledKnown = ledLaps.length > 1 && ledLaps.filter(Boolean).length === you.lapsLed;
+  const lapsLedCell = {
+    label: "Laps led",
+    icon: Crown,
+    value: String(you.lapsLed),
+    note: "at the start/finish line",
+    graphic: ledKnown
+      ? (d) => <LapStrip led={ledLaps} delay={d} label={`Led ${you.lapsLed} of ${ledLaps.length} laps`} />
+      : race.raceLaps > 0
+        ? (d) => (
+            <div>
+              <div className="flex h-3 items-center">
+                <Bar pct={Math.max(3, (you.lapsLed / race.raceLaps) * 100)} h="h-1.5" fill="rr-g3-lead-fill" delay={d - 260} cursor={false} />
+              </div>
+              <Ends left="Lap 1" right={`Lap ${race.raceLaps}`} />
+            </div>
+          )
+        : null,
+    caption: ledKnown ? `${you.lapsLed} of ${ledLaps.length} laps` : race.raceLaps > 0 ? `${you.lapsLed} of ${race.raceLaps} laps` : null,
+  };
+  // A short stretch of the order around the grid slot and the lap-1 place.
+  const lap1Window = (g, l, n) => {
+    const a = Math.min(g ?? l, l);
+    const b = Math.max(g ?? l, l);
+    const size = Math.max(b - a + 1, Math.min(n, Math.max(6, b - a + 3)));
+    let lo = Math.max(1, a - Math.floor((size - (b - a + 1)) / 2));
+    let hi = lo + size - 1;
+    if (hi > n && n >= size) {
+      hi = n;
+      lo = hi - size + 1;
+    }
+    return [lo, hi];
+  };
+  // Best place and lap 1: the tier's places when the driver is in the tier
+  // picked and the lap chart can tell them; the race's otherwise.
+  const tierBest = tp?.best != null;
+  const best = tierBest ? { at: tp.best, run: tp.bestRun, n: tp.field } : { at: story?.bestPosition, run: story?.bestRun, n: field };
+  const tierLap1 = tp?.lap1 != null && (tp.grid != null || you.grid == null);
+  const l1 = tierLap1 ? { at: tp.lap1, from: tp.grid, n: tp.field } : { at: story?.lap1Pos, from: you.grid, n: field };
+  const inWord = tierBest || tierLap1 ? ` in ${c.label}` : "";
+
   const cells = [
     fmtLap(you.bestLapMs)
       ? {
@@ -837,6 +1297,9 @@ function StatCards({ you, story, race, results }) {
           value: fmtLap(you.bestLapMs),
           tone: fastest ? "text-fl" : "text-dark",
           note: fastest ? "fastest lap of the race" : you.lapGapMs != null ? `${fmtLapDelta(you.lapGapMs)} to the fastest lap${story?.bestLapAt ? ` · set on lap ${story.bestLapAt}` : ""}` : null,
+          graphic: strip(lapF, ["Slower", "Faster"], rankText(lapF, "Best lap")),
+          rank: lapF.rank,
+          out,
           onOpen: opener("bestLap"),
         }
       : null,
@@ -846,15 +1309,47 @@ function StatCards({ you, story, race, results }) {
           icon: Gauge,
           value: fmtLap(story.paceMs),
           note: story.paceRank ? `pure race pace${story.gapToBestPaceMs > 0 ? ` · ${fmtLapDelta(story.gapToBestPaceMs)} a lap to the quickest` : " · the quickest car in the race"}` : "median of your real laps",
-          bar: rankBar(story.paceRank, story.paceField, story.paceRank ? `P${story.paceRank} of ${story.paceField} on pace` : null),
+          graphic: paceF.lanes
+            ? strip(paceF, ["Slower", "Faster"], c.tier === "all" ? `P${story.paceRank} of ${story.paceField} on pace` : rankText(paceF, "Race pace"))
+            : story.paceRank && story.paceField && c.tier === "all"
+              ? (d) => <PlaceScale at={story.paceRank} field={story.paceField} delay={d} label={`P${story.paceRank} of ${story.paceField} on pace`} />
+              : null,
+          rank: c.tier === "all" ? (story.paceRank && story.paceField && lists.pace ? { rank: story.paceRank, of: story.paceField } : null) : paceF.rank,
+          caption: story.paceRank && !full.pace && c.tier === "all" ? `P${story.paceRank} of ${story.paceField} on pace` : null,
+          out: full.pace ? out : null,
           onOpen: opener("pace"),
         }
       : null,
     you.consistencyPct > 0
-      ? { label: "Consistency", icon: Activity, value: `${you.consistencyPct.toFixed(2)}%`, tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark", note: "how close your laps stayed to your best", bar: { pct: you.consistencyPct, tone: you.consistencyPct >= 96 ? "bg-ok" : "bg-light" }, onOpen: opener("consistency") }
+      ? {
+          label: "Consistency",
+          icon: Activity,
+          value: `${you.consistencyPct.toFixed(2)}%`,
+          tone: you.consistencyPct >= 96 ? "text-ok" : "text-dark",
+          note: "how close your laps stayed to your best",
+          graphic: consF.lanes
+            ? strip(consF, ["Looser", "Steadier"], rankText(consF, "Consistency"))
+            : (d) => (
+                <div className="flex h-3 items-center">
+                  <Bar pct={you.consistencyPct} h="h-1.5" fill={you.consistencyPct >= 96 ? "bg-ok" : "bg-light"} delay={d - 260} />
+                </div>
+              ),
+          rank: consF.rank,
+          out: consF.lanes ? out : null,
+          onOpen: opener("consistency"),
+        }
       : null,
     you.overtakes != null
-      ? { label: "Overtakes", icon: ArrowLeftRight, value: String(you.overtakes), note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated", onOpen: opener("overtakes") }
+      ? {
+          label: "Overtakes",
+          icon: ArrowLeftRight,
+          value: String(you.overtakes),
+          note: you.grid != null && you.finished ? `estimated · net ${you.gained >= 0 ? "+" : ""}${you.gained} from the grid` : "estimated",
+          graphic: strip(otF, ["Fewer", "More"], rankText(otF, "Overtakes")),
+          rank: otF.rank,
+          out: otF.lanes ? out : null,
+          onOpen: opener("overtakes"),
+        }
       : null,
     you.cleanLaps != null && you.laps != null
       ? {
@@ -863,507 +1358,112 @@ function StatCards({ you, story, race, results }) {
           value: `${you.cleanLaps} / ${you.laps}`,
           tone: you.cleanLaps === you.laps ? "text-ok" : "text-dark",
           note: `${you.contacts ?? 0} car contact${you.contacts === 1 ? "" : "s"}${you.penaltySeconds > 0 ? ` · +${you.penaltySeconds}s penalty` : you.cleanRace ? " · no penalty" : ""}`,
-          bar: { pct: (you.cleanLaps / you.laps) * 100, tone: you.cleanLaps === you.laps ? "bg-ok" : "bg-light" },
+          graphic: (d) =>
+            cleanAvg != null ? (
+              <AvgBar
+                pct={(you.cleanLaps / you.laps) * 100}
+                avg={cleanAvg}
+                tone={you.cleanLaps === you.laps ? "bg-ok" : "bg-light"}
+                delay={d}
+                ends={["0", `${you.laps} laps`]}
+                label={`${Math.round((you.cleanLaps / you.laps) * 100)}% of your laps clean, ${c.tier === "all" ? "field" : c.label} average ${Math.round(cleanAvg)}%`}
+              />
+            ) : (
+              <div className="flex h-3 items-center">
+                <Bar pct={(you.cleanLaps / you.laps) * 100} h="h-1.5" fill={you.cleanLaps === you.laps ? "bg-ok" : "bg-light"} delay={d - 260} />
+              </div>
+            ),
+          caption: cleanAvg != null ? (c.youIn ? `${c.word} avg ${Math.round(cleanAvg)}% · you ${Math.round((you.cleanLaps / you.laps) * 100)}%` : `${c.word} avg ${Math.round(cleanAvg)}%`) : null,
         }
       : you.laps != null
         ? { label: "Laps", icon: ShieldCheck, value: String(you.laps), note: `${you.contacts ?? 0} car contacts` }
         : null,
-    story?.bestPosition
+    best.at
       ? {
           label: "Best position in race",
           icon: FlagIcon,
-          value: `P${story.bestPosition}`,
-          tone: story.bestPosition === 1 ? "text-fl" : "text-dark",
-          note: story.bestRun ? (story.bestRun.from === story.bestRun.to ? `on lap ${story.bestRun.from}` : `held from lap ${story.bestRun.from} to lap ${story.bestRun.to}`) : null,
-          bar: rankBar(story.bestPosition, field, `P${story.bestPosition} of ${field} at best`),
+          value: `P${best.at}`,
+          tone: best.at === 1 ? "text-fl" : "text-dark",
+          note: best.run ? `${best.run.from === best.run.to ? `on lap ${best.run.from}` : `held from lap ${best.run.from} to lap ${best.run.to}`}${tierBest ? ` · ${c.label} cars only` : ""}` : null,
+          graphic: best.n > 1 ? (d) => <PlaceScale at={best.at} field={best.n} maxField={field} delay={d} label={`P${best.at} of ${best.n}${tierBest ? ` in ${c.label}` : ""} at best`} /> : null,
+          caption: tierBest ? `P${best.at} of ${best.n} in ${c.label}` : `P${best.at} of ${best.n} at best`,
+          out,
         }
       : you.lapsLed > 0
-        ? { label: "Laps led", icon: Crown, value: String(you.lapsLed), note: "at the start/finish line" }
+        ? lapsLedCell
         : null,
-    story?.lap1Pos
+    l1.at
       ? {
           label: "After lap 1",
           icon: Rocket,
-          value: `P${story.lap1Pos}`,
-          tone: you.grid != null && story.lap1Pos < you.grid ? "text-ok" : you.grid != null && story.lap1Pos > you.grid ? "text-bad" : "text-dark",
-          note: you.grid != null ? (story.lap1Pos < you.grid ? `${you.grid - story.lap1Pos} up at the start, from P${you.grid}` : story.lap1Pos > you.grid ? `${story.lap1Pos - you.grid} down at the start, from P${you.grid}` : `held P${you.grid} through the first lap`) : null,
+          value: `P${l1.at}`,
+          tone: l1.from != null && l1.at < l1.from ? "text-ok" : l1.from != null && l1.at > l1.from ? "text-bad" : "text-dark",
+          note:
+            l1.from != null
+              ? l1.at < l1.from
+                ? `${l1.from - l1.at} up at the start${inWord && tierLap1 ? inWord : ""}, from P${l1.from}`
+                : l1.at > l1.from
+                  ? `${l1.at - l1.from} down at the start${inWord && tierLap1 ? inWord : ""}, from P${l1.from}`
+                  : `held P${l1.from} through the first lap${tierLap1 ? inWord : ""}`
+              : null,
+          graphic: (d) => (
+            <PlaceScale
+              at={l1.at}
+              from={l1.from}
+              field={l1.n}
+              maxField={field}
+              window={lap1Window(l1.from, l1.at, l1.n)}
+              delay={d}
+              label={l1.from != null ? `From P${l1.from} on the grid to P${l1.at} after lap 1${tierLap1 ? inWord : ""}` : `P${l1.at} after lap 1`}
+            />
+          ),
+          caption: l1.from != null ? `${tierLap1 ? `${c.label} grid` : "Grid"} P${l1.from} → P${l1.at}` : null,
+          out,
         }
       : null,
     // Past a minute and a half it is a safety car or a red flag, not the
     // driver, and the number would only mislead.
     story?.offPaceMs != null && story.offPaceMs < 90_000
       ? { label: "Time lost off pace", icon: Hourglass, value: `${(story.offPaceMs / 1000).toFixed(1)} s`, tone: story.offPaceMs > 10_000 ? "text-warn" : "text-dark", note: "laps well off your own clean pace: pits, spins, traffic" }
-      : you.lapsLed > 0 && story?.bestPosition
-        ? { label: "Laps led", icon: Crown, value: String(you.lapsLed), note: "at the start/finish line" }
+      : you.lapsLed > 0 && best.at
+        ? lapsLedCell
         : null,
   ].filter(Boolean);
   if (!cells.length) return null;
+  const spans = tileSpans(cells.length);
+  // The rows of tiles share one height (the tallest tile's); a lone tile that
+  // takes a whole row on a phone keeps its own, so it carries no empty space.
+  const n = cells.length;
+  const rowVars = { "--rows-sm": Math.floor(n / 2), "--rows-lg": Math.ceil(n / 4) };
+  const openRows = openList ? lists[openList] || { ...full[openList], rows: [] } : null;
   return (
     <div className="recap-reveal">
-      <div className="recap-cascade grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {cells.map((c, i) => (
-          <Stat key={c.label} {...c} index={i} />
+      <div className="rr-ftiles recap-cascade grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4" style={rowVars}>
+        {cells.map((cell, i) => (
+          <Stat key={cell.label} {...cell} index={i} span={spans[i]} />
         ))}
       </div>
-      {openList && lists[openList] && <CompareTable {...lists[openList]} onClose={() => setOpenList(null)} />}
+      {openRows && <CompareTable {...openRows} team={you.team?.color} onClose={() => setOpenList(null)} />}
     </div>
   );
 }
 
-// The driver's position lap by lap, drawn over the rest of the field on a
-// timing-screen grid. The line draws itself when its card is let in.
-function RaceTrace({ laps, driverId, lapsDriven = null }) {
-  const W = 1000;
-  const H = 280;
-  const PAD = { l: 44, r: 64, t: 18, b: 30 };
-  const drivers = (laps.drivers || []).filter((d) => (d.points || []).length > 1);
-  const me = drivers.find((d) => d.driverId === driverId);
-  if (!me) return null;
-  if (lapsDriven != null && Math.abs(me.points.length - lapsDriven) > 2) return null;
-  const maxLap = Math.max(1, laps.maxLap || 0, ...drivers.flatMap((d) => d.points.map((p) => p.lap)));
-  const maxPos = Math.max(1, ...drivers.flatMap((d) => d.points.map((p) => p.position)));
-  const x = (lap) => PAD.l + ((lap - 1) / Math.max(1, maxLap - 1)) * (W - PAD.l - PAD.r);
-  const y = (pos) => PAD.t + ((pos - 1) / Math.max(1, maxPos - 1)) * (H - PAD.t - PAD.b);
-  const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${x(p.lap).toFixed(1)} ${y(p.position).toFixed(1)}`).join(" ");
-  const first = me.points[0];
-  const last = me.points[me.points.length - 1];
-  const posStep = maxPos > 24 ? 10 : maxPos > 10 ? 5 : 1;
-  const posLines = [1, ...Array.from({ length: Math.floor(maxPos / posStep) }, (_, i) => (i + 1) * posStep)].filter((v, i, a) => a.indexOf(v) === i && v <= maxPos);
-  const lapStep = maxLap > 40 ? 10 : maxLap > 15 ? 5 : 1;
-  const lapTicks = Array.from({ length: Math.floor(maxLap / lapStep) }, (_, i) => (i + 1) * lapStep).filter((l) => l > maxLap * 0.06 && l < maxLap * 0.93);
+// The bar at the head of the Pace chapter: who the numbers below (and the
+// finishing card above, and the classification at the end) are set against.
+function CompareBar() {
+  const c = useCmp();
   return (
-    <div>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <Label>Lap by lap · your position at the line</Label>
-        <div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
-          <span className="flex items-center gap-2">
-            <span className="h-0.5 w-6" style={{ background: "var(--recap-team)" }} />
-            You
+    <div className="recap-reveal rr-cmp-bar flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5">
+      <div className="min-w-0">
+        <Label>Compare against</Label>
+        <p className="mt-1 text-xs leading-snug text-light">
+          <span key={`${c.tier}`} className="rr-cmp-in block">
+            {cmpLine(c)}
           </span>
-          <span className="flex items-center gap-2">
-            <span className="h-px w-6 bg-light opacity-60" />
-            The field
-          </span>
-        </div>
+        </p>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 h-auto w-full" role="img" aria-label="Your position lap by lap">
-        {posLines.map((p) => (
-          <g key={p}>
-            <line x1={PAD.l} x2={W - PAD.r} y1={y(p)} y2={y(p)} className="stroke-border" strokeWidth="1" />
-            <text x={PAD.l - 12} y={y(p) + 4} textAnchor="end" className="fill-light font-mono text-[11px] font-bold">
-              P{p}
-            </text>
-          </g>
-        ))}
-        {lapTicks.map((l) => (
-          <g key={l}>
-            <line x1={x(l)} x2={x(l)} y1={PAD.t} y2={H - PAD.b} className="stroke-border" strokeWidth="1" strokeDasharray="2 4" />
-            <text x={x(l)} y={H - 8} textAnchor="middle" className="fill-faint font-mono text-[10px] font-bold">
-              {l}
-            </text>
-          </g>
-        ))}
-        <text x={PAD.l} y={H - 8} className="fill-light font-mono text-[10px] font-bold uppercase tracking-widest">
-          Lap 1
-        </text>
-        <text x={W - PAD.r} y={H - 8} textAnchor="end" className="fill-light font-mono text-[10px] font-bold uppercase tracking-widest">
-          Lap {maxLap}
-        </text>
-        {drivers
-          .filter((d) => d !== me)
-          .map((d) => (
-            <path key={d.driverId || d.name} d={path(d.points)} fill="none" className="stroke-light opacity-30" strokeWidth="1" strokeLinejoin="round" />
-          ))}
-        <path d={path(me.points)} fill="none" stroke="var(--recap-team)" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
-        <circle cx={x(first.lap)} cy={y(first.position)} r="5" fill="var(--recap-team)" />
-        <circle cx={x(last.lap)} cy={y(last.position)} r="7" fill="var(--recap-team)" className="stroke-card" strokeWidth="3" />
-        <text x={x(last.lap) + 12} y={y(last.position) + 5} className="fill-dark font-display text-[16px] font-black">
-          P{last.position}
-        </text>
-      </svg>
+      <TierSwitch className="w-full sm:w-[19rem]" />
     </div>
-  );
-}
-
-// --- the rating ---------------------------------------------------------------
-
-const RATING_PARTS = [
-  { key: "exp", label: "Experience" },
-  { key: "rac", label: "Racecraft" },
-  { key: "aha", label: "Awareness" },
-  { key: "pac", label: "Pace" },
-];
-
-// The big number ticks from last round's value; each of the four bars keeps
-// last round's length in the brand colour and grows the piece this round
-// added in green (or shows the piece it took in red), with the change
-// landing as a tag once the bar has settled.
-function RatingCard({ rating: r, card }) {
-  const was = r.before?.overall;
-  return (
-    <Card>
-      <div className="grid gap-8 lg:grid-cols-[minmax(15rem,auto),1fr] lg:items-center lg:gap-16">
-        <div>
-          <Label>Driver rating</Label>
-          <div className="mt-2 flex items-end gap-4">
-            <span className="recap-pop font-display text-[6rem] font-black leading-none tracking-tighter text-dark">
-              <Tween from={was} to={r.after.overall} />
-            </span>
-            {r.delta && (
-              <div className="recap-tag mb-3">
-                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 ${r.delta.overall > 0.05 ? "border-ok/40 bg-ok/10" : r.delta.overall < -0.05 ? "border-bad/40 bg-bad/10" : "border-border"}`}>
-                  <Delta value={r.delta.overall} decimals={1} className="text-sm" arrow />
-                </span>
-                {was != null && <div className="mt-1.5 font-mono text-[11px] text-light">was {Math.round(was)}</div>}
-              </div>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2 font-mono text-[11px] text-light">
-            {r.rank != null && r.fieldSize != null && (
-              <>
-                <span className="rounded-md border border-border px-2 py-0.5 font-bold text-dark">#{r.rank}</span>
-                <span>live form rank of {r.fieldSize}</span>
-              </>
-            )}
-          </div>
-          {card && <div className="mt-2 font-mono text-[11px] text-faint">Your card stays at {Math.round(card.rating.ratings.overall)} this season.</div>}
-          {r.provisional && <div className="mt-1 font-mono text-[11px] text-faint">Still provisional: a few more starts and it settles.</div>}
-        </div>
-        <div className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
-          {RATING_PARTS.map((p, i) => {
-            const v = r.after[p.key];
-            const b = r.before?.[p.key];
-            const d = r.delta ? r.delta[p.key] : null;
-            if (v == null) return null;
-            const base = Math.max(0, Math.min(100, b ?? v));
-            const lo = Math.min(base, v);
-            const change = Math.abs(v - base);
-            const gained = v >= base;
-            return (
-              <div key={p.key}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <Label tone="text-light">{p.label}</Label>
-                  <span className="flex items-baseline gap-2">
-                    {d != null && Math.abs(d) >= 0.05 && (
-                      <span className="recap-tag" style={{ "--tag-delay": `${1100 + i * 120}ms` }}>
-                        <Delta value={d} decimals={0} className="text-xs" arrow />
-                      </span>
-                    )}
-                    <span className="font-mono text-2xl font-bold tabular-nums leading-none text-dark">
-                      <Tween from={b} to={v} />
-                    </span>
-                  </span>
-                </div>
-                <div className="relative mt-3 h-2 w-full rounded-full bg-surface2">
-                  <div className="bar-fill absolute left-0 top-0 h-2 rounded-full bg-brand" style={{ "--w": `${Math.max(2, lo)}%`, "--bar-delay": `${i * 90}ms` }} />
-                  {change >= 0.5 && (
-                    // Grows out of the old mark: right for a gain, left for
-                    // a loss, so a drop reads as the bar giving ground.
-                    <div
-                      className={`bar-fill absolute top-0 h-2 ${gained ? "rounded-r-full" : "rounded-l-full"}`}
-                      style={{
-                        ...(gained ? { left: `${base}%` } : { right: `${100 - base}%` }),
-                        "--w": `${change}%`,
-                        background: gained ? "rgb(var(--c-ok))" : "rgb(var(--c-bad))",
-                        "--bar-delay": `${800 + i * 90}ms`,
-                      }}
-                    />
-                  )}
-                  {/* the mark where it stood, when it moved */}
-                  {change >= 0.5 && <div className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-dark opacity-60" style={{ left: `${base}%` }} />}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// --- the season -------------------------------------------------------------
-
-// Cumulative championship points, round by round, the whole calendar on the
-// axis so the rounds still to come stand there empty. Dropped rounds and
-// no-shows are marked. The line draws itself into view.
-function SeasonCurve({ season, you }) {
-  const rounds = season.rounds;
-  const run = rounds.filter((r) => r.run);
-  if (!run.length) return null;
-  const W = 720;
-  const H = 260;
-  const PAD = { l: 36, r: 24, t: 24, b: 34 };
-  let cum = 0;
-  const pts = run.map((r) => ({ ...r, cum: (cum += r.points || 0) }));
-  const maxY = Math.max(10, ...pts.map((p) => p.cum));
-  // A round top for the axis: 20, 40, 60, 100, 150, 200, 300 ...
-  const step = maxY <= 40 ? 10 : maxY <= 100 ? 25 : maxY <= 200 ? 50 : 100;
-  const yMax = Math.ceil(maxY / step) * step;
-  const x = (num) => PAD.l + ((num - 1) / Math.max(1, rounds.length - 1)) * (W - PAD.l - PAD.r);
-  const y = (v) => PAD.t + (1 - v / yMax) * (H - PAD.t - PAD.b);
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.number).toFixed(1)} ${y(p.cum).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(pts[pts.length - 1].number).toFixed(1)} ${y(0).toFixed(1)} L${x(pts[0].number).toFixed(1)} ${y(0).toFixed(1)} Z`;
-  const last = pts[pts.length - 1];
-  const gridY = Array.from({ length: yMax / step + 1 }, (_, i) => i * step).filter((v, i, a) => a.length <= 6 || i % 2 === 0);
-  const kept = season.dropWorst > 0 ? `best ${rounds.length - season.dropWorst} of ${rounds.length} count` : null;
-  return (
-    <Card>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <Label>Your championship points, round by round</Label>
-        {kept && <span className="font-mono text-[11px] text-light">cumulative · {kept}</span>}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-auto w-full" role="img" aria-label="Championship points round by round">
-        {gridY.map((v) => (
-          <g key={v}>
-            <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth="1" />
-            <text x={PAD.l - 8} y={y(v) + 4} textAnchor="end" className="fill-faint font-mono text-[10px] font-bold">
-              {v}
-            </text>
-          </g>
-        ))}
-        <path d={area} fill="var(--recap-team)" opacity="0.12" />
-        <path d={line} fill="none" stroke="var(--recap-team)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" pathLength="1" className="chart-line" />
-        {pts.map((p) => (
-          <g key={p.number}>
-            <circle cx={x(p.number)} cy={y(p.cum)} r={p.number === last.number ? 6 : 4} fill={p.status === "DNS" || p.dropped ? "var(--c-card)" : "var(--recap-team)"} stroke="var(--recap-team)" strokeWidth="2" />
-            {(p.status === "DNS" || p.dropped) && (
-              <text x={x(p.number)} y={y(p.cum) - 10} textAnchor="middle" className="fill-light font-mono text-[9px] font-bold uppercase">
-                {p.status === "DNS" ? "DNS" : "dropped"}
-              </text>
-            )}
-          </g>
-        ))}
-        <text x={x(last.number)} y={y(last.cum) - 12} textAnchor="middle" className="fill-dark font-display text-[15px] font-black">
-          {last.cum}
-        </text>
-        {rounds.map((r) => (
-          <text key={r.number} x={x(r.number)} y={H - 10} textAnchor="middle" className={`font-mono text-[10px] font-bold ${r.run ? (r.number === last.number ? "fill-eyebrow" : "fill-light") : "fill-faint"}`}>
-            R{r.number}
-          </text>
-        ))}
-      </svg>
-      {you && <p className="mt-2 font-mono text-[11px] text-light">Filled marks scored, hollow ones did not count: a no-show, or a round the drop rule takes away.</p>}
-    </Card>
-  );
-}
-
-function ChampionshipCard({ standings: s, team, season }) {
-  const moved = s.before ? s.before.position - s.after.position : null;
-  return (
-    <Card>
-      <Label>In the championship</Label>
-      <div className="mt-3 flex items-end gap-4">
-        <div className="recap-pop flex items-start font-display font-black leading-none tracking-tighter text-dark">
-          <span className="mt-2 text-2xl text-light">P</span>
-          {/* Rolls from the old place to the new one, up or down the table. */}
-          <span className="text-6xl">
-            <Tween from={s.before?.position} to={s.after.position} />
-          </span>
-        </div>
-        <div className="mb-1">
-          <div className="font-mono text-[11px] text-light">of {s.fieldSize} drivers</div>
-          {moved != null && (
-            <div className="recap-tag mt-1">
-              {s.before && s.before.position !== s.after.position && <span className="mr-2 font-mono text-[11px] text-light line-through">P{s.before.position}</span>}
-              <Delta value={moved} suffix={` place${Math.abs(moved) === 1 ? "" : "s"}`} className="text-xs" arrow />
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-4 divide-y divide-border border-t border-border">
-        <Row label="Season points" value={<Tween from={s.before?.total} to={s.after.total} />} />
-        {s.isLeader ? (
-          s.behind && <Row label={`Lead over ${s.behind.name}`} value={<Tween from={s.behindGapBefore} to={s.behind.gap} prefix="+" suffix=" pts" />} tone="text-ok" />
-        ) : (
-          <>
-            {s.ahead && (
-              <Row
-                label={`To P${s.after.position - 1} ahead`}
-                value={
-                  <>
-                    <Tween from={s.aheadGapBefore} to={s.ahead.gap} prefix="−" suffix=" pts" />
-                    {s.aheadGapBefore != null && s.aheadGapBefore !== s.ahead.gap && (
-                      <span className="recap-tag ml-2 inline-block text-xs font-semibold text-light">was −{s.aheadGapBefore}</span>
-                    )}
-                  </>
-                }
-              />
-            )}
-            {s.leader && s.ahead?.name !== s.leader.name && <Row label={`To ${s.leader.name} (P1)`} value={`−${s.leader.total - s.after.total} pts`} />}
-          </>
-        )}
-        {season?.bestFinish && <Row label="Best finish so far" value={`P${season.bestFinish.position} · ${season.bestFinish.track}`} />}
-        {team?.after && (
-          <Row
-            label={`${team.name} · constructors`}
-            value={
-              <>
-                P<Tween from={team.before?.position} to={team.after.position} />
-                {team.before && team.before.position !== team.after.position && (
-                  <span className="recap-tag ml-2 inline-block">
-                    <Delta value={team.before.position - team.after.position} className="text-xs" arrow />
-                  </span>
-                )}
-              </>
-            }
-          />
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// --- the points -------------------------------------------------------------
-
-function PointsCard({ points: p }) {
-  const before = p.balance != null ? p.balance - (p.hypothetical ? 0 : p.earned) : null;
-  // A weekend can owe a bonus per race, so this is a list. An older payload
-  // handed over with a single bonus on it still reads.
-  const owed = Array.isArray(p.pending) ? p.pending : p.pending ? [p.pending] : [];
-  const next = p.nextCard;
-  const pct = next && p.balance != null ? Math.max(0, Math.min(100, (p.balance / next.cost) * 100)) : null;
-  return (
-    <Card>
-      <div className="grid gap-8 lg:grid-cols-[1fr,1.2fr] lg:gap-14">
-        <div>
-          <Label>{p.hypothetical ? "NABS Tokens this round would pay" : "NABS Tokens earned"}</Label>
-          <div className="mt-2 flex items-end gap-3">
-            <TokenIcon className="champ-chip mb-3 h-12 w-12 sm:h-14 sm:w-14" />
-            <span className="recap-pop font-display text-[5.5rem] font-black leading-none tracking-tighter text-accent">
-              <Tween to={p.earned} prefix="+" delay={500} />
-            </span>
-            <span className="mb-4 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">this round</span>
-          </div>
-          {/* A sprint weekend pays each of its races, so a chip says which one
-              it came from; a plain round's chips carry no such word. */}
-          <div className="recap-cascade mt-3 flex flex-wrap gap-2">
-            {p.entries.map((e, i) => (
-              <span key={i} className="rounded-md border border-border px-2.5 py-1 font-mono text-[11px] text-medium" style={{ "--i": i + 6 }}>
-                {e.title} <span className="font-bold text-dark">+{e.delta}</span>
-                {e.race && <span className="text-light"> · {e.race.toLowerCase()}</span>}
-              </span>
-            ))}
-            {owed.map((e, i) => (
-              <span key={`p${i}`} className="rounded-md border border-dashed border-border px-2.5 py-1 font-mono text-[11px] text-light" style={{ "--i": p.entries.length + i + 6 }}>
-                {e.title} <span className="font-bold">+{e.delta}</span>
-                {e.race && <span> · {e.race.toLowerCase()}</span>} · once the stewards are done
-              </span>
-            ))}
-          </div>
-          {p.rate > 1 && !p.hypothetical && <p className="mt-3 font-mono text-[11px] text-light">Paid at ×{p.rate.toFixed(2)}: your Discord week counted.</p>}
-          {p.hypothetical && <p className="mt-3 font-mono text-[11px] text-light">Preview: nothing has been paid for this round yet. This is what the rules pay a finish like this.</p>}
-        </div>
-        {p.balance != null && (
-          <div className="flex flex-col justify-center">
-            <div className="flex items-baseline justify-between">
-              <Label tone="text-light">Season total</Label>
-              <span className="flex items-center gap-2 font-display text-3xl font-black tabular-nums text-dark">
-                <TokenIcon className="h-5 w-5" />
-                <Tween from={before} to={p.balance} delay={1500} />
-              </span>
-            </div>
-            {next && (
-              <>
-                <div className="mt-3 h-2 w-full rounded-full bg-surface2">
-                  <div className="bar-fill h-2 rounded-full bg-brand" style={{ "--w": `${pct}%`, "--bar-delay": "1500ms" }} />
-                </div>
-                <div className="recap-tag mt-2 flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-light" style={{ "--tag-delay": "2400ms" }}>
-                  <span>{p.balance >= next.cost ? `Enough for the next card design` : `${(next.cost - p.balance).toLocaleString("en-US")} to the next card design`}</span>
-                  <span className="rounded-md border border-border px-2 py-0.5">
-                    <span className="font-bold uppercase tracking-wider text-dark">{next.name}</span> {next.cost.toLocaleString("en-US")}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// --- the team-mate ------------------------------------------------------------
-
-function TeammateCard({ you, mates, standings, card }) {
-  const m = mates[0];
-  const better = (a, b, lowerWins = true) => {
-    if (a == null || b == null) return 0;
-    if (a === b) return 0;
-    return (lowerWins ? a < b : a > b) ? 1 : -1;
-  };
-  const rows = [
-    { label: "Race", a: you.finished ? `P${you.position}` : you.status, b: m.position != null ? `P${m.position}` : m.status, win: better(you.finished ? you.position : null, m.position) },
-    { label: "Grid", a: you.grid != null ? `P${you.grid}` : NO_VALUE, b: m.grid != null ? `P${m.grid}` : NO_VALUE, win: better(you.grid, m.grid) },
-    { label: "Best lap", a: fmtLap(you.bestLapMs) || NO_VALUE, b: fmtLap(m.bestLapMs) || NO_VALUE, win: better(you.bestLapMs, m.bestLapMs) },
-    { label: "Season points", a: standings?.after?.total ?? NO_VALUE, b: m.seasonPoints ?? NO_VALUE, win: better(standings?.after?.total, m.seasonPoints, false) },
-  ];
-  const tone = (w) => (w > 0 ? "text-ok" : w < 0 ? "text-bad" : "text-dark");
-  const duel = m.duel && (m.duel.raceWins + m.duel.raceLosses > 0 || m.duel.qualiWins + m.duel.qualiLosses > 0) ? m.duel : null;
-  const score = (w, l) => (w > l ? "text-ok" : w < l ? "text-bad" : "text-dark");
-  return (
-    <Card>
-      <Label>Team-mate head to head</Label>
-      {/* The two names on one line, the team between them. */}
-      <div className="mt-4 grid grid-cols-[1fr,auto,1fr] items-center gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <DriverAvatar name={you.name} photoUrl={card?.driver?.photoUrl || null} color={you.team?.color || "#232833"} size={40} />
-          <span className="truncate font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{you.name}</span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          {you.team && <TeamLogo id={you.team.id} name={you.team.name} color={you.team.color} logoUrl={you.team.logoUrl} size={26} />}
-          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">{you.team?.name || "vs"}</span>
-        </div>
-        <Link to={`/drivers/${m.driverId}`} className="flex min-w-0 items-center justify-end gap-3 transition hover:text-brand">
-          <span className="truncate text-right font-display text-base font-black uppercase tracking-tight text-dark sm:text-xl">{m.name}</span>
-          <DriverAvatar name={m.name} photoUrl={m.photoUrl} color={you.team?.color || "#232833"} size={40} />
-        </Link>
-      </div>
-      <div className="recap-cascade mt-4 divide-y divide-border border-t border-border">
-        {rows.map((r, i) => (
-          <div key={r.label} className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-4 py-3" style={{ "--i": i }}>
-            <span className={`font-mono text-sm font-bold tabular-nums ${tone(r.win)}`}>{r.a}</span>
-            <Label tone="text-light" className="text-center">
-              {r.label}
-            </Label>
-            <span className={`text-right font-mono text-sm font-bold tabular-nums ${tone(-r.win)}`}>{r.b}</span>
-          </div>
-        ))}
-        {duel && (
-          <div className="grid grid-cols-[1fr,auto,1fr] items-baseline gap-4 py-3" style={{ "--i": rows.length }}>
-            <span className="font-mono text-sm font-bold tabular-nums">
-              {m.duel.raceWins + m.duel.raceLosses > 0 && (
-                <span className={score(m.duel.raceWins, m.duel.raceLosses)}>
-                  {m.duel.raceWins}:{m.duel.raceLosses}
-                </span>
-              )}
-              {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
-                <span className={`ml-3 ${score(m.duel.qualiWins, m.duel.qualiLosses)}`}>
-                  {m.duel.qualiWins}:{m.duel.qualiLosses}
-                  <span className="ml-1 text-[10px] text-light">grid</span>
-                </span>
-              )}
-            </span>
-            <Label tone="text-light" className="text-center">
-              Season duel
-            </Label>
-            <span className="text-right font-mono text-sm font-bold tabular-nums">
-              {m.duel.raceWins + m.duel.raceLosses > 0 && (
-                <span className={score(m.duel.raceLosses, m.duel.raceWins)}>
-                  {m.duel.raceLosses}:{m.duel.raceWins}
-                </span>
-              )}
-              {m.duel.qualiWins + m.duel.qualiLosses > 0 && (
-                <span className={`ml-3 ${score(m.duel.qualiLosses, m.duel.qualiWins)}`}>
-                  {m.duel.qualiLosses}:{m.duel.qualiWins}
-                  <span className="ml-1 text-[10px] text-light">grid</span>
-                </span>
-              )}
-            </span>
-          </div>
-        )}
-      </div>
-      {mates.length > 1 && <p className="mt-3 font-mono text-[11px] text-light">Also in your colours: {mates.slice(1).map((x) => `${x.name} (${x.position != null ? `P${x.position}` : x.status})`).join(", ")}.</p>}
-    </Card>
   );
 }
 
@@ -1374,8 +1474,17 @@ function TeammateCard({ you, mates, standings, card }) {
 // over it: the slope over its clean laps in seconds per lap. Positive is
 // slower, so it reads "+0.14 s/lap" in red; a tyre that came to the driver
 // reads "−0.07 s/lap" in green.
-function StintsCard({ stints }) {
+// The strip is uncovered left to right by a curtain with a feathered edge on
+// an ease-in-out, the race's laps going by, and each tyre settles in as the
+// edge reaches the lap it went on.
+const STINT_DRAW = 1700;
+// `wearKnown` false: the round has no lap times to read a tyre from, so the
+// stints say only where they ran. `wide`: the card has the row to itself, and
+// on a wide screen the stints sit side by side under the strip.
+const STINT_COLS = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" };
+function StintsCard({ stints, wearKnown = true, wide = false }) {
   const total = stints.reduce((n, st) => n + st.laps, 0) || 1;
+  const cols = wide ? STINT_COLS[stints.length] || "" : "";
   let acc = 0;
   const segs = stints.map((st) => {
     const seg = { ...st, start: acc, t: tyreCompound(st.tyre) };
@@ -1392,38 +1501,60 @@ function StintsCard({ stints }) {
       </div>
       <div className="relative mt-5 h-10 w-full">
         <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
-        {segs.map((s, i) => (
-          <div key={i}>
+        <div className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden">
+          {segs.map((s, i) => (
             <div
-              className="bar-fill absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
-              style={{ left: `${(s.start / total) * 100}%`, "--w": `${(s.laps / total) * 100}%`, backgroundColor: s.t.color, boxShadow: s.t.light ? "0 0 0 1px rgba(17,24,39,0.3)" : "none", "--bar-delay": `${i * 350}ms` }}
+              key={i}
+              className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full"
+              style={{ left: `${(s.start / total) * 100}%`, width: `${(s.laps / total) * 100}%`, backgroundColor: s.t.color, boxShadow: s.t.light ? "0 0 0 1px rgba(17,24,39,0.3)" : "none" }}
               title={`${s.t.name} · ${s.laps} laps`}
             />
-            <span className="recap-tag absolute top-1/2 z-10 flex -translate-y-1/2" style={{ left: `max(0px, calc(${(s.start / total) * 100}% - 13px))`, "--tag-delay": `${i * 350}ms` }}>
+          ))}
+          <div className="rr-draw-curtain rr-feather absolute inset-0 bg-card" style={{ "--draw": `${STINT_DRAW}ms` }} aria-hidden="true" />
+        </div>
+        {segs.map((s, i) => (
+          <span key={i} className="rr-stint-tyre absolute top-1/2 z-10 flex -translate-y-1/2" style={{ left: `max(0px, calc(${(s.start / total) * 100}% - 13px))`, "--d": `${Math.round(sineInOutInverse(s.start / total) * STINT_DRAW)}ms` }}>
+            <span className="rr-stint-tyre-in flex">
               <TyreBadge t={s.t} size={26} />
             </span>
-          </div>
+          </span>
         ))}
       </div>
-      <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
+      <div className="relative h-4 w-full font-mono text-[10px] font-bold text-faint" aria-hidden="true">
+        {segs.map((s, i) => (
+          <span key={i} className="absolute" style={{ left: `max(0px, calc(${(s.start / total) * 100}% - 8px))` }}>
+            L{s.start + 1}
+          </span>
+        ))}
+        <span className="absolute right-0">L{total}</span>
+      </div>
+      <div className={`recap-cascade mt-3 divide-y divide-border border-t border-border ${cols ? `${cols} lg:grid lg:divide-x lg:divide-y-0` : ""}`}>
         {segs.map((s, i) => {
           const perLap = s.degMsPerLap != null ? s.degMsPerLap / 1000 : null;
           const words =
             perLap == null
-              ? "too short to read the tyre"
+              ? wearKnown
+                ? "too short to read the tyre"
+                : null
               : perLap > 0.05
                 ? `fell away by ${perLap.toFixed(2)} s a lap`
                 : perLap < -0.05
                   ? `came to you by ${(-perLap).toFixed(2)} s a lap`
                   : "held its pace to the end";
           return (
-            <div key={i} className="flex items-center gap-4 py-3" style={{ "--i": i + 3 }}>
+            <div key={i} className={`flex items-center gap-4 py-3.5 ${cols ? "lg:px-6 lg:first:pl-0 lg:last:pr-0" : ""}`} style={{ "--i": i + 3 }}>
               <TyreBadge t={s.t} size={30} />
               <div className="min-w-0 flex-1">
                 <div className="font-mono text-sm font-bold text-dark">
                   Stint {i + 1} · {s.laps} laps on {s.t.name.toLowerCase()}
                 </div>
-                <div className="text-xs text-light">{words}</div>
+                {words ? (
+                  <div className="mt-0.5 text-xs text-light">{words}</div>
+                ) : (
+                  <div className="mt-0.5 font-mono text-[11px] tabular-nums text-faint">
+                    laps {s.start + 1}–{s.start + s.laps}
+                  </div>
+                )}
               </div>
               {perLap != null && <Delta value={perLap} decimals={2} suffix=" s/lap" goodWhen="down" className="text-sm" />}
             </div>
@@ -1450,11 +1581,14 @@ function IncidentsCard({ incidents, you }) {
       {list.length === 0 ? (
         <p className="recap-pop mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-ok">A clean race. No contact with another car.</p>
       ) : (
-        <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
+        <div className="recap-cascade mt-4 space-y-2">
           {list.map((c, i) => (
-            <div key={i} className="flex items-center gap-4 py-3" style={{ "--i": i }}>
-              <span className="w-14 shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">Lap {c.lap ?? "?"}</span>
-              <span className="min-w-0 flex-1 truncate font-display text-base font-extrabold uppercase tracking-tight text-dark">
+            <div key={i} className="flex items-stretch overflow-hidden rounded-lg border border-border bg-surface2/60" style={{ "--i": i }}>
+              <span className={`flex w-14 shrink-0 flex-col items-center justify-center py-2 ${c.kph >= 60 ? "bg-bad/15" : c.kph >= 25 ? "bg-warn/15" : "bg-surface2"}`}>
+                <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-light">Lap</span>
+                <span className={`font-display text-lg font-black leading-none tabular-nums ${hard(c.kph ?? 0)}`}>{c.lap ?? "?"}</span>
+              </span>
+              <span className="flex min-w-0 flex-1 items-center px-3 font-display text-base font-extrabold uppercase tracking-tight text-dark">
                 {c.driverId ? (
                   <Link to={`/drivers/${c.driverId}`} className="transition hover:text-brand">
                     {c.name}
@@ -1463,7 +1597,7 @@ function IncidentsCard({ incidents, you }) {
                   c.name
                 )}
               </span>
-              {c.kph != null && <span className={`font-mono text-sm font-bold tabular-nums ${hard(c.kph)}`}>{c.kph} km/h</span>}
+              {c.kph != null && <span className={`flex items-center pr-3 font-mono text-sm font-bold tabular-nums ${hard(c.kph)}`}>{c.kph} km/h</span>}
             </div>
           ))}
         </div>
@@ -1506,73 +1640,33 @@ function CareerCard({ career: c, you, race }) {
   if (!lines.length && !c.starts) return null;
   return (
     <Card>
-      <div className="grid gap-6 lg:grid-cols-[1fr,auto] lg:gap-14">
-        <div>
-          <Label>Your season and career</Label>
-          <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
-            {lines.map((l, i) => (
-              <div key={l.key} className={`py-3 text-sm leading-relaxed ${l.tone || "text-medium"}`} style={{ "--i": i }}>
-                {l.text}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex gap-8 lg:flex-col lg:gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <Label>Your season and career</Label>
+        {/* The career in three numbers, ticking up to tonight's. */}
+        <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
           {[
             { label: "Starts", value: c.starts },
             { label: "Wins", value: c.wins },
             { label: "Podiums", value: c.podiums },
           ].map((x, i) => (
-            <div key={x.label}>
-              <Label tone="text-light">{x.label}</Label>
-              <div className="mt-1 font-display text-3xl font-black tabular-nums leading-none text-dark">
+            <div key={x.label} className="bg-card px-3 py-2 text-center sm:px-4">
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-light">{x.label}</div>
+              <div className="mt-0.5 font-display text-2xl font-black tabular-nums leading-none text-dark">
                 <Tween to={x.value} delay={300 + i * 150} />
               </div>
             </div>
           ))}
         </div>
       </div>
+      <div className="recap-cascade mt-3 divide-y divide-border border-t border-border">
+        {lines.map((l, i) => (
+          <div key={l.key} className={`flex gap-3 py-2.5 text-sm leading-relaxed ${l.tone || "text-medium"}`} style={{ "--i": i }}>
+            <span className="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rotate-45" style={{ background: l.tone ? "currentColor" : "var(--recap-team)" }} aria-hidden="true" />
+            <span>{l.text}</span>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }
 
-// --- the honours row ------------------------------------------------------------
-
-function HonoursRow({ race, results, quali, sprint = false }) {
-  const { facts, dotd, dotdRow, hasDotd } = buildRaceFacts(race, results, quali);
-  const winner = results.filter((r) => r.status === "FINISHED" && r.position != null).sort((a, b) => a.position - b.position)[0] || null;
-  const by = (key) => facts.find((f) => f.key === key) || null;
-  const cells = [
-    winner ? { key: "winner", label: sprint ? "Sprint winner" : "Race winner", name: winner.name, driverId: winner.driverId, country: countryFor(winner.driverId, winner.country), value: [teamOf(winner)?.name, winner.totalTimeMs ? fmtDuration(winner.totalTimeMs + (winner.penaltySeconds || 0) * 1000) : null].filter(Boolean).join(" · ") } : null,
-    by("fl") ? { ...by("fl"), label: "Fastest lap", tone: "text-fl" } : null,
-    by("pole") ? { ...by("pole"), label: "Pole position" } : null,
-    by("climb") ? { ...by("climb"), label: "Biggest climber", tone: "text-ok" } : null,
-    hasDotd ? { key: "dotd", label: dotd.pickedBy ? `${dotd.pickedBy}’s Driver of the Day` : "Driver of the Day", name: dotd.name || dotdRow?.name, driverId: dotdRow?.driverId || null, country: dotdRow ? countryFor(dotdRow.driverId, dotdRow.country) : null, value: dotdRow ? `P${dotdRow.position} · ${teamOf(dotdRow)?.name || ""}` : null } : null,
-    by("steady") ? { ...by("steady"), label: "Most consistent" } : null,
-  ]
-    .filter(Boolean)
-    .slice(0, 4);
-  if (!cells.length) return null;
-  return (
-    <div className="recap-reveal">
-      <div className="recap-cascade grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {cells.map((c, i) => (
-          <div key={c.key} className="card p-5" style={{ "--i": i }}>
-            <Label tone={c.tone || "text-light"}>{c.label}</Label>
-            <div className="mt-2 flex items-center gap-2">
-              {c.driverId ? (
-                <Link to={`/drivers/${c.driverId}`} className="truncate font-display text-xl font-black uppercase tracking-tight text-dark transition hover:text-brand">
-                  {c.name}
-                </Link>
-              ) : (
-                <span className="truncate font-display text-xl font-black uppercase tracking-tight text-dark">{c.name}</span>
-              )}
-              {c.country && <Flag code={c.country} w={16} h={12} />}
-            </div>
-            {c.value && <div className={`mt-1 font-mono text-xs ${c.tone || "text-light"}`}>{c.value}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
