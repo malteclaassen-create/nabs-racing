@@ -32,6 +32,8 @@ const PAGES = [
     words: ["records", "hall of fame", "champions", "all time", "rekorde", "bestenliste"] },
   { key: "transfers", label: "Transfers", hint: "Seat moves between rounds", icon: "arrows", where: "league", path: "/transfers",
     words: ["transfers", "seats", "market", "wechsel", "transfermarkt"] },
+  { key: "numbers", label: "In numbers", hint: "Races, laps, overtakes, winners, added up", icon: "chart", where: "league", path: "/numbers",
+    words: ["numbers", "stats", "statistics", "totals", "laps", "overtakes", "closest finish", "comeback", "zahlen", "statistik", "rundenzahl", "ueberholmanoever"] },
 
   // One page, two reasons to look for it: the rules live at the top of the
   // downloads page, which is what the nav calls "Race Info".

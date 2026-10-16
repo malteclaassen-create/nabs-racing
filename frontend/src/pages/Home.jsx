@@ -27,6 +27,8 @@ import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
+import { useWrappedSeasons } from "../hooks/useWrappedOpen.js";
+import WrappedBanner from "../components/WrappedBanner.jsx";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -542,6 +544,9 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
 export default function Home() {
   const { current: season, active, seasons, setSeason } = useSeason();
   const { user, isLoggedIn } = useAuth();
+  // A finished season's honours lead on to every driver's Season Wrapped,
+  // once the league has opened it.
+  const wrappedSeasons = useWrappedSeasons();
   const social = useSocial();
   const drivers = useApi(useCallback(() => api.driverStandings(), []));
   const t1 = useApi(useCallback(() => api.t1Standings(), []));
@@ -977,6 +982,11 @@ export default function Home() {
       ) || null
     : null;
   const myDriverId = myRow?.driverId || (isLoggedIn ? user?.driverId : null);
+  // Season Wrapped's banner: for the live season once every round is run, or,
+  // while the next season waits for its opener, for the one just finished.
+  const lastSeason = showComingSoonHero && !isUpcomingSeason ? (seasons || []).find((s) => s.number === season?.number - 1) : null;
+  const wrappedBanner =
+    seasonOver && wrappedSeasons.includes(season?.number) ? season : lastSeason && wrappedSeasons.includes(lastSeason.number) ? lastSeason : null;
   // Every race of a sprint weekend counts, here as everywhere else on the site
   // (utils/standingsRow.js): a sprint driven is a start, a sprint won a win.
   const myRounds = myRow ? Object.values(myRow.perRace || {}) : [];
@@ -1419,6 +1429,11 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ===================== SEASON WRAPPED (season over) ================== */}
+      {/* The season just finished, or the one before a new season's opener:
+          its Wrapped, as soon as the league has opened it. */}
+      {wrappedBanner && <WrappedBanner season={wrappedBanner} driverId={wrappedBanner === season ? myRow?.driverId : null} />}
+
       {/* ===================== TITLE FIGHT (running seasons) ================= */}
       {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a
           finished season by pretending the last two rounds are still to come. */}
@@ -1532,6 +1547,15 @@ export default function Home() {
                 <HonourCell key={key} {...c} index={i} className={i === cells.length - 1 ? lastClass : ""} />
               ))}
             </div>
+            {season?.number != null && wrappedSeasons.includes(season.number) && (
+              <Link
+                to={`/wrapped?season=${season.number}`}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:underline"
+              >
+                Every driver's season, told in cards: {season.name && !/^\d+$/.test(season.name) ? season.name : `Season ${season.number}`} Wrapped
+                <span aria-hidden="true">→</span>
+              </Link>
+            )}
           </section>
         );
       })()}

@@ -552,6 +552,30 @@ model MemberAccount {
   // this account acts as the main one. Raw-SQL column (lib/ensureSchema.js,
   // lib/accountLinks.js).
   mainDiscordId   String?
+  // Not modelled here on purpose: "pushPrefs" (TEXT, JSON), which kinds of
+  // bell entry the member also wants pushed. It is added at boot by
+  // ensureAppSchema and only ever read in raw SQL (lib/push.js); listing it
+  // here would have the client select it before the first boot has made it.
+}
+
+// One device a member switched push notifications on for (lib/push.js).
+// endpoint = the browser's address at its push service, p256dh + auth = the
+// keys the message is encrypted for. discordId = who the member acts as,
+// loginId = the account that signed in on the device. Raw SQL throughout;
+// migration push_subscriptions, mirrored by ensureAppSchema.
+model PushSubscription {
+  endpoint      String    @id
+  discordId     String
+  loginId       String?
+  p256dh        String
+  auth          String
+  device        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now())
+  lastSuccessAt DateTime?
+  failures      Int       @default(0)
+
+  @@index([discordId])
 }
 
 // In-site notifications behind the nav-bar bell. recipientId null = broadcast

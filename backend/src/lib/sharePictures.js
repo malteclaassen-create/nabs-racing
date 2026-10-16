@@ -37,21 +37,30 @@ import { raceKickoff } from "./raceKickoff.js";
 import { readRaceHeroes } from "./raceHero.js";
 import { readRacePhotos, racePhotoUrl } from "./racePhotos.js";
 import { staticFile, DRAWING_REV } from "./sharePictureDraw.js";
+import { getLeagueNumbers } from "../services/leagueNumbersService.js";
+import { getSeasonWrapped, getWrappedHub, wrappedMode } from "../services/seasonWrappedService.js";
+import { resolveDriverRow } from "./driverHandles.js";
 
 const TZ = "Europe/Berlin";
 const SECTION_ALIASES = { results: "races", calendar: "races", teams: "constructors" };
-const PAGES = new Set(["home", "attendance", "drivers", "constructors", "races", "transfers", "records", "live"]);
+const PAGES = new Set(["home", "attendance", "drivers", "constructors", "races", "transfers", "records", "live", "numbers", "wrapped"]);
 
 // Which page an address is, for the drawn pictures: the series' landing page
 // and the eight list pages (lib/series.js SHARE_PAGES), and NOT what lies
 // below them. A driver's own page or a team's is about that driver or team,
 // and a standings picture under their link would say something else. Those
 // keep the page's uploaded picture, as before.
+//
+// The one page BELOW a section that gets a drawn picture of its own is a
+// driver's Season Wrapped (/s/<slug>/wrapped/<row id>): it is made to be
+// shared, and the preview is most of what a shared link shows.
 export function drawnPageOf(pathname) {
   const parts = String(pathname || "").split("/").filter(Boolean);
   if (!parts.length || (parts.length === 1 && parts[0] === "join")) return { page: "home", slug: null };
-  if (parts[0] !== "s" || !parts[1] || parts.length > 3) return null;
+  if (parts[0] !== "s" || !parts[1]) return null;
   const slug = decodeURIComponent(parts[1]);
+  if (parts.length === 4 && parts[2] === "wrapped") return { page: "wrapped", slug, key: decodeURIComponent(parts[3]) };
+  if (parts.length > 3) return null;
   if (parts.length === 2) return { page: "home", slug };
   const page = SECTION_ALIASES[parts[2]] || parts[2];
   return PAGES.has(page) ? { page, slug } : null;
@@ -427,6 +436,158 @@ async function recordsPicture(prisma, ctx) {
   };
 }
 
+// "0.412" for a gap under a minute, "1:02.4" beyond it.
+function fmtGap(ms) {
+  const sec = ms / 1000;
+  if (sec < 60) return sec.toFixed(3);
+  const m = Math.floor(sec / 60);
+  return `${m}:${(sec - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+const grouped = (n) => Number(n).toLocaleString("en-GB");
+
+async function numbersPicture(prisma, ctx) {
+  const all = ctx.query?.season === "all";
+  const data = await getLeagueNumbers(prisma, { series: ctx.series.slug, season: all ? "all" : ctx.season.number }).catch(() => null);
+  const t = data?.totals;
+  if (!t?.races) return null;
+  const facts = [
+    `${grouped(t.races)} RACES`,
+    `${grouped(t.starts)} STARTS`,
+    t.laps?.value ? `${grouped(t.laps.value)} LAPS` : null,
+    t.overtakes?.value ? `${grouped(t.overtakes.value)} OVERTAKES` : null,
+  ].filter(Boolean);
+  const cards = [];
+  if (data.closestFinish) {
+    const c = data.closestFinish;
+    cards.push({
+      kicker: "CLOSEST FINISH",
+      title: c.winner.name,
+      flag: c.winner.country || null,
+      sub: `${prettyTrack(c.race.track)} · ${all ? `S${c.race.season} ` : ""}R${c.race.round}`,
+      value: fmtGap(c.gapMs),
+      unit: "SEC",
+    });
+  }
+  if (data.biggestComeback) {
+    const c = data.biggestComeback;
+    cards.push({
+      kicker: "BIGGEST CLIMB",
+      title: c.driver.name,
+      flag: c.driver.country || null,
+      sub: `P${c.grid} TO P${c.position} · ${prettyTrack(c.race.track)}`,
+      value: `+${c.gained}`,
+      unit: "PLACES",
+    });
+  }
+  const top = data.winners.list[0];
+  if (top) {
+    // A shared lead names everyone on it, as the Hall of Fame's picture does.
+    const tied = data.winners.list.filter((w) => w.wins === top.wins);
+    cards.push({
+      kicker: tied.length > 1 ? "MOST WINS, SHARED" : "MOST WINS",
+      title: tied.map((w) => w.name).join(" · "),
+      flag: tied.length === 1 ? top.country || null : null,
+      sub: `${data.winners.count} DIFFERENT WINNER${data.winners.count === 1 ? "" : "S"}`,
+      value: String(top.wins),
+      unit: top.wins === 1 ? "WIN" : "WINS",
+    });
+  }
+  return {
+    pill: all ? "ALL TIME" : undefined,
+    eyebrow: ["IN NUMBERS", all ? `${t.seasons} SEASONS` : `${t.rounds} ROUNDS`],
+    title: all ? "The league in numbers" : `${seasonLabel(ctx.season)} in numbers`,
+    sub: facts.join(" · "),
+    cards: cards.slice(0, 3),
+    background: await seasonHero(prisma, ctx.season),
+  };
+}
+
+// The Wrapped hub: the season's podium. A driver's own: where they finished,
+// what kind of driver the season says they were, and three of their cards.
+// Drawn only while the page is open to everyone, like its title and text.
+async function wrappedPicture(prisma, ctx) {
+  if ((await wrappedMode(prisma)) !== "all") return null;
+  if (!ctx.key) {
+    const hub = await getWrappedHub(prisma, { series: ctx.series.slug, season: ctx.query?.season || null }).catch(() => null);
+    if (!hub?.drivers?.length) return null;
+    const label = upper(hub.season.label);
+    return {
+      pill: `${hub.season.label} Wrapped`,
+      eyebrow: ["SEASON WRAPPED", "FINAL STANDINGS"],
+      title: "Season Wrapped",
+      sub: `EVERY DRIVER'S ${label}, TOLD IN CARDS`,
+      cards: hub.drivers.slice(0, 3).map((r, i) => driverCard(r, i, r.points)),
+      background: await seasonHero(prisma, ctx.season),
+    };
+  }
+  const hit = await resolveDriverRow(prisma, ctx.key, { series: ctx.series.slug, season: ctx.query?.season ?? null }).catch(() => null);
+  if (!hit) return null;
+  const row = await prisma.driver.findUnique({ where: { id: hit.id }, select: { seasonId: true } });
+  if (!row?.seasonId || (await getPrivateSeasonIds(prisma)).has(row.seasonId)) return null;
+  const w = await getSeasonWrapped(prisma, hit.id).catch(() => null);
+  if (!w || w.empty || w.notFinished) return null;
+  const season = await prisma.season.findUnique({ where: { id: row.seasonId } });
+  const cards = [];
+  if (w.best) {
+    cards.push({
+      medal: w.best.position <= 3 ? w.best.position - 1 : null,
+      tag: `P${w.best.position}`,
+      kicker: "BEST RESULT",
+      title: prettyTrack(w.best.track),
+      sub: `ROUND ${w.best.round}${w.best.sprint ? " · SPRINT" : ""}`,
+    });
+  }
+  if (w.climb) {
+    cards.push({
+      kicker: "BIGGEST CLIMB",
+      title: prettyTrack(w.climb.track),
+      sub: `P${w.climb.grid} TO P${w.climb.position}`,
+      value: `+${w.climb.gained}`,
+      unit: "PLACES",
+    });
+  }
+  const mate = w.teammates?.[0];
+  const rival = w.rival;
+  if (mate && mate.races) {
+    cards.push({
+      kicker: "TEAM-MATE BATTLE",
+      title: mate.name,
+      flag: mate.country || null,
+      dot: w.driver.team?.color || null,
+      sub: w.driver.team?.name || "",
+      value: `${mate.ahead}–${mate.behind}`,
+      unit: "RACES",
+    });
+  } else if (rival && rival.races) {
+    cards.push({
+      kicker: "RIVAL",
+      title: rival.name,
+      flag: rival.country || null,
+      dot: rival.team?.color || null,
+      sub: `P${rival.position} · ${rival.points} PTS`,
+      value: `${rival.ahead}–${rival.behind}`,
+      unit: "RACES",
+    });
+  }
+  const s = w.stats;
+  const line = [
+    w.type?.title ? upper(w.type.title) : null,
+    s.wins ? `${s.wins} WIN${s.wins === 1 ? "" : "S"}` : null,
+    s.podiums ? `${s.podiums} PODIUM${s.podiums === 1 ? "" : "S"}` : null,
+    `${s.starts} START${s.starts === 1 ? "" : "S"}`,
+  ].filter(Boolean);
+  return {
+    season,
+    pill: `${w.season.label} Wrapped`,
+    eyebrow: [w.championship.position ? `P${w.championship.position}` : "WRAPPED", `${w.championship.points} PTS`],
+    flag: w.driver.country || null,
+    title: w.driver.name,
+    sub: line.join(" · "),
+    cards: cards.slice(0, 3),
+    background: await seasonHero(prisma, season),
+  };
+}
+
 async function livePicture(prisma, ctx) {
   const { season } = ctx;
   const race = await nextRace(prisma, season.id);
@@ -450,6 +611,8 @@ const BUILDERS = {
   transfers: transfersPicture,
   records: recordsPicture,
   live: livePicture,
+  numbers: numbersPicture,
+  wrapped: wrappedPicture,
 };
 
 // ---------------------------------------------------------------------------
@@ -467,13 +630,15 @@ export async function sharePictureState(prisma, pathname, query = {}) {
   if (resolveShareImage(series, at.page).source === "page") return null;
   const season = await resolveSeason(prisma, query?.season, { series: series.slug }).catch(() => null);
   if (!season || (await getPrivateSeasonIds(prisma)).has(season.id)) return null;
-  const body = await BUILDERS[at.page](prisma, { series, season, query });
+  const body = await BUILDERS[at.page](prisma, { series, season, query, key: at.key || null });
   if (!body) return null;
   const shownSeason = body.season || season;
   delete body.season;
   const state = {
     page: at.page,
-    path: at.slug ? `/s/${series.slug}${at.page === "home" ? "" : `/${at.page}`}` : "/",
+    path: at.slug
+      ? `/s/${series.slug}${at.page === "home" ? "" : `/${at.page}`}${at.key ? `/${encodeURIComponent(at.key)}` : ""}`
+      : "/",
     query: { race: query?.race || undefined, season: query?.season || undefined },
     series: { name: series.name, accent: themeColorOf(series), logoDarkUrl: series.logoDarkUrl || null },
     pill: body.pill || seasonLabel(shownSeason),

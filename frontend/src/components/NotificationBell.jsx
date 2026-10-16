@@ -7,6 +7,7 @@ import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
 import { motionOff } from "../hooks/motion.js";
 import { GearIcon } from "./SettingsPanel.jsx";
+import { currentSubscription, needsHomeScreen, pushPermission, pushSupported } from "../utils/push.js";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
@@ -123,6 +124,36 @@ function TypeIcon({ type }) {
   }
 }
 
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="6" y="2" width="12" height="20" rx="2.5" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
+
+// The one row that offers push (components/PushSettings.jsx) where people
+// already read their notifications: only while the league offers it to this
+// member, this browser could take it and has not got it yet. Asked once per
+// page load; the answer hardly changes inside a visit.
+let pushOfferAsked = null;
+function askPushOffer() {
+  if (pushOfferAsked) return pushOfferAsked;
+  pushOfferAsked = (async () => {
+    if (!pushSupported() || pushPermission() === "denied") return null;
+    const status = await api.pushStatus().catch(() => null);
+    if (!status?.available) return null;
+    if (needsHomeScreen()) {
+      return { to: "/app", label: "Get these on your iPhone: add NABS to your Home Screen" };
+    }
+    const sub = await currentSubscription();
+    if (sub && (status.devices || []).some((d) => d.endpoint === sub.endpoint)) return null;
+    return { to: "/profile?tab=settings", label: "Get these as notifications on this device" };
+  })().catch(() => null);
+  return pushOfferAsked;
+}
+
 // "5m ago" / "3h ago" / "2d ago" — enough precision for a bell menu.
 function timeAgo(iso) {
   const t = new Date(iso).getTime();
@@ -144,6 +175,7 @@ export default function NotificationBell({ className = "" }) {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState(null); // null = not loaded yet
   const [loading, setLoading] = useState(false);
+  const [pushOffer, setPushOffer] = useState(null);
   const wrapRef = useRef(null);
 
   // Logging out has to clear what the previous account left behind, which is
@@ -168,6 +200,38 @@ export default function NotificationBell({ className = "" }) {
     POLL_MS,
     isLoggedIn,
   );
+
+  // A push notification that arrives while the site is open is the same entry
+  // the bell is about to count: count it now rather than at the next poll
+  // (components/PushBridge.jsx passes the worker's word on).
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    let alive = true;
+    const refresh = () =>
+      api
+        .notificationsCount()
+        .then((d) => alive && setUnread(d?.unread || 0))
+        .catch(() => {});
+    window.addEventListener("nabs-bell-refresh", refresh);
+    return () => {
+      alive = false;
+      window.removeEventListener("nabs-bell-refresh", refresh);
+    };
+  }, [isLoggedIn]);
+
+  // Push switched on or off (or somebody else signed in): ask again next time.
+  useEffect(() => {
+    const reset = () => {
+      pushOfferAsked = null;
+      setPushOffer(null);
+    };
+    window.addEventListener("nabs-push-changed", reset);
+    window.addEventListener("nabs-auth", reset);
+    return () => {
+      window.removeEventListener("nabs-push-changed", reset);
+      window.removeEventListener("nabs-auth", reset);
+    };
+  }, []);
 
   // Closing plays the opening backwards before the panel goes: `shown` keeps
   // it mounted for that moment, `open` is already false (so the bell, the
@@ -208,6 +272,7 @@ export default function NotificationBell({ className = "" }) {
     if (open) return close();
     setOpen(true);
     if (!isLoggedIn) return;
+    askPushOffer().then(setPushOffer);
     setLoading(true);
     api
       .notifications()
@@ -327,6 +392,16 @@ export default function NotificationBell({ className = "" }) {
                 always works. A link rather than a button opening a drawer:
                 /settings is an address, and for a member it leads on to the
                 same panel their profile shows. */}
+            {isLoggedIn && pushOffer && (
+              <Link
+                to={pushOffer.to}
+                onClick={close}
+                className="flex w-full items-center gap-2.5 border-t border-border px-4 py-3 text-left text-sm font-semibold text-brand transition hover:bg-surface2"
+              >
+                <PhoneIcon />
+                {pushOffer.label}
+              </Link>
+            )}
             <Link
               to="/settings"
               onClick={close}

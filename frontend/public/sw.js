@@ -35,6 +35,10 @@
 // Bumping CACHE_VERSION throws away every previous cache on activation. Do it
 // when the caching rules below change; the hashed file names take care of the
 // ordinary case (a new deploy) on their own.
+//
+// It also delivers PUSH NOTIFICATIONS, at the bottom of this file: the bell's
+// entries, on the lock screen, for members who switched that on (backend
+// lib/push.js). Showing one and opening its link is all it does with them.
 // ---------------------------------------------------------------------------
 
 const CACHE_VERSION = "v2";
@@ -141,4 +145,102 @@ self.addEventListener("fetch", (event) => {
       cacheFirst(request, ASSET_CACHE, { revalidate: true }).catch(() => fetch(request))
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// Push notifications.
+//
+// The server sends one bell entry per message, already in the shape it will be
+// shown in: { title, body, url, tag, type } (backend lib/push.js). Every push
+// has to end in a visible notification, which is also the promise the page
+// made when it subscribed (`userVisibleOnly`), so there is no silent branch.
+//
+// The tag lets a newer message replace an older one on the lock screen: a
+// race's "coming up" gives way to its "race day" instead of stacking beside
+// it. `renotify` makes the replacement buzz again, which is the point of a
+// reminder.
+// ---------------------------------------------------------------------------
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "NABS Racing";
+  const options = {
+    body: data.body || "",
+    icon: "/icon-192.png",
+    // Android draws the small status-bar icon from this picture's outline
+    // only, so it is the logo in white on nothing.
+    badge: "/push-badge.png",
+    data: { url: data.url || "/" },
+  };
+  if (data.tag) {
+    options.tag = data.tag;
+    options.renotify = true;
+  }
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      // A tab that is open right now counts the new entry at once instead of
+      // at its next minute's poll (components/NotificationBell.jsx).
+      self.clients
+        .matchAll({ type: "window", includeUncontrolled: true })
+        .then((tabs) => tabs.forEach((tab) => tab.postMessage({ type: "nabs-push" })))
+        .catch(() => {}),
+    ])
+  );
+});
+
+// The open app is asked to go there itself (a client-side navigation keeps the
+// signed-in session and whatever it was showing, see components/PushBridge.jsx)
+// and answers on a private channel. An app that does not answer in time, a tab
+// opened before this deploy, is navigated the hard way instead.
+function askAppToOpen(tab, url) {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => resolve(false), 800);
+    channel.port1.onmessage = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    try {
+      tab.postMessage({ type: "nabs-open", url }, [channel.port2]);
+    } catch {
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/", self.location.origin);
+  event.waitUntil(
+    (async () => {
+      // An admin's announcement may point off the site: open it as it is.
+      if (target.origin !== self.location.origin) return self.clients.openWindow(target.href);
+      const path = target.pathname + target.search + target.hash;
+      const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const tab = tabs.find((t) => new URL(t.url).origin === self.location.origin);
+      if (!tab) return self.clients.openWindow(target.href);
+      await tab.focus().catch(() => {});
+      if (await askAppToOpen(tab, path)) return undefined;
+      if ("navigate" in tab) return tab.navigate(target.href).catch(() => self.clients.openWindow(target.href));
+      return self.clients.openWindow(target.href);
+    })()
+  );
+});
+
+// The browser renewed this device's subscription on its own (Firefox does,
+// now and then). Subscribe again with the same server key so the device keeps
+// receiving; the worker has no session to tell the server with, so the app
+// does that the next time it is opened (utils/push.js, syncPushSubscription).
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const key = event.oldSubscription?.options?.applicationServerKey;
+  if (!key) return;
+  event.waitUntil(
+    self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => {})
+  );
 });

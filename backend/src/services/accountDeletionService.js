@@ -42,6 +42,7 @@ import { safeUploadPath } from "../lib/safeUpload.js";
 import { removeFeedbackFiles } from "../lib/feedbackFiles.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { profileMediaOwner } from "../lib/profileStudio.js";
+import { forgetPushFor } from "../lib/push.js";
 
 // What replaces a name that has been removed from a thread other people can
 // still read. Deliberately not "Deleted user", which reads like an error.
@@ -200,6 +201,11 @@ export async function deleteMemberAccount(prisma, discordId) {
   } catch {
     /* no studio table on this database */
   }
+
+  // The devices they had push switched on for, and which kinds of news were
+  // allowed to buzz (lib/push.js). A device address is a way to reach a
+  // person; it does not outlive the person's account.
+  await forgetPushFor(prisma, discordId).catch(() => {});
   const studioDir = join(UPLOADS_DIR, "profile-studio");
   const mine = `${profileMediaOwner(discordId)}-`;
   try {

@@ -123,6 +123,7 @@ export const TAB_VIEWS = {
     standings: "Standings",
     post: "Discord post",
     recap: "Race recap",
+    wrapped: "Season Wrapped",
   },
   ratings: {
     ratings: "Ratings",
@@ -179,6 +180,14 @@ export const ADMIN_INDEX = [
     title: "Preview a round's recap as any driver",
     hint: "Pick a finished round and a driver and open the pages exactly as that driver would see them.",
     keywords: "recap preview test look try round driver see what members see pages rating points championship",
+  },
+  // --- Season Wrapped -------------------------------------------------------------
+  {
+    tab: "content",
+    view: "wrapped",
+    title: "Switch Season Wrapped on or off",
+    hint: "Every driver's season told as cards, public and shareable. Off, admins only (to check a season first), or everyone.",
+    keywords: "season wrapped review summary end of season story cards share recap year switch on off enable disable admins only everyone",
   },
   // --- League: transfers ------------------------------------------------------
   {
@@ -565,6 +574,12 @@ export const ADMIN_INDEX = [
     title: "Notifications and reminders",
     hint: "Which events ring the bell, when race reminders go out, and how many days before a race sign-up opens.",
     keywords: "notifications bell reminders race reminder seat offers attendance opens days hour settings",
+  },
+  {
+    tab: "notify",
+    title: "Push notifications on phones",
+    hint: "Switch push on for admins only or for everyone. Members then turn it on per device and pick what buzzes.",
+    keywords: "push notifications phone lock screen mobile app alerts web push devices switch on off everyone admins",
   },
   {
     tab: "downloads",

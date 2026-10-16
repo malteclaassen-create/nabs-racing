@@ -21,6 +21,8 @@ import { getNameOverrides } from "./persons.js";
 import { readSocialLinks } from "./leagueSocials.js";
 import { primarySlug, seasonLabel, disciplineOf } from "./seo.js";
 import { raceKickoff } from "./raceKickoff.js";
+import { wrappedMode } from "../services/seasonWrappedService.js";
+import { isSeasonComplete } from "./seasonComplete.js";
 
 const esc = (s) =>
   String(s ?? "")
@@ -109,6 +111,51 @@ async function driverMeta(prisma, seriesSlug, driverId) {
   return {
     title: `${driver.name} · ${season}`,
     description: line ? `${line}. Full record, form and head-to-head on the NABS Racing League site.` : undefined,
+  };
+}
+
+// /s/<series>/wrapped/<row id>: one driver's Season Wrapped. Says where they
+// finished and the headline numbers, the way the page opens. Only while the
+// page is open to everyone: a preview of a page that answers "not open yet"
+// would be a promise the link cannot keep.
+async function wrappedMeta(prisma, seriesSlug, key, query) {
+  if ((await wrappedMode(prisma)) !== "all") return null;
+  const hit = await resolveDriverRow(prisma, key, { series: seriesSlug, season: query?.season ?? null }).catch(() => null);
+  if (!hit) return null;
+  const driver = await prisma.driver.findUnique({
+    where: { id: hit.id },
+    include: { season: { select: { id: true, number: true, name: true } } },
+  });
+  if (!driver?.seasonId) return null;
+  const priv = await getPrivateSeasonIds(prisma).catch(() => new Set());
+  if (priv.has(driver.seasonId)) return null;
+  // A season still being raced has no Wrapped yet (the page says so).
+  if (!(await isSeasonComplete(prisma, driver.seasonId).catch(() => false))) return null;
+  const label = seasonLabel(driver.season) || "Season";
+  let line = null;
+  try {
+    const standings = await getDriverStandings(prisma, driver.seasonId);
+    const raced = (standings?.standings || []).filter((r) => Object.keys(r.perRace || {}).length || r.total > 0);
+    const i = raced.findIndex((r) => r.driverId === driver.id);
+    if (i >= 0) {
+      const row = raced[i];
+      const fin = Object.values(row.perRace || {}).flatMap((c) => [c, c.sprint].filter(Boolean));
+      const wins = fin.filter((c) => c.status === "FINISHED" && c.position === 1).length;
+      const podiums = fin.filter((c) => c.status === "FINISHED" && c.position != null && c.position <= 3).length;
+      const parts = [ordinal(i + 1), `${row.total} pts`];
+      if (wins) parts.push(`${wins} ${wins === 1 ? "win" : "wins"}`);
+      if (podiums) parts.push(`${podiums} ${podiums === 1 ? "podium" : "podiums"}`);
+      line = parts.join(" · ");
+    }
+  } catch {
+    /* the title alone then */
+  }
+  const name = (await getNameOverrides(prisma).catch(() => new Map())).get(driver.id)?.displayName || driver.name;
+  return {
+    title: `${name}'s ${label} Wrapped`,
+    description: line
+      ? `${line}. ${name}'s ${label}, told in cards: the best night, the biggest climb, the team-mate battle and the awards.`
+      : `${name}'s ${label}, told in cards on the NABS Racing League site.`,
   };
 }
 
@@ -300,6 +347,24 @@ const SECTIONS = {
     description: (s) =>
       `Who has signed up for the coming rounds of ${s}, the grid as it stands, and each driver's attendance over the season.`,
   },
+  numbers: {
+    title: (s) => `${s} in numbers`,
+    description: (s) =>
+      `${s} of the NABS Racing League added up: races, starts, laps, overtakes, how many different winners, the closest finish and the biggest climb through the field.`,
+  },
+  wrapped: {
+    title: (s) => `${s} Wrapped`,
+    description: (s) =>
+      `Every driver's ${s}, told in cards: the best night, the biggest climb, the team-mate battle, the rival and the awards.`,
+  },
+};
+
+// The league in numbers over every season at once (?season=all) is a page of
+// its own, with no season to name.
+const ALL_TIME_NUMBERS = {
+  title: "The league in numbers, all time",
+  description:
+    "Every season of the NABS Racing League added up: races, starts, laps, overtakes, every winner, the closest finish and the biggest comeback.",
 };
 // Second names the route table hands to the same page. The canonical tag folds
 // these onto the first name (see lib/seo.js); the meta has to agree, or the two
@@ -312,6 +377,21 @@ async function sectionMeta(prisma, seriesSlug, rawSection, query) {
   if (!spec) return null;
   const series = await resolveSeries(prisma, seriesSlug, { includePrivate: false }).catch(() => null);
   if (!series) return null;
+
+  if (section === "numbers" && query?.season === "all") return withSuffix({ ...ALL_TIME_NUMBERS }, series, prisma);
+  // The Wrapped hub opens on the newest finished season, not the active one,
+  // so without a season in the address it names none rather than the wrong one.
+  if (section === "wrapped" && !query?.season) {
+    return withSuffix(
+      {
+        title: "Season Wrapped",
+        description:
+          "Every driver's season, told in cards: the best night, the biggest climb, the team-mate battle, the rival and the awards.",
+      },
+      series,
+      prisma
+    );
+  }
 
   // Which season this page is showing: the one asked for, else the active one.
   // A private season resolves to null, exactly as the page's own data does, so a
@@ -496,6 +576,7 @@ export async function buildPageMeta(prisma, pathname, query = {}) {
     if (!section) return await cachedSeasonMeta(prisma, `/s/${seriesSlug}`, seriesSlug);
     if (id && section === "drivers") return await driverMeta(prisma, seriesSlug, id);
     if (id && (section === "constructors" || section === "teams")) return await teamMeta(prisma, id);
+    if (id && section === "wrapped") return await wrappedMeta(prisma, seriesSlug, decodeURIComponent(id), query);
     if (!id) return await sectionMeta(prisma, seriesSlug, section, query);
     return null;
   } catch {

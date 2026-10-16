@@ -69,6 +69,10 @@ const SERIES_SEGMENTS = new Set([
   "calendar",
   "attendance",
   "live",
+  // The league in numbers (services/leagueNumbersService.js) and Season
+  // Wrapped, the hub and each driver's own (services/seasonWrappedService.js).
+  "numbers",
+  "wrapped",
 ]);
 // Aliases the app maps onto a page of their own.
 const ALIASES = { signup: "/races", rennen: "/races" };
@@ -263,7 +267,15 @@ const SECTION_ALIASES = { results: "races", calendar: "races", teams: "construct
 // NOT /records: the Hall of Fame is all-time across every season (see
 // recordsService), so a season parameter there selects nothing and would only
 // clone the page.
-const SEASON_PAGES = new Set(["drivers", "constructors", "races", "attendance", "transfers"]);
+const SEASON_PAGES = new Set(["drivers", "constructors", "races", "attendance", "transfers", "numbers"]);
+// Pages that also have an all-seasons view under ?season=all, which is its own
+// page and keeps its own address.
+const ALL_SEASONS_PAGES = new Set(["numbers"]);
+// Pages whose default view is NOT the active season, so a season named in the
+// address always means something and always stays in it. The Wrapped hub opens
+// on the newest FINISHED season (services/seasonWrappedService.js), which is
+// the previous one for most of the year.
+const EXPLICIT_SEASON_PAGES = new Set(["wrapped"]);
 const RACE_PAGES = new Set(["races"]);
 
 // The canonical query string ("" or "?season=3&race=abc"), built in a fixed
@@ -271,7 +283,11 @@ const RACE_PAGES = new Set(["races"]);
 function canonicalQuery(section, query, activeSeason) {
   const parts = [];
   const season = Number(query?.season);
-  if (
+  if (section && ALL_SEASONS_PAGES.has(section) && query?.season === "all") {
+    parts.push("season=all");
+  } else if (section && EXPLICIT_SEASON_PAGES.has(section) && Number.isInteger(season) && season > 0) {
+    parts.push(`season=${season}`);
+  } else if (
     section &&
     SEASON_PAGES.has(section) &&
     Number.isInteger(season) &&

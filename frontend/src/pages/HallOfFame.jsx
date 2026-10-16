@@ -58,7 +58,11 @@ function HallHeader({ data }) {
           </h1>
           <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-light">
             Every season so far, boiled down to the names that stuck. Champions, one-off records and the career
-            leaderboards.
+            leaderboards.{" "}
+            {/* Who has the most is here; how much happened is next door. */}
+            <Link to="/numbers?season=all" className="font-semibold text-brand hover:underline">
+              The league in numbers
+            </Link>
           </p>
         </div>
         {/* Two by two on a phone, one row from sm. Hairlines per cell rather

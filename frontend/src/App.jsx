@@ -20,6 +20,7 @@ import FeedbackWidget from "./components/FeedbackWidget.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
 import TrainingCue from "./components/TrainingCue.jsx";
 import RaceRecapHost from "./components/RaceRecap.jsx";
+import PushBridge from "./components/PushBridge.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
@@ -86,6 +87,11 @@ const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
 // The career page belongs to a person, not a league, so it sits outside the
 // series-scoped routes and loads on its own chunk.
 const DriverCareer = lazy(() => import("./pages/DriverCareer.jsx"));
+// The league in numbers and Season Wrapped (the hub and each driver's own):
+// read now and then, so they load on demand.
+const LeagueNumbers = lazy(() => import("./pages/LeagueNumbers.jsx"));
+const WrappedHub = lazy(() => import("./pages/WrappedHub.jsx"));
+const SeasonWrapped = lazy(() => import("./pages/SeasonWrapped.jsx"));
 // Leaving the league. Its own address rather than a panel inside the profile,
 // because it has to be readable while signed OUT too: it is the page that
 // explains what deletion does, and an app store expects to find one.
@@ -244,6 +250,9 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/teams" element={<Constructors />} />
         <Route path="/s/:seriesSlug/teams/:id" element={<TeamProfile />} />
         <Route path="/s/:seriesSlug/records" element={<HallOfFame />} />
+        <Route path="/s/:seriesSlug/numbers" element={<LeagueNumbers />} />
+        <Route path="/s/:seriesSlug/wrapped" element={<WrappedHub />} />
+        <Route path="/s/:seriesSlug/wrapped/:key" element={<SeasonWrapped />} />
         <Route path="/s/:seriesSlug/transfers" element={<Transfers />} />
         <Route path="/s/:seriesSlug/races" element={<Races />} />
         <Route path="/s/:seriesSlug/results" element={<Races />} />
@@ -275,6 +284,9 @@ function AppRoutes() {
         <Route path="/teams" element={<ToSeries sub="/teams" />} />
         <Route path="/teams/:id" element={<ToSeries sub="/teams/:id" />} />
         <Route path="/records" element={<ToSeries sub="/records" />} />
+        <Route path="/numbers" element={<ToSeries sub="/numbers" />} />
+        <Route path="/wrapped" element={<ToSeries sub="/wrapped" />} />
+        <Route path="/wrapped/:key" element={<ToSeries sub="/wrapped/:key" />} />
         <Route path="/transfers" element={<ToSeries sub="/transfers" />} />
         <Route path="/races" element={<ToSeries sub="/races" />} />
         <Route path="/results" element={<ToSeries sub="/results" />} />
@@ -532,6 +544,9 @@ function SeriesScopedApp() {
         {/* The round told from your seat, once, the first time you come back
             after the office saved a result. Asks the server itself. */}
         <RaceRecapHost />
+        {/* A tapped push notification opens its page in this tab, and an
+            arriving one rings the bell at once (components/PushBridge.jsx). */}
+        <PushBridge />
         </ConfirmProvider>
       </SeasonProvider>
     </TourProvider>

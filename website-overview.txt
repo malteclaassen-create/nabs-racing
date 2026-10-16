@@ -84,6 +84,58 @@ Telemetry tips
   Tracks tab can add or replace them. Other circuits and other layouts
   (national, short, moto) are numbered by section instead.
 
+League in numbers
+  The league as a set of numbers, for one season or for all of them (Standings
+  -> In numbers; the Hall of Fame links the all-time view). Rounds, starts,
+  drivers, how many finished, laps, overtakes and contacts where the server
+  recorded them, how many different winners and polesitters, and the
+  superlatives: the closest finish, the biggest winning margin, the biggest
+  climb from the grid, the busiest race. Then wins by team, the field size,
+  and two charts over the rounds: cars on the grid, and overtakes (or
+  retirements, where the files have no overtakes). Everything is the same
+  count the results pages give, penalties included.
+
+Season Wrapped
+  Every driver's season as a story in cards, made to be shared: where they
+  finished and how the championship went round by round, the season in
+  numbers, the best result, the biggest climb from the grid, the wins, the
+  team-mate battle, the closest rival, the honours, and a one-line label for
+  the kind of season it was ("The Charger", "The Ever-Present"). Standings ->
+  Season Wrapped lists every driver; each driver's page has its own link
+  preview picture for Discord and WhatsApp. Only a finished season has a
+  Wrapped: there is none for the season being raced. When a season's last
+  round is saved, everyone with a login gets a note that their Wrapped is
+  ready.
+  It plays first as a story the way Spotify Wrapped does: full screen, a
+  slide at a time with a bar per slide along the top, tap to go on, hold to
+  pause, swipe down to close. Behind the words are 3D scenes with the
+  driver's own car in the team's colours: a lap of the circuit of their best
+  result, a climb through the field, trophies, the championship as a 3D chart
+  the car rides along, the podium or their slot on the grid. Where the
+  league's real car has been filmed for that season (tools/car-renders), the
+  intro, the climb and the final table play films of it in the driver's own
+  livery instead; otherwise the season's car photo opens the story. The last slide
+  is the season on one card, and "Share your season" turns it into a picture
+  sized for an Instagram story or WhatsApp status. On a computer the story
+  takes the whole screen: the 3D fills it and the words stand on the left.
+  Slides open out of each other as a circle of the next colour, headlines
+  come in word by word. After the first time in a visit the page opens on
+  the cards, with a Play button for the story.
+  Admin -> Content -> Season Wrapped switches it off, on for admins only (to
+  check a season first), or on for everyone.
+
+Push notifications
+  The bell can also reach the phone or computer. Under Profile -> Settings a
+  member switches it on per device and picks what comes through: race
+  reminders, seat and attendance news, results, messages, awards, league
+  news. It sends exactly what lands in the bell, nothing extra; reminders
+  expire once the race has started. On an iPhone it needs the site added to
+  the Home Screen first. Admin -> Notifications switches it off, on for admins
+  only, or on for everyone, and shows how many devices are signed up. It runs
+  on the browsers' own Web Push: no app to install and no extra provider to
+  sign up for; the browser maker's push service only carries the message,
+  encrypted.
+
 Sign up
   This is our replacement for Apollo. People log in with their Discord account
   and set themselves to Accepted, Declined or Tentative for each upcoming race.
