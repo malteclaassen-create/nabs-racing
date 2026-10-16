@@ -1,0 +1,379 @@
+/* Race recap, variant C ("Race replay"), motion package "Smooth premium".
+   Loads after the site's index.css. Only transform and opacity move (plus
+   the `translate` property for the scroll depth); colours are the site's
+   tokens and the driver's team colour (--recap-team).
+
+   The language: things glide and settle, never slam. Entrances rise out of
+   depth (a little lower, a touch smaller) on springs; type slides up out of
+   masks (overflow-hidden wrappers, transforms only); bars and sweeps run on
+   long decelerating curves; light passes over the big moments instead of
+   slabs crossing them. ~500-1200 ms, calm staggers. */
+
+/* ------------------------------------------------------------------ tokens */
+/* --sp-soft / --sp-calm are real springs sampled into linear() easings by
+   spring.js (installSpringEasings); where linear() is unknown the long expo
+   curves stand in. */
+.rr,
+.rr-modal {
+  --rr-expo: cubic-bezier(0.16, 1, 0.3, 1); /* long, graceful deceleration */
+  --rr-glide: cubic-bezier(0.45, 0, 0.12, 1); /* sweeps: a soft start, a long settle */
+  --rr-sine: cubic-bezier(0.37, 0, 0.63, 1); /* ease-in-out sine, the draw curtains (spring.js inverts it) */
+  --rr-soft: var(--sp-soft, cubic-bezier(0.2, 1, 0.32, 1)); /* spring, a whisper of overshoot */
+  --rr-calm: var(--sp-calm, cubic-bezier(0.16, 1, 0.3, 1)); /* spring, critically damped */
+}
+
+@keyframes rr-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rr-depth { from { transform: translateY(30px) scale(0.96); } to { transform: none; } }
+@keyframes rr-depth-s { from { transform: translateY(22px) scale(0.965); } to { transform: none; } }
+@keyframes rr-rise-s { from { transform: translateY(10px); } to { transform: none; } }
+@keyframes rr-rise-m { from { transform: translateY(16px); } to { transform: none; } }
+@keyframes rr-glide-x { from { transform: translateX(-18px); } to { transform: none; } }
+@keyframes rr-mask-up { from { transform: translateY(110%); } to { transform: none; } }
+@keyframes rr-grow { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes rr-settle { from { transform: scale(0.55); } to { transform: none; } }
+
+/* A mask: what slides inside it is hidden until it is in place. */
+.rr-mask { display: block; overflow: hidden; }
+
+/* ---------------------------------------------------------------- the player */
+.rr-player { isolation: isolate; }
+
+/* The opening: the player rises out of depth and settles; the broadcast bar's
+   pieces glide in, the sector stripe draws out from its centre, the tower's
+   rows rise into their slots one by one, the chart and the transport follow,
+   and a soft light passes over the whole thing once. */
+.rr-player.rr-open { transform-origin: 50% 0; animation: rr-depth 1200ms var(--rr-soft) 80ms both, rr-fade 700ms ease-out 80ms both; }
+.rr-open .rr-bar-l { animation: rr-glide-x 1050ms var(--rr-soft) 320ms both, rr-fade 700ms ease-out 320ms both; }
+.rr-open .rr-bar-r { animation: rr-rise-s 1050ms var(--rr-soft) 420ms both, rr-fade 700ms ease-out 420ms both; }
+.rr-open .rr-stripe { animation: rr-grow 1300ms var(--rr-expo) 260ms both; transform-origin: 50% 50%; }
+.rr-open .rr-row-in { animation: rr-rise-m 1050ms var(--rr-soft) both, rr-fade 650ms ease-out both; animation-delay: calc(480ms + var(--i, 0) * 70ms); }
+.rr-open .rr-readout { animation: rr-rise-s 1050ms var(--rr-soft) 560ms both, rr-fade 700ms ease-out 560ms both; }
+.rr-open .rr-chart { animation: rr-fade 900ms ease-out 620ms both; }
+.rr-open .rr-field { animation: rr-fade 1400ms ease 700ms both; }
+.rr-open .rr-lane { animation: rr-fade 800ms ease 900ms both; }
+.rr-open .rr-transport { animation: rr-rise-s 1050ms var(--rr-soft) 720ms both, rr-fade 700ms ease-out 720ms both; }
+
+/* A soft light: a wide, faint band (white at its core, the team colour at
+   its shoulders) that passes over the player once. */
+.rr-sheen-wrap { overflow: hidden; }
+.rr-sheen {
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 62%;
+  background: linear-gradient(100deg, transparent 0%, var(--sheen-tint, transparent) 34%, rgba(255, 255, 255, 0.075) 50%, var(--sheen-tint, transparent) 66%, transparent 100%);
+  transform: translateX(-110%) skewX(-12deg);
+  will-change: transform;
+}
+.rr-sheen-open .rr-sheen { animation: rr-sheen 1600ms var(--rr-glide) 650ms both; }
+.rr-sheen-flag .rr-sheen { animation: rr-sheen 1600ms var(--rr-glide) 40ms both; }
+@keyframes rr-sheen {
+  from { transform: translateX(-110%) skewX(-12deg); }
+  to { transform: translateX(260%) skewX(-12deg); }
+}
+
+/* The tower: the rows' positions are springs (spring.js writes their
+   transforms); only their fading in and out is CSS. */
+.rr-row { transition: opacity 420ms ease; will-change: transform; }
+.rr-pin { transition: opacity 500ms ease; }
+.rr-moved { animation: rr-fade 520ms ease both; }
+.rr-mark { transition: opacity 520ms ease, transform 850ms var(--rr-soft); }
+.rr-fade { animation: rr-fade 900ms ease 600ms both; }
+/* At the flag a soft light passes along your row. */
+.rr-row-sheen {
+  background: linear-gradient(100deg, transparent 15%, rgba(255, 255, 255, 0.2) 50%, transparent 85%);
+  transform: translateX(-100%);
+  animation: rr-row-sheen 1400ms var(--rr-glide) 650ms both;
+}
+@keyframes rr-row-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* A value that changes slides up into place and comes to rest. */
+.rr-tick { display: inline-block; animation: rr-tick 560ms var(--rr-expo) both; }
+@keyframes rr-tick {
+  from { opacity: 0; transform: translateY(42%); }
+  to { opacity: 1; transform: none; }
+}
+/* A new tyre rolls in. */
+.rr-tyre-in { display: inline-flex; animation: rr-tyre 900ms var(--rr-soft) both; }
+@keyframes rr-tyre {
+  from { opacity: 0; transform: scale(0.6) rotate(-50deg); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The curtain over laps not yet run, and every draw curtain: its leading
+   edge is feathered (a static mask that travels with it), so lines fade into
+   view just ahead of the edge rather than being cut. */
+.rr-curtain { will-change: transform; }
+.rr-feather {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18px);
+  mask-image: linear-gradient(90deg, transparent 0, #000 18px);
+}
+
+/* The chequered flag, as a pattern. */
+.rr-chequer {
+  display: inline-block;
+  background-color: var(--c-text);
+  background-image: conic-gradient(var(--c-card) 25%, transparent 0 50%, var(--c-card) 0 75%, transparent 0);
+  background-size: 6px 6px;
+}
+
+/* Lower-thirds slide in and settle, their layers travelling different
+   distances on the same spring (a gentle parallax: the slab, then its mark,
+   then each line from a little further out), all coming to rest together.
+   The one before glides off to the right as it fades. */
+.rr-l3 { animation: rr-l3 1050ms var(--rr-soft) both, rr-fade 520ms ease-out both; }
+@keyframes rr-l3 { from { transform: translateX(-22px); } to { transform: none; } }
+.rr-l3 .rr-l3-mark { animation: rr-l3-mark 1150ms var(--rr-soft) 60ms both; }
+@keyframes rr-l3-mark { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+.rr-l3 .rr-l3-line1 { animation: rr-l3-a 1100ms var(--rr-soft) 70ms both, rr-fade 600ms ease-out 70ms both; }
+.rr-l3 .rr-l3-line2 { animation: rr-l3-b 1150ms var(--rr-soft) 110ms both, rr-fade 600ms ease-out 110ms both; }
+.rr-l3 .rr-l3-line3 { animation: rr-l3-c 1200ms var(--rr-soft) 150ms both, rr-fade 600ms ease-out 150ms both; }
+@keyframes rr-l3-a { from { transform: translateX(-30px); } to { transform: none; } }
+@keyframes rr-l3-b { from { transform: translateX(-44px); } to { transform: none; } }
+@keyframes rr-l3-c { from { transform: translateX(-58px); } to { transform: none; } }
+.rr-l3 .rr-l3-stripe { transform-origin: left center; animation: rr-grow 1300ms var(--rr-expo) 200ms both; }
+.rr-l3-out { animation: rr-l3-out 500ms cubic-bezier(0.4, 0, 0.2, 1) both; }
+@keyframes rr-l3-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(16px); } }
+.rr-lane-note { animation: rr-fade 600ms ease 140ms both; }
+
+/* The flag: a soft light sweeps the player (above), the result card rises
+   out of depth and settles, the P and the figure slide up out of their mask,
+   then a gentle light passes across the figure; the lines follow. */
+.rr-land { animation: rr-fade 700ms ease 150ms both; }
+.rr-land-card { animation: rr-land 1250ms var(--rr-soft) 260ms both, rr-fade 700ms ease-out 260ms both; }
+@keyframes rr-land { from { transform: translateY(36px) scale(0.955); } to { transform: none; } }
+.rr-land-p { padding: 0.06em 0.06em 0.02em; margin: -0.06em -0.06em -0.02em; }
+.rr-land-pp { animation: rr-mask-up 1100ms var(--rr-soft) 520ms both; }
+.rr-land-num { animation: rr-mask-up 1250ms var(--rr-soft) 600ms both; }
+/* The light across the figure: a bright copy of it (gold on a podium, the
+   team colour otherwise) seen through a feathered window. The window glides
+   across while the copy glides back by the same amount, so the figure stays
+   still and only the light moves. Both are transforms. */
+.rr-glint {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(100deg, transparent 22%, #000 50%, transparent 78%);
+  mask-image: linear-gradient(100deg, transparent 22%, #000 50%, transparent 78%);
+  transform: translateX(-100%);
+  animation: rr-glint 1500ms var(--rr-glide) 1400ms both;
+}
+.rr-glint-in { color: var(--glint, var(--c-text)); transform: translateX(100%); animation: rr-glint-in 1500ms var(--rr-glide) 1400ms both; }
+@keyframes rr-glint { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes rr-glint-in { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+.rr-land-1 { animation: rr-rise-m 1050ms var(--rr-soft) 780ms both, rr-fade 650ms ease-out 780ms both; }
+.rr-land-2 { animation: rr-rise-m 1050ms var(--rr-soft) 880ms both, rr-fade 650ms ease-out 880ms both; }
+.rr-land-3 { animation: rr-rise-m 1050ms var(--rr-soft) 980ms both, rr-fade 650ms ease-out 980ms both; }
+
+/* The scrubber: a native range, its own track invisible, a team-colour knob. */
+.rr-range { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; cursor: pointer; touch-action: none; }
+.rr-range:focus { outline: none; }
+.rr-range::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.rr-range::-moz-range-track { height: 100%; background: transparent; }
+.rr-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 10px;
+  border-radius: 9999px;
+  background: var(--thumb, rgb(var(--c-brand)));
+  border: 3px solid var(--c-card);
+  box-shadow: 0 0 0 1px var(--c-border);
+}
+.rr-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--thumb, rgb(var(--c-brand)));
+  border: 3px solid var(--c-card);
+}
+.rr-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px rgb(var(--c-accent)); }
+
+/* ------------------------------------------------------------ the page header */
+/* Three lines slide up out of their masks, one after another; the driver
+   chip rises out of depth beside them. */
+.rr-hl-2 { padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.rr .rr-head-block .rr-mask-in { transform: translateY(110%); }
+.rr .rr-head-block.is-visible .rr-hl-1 .rr-mask-in { animation: rr-mask-up 1100ms var(--rr-soft) 80ms both; }
+.rr .rr-head-block.is-visible .rr-hl-2 .rr-mask-in { animation: rr-mask-up 1250ms var(--rr-soft) 170ms both; }
+.rr .rr-head-block.is-visible .rr-hl-3 .rr-mask-in { animation: rr-mask-up 1150ms var(--rr-soft) 290ms both; }
+.rr .rr-head-block .rr-chip { opacity: 0; }
+.rr .rr-head-block.is-visible .rr-chip { animation: rr-depth 1200ms var(--rr-soft) 380ms both, rr-fade 800ms ease-out 380ms both; }
+
+/* ---------------------------------------------------------------- the cards */
+/* A card rises out of depth (30px lower, 96% size) and settles on a spring;
+   its content follows 140 ms behind, a second layer of the same glide.
+   Blocks that are not cards (the header, chapter headers, the tile and
+   honour grids) only fade: what is inside them moves. */
+.rr .recap-reveal { opacity: 0; transform: none; }
+.rr .recap-reveal:not(.card).is-visible { animation: rr-fade 500ms ease-out both; animation-delay: var(--reveal-delay, 0s); }
+.rr .recap-reveal.card { position: relative; overflow: hidden; transform: translateY(30px) scale(0.96); transform-origin: 50% 20%; }
+.rr .recap-reveal.card.is-visible { animation: rr-depth 1150ms var(--rr-soft) both, rr-fade 750ms ease-out both; animation-delay: var(--reveal-delay, 0s); }
+.rr .recap-reveal .rr-body { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-body { animation: rr-rise-m 1100ms var(--rr-soft) both, rr-fade 700ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 140ms); }
+
+/* The eyebrow's team-colour tab draws out. */
+.rr-tab { display: inline-block; width: 14px; height: 3px; margin-right: 8px; vertical-align: middle; border-radius: 2px; background: var(--recap-team); transform-origin: left center; }
+.rr .recap-reveal .rr-tab { transform: scaleX(0); }
+.rr .recap-reveal.is-visible .rr-tab { animation: rr-grow 1000ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + 420ms); }
+
+/* Tiles and rows rise out of depth one after another, calmly. */
+.rr .recap-reveal .recap-cascade > * { opacity: 0; }
+.rr .recap-reveal.is-visible .recap-cascade > * { animation: rr-depth-s 1050ms var(--rr-soft) both, rr-fade 700ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 160ms + var(--i, 0) * 80ms); }
+/* Table rows: a plainer rise, closer together. */
+.rr .recap-reveal.is-visible ol.recap-cascade > * { animation: rr-rise-m 950ms var(--rr-soft) both, rr-fade 600ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 220ms + var(--i, 0) * 45ms); }
+
+/* Tags and small lines arrive last, on a long ease. */
+.rr .recap-reveal .recap-tag { opacity: 0; }
+.rr .recap-reveal.is-visible .recap-tag { animation: rr-tag 1000ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--tag-delay, 900ms)); }
+@keyframes rr-tag { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* The big finishing figure slides up out of its mask. */
+.rr .recap-reveal .recap-pop { opacity: 1; overflow: hidden; padding: 0.05em 0.06em 0.03em; margin: -0.05em -0.06em -0.03em; }
+.rr .recap-reveal.is-visible .recap-pop { animation: none; }
+.rr .recap-reveal .recap-pop > * { transform: translateY(110%); }
+.rr .recap-reveal.is-visible .recap-pop > * { animation: rr-mask-up 1200ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 260ms); }
+.rr .recap-reveal.is-visible .recap-pop > * + * { animation-delay: calc(var(--reveal-delay, 0s) + 340ms); }
+.rr .recap-reveal p.recap-pop { opacity: 0; }
+.rr .recap-reveal.is-visible p.recap-pop { animation: rr-tag 1000ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + 260ms); }
+
+/* Values rise into place character by character out of a mask. */
+.rr-chars { display: block; overflow: hidden; padding-bottom: 0.06em; margin-bottom: -0.06em; }
+.rr-char { display: inline-block; white-space: pre; }
+.rr .recap-reveal .rr-char { transform: translateY(110%); }
+.rr .recap-reveal.is-visible .rr-char { animation: rr-mask-up 1000ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--cd, 0ms)); }
+
+/* Bars grow by scale on a long decelerating curve. */
+.rr .recap-reveal .bar-fill { width: var(--w, 0) !important; transform-origin: left center; }
+.rr .recap-reveal .bar-fill.rr-from-right { transform-origin: right center; }
+.rr .recap-reveal:not(.is-visible) .bar-fill { transform: scaleX(0); }
+.rr .recap-reveal.is-visible .bar-fill { animation: rr-grow 1400ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + 260ms + var(--bar-delay, 0s)); }
+/* A soft head rides the tip of a growing bar, timed with it, and fades as
+   the bar settles. */
+.rr .recap-reveal .rr-cursor { opacity: 0; transform: translateX(0); }
+.rr .recap-reveal.is-visible .rr-cursor {
+  animation: rr-cursor-move 1400ms var(--rr-expo) both, rr-cursor-fade 1400ms linear both;
+  animation-delay: calc(var(--reveal-delay, 0s) + 260ms + var(--bar-delay, 0s));
+}
+@keyframes rr-cursor-move { from { transform: translateX(0); } to { transform: translateX(var(--w)); } }
+@keyframes rr-cursor-fade { 0% { opacity: 0; } 8% { opacity: 1; } 50% { opacity: 1; } 100% { opacity: 0; } }
+/* The breakdown's bars read in segments, like a broadcast meter. */
+.rr-segments { background-image: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 2px), var(--c-card) calc(5% - 2px), var(--c-card) 5%); }
+
+/* The grid-to-flag car glides along a full-width layer moved by translate,
+   its trail drawing out behind it on the same curve. */
+.rr-sweep-layer { transform: translateX(var(--to)); }
+.recap-reveal:not(.is-visible) .rr-sweep-layer { transform: translateX(var(--from)); }
+.recap-reveal.is-visible .rr-sweep-layer { animation: rr-sweep 1700ms var(--rr-glide) both; animation-delay: calc(var(--reveal-delay, 0s) + 650ms); }
+@keyframes rr-sweep { from { transform: translateX(var(--from)); } to { transform: translateX(var(--to)); } }
+.rr-sweep-trail { transform-origin: left center; }
+.rr-sweep-trail.rr-from-right { transform-origin: right center; }
+.recap-reveal:not(.is-visible) .rr-sweep-trail { transform: scaleX(0); }
+.recap-reveal.is-visible .rr-sweep-trail { animation: rr-grow 1700ms var(--rr-glide) both; animation-delay: calc(var(--reveal-delay, 0s) + 650ms); }
+
+/* ------------------------------------------------------------ the chapters */
+/* The number block, the title and the line under it each slide up out of
+   their own mask, a beat apart; the sector stripe draws out to the edge. */
+/* the chapter numeral keeps the site's faint index colour */
+.rr-ch-num-bg { background: var(--recap-team); transform: skewX(-14deg); border-radius: 3px; }
+.rr-ch-title { padding-bottom: 0.08em; margin-bottom: -0.08em; }
+.rr-ch-rule { transform-origin: left center; }
+.rr .rr-chapter .rr-ch-num,
+.rr .rr-chapter .rr-mask-in { transform: translateY(110%); }
+.rr .rr-chapter .rr-ch-rule { transform: scaleX(0); }
+.rr .rr-chapter.is-visible .rr-ch-num { animation: rr-mask-up 1100ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 60ms); }
+.rr .rr-chapter.is-visible .rr-ch-title .rr-mask-in { animation: rr-mask-up 1150ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 140ms); }
+.rr .rr-chapter.is-visible .rr-ch-sub .rr-mask-in { animation: rr-mask-up 1150ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 240ms); }
+.rr .rr-chapter.is-visible .rr-ch-rule { animation: rr-grow 1500ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + 320ms); }
+
+/* Draw curtains uncover a chart or a strip left to right on an ease-in-out
+   sine; the marks settle in as the edge reaches them (spring.js inverts the
+   curve to time them). */
+.rr-draw-curtain { transform: translateX(0); will-change: transform; }
+.rr .recap-reveal.is-visible .rr-draw-curtain { animation: rr-draw var(--draw, 1500ms) var(--rr-sine) both; animation-delay: calc(var(--reveal-delay, 0s) + 300ms); }
+@keyframes rr-draw { to { transform: translateX(101%); } }
+.rr-dot, .rr-stint-tyre-in { transform-box: fill-box; transform-origin: center; }
+.rr .recap-reveal .rr-dot,
+.rr .recap-reveal .rr-stint-tyre-in { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-dot { animation: rr-settle 900ms var(--rr-soft) both, rr-fade 500ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 300ms + var(--d, 0ms)); }
+.rr .recap-reveal.is-visible .rr-stint-tyre-in { animation: rr-tyre 1000ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 300ms + var(--d, 0ms)); }
+
+/* The championship tower: the rows rise in one by one, then glide to their
+   new places on springs (spring.js); the round's points settle in. */
+.rr-trow-move { will-change: transform; }
+.rr .recap-reveal .rr-trow-move > div { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-trow-move > div { animation: rr-rise-m 1000ms var(--rr-soft) both, rr-fade 650ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 260ms + var(--i, 0) * 70ms); }
+.rr-chip-pop { opacity: 0; transform: scale(0.8); }
+.rr-chip-pop.is-on { animation: rr-chip 900ms var(--rr-soft) 250ms both; }
+@keyframes rr-chip { from { opacity: 0; transform: translateY(6px) scale(0.8); } to { opacity: 1; transform: none; } }
+
+/* Tokens: the mark rises and turns into place; three tokens glide along the
+   rail into the balance. */
+.rr .recap-reveal .champ-chip { opacity: 0; animation: none; }
+.rr .recap-reveal.is-visible .champ-chip { animation: rr-coin 1200ms var(--rr-soft) both, rr-fade 700ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 300ms); }
+@keyframes rr-coin { from { transform: translateY(18px) scale(0.8) rotate(-24deg); } to { transform: none; } }
+.rr .recap-reveal .rr-fly { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-fly { animation: rr-fly-move 1250ms var(--rr-glide) both, rr-fly-fade 1250ms linear both; animation-delay: calc(var(--reveal-delay, 0s) + 1400ms + var(--i, 0) * 180ms); }
+@keyframes rr-fly-move { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@keyframes rr-fly-fade { 0% { opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* The team-mate split: each half glides in from its own side and settles;
+   the duel pips rise one after another. */
+.rr .recap-reveal .rr-split-l { opacity: 0; transform: translateX(-36px); }
+.rr .recap-reveal .rr-split-r { opacity: 0; transform: translateX(36px); }
+.rr .recap-reveal.is-visible .rr-split-l { animation: rr-split 1200ms var(--rr-soft) both, rr-fade 800ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 200ms); }
+.rr .recap-reveal.is-visible .rr-split-r { animation: rr-split 1200ms var(--rr-soft) both, rr-fade 800ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + 280ms); }
+@keyframes rr-split { to { transform: none; } }
+.rr .recap-reveal .rr-pip { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-pip { animation: rr-pip 850ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 800ms + var(--i, 0) * 45ms); }
+@keyframes rr-pip { from { opacity: 0; transform: translateY(6px) scaleY(0.6); } to { opacity: 1; transform: none; } }
+
+/* Honours: each block draws out, then its mark rises. */
+.rr-honour-block { transform-origin: left center; }
+.rr .recap-reveal .rr-honour-block { transform: scaleX(0); }
+.rr .recap-reveal.is-visible .rr-honour-block { animation: rr-grow 1100ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + 280ms + var(--i, 0) * 80ms); }
+.rr .recap-reveal .rr-honour-icon { opacity: 0; }
+.rr .recap-reveal.is-visible .rr-honour-icon { animation: rr-icon 1000ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + 520ms + var(--i, 0) * 80ms); }
+@keyframes rr-icon { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* The compare tables: the rows rise in softly, close together. */
+.rr-trow { animation: rr-rise-m 900ms var(--rr-soft) both, rr-fade 600ms ease-out both; animation-delay: calc(120ms + var(--i, 0) * 24ms); }
+
+/* Cursors and sweeps end their runs past the edge of what they cross; the
+   page never grows a sideways scroll for them. */
+.rr { overflow-x: hidden; }
+@supports (overflow-x: clip) { .rr { overflow-x: clip; } }
+
+/* ------------------------------------------- reduced motion and Lite mode */
+/* Everything at rest: no entrances, no light sweeps, no scroll depth. The
+   springs in spring.js snap for the same two answers (motionOff()). */
+@media (prefers-reduced-motion: reduce) {
+  .rr-sheen-wrap, .rr-row-sheen, .rr-glint, .rr-l3-out, .rr-draw-curtain, .rr-fly, .rr-cursor { display: none !important; }
+  .rr-row, .rr-pin, .rr-mark { transition: none !important; }
+  .rr-player.rr-open, .rr-open .rr-bar-l, .rr-open .rr-bar-r, .rr-open .rr-stripe, .rr-open .rr-row-in, .rr-open .rr-readout, .rr-open .rr-chart, .rr-open .rr-field, .rr-open .rr-lane, .rr-open .rr-transport,
+  .rr-moved, .rr-fade, .rr-tick, .rr-tyre-in, .rr-l3, .rr-l3 *, .rr-lane-note, .rr-land, .rr-land-card, .rr-land-pp, .rr-land-num, .rr-land-1, .rr-land-2, .rr-land-3, .rr-trow, .rr-chip-pop, .rr-chip-pop.is-on,
+  .rr .recap-reveal, .rr .recap-reveal .rr-body, .rr .recap-reveal .rr-tab, .rr .recap-reveal .recap-cascade > *, .rr .recap-reveal .recap-tag, .rr .recap-reveal .recap-pop, .rr .recap-reveal .recap-pop > *,
+  .rr .recap-reveal .rr-char, .rr .recap-reveal .bar-fill, .rr-sweep-trail, .rr .rr-head-block .rr-mask-in, .rr .rr-head-block .rr-chip, .rr .rr-chapter .rr-ch-num, .rr .rr-chapter .rr-mask-in, .rr .rr-chapter .rr-ch-rule,
+  .rr .recap-reveal .rr-dot, .rr .recap-reveal .rr-stint-tyre-in, .rr .recap-reveal .rr-trow-move > div, .rr .recap-reveal .champ-chip, .rr .recap-reveal .rr-split-l, .rr .recap-reveal .rr-split-r, .rr .recap-reveal .rr-pip,
+  .rr .recap-reveal .rr-honour-block, .rr .recap-reveal .rr-honour-icon {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .rr .recap-reveal { translate: none !important; }
+  .rr-sweep-layer { animation: none !important; transform: translateX(var(--to)) !important; }
+}
+.fx-lite .rr-sheen-wrap, .fx-lite .rr-row-sheen, .fx-lite .rr-glint, .fx-lite .rr-l3-out, .fx-lite .rr-draw-curtain, .fx-lite .rr-fly, .fx-lite .rr-cursor { display: none !important; }
+.fx-lite .rr-row, .fx-lite .rr-pin, .fx-lite .rr-mark { transition: none !important; }
+.fx-lite .rr-player.rr-open, .fx-lite .rr-open .rr-bar-l, .fx-lite .rr-open .rr-bar-r, .fx-lite .rr-open .rr-stripe, .fx-lite .rr-open .rr-row-in, .fx-lite .rr-open .rr-readout, .fx-lite .rr-open .rr-chart, .fx-lite .rr-open .rr-field, .fx-lite .rr-open .rr-lane, .fx-lite .rr-open .rr-transport,
+.fx-lite .rr-moved, .fx-lite .rr-fade, .fx-lite .rr-tick, .fx-lite .rr-tyre-in, .fx-lite .rr-l3, .fx-lite .rr-l3 *, .fx-lite .rr-lane-note, .fx-lite .rr-land, .fx-lite .rr-land-card, .fx-lite .rr-land-pp, .fx-lite .rr-land-num, .fx-lite .rr-land-1, .fx-lite .rr-land-2, .fx-lite .rr-land-3, .fx-lite .rr-trow, .fx-lite .rr-chip-pop, .fx-lite .rr-chip-pop.is-on,
+.fx-lite .rr .recap-reveal, .fx-lite .rr .recap-reveal .rr-body, .fx-lite .rr .recap-reveal .rr-tab, .fx-lite .rr .recap-reveal .recap-cascade > *, .fx-lite .rr .recap-reveal .recap-tag, .fx-lite .rr .recap-reveal .recap-pop, .fx-lite .rr .recap-reveal .recap-pop > *,
+.fx-lite .rr .recap-reveal .rr-char, .fx-lite .rr .recap-reveal .bar-fill, .fx-lite .rr-sweep-trail, .fx-lite .rr .rr-head-block .rr-mask-in, .fx-lite .rr .rr-head-block .rr-chip, .fx-lite .rr .rr-chapter .rr-ch-num, .fx-lite .rr .rr-chapter .rr-mask-in, .fx-lite .rr .rr-chapter .rr-ch-rule,
+.fx-lite .rr .recap-reveal .rr-dot, .fx-lite .rr .recap-reveal .rr-stint-tyre-in, .fx-lite .rr .recap-reveal .rr-trow-move > div, .fx-lite .rr .recap-reveal .champ-chip, .fx-lite .rr .recap-reveal .rr-split-l, .fx-lite .rr .recap-reveal .rr-split-r, .fx-lite .rr .recap-reveal .rr-pip,
+.fx-lite .rr .recap-reveal .rr-honour-block, .fx-lite .rr .recap-reveal .rr-honour-icon {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+.fx-lite .rr .recap-reveal { translate: none !important; }
+.fx-lite .rr-sweep-layer { animation: none !important; transform: translateX(var(--to)) !important; }

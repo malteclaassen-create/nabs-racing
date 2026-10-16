@@ -1,0 +1,150 @@
+/* Race recap "Smooth premium": the finishing pass. Loads after replay.css.
+   The same page, the same shapes, palette, fonts and motion; only a finer
+   finish: cards lift a little off the page (a 1px light on their top edge and
+   a soft static shadow), the inner panels the design always asked for are
+   actually drawn, the small type sits on one rhythm, figures are tabular,
+   chips and icons are tidied. Nothing here animates: every shadow and
+   gradient is static (no blur, filter, backdrop-filter or clip-path). */
+
+/* ------------------------------------------------------------------ tokens */
+.rr,
+.rr-modal {
+  --p-edge: rgba(255, 255, 255, 0.06); /* the light on a card's top edge */
+  --p-edge-soft: rgba(255, 255, 255, 0.04);
+  --p-drop: 0 1px 0 rgba(0, 0, 0, 0.32), 0 2px 5px -2px rgba(0, 0, 0, 0.4), 0 18px 36px -22px rgba(0, 0, 0, 0.9);
+  --p-border: #22304a; /* a hair calmer than --c-border on the card edge */
+  /* A faint light at the top of a card only; lower down the card is its own
+     plain colour, so the opaque card-coloured pieces inside it (the draw
+     curtains, the tower rows) still match it exactly. */
+  --p-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0, rgba(255, 255, 255, 0) 88px);
+}
+
+/* --------------------------------------------------------------- surfaces */
+.rr .card {
+  border-color: var(--p-border);
+  background-image: var(--p-sheen);
+  box-shadow: inset 0 1px 0 var(--p-edge), var(--p-drop);
+}
+/* Small cards (the tiles, the honours): the light runs a shorter way. */
+.rr .recap-cascade > .card {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.026) 0, rgba(255, 255, 255, 0) 64px);
+}
+/* The player keeps the light on its edge; its broadcast bar is its own panel. */
+.rr .rr-player.card { background-image: none; }
+/* Your honour keeps its team-colour edge, with the same lift. */
+.rr .rr-honour-mine.card { box-shadow: inset 3px 0 0 var(--recap-team), inset 0 1px 0 var(--p-edge), var(--p-drop); }
+.rr .rr-land-card { box-shadow: inset 0 1px 0 var(--p-edge), var(--c-shadow-lift); }
+
+/* The driver chip in the header is a card of its own. */
+.rr .rr-chip {
+  border-color: var(--p-border);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 100%);
+  box-shadow: inset 0 1px 0 var(--p-edge), var(--p-drop);
+}
+
+/* The header's rule fades out towards the edges instead of stopping dead. */
+.rr .rr-head-block { border-bottom-color: transparent; position: relative; }
+.rr .rr-head-block::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--c-border) 0, var(--c-border) 70%, transparent 100%);
+}
+
+/* ------------------------------------------------- the panels inside cards */
+/* The design put tinted panels inside the cards (the broadcast bars, the
+   classification's header, the tower's rows, the head-to-head band) with
+   Tailwind's opacity steps, which cannot reach the site's hex colour
+   variables, so they drew nothing. Drawn here with color-mix; a browser
+   without it shows the card plain, as before. */
+@supports (background-color: color-mix(in srgb, red 50%, transparent)) {
+  .rr .bg-surface2\/30, .rr-modal .bg-surface2\/30 { background-color: color-mix(in srgb, var(--c-surface2) 30%, transparent); }
+  .rr .bg-surface2\/40, .rr-modal .bg-surface2\/40 { background-color: color-mix(in srgb, var(--c-surface2) 40%, transparent); }
+  .rr .bg-surface2\/50, .rr-modal .bg-surface2\/50 { background-color: color-mix(in srgb, var(--c-surface2) 50%, transparent); }
+  .rr .bg-surface2\/60, .rr-modal .bg-surface2\/60 { background-color: color-mix(in srgb, var(--c-surface2) 60%, transparent); }
+  .rr .bg-surface2\/70, .rr-modal .bg-surface2\/70 { background-color: color-mix(in srgb, var(--c-surface2) 70%, transparent); }
+  .rr .border-border\/60, .rr-modal .border-border\/60 { border-color: color-mix(in srgb, var(--c-border) 60%, transparent); }
+  .rr .divide-border\/60 > :not([hidden]) ~ :not([hidden]) { border-color: color-mix(in srgb, var(--c-border) 60%, transparent); }
+  .rr .border-light\/40 { border-color: color-mix(in srgb, var(--c-text3) 40%, transparent); }
+  .rr .border-light\/50 { border-color: color-mix(in srgb, var(--c-text3) 50%, transparent); }
+  .rr .border-light\/70 { border-color: color-mix(in srgb, var(--c-text3) 70%, transparent); }
+  /* The veil behind the result on a phone (a wide screen sets it aside). */
+  @media (max-width: 1023px) {
+    .rr .bg-card\/70 { background-color: color-mix(in srgb, var(--c-card) 72%, transparent); }
+  }
+}
+/* A panel at the top of a card (the broadcast bars, the classification
+   header) carries the card's top light on its own edge. */
+.rr .rr-player > .bg-surface2\/70:first-of-type,
+.rr .card > .rr-body > .bg-surface2\/70:first-child,
+.rr .rr-land-card > .bg-surface2\/70 { box-shadow: inset 0 1px 0 var(--p-edge-soft); }
+
+/* ------------------------------------------------------------- typography */
+/* Figures line up: every mono number and every counted value is tabular,
+   with lining figures. */
+.rr .font-mono,
+.rr .tabular-nums,
+.rr-modal .font-mono { font-variant-numeric: tabular-nums lining-nums; }
+/* The small caps labels: one size, one tracking, optically level with the
+   text beside them. */
+.rr .tracking-\[0\.2em\] { letter-spacing: 0.2em; }
+/* Big display figures sit a touch tighter. */
+.rr .tracking-tighter { letter-spacing: -0.04em; }
+
+/* Season curve labels keep a thin card-coloured edge, so a label that lands
+   on the line stays readable. */
+.rr .rr-halo-text {
+  paint-order: stroke fill;
+  stroke: var(--c-card);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* ------------------------------------------------------------------ tiles */
+/* The icon in a stat tile sits in a small, quiet well. */
+.rr .rr-tile-icon { background-color: var(--c-surface2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03); }
+/* The tiles of a row share their row lines: labels, values, notes and feet
+   level across the row, however many lines a neighbour takes. The gap
+   between rows becomes the tile's own bottom margin (a subgrid's margin
+   widens its last track). Without subgrid the tiles stay plain flex cards. */
+@supports (grid-template-rows: subgrid) {
+  .rr .rr-tiles { row-gap: 0; margin-bottom: -0.75rem; }
+  .rr .rr-tiles > .rr-tile { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; margin-bottom: 0.75rem; }
+  .rr .rr-tiles > .rr-tile > :last-child { align-self: end; }
+  @media (min-width: 640px) {
+    .rr .rr-tiles { margin-bottom: -1.25rem; }
+    .rr .rr-tiles > .rr-tile { margin-bottom: 1.25rem; }
+  }
+}
+/* An empty note keeps its row but takes no room. */
+.rr .rr-tile > div:empty { margin-top: 0; }
+
+/* ------------------------------------------------------------------ chips */
+/* Outline chips get a faint fill, so they read as chips, not boxes. */
+.rr .recap-tag > .rounded-md.border,
+.rr .rr-land-3 > .rounded-md.border:not(.bg-fl\/10) { background-color: rgba(255, 255, 255, 0.025); }
+.rr .rr-chip .pill { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+
+/* ---------------------------------------------------------------- buttons */
+.rr .btn-primary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 1px 2px rgba(0, 0, 0, 0.35); }
+.rr .btn-secondary { box-shadow: inset 0 0 0 1px var(--c-border), inset 0 1px 0 rgba(255, 255, 255, 0.04); }
+
+/* ------------------------------------------------------- the night in numbers */
+/* The cells sit on the card's own surface with a whisper of light. */
+.rr .rr-numbers > div { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 70%); }
+
+/* ------------------------------------------------------------- chapters */
+/* The number block catches a little light along its top. */
+.rr .rr-ch-num-bg {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 6px 14px -8px rgba(0, 0, 0, 0.8);
+}
+
+/* Compare tables: the driver's own row carries a team-colour edge on a soft
+   tint, rows get a faint zebra, the "you" tag sits as a small chip. */
+.rr-modal .rr-crow:nth-child(even):not(.rr-crow-you) { background-color: color-mix(in srgb, var(--c-surface2) 35%, transparent); }
+.rr-modal .rr-crow-you { background-color: color-mix(in srgb, var(--recap-team) 12%, var(--c-card)); box-shadow: inset 3px 0 0 var(--recap-team); }
+.rr-modal .rr-you-tag { display: inline-block; padding: 2px 5px; border-radius: 4px; border: 1px solid currentColor; line-height: 1; opacity: 0.85; }
