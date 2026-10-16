@@ -1,0 +1,116 @@
+/* Race recap, Pace version G3 "Against the field". Loads after polish.css.
+   Every tile says where the driver stands in the field: a slim strip with a
+   tick per car and the driver's dot sliding into place, a bar against the
+   field's average, or a short scale of places or laps; a rank and a small
+   Compare link in the foot. Only transform and opacity move; the static
+   rings and shadows never animate. */
+
+/* Every tile in the grid is as tall as the tallest (equal flexible rows); a
+   lone tile spanning a phone's last row sits in an auto row of its own. */
+.rr .rr-ftiles { grid-template-rows: repeat(var(--rows-sm, 1), 1fr); grid-auto-rows: auto; }
+@media (min-width: 1024px) { .rr .rr-ftiles { grid-template-rows: repeat(var(--rows-lg, 1), 1fr); } }
+
+/* The rank chip: a quiet well, like the tile's icon. */
+.rr .rr-ftile .rr-g3-badge.rounded-md:not(button) { background-color: var(--c-surface2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03); }
+
+/* ----------------------------------------------------------- the strips */
+.rr-fs-base {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
+  background: color-mix(in srgb, var(--c-text3) 22%, transparent);
+}
+.rr-fs-tick {
+  position: absolute;
+  top: calc(50% - 5px);
+  height: 10px;
+  width: 1.5px;
+  margin-left: -0.75px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--c-text3) 55%, transparent);
+  transform-origin: 50% 50%;
+}
+.rr-fs-tick-slot { top: calc(50% - 3px); height: 6px; background: color-mix(in srgb, var(--c-text3) 40%, transparent); }
+/* Where the dot started from (the grid slot): a ring, left behind. */
+.rr-fs-ring {
+  position: absolute;
+  top: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 9999px;
+  border: 1.5px solid color-mix(in srgb, var(--c-text3) 80%, transparent);
+  background: var(--c-card);
+}
+/* The dot rides a full-width layer, so a translate of N% is N% of the strip.
+   The outer layer holds the place (and glides when the field changes, see
+   cmp.css); the inner one makes the entrance, from --x0 to the place. */
+.rr-fs-run { position: absolute; inset: 0; pointer-events: none; transform: translateX(var(--x)); }
+.rr-fs-run-in { position: absolute; inset: 0; }
+.rr-fs-dot {
+  position: absolute;
+  left: -6px;
+  top: calc(50% - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--recap-team);
+  box-shadow: 0 0 0 2px var(--c-card), 0 0 0 3.5px color-mix(in srgb, var(--c-text) 85%, transparent);
+}
+
+/* Laps: a cell a lap, the led ones in the team colour, lit a touch so a dark
+   team colour still reads on the card. */
+.rr-g3-lap { transform-origin: 50% 100%; }
+.rr-g3-lap-on,
+.rr .rr-g3-lead-fill { background: color-mix(in srgb, var(--recap-team) 78%, #fff); }
+
+/* The field's average across a bar: a short upright mark. */
+.rr-g3-avg {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--c-text);
+  box-shadow: 0 0 0 1.5px var(--c-card);
+}
+
+/* ------------------------------------------------------------- motion */
+/* Ticks rise into the strip one after another, back to front; then the dot
+   glides in from the back of the field on the page's soft spring and settles
+   on its place; the rank lands last. */
+@keyframes rr-g3-tick { from { opacity: 0; transform: scaleY(0.2); } to { opacity: 1; transform: none; } }
+@keyframes rr-g3-slide { from { transform: translateX(calc(var(--x0, 0%) - var(--x, 0%))); } to { transform: none; } }
+@keyframes rr-g3-cell { from { opacity: 0; transform: scaleY(0.25); } to { opacity: 1; transform: none; } }
+@keyframes rr-g3-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.rr .recap-reveal .rr-fs-tick,
+.rr .recap-reveal .rr-fs-ring,
+.rr .recap-reveal .rr-g3-lap,
+.rr .recap-reveal .rr-g3-avg,
+.rr .recap-reveal .rr-g3-badge { opacity: 0; }
+.rr .recap-reveal .rr-fs-run-in { opacity: 0; transform: translateX(calc(var(--x0, 0%) - var(--x, 0%))); }
+
+.rr .recap-reveal.is-visible .rr-fs-tick { animation: rr-g3-tick 700ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms) + min(var(--t, 0), 40) * 9ms); }
+.rr .recap-reveal.is-visible .rr-fs-ring { animation: rr-fade 500ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms)); }
+.rr .recap-reveal.is-visible .rr-fs-run-in {
+  animation: rr-g3-slide 1500ms var(--rr-soft) both, rr-fade 350ms ease-out both;
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms) + 120ms);
+}
+.rr .recap-reveal.is-visible .rr-g3-lap { animation: rr-g3-cell 800ms var(--rr-soft) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms) + min(var(--t, 0), 60) * 16ms); }
+.rr .recap-reveal.is-visible .rr-g3-avg { animation: rr-fade 600ms ease-out both; animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms)); }
+.rr .recap-reveal.is-visible .rr-g3-badge { animation: rr-g3-in 900ms var(--rr-expo) both; animation-delay: calc(var(--reveal-delay, 0s) + var(--gd, 0ms)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rr .recap-reveal .rr-fs-tick, .rr .recap-reveal .rr-fs-ring, .rr .recap-reveal .rr-g3-lap, .rr .recap-reveal .rr-g3-avg, .rr .recap-reveal .rr-g3-badge {
+    animation: none !important; opacity: 1 !important; transform: none !important;
+  }
+  .rr .recap-reveal .rr-fs-run-in { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+.fx-lite .rr .recap-reveal .rr-fs-tick, .fx-lite .rr .recap-reveal .rr-fs-ring, .fx-lite .rr .recap-reveal .rr-g3-lap, .fx-lite .rr .recap-reveal .rr-g3-avg, .fx-lite .rr .recap-reveal .rr-g3-badge {
+  animation: none !important; opacity: 1 !important; transform: none !important;
+}
+.fx-lite .rr .recap-reveal .rr-fs-run-in { animation: none !important; opacity: 1 !important; transform: none !important; }
