@@ -17,7 +17,7 @@ vi.mock("../lib/notifications.js", async (importOriginal) => ({
   notifyAdminsServerReset: vi.fn(async () => {}),
 }));
 
-const { accumulateStints, stintsFor, ingest, telemetry, getBoard, raceSecond, reset, mapKey, buildSteamIdentities, setSteamIdentities } =
+const { accumulateStints, stintsFor, ingest, telemetry, getBoard, takePositions, raceSecond, reset, mapKey, buildSteamIdentities, setSteamIdentities } =
   __testing;
 
 // Build a minimal EventType-200 snapshot for one driver, enough to exercise the
@@ -251,6 +251,29 @@ describe("liveTiming: which roster rows a car is, by Steam id", () => {
   it("an unknown Steam id carries no rows, and the page falls back to the name", () => {
     ingest(snap({ guid: "g9", laps: 3, name: "Guest" }));
     expect(getBoard().entries[0].driverIds).toEqual([]);
+  });
+});
+
+describe("liveTiming position fast-lane", () => {
+  beforeEach(() => reset());
+
+  it("hands over each car that moved once, under the board's id and position", () => {
+    ingest(fullSnap({ type: 1, drivers: { g1: { name: "Alice", carId: 4 } } }));
+    telemetry({ CarID: 4, Pos: { X: 10.04, Y: 2, Z: -3.26 }, NormalisedSplinePos: 0.1234567 });
+    telemetry({ CarID: 4, Pos: { X: 12.51, Y: 2, Z: -4.02 }, NormalisedSplinePos: 0.1236 });
+    const rows = takePositions();
+    const [e] = getBoard().entries;
+    // The newest frame only, keyed like the board, placed like the board.
+    expect(rows).toEqual([[e.guid, e.pos.x, e.pos.z, 0.1236]]);
+    expect(rows[0][1]).toBe(12.5);
+    // Nothing moved since: nothing to send.
+    expect(takePositions()).toBe(null);
+  });
+
+  it("leaves out a car the relay cannot name", () => {
+    ingest(fullSnap({ type: 1, drivers: { g1: { name: "Alice", carId: 4 } } }));
+    telemetry({ CarID: 9, Pos: { X: 1, Y: 0, Z: 1 }, NormalisedSplinePos: 0.5 });
+    expect(takePositions()).toBe(null);
   });
 });
 

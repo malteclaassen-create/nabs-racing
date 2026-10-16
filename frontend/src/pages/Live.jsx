@@ -2047,7 +2047,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, hotlap = null, hotlapTrack = null, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPositions, streamUrl, server, hotlap = null, hotlapTrack = null, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -2113,6 +2113,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               map={realMap}
               follow={follow}
               onCarTelemetry={onCarTelemetry}
+              onPositions={onPositions}
               server={server}
               sectorLines={session.sectorLines}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
@@ -3043,7 +3044,7 @@ function TvPitLane({ entries, match, className = "" }) {
   );
 }
 
-function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
+function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, onPositions, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
   // The page underneath is still mounted, and without this it scrolls away
   // behind the board on any stray wheel event.
   useScrollLock(true);
@@ -3431,6 +3432,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                   map={session.map || null}
                   follow={follow}
                   onCarTelemetry={onCarTelemetry}
+                  onPositions={onPositions}
                   server={server}
                   sectorLines={session.sectorLines}
                   wrapClassName={mapFrame}
@@ -3490,7 +3492,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
 }
 
 export default function Live() {
-  const { board: feed, socketState, follow, onCarTelemetry, setServer, serverKey } = useLiveTiming();
+  const { board: feed, socketState, follow, onCarTelemetry, onPositions, setServer, serverKey } = useLiveTiming();
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
   const liveServers = useLiveServers();
@@ -3862,6 +3864,7 @@ export default function Live() {
         match={match}
         follow={follow}
         onCarTelemetry={onCarTelemetry}
+        onPositions={onPositions}
         server={board?.serverKey || serverKey}
         gap={gap}
         connected={connected}
@@ -4024,6 +4027,7 @@ export default function Live() {
                 match={match}
                 follow={follow}
                 onCarTelemetry={onCarTelemetry}
+                onPositions={onPositions}
                 streamUrl={extLinks?.streamUrl}
                 // The map image is fetched per server, so this has to travel
                 // down with the rest: a map of the other circuit would be a
