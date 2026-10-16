@@ -259,15 +259,24 @@ describe("liveTiming position fast-lane", () => {
 
   it("hands over each car that moved once, under the board's id and position", () => {
     ingest(fullSnap({ type: 1, drivers: { g1: { name: "Alice", carId: 4 } } }));
-    telemetry({ CarID: 4, Pos: { X: 10.04, Y: 2, Z: -3.26 }, NormalisedSplinePos: 0.1234567 });
-    telemetry({ CarID: 4, Pos: { X: 12.51, Y: 2, Z: -4.02 }, NormalisedSplinePos: 0.1236 });
-    const rows = takePositions();
-    const [e] = getBoard().entries;
-    // The newest frame only, keyed like the board, placed like the board.
-    expect(rows).toEqual([[e.guid, e.pos.x, e.pos.z, 0.1236]]);
-    expect(rows[0][1]).toBe(12.5);
-    // Nothing moved since: nothing to send.
-    expect(takePositions()).toBe(null);
+    vi.useFakeTimers();
+    try {
+      const t0 = Date.UTC(2026, 9, 16, 20, 0, 0);
+      vi.setSystemTime(t0);
+      telemetry({ CarID: 4, Pos: { X: 10.04, Y: 2, Z: -3.26 }, NormalisedSplinePos: 0.1234567 });
+      vi.setSystemTime(t0 + 150);
+      telemetry({ CarID: 4, Pos: { X: 12.51, Y: 2, Z: -4.02 }, NormalisedSplinePos: 0.1236 });
+      const rows = takePositions(t0 + 200);
+      const [e] = getBoard().entries;
+      // The newest frame only, keyed like the board, placed like the board,
+      // and dated: it came in 50ms before the frame was built.
+      expect(rows).toEqual([[e.guid, e.pos.x, e.pos.z, 0.1236, 50]]);
+      expect(rows[0][1]).toBe(12.5);
+      // Nothing moved since: nothing to send.
+      expect(takePositions(t0 + 400)).toBe(null);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("leaves out a car the relay cannot name", () => {

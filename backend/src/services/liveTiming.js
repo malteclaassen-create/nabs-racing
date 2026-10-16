@@ -170,8 +170,8 @@ const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
 // the map drew each car most of a second behind where it was and cut every
 // corner with a straight line between two far-apart points. So a viewer whose
 // page shows the map ({positions: true} on the socket) also gets the cars that
-// moved, as a small frame of [id, x, z, spline] rows, at the race server's own
-// pace. A full grid is ~1.5 kB a frame next to the board's ~45 kB.
+// moved, as a small frame of [id, x, z, spline, age] rows, at the race server's
+// own pace. A full grid is ~1.5 kB a frame next to the board's ~45 kB.
 const POSITIONS_MS = 200;
 // Positions are worth something only while they are fresh, so a viewer still
 // holding a backlog skips frames instead of queueing them; the next one
@@ -707,8 +707,9 @@ function createRelay(server) {
   // the stints.
   const gapTracker = createGapTracker();
   // The position fast-lane (see POSITIONS_MS): every car that has sent
-  // telemetry since the last positions frame, with its newest frame. One slot
-  // per car, overwritten in place, emptied by every frame that is built.
+  // telemetry since the last positions frame, with its newest frame and when it
+  // came in. One slot per car, overwritten in place, emptied by every frame
+  // that is built.
   const movedByGuid = new Map();
   const CROSSINGS_KEPT = 6;
 
@@ -1474,7 +1475,7 @@ function createRelay(server) {
       const now = Date.now();
       deltaTracker.onFrame(guid, live.NormalisedSplinePos, now, !!inPits);
       gapTracker.onFrame(guid, live.NormalisedSplinePos, now);
-      movedByGuid.set(guid, live);
+      movedByGuid.set(guid, { live, at: now });
     }
     liveIncidents.onTelemetry(server.key, {
       guid,
@@ -2271,22 +2272,25 @@ function createRelay(server) {
     return out;
   }
 
-  // The cars that moved since the last call, as [public id, x, z, spline]
-  // rows for the map, or null when there is nothing to send. Nothing while a
+  // The cars that moved since the last call, as [public id, x, z, spline, age]
+  // rows for the map, or null when there is nothing to send. `age` is how many
+  // ms before `now` the reading came in: the page places every reading on this
+  // server's clock and plays them back at an even pace, so a frame the network
+  // delayed does not stop the cars (see useSmoothCars). Nothing while a
   // finished race's result is held: the board shows the classification then,
   // and live positions would drag its frozen cars back onto the track.
   // Rounded like the board's own pos; the spline to five places (centimetres
   // on any circuit), where the board's raw float would double the frame.
-  function takePositions() {
+  function takePositions(now = Date.now()) {
     if (finishedRace || movedByGuid.size === 0) {
       movedByGuid.clear();
       return null;
     }
     const rows = [];
-    for (const [guid, live] of movedByGuid) {
+    for (const [guid, { live, at }] of movedByGuid) {
       if (!live.Pos) continue;
       const spline = Math.round((live.NormalisedSplinePos ?? 0) * 1e5) / 1e5;
-      rows.push([publicDriverId(guid), round1(live.Pos.X), round1(live.Pos.Z), spline]);
+      rows.push([publicDriverId(guid), round1(live.Pos.X), round1(live.Pos.Z), spline, Math.max(0, now - at)]);
     }
     movedByGuid.clear();
     return rows.length ? rows : null;
@@ -3134,8 +3138,9 @@ export function initLiveTiming(server) {
       if (c.bufferedAmount > POSITIONS_MAX_BUFFERED) continue;
       const key = c.serverKey || DEFAULT_SERVER_KEY;
       if (!frameByKey.has(key)) {
-        const rows = relayFor(key).takePositions();
-        frameByKey.set(key, rows ? JSON.stringify({ p: rows }) : null);
+        const now = Date.now();
+        const rows = relayFor(key).takePositions(now);
+        frameByKey.set(key, rows ? JSON.stringify({ p: rows, t: now }) : null);
       }
       const frame = frameByKey.get(key);
       if (!frame) continue;
