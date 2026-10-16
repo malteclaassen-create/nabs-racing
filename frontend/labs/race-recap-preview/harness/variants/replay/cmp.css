@@ -1,0 +1,56 @@
+/* Race recap: compare within your tier (cmp.jsx). Loads after g3.css.
+   The switch is the site's segmented control; its pill slides a whole
+   segment by transform. When the field changes, every mark on a strip glides
+   to its new place on a full-width lane (transform), cars leaving the field
+   fade (opacity), and the words and numbers that change roll in on a short
+   beat of their own. Only transform and opacity move. */
+
+/* ------------------------------------------------------------ the switch */
+.rr-seg-pill {
+  width: calc((100% - 4px) / 3);
+  box-shadow: inset 0 1px 0 var(--p-edge, rgba(255, 255, 255, 0.06)), 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
+  will-change: transform;
+}
+/* "you" on the driver's own tier: a quiet mark in the brand's eyebrow colour. */
+.rr-seg-you { color: var(--c-eyebrow); opacity: 0.9; }
+.rr-seg button[aria-pressed="true"] .rr-seg-you { opacity: 1; }
+
+/* ------------------------------------------------------------ the lanes */
+.rr-xlane {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  transform: translateX(var(--x));
+  transition: transform 950ms var(--rr-soft), opacity 480ms ease;
+}
+.rr-xlane.is-off { opacity: 0; }
+.rr-xlane > .rr-fs-tick,
+.rr-xlane > .rr-fs-ring { left: 0; }
+/* The driver's dot glides on the same curve, and fades when out of the field. */
+.rr-fs-run { transition: transform 1000ms var(--rr-soft), opacity 480ms ease; }
+.rr-fs-run.is-off { opacity: 0; }
+
+/* ----------------------------------------------- what rolls in on a switch */
+@keyframes rr-cmp-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+/* Only once the switch has been used: on the first visit everything comes in
+   with its card, as before. */
+.rr.rr-live .rr-cmp-in { animation: rr-cmp-in 650ms var(--rr-soft) both; animation-delay: 60ms; }
+.rr.rr-live .rr-cmp-fade { animation: rr-fade 520ms ease both; }
+/* Content rebuilt by a switch does not wait for its card's entrance again. */
+.rr.rr-live .rr-cmp-roll { --reveal-delay: 0s; }
+.rr.rr-live .rr-cmp-roll .rr-sweep-layer,
+.rr.rr-live .rr-cmp-roll .rr-sweep-trail { animation-delay: 140ms; }
+.rr.rr-live .recap-reveal.is-visible ol.rr-cmp-roll > * { animation-delay: calc(40ms + var(--i, 0) * 40ms); }
+
+/* The bar at the head of the Pace chapter sits close under the header. */
+.rr .rr-cmp-bar { margin-top: 0.75rem; }
+
+/* ------------------------------------------- reduced motion and Lite mode */
+@media (prefers-reduced-motion: reduce) {
+  .rr-seg-pill, .rr-xlane, .rr-fs-run { transition: none !important; }
+  .rr.rr-live .rr-cmp-in, .rr.rr-live .rr-cmp-fade { animation: none !important; }
+}
+.fx-lite .rr-seg-pill, .fx-lite .rr-xlane, .fx-lite .rr-fs-run { transition: none !important; }
+.fx-lite .rr.rr-live .rr-cmp-in, .fx-lite .rr.rr-live .rr-cmp-fade { animation: none !important; }
