@@ -165,6 +165,19 @@ function driverIdsForGuid(guid) {
 }
 
 const BROADCAST_MS = 700; // how often we push a fresh board to frontend clients
+// The map's own fast-lane. The race server sends every car's position five
+// times a second, and the 700ms board passed on one in three or four of them:
+// the map drew each car most of a second behind where it was and cut every
+// corner with a straight line between two far-apart points. So a viewer whose
+// page shows the map ({positions: true} on the socket) also gets the cars that
+// moved, as a small frame of [id, x, z, spline, age] rows, at the race server's
+// own pace. A full grid is ~1.5 kB a frame next to the board's ~45 kB.
+const POSITIONS_MS = 200;
+// Positions are worth something only while they are fresh, so a viewer still
+// holding a backlog skips frames instead of queueing them; the next one
+// carries the cars' newest positions anyway. Far under MAX_BUFFERED_BYTES: the
+// board decides when a socket is dead, this only stops adding to the pile.
+const POSITIONS_MAX_BUFFERED = 64 * 1024;
 // …but only when the board actually says something new (see the broadcast
 // loop). A board that has not moved is still WORTH sending now and then, both
 // as a sign of life and because nothing else re-syncs a viewer whose socket
@@ -693,6 +706,11 @@ function createRelay(server) {
   // gap moves as the cars do instead of once a lap at the line. Cleared with
   // the stints.
   const gapTracker = createGapTracker();
+  // The position fast-lane (see POSITIONS_MS): every car that has sent
+  // telemetry since the last positions frame, with its newest frame and when it
+  // came in. One slot per car, overwritten in place, emptied by every frame
+  // that is built.
+  const movedByGuid = new Map();
   const CROSSINGS_KEPT = 6;
 
   // IsInPits, cleaned up. See pitFlag.js for why the raw flag cannot be shown
@@ -1457,6 +1475,7 @@ function createRelay(server) {
       const now = Date.now();
       deltaTracker.onFrame(guid, live.NormalisedSplinePos, now, !!inPits);
       gapTracker.onFrame(guid, live.NormalisedSplinePos, now);
+      movedByGuid.set(guid, { live, at: now });
     }
     liveIncidents.onTelemetry(server.key, {
       guid,
@@ -2253,10 +2272,35 @@ function createRelay(server) {
     return out;
   }
 
+  // The cars that moved since the last call, as [public id, x, z, spline, age]
+  // rows for the map, or null when there is nothing to send. `age` is how many
+  // ms before `now` the reading came in: the page places every reading on this
+  // server's clock and plays them back at an even pace, so a frame the network
+  // delayed does not stop the cars (see useSmoothCars). Nothing while a
+  // finished race's result is held: the board shows the classification then,
+  // and live positions would drag its frozen cars back onto the track.
+  // Rounded like the board's own pos; the spline to five places (centimetres
+  // on any circuit), where the board's raw float would double the frame.
+  function takePositions(now = Date.now()) {
+    if (finishedRace || movedByGuid.size === 0) {
+      movedByGuid.clear();
+      return null;
+    }
+    const rows = [];
+    for (const [guid, { live, at }] of movedByGuid) {
+      if (!live.Pos) continue;
+      const spline = Math.round((live.NormalisedSplinePos ?? 0) * 1e5) / 1e5;
+      rows.push([publicDriverId(guid), round1(live.Pos.X), round1(live.Pos.Z), spline, Math.max(0, now - at)]);
+    }
+    movedByGuid.clear();
+    return rows.length ? rows : null;
+  }
+
   return {
     key: server.key,
     connect: connectUpstream,
     getBoard,
+    takePositions,
     raceSecond,
     guidsForName,
     getTrackMapPng: () => trackMap?.png || null,
@@ -2303,6 +2347,7 @@ function createRelay(server) {
       lastSplineByGuid.clear();
       stoppedSinceByGuid.clear();
       liveByCar.clear();
+      movedByGuid.clear();
       finishedRace = null;
       raceFlagAt = null;
       stintSessionKey = null;
@@ -2460,6 +2505,7 @@ export const __testing = {
   mapKey: testRelay.__mapKey,
   telemetry: testRelay.__telemetry,
   getBoard: testRelay.__getBoard,
+  takePositions: testRelay.takePositions,
   raceSecond: testRelay.raceSecond,
   reset: testRelay.__reset,
   buildSteamIdentities,
@@ -2908,14 +2954,17 @@ export function initLiveTiming(server) {
     // handler below needs it to put the server switch back, and a message can
     // arrive while the setup further down is still waiting on the database.
     ws.seriesSlug = seriesOf(req);
-    // The one thing a client may say to us: which car it follows (the map's
-    // focus mode). Anything else on the socket is ignored.
+    // What a client may say to us: which car it follows (the map's focus
+    // mode), whether it shows the map, and which server it watches. Anything
+    // else on the socket is ignored.
     ws.on("message", (buf) => {
       try {
         const m = JSON.parse(buf.toString());
         if ("follow" in m) {
           ws.followGuid = typeof m.follow === "string" && m.follow.length <= 64 ? m.follow : null;
         }
+        // The map is on screen (true) or gone (false): the position fast-lane.
+        if ("positions" in m) ws.wantsPositions = m.positions === true;
         // The Live page's server switch, mid-connection. Sending it rather than
         // reconnecting matters on race night: a reconnect drops the socket,
         // re-runs the backoff and repaints the page from empty, where this
@@ -3078,6 +3127,30 @@ export function initLiveTiming(server) {
     }
     viewerBufferStats = { viewers, totalBufferedBytes: totalBuffered, maxBufferedBytes: maxBuffered, sampledAt: now };
   }, BROADCAST_MS);
+
+  // The position fast-lane: one frame per server per tick, built only when a
+  // viewer of that server asked for it, then handed to each of them.
+  setInterval(() => {
+    if (wss.clients.size === 0) return;
+    const frameByKey = new Map(); // key -> json, or null when no car moved
+    for (const c of wss.clients) {
+      if (!c.wantsPositions || c.isDemo || c.readyState !== WebSocket.OPEN) continue;
+      if (c.bufferedAmount > POSITIONS_MAX_BUFFERED) continue;
+      const key = c.serverKey || DEFAULT_SERVER_KEY;
+      if (!frameByKey.has(key)) {
+        const now = Date.now();
+        const rows = relayFor(key).takePositions(now);
+        frameByKey.set(key, rows ? JSON.stringify({ p: rows, t: now }) : null);
+      }
+      const frame = frameByKey.get(key);
+      if (!frame) continue;
+      try {
+        c.send(frame);
+      } catch {
+        /* dead socket — ws will clean it up */
+      }
+    }
+  }, POSITIONS_MS);
 
   // Ping every viewer; anything that has not answered since the last round is
   // gone and leaves wss.clients here rather than lingering for hours.

@@ -35,6 +35,12 @@ import SlidingTabs from "./SlidingTabs.jsx";
 // two updates and drives the follow-camera from the same interpolated point.
 // Lite graphics / reduced motion snap to the newest data instead.
 //
+// The positions themselves come from the socket's position fast-lane
+// (onPositions, ~5 a second) wherever it is running, played back on the
+// server's clock from a small buffer (see PLAYOUT), and from the board only
+// for a car the fast-lane has not mentioned lately: the board decides WHICH
+// cars are on the map, the fast-lane WHERE they are.
+//
 // FOCUS MODE (both variants): clicking a car zooms onto it and follows; the
 // +/- controls change how close (to read two cars side by side, zoom in).
 // Clicking anywhere else zooms back out. The followed car's cockpit numbers
@@ -65,9 +71,106 @@ function interpNow(st, now) {
 // (no React re-render per frame). Also steers the follow-camera, and keeps the
 // markers marker-sized while the camera is zoomed in: the marker group is
 // scaled down by the square root of the zoom, written only when that changes.
-function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
+// A car the fast-lane moved this recently is not moved by the board as well:
+// the board's position is the same reading, up to 700ms older.
+const FAST_LANE_HOLD_MS = 1500;
+
+// Glide one car's state towards a new board point. The glide starts from
+// wherever the car is drawn right now and lasts as long as the gap since its
+// previous update, so it arrives about when the next one is due.
+function glideTo(st, x, y, now) {
+  // Only a real movement counts as an update. The upstream's per-car
+  // telemetry is often sparser than the board tick, so the same position
+  // arrives on several boards in a row — and re-stamping those made the car
+  // sprint for one tick, then stand still until its next real fix (the
+  // surge-and-stall rhythm race night made visible). Skipped, the glide spans
+  // the car's ACTUAL update gap instead: constant speed, however irregular the
+  // feed.
+  if (x === st.next.x && y === st.next.y) return;
+  const cur = interpNow(st, now);
+  // (next.t - prev.t is useless here: both are stamped at the update.)
+  st.dur = Math.min(2000, Math.max(120, now - st.lastAt));
+  st.lastAt = now;
+  st.prev = { ...cur, t: now };
+  st.next = { x, y, t: now };
+}
+
+// PLAYBACK for the fast-lane. Every reading carries the moment the backend got
+// it (frame `t` minus the row's age), so the map plays the cars back on the
+// SERVER's clock, a little behind it, instead of moving them when a frame
+// happens to arrive. The server sends as evenly as a metronome (700/200ms,
+// measured), but a phone's network does not deliver that way: it holds frames
+// for half a second and hands them over in a bunch. Moved on arrival, every
+// car stood still for that half second at once and then sprinted; played back
+// from a buffer, they keep rolling at their real speed through anything
+// shorter than the delay.
+//
+// The delay is measured, not fixed. A car can only be drawn between two of its
+// readings, so the playback must stay behind its newest one until the next
+// arrives: the delay needed is how long after a car's PREVIOUS reading the
+// next one reached this page. That sums everything on the way — the race
+// server's own pace, the wait for the backend's next frame (longer when its
+// timer runs late), the network. The longest of those over the last
+// PLAYOUT_WINDOW frames, plus a margin, is the delay. A steady connection plays
+// ~0.5s behind, a jumpy phone up to a second (still less than the board
+// alone ever managed). It changes gently
+// (PLAYOUT_SLOW / PLAYOUT_FAST), so the cars run a few per cent slow or fast
+// for a while rather than jumping when it does. The first hiccup on a smooth
+// connection is still seen once; after that the buffer has grown to cover it.
+const PLAYOUT_WINDOW = 150; // frames, ~30s at 200ms
+const PLAYOUT_MARGIN_MS = 80;
+const PLAYOUT_MAX_MS = 1000;
+// A car whose previous reading is older than this was away (garage, pit
+// reset, a dropped subscription), not late: its gap says nothing about the
+// connection.
+const PLAYOUT_AWAY_MS = 1500;
+const PLAYOUT_SLOW = 0.15; // the delay grows by at most this share of real time
+const PLAYOUT_FAST = 0.05; // …and shrinks by at most this
+
+// A frame arrived: what it says about this connection. Both clocks are mixed
+// in every number here (page time minus server time), which is fine: only
+// differences between them are ever used, and the lag below is one of them.
+// `need` is the frame's longest wait between a car's previous reading (server
+// time) and this arrival (page time), or null when no car in it had one.
+function notePlayout(pc, t, arrival, need) {
+  pc.frames.push([arrival - t, need ?? arrival - t]);
+  if (pc.frames.length > PLAYOUT_WINDOW) pc.frames.shift();
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [transit, wait] of pc.frames) {
+    if (transit < lo) lo = transit;
+    if (wait > hi) hi = wait;
+  }
+  // page time minus this = the server time to show
+  pc.target = Math.min(lo + PLAYOUT_MAX_MS, hi + PLAYOUT_MARGIN_MS);
+  pc.lag ??= pc.target;
+}
+
+// Ease the playback lag towards its target; called once per animation frame.
+function stepPlayout(pc, dt) {
+  if (pc.lag == null) return;
+  const d = pc.target - pc.lag;
+  pc.lag += d > 0 ? Math.min(d, dt * PLAYOUT_SLOW) : Math.max(d, -dt * PLAYOUT_FAST);
+}
+
+// Where a fast-lane car is at server time `ts`, from its buffered readings.
+function sampleAt(buf, ts) {
+  if (ts <= buf[0].ts) return buf[0];
+  for (let i = 1; i < buf.length; i++) {
+    const b = buf[i];
+    if (ts < b.ts) {
+      const a = buf[i - 1];
+      const f = (ts - a.ts) / (b.ts - a.ts);
+      return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+    }
+  }
+  return buf[buf.length - 1]; // nothing newer yet: wait where the last one was
+}
+
+function useSmoothCars({ dots, focusGuid, zoom, camInfo, onPositions, project }) {
   const els = useRef(new Map()); // guid -> { el, car, k }
-  const states = useRef(new Map()); // guid -> { prev, next }
+  const states = useRef(new Map()); // guid -> { prev, next, buf? }
+  const playout = useRef({ frames: [], target: null, lag: null });
   const camRef = useRef(null);
   const liveRef = useRef({ focusGuid, zoom, camInfo, zoomShown: 1, cameraX: null, cameraY: null });
   liveRef.current.focusGuid = focusGuid;
@@ -93,28 +196,51 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
           lastAt: now,
           dur: 700,
         });
-      } else {
-        // Only a real movement counts as an update. The upstream's per-car
-        // telemetry is often sparser than the board tick, so the same position
-        // arrives on several boards in a row — and re-stamping those made the
-        // car sprint for one tick, then stand still until its next real fix
-        // (the surge-and-stall rhythm race night made visible). Skipped, the
-        // glide below spans the car's ACTUAL update gap instead: constant
-        // speed, however irregular the feed.
-        if (d.x === st.next.x && d.y === st.next.y) continue;
-        const cur = interpNow(st, now);
-        // Glide duration = the actual gap since the previous update, so the
-        // car arrives exactly when the next update is due — constant speed
-        // even on an irregular feed. (next.t - prev.t is useless here: both
-        // are stamped right now.)
-        st.dur = Math.min(2000, Math.max(120, now - st.lastAt));
-        st.lastAt = now;
-        st.prev = { ...cur, t: now };
-        st.next = { x: d.x, y: d.y, t: now };
+      } else if (!(st.fastAt && now - st.fastAt < FAST_LANE_HOLD_MS)) {
+        // The fast-lane has gone quiet (a held result, a dropped
+        // subscription): the board takes the car over from where it is drawn.
+        if (st.buf) {
+          st.prev = st.next = { ...(st.shown || st.next), t: now };
+          st.buf = null;
+          st.fastAt = null;
+        }
+        glideTo(st, d.x, d.y, now);
       }
     }
     for (const g of [...states.current.keys()]) if (!seen.has(g)) states.current.delete(g);
   }, [dots]);
+
+  // The position fast-lane: buffers the readings of the cars the board has put
+  // on the map, for the playback below — no React render per frame.
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  useEffect(() => {
+    if (!onPositions) return undefined;
+    return onPositions((rows, t, arrival) => {
+      const proj = projectRef.current;
+      if (!proj || !Array.isArray(rows) || typeof t !== "number") return;
+      let need = null;
+      for (const [guid, x, z, spline, age] of rows) {
+        const st = states.current.get(guid);
+        if (!st) continue;
+        const pt = proj(x, z, spline);
+        if (!pt) continue;
+        const ts = t - (Number(age) || 0);
+        st.buf ??= [];
+        // Out of order or repeated (a server switch, a reconnect): dropped.
+        const prev = st.buf.length ? st.buf[st.buf.length - 1].ts : null;
+        if (prev != null && ts <= prev) continue;
+        if (prev != null && t - prev < PLAYOUT_AWAY_MS) need = Math.max(need ?? -Infinity, arrival - prev);
+        // Back after being away: start over from here, rather than glide
+        // across the infield from wherever the car was last seen.
+        else if (prev != null) st.buf.length = 0;
+        st.buf.push({ ts, x: pt[0], y: pt[1] });
+        if (st.buf.length > 40) st.buf.shift(); // ~8s, far more than the delay
+        st.fastAt = arrival;
+      }
+      notePlayout(playout.current, t, arrival, need);
+    });
+  }, [onPositions]);
 
   useEffect(() => {
     let raf;
@@ -128,10 +254,22 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
         document.documentElement.classList.contains("fx-lite") ||
         (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
       const k = 1 / Math.sqrt(liveRef.current.zoomShown);
+      const pc = playout.current;
+      stepPlayout(pc, dt);
+      const playAt = pc.lag == null ? null : now - pc.lag; // server time on show
       let focusPos = null;
       for (const [guid, st] of states.current) {
         const reg = els.current.get(guid);
-        const p = instant ? { x: st.next.x, y: st.next.y } : interpNow(st, now);
+        let p;
+        if (st.buf?.length && playAt != null) {
+          // Readings already played are dropped, all but the one the car is
+          // gliding away from.
+          while (st.buf.length > 2 && st.buf[1].ts <= playAt) st.buf.shift();
+          p = instant ? st.buf[st.buf.length - 1] : sampleAt(st.buf, playAt);
+        } else {
+          p = instant ? { x: st.next.x, y: st.next.y } : interpNow(st, now);
+        }
+        st.shown = p;
         if (reg) {
           reg.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
           if (reg.car && reg.k !== k) {
@@ -516,7 +654,7 @@ function useTrackLine(ver, server) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null }) {
+function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
@@ -552,7 +690,8 @@ function RealTrackMap({ cars, map, matchFn, focusGuid, zoom, onFocus, server = n
         }),
     [cars, cal, matchFn]
   );
-  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: W, h: H } });
+  const project = useCallback((x, z) => projectXZ(x, z, cal), [cal]);
+  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: W, h: H }, onPositions, project });
   const [svgEl, setSvgEl] = useState(null);
   const fit = useFitScale(svgEl, rotated ? H : W, rotated ? W : H);
   // The circuit-relative size is what the markers had before the map is
@@ -669,7 +808,7 @@ const OUTLINE_SAMPLES = 360;
 // direction, so the positions are indicative. Unknown tracks render nothing.
 // The sector colours walk the same path by the same share of the lap, so they
 // agree with where the cars are drawn, approximation and all.
-function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFocus, className = "", incidents = null, sectorLines = null }) {
+function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGuid, zoom, onFocus, className = "", incidents = null, sectorLines = null }) {
   // The same resolver the card around this map uses to decide there IS an
   // outline to show. It used to be the plain lookup, which knows "Most" but
   // not "NABS Autodrom Most (no chicane)" — so the card promised a map and
@@ -704,7 +843,16 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
   const [, , vwRaw, vhRaw] = (circuit?.box || "0 0 100 100").split(/\s+/).map(Number);
   const vw = vwRaw || 100;
   const vh = vhRaw || 100;
-  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: vw, h: vh } });
+  // Along the outline, by the spline — the same walk as the dots above.
+  const project = useCallback(
+    (x, z, spline) => {
+      if (!len || !pathRef.current) return null;
+      const pt = pathRef.current.getPointAtLength(((((Number(spline) || 0) % 1) + 1) % 1) * len);
+      return [pt.x, pt.y];
+    },
+    [len]
+  );
+  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: vw, h: vh }, onPositions, project });
   const [svgEl, setSvgEl] = useState(null);
   const fit = useFitScale(svgEl, vw, vh);
   // Car size off the box's DIAGONAL, not its width, until the map is measured.
@@ -855,7 +1003,7 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
 // a caller's `absolute` are the same property and the stylesheet, not the class
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned.
-export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null }) {
+export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null }) {
   const [focusGuid, setFocusGuid] = useState(null);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   const [mapMode, setMapMode] = useState("track");
@@ -924,6 +1072,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           key={`${server || ""}:${map?.ver || ""}`}
           cars={cars}
           map={map}
+          onPositions={onPositions}
           aerial={aerial}
           aerialMap={aerialMap}
           aerialLoaded={aerialLoaded}
@@ -945,6 +1094,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           track={track}
           trackId={trackId}
           cars={cars}
+          onPositions={onPositions}
           matchFn={matchFn}
           focusGuid={focusGuid}
           zoom={zoom}

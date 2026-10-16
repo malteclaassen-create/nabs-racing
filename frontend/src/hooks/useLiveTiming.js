@@ -12,6 +12,11 @@ import { noteBoardClock } from "./useNow.js";
 // state here — they fire several times a second and would re-render the whole
 // live page; instead `onCarTelemetry(cb)` hands them to whoever subscribed
 // (the map's readout chip), and only that component re-renders.
+//
+// The map has a fast-lane of its own: while something is subscribed through
+// `onPositions(cb)`, the backend sends the cars that moved as `{p: [[id, x, z,
+// spline, age], …], t}` frames at the race server's pace (~5 a second), outside
+// React state for the same reason; `cb(rows, t, arrivedAt)`.
 export function useLiveTiming() {
   const [board, setBoard] = useState(null);
   const [socketState, setSocketState] = useState("connecting"); // connecting | open | closed
@@ -26,6 +31,7 @@ export function useLiveTiming() {
   const serverRef = useRef(null);
   const [serverKey, setServerKey] = useState(null);
   const telListeners = useRef(new Set());
+  const posListeners = useRef(new Set());
 
   useEffect(() => {
     aliveRef.current = true;
@@ -88,6 +94,13 @@ export function useLiveTiming() {
             /* the next follow() call repeats it */
           }
         }
+        if (posListeners.current.size) {
+          try {
+            ws.send(JSON.stringify({ positions: true }));
+          } catch {
+            /* the board's positions still move the map */
+          }
+        }
       };
       ws.onmessage = (ev) => {
         try {
@@ -95,6 +108,13 @@ export function useLiveTiming() {
           if (data.car) {
             telListeners.current.forEach((cb) => cb(data.car));
             return; // fast-lane frame, not a board
+          }
+          if (data.p) {
+            // When it got here, on this page's clock: the map plays positions
+            // back on the server's, and needs both to tell them apart.
+            const at = performance.now();
+            posListeners.current.forEach((cb) => cb(data.p, data.t, at));
+            return; // map positions, not a board
           }
           // Every lap time on the page is measured against a stamp from the
           // race server, so the page runs on the board's clock rather than on
@@ -180,5 +200,27 @@ export function useLiveTiming() {
     return () => telListeners.current.delete(cb);
   }, []);
 
-  return { board, socketState, follow, onCarTelemetry, setServer, serverKey };
+  // Subscribe to the position fast-lane; returns the unsubscribe. The backend
+  // is told when the first subscriber arrives and when the last one leaves, so
+  // a viewer without a map on screen is not sent positions at all.
+  const onPositions = useCallback((cb) => {
+    const tell = (on) => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ positions: on }));
+        } catch {
+          /* reconnect re-announces */
+        }
+      }
+    };
+    posListeners.current.add(cb);
+    if (posListeners.current.size === 1) tell(true);
+    return () => {
+      posListeners.current.delete(cb);
+      if (posListeners.current.size === 0) tell(false);
+    };
+  }, []);
+
+  return { board, socketState, follow, onCarTelemetry, onPositions, setServer, serverKey };
 }
