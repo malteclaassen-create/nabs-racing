@@ -32,6 +32,7 @@ import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
 import * as pitRecorder from "./pitRecorder.js";
 import { createDeltaTracker } from "./liveDelta.js";
+import { createGapTracker } from "./liveGaps.js";
 import * as liveIncidents from "./liveIncidents.js";
 import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
@@ -688,6 +689,10 @@ function createRelay(server) {
   // Each driver's live delta to their own best lap, measured from the
   // telemetry (services/liveDelta.js). Cleared with the stints.
   const deltaTracker = createDeltaTracker();
+  // Race gaps at 500 timing loops round the lap (services/liveGaps.js), so a
+  // gap moves as the cars do instead of once a lap at the line. Cleared with
+  // the stints.
+  const gapTracker = createGapTracker();
   const CROSSINGS_KEPT = 6;
 
   // IsInPits, cleaned up. See pitFlag.js for why the raw flag cannot be shown
@@ -1007,6 +1012,7 @@ function createRelay(server) {
       raceRosterByGuid.clear();
       crossingsByGuid.clear();
       deltaTracker.clear();
+      gapTracker.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -1447,7 +1453,11 @@ function createRelay(server) {
     const guid = carIdToGuid.get(live.CarID);
     const inPits = guid ? pitFilter.read(guid, live.IsInPits, speedKmhOf(live)) : undefined;
     pitRecorder.onTelemetry(server.key, guid, live, inPits);
-    if (guid) deltaTracker.onFrame(guid, live.NormalisedSplinePos, Date.now(), !!inPits);
+    if (guid) {
+      const now = Date.now();
+      deltaTracker.onFrame(guid, live.NormalisedSplinePos, now, !!inPits);
+      gapTracker.onFrame(guid, live.NormalisedSplinePos, now);
+    }
     liveIncidents.onTelemetry(server.key, {
       guid,
       carId: live.CarID,
@@ -2078,7 +2088,18 @@ function createRelay(server) {
       // How far this car was behind that one when they last crossed the same
       // line. Null when either of them hasn't been seen crossing it (too far
       // back, or joined after).
+      //
+      // The timing loops round the lap answer first (gapTracker): the same
+      // subtraction, but at the last of 500 points the car behind passed, so
+      // the gap is a few metres old rather than up to a lap. The line
+      // crossings stay as the fallback for a car whose trace has a hole.
       const gapBetween = (behind, ahead) => {
+        const live = gapTracker.gap(
+          realGuid.get(behind),
+          realGuid.get(ahead),
+          ahead.lastLapMs || ahead.bestLapMs || 0
+        );
+        if (live != null) return live;
         const lap = Math.min(behind.lapCount || 0, ahead.lapCount || 0);
         if (lap < 1) return null;
         const mine = crossedAt(behind, lap);
@@ -2106,7 +2127,12 @@ function createRelay(server) {
         // gapBetween guards against. Not "level with the leader": unknown.
         e.lapsDown = Math.max(0, down);
         e.gapToLeaderMs = down === 0 ? gapBetween(e, leader) : null;
-        e.intervalMs = ahead && (e.lapCount || 0) === (ahead.lapCount || 0) ? gapBetween(e, ahead) : null;
+        // The car ahead on the same lap — with the same line correction as
+        // above, so the interval does not blank for the seconds between the
+        // car ahead crossing the line and this one doing the same.
+        let behindAhead = ahead ? (ahead.lapCount || 0) - (e.lapCount || 0) : null;
+        if (behindAhead === 1 && e.onTrack && ahead.onTrack && (e.spline || 0) > (ahead.spline || 0)) behindAhead = 0;
+        e.intervalMs = behindAhead === 0 ? gapBetween(e, ahead) : null;
       });
       // The pace car is not racing anybody.
       for (const e of entries) {
@@ -2250,6 +2276,7 @@ function createRelay(server) {
       heldPositions: lastRacePosByGuid.size,
       crossingDrivers: crossingsByGuid.size, // capped at CROSSINGS_KEPT each
       deltaDrivers: deltaTracker.size(), // four 2 KB buffers each at most
+      gapDrivers: gapTracker.size(), // one 4 KB buffer each
 
       raceRoster: raceRosterByGuid.size,
       resultHold: !!finishedRace,
@@ -2270,6 +2297,7 @@ function createRelay(server) {
       lastRacePosByGuid.clear();
       crossingsByGuid.clear();
       deltaTracker.clear();
+      gapTracker.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
