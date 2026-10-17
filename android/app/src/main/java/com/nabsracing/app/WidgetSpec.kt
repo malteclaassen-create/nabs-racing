@@ -67,9 +67,11 @@ private val BASE = mapOf(
 //
 // The width is always the iPhone's: the core works its columns out for exactly
 // that width. The height follows the shape of the space, so the picture fills it,
-// but only so far: a much flatter or taller box than the layout was made for would
-// squeeze or stretch it out of shape. Past that the picture keeps its shape and the
-// widget shows a margin instead (the ImageView fits it in).
+// but never below the iPhone's own height: the layouts are full to the brim at that
+// height, and one pressed flatter runs off its top and bottom edges (the large "My
+// Season" lost the top of its picture at 85 %). A box flatter than the layout gets a
+// margin at the sides instead (the ImageView fits the picture in). Taller is fine up
+// to a point, where the space inside a layout just grows.
 fun layoutFor(widthDp: Float, heightDp: Float): Layout {
     val w = max(widthDp, 1f)
     val h = max(heightDp, 1f)
@@ -80,7 +82,7 @@ fun layoutFor(widthDp: Float, heightDp: Float): Layout {
         else -> "small"
     }
     val (bw, bh) = BASE.getValue(family)
-    val height = (bw / ratio).roundToInt().coerceIn((bh * 0.85f).roundToInt(), (bh * 1.35f).roundToInt())
+    val height = (bw / ratio).roundToInt().coerceIn(bh, (bh * 1.35f).roundToInt())
     return Layout(family, bw, height)
 }
 

@@ -34,13 +34,27 @@ class WidgetSpecTest {
     @Test
     fun theHeightStopsWhereTheLayoutWouldBendOutOfShape() {
         // A 4 x 1 strip: far flatter than the medium widget
-        assertEquals(134, layoutFor(360f, 80f).height)
+        assertEquals(158, layoutFor(360f, 80f).height)
         // 3 x 2: too narrow for medium, too small for large
         val l = layoutFor(260f, 190f)
         assertEquals("small", l.family)
-        assertEquals(134, l.height)
+        assertEquals(158, l.height)
         // very tall
         assertEquals(213, layoutFor(120f, 400f).height)
+    }
+
+    @Test
+    fun aLayoutIsNeverPressedBelowTheIphonesHeight() {
+        // The space that cut the top off "My Season" on a Samsung: a bit flatter
+        // than the large widget
+        val l = layoutFor(360f, 320f)
+        assertEquals("large", l.family)
+        assertEquals(354, l.height)
+        for ((w, h) in listOf(400f to 120f, 300f to 280f, 140f to 120f)) {
+            val x = layoutFor(w, h)
+            val iphone = mapOf("small" to 158, "medium" to 158, "large" to 354).getValue(x.family)
+            assertTrue("${x.family} at $w x $h", x.height >= iphone)
+        }
     }
 
     @Test
