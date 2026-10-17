@@ -25,7 +25,7 @@ it is done once.
 | The download link        | <https://nabsracing.com/android.apk>                    |
 | The releases             | GitHub, under Releases (`android-v1.0`, ...)            |
 | The build                | GitHub Actions, workflow "Android app"                  |
-| How members install it   | My Profile -> Widgets, "The NABS app"                   |
+| How members install it   | My Profile -> Widgets -> Android                        |
 
 ---
 
@@ -79,7 +79,7 @@ or the fingerprint does not match.
 
 ## Installing it (what members do)
 
-Members find this under **My Profile -> Widgets** (once that page is switched
+Members find this under **My Profile -> Widgets -> Android** (once that page is switched
 on for everyone; until then only admins see it):
 
 1. Open <https://nabsracing.com/android.apk> on the phone. Android asks once
