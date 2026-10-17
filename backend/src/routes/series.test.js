@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { eventDateOf } from "./series.js";
+import { eventDateOf, eventRaceOf } from "./series.js";
 import { parseKind } from "../lib/series.js";
 
 const NOW = Date.parse("2026-10-17T12:00:00Z");
@@ -43,5 +43,14 @@ describe("parseKind", () => {
 
   it("rejects anything else", () => {
     expect(parseKind("cup").ok).toBe(false);
+  });
+});
+
+describe("eventRaceOf", () => {
+  it("returns the race itself, so the promo page can show its laps and grid", () => {
+    const next = { id: "b", date: "2026-11-06T17:30:00Z", isCompleted: false };
+    const races = [{ id: "a", date: "2026-10-01T17:30:00Z", isCompleted: true }, next];
+    expect(eventRaceOf(races, NOW)).toBe(next);
+    expect(eventRaceOf([], NOW)).toBe(null);
   });
 });

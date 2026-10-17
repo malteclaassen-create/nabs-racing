@@ -20,7 +20,9 @@ import { api } from "../api/client.js";
 import { answerWords } from "../utils/signupAnswers.mjs";
 import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
+import IdleFilm from "../components/IdleFilm.jsx";
+import { useIdleFilm } from "../hooks/useIdleFilm.js";
 import { Skeleton, CountUp, MEDAL, ErrorBox, DriverAvatar } from "../components/ui.jsx";
 import { useParallax, useMagnetic, motionOff } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
@@ -532,6 +534,9 @@ export default function Welcome() {
   const checklist = useChecklist();
 
   const photoRef = useParallax(0.08);
+  // The car tile plays the series' promo film while the page is left alone
+  // (same as the member home's main card, see hooks/useIdleFilm.js).
+  const film = useIdleFilm(useSeries().current?.promoVideoUrl);
 
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   // Same rule as Home: trainings count as the next race (utils/raceFormat.js).
@@ -848,6 +853,8 @@ export default function Welcome() {
             scrim and the label carry a z-index because that image sits on a
             compositing layer of its own and would otherwise paint over them. */}
         <div
+          ref={film.ref}
+          data-film={film.showing ? "on" : undefined}
           className={`hero-anim relative col-span-2 h-48 overflow-hidden rounded-[1.5rem] bg-ink shadow-card sm:h-64 lg:col-span-5 ${
             nextRace || leader ? "" : "lg:h-auto"
           }`}
@@ -862,8 +869,9 @@ export default function Welcome() {
             onError={heroOnError}
             className="absolute inset-0 h-full w-full object-cover object-center"
           />
-          <div className="absolute inset-0 z-10 bg-gradient-to-t from-ink/85 to-transparent" />
-          <div className="absolute inset-x-5 bottom-4 z-20 flex items-end justify-between gap-3 text-white">
+          <IdleFilm film={film} className="z-[5]" />
+          <div className="hero-hud absolute inset-0 z-10 bg-gradient-to-t from-ink/85 to-transparent" />
+          <div className="hero-hud absolute inset-x-5 bottom-4 z-20 flex items-end justify-between gap-3 text-white">
             <div className="min-w-0">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">This season&rsquo;s cars</div>
               <div className="truncate font-display text-xl font-black uppercase tracking-tight">{carsLabel}</div>

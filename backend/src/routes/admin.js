@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
@@ -116,6 +116,7 @@ import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
   writeSeriesLogo,
+  writeSeriesPromoVideo,
   writeSeriesShareImage,
   SHARE_PAGES,
   parseShareText,
@@ -4989,7 +4990,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
@@ -5061,6 +5062,97 @@ router.delete("/series/:id", async (req, res, next) => {
     }
     await dbDeleteSeries(prisma, series.id);
     res.json({ ok: true, deletedSeasons: seasons.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/promo-video  (multipart: file=<mp4|webm>)
+// Uploads (or replaces) the series' promo film: the clip the main card plays
+// when nobody is touching the page, and the backdrop of its promo page. Far
+// too big for the 10 MB in-memory image upload, so it streams to disk like a
+// download does, under a temporary name, and is renamed into place only once
+// it is complete and of the right type.
+const PROMO_VIDEO_EXT = { "video/mp4": ".mp4", "video/webm": ".webm" };
+const PROMO_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+const promoVideoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      try {
+        mkdirSync(SERIES_DIR, { recursive: true });
+        cb(null, SERIES_DIR);
+      } catch (e) {
+        cb(e);
+      }
+    },
+    filename: (req, file, cb) => cb(null, `.promo-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  }),
+  limits: { fileSize: PROMO_VIDEO_MAX_BYTES },
+});
+// The app-wide error handler names the 20 MB attachment limit; a film has its own.
+function takePromoVideo(req, res, next) {
+  promoVideoUpload.single("file")(req, res, (err) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `The film is too big. The limit is ${PROMO_VIDEO_MAX_BYTES / 1024 / 1024} MB.` });
+    }
+    next(err);
+  });
+}
+router.post("/series/:id/promo-video", takePromoVideo, async (req, res, next) => {
+  const tmp = req.file?.path;
+  const dropTmp = () => {
+    try {
+      if (tmp && existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+  };
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = PROMO_VIDEO_EXT[req.file.mimetype];
+    if (!ext) {
+      dropTmp();
+      return res.status(400).json({ error: "Unsupported video type (use MP4 or WebM)" });
+    }
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) {
+      dropTmp();
+      return res.status(404).json({ error: "Series not found" });
+    }
+    const filename = `${series.id}-promo${ext}`;
+    const dest = safeUploadPath(SERIES_DIR, filename);
+    if (!dest) {
+      dropTmp();
+      return res.status(400).json({ error: "This series' id can't be used as a file name" });
+    }
+    renameSync(tmp, dest);
+    // The other format's file from an earlier upload would otherwise linger.
+    for (const other of Object.values(PROMO_VIDEO_EXT)) {
+      if (other === ext) continue;
+      const old = safeUploadPath(SERIES_DIR, `${series.id}-promo${other}`);
+      if (old && existsSync(old)) unlinkSync(old);
+    }
+    const promoVideoUrl = `/api/uploads/series/${filename}?v=${Date.now()}`;
+    await writeSeriesPromoVideo(prisma, series.id, promoVideoUrl);
+    res.json({ ok: true, promoVideoUrl });
+  } catch (e) {
+    dropTmp();
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id/promo-video -> remove the film (the main card
+// goes back to its still picture).
+router.delete("/series/:id/promo-video", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    for (const ext of Object.values(PROMO_VIDEO_EXT)) {
+      const file = safeUploadPath(SERIES_DIR, `${series.id}-promo${ext}`);
+      if (file && existsSync(file)) unlinkSync(file);
+    }
+    await writeSeriesPromoVideo(prisma, series.id, null);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

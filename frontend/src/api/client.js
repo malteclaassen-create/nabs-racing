@@ -275,6 +275,32 @@ function upToQ(season, upTo) {
 
 // For POST bodies that target the admin's currently-edited season: the series
 // rides along so the backend's active-season fallback stays inside the series.
+// POSTs one file to an admin endpoint as multipart "file". XHR rather than
+// fetch so the UI can show real upload progress: onProgress(percent 0-100).
+function adminUploadWithProgress(path, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}/api${path}`);
+    const token = adminAuthToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* non-JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+      const err = new Error((data && data.error) || `Upload failed (${xhr.status})`);
+      err.status = xhr.status;
+      reject(err);
+    };
+    xhr.onerror = () => reject(new Error("Upload failed (network error)"));
+    xhr.send(fd);
+  });
+}
+
 function seriesBody() {
   return SELECTED_SERIES ? { series: SELECTED_SERIES } : {};
 }
@@ -602,6 +628,8 @@ export const api = {
   seasons: () => request(`/seasons${seriesQ()}`, { auth: true }),
   // All visible racing series, switcher order (admins also get private ones).
   series: () => request("/series", { auth: true }),
+  // A special event's promo page: the series, its race and its pictures.
+  seriesPromo: (slug) => request(`/series/${encodeURIComponent(slug)}/promo`, { auth: true }),
   // Global search across drivers/teams/races/seasons/series — NOT scoped to the
   // current series/season (built without seriesQ/seasonQ on purpose). auth:true
   // so a signed-in admin also gets private-season/series hits.
@@ -1232,6 +1260,10 @@ export const api = {
     return request(`/admin/series/${id}/logo`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearSeriesLogo: (id) => request(`/admin/series/${id}/logo`, { method: "DELETE", auth: true }),
+  // Promo film (MP4/WebM, up to 300 MB) for the series' main card and promo page.
+  uploadSeriesPromoVideo: (id, file, onProgress) =>
+    adminUploadWithProgress(`/admin/series/${id}/promo-video`, file, onProgress),
+  clearSeriesPromoVideo: (id) => request(`/admin/series/${id}/promo-video`, { method: "DELETE", auth: true }),
   // Every page of a series as a pasted link shows it (Site -> Link previews).
   adminLinkPreviews: (id) => request(`/admin/series/${id}/link-previews`, { auth: true }),
   // A page's own link-preview title/description (blank = automatic).
@@ -1445,28 +1477,7 @@ export const api = {
   adminDownloads: () => request("/admin/downloads", { auth: true }),
   // Streams a (potentially huge) file into backend/downloads/. Uses XHR rather
   // than fetch so the UI can show real upload progress. onProgress(percent 0-100).
-  uploadDownloadFile: (file, onProgress) =>
-    new Promise((resolve, reject) => {
-      const fd = new FormData();
-      fd.append("file", file);
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${BASE}/api/admin/downloads/upload`);
-      const token = adminAuthToken();
-      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        let data = null;
-        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* non-JSON */ }
-        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
-        const err = new Error((data && data.error) || `Upload failed (${xhr.status})`);
-        err.status = xhr.status;
-        reject(err);
-      };
-      xhr.onerror = () => reject(new Error("Upload failed (network error)"));
-      xhr.send(fd);
-    }),
+  uploadDownloadFile: (file, onProgress) => adminUploadWithProgress("/admin/downloads/upload", file, onProgress),
   createDownload: (body) => request("/admin/downloads", { method: "POST", body, auth: true }),
   updateDownload: (id, body) => request(`/admin/downloads/${id}`, { method: "PATCH", body, auth: true }),
   // `alsoFile` also removes the uploaded file from the server's disk.

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
@@ -5981,6 +5981,103 @@ function SeriesLogo({ series, onSaved, onError }) {
   );
 }
 
+// The series' promo: the film its main card plays while nobody touches the
+// page (an MP4/WebM, streamed up with a progress figure since it runs to tens
+// of megabytes), and the switch for the promo page every visitor gets once on
+// arrival. "Preview" opens that page on the real site without switching it on.
+function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [progress, setProgress] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const off = panelBusy || busy || progress !== null;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setProgress(0);
+    try {
+      await api.uploadSeriesPromoVideo(series.id, file, setProgress);
+      onSaved(`Promo film uploaded for ${series.name}. Leave its home page alone for 8 seconds to see it play.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function removeFilm() {
+    if (!(await ask({ title: `Remove ${series.name}'s promo film?`, danger: true, confirmLabel: "Remove film" }))) return;
+    setBusy(true);
+    try {
+      await api.clearSeriesPromoVideo(series.id);
+      onSaved(`Promo film removed from ${series.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function togglePromo() {
+    const on = !series.promoAt;
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promo: on });
+      onSaved(
+        on
+          ? series.isPublic
+            ? `Promo page on: every visitor sees ${series.name}'s promo once.`
+            : `Promo page on. Visitors get it once ${series.name} is public.`
+          : `Promo page off for ${series.name}.`
+      );
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-surface2/60 px-3 py-2 text-xs">
+      <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Promo</span>
+      <input aria-label={`Promo film for ${series.name}`} ref={fileRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={pick} />
+      {progress !== null ? (
+        <span className="font-semibold text-medium">Uploading film… {progress}%</span>
+      ) : (
+        <>
+          <span className="text-light">{series.promoVideoUrl ? "Film uploaded" : "No film"}</span>
+          <button type="button" className="font-semibold text-link hover:underline" disabled={off}
+            onClick={() => fileRef.current?.click()} title="MP4 or WebM, up to 300 MB. Muted, looped; 1080p H.264 MP4 plays everywhere">
+            {series.promoVideoUrl ? "Replace film" : "Upload film"}
+          </button>
+          {series.promoVideoUrl && (
+            <button type="button" className="font-semibold text-light hover:text-link" disabled={off} onClick={removeFilm}>
+              Remove film
+            </button>
+          )}
+        </>
+      )}
+      <span className="h-3 w-px bg-border" />
+      <span className="text-light">
+        Promo page:{" "}
+        {series.promoAt ? (
+          <span className="font-semibold text-ok">on{series.isPublic ? "" : " (once public)"}</span>
+        ) : (
+          <span className="font-semibold">off</span>
+        )}
+      </span>
+      <button type="button" className="font-semibold text-link hover:underline" disabled={off} onClick={togglePromo}>
+        {series.promoAt ? "Switch off" : "Switch on"}
+      </button>
+      <Link to={`/s/${series.slug}?promo=${encodeURIComponent(series.slug)}`} className="font-semibold text-link hover:underline">
+        Preview
+      </Link>
+    </div>
+  );
+}
+
 // --- SERIES ------------------------------------------------------------------
 // The level above seasons: several championships (Friday F1, Sunday GT, …) in
 // one deployment. The slug (the /s/<slug>/ URL identity) is set once at
@@ -6199,6 +6296,7 @@ function SeriesPanel() {
                 </>
               )}
             </div>
+            <SeriesPromo series={s} busy={busy} onSaved={(m) => { setMsg(m); setError(null); reload(); nudge(); }} onError={setError} />
           </li>
         ))}
       </ul>

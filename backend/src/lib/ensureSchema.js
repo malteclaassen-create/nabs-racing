@@ -374,6 +374,11 @@ export async function ensureAppSchema(prisma) {
   // What the series is: null/'championship' = a season-long league, 'event' =
   // a one-off special event (lib/series.js SERIES_KINDS).
   await addColumn(prisma, "Series", "kind", "TEXT");
+  // Promo film (uploaded MP4/WebM) the series' main card plays when nobody is
+  // touching the page, and the admin's promo-page switch: the ISO time it was
+  // switched on, null = off.
+  await addColumn(prisma, "Series", "promoVideoUrl", "TEXT");
+  await addColumn(prisma, "Series", "promoAt", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.

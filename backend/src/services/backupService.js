@@ -60,6 +60,8 @@ export async function tryCreateBackup(prisma, label) {
 // downloaded, and it eventually just aborted. Streaming starts the download
 // immediately and keeps memory flat. Images are STORED rather than deflated
 // (they're already compressed); the DB snapshot still shrinks well.
+const PROMO_FILM_RE = /^series\/[^/]+-promo\.(mp4|webm)$/;
+
 export async function streamFullBackupZip(prisma, res) {
   const snap = await createBackup(prisma, "full-download");
   const stamp = snap.file.replace(/^nabs-/, "").replace(/-full-download\.db$/, "");
@@ -83,7 +85,12 @@ export async function streamFullBackupZip(prisma, res) {
   // The snapshot goes in under the name the server expects on restore.
   archive.file(join(BACKUP_DIR, snap.file), { name: "dev.db" });
   if (existsSync(UPLOADS_DIR)) {
-    archive.directory(UPLOADS_DIR, "uploads", (entry) => ({ ...entry, store: true }));
+    // A series' promo film (series/<id>-promo.mp4) stays out like the
+    // downloads do: up to 300 MB that the admin still has on their own disk,
+    // in every backup otherwise.
+    archive.directory(UPLOADS_DIR, "uploads", (entry) =>
+      PROMO_FILM_RE.test(entry.name) ? false : { ...entry, store: true }
+    );
   }
   await archive.finalize();
   return { name };

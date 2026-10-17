@@ -73,6 +73,16 @@ model Series {
   // championships in the switcher, with its date, and its standings menu
   // leaves out the constructors and transfers. Raw-SQL column.
   kind          String?
+  // Admin-uploaded promo film, e.g. "/api/uploads/series/<id>-promo.mp4?v=<ts>".
+  // The series' Home/Welcome main card plays it (muted, looped) after a few
+  // seconds without input, with the overlay faded out. null = no film.
+  // Raw-SQL column (ensureSchema).
+  promoVideoUrl String?
+  // The promo page switch: the ISO time an admin switched it on, null = off.
+  // While on, every visitor who can see the series gets the promo page once
+  // on arrival; the time is part of the "seen" key, so off-and-on again shows
+  // it once more. Raw-SQL column (ensureSchema).
+  promoAt       String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

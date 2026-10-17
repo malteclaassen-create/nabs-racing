@@ -21,6 +21,7 @@ import UpdateBanner from "./components/UpdateBanner.jsx";
 import AndroidAppNotice from "./components/AndroidAppNotice.jsx";
 import TrainingCue from "./components/TrainingCue.jsx";
 import RaceRecapHost from "./components/RaceRecap.jsx";
+import PromoHost from "./components/EventPromo.jsx";
 import { Skeleton } from "./components/ui.jsx";
 import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
@@ -536,6 +537,9 @@ function SeriesScopedApp() {
         {/* The round told from your seat, once, the first time you come back
             after the office saved a result. Asks the server itself. */}
         <RaceRecapHost />
+        {/* A special event's promo page, once per visitor while an admin has
+            it switched on (or on ?promo=<slug>, the preview). */}
+        <PromoHost />
         </ConfirmProvider>
       </SeasonProvider>
     </TourProvider>
