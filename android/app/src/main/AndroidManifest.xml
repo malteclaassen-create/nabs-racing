@@ -18,6 +18,7 @@
     <application
         android:name=".NabsApp"
         android:allowBackup="true"
+        android:manageSpaceActivity="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
@@ -62,6 +63,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- "Site settings": the browser's settings for nabsracing.com (storage,
+             notifications), from a long press on the app icon and from the app's
+             storage screen. LauncherActivity switches it on at every start when
+             the browser can show them, and crashes if it is not declared here. -->
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL"
+                android:value="@string/launchUrl" />
         </activity>
 
         <activity
