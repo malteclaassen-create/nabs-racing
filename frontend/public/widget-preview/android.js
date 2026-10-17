@@ -83,6 +83,14 @@ async function draw() {
   stage.replaceChildren(node)
   await document.fonts.ready
   S.fitTexts(node)
+  // The flags and pictures in it are <img>s that load on their own time; the
+  // app takes its picture the moment it hears done(), so they have to be in
+  // first. One that fails or takes over five seconds is left out, not waited for.
+  await Promise.race([
+    Promise.all([...node.querySelectorAll("img")].map(img =>
+      img.complete ? null : new Promise(ok => { img.addEventListener("load", ok); img.addEventListener("error", ok) }))),
+    new Promise(ok => setTimeout(ok, 5000)),
+  ])
   // Two frames, so what the app photographs is what was just laid out.
   await new Promise(ok => requestAnimationFrame(() => requestAnimationFrame(ok)))
   const refresh = w.refreshAfterDate ? new Date(w.refreshAfterDate).getTime() : NaN
