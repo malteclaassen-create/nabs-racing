@@ -82,6 +82,23 @@
           }, 3500);
         } catch (e) {}
       })();
+      // Inside the Android app (android/), the site is the app, and an app does
+      // not pinch-zoom into a blown-up, sideways-scrolling page. The app says
+      // it is the app with ?app=android (and Chrome names it as the referrer);
+      // the mark is kept for the tab, because the address loses it on the first
+      // link. In a browser, zooming stays: some people need it to read.
+      (function () {
+        try {
+          var inApp =
+            /[?&]app=android(&|$)/.test(location.search) ||
+            document.referrer.indexOf("android-app://com.nabsracing.app") === 0;
+          if (inApp) sessionStorage.setItem("nabs_android_app", "1");
+          else inApp = sessionStorage.getItem("nabs_android_app") === "1";
+          if (!inApp) return;
+          var vp = document.querySelector('meta[name="viewport"]');
+          if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no");
+        } catch (e) {}
+      })();
     </script>
   </head>
   <body>
