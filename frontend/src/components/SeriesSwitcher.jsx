@@ -47,9 +47,66 @@ function eventDateLabel(iso) {
   return `${day} · ${time}`;
 }
 
+// Events still to come (soonest first, undated ones after them) and the ones
+// that are over (latest first). Over = its race was more than a day ago, the
+// same day of grace the server gives eventAt (routes/series.js).
+function splitEvents(events, now = Date.now()) {
+  const t = (s) => (s.eventAt ? new Date(s.eventAt).getTime() : NaN);
+  const isPast = (s) => t(s) < now - 24 * 3600e3;
+  const upcoming = events
+    .filter((s) => !isPast(s))
+    .sort((a, b) => (Number.isNaN(t(a)) ? 1 : Number.isNaN(t(b)) ? -1 : t(a) - t(b)));
+  const past = events.filter(isPast).sort((a, b) => t(b) - t(a));
+  return { upcoming, past };
+}
+
+function ChevronRight({ className = "h-4 w-4 shrink-0 text-eyebrow" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+// One entry of the menu: a championship, or an event on the second level.
+function SeriesRow({ s, i, viewing, sub, onClick }) {
+  return (
+    <button
+      role="menuitemradio"
+      aria-checked={viewing}
+      onClick={onClick}
+      style={{ "--i": i }}
+      className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+        viewing ? "liquid-glass-lens" : "hover:bg-surface2"
+      }`}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
+          {s.isPublic === false && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
+              <LockIcon className="h-2.5 w-2.5" />
+              Private
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
+      </span>
+      {viewing && (
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M5 12l5 5L20 6" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function SeriesSwitcher({ mobile = false, onPick }) {
   const { seriesList, current, setSlug } = useSeries();
   const [open, setOpen] = useState(false);
+  // Which list the menu shows: the series, or (one level down) the special
+  // events. Every open starts at the top.
+  const [panel, setPanel] = useState("series");
   const wrapRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,7 +115,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   // dismisses exactly the way the drawers, the dialogs and the other four
   // dropdowns do. It also gains touchstart, which this hand-rolled version
   // lacked: on a phone a tap outside left the menu up until the tap finished.
-  useDismiss(open, useCallback(() => setOpen(false), []), { ref: wrapRef });
+  useDismiss(open, useCallback(() => { setOpen(false); setPanel("series"); }, []), { ref: wrapRef });
 
   // Hidden entirely while there is nothing to switch between.
   if (seriesList.length <= 1) return null;
@@ -71,6 +128,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
 
   const pick = (s) => {
     setOpen(false);
+    setPanel("series");
     const to = seriesSwitchTarget(location.pathname, s.slug);
     if (!to) {
       // A page with no series in its address (admin, profile, Race Info, …):
@@ -96,9 +154,20 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   };
 
   const label = current ? current.name : "Series";
-  // The list keeps the admin's order within each group.
+  // The championships keep the admin's order. The special events sit one
+  // level down, behind a single "Special events" entry, so the top of the menu
+  // stays Friday / Sunday however many one-offs pile up over the years.
   const championships = seriesList.filter((s) => s.kind !== "event");
-  const events = seriesList.filter((s) => s.kind === "event");
+  const { upcoming, past } = splitEvents(seriesList.filter((s) => s.kind === "event"));
+  const events = [...upcoming, ...past];
+  const viewingEvent = current?.kind === "event";
+  const next = upcoming[0] || null;
+  const eventsSub = viewingEvent
+    ? current.name
+    : next
+      ? `Next: ${next.name}${eventDateLabel(next.eventAt) ? ` · ${eventDateLabel(next.eventAt)}` : ""}`
+      : `${events.length} event${events.length === 1 ? "" : "s"}`;
+  const rowProps = (s, i) => ({ s, i, viewing: !!current && s.slug === current.slug, onClick: () => pick(s) });
 
   return (
     <span ref={wrapRef} className={`relative ${mobile ? "block" : "inline-flex"}`}>
@@ -106,7 +175,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { setOpen((o) => !o); setPanel("series"); }}
         title="Switch series"
         className={
           mobile
@@ -158,59 +227,56 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
         {/* py-px so the highlighted entry's ring isn't shaved off at the
             list's own clipping edge (see SeasonPicker for the same fix). */}
         <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
-          {/* Championships first, then the special events under their own
-              heading: "under the Friday/Sunday selection", where a one-off
-              race reads as an extra rather than a third league. */}
-          {[...championships, ...events].map((s, i) => {
-            const viewing = current && s.slug === current.slug;
-            const isEvent = s.kind === "event";
-            // An event's line is its date, even while it is private (the
-            // Private pill already says who can see it).
-            const sub = isEvent
-              ? eventDateLabel(s.eventAt) || s.game || "Special event"
-              : s.isPublic === false
-                ? "Only admins can see this series"
-                : s.game || s.description || "Racing series";
-            return (
-              <div key={s.id}>
-                {isEvent && i === championships.length && championships.length > 0 && (
-                  <div
-                    style={{ "--i": i }}
-                    className="glass-menu-item mx-2.5 mb-1 mt-2 flex items-center gap-2 border-t border-border pt-2 font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">
-                    <StarIcon className="h-2.5 w-2.5 text-brand" />
-                    Special events
-                  </div>
-                )}
+          {panel === "series" ? (
+            <>
+              {championships.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, i)} sub={s.isPublic === false ? "Only admins can see this series" : s.game || s.description || "Racing series"} />
+              ))}
+              {events.length > 0 && (
                 <button
-                  role="menuitemradio"
-                  aria-checked={viewing}
-                  onClick={() => pick(s)}
-                  style={{ "--i": i }}
-                  className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
-                    viewing ? "liquid-glass-lens" : "hover:bg-surface2"
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  onClick={() => setPanel("events")}
+                  style={{ "--i": championships.length }}
+                  className={`glass-menu-item mt-1 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+                    viewingEvent ? "liquid-glass-lens" : "hover:bg-surface2"
                   }`}
                 >
+                  <StarIcon className="h-4 w-4 shrink-0 text-brand" />
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
-                      {s.isPublic === false && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
-                          <LockIcon className="h-2.5 w-2.5" />
-                          Private
-                        </span>
-                      )}
+                    <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                      Special events
                     </span>
-                    <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{eventsSub}</span>
                   </span>
-                  {viewing && (
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M5 12l5 5L20 6" />
-                    </svg>
-                  )}
+                  <ChevronRight />
                 </button>
-              </div>
-            );
-          })}
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setPanel("series")}
+                className="mb-1 flex w-full items-center gap-1.5 rounded-xl px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow transition hover:bg-surface2 hover:text-dark"
+              >
+                <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+                Special events
+              </button>
+              {upcoming.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, i)} sub={eventDateLabel(s.eventAt) || s.game || "Date to be announced"} />
+              ))}
+              {past.length > 0 && (
+                <div className="mx-2.5 mb-1 mt-2 border-t border-border pt-2 font-mono text-[10px] font-bold uppercase tracking-widest text-faint">
+                  Past events
+                </div>
+              )}
+              {past.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, upcoming.length + i)} sub={eventDateLabel(s.eventAt) || s.game || "Special event"} />
+              ))}
+            </>
+          )}
         </div>
       </div>
     </span>
