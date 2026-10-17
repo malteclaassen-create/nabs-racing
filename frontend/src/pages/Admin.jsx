@@ -3503,6 +3503,39 @@ function DriverIntake({ seasonId, seasonName, db, rosterNames, allSeries, onAllS
   // per series — "who races there now" is almost always the top entry.
   const sources = (seasons.data || []).filter((s) => s.id !== seasonId && (s._count?.drivers || 0) > 0);
   const picked = sources.find((s) => s.id === from) || null;
+  // A special event invites the league as it races today: the current season
+  // of every championship, active drivers only. Somebody who drives in both
+  // the Friday and the Sunday series comes over once (the person link says
+  // they are one person, and the endpoint skips who is here already).
+  const target = (seasons.data || []).find((s) => s.id === seasonId) || null;
+  const leagueSources =
+    target?.seriesKind === "event"
+      ? (seasons.data || []).filter(
+          (s) => s.isActive && s.seriesId && s.seriesId !== target.seriesId && s.seriesKind !== "event"
+        )
+      : [];
+
+  async function bringLeague() {
+    setBusy(true);
+    try {
+      let created = 0;
+      let already = 0;
+      for (const src of leagueSources) {
+        const r = await api.cloneDrivers(seasonId, src.id, true, { onlyActive: true });
+        created += r.created || 0;
+        already += (r.skipped || []).length;
+      }
+      onDone(
+        `${created} driver(s) from ${leagueSources.map((s) => s.seriesName || s.name).join(" + ")} added to the ` +
+          `Reserve pool of ${seasonName || "this event"}.` +
+          (already ? ` ${already} were on the roster already (or race in both series).` : "")
+      );
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function bringAll() {
     if (!picked) return;
@@ -3531,6 +3564,17 @@ function DriverIntake({ seasonId, seasonName, db, rosterNames, allSeries, onAllS
         photo, flag, racing number and the Steam id the result import matches on. Everyone keeps their career: the
         new entry is linked to the person it came from. Nobody is added twice, so pressing it again is safe.
       </p>
+      {leagueSources.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2.5">
+          <p className="min-w-0 flex-1 text-sm text-medium">
+            <span className="font-semibold text-dark">Special event:</span> everyone racing in{" "}
+            {leagueSources.map((s) => `${s.seriesName} (${s.name})`).join(" and ")} right now, each person once.
+          </p>
+          <button className="btn-primary px-4 py-1.5 text-sm" disabled={busy} onClick={bringLeague}>
+            {busy ? "Adding…" : "Bring the whole league"}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Season to take the drivers from"
@@ -5947,7 +5991,7 @@ function SeriesPanel() {
   const ask = useAsk();
   const { data: series, reload } = useApi(useCallback(() => api.adminSeries(), []));
   const { setSlug } = useSeries();
-  const [form, setForm] = useState({ name: "", game: "", accentColor: "" });
+  const [form, setForm] = useState({ name: "", game: "", accentColor: "", kind: "championship" });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -5964,9 +6008,15 @@ function SeriesPanel() {
         name: form.name.trim(),
         game: form.game.trim() || null,
         accentColor: form.accentColor.trim() || null,
+        kind: form.kind,
       });
-      setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private, so build its seasons and then publish it. Pick it in the bar above to start editing.`);
-      setForm({ name: "", game: "", accentColor: "" });
+      setMsg(
+        `${s.kind === "event" ? "Special event" : "Series"} "${s.name}" created (URL: /s/${s.slug}). It starts private, so build its seasons and then publish it. Pick it in the bar above to start editing.` +
+          (s.kind === "event"
+            ? " Give it one season with its race, then use \"Bring the whole league\" on the Drivers tab."
+            : "")
+      );
+      setForm({ name: "", game: "", accentColor: "", kind: "championship" });
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -5997,6 +6047,18 @@ function SeriesPanel() {
     try {
       await api.updateSeries(s.id, { isPublic: !s.isPublic });
       setMsg(s.isPublic ? `${s.name} is now private and hidden from the public.` : `${s.name} is now public.`);
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  // Championship <-> special event. Only changes where it sits in the
+  // switcher and what its standings menu offers; no data moves.
+  async function toggleKind(s) {
+    const kind = s.kind === "event" ? "championship" : "event";
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeries(s.id, { kind });
+      setMsg(kind === "event" ? `${s.name} is now a special event.` : `${s.name} is now a championship.`);
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -6061,6 +6123,7 @@ function SeriesPanel() {
             <div className="min-w-0">
               <span className="font-display text-base font-bold text-dark">{s.name}</span>
               {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-ok">primary</span>}
+              {s.kind === "event" && <span className="ml-2 pill bg-brand/15 text-brand">special event</span>}
               {!s.isActive && s.isPublic === false && (
                 <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
               )}
@@ -6118,6 +6181,11 @@ function SeriesPanel() {
               </button>
               <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => rename(s)}>Rename</button>
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                onClick={() => toggleKind(s)}
+                title="A special event is a one-off race in a series of its own: it sits under the championships in the switcher">
+                {s.kind === "event" ? "Make championship" : "Make special event"}
+              </button>
               {!s.isActive && (
                 <>
                   <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
@@ -6149,7 +6217,14 @@ function SeriesPanel() {
         />
         <input aria-label="Accent colour hex code" className="input w-28 font-mono" placeholder="#6de0fc" value={form.accentColor}
           onChange={(e) => setForm({ ...form, accentColor: e.target.value })} />
-        <button className="btn-primary" disabled={busy || !form.name.trim()}>Create series</button>
+        <select aria-label="Kind of series" className="input w-auto" value={form.kind}
+          onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <option value="championship">Championship</option>
+          <option value="event">Special event</option>
+        </select>
+        <button className="btn-primary" disabled={busy || !form.name.trim()}>
+          {form.kind === "event" ? "Create event" : "Create series"}
+        </button>
       </form>
       {error && <Notice kind="error">{error}</Notice>}
       {msg && <Notice kind="success">{msg}</Notice>}

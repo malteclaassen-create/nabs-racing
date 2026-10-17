@@ -371,6 +371,9 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Series", "shareImages", "TEXT");
   // Per-page link-preview wording, JSON { <page>: { title, description } }.
   await addColumn(prisma, "Series", "shareTexts", "TEXT");
+  // What the series is: null/'championship' = a season-long league, 'event' =
+  // a one-off special event (lib/series.js SERIES_KINDS).
+  await addColumn(prisma, "Series", "kind", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.

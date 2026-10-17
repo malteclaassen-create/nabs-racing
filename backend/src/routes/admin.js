@@ -4969,7 +4969,7 @@ router.get("/series", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/series  { name, game?, description?, accentColor? }
+// POST /api/admin/series  { name, game?, description?, accentColor?, kind? }
 // The slug is derived from the name once and then frozen.
 router.post("/series", async (req, res, next) => {
   try {
@@ -4981,6 +4981,7 @@ router.post("/series", async (req, res, next) => {
       game: req.body?.game,
       description: req.body?.description,
       accentColor: req.body?.accentColor,
+      kind: req.body?.kind,
     });
     res.status(201).json(series);
   } catch (e) {
@@ -4988,7 +4989,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
@@ -5243,6 +5244,7 @@ router.get("/seasons", async (req, res, next) => {
             seriesId,
             seriesName: series?.name || null,
             seriesSlug: series?.slug || null,
+            seriesKind: series?.kind || null,
             teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
             teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
             fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
@@ -5406,6 +5408,10 @@ router.post("/seasons", async (req, res, next) => {
       return res.status(409).json({ error: `A season with that number already exists in ${series.name}` });
     }
     const data = { number: n, name, game: game || null };
+    // A special event is one race: dropping a competitor's worst rounds would
+    // drop the only one there is. Its season counts every round unless the
+    // admin says otherwise.
+    if (series.kind === "event" && req.body?.dropWorst === undefined) data.dropWorst = 0;
     const scoringError = applyScoringInput(req.body || {}, data);
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
@@ -5704,7 +5710,7 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/seasons/:id/clone-drivers  { fromSeasonId }
+// POST /api/admin/seasons/:id/clone-drivers  { fromSeasonId, toReservePool?, onlyActive? }
 // Copies only the DRIVERS of another season into this one, into the teams that
 // are already here.
 //
@@ -5730,13 +5736,19 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
     // being invented. It also crosses series, where team names mean nothing to
     // each other anyway.
     const toPool = !!req.body?.toReservePool;
+    // Only the drivers still racing in the source: a special event invites the
+    // league as it is today, not everybody who ever held a seat there.
+    const onlyActive = !!req.body?.onlyActive;
     const target = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!target) return res.status(404).json({ error: "Target season not found" });
     if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
     if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
 
     const [sourceDrivers, targetTeams, present, persons] = await Promise.all([
-      prisma.driver.findMany({ where: { seasonId: fromSeasonId }, include: { team: true } }),
+      prisma.driver.findMany({
+        where: { seasonId: fromSeasonId, ...(onlyActive ? { isActive: true } : {}) },
+        include: { team: true },
+      }),
       prisma.team.findMany({ where: { seasonId: target.id } }),
       prisma.driver.findMany({ where: { seasonId: target.id }, select: { id: true, name: true } }),
       getPersonGroups(prisma),

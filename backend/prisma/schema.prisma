@@ -67,6 +67,12 @@ model Series {
   // Per-page link-preview wording, JSON { <page>: { title?, description? } }.
   // Goes into the og:/twitter: tags only, never the page title. Raw-SQL column.
   shareTexts    String?
+  // What the series is (ensureSchema adds the column): null/"championship" =
+  // a season-long league like Friday/Sunday, "event" = a one-off special event
+  // (a single race weekend in a series of its own). An event sits under the
+  // championships in the switcher, with its date, and its standings menu
+  // leaves out the constructors and transfers. Raw-SQL column.
+  kind          String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
@@ -351,17 +351,19 @@ const desktopLinkClass = ({ isActive }) =>
 // phone sheet alike. `preview` is what the panel beside the desktop menu shows
 // while that row is pointed at: the drivers' table, the teams', the latest
 // moves or the Hall of Fame (components/StandingsPreview.jsx).
-function standingsPages(seriesPath, transfers, multiTier) {
+// A special event (Series.kind "event") is one race in a series of its own:
+// it has a driver table but no constructors' fight and no transfer market.
+function standingsPages(seriesPath, transfers, multiTier, isEvent = false) {
   return [
     { to: seriesPath("/drivers"), Icon: User, title: "Drivers", sub: "Driver standings", tour: "nav-drivers", preview: "drivers" },
-    {
+    !isEvent && {
       to: seriesPath("/constructors"),
       Icon: Users,
       title: "Constructors",
       sub: multiTier ? "Tier 1 & Tier 2" : "Constructor standings",
       preview: "constructors",
     },
-    transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
+    transfers && !isEvent && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
     { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "records" },
   ].filter(Boolean);
 }
@@ -774,7 +776,8 @@ function StandingsNav({ seriesPath }) {
     `glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
       isActive ? "liquid-glass-lens" : "hover:bg-surface2"
     }`;
-  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier);
+  const isEvent = useSeries().current?.kind === "event";
+  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier, isEvent);
 
   return (
     <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
@@ -906,6 +909,7 @@ function NavGlidePill({ box }) {
 
 export default function NavBar() {
   const { seriesPath, slug: viewedSeries } = useSeriesPath();
+  const { current } = useSeries();
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
@@ -1103,7 +1107,7 @@ export default function NavBar() {
 
   // No preview in the phone sheet: the rows are what it is for, and asking for
   // three tables every time the menu opens would cost more than it shows.
-  const sheetPages = standingsPages(seriesPath, transfersVisible, false);
+  const sheetPages = standingsPages(seriesPath, transfersVisible, false, current?.kind === "event");
 
   // Pulling the sheet down by its grip. It follows the finger straight, with
   // no React render per frame; let go far enough down and it closes from where

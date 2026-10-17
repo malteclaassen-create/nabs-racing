@@ -30,6 +30,7 @@ function shapeSeries(r) {
     shareImageUrl: r.shareImageUrl || null,
     shareImages: parseShareImages(r.shareImages),
     shareTexts: parseShareTexts(r.shareTexts),
+    kind: parseKind(r.kind).value || "championship",
     createdAt: r.createdAt,
   };
 }
@@ -152,6 +153,20 @@ export function parseAccentColor(v) {
   return { ok: true, value: s.toLowerCase() };
 }
 
+// What a series is: a season-long championship (Friday, Sunday) or a one-off
+// special event, which gets a series of its own so it can be built up
+// privately, carries its own sign-up, results and colours, and sits apart in
+// the switcher. Stored as null for "championship" (every series from before
+// this existed). Anything else is rejected.
+export const SERIES_KINDS = ["championship", "event"];
+export function parseKind(v) {
+  if (v === undefined) return { ok: true, skip: true };
+  if (v === null || v === "") return { ok: true, value: null };
+  const s = String(v).trim().toLowerCase();
+  if (!SERIES_KINDS.includes(s)) return { ok: false, error: `kind must be one of ${SERIES_KINDS.join(", ")}` };
+  return { ok: true, value: s === "championship" ? null : s };
+}
+
 // URL-safe slug from a series name ("Sunday GT Masters" -> "sunday-gt-masters").
 export function slugifySeries(name) {
   return String(name || "")
@@ -206,7 +221,7 @@ export async function getSeriesById(prisma, id) {
 
 // Create a series. The slug is derived from the name (or taken explicitly),
 // uniquified with a numeric suffix, and FROZEN afterwards.
-export async function dbCreateSeries(prisma, { name, slug, game, description, accentColor }) {
+export async function dbCreateSeries(prisma, { name, slug, game, description, accentColor, kind }) {
   const base = slugifySeries(slug || name) || "series";
   const all = await dbListSeries(prisma, { includePrivate: true });
   const taken = new Set(all.map((s) => s.slug));
@@ -216,23 +231,26 @@ export async function dbCreateSeries(prisma, { name, slug, game, description, ac
   const order = all.length ? Math.max(...all.map((s) => s.order)) + 1 : 0;
   const color = parseAccentColor(accentColor);
   if (!color.ok) throw Object.assign(new Error(color.error), { status: 400 });
+  const k = parseKind(kind);
+  if (!k.ok) throw Object.assign(new Error(k.error), { status: 400 });
   // New series start PRIVATE (like new seasons): built up quietly, published
   // when ready. The first series ever is created public by the backfill.
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "Series" ("id","name","slug","game","description","order","isActive","isPublic","accentColor")
-     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+    `INSERT INTO "Series" ("id","name","slug","game","description","order","isActive","isPublic","accentColor","kind")
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
     id,
     String(name).trim(),
     finalSlug,
     game ? String(game).trim() : null,
     description ? String(description).trim() : null,
     order,
-    color.skip ? null : color.value
+    color.skip ? null : color.value,
+    k.skip ? null : k.value
   );
   return getSeriesById(prisma, id);
 }
 
-// Update name/game/description/order/isPublic. The slug is deliberately NOT
+// Update name/game/description/order/isPublic/accentColor/kind. The slug is deliberately NOT
 // updatable — it's the URL identity shared links depend on.
 export async function dbUpdateSeries(prisma, id, patch) {
   const sets = [];
@@ -262,6 +280,12 @@ export async function dbUpdateSeries(prisma, id, patch) {
     if (!color.ok) throw Object.assign(new Error(color.error), { status: 400 });
     sets.push(`"accentColor" = ?`);
     vals.push(color.value);
+  }
+  if (patch.kind !== undefined) {
+    const k = parseKind(patch.kind);
+    if (!k.ok) throw Object.assign(new Error(k.error), { status: 400 });
+    sets.push(`"kind" = ?`);
+    vals.push(k.value);
   }
   if (sets.length) {
     await prisma.$executeRawUnsafe(`UPDATE "Series" SET ${sets.join(", ")} WHERE "id" = ?`, ...vals, id);

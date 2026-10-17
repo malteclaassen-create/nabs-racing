@@ -26,6 +26,27 @@ function LockIcon({ className = "h-3 w-3" }) {
   );
 }
 
+// Star marking a special event (Series.kind "event"), in the list and on the
+// button while one is being viewed.
+function StarIcon({ className = "h-3 w-3" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.87l-5.5 2.88 1.05-6.12L3.1 9.3l6.15-.9z" />
+    </svg>
+  );
+}
+
+// "Fri 6 Nov · 18:30" in the viewer's own time zone: the line under a special
+// event's name, where a championship shows its game.
+function eventDateLabel(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
 export default function SeriesSwitcher({ mobile = false, onPick }) {
   const { seriesList, current, setSlug } = useSeries();
   const [open, setOpen] = useState(false);
@@ -75,6 +96,9 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   };
 
   const label = current ? current.name : "Series";
+  // The list keeps the admin's order within each group.
+  const championships = seriesList.filter((s) => s.kind !== "event");
+  const events = seriesList.filter((s) => s.kind === "event");
 
   return (
     <span ref={wrapRef} className={`relative ${mobile ? "block" : "inline-flex"}`}>
@@ -98,6 +122,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
           <>
             <span className="flex min-w-0 items-center gap-2">
               {current?.isPublic === false && <LockIcon className="h-3 w-3 shrink-0 text-warn" />}
+              {current?.kind === "event" && <StarIcon className="h-3 w-3 shrink-0 text-brand" />}
               <span className="truncate">{label}</span>
             </span>
             <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
@@ -105,6 +130,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
         ) : (
           <>
             {current?.isPublic === false && <LockIcon className="h-2.5 w-2.5 shrink-0 text-warn" />}
+            {current?.kind === "event" && <StarIcon className="h-2.5 w-2.5 shrink-0 text-brand" />}
             <span className="block truncate text-xs font-semibold uppercase tracking-widest text-light transition group-hover:text-dark">
               {label}
             </span>
@@ -127,44 +153,62 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
       {/* Menu — rendered from the /series list, so it scales to any number. */}
       <div
         role="menu"
-        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-64 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-72 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
       >
         {/* py-px so the highlighted entry's ring isn't shaved off at the
             list's own clipping edge (see SeasonPicker for the same fix). */}
         <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
-          {seriesList.map((s, i) => {
+          {/* Championships first, then the special events under their own
+              heading: "under the Friday/Sunday selection", where a one-off
+              race reads as an extra rather than a third league. */}
+          {[...championships, ...events].map((s, i) => {
             const viewing = current && s.slug === current.slug;
+            const isEvent = s.kind === "event";
+            // An event's line is its date, even while it is private (the
+            // Private pill already says who can see it).
+            const sub = isEvent
+              ? eventDateLabel(s.eventAt) || s.game || "Special event"
+              : s.isPublic === false
+                ? "Only admins can see this series"
+                : s.game || s.description || "Racing series";
             return (
-              <button
-                key={s.id}
-                role="menuitemradio"
-                aria-checked={viewing}
-                onClick={() => pick(s)}
-                style={{ "--i": i }}
-                className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
-                  viewing ? "liquid-glass-lens" : "hover:bg-surface2"
-                }`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
-                    {s.isPublic === false && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
-                        <LockIcon className="h-2.5 w-2.5" />
-                        Private
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block truncate font-mono text-[11px] text-light">
-                    {s.isPublic === false ? "Only admins can see this series" : s.game || s.description || "Racing series"}
-                  </span>
-                </span>
-                {viewing && (
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 12l5 5L20 6" />
-                  </svg>
+              <div key={s.id}>
+                {isEvent && i === championships.length && championships.length > 0 && (
+                  <div
+                    style={{ "--i": i }}
+                    className="glass-menu-item mx-2.5 mb-1 mt-2 flex items-center gap-2 border-t border-border pt-2 font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">
+                    <StarIcon className="h-2.5 w-2.5 text-brand" />
+                    Special events
+                  </div>
                 )}
-              </button>
+                <button
+                  role="menuitemradio"
+                  aria-checked={viewing}
+                  onClick={() => pick(s)}
+                  style={{ "--i": i }}
+                  className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+                    viewing ? "liquid-glass-lens" : "hover:bg-surface2"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
+                      {s.isPublic === false && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
+                          <LockIcon className="h-2.5 w-2.5" />
+                          Private
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
+                  </span>
+                  {viewing && (
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12l5 5L20 6" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             );
           })}
         </div>

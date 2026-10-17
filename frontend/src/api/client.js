@@ -1263,10 +1263,11 @@ export const api = {
   cloneRoster: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/clone-roster`, { method: "POST", body: { fromSeasonId }, auth: true }),
   // Drivers into the teams THIS season already has, without touching the teams.
-  cloneDrivers: (id, fromSeasonId, toReservePool = false) =>
+  // onlyActive: leave out whoever no longer races in the source season.
+  cloneDrivers: (id, fromSeasonId, toReservePool = false, { onlyActive = false } = {}) =>
     request(`/admin/seasons/${id}/clone-drivers`, {
       method: "POST",
-      body: { fromSeasonId, toReservePool },
+      body: { fromSeasonId, toReservePool, onlyActive },
       auth: true,
     }),
   // Every season of EVERY series (an explicit empty ?series= switches the
