@@ -40,8 +40,10 @@ class WidgetWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val shot = renderer.render(renderUrl(config, frame.layout), frame)
                 store.savePicture(id, shot.bitmap)
                 store.setTapUrl(id, shot.url)
-                NabsWidgetProvider.show(ctx, manager, id, shot.bitmap, shot.url)
-                val wants = nextRefresh(now, shot.refreshAfter)
+                store.setTimers(id, shot.timers)
+                val timers = store.timers(id)
+                NabsWidgetProvider.show(ctx, manager, id, shot.bitmap, shot.url, timers = timers)
+                val wants = nextRefresh(now, shot.refreshAfter, timers.minOfOrNull { it.target })
                 next = if (next == null) wants else minOf(next, wants)
             } catch (e: CancellationException) {
                 throw e
@@ -50,7 +52,7 @@ class WidgetWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 failed = true
                 // Keep the last picture; with none, say why the widget is empty.
                 val old = store.picture(id)
-                if (old == null) NabsWidgetProvider.show(ctx, manager, id, null, store.tapUrl(id), ctx.getString(R.string.widget_offline))
+                if (old == null) NabsWidgetProvider.show(ctx, manager, id, null, store.tapUrl(id), note = ctx.getString(R.string.widget_offline))
             }
         }
 

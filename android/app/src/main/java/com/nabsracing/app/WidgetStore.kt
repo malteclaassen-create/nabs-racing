@@ -3,6 +3,7 @@ package com.nabsracing.app
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import org.json.JSONArray
 import java.io.File
 
 // What the app remembers about its widgets: each one's settings, the page a tap
@@ -50,6 +51,31 @@ class WidgetStore(context: Context) {
         prefs.edit().putString("$id.url", url).apply()
     }
 
+    // The running clocks that go over the picture (LiveTimer), as android.js
+    // sent them with it.
+    fun timers(id: Int): List<LiveTimer> = try {
+        val a = JSONArray(prefs.getString("$id.timers", "[]") ?: "[]")
+        (0 until a.length()).map { i ->
+            val o = a.getJSONObject(i)
+            LiveTimer(
+                target = o.getLong("target"),
+                x = o.getDouble("x").toFloat(),
+                y = o.getDouble("y").toFloat(),
+                w = o.getDouble("w").toFloat(),
+                h = o.getDouble("h").toFloat(),
+                size = o.getDouble("size").toFloat(),
+                color = o.optString("color", "#FFFFFF"),
+                align = o.optString("align", "left"),
+            )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun setTimers(id: Int, json: String) {
+        prefs.edit().putString("$id.timers", json).apply()
+    }
+
     fun picture(id: Int): Bitmap? {
         val f = File(pictures, "$id.png")
         return if (f.exists()) BitmapFactory.decodeFile(f.path) else null
@@ -64,7 +90,7 @@ class WidgetStore(context: Context) {
 
     fun forget(id: Int) {
         prefs.edit().apply {
-            for (k in listOf("view", "series", "driver", "tier", "url")) remove("$id.$k")
+            for (k in listOf("view", "series", "driver", "tier", "url", "timers")) remove("$id.$k")
         }.apply()
         File(pictures, "$id.png").delete()
     }

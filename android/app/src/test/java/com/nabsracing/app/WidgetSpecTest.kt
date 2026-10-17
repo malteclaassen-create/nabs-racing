@@ -80,7 +80,7 @@ class WidgetSpecTest {
         val url = renderUrl(WidgetConfig("me", "sunday-championship", "Max Power", true), Layout("small", 158, 160))
         assertEquals(
             "https://nabsracing.com/widget-preview/android.html?view=me&family=small&w=158&h=160" +
-                "&driver=Max%20Power&series=sunday-championship&scope=tier",
+                "&driver=Max%20Power&series=sunday-championship&scope=tier&live=1",
             url,
         )
     }
@@ -88,7 +88,45 @@ class WidgetSpecTest {
     @Test
     fun noTierWithoutADriver() {
         val url = renderUrl(WidgetConfig("standings", tierOnly = true), Layout("medium", 338, 158))
-        assertEquals("https://nabsracing.com/widget-preview/android.html?view=standings&family=medium&w=338&h=158", url)
+        assertEquals("https://nabsracing.com/widget-preview/android.html?view=standings&family=medium&w=338&h=158&live=1", url)
+    }
+
+    @Test
+    fun thePreviewKeepsItsClocksInThePage() {
+        val url = renderUrl(WidgetConfig("countdown"), Layout("small", 158, 158), liveTimers = false)
+        assertEquals("https://nabsracing.com/widget-preview/android.html?view=countdown&family=small&w=158&h=158", url)
+    }
+
+    @Test
+    fun aClockGoesWhereItWasInThePicture() {
+        // "Lights out in" on a medium widget: the bottom left of the picture
+        val t = LiveTimer(0, x = 0.04f, y = 0.78f, w = 0.6f, h = 0.14f, size = 0.056f, color = "#F4AFC6", align = "left")
+        // The picture fills a widget of its own size exactly
+        val same = placeTimer(t, 990f, 470f, 990, 470)
+        assertEquals(40, same.left)
+        assertEquals(367, same.top)
+        assertEquals(990 - 40 - 594, same.right)
+        assertEquals(38, same.bottom) // 470 - (366.6 + 65.8)
+        assertEquals(55.4f, same.textPx, 0.1f)
+        // A wider widget: the picture is centred, the clock moves with it
+        val wide = placeTimer(t, 1090f, 470f, 990, 470)
+        assertEquals(90, wide.left)
+        assertEquals(367, wide.top)
+        // A picture smaller than the widget is scaled up, and the clock with it
+        val scaled = placeTimer(t, 1980f, 940f, 990, 470)
+        assertEquals(79, scaled.left)
+        assertEquals(110.9f, scaled.textPx, 0.1f)
+    }
+
+    @Test
+    fun theWidgetIsDrawnAgainWhenAClockReachesZero() {
+        val now = 1_000_000_000L
+        // lights out in 20 minutes, the widget itself asked for 2 hours
+        assertEquals(now + 20 * 60_000L + 15_000L, nextRefresh(now, now + 2 * 3_600_000L, now + 20 * 60_000L))
+        // in 30 seconds: too close to book, the usual five minutes stand
+        assertEquals(now + 5 * 60_000L, nextRefresh(now, now + 60_000L, now + 30_000L))
+        // in six hours: later than what the widget asked for anyway
+        assertEquals(now + 2 * 3_600_000L, nextRefresh(now, now + 2 * 3_600_000L, now + 6 * 3_600_000L))
     }
 
     @Test
