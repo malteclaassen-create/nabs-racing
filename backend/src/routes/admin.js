@@ -160,7 +160,7 @@ import {
   PROGRESS_STATES, parseProgress, readDriverProgress, writeDriverProgress,
 } from "../lib/driverProgress.js";
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
-import { isWidgetsPagePublic, setWidgetsPagePublic } from "../lib/widgetsPage.js";
+import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
@@ -8057,10 +8057,11 @@ router.put("/telemetry-visibility", async (req, res, next) => {
 
 // GET/PUT /api/admin/widgets-visibility — the Widgets section of the profile:
 // admins only while the widgets are tried out, then everyone's
-// (lib/widgetsPage.js).
+// (lib/widgetsPage.js). Its Android half has a switch of its own; a PUT changes
+// whichever of `public` and `androidPublic` it names.
 router.get("/widgets-visibility", async (req, res, next) => {
   try {
-    res.json({ public: await isWidgetsPagePublic(prisma) });
+    res.json({ public: await isWidgetsPagePublic(prisma), androidPublic: await isAndroidWidgetsPublic(prisma) });
   } catch (e) {
     next(e);
   }
@@ -8068,8 +8069,9 @@ router.get("/widgets-visibility", async (req, res, next) => {
 
 router.put("/widgets-visibility", async (req, res, next) => {
   try {
-    const on = await setWidgetsPagePublic(prisma, req.body?.public === true);
-    res.json({ ok: true, public: on });
+    if (typeof req.body?.public === "boolean") await setWidgetsPagePublic(prisma, req.body.public);
+    if (typeof req.body?.androidPublic === "boolean") await setAndroidWidgetsPublic(prisma, req.body.androidPublic);
+    res.json({ ok: true, public: await isWidgetsPagePublic(prisma), androidPublic: await isAndroidWidgetsPublic(prisma) });
   } catch (e) {
     next(e);
   }

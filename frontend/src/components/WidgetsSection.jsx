@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Copy, RotateCw } from "lucide-react";
+import { Check, Copy, Download, RotateCw } from "lucide-react";
 import { ErrorBox, Spinner } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import "./widgetRenderer.css";
@@ -431,9 +431,9 @@ const TIPS = [
   "Tapping a widget opens the matching page on nabsracing.com.",
 ];
 
-function HowTo({ name, innerRef }) {
+function HowTo({ name }) {
   return (
-    <section ref={innerRef} className="card scroll-mt-28 p-5 sm:p-6">
+    <section className="card p-5 sm:p-6">
       <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">About two minutes, once</div>
       <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">Get them on your iPhone</h2>
       <p className="mt-1 text-sm text-light">It works with the free app Scriptable.</p>
@@ -461,10 +461,105 @@ function HowTo({ name, innerRef }) {
   );
 }
 
+// ─── Android ───────────────────────────────────────────────
+// The same widgets on Android come with the NABS app (android/), which draws
+// them with these very files, at the iPhone's sizes, and scales the picture to
+// the space on the home screen. The app is a download from the site, not a
+// Play Store app: /android.apk points at the newest release
+// (backend/src/lib/androidRelease.js).
+
+// Which half opens first: the one for the phone in the visitor's hand. ?platform=
+// in the address wins, then the last choice, then the browser's own word.
+const PLATFORMS = [
+  { key: "iphone", label: "iPhone" },
+  { key: "android", label: "Android" },
+];
+function firstPlatform(saved) {
+  try {
+    const asked = new URLSearchParams(window.location.search).get("platform");
+    if (PLATFORMS.some((p) => p.key === asked)) return asked;
+  } catch {
+    /* no address to read: fall through */
+  }
+  if (PLATFORMS.some((p) => p.key === saved)) return saved;
+  return typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? "android" : "iphone";
+}
+
+const ANDROID_STEPS = [
+  {
+    title: "Download the app.",
+    body: (
+      <>
+        Tap <b className="text-dark">Download the app</b> on your Android phone. Android asks once whether your browser may install apps:
+        allow it for this one, then tap <b className="text-dark">Install</b>.
+      </>
+    ),
+  },
+  {
+    title: "Open the app.",
+    body: "It is this website without the browser around it: sign in once and you stay signed in.",
+  },
+  {
+    title: "Put a widget on your home screen.",
+    body: (
+      <>
+        Press and hold an empty spot on the home screen, tap <b className="text-dark">Widgets</b>, find{" "}
+        <b className="text-dark">NABS Racing</b> and drag it onto the screen.
+      </>
+    ),
+  },
+  {
+    title: "Pick what it shows.",
+    body: "A screen opens where you pick one of the widgets above, your series and your driver name, exactly as on the website, with a preview before you add it.",
+  },
+];
+
+const ANDROID_TIPS = [
+  "Resize a widget like any other: it switches between the small, medium and large layout to fit.",
+  "To change one later, press and hold it and tap the pencil (or Widget settings).",
+  "Android decides when a widget redraws, so numbers can be a few minutes old. On a race night it redraws every few minutes.",
+  "Tapping a widget opens the matching page in the app.",
+  "When there is a new version of the app, the app tells you, with a button to get it.",
+];
+
+function AndroidHowTo() {
+  return (
+    <section className="card p-5 sm:p-6">
+      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">About two minutes, once</div>
+      <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">Get them on your Android phone</h2>
+      <p className="mt-1 text-sm text-light">They come with the NABS app.</p>
+      <ol className="mt-5 space-y-4">
+        {ANDROID_STEPS.map((s, i) => (
+          <li key={s.title} className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-[13px] font-black text-ink">
+              {i + 1}
+            </span>
+            <div className="min-w-0 pt-0.5 text-[15px] leading-relaxed text-light">
+              <b className="text-dark">{s.title}</b> {s.body}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <a href="/android.apk" className="btn-primary mt-5 inline-flex items-center gap-1.5">
+        <Download className="h-4 w-4" aria-hidden="true" />
+        Download the app
+      </a>
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-light">Good to know</div>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-relaxed text-light">
+          {ANDROID_TIPS.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 const SELECT = "input w-auto min-w-0 py-1.5 font-sans text-sm font-semibold normal-case tracking-normal";
 const LABEL = "flex min-w-0 flex-col gap-1 font-mono text-[10.5px] font-bold uppercase tracking-wider text-light";
 
-export default function WidgetsSection({ driverName, isPublic = true, isAdmin = false }) {
+export default function WidgetsSection({ driverName, isPublic = true, isAdmin = false, androidVisible = false, androidPublic = false }) {
   const [engine, setEngine] = useState(null);
   const [engineError, setEngineError] = useState(null);
   const [member, setMember] = useState(null); // { series, tier }
@@ -473,6 +568,13 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
   const [scope, setScope] = useState(saved.scope === "tier" ? "tier" : "all");
   const [deviceKey, setDeviceKey] = useState(DEVICES[saved.device] ? saved.device : "pro");
   const [screen, setScreen] = useState(saved.screen === "lock" ? "lock" : "home");
+  const [chosen, setPlatform] = useState(() => firstPlatform(saved.platform));
+  // The Android half is the admins' until it is published (lib/widgetsPage.js);
+  // without it the page is the iPhone page it always was.
+  const platform = androidVisible ? chosen : "iphone";
+  const android = platform === "android";
+  // What the pill and the note say: the switch of the half on screen.
+  const shownPublic = android ? androidPublic : isPublic;
   const [reloads, setReloads] = useState(0);
   const howTo = useRef(null);
   const base = typeof window !== "undefined" && window.innerWidth >= 1024 ? 1.15 : 1;
@@ -503,10 +605,13 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
   const shownScope = tierChoice ? scope : "all";
 
   useEffect(() => {
-    if (member) writeSaved({ series: seriesSlug, scope, device: deviceKey, screen });
-  }, [member, seriesSlug, scope, deviceKey, screen]);
+    if (member) writeSaved({ series: seriesSlug, scope, device: deviceKey, screen, platform: chosen });
+  }, [member, seriesSlug, scope, deviceKey, screen, chosen]);
 
-  const device = DEVICES[deviceKey];
+  // Android draws the widgets at the iPhone 15's sizes (android.js), and has no
+  // lock screen widgets.
+  const device = android ? DEVICES.pro : DEVICES[deviceKey];
+  const families = android ? FAMILIES.home : FAMILIES[screen];
 
   // Everything one round of drawing shares: the settings file the setup would
   // have written on the phone, and the files the widget code keeps between
@@ -537,44 +642,66 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
   // Your own widgets need a driver to be about.
   const widgets = (engine?.widgets || []).filter((w) => found || !w.driver);
 
+  const phone = android ? "Android home screen" : "iPhone";
   let lead;
   if (!member) lead = "Loading your widgets…";
   else if (found)
-    lead = "This is how your widgets look on your iPhone, with your own numbers. It is all live, the same data as the website.";
+    lead = `This is how your widgets look on your ${phone}, with your own numbers. It is all live, the same data as the website.`;
   else
     lead = `We could not find ${driverName || "you"} in a current season, so there is nothing of your own to show yet. Below are the widgets that look the same for everybody.`;
 
   return (
     <div className="cascade cascade-auto space-y-6">
+      {/* Two halves, one per kind of phone. The widgets are the same; how they
+          get onto the phone is not. */}
+      {androidVisible && (
+        <SlidingTabs items={PLATFORMS} value={platform} onChange={setPlatform} btnClassName="px-5 py-2 text-sm font-semibold" />
+      )}
+
       <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">On your iPhone</div>
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
+              {android ? "On Android, with the NABS app" : "On your iPhone"}
+            </div>
             <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">Your NABS widgets</h2>
           </div>
           {isAdmin && (
-            <span className={`pill ${isPublic ? "bg-emerald-500/15 text-ok" : "bg-amber-500/15 text-warn"}`}>
-              {isPublic ? "Visible to members" : "Admins only"}
+            <span className={`pill ${shownPublic ? "bg-emerald-500/15 text-ok" : "bg-amber-500/15 text-warn"}`}>
+              {shownPublic ? "Visible to members" : "Admins only"}
             </span>
           )}
         </div>
         <p className="mt-2 max-w-3xl text-[15px] text-light">{lead}</p>
-        {isAdmin && !isPublic && (
+        {android && (
+          <p className="mt-2 max-w-3xl text-[15px] text-light">
+            On Android they come with the NABS app: the website as an app, with these widgets for your home screen.
+          </p>
+        )}
+        {isAdmin && !shownPublic && (
           <p className="mt-2 max-w-3xl text-sm text-light">
-            Members don&rsquo;t see this section yet.{" "}
+            Members don&rsquo;t see {android ? "the Android half" : "this section"} yet.{" "}
             <Link to="/admin?tab=widgets" className="font-semibold text-link hover:underline">
               Publish it in the admin
             </Link>{" "}
             when the widgets are ready.
           </p>
         )}
-        <button
-          type="button"
-          className="btn-secondary mt-4 inline-flex items-center gap-1.5"
-          onClick={() => howTo.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-        >
-          How to get them on your phone <span aria-hidden="true">↓</span>
-        </button>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {android && (
+            <a href="/android.apk" className="btn-primary inline-flex items-center gap-1.5">
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Download the app
+            </a>
+          )}
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-1.5"
+            onClick={() => howTo.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            How to get them on your phone <span aria-hidden="true">↓</span>
+          </button>
+        </div>
 
         <div className="mt-5 flex flex-wrap items-end gap-x-4 gap-y-3 border-t border-border pt-4">
           {member?.series.length > 1 && (
@@ -598,25 +725,29 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
               </select>
             </label>
           )}
-          <label className={LABEL}>
-            Phone
-            <select className={SELECT} value={deviceKey} onChange={(e) => setDeviceKey(e.target.value)}>
-              {Object.entries(DEVICES).map(([k, d]) => (
-                <option key={k} value={k}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SlidingTabs
-            items={[
-              { key: "home", label: "Home screen" },
-              { key: "lock", label: "Lock screen" },
-            ]}
-            value={screen}
-            onChange={setScreen}
-            btnClassName="px-3 py-1.5 text-sm font-semibold"
-          />
+          {!android && (
+            <>
+              <label className={LABEL}>
+                Phone
+                <select className={SELECT} value={deviceKey} onChange={(e) => setDeviceKey(e.target.value)}>
+                  {Object.entries(DEVICES).map(([k, d]) => (
+                    <option key={k} value={k}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <SlidingTabs
+                items={[
+                  { key: "home", label: "Home screen" },
+                  { key: "lock", label: "Lock screen" },
+                ]}
+                value={screen}
+                onChange={setScreen}
+                btnClassName="px-3 py-1.5 text-sm font-semibold"
+              />
+            </>
+          )}
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-1.5 py-1.5"
@@ -635,11 +766,13 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
         <Spinner label="Drawing your widgets…" />
       ) : (
         widgets.map((w) => (
-          <WidgetCard key={w.view} engine={engine} pass={pass} widget={w} families={FAMILIES[screen]} device={device} base={base} />
+          <WidgetCard key={w.view} engine={engine} pass={pass} widget={w} families={families} device={device} base={base} />
         ))
       )}
 
-      <HowTo name={found ? driverName : ""} innerRef={howTo} />
+      <div ref={howTo} className="scroll-mt-28">
+        {android ? <AndroidHowTo /> : <HowTo name={found ? driverName : ""} />}
+      </div>
     </div>
   );
 }

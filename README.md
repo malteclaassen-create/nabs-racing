@@ -15,6 +15,7 @@ JSON and editing results. Older seasons are kept as a read-only archive.
 
 ```
 nabs-racing/
+├── android/      The Android app: the site full screen, plus home screen widgets (see ANDROID-APP.md)
 ├── backend/      Express REST API + Prisma + seed
 └── frontend/     React + Vite + Tailwind SPA
 ```

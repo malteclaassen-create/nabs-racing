@@ -60,6 +60,7 @@ import {
 import { shareImageFor } from "./lib/sharePictures.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
+import { androidRelease } from "./lib/androidRelease.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
 import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlugKnown, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
@@ -417,6 +418,25 @@ app.get("/.well-known/assetlinks.json", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
+});
+
+// The Android app as a download (lib/androidRelease.js): /android.apk is the
+// short address to hand out, and the app asks /api/app/android whether it is
+// still the newest. Both answer from android/release.json, which ships with
+// every deploy.
+app.get("/android.apk", (req, res) => {
+  const release = androidRelease();
+  if (!release) return res.status(404).json({ error: "There is no Android app yet" });
+  // Not cached: the next release has to be what the link gives the same day.
+  res.setHeader("Cache-Control", "no-cache");
+  res.redirect(302, release.url);
+});
+
+app.get("/api/app/android", (req, res) => {
+  const release = androidRelease();
+  if (!release) return res.status(404).json({ error: "There is no Android app yet" });
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.json(release);
 });
 
 app.get("/robots.txt", (req, res) => {

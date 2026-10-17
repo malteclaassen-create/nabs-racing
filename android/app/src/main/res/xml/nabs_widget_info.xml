@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One widget that fits any size: WidgetSpec picks the iPhone's small, medium or
+     large layout from the shape it is given. 4 x 2 to start with, like the iPhone's
+     medium one. updatePeriodMillis is 0 because WidgetWorker decides when to redraw,
+     from what the widget itself says (refreshAfterDate in nabs-core.js). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget"
+    android:previewImage="@drawable/widget_preview"
+    android:description="@string/widget_description"
+    android:configure="com.nabsracing.app.WidgetConfigActivity"
+    android:widgetFeatures="reconfigurable"
+    android:widgetCategory="home_screen" />

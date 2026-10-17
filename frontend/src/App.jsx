@@ -18,6 +18,7 @@ import PreviewToggle from "./components/PreviewToggle.jsx";
 import ScrollBar from "./components/ScrollBar.jsx";
 import FeedbackWidget from "./components/FeedbackWidget.jsx";
 import UpdateBanner from "./components/UpdateBanner.jsx";
+import AndroidAppNotice from "./components/AndroidAppNotice.jsx";
 import TrainingCue from "./components/TrainingCue.jsx";
 import RaceRecapHost from "./components/RaceRecap.jsx";
 import { Skeleton } from "./components/ui.jsx";
@@ -526,6 +527,9 @@ function SeriesScopedApp() {
         {/* "A new version is ready" for tabs that have been open since before
             the last deploy — the live page is left up for hours. */}
         <UpdateBanner />
+        {/* "A new version of the NABS app is out", inside the Android app only,
+            when the APK on the phone is older than the newest one. */}
+        <AndroidAppNotice />
         {/* "20 training laps. +10." along the bottom edge, once, when a
             milestone on the practice server has just paid. */}
         <TrainingCue />
