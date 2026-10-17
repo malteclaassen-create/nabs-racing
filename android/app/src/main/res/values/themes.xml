@@ -11,6 +11,20 @@
         <item name="android:navigationBarColor">@color/nabs_background</item>
     </style>
 
+    <!-- The font the widgets' timers are drawn in (JetBrains Mono Bold, the
+         site's own, from frontend/public/fonts), so the ticking clock over the
+         picture looks like the text it stands in for. -->
+    <style name="WidgetClock">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:fontFamily">@font/jetbrains_mono_bold</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:gravity">start|center_vertical</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
     <style name="ConfigLabel">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>

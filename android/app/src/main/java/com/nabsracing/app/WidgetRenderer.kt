@@ -54,7 +54,9 @@ import kotlin.coroutines.resumeWithException
 // asks it to draw itself onto a bitmap, which most WebViews also manage.
 class WidgetRenderer(private val context: Context) {
 
-    class Shot(val bitmap: Bitmap, val url: String?, val refreshAfter: Long?)
+    // timers: the running clocks android.js left out of the picture, as the JSON
+    // array it sent (LiveTimer, read by WidgetStore.timers).
+    class Shot(val bitmap: Bitmap, val url: String?, val refreshAfter: Long?, val timers: String = "[]")
 
     // The page answered, and it was not a widget (no connection, an error in the
     // widget code, the page missing). Nothing to draw: the widget keeps its old picture.
@@ -81,7 +83,7 @@ class WidgetRenderer(private val context: Context) {
             null
         } ?: withTimeoutOrNull(FALLBACK_TIMEOUT_MS) { withoutDisplay(url, frame.widthPx, frame.heightPx) }
             ?: throw RenderFailed("The widget took too long to draw")
-        Shot(rounded(shot.bitmap, radius), shot.url, shot.refreshAfter)
+        Shot(rounded(shot.bitmap, radius), shot.url, shot.refreshAfter, shot.timers)
     }
 
     @SuppressLint("WrongConstant")
@@ -148,7 +150,7 @@ class WidgetRenderer(private val context: Context) {
                 return
             }
             cleanup()
-            if (cont.isActive) cont.resume(Shot(bitmap, report.url, report.refreshAfter))
+            if (cont.isActive) cont.resume(Shot(bitmap, report.url, report.refreshAfter, report.timers))
         }
 
         try {
@@ -203,7 +205,7 @@ class WidgetRenderer(private val context: Context) {
                             fail(RenderFailed("This phone's WebView drew nothing off screen"))
                         } else {
                             cleanup()
-                            if (cont.isActive) cont.resume(Shot(bitmap, report.url, report.refreshAfter))
+                            if (cont.isActive) cont.resume(Shot(bitmap, report.url, report.refreshAfter, report.timers))
                         }
                     }
                 }, 500)
@@ -215,7 +217,7 @@ class WidgetRenderer(private val context: Context) {
         v.loadUrl(url)
     }
 
-    private class Report(val ok: Boolean, val url: String?, val refreshAfter: Long?, val error: String?)
+    private class Report(val ok: Boolean, val url: String?, val refreshAfter: Long?, val error: String?, val timers: String = "[]")
 
     // What android.js reports back through window.NabsWidget.done(json).
     class Bridge(private val main: Handler, private val onDone: (String) -> Unit) {
@@ -254,6 +256,7 @@ class WidgetRenderer(private val context: Context) {
                     url = o.optString("url").takeIf { it.isNotBlank() && it != "null" },
                     refreshAfter = if (o.isNull("refreshAfter")) null else o.optLong("refreshAfter"),
                     error = o.optString("error").takeIf { it.isNotBlank() && it != "null" },
+                    timers = o.optJSONArray("timers")?.toString() ?: "[]",
                 )
             } catch (e: Exception) {
                 Report(false, null, null, "Unreadable answer from the widget page")

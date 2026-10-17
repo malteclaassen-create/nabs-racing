@@ -22,4 +22,16 @@
         android:contentDescription="@string/widget_label"
         android:scaleType="fitCenter"
         android:visibility="gone" />
+
+    <!-- The widget's running clocks, laid over the spot android.js left empty in
+         the picture (LiveTimer). They count down by themselves, every second.
+         Placed by padding, the only way to position a view in a home screen
+         widget on every Android version. -->
+    <Chronometer
+        android:id="@+id/timer0"
+        style="@style/WidgetClock" />
+
+    <Chronometer
+        android:id="@+id/timer1"
+        style="@style/WidgetClock" />
 </FrameLayout>

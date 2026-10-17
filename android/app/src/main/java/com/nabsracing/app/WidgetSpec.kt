@@ -104,7 +104,7 @@ fun frameFor(widthDp: Float, heightDp: Float, density: Float, maxPixels: Int = M
 const val MAX_PIXELS = 900_000
 
 // The page that draws it (frontend/public/widget-preview/android.js).
-fun renderUrl(config: WidgetConfig, layout: Layout): String {
+fun renderUrl(config: WidgetConfig, layout: Layout, liveTimers: Boolean = true): String {
     val q = linkedMapOf(
         "view" to config.view,
         "family" to layout.family,
@@ -114,18 +114,65 @@ fun renderUrl(config: WidgetConfig, layout: Layout): String {
     if (config.driver.isNotBlank()) q["driver"] = config.driver.trim()
     if (config.series.isNotBlank()) q["series"] = config.series
     if (config.tierOnly && config.driver.isNotBlank()) q["scope"] = "tier"
+    // The widget runs the clocks itself (LiveTimer): leave them out of the picture.
+    if (liveTimers) q["live"] = "1"
     return "$BASE_URL/widget-preview/android.html?" + q.entries.joinToString("&") { (k, v) ->
         k + "=" + URLEncoder.encode(v, "UTF-8").replace("+", "%20")
     }
 }
 
+// A running clock on the widget ("lights out in 149:56:31"). A picture cannot
+// tick, so android.js leaves it out of the picture and says where it was; the
+// widget lays Android's own Chronometer over that spot, which counts down by
+// itself, second by second, like the iPhone's. The box and the font size are
+// fractions of the picture's width and height.
+data class LiveTimer(
+    val target: Long,
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+    val size: Float,
+    val color: String,
+    val align: String,
+)
+
+// Where a clock goes on the widget, in pixels: padding around the clock's box
+// inside a view the size of the whole widget, and its text size. The picture
+// sits in the widget as the ImageView puts it (fitCenter: as large as fits,
+// centred), so the box is placed the same way.
+data class TimerPlacement(val left: Int, val top: Int, val right: Int, val bottom: Int, val textPx: Float)
+
+fun placeTimer(t: LiveTimer, widgetW: Float, widgetH: Float, pictureW: Int, pictureH: Int): TimerPlacement {
+    val scale = min(widgetW / pictureW, widgetH / pictureH)
+    val shownW = pictureW * scale
+    val shownH = pictureH * scale
+    val offX = (widgetW - shownW) / 2
+    val offY = (widgetH - shownH) / 2
+    val left = offX + t.x * shownW
+    val top = offY + t.y * shownH
+    val right = widgetW - (left + t.w * shownW)
+    val bottom = widgetH - (top + t.h * shownH)
+    return TimerPlacement(
+        left.roundToInt().coerceAtLeast(0),
+        top.roundToInt().coerceAtLeast(0),
+        right.roundToInt().coerceAtLeast(0),
+        bottom.roundToInt().coerceAtLeast(0),
+        t.size * shownW,
+    )
+}
+
 // When to draw again, from what the widget asked for (refreshAfterDate). Never
 // sooner than five minutes, which is what the core asks for on a race night at
 // most, and never later than three hours, so a day without races still moves on.
-fun nextRefresh(now: Long, asked: Long?): Long {
+fun nextRefresh(now: Long, asked: Long?, clocksRunOut: Long? = null): Long {
     val earliest = now + 5 * 60_000L
     val latest = now + 3 * 3_600_000L
-    return (asked ?: latest).coerceIn(earliest, latest)
+    val wanted = (asked ?: latest).coerceIn(earliest, latest)
+    // A clock reaching zero ("lights out") is the moment the widget changes: draw
+    // it again right then, rather than let the clock run on below zero.
+    val atZero = clocksRunOut?.plus(15_000L)?.takeIf { it > now + 60_000L } ?: return wanted
+    return minOf(wanted, atZero)
 }
 
 // The page a tap opens, marked as coming from the app (the site then knows to

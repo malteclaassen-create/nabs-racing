@@ -208,7 +208,8 @@ class WidgetConfigActivity : AppCompatActivity() {
             preview.addView(v, 0, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             web = v
         }
-        v.loadUrl(renderUrl(current(), layout()))
+        // The preview is the page itself, live: its clocks tick in it already.
+        v.loadUrl(renderUrl(current(), layout(), liveTimers = false))
     }
 
     // The drivers of the chosen series, offered as you type: the name has to be
@@ -239,7 +240,7 @@ class WidgetConfigActivity : AppCompatActivity() {
         val config = current()
         store.save(widgetId, config)
         val manager = AppWidgetManager.getInstance(this)
-        NabsWidgetProvider.show(this, manager, widgetId, store.picture(widgetId), store.tapUrl(widgetId))
+        NabsWidgetProvider.show(this, manager, widgetId, store.picture(widgetId), store.tapUrl(widgetId), timers = store.timers(widgetId))
         WidgetWorker.refreshNow(this)
         setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
         finish()
