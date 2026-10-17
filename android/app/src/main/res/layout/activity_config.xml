@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The driver name comes first: typing it opens the keyboard over the lower half
+     of the screen, and a name has to be read back while it is typed. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
@@ -28,23 +31,32 @@
 
         <TextView
             style="@style/ConfigLabel"
-            android:text="@string/config_preview" />
+            android:text="@string/config_driver" />
 
-        <FrameLayout
-            android:id="@+id/preview"
+        <AutoCompleteTextView
+            android:id="@+id/driver"
             android:layout_width="match_parent"
-            android:layout_height="160dp"
-            android:background="@drawable/widget_placeholder">
+            android:layout_height="wrap_content"
+            android:completionThreshold="1"
+            android:hint="@string/config_driver_hint"
+            android:imeOptions="actionDone"
+            android:inputType="textPersonName|textNoSuggestions"
+            android:minHeight="48dp"
+            android:singleLine="true" />
 
-            <TextView
-                android:id="@+id/previewNote"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:padding="16dp"
-                android:text="@string/widget_loading"
-                android:textColor="@color/widget_text_dim" />
-        </FrameLayout>
+        <TextView
+            android:id="@+id/driverNote"
+            style="@style/ConfigNote" />
+
+        <TextView
+            style="@style/ConfigLabel"
+            android:text="@string/config_series" />
+
+        <RadioGroup
+            android:id="@+id/series"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
 
         <TextView
             style="@style/ConfigLabel"
@@ -62,32 +74,23 @@
 
         <TextView
             style="@style/ConfigLabel"
-            android:text="@string/config_series" />
+            android:text="@string/config_preview" />
 
-        <RadioGroup
-            android:id="@+id/series"
+        <FrameLayout
+            android:id="@+id/preview"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:layout_height="160dp"
+            android:background="@drawable/widget_placeholder">
 
-        <TextView
-            style="@style/ConfigLabel"
-            android:text="@string/config_driver" />
-
-        <AutoCompleteTextView
-            android:id="@+id/driver"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:completionThreshold="1"
-            android:hint="@string/config_driver_hint"
-            android:imeOptions="actionDone"
-            android:inputType="textPersonName|textNoSuggestions"
-            android:minHeight="48dp"
-            android:singleLine="true" />
-
-        <TextView
-            android:id="@+id/driverNote"
-            style="@style/ConfigNote" />
+            <TextView
+                android:id="@+id/previewNote"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="@string/widget_loading"
+                android:textColor="@color/widget_text_dim" />
+        </FrameLayout>
 
         <CheckBox
             android:id="@+id/tier"
