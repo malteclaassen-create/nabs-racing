@@ -11,13 +11,16 @@
         <item name="android:navigationBarColor">@color/nabs_background</item>
     </style>
 
-    <!-- The font the widgets' timers are drawn in (JetBrains Mono Bold, the
-         site's own, from frontend/public/fonts), so the ticking clock over the
-         picture looks like the text it stands in for. -->
+    <!-- The widgets' ticking clocks, in a bold monospace like the text they stand
+         in for. The phone's own monospace, not the site's JetBrains Mono: a home
+         screen draws a widget in its own process, and Samsung's (at least) never
+         loads a font the app brings along, so the clock came out in the launcher's
+         thin default font. -->
     <style name="WidgetClock">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">match_parent</item>
-        <item name="android:fontFamily">@font/jetbrains_mono_bold</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textStyle">bold</item>
         <item name="android:includeFontPadding">false</item>
         <item name="android:singleLine">true</item>
         <item name="android:gravity">start|center_vertical</item>
