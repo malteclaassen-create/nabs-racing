@@ -1,6 +1,9 @@
 package com.nabsracing.app
 
+import android.content.Intent
+import android.widget.ScrollView
 import com.google.androidbrowserhelper.trusted.LauncherActivity
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -16,5 +19,14 @@ class LaunchSmokeTest {
     @Test
     fun launcherStarts() {
         Robolectric.buildActivity(LauncherActivity::class.java).setup()
+    }
+
+    // The screen that shows a crash must not be the thing that crashes.
+    @Test
+    fun crashScreenShowsTheError() {
+        val intent = Intent().putExtra(CrashActivity.EXTRA_TRACE, "java.lang.IllegalStateException: boom")
+        val activity = Robolectric.buildActivity(CrashActivity::class.java, intent).setup().get()
+        val root = activity.window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+        assertTrue(root is ScrollView)
     }
 }
