@@ -285,7 +285,10 @@ export async function buildCrawlLinks(prisma, path, query) {
   if (!body) return "";
   // aria-hidden is deliberately NOT set: these are real links, and a reader on a
   // slow connection reaching them before the app boots should be able to use them.
-  return `<div class="container-page space-y-8 py-12">${body}</div>`;
+  // data-crawl lets the Android app hide them while it boots (index.html,
+  // index.css): there the site is the app, and a page of plain links flashing up
+  // before it looks like something broke.
+  return `<div class="container-page space-y-8 py-12" data-crawl>${body}</div>`;
 }
 
 // Put the block inside the root element. React clears it on mount.
