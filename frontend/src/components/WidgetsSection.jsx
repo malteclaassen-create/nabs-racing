@@ -461,6 +461,49 @@ function HowTo({ name, innerRef }) {
   );
 }
 
+// The same widgets on Android come with the NABS app (android/), which draws
+// them with these very files. The app is a download from the site, not a Play
+// Store app: /android.apk points at the newest release (lib/androidRelease.js).
+const ANDROID_STEPS = [
+  {
+    title: "Download the app.",
+    body: "Tap the button on your Android phone. Android asks once whether your browser may install apps: allow it for this one.",
+  },
+  { title: "Open the app.", body: "It is the website without the browser around it, with your login and everything." },
+  {
+    title: "Add a widget.",
+    body: "Press and hold an empty spot on your home screen, choose Widgets, find NABS Racing and drag it onto the screen. Pick what it shows and type your driver name.",
+  },
+];
+
+function AndroidApp() {
+  return (
+    <section className="card p-5 sm:p-6">
+      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">On Android</div>
+      <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">The NABS app</h2>
+      <p className="mt-1 max-w-3xl text-[15px] text-light">
+        On an Android phone the same widgets come with the NABS app, drawn by the same code as below. Resize one on the
+        home screen and it switches between the small, medium and large layout.
+      </p>
+      <ol className="mt-5 space-y-4">
+        {ANDROID_STEPS.map((s, i) => (
+          <li key={s.title} className="flex gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-[13px] font-black text-ink">
+              {i + 1}
+            </span>
+            <div className="min-w-0 pt-0.5 text-[15px] leading-relaxed text-light">
+              <b className="text-dark">{s.title}</b> {s.body}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <a href="/android.apk" className="btn-primary mt-5 inline-flex items-center gap-1.5">
+        Download the app <span aria-hidden="true">↓</span>
+      </a>
+    </section>
+  );
+}
+
 const SELECT = "input w-auto min-w-0 py-1.5 font-sans text-sm font-semibold normal-case tracking-normal";
 const LABEL = "flex min-w-0 flex-col gap-1 font-mono text-[10.5px] font-bold uppercase tracking-wider text-light";
 
@@ -628,6 +671,8 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
           </button>
         </div>
       </section>
+
+      <AndroidApp />
 
       {engineError ? (
         <ErrorBox message={engineError} onRetry={loadAll} title="The widgets didn't load" />

@@ -1,0 +1,91 @@
+# The Android app (android/): checked on every pull request that touches it,
+# and published as an APK when it reaches main.
+#
+# Publishing means a GitHub release named android-v<versionName> with the APK
+# attached as nabs-racing.apk. nabsracing.com/android.apk points at the newest
+# one (backend/src/lib/androidRelease.js). A release is only made when
+# android/release.json names a version that has none yet, so a change to the
+# app goes out by raising the version there, in the same pull request.
+#
+# The signing key comes from two repository secrets (ANDROID-APP.md says how
+# they were made). Without them the build still runs, but nothing is published:
+# an unsigned APK will not install, and an APK signed with any other key would
+# not install over the one people already have.
+name: Android app
+
+on:
+  pull_request:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  # A newer push to a pull request makes its older run pointless; a run on main
+  # may be publishing, so it is left to finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build the APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and lint
+        run: ./gradlew --no-daemon testDebugUnitTest lintDebug
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/nabs-racing.keystore"
+            echo "NABS_KEYSTORE_FILE=$RUNNER_TEMP/nabs-racing.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is built unsigned and nothing is published."
+          fi
+
+      - name: Build
+        env:
+          NABS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release*.apk "$RUNNER_TEMP/nabs-racing.apk"
+
+      # Every run's APK, to try before it is released (Actions -> this run -> Artifacts).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nabs-racing-apk
+          path: ${{ runner.temp }}/nabs-racing.apk
+          retention-days: 14
+
+      - name: Publish
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && env.NABS_KEYSTORE_FILE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=$(jq -r .versionName release.json)
+          code=$(jq -r .versionCode release.json)
+          tag="android-v$name"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "$tag is out already. To publish this build, raise versionCode and versionName in android/release.json."
+            exit 0
+          fi
+          gh release create "$tag" "$RUNNER_TEMP/nabs-racing.apk" \
+            --target "$GITHUB_SHA" \
+            --title "NABS Racing app $name" \
+            --notes "The NABS Racing Android app, version $name (build $code). Download it on your phone from https://nabsracing.com/android.apk" \
+            --latest

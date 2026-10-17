@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>NABS Widget</title>
+<!-- The Android app draws its home screen widgets with this page: one widget,
+     drawn by the same files as the iPhone widgets and the profile's preview,
+     filling the page. The app photographs it and puts the picture on the home
+     screen (android/, see WidgetRenderer.kt). The address says which widget
+     and for whom: view, family, w, h, driver, series, scope (android.js). -->
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #stage { transform-origin: 0 0; }
+  /* The renderer's own classes, as in src/components/widgetRenderer.css (the
+     first block there). That file is part of the site's bundle and cannot be
+     linked from a plain page, so the rules are repeated: keep the two in step. */
+  .sw-widget { position: relative; overflow: hidden; border-radius: 22px; color: #fff; -webkit-font-smoothing: antialiased; font-synthesis: none; font-kerning: normal; }
+  .sw-widget * { box-sizing: border-box; }
+  .sw-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+  .sw-body { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  .sw-stack { position: relative; display: flex; }
+  .sw-text { overflow: hidden; white-space: normal; }
+  .sw-one { white-space: nowrap; overflow: visible; text-overflow: clip; }
+  .sw-clamp { display: -webkit-box; -webkit-box-orient: vertical; }
+  .sw-image { position: relative; overflow: hidden; }
+  .sw-image img { display: block; width: 100%; height: 100%; }
+  .sw-tint { position: absolute; inset: 0; mask-repeat: no-repeat; mask-position: center; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; }
+  .sw-border { position: absolute; inset: 0; border-style: solid; pointer-events: none; }
+  .sw-flag { display: inline-block; height: 0.78em; width: 1.05em; object-fit: cover; border-radius: 0.14em; vertical-align: -0.04em; margin: 0 0.06em; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script type="module" src="/widget-preview/android.js"></script>
+</body>
+</html>

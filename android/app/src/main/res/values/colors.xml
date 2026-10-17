@@ -1,0 +1,7 @@
+<resources>
+    <!-- The site's own colours (frontend/public/site.webmanifest and the widgets). -->
+    <color name="nabs_background">#080D18</color>
+    <color name="nabs_pink">#F4AFC6</color>
+    <color name="widget_background">#18181B</color>
+    <color name="widget_text_dim">#A1A1AA</color>
+</resources>

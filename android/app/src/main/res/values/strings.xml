@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">NABS Racing</string>
+    <!-- The domain vouches for the app at https://nabsracing.com/.well-known/assetlinks.json
+         (backend/src/lib/androidApp.js); this is the app's half of that handshake. Both
+         halves agreeing is what lets the site open without a browser bar across the top. -->
+    <string name="assetStatements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://nabsracing.com\"}
+        }]
+    </string>
+    <string name="providerAuthority" translatable="false">com.nabsracing.app.fileprovider</string>
+
+    <string name="widget_label">NABS Racing</string>
+    <string name="widget_description">Races, standings and your own season, the same widgets as on the iPhone.</string>
+    <string name="widget_loading">Loading…</string>
+    <string name="widget_offline">No connection yet. The widget tries again on its own.</string>
+
+    <string name="config_title">NABS widget</string>
+    <string name="config_lead">Pick what this widget shows. Resize it on the home screen any time: it picks the small, medium or large layout to fit.</string>
+    <string name="config_widget">Widget</string>
+    <string name="config_series">Series</string>
+    <string name="config_driver">Your driver name</string>
+    <string name="config_driver_hint">Your name on nabsracing.com</string>
+    <string name="config_driver_needed">This widget is about one driver: fill in your name.</string>
+    <string name="config_driver_optional">Optional. With your name, the tables highlight your row.</string>
+    <string name="config_tier">Only my tier</string>
+    <string name="config_tier_note">Tables, gaps and neighbours counted inside your own tier.</string>
+    <string name="config_preview">Preview</string>
+    <string name="config_add">Add widget</string>
+    <string name="config_save">Save</string>
+    <string name="config_preview_failed">The preview could not be drawn. Check your connection.</string>
+</resources>

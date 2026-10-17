@@ -107,6 +107,15 @@ name, not just the website. The page now does.
 
 ## Step 4 - Build the app file
 
+> **Since the APK, the app already exists.** It lives in `android/` and is
+> handed out as a download (`ANDROID-APP.md`), with home screen widgets that a
+> pwabuilder.com app would not have. For the Play Store, use that app rather
+> than the steps below: its package ID is `com.nabsracing.app`, and its signing
+> key is the one described in `ANDROID-APP.md`, which Play Console should be
+> given under "use your own key" (see the end of `ANDROID-APP.md`). The steps
+> below are how it was planned before, and still work for an app without
+> widgets.
+
 This is the part that sounds technical and is not. A free Microsoft service
 does it for you.
 

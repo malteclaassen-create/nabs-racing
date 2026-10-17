@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The splash screen image, handed to the browser by the TWA launcher. -->
+<paths>
+    <files-path name="twa_splash" path="twa_splash/" />
+</paths>

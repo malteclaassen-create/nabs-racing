@@ -1,0 +1,33 @@
+<resources>
+    <!-- The launcher hands over to the browser at once; it never shows a window of its own. -->
+    <style name="Theme.Nabs.Launcher" parent="@android:style/Theme.Translucent.NoTitleBar" />
+
+    <style name="Theme.Nabs" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/nabs_background</item>
+        <item name="colorPrimaryDark">@color/nabs_background</item>
+        <item name="colorAccent">@color/nabs_pink</item>
+        <item name="android:windowBackground">@color/nabs_background</item>
+        <item name="android:statusBarColor">@color/nabs_background</item>
+        <item name="android:navigationBarColor">@color/nabs_background</item>
+    </style>
+
+    <style name="ConfigLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">20dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:textColor">@color/nabs_pink</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+    </style>
+
+    <style name="ConfigNote">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textColor">@color/widget_text_dim</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>
