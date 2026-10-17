@@ -3329,3 +3329,19 @@ html.update-reveal.update-reveal-go body::after {
   .rcard-frame[data-edition="holo"] .rcard-innerline::before,
   .rcard-frame[data-edition="gold"] .rcard-innerline::before { animation: none; }
 }
+
+/* Inside the Android app (html.in-android-app, set in index.html): the plain
+   links the server puts in #root for search engines (lib/crawlLinks.js,
+   data-crawl) stay hidden while the site boots. React replaces them a moment
+   later; in the app they would only flash up as an unstyled page. In their
+   place the page shows what the app's splash screen shows (the logo on the
+   dark blue, android/.../splash.png), so the splash hands over to the same
+   picture and that gives way to the site, with nothing in between. */
+html.in-android-app [data-crawl] { display: none; }
+html.in-android-app #root:has(> [data-crawl])::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #080d18 url("/logo-dark.png") center / 160px no-repeat;
+}

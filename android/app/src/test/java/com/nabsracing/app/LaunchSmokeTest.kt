@@ -1,7 +1,10 @@
 package com.nabsracing.app
 
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ScrollView
 import com.google.androidbrowserhelper.trusted.LauncherActivity
 import com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity
@@ -34,12 +37,24 @@ class LaunchSmokeTest {
         context.packageManager.getActivityInfo(ComponentName(context, ManageDataLauncherActivity::class.java), 0)
     }
 
+    // The widget's settings open, with the driver name first: below the widget
+    // list, the keyboard covered it while it was typed.
+    @Test
+    fun widgetSettingsOpenWithTheNameFirst() {
+        val intent = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 7)
+        val activity = Robolectric.buildActivity(WidgetConfigActivity::class.java, intent).setup().get()
+        val driver = activity.findViewById<View>(R.id.driver)
+        val kind = activity.findViewById<View>(R.id.kind)
+        val column = driver.parent as ViewGroup
+        assertTrue(column.indexOfChild(driver) < column.indexOfChild(kind))
+    }
+
     // The screen that shows a crash must not be the thing that crashes.
     @Test
     fun crashScreenShowsTheError() {
         val intent = Intent().putExtra(CrashActivity.EXTRA_TRACE, "java.lang.IllegalStateException: boom")
         val activity = Robolectric.buildActivity(CrashActivity::class.java, intent).setup().get()
-        val root = activity.window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content).getChildAt(0)
+        val root = activity.window.decorView.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
         assertTrue(root is ScrollView)
     }
 }

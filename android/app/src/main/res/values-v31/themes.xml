@@ -1,0 +1,10 @@
+<resources>
+    <!-- Android 12 and later show a splash screen of their own before the app
+         draws anything: by default the launcher icon, a pink square, on white
+         or black. The logo on the site's own dark blue instead, the same as the
+         browser's splash that follows it (SPLASH_IMAGE_DRAWABLE). -->
+    <style name="Theme.Nabs.Launcher" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/nabs_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+</resources>

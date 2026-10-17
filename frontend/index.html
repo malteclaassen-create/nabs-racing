@@ -95,6 +95,7 @@
           if (inApp) sessionStorage.setItem("nabs_android_app", "1");
           else inApp = sessionStorage.getItem("nabs_android_app") === "1";
           if (!inApp) return;
+          document.documentElement.classList.add("in-android-app");
           var vp = document.querySelector('meta[name="viewport"]');
           if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no");
         } catch (e) {}

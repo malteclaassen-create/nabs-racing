@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,9 +24,13 @@ import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -61,6 +66,7 @@ class WidgetConfigActivity : AppCompatActivity() {
             return
         }
         setContentView(R.layout.activity_config)
+        fitAroundBarsAndKeyboard()
         store = WidgetStore(this)
         val existing = store.config(widgetId)
         val start = existing ?: store.defaults()
@@ -126,6 +132,22 @@ class WidgetConfigActivity : AppCompatActivity() {
         web?.destroy()
         web = null
         super.onDestroy()
+    }
+
+    // Android 15 and later draw every app edge to edge: the status bar sits on top
+    // of the screen, the keyboard over its lower half, and nothing moves out of
+    // their way unless the screen does it. So the content is padded by both,
+    // always (the same on older phones), and the field being typed in is
+    // scrolled back into sight when the keyboard comes up.
+    private fun fitAroundBarsAndKeyboard() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val scroll = findViewById<ScrollView>(R.id.scroll)
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { v, insets ->
+            val around = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            v.setPadding(around.left, around.top, around.right, around.bottom)
+            currentFocus?.let { f -> v.post { f.requestRectangleOnScreen(Rect(0, 0, f.width, f.height)) } }
+            insets
+        }
     }
 
     private fun current() = WidgetConfig(
