@@ -78,9 +78,12 @@ export async function getSeasonHonours(prisma, seasonId) {
 
   // Best newcomer: highest-placed driver who started a round this season and
   // has NO trace in any earlier season — neither via a person link nor by a
-  // matching name/Discord handle (defence for unlinked people).
+  // matching name/Discord handle (defence for unlinked people). "Earlier" is
+  // within this season's own series: season numbers restart per series, so a
+  // lower number in another series is not an earlier season — counting it made
+  // anyone who had raced the Sunday Championship a veteran of F1 Friday.
   const priorDrivers = await prisma.driver.findMany({
-    where: { season: { number: { lt: season.number } } },
+    where: { season: { seriesId: season.seriesId ?? null, number: { lt: season.number } } },
     select: { id: true, name: true, discordName: true },
   });
   const { byDriver } = await getPersonGroups(prisma);
