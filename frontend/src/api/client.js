@@ -1626,6 +1626,8 @@ export const api = {
   widgetsVisibility: () => request("/admin/widgets-visibility", { auth: true }),
   setWidgetsVisibility: (isPublic) =>
     request("/admin/widgets-visibility", { method: "PUT", body: { public: isPublic }, auth: true }),
+  setAndroidWidgetsVisibility: (isPublic) =>
+    request("/admin/widgets-visibility", { method: "PUT", body: { androidPublic: isPublic }, auth: true }),
   // Series- and season-scoped, through the same switchers the rest of the site
   // uses: every league has its own store, and inside it the league runs
   // different cars each season, so a lap only means something inside one.

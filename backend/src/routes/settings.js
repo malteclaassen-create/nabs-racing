@@ -11,7 +11,7 @@ import { readPrivacyInfo } from "../lib/privacyInfo.js";
 import { discordCounts, leagueSince, yearsOfRacing } from "../lib/leagueStats.js";
 import { buildFeed } from "../lib/socialFeed.js";
 import { isTelemetryPublic } from "../lib/telemetryAccess.js";
-import { isWidgetsPagePublic } from "../lib/widgetsPage.js";
+import { isWidgetsPagePublic, isAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { resolveSeries } from "../lib/series.js";
 
 const router = Router();
@@ -90,11 +90,12 @@ router.get("/telemetry", async (req, res, next) => {
 });
 
 // GET /api/settings/widgets -> is the Widgets section of the profile open to
-// every member, or still the admins' (lib/widgetsPage.js). Public for the same
-// reason as the telemetry switch above: it only says whether a page is shown.
+// every member, or still the admins' (lib/widgetsPage.js), and its Android half.
+// Public for the same reason as the telemetry switch above: it only says whether
+// a page is shown.
 router.get("/widgets", async (req, res, next) => {
   try {
-    res.json({ public: await isWidgetsPagePublic(prisma) });
+    res.json({ public: await isWidgetsPagePublic(prisma), androidPublic: await isAndroidWidgetsPublic(prisma) });
   } catch (e) {
     next(e);
   }

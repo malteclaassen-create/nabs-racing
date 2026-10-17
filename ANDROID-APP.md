@@ -79,8 +79,12 @@ or the fingerprint does not match.
 
 ## Installing it (what members do)
 
-Members find this under **My Profile -> Widgets -> Android** (once that page is switched
-on for everyone; until then only admins see it):
+Members find this under **My Profile -> Widgets -> Android**. Until an admin
+publishes it, only admins see that Android half: League office -> **Widgets**,
+card "Android app", **Publish to every member**. The Widgets section itself has
+its own switch on the same page and has to be published too.
+
+What a member does:
 
 1. Open <https://nabsracing.com/android.apk> on the phone. Android asks once
    whether the browser may install apps: allow it for this one.

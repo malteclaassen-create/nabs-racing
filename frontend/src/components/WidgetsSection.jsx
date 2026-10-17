@@ -559,7 +559,7 @@ function AndroidHowTo() {
 const SELECT = "input w-auto min-w-0 py-1.5 font-sans text-sm font-semibold normal-case tracking-normal";
 const LABEL = "flex min-w-0 flex-col gap-1 font-mono text-[10.5px] font-bold uppercase tracking-wider text-light";
 
-export default function WidgetsSection({ driverName, isPublic = true, isAdmin = false }) {
+export default function WidgetsSection({ driverName, isPublic = true, isAdmin = false, androidVisible = false, androidPublic = false }) {
   const [engine, setEngine] = useState(null);
   const [engineError, setEngineError] = useState(null);
   const [member, setMember] = useState(null); // { series, tier }
@@ -568,8 +568,13 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
   const [scope, setScope] = useState(saved.scope === "tier" ? "tier" : "all");
   const [deviceKey, setDeviceKey] = useState(DEVICES[saved.device] ? saved.device : "pro");
   const [screen, setScreen] = useState(saved.screen === "lock" ? "lock" : "home");
-  const [platform, setPlatform] = useState(() => firstPlatform(saved.platform));
+  const [chosen, setPlatform] = useState(() => firstPlatform(saved.platform));
+  // The Android half is the admins' until it is published (lib/widgetsPage.js);
+  // without it the page is the iPhone page it always was.
+  const platform = androidVisible ? chosen : "iphone";
   const android = platform === "android";
+  // What the pill and the note say: the switch of the half on screen.
+  const shownPublic = android ? androidPublic : isPublic;
   const [reloads, setReloads] = useState(0);
   const howTo = useRef(null);
   const base = typeof window !== "undefined" && window.innerWidth >= 1024 ? 1.15 : 1;
@@ -600,8 +605,8 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
   const shownScope = tierChoice ? scope : "all";
 
   useEffect(() => {
-    if (member) writeSaved({ series: seriesSlug, scope, device: deviceKey, screen, platform });
-  }, [member, seriesSlug, scope, deviceKey, screen, platform]);
+    if (member) writeSaved({ series: seriesSlug, scope, device: deviceKey, screen, platform: chosen });
+  }, [member, seriesSlug, scope, deviceKey, screen, chosen]);
 
   // Android draws the widgets at the iPhone 15's sizes (android.js), and has no
   // lock screen widgets.
@@ -649,7 +654,9 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
     <div className="cascade cascade-auto space-y-6">
       {/* Two halves, one per kind of phone. The widgets are the same; how they
           get onto the phone is not. */}
-      <SlidingTabs items={PLATFORMS} value={platform} onChange={setPlatform} btnClassName="px-5 py-2 text-sm font-semibold" />
+      {androidVisible && (
+        <SlidingTabs items={PLATFORMS} value={platform} onChange={setPlatform} btnClassName="px-5 py-2 text-sm font-semibold" />
+      )}
 
       <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -660,8 +667,8 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
             <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">Your NABS widgets</h2>
           </div>
           {isAdmin && (
-            <span className={`pill ${isPublic ? "bg-emerald-500/15 text-ok" : "bg-amber-500/15 text-warn"}`}>
-              {isPublic ? "Visible to members" : "Admins only"}
+            <span className={`pill ${shownPublic ? "bg-emerald-500/15 text-ok" : "bg-amber-500/15 text-warn"}`}>
+              {shownPublic ? "Visible to members" : "Admins only"}
             </span>
           )}
         </div>
@@ -671,9 +678,9 @@ export default function WidgetsSection({ driverName, isPublic = true, isAdmin = 
             On Android they come with the NABS app: the website as an app, with these widgets for your home screen.
           </p>
         )}
-        {isAdmin && !isPublic && (
+        {isAdmin && !shownPublic && (
           <p className="mt-2 max-w-3xl text-sm text-light">
-            Members don&rsquo;t see this section yet.{" "}
+            Members don&rsquo;t see {android ? "the Android half" : "this section"} yet.{" "}
             <Link to="/admin?tab=widgets" className="font-semibold text-link hover:underline">
               Publish it in the admin
             </Link>{" "}

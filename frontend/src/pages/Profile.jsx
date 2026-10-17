@@ -988,7 +988,13 @@ function MyProfile() {
         // the gate is here: while the answer loads, a spinner; for a member
         // the league has not opened it to yet, a short "coming soon".
         widgetsPage.visible ? (
-          <WidgetsSection driverName={d.name} isPublic={widgetsPage.isPublic} isAdmin={widgetsPage.isAdmin} />
+          <WidgetsSection
+            driverName={d.name}
+            isPublic={widgetsPage.isPublic}
+            isAdmin={widgetsPage.isAdmin}
+            androidVisible={widgetsPage.androidVisible}
+            androidPublic={widgetsPage.androidPublic}
+          />
         ) : widgetsPage.loading ? (
           <Spinner label="Loading…" />
         ) : (
