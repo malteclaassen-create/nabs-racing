@@ -534,9 +534,11 @@ export default function Welcome() {
   const checklist = useChecklist();
 
   const photoRef = useParallax(0.08);
-  // The car tile plays the series' promo film while the page is left alone
-  // (same as the member home's main card, see hooks/useIdleFilm.js).
-  const film = useIdleFilm(useSeries().current?.promoVideoUrl);
+  // The car tile plays the series' promo film while the page is left alone,
+  // and as an intro on a special event's page (same as the member home's main
+  // card, see hooks/useIdleFilm.js).
+  const viewedSeries = useSeries().current;
+  const film = useIdleFilm(viewedSeries?.promoVideoUrl, { intro: viewedSeries?.kind === "event" });
 
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   // Same rule as Home: trainings count as the next race (utils/raceFormat.js).
@@ -854,7 +856,7 @@ export default function Welcome() {
             compositing layer of its own and would otherwise paint over them. */}
         <div
           ref={film.ref}
-          data-film={film.showing ? "on" : undefined}
+          data-film={film.hideHud ? "on" : undefined}
           className={`hero-anim relative col-span-2 h-48 overflow-hidden rounded-[1.5rem] bg-ink shadow-card sm:h-64 lg:col-span-5 ${
             nextRace || leader ? "" : "lg:h-auto"
           }`}

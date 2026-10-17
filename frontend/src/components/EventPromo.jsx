@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeries } from "../context/SeriesContext.jsx";
@@ -129,6 +129,17 @@ function EventPromo({ slug, onClose, onUnavailable }) {
       alive = false;
     };
   }, [slug]);
+
+  // Tells the main card's intro (hooks/useIdleFilm.js) to wait until this is
+  // closed. A layout effect, so it is set before the card can start it.
+  useLayoutEffect(() => {
+    document.documentElement.dataset.promo = "open";
+    window.dispatchEvent(new Event("nabs-promo"));
+    return () => {
+      delete document.documentElement.dataset.promo;
+      window.dispatchEvent(new Event("nabs-promo"));
+    };
+  }, []);
 
   useScrollLock(true);
   useFocusTrap(true, panelRef, { initialFocus: closeRef });
