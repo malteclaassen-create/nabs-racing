@@ -26,7 +26,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { createHash, randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
-import { LIVE_SERVERS, DEFAULT_SERVER_KEY, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
+import { LIVE_SERVERS, DEFAULT_SERVER_KEY, NO_SERVER, serverKeyForSeries, isValidServerKey } from "../lib/liveServers.js";
 import { parkLaps, markNotified } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 import { ON_RAILWAY } from "../lib/deployment.js";
@@ -2384,17 +2384,25 @@ function relayFor(key) {
 // payload neither the page nor anyone debugging it can tell the two apart. It
 // also lets the frontend show the switch's true position after a reconnect,
 // rather than trusting what it last clicked.
+//
+// NO_SERVER (a series that races on none of ours) gets an empty board rather
+// than the first server's: that one is somebody else's session. Connected and
+// fresh, so the Live page settles on "No session running" instead of trying
+// to reconnect to a server that does not exist.
 export function getBoard(serverKey) {
+  if (serverKey === NO_SERVER) {
+    return { ok: true, connected: true, stale: false, noServer: true, session: null, entries: [], serverKey: null, updatedAt: Date.now() };
+  }
   const relay = relayFor(serverKey);
   return { ...relay.getBoard(), serverKey: relay.key };
 }
 
 export function getTrackMapPng(serverKey) {
-  return relayFor(serverKey).getTrackMapPng();
+  return serverKey === NO_SERVER ? null : relayFor(serverKey).getTrackMapPng();
 }
 
 export function getTrackIds(serverKey) {
-  return relayFor(serverKey).getTrackIds();
+  return serverKey === NO_SERVER ? null : relayFor(serverKey).getTrackIds();
 }
 
 // How far into a live race we are, in seconds, for something that has to stamp
@@ -2908,7 +2916,10 @@ export async function refreshBoardScopes() {
     ]);
     const byServer = new Map(LIVE_SERVERS.map((s) => [s.key, []]));
     for (const s of series) {
-      const key = serverAssignment(map, s.slug).key;
+      const { key, off } = serverAssignment(map, s.slug);
+      // On no server: no board carries its training times, so no reset of
+      // either server asks about them and no practice lap is filed under it.
+      if (off) continue;
       const season = await resolveSeason(prisma, null, { includePrivate: true, series: s.slug });
       const n = Number(season?.number) || 0;
       if (n > 0) byServer.get(key)?.push({ series: s.slug, season: n });

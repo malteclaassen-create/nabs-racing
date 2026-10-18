@@ -53,7 +53,17 @@ export function circuitMark(track, { area = MARK_AREA, maxW = 120, maxH = 100, r
 // in the corner (`corner`), with its own way in (`to`, `cta`: the sign-up page
 // of the event's series, and what that button can honestly offer right now)
 // and `children` (how full the grid is) just above the button.
-export default function NextRaceCard({ race, className = "", style = null, corner = null, to = null, cta = "Sign Up", children = null }) {
+// `radius` lets the event page match the rounding of the tiles beside it.
+export default function NextRaceCard({
+  race,
+  className = "",
+  style = null,
+  corner = null,
+  to = null,
+  cta = "Sign Up",
+  radius = "rounded-2xl",
+  children = null,
+}) {
   if (!race) return null;
 
   const circuit = flagFor(race.track, race.country);
@@ -63,7 +73,7 @@ export default function NextRaceCard({ race, className = "", style = null, corne
 
   return (
     <div
-      className={`rounded-2xl border border-black/10 bg-white/75 p-5 shadow-xl shadow-ink/10 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08] ${className}`}
+      className={`${radius} border border-black/10 bg-white/75 p-5 shadow-xl shadow-ink/10 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.08] ${className}`}
       style={style}
     >
       <div className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-sky-600 dark:text-sky-300">

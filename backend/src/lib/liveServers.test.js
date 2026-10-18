@@ -7,6 +7,8 @@ import {
   isValidServerKey,
   DEFAULT_SERVER_KEY,
   LIVE_SERVERS,
+  NO_SERVER,
+  writeLiveServerMap,
 } from "./liveServers.js";
 
 // The assignment lives in one Setting row as JSON, so a fake prisma only has to
@@ -90,13 +92,14 @@ describe("resolveServerKey", () => {
 // cope with both shapes: every row written before it is a bare key.
 describe("serverAssignment", () => {
   it("reads a legacy bare key as an assignment with the switch left alone", () => {
-    expect(serverAssignment({ "sunday-gt": OTHER }, "sunday-gt")).toEqual({ key: OTHER, only: false });
+    expect(serverAssignment({ "sunday-gt": OTHER }, "sunday-gt")).toEqual({ key: OTHER, only: false, off: false });
   });
 
   it("reads the object form, flag included", () => {
     expect(serverAssignment({ "sunday-gt": { key: OTHER, only: true } }, "sunday-gt")).toEqual({
       key: OTHER,
       only: true,
+      off: false,
     });
   });
 
@@ -105,35 +108,67 @@ describe("serverAssignment", () => {
     expect(serverAssignment({ "sunday-gt": { key: DEFAULT_SERVER_KEY, only: true } }, "sunday-gt")).toEqual({
       key: DEFAULT_SERVER_KEY,
       only: true,
+      off: false,
     });
   });
 
   it("falls back to the default for anything it cannot use", () => {
-    expect(serverAssignment({}, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false });
-    expect(serverAssignment(null, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false });
+    expect(serverAssignment({}, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false, off: false });
+    expect(serverAssignment(null, "sunday-gt")).toEqual({ key: DEFAULT_SERVER_KEY, only: false, off: false });
     expect(serverAssignment({ "sunday-gt": "nabs99" }, "sunday-gt")).toEqual({
       key: DEFAULT_SERVER_KEY,
       only: false,
+      off: false,
     });
     // A made-up key inside the object form loses the key but keeps the flag:
     // the admin still said "only one board", and the default is that board.
     expect(serverAssignment({ "sunday-gt": { key: "nabs99", only: true } }, "sunday-gt")).toEqual({
       key: DEFAULT_SERVER_KEY,
       only: true,
+      off: false,
     });
+  });
+});
+
+// A series that races on none of our servers (a special event run elsewhere).
+describe("no live server", () => {
+  it("reads the stored word, and the object form, as off", () => {
+    expect(serverAssignment({ talladega: NO_SERVER }, "talladega")).toEqual({
+      key: DEFAULT_SERVER_KEY,
+      only: false,
+      off: true,
+    });
+    expect(serverAssignment({ talladega: { key: OTHER, off: true } }, "talladega").off).toBe(true);
+  });
+
+  it("answers the board reads with NO_SERVER, unless the viewer picked a server", async () => {
+    const prisma = fakePrisma({ talladega: NO_SERVER });
+    expect(await serverKeyForSeries(prisma, "talladega")).toBe(NO_SERVER);
+    expect(await resolveServerKey(prisma, { series: "talladega" })).toBe(NO_SERVER);
+    expect(await resolveServerKey(prisma, { series: "talladega", server: OTHER })).toBe(OTHER);
+    expect(await serverKeyForSeries(prisma, "friday-f1")).toBe(DEFAULT_SERVER_KEY);
+  });
+
+  it("is stored as the word", async () => {
+    let written = null;
+    const prisma = { setting: { upsert: async ({ create }) => (written = create.value) } };
+    const clean = await writeLiveServerMap(prisma, { talladega: { key: DEFAULT_SERVER_KEY, off: true }, "friday-f1": "nabs1" });
+    expect(clean).toEqual({ talladega: NO_SERVER });
+    expect(JSON.parse(written)).toEqual({ talladega: NO_SERVER });
   });
 });
 
 describe("serverConfigForSeries", () => {
   it("carries the flag through from the stored row", async () => {
     const prisma = fakePrisma({ "sunday-gt": { key: OTHER, only: true } });
-    expect(await serverConfigForSeries(prisma, "sunday-gt")).toEqual({ key: OTHER, only: true });
+    expect(await serverConfigForSeries(prisma, "sunday-gt")).toEqual({ key: OTHER, only: true, off: false });
   });
 
   it("says no series, no flag", async () => {
     expect(await serverConfigForSeries(fakePrisma({}), null)).toEqual({
       key: DEFAULT_SERVER_KEY,
       only: false,
+      off: false,
     });
   });
 

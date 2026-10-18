@@ -22,6 +22,11 @@ export const LIVE_SERVERS = [
 
 export const DEFAULT_SERVER_KEY = LIVE_SERVERS[0].key;
 
+// A series that races on no server of ours (a special event run elsewhere):
+// its Live page shows no board, and no server's training times, resets or
+// practice laps are filed under it. Stored as this word instead of a key.
+export const NO_SERVER = "off";
+
 export function isValidServerKey(key) {
   return LIVE_SERVERS.some((s) => s.key === key);
 }
@@ -35,15 +40,22 @@ const SETTING_KEY = "live_server_map";
 // Live page of that series shows THAT board and nothing else — no switch to the
 // other server, because for a league that races on one of them the other one is
 // not an alternative view, it is somebody else's race.
+//
+// A third: NO_SERVER, or { off: true }, for a series on no server at all.
+// `key` then still names the first server, so a form has something to show,
+// and `off` is what every reader has to look at.
 export function serverAssignment(map, slug) {
   const raw = slug ? map?.[String(slug)] : null;
+  if (raw === NO_SERVER || (raw && typeof raw === "object" && raw.off)) {
+    return { key: DEFAULT_SERVER_KEY, only: false, off: true };
+  }
   if (typeof raw === "string") {
-    return { key: isValidServerKey(raw) ? raw : DEFAULT_SERVER_KEY, only: false };
+    return { key: isValidServerKey(raw) ? raw : DEFAULT_SERVER_KEY, only: false, off: false };
   }
   if (raw && typeof raw === "object") {
-    return { key: isValidServerKey(raw.key) ? raw.key : DEFAULT_SERVER_KEY, only: !!raw.only };
+    return { key: isValidServerKey(raw.key) ? raw.key : DEFAULT_SERVER_KEY, only: !!raw.only, off: false };
   }
-  return { key: DEFAULT_SERVER_KEY, only: false };
+  return { key: DEFAULT_SERVER_KEY, only: false, off: false };
 }
 
 export async function readLiveServerMap(prisma) {
@@ -64,7 +76,11 @@ export async function writeLiveServerMap(prisma, map) {
   const clean = {};
   for (const [slug, value] of Object.entries(map || {})) {
     if (!slug) continue;
-    const { key, only } = serverAssignment({ [slug]: value }, slug);
+    const { key, only, off } = serverAssignment({ [slug]: value }, slug);
+    if (off) {
+      clean[slug] = NO_SERVER;
+      continue;
+    }
     if (!isValidServerKey(key)) continue;
     if (only) clean[slug] = { key, only: true };
     else if (key !== DEFAULT_SERVER_KEY) clean[slug] = key;
@@ -96,13 +112,16 @@ export async function resolveServerKey(prisma, { series, server } = {}) {
 
 // Which server a series' live page follows (by series SLUG). Unknown series
 // or unassigned -> the first server, exactly the pre-multi-server behaviour.
+// A series on no server -> NO_SERVER, which the board reads answer with an
+// empty board (services/liveTiming.js getBoard).
 export async function serverKeyForSeries(prisma, seriesSlug) {
-  return (await serverConfigForSeries(prisma, seriesSlug)).key;
+  const { key, off } = await serverConfigForSeries(prisma, seriesSlug);
+  return off ? NO_SERVER : key;
 }
 
-// The same answer with the switch's fate attached: { key, only }.
+// The same answer with the switch's fate attached: { key, only, off }.
 export async function serverConfigForSeries(prisma, seriesSlug) {
-  if (!seriesSlug) return { key: DEFAULT_SERVER_KEY, only: false };
+  if (!seriesSlug) return { key: DEFAULT_SERVER_KEY, only: false, off: false };
   const map = await readLiveServerMap(prisma);
   return serverAssignment(map, seriesSlug);
 }
