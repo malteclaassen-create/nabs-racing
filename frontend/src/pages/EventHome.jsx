@@ -247,13 +247,14 @@ function EventBefore({ series, race }) {
           {Array.from({ length: capacity }, (_, i) => {
             const d = taken[i];
             return d ? (
-              <li
-                key={d.driverId}
-                title={d.name}
-                className="flex h-16 flex-col items-center justify-center gap-0.5 rounded-xl bg-ink px-1 text-white dark:bg-white dark:text-ink"
-              >
-                <span className="font-mono text-base font-bold text-brand dark:text-ink">{d.number != null ? `#${d.number}` : "·"}</span>
-                <span className="max-w-full truncate text-[11px] font-semibold">{d.name}</span>
+              <li key={d.driverId} title={d.name}>
+                <Link
+                  to={seriesPath(`/drivers/${d.driverId}`)}
+                  className="flex h-16 flex-col items-center justify-center gap-0.5 rounded-xl bg-ink px-1 text-white transition hover:brightness-125 dark:bg-white dark:text-ink dark:hover:brightness-90"
+                >
+                  <span className="font-mono text-base font-bold text-brand dark:text-ink">{d.number != null ? `#${d.number}` : "·"}</span>
+                  <span className="max-w-full truncate text-[11px] font-semibold">{d.name}</span>
+                </Link>
               </li>
             ) : (
               <li

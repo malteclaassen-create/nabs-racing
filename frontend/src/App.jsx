@@ -30,6 +30,7 @@ import Welcome from "./pages/Welcome.jsx";
 import EventHome from "./pages/EventHome.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
+import EventDriverProfile from "./pages/EventDriverProfile.jsx";
 import Constructors from "./pages/Constructors.jsx";
 import TeamProfile from "./pages/TeamProfile.jsx";
 import HallOfFame from "./pages/HallOfFame.jsx";
@@ -154,6 +155,17 @@ function HomeRoute() {
   return showWelcome ? <Welcome /> : <Home />;
 }
 
+// A driver inside a special event gets the event's own profile (one race: the
+// number, the seat, the result, the league record) rather than the
+// championship one. Waits for the series list so an event page never flashes
+// the championship profile first.
+function DriverRoute() {
+  const { current, loaded } = useSeries();
+  if (!loaded) return <PageChunkSkeleton />;
+  if (current?.kind === "event") return <EventDriverProfile />;
+  return <DriverProfile />;
+}
+
 // Sends a flat legacy path to its series-prefixed home: the series being
 // viewed (sticky across global pages), else the active one. Old bookmarks and
 // every internal `/drivers/...` link keep working — they just normalise to
@@ -246,7 +258,7 @@ function AppRoutes() {
             the page's identity, so links can be shared across series. */}
         <Route path="/s/:seriesSlug" element={<HomeRoute />} />
         <Route path="/s/:seriesSlug/drivers" element={<DriverStandings />} />
-        <Route path="/s/:seriesSlug/drivers/:id" element={<DriverProfile />} />
+        <Route path="/s/:seriesSlug/drivers/:id" element={<DriverRoute />} />
         <Route path="/s/:seriesSlug/constructors" element={<Constructors />} />
         <Route path="/s/:seriesSlug/constructors/:id" element={<TeamProfile />} />
         <Route path="/s/:seriesSlug/teams" element={<Constructors />} />
