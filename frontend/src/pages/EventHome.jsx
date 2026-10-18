@@ -201,11 +201,11 @@ function EventBefore({ series, race }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile label="Your time">
           <div className="font-display text-2xl font-black text-dark sm:text-3xl">
-            {kickoff ? kickoff.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "TBA"}
+            {kickoff ? kickoff.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "TBA"}
           </div>
           {kickoff && (
             <div className="text-sm text-light">
-              {kickoff.toLocaleDateString(undefined, { weekday: "long" })} · your time zone
+              {kickoff.toLocaleDateString("en-GB", { weekday: "long" })} · your time zone
             </div>
           )}
         </Tile>
@@ -349,7 +349,7 @@ function EventLive({ series, race, pending }) {
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Tile label="Lights out, your time">
             <div className="font-display text-2xl font-black text-dark sm:text-3xl">
-              {raceKickoff(race?.date)?.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) || "–"}
+              {raceKickoff(race?.date)?.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) || "–"}
             </div>
           </Tile>
           <Tile label="Distance">

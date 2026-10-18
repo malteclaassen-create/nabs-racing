@@ -355,7 +355,7 @@ export function eventNavLinks(p, race, phase) {
     return [home, { to: p(`/races?race=${race.id}`), label: "Results" }, { to: p(`/recap/${race.id}`), label: "Race replay" }];
   }
   if (phase === "live" || phase === "pending") return [live, home, entry, ready];
-  const day = race?.date ? new Date(race.date).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : null;
+  const day = race?.date ? new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null;
   return [home, entry, ready, { ...live, disabled: true, hint: day }];
 }
 
