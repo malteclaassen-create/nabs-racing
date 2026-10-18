@@ -67,7 +67,7 @@ function FilmCard({ series, race, children }) {
     <section
       aria-label="Promo film"
       style={{ containerType: "inline-size" }}
-      className="relative aspect-video min-w-0 flex-[999_1_640px] overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
+      className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
     >
       <EventFilm
         src={series?.promoVideoUrl}
@@ -161,7 +161,7 @@ function EventBefore({ series, race }) {
 
   return (
     <div className="content-in space-y-5">
-      <div className="flex flex-wrap items-stretch gap-5">
+      <div className="grid gap-4 xl:grid-cols-4">
         <FilmCard series={series} race={race}>
           {series?.promoLoopUrl && <LoopPoster series={series} race={race} car={car} />}
         </FilmCard>
@@ -175,7 +175,7 @@ function EventBefore({ series, race }) {
             corner="Special event"
             to={seriesPath(`/attendance?race=${race.id}`)}
             cta={signUp}
-            className="flex min-w-0 flex-[1_1_320px] flex-col"
+            className="flex min-w-0 flex-col xl:col-span-1"
           >
             <div className="mt-5">
               <div className="flex justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/65">
@@ -190,7 +190,7 @@ function EventBefore({ series, race }) {
             </div>
           </NextRaceCard>
         ) : (
-          <aside aria-label="Race card" className="card flex flex-[1_1_320px] flex-col justify-center gap-2 p-5">
+          <aside aria-label="Race card" className="card flex xl:col-span-1 flex-col justify-center gap-2 p-5">
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Next Race</div>
             <div className="font-display text-2xl font-black uppercase tracking-tight text-dark">Date to be announced</div>
           </aside>
@@ -294,7 +294,7 @@ function EventLive({ series, race, pending }) {
 
   return (
     <div className="content-in space-y-5">
-      <div className="flex flex-wrap items-stretch gap-5">
+      <div className="grid gap-4 xl:grid-cols-4">
         <FilmCard series={series} race={race}>
           <div className="pointer-events-none absolute left-5 top-5 z-10 inline-flex items-center gap-2 rounded-full bg-red-600 px-3.5 py-2 font-mono text-xs font-bold uppercase tracking-widest text-white">
             {pending ? (
@@ -308,7 +308,7 @@ function EventLive({ series, race, pending }) {
           </div>
         </FilmCard>
 
-        <aside aria-label="Running order" className="flex flex-[1_1_320px] flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
+        <aside aria-label="Running order" className="flex xl:col-span-1 flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">
             {racing ? "Running order" : pending ? "Chequered flag" : session?.name || "Race night"}
           </div>
@@ -432,11 +432,11 @@ function EventAfter({ series, race }) {
 
   return (
     <div className="content-in space-y-5">
-      <div className="flex flex-wrap items-stretch gap-5">
+      <div className="grid gap-4 xl:grid-cols-4">
         {/* The winner, on the race's own picture. */}
         <section
           aria-label="Winner"
-          className="relative aspect-video min-w-0 flex-[999_1_640px] overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
+          className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
         >
           {picture ? (
             <img src={picture} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -473,7 +473,7 @@ function EventAfter({ series, race }) {
           </div>
         </section>
 
-        <aside aria-label="Podium" className="flex flex-[1_1_320px] flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
+        <aside aria-label="Podium" className="flex xl:col-span-1 flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">★ Podium</div>
           <ol className="space-y-2">
             {classified.slice(0, 3).map((r, i) => (
