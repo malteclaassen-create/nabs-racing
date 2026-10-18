@@ -5997,8 +5997,8 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
       onSaved(
         on
           ? series.isPublic
-            ? `Promo page on: every visitor sees ${series.name}'s promo once.`
-            : `Promo page on. Visitors get it once ${series.name} is public.`
+            ? `Promo page on: everyone who opens ${series.name}'s page sees the promo once.`
+            : `Promo page on: admins see it once on ${series.name}'s page, visitors too once the series is public.`
           : `Promo page off for ${series.name}.`
       );
     } catch (err) {
@@ -6042,7 +6042,7 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
       <span className="text-light">
         Promo page:{" "}
         {series.promoAt ? (
-          <span className="font-semibold text-ok">on{series.isPublic ? "" : " (once public)"}</span>
+          <span className="font-semibold text-ok">on{series.isPublic ? "" : " (admins only until public)"}</span>
         ) : (
           <span className="font-semibold">off</span>
         )}

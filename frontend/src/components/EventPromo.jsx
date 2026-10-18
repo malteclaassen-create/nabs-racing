@@ -17,11 +17,15 @@ import { filmAllowed } from "../hooks/useIdleFilm.js";
 // replacing a page, so whatever was asked for is right there once it is closed.
 //
 // When it shows (PromoHost below):
-//   - an admin switched it on for the series (Series.promoAt), the series is
-//     public, its event is not over, and this browser has not closed this
-//     promo yet. Switching it off and on again counts as a new promo.
-//   - or the address carries ?promo=<slug>: the admin's preview (works for a
-//     private series too, for whoever may see it) and a link to share.
+//   - on the event's own page (/s/<slug>), when an admin switched it on for
+//     the series (Series.promoAt), its event is not over, and this browser has
+//     not closed this promo yet. Switching it off and on again counts as a new
+//     promo. Nowhere else on the site: whoever opens the league's pages or a
+//     sign-up link is not stopped by a film.
+//   - for whoever may see the series: a private one is in the series list of
+//     admins only, so while it is unpublished only admins get its promo.
+//   - or the address carries ?promo=<slug>: the admin's preview and a link to
+//     share.
 // Never over the admin area, a login callback or the race-control desk.
 // ---------------------------------------------------------------------------
 
@@ -50,6 +54,12 @@ function eventOver(series, now = Date.now()) {
   return Number.isFinite(t) && t < now - 24 * 3600e3;
 }
 
+// The series whose home page this is ("/s/<slug>", nothing after it), else null.
+export function slugOfHome(pathname) {
+  const m = /^\/s\/([^/]+)\/?$/.exec(pathname || "");
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 export default function PromoHost() {
   const { seriesList, loaded } = useSeries();
   const location = useLocation();
@@ -62,9 +72,10 @@ export default function PromoHost() {
     if (asked) {
       show = seriesList.find((s) => s.slug === asked) || null;
     } else {
+      const here = slugOfHome(location.pathname);
       show =
         seriesList.find(
-          (s) => s.promoAt && s.isPublic !== false && !eventOver(s) && !closed.has(s.id) && !seenPromo(s)
+          (s) => s.slug === here && s.promoAt && !eventOver(s) && !closed.has(s.id) && !seenPromo(s)
         ) || null;
     }
   }
