@@ -80,10 +80,13 @@ export default function PromoHost() {
 
   const close = useCallback(
     (series) => {
-      markPromoSeen(series);
+      const params = new URLSearchParams(location.search);
+      // A preview (?promo=) is not the visit: closing it must not count as
+      // having seen the promo, or the admin who checked it first never gets
+      // it on the event page afterwards.
+      if (!params.has("promo")) markPromoSeen(series);
       setClosed((c) => new Set(c).add(series.id));
       // Drop the ?promo= so closing a preview does not reopen it.
-      const params = new URLSearchParams(location.search);
       if (params.has("promo")) {
         params.delete("promo");
         const q = params.toString();
