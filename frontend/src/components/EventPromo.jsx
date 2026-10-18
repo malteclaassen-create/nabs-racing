@@ -80,10 +80,13 @@ export default function PromoHost() {
 
   const close = useCallback(
     (series) => {
-      markPromoSeen(series);
+      const params = new URLSearchParams(location.search);
+      // A preview (?promo=) is not the visit: closing it must not count as
+      // having seen the promo, or the admin who checked it first never gets
+      // it on the event page afterwards.
+      if (!params.has("promo")) markPromoSeen(series);
       setClosed((c) => new Set(c).add(series.id));
       // Drop the ?promo= so closing a preview does not reopen it.
-      const params = new URLSearchParams(location.search);
       if (params.has("promo")) {
         params.delete("promo");
         const q = params.toString();
@@ -289,13 +292,14 @@ function EventPromo({ slug, onClose, onUnavailable }) {
       </div>
 
       {/* The stage: the film plays through once, unobstructed, and then rests
-          on its last frame (which carries its own facts). Always the whole
-          picture (contain, never cover): filling a screen of another shape
-          would cut the film's own lettering off at the edges. The full screen
+          on its last frame while the facts come in over it. It fills the
+          screen (cover): on a window wider or taller than 16:9 a little of the
+          picture's edge goes, rather than black bars beside it, so the film
+          should keep lettering of its own away from the edges. The full screen
           from md up; on a phone the 16:9 picture at the top. */}
       <div className="pointer-events-none relative aspect-video w-full overflow-hidden md:fixed md:inset-0 md:aspect-auto">
         {poster && (!film || !filmReady) && (
-          <img src={poster} alt="" className="absolute inset-0 h-full w-full object-contain opacity-70" />
+          <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
         )}
         {film && (
           <video
@@ -319,7 +323,7 @@ function EventPromo({ slug, onClose, onUnavailable }) {
               if (!reveal && Number.isFinite(v.duration) && v.duration - v.currentTime <= REVEAL_BEFORE_END_S) setReveal(true);
             }}
             onEnded={() => setReveal(true)}
-            className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-1000 ${
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
               filmReady ? "opacity-100" : "opacity-0"
             }`}
           />

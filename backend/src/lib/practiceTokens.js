@@ -793,7 +793,10 @@ export async function moveLentServerLapsOnce(prisma) {
     const slugs = await activeSeriesSlugs(prisma);
     const own = new Map();
     for (const srv of LIVE_SERVERS) {
-      const mine = slugs.filter((slug) => serverAssignment(map, slug).key === srv.key);
+      const mine = slugs.filter((slug) => {
+        const a = serverAssignment(map, slug);
+        return !a.off && a.key === srv.key;
+      });
       if (mine.length === 1) own.set(srv.key, mine[0]);
     }
     // Nothing to compare against (no series could be read): try again on the
@@ -829,7 +832,8 @@ export async function moveLentServerLapsOnce(prisma) {
       const from = String(r.server || "");
       const series = String(r.series || "");
       if (!lent(from, series) || !inLentWeek(r.updatedAt)) continue;
-      const to = serverAssignment(map, series).key;
+      const assigned = serverAssignment(map, series);
+      const to = assigned.off ? null : assigned.key;
       if (!to || to === from) continue;
       if (!periods.has(r.period)) periods.set(r.period, await periodFromKey(prisma, r.period));
       const period = periods.get(r.period);

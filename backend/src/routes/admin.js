@@ -3804,9 +3804,15 @@ router.get("/todo", async (req, res, next) => {
   try {
     const series = await dbListSeries(prisma, { includePrivate: true }).catch(() => []);
     const nameOf = new Map(series.map((s) => [s.slug, s.name]));
-    const resets = listPending().map((p) => {
-      const slug = p.scopes[0]?.series || "";
-      return {
+    // A series switched to "no live server" is not asked about a server's
+    // reset any more, including a question already waiting from before.
+    const liveMap = await readLiveServerMap(prisma);
+    const offline = new Set(series.filter((s) => serverAssignment(liveMap, s.slug).off).map((s) => s.slug));
+    const resets = listPending().flatMap((p) => {
+      const scoped = (p.scopes || []).map((sc) => sc?.series).filter(Boolean);
+      const slug = scoped.find((sl) => !offline.has(sl)) ?? (scoped.length ? null : "");
+      if (slug === null) return [];
+      return [{
         id: p.id,
         series: slug,
         seriesName: nameOf.get(slug) || slug,
@@ -3818,7 +3824,7 @@ router.get("/todo", async (req, res, next) => {
         // rather than coming back from a restart.
         raceNight: !p.trackChanged && Number(p.after?.sessionType) > 1,
         endedAt: p.endedAt,
-      };
+      }];
     });
 
     const requestRows = await prisma.$queryRaw`

@@ -43,7 +43,7 @@ export default function EventHome() {
   if (loading) {
     return (
       <div className="content-in space-y-5">
-        <Skeleton className="aspect-video w-full rounded-[1.75rem] lg:w-2/3" />
+        <Skeleton className="aspect-video w-full rounded-xl lg:w-2/3" />
         <Skeleton className="h-32 w-full rounded-2xl" />
       </div>
     );
@@ -67,7 +67,7 @@ function FilmCard({ series, race, children }) {
     <section
       aria-label="Promo film"
       style={{ containerType: "inline-size" }}
-      className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
+      className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-xl bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
     >
       <EventFilm
         src={series?.promoVideoUrl}
@@ -173,6 +173,7 @@ function EventBefore({ series, race }) {
           <NextRaceCard
             race={race}
             corner="Special event"
+            radius="rounded-xl"
             to={seriesPath(`/attendance?race=${race.id}`)}
             cta={signUp}
             className="flex min-w-0 flex-col xl:col-span-1"
@@ -308,7 +309,7 @@ function EventLive({ series, race, pending }) {
           </div>
         </FilmCard>
 
-        <aside aria-label="Running order" className="flex xl:col-span-1 flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
+        <aside aria-label="Running order" className="flex xl:col-span-1 flex-col gap-4 rounded-xl bg-ink p-6 text-white">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">
             {racing ? "Running order" : pending ? "Chequered flag" : session?.name || "Race night"}
           </div>
@@ -425,7 +426,7 @@ function EventAfter({ series, race }) {
   if (detail.loading && !detail.data) {
     return (
       <div className="content-in space-y-5">
-        <Skeleton className="aspect-video w-full rounded-[1.75rem] lg:w-2/3" />
+        <Skeleton className="aspect-video w-full rounded-xl lg:w-2/3" />
       </div>
     );
   }
@@ -436,7 +437,7 @@ function EventAfter({ series, race }) {
         {/* The winner, on the race's own picture. */}
         <section
           aria-label="Winner"
-          className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
+          className="relative aspect-video min-w-0 overflow-hidden xl:col-span-3 xl:self-stretch rounded-xl bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
         >
           {picture ? (
             <img src={picture} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -473,7 +474,7 @@ function EventAfter({ series, race }) {
           </div>
         </section>
 
-        <aside aria-label="Podium" className="flex xl:col-span-1 flex-col gap-4 rounded-[1.75rem] bg-ink p-6 text-white">
+        <aside aria-label="Podium" className="flex xl:col-span-1 flex-col gap-4 rounded-xl bg-ink p-6 text-white">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">★ Podium</div>
           <ol className="space-y-2">
             {classified.slice(0, 3).map((r, i) => (
@@ -548,7 +549,7 @@ function EventAfter({ series, race }) {
         </section>
       )}
 
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[1.4rem] bg-ink px-6 py-5 text-white">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-ink px-6 py-5 text-white">
         <div>
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">★ Next special event</div>
           <div className="mt-1 font-display text-xl font-black uppercase">

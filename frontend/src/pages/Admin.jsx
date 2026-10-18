@@ -1304,6 +1304,10 @@ function LiveServersAdmin() {
             <b className="text-dark">Only this server</b> removes that switch: the series shows its own board and
             nothing else.
           </li>
+          <li>
+            <b className="text-dark">No live server</b> is for a series that races somewhere else: its Live page shows
+            no board, and no server restart asks to keep practice times for it.
+          </li>
         </ul>
       </HelpNote>
       {err && <Notice kind="error">{err}</Notice>}
@@ -1313,34 +1317,40 @@ function LiveServersAdmin() {
           const entry = map[s.slug] || {};
           const key = entry.key || data.defaultKey;
           const only = !!entry.only;
-          const set = (patch) => setMap((m) => ({ ...m, [s.slug]: { key, only, ...patch } }));
+          const off = !!entry.off;
+          const set = (patch) => setMap((m) => ({ ...m, [s.slug]: { key, only, off, ...patch } }));
           return (
             <div key={s.slug} className="flex flex-wrap items-center gap-3">
               <span className="w-48 truncate text-sm font-semibold text-dark">{s.name}</span>
               <select
                 aria-label={`Race server for ${s.name}`}
                 className="input max-w-xs"
-                value={key}
-                onChange={(e) => set({ key: e.target.value })}
+                value={off ? "off" : key}
+                onChange={(e) =>
+                  e.target.value === "off" ? set({ off: true, only: false }) : set({ key: e.target.value, off: false })
+                }
               >
                 {(data.servers || []).map((srv) => (
                   <option key={srv.key} value={srv.key}>
                     {srv.name} ({srv.origin.replace(/^https?:\/\//, "")})
                   </option>
                 ))}
+                <option value="off">No live server</option>
               </select>
-              <label
-                className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium"
-                title={`Hides the server switch on ${s.name}'s Live page, so visitors only ever see this board`}
-              >
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={only}
-                  onChange={(e) => set({ only: e.target.checked })}
-                />
-                Only this server
-              </label>
+              {!off && (
+                <label
+                  className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium"
+                  title={`Hides the server switch on ${s.name}'s Live page, so visitors only ever see this board`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={only}
+                    onChange={(e) => set({ only: e.target.checked })}
+                  />
+                  Only this server
+                </label>
+              )}
             </div>
           );
         })}

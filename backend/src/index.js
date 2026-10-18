@@ -269,7 +269,9 @@ app.get("/api/live/servers", async (req, res) => {
     // one a fresh visitor gets. `only` means this league races on that board and
     // nowhere else: the other server is then left out entirely, and the page's
     // switch disappears by itself (it hides below two servers).
-    const { key: defaultKey, only } = await serverConfigForSeries(prisma, req.query.series);
+    const { key: defaultKey, only, off } = await serverConfigForSeries(prisma, req.query.series);
+    // A series on no server has no board to switch between.
+    if (off) return res.json({ defaultKey: null, noServer: true, servers: [] });
     res.json({
       defaultKey,
       servers: (only ? LIVE_SERVERS.filter((srv) => srv.key === defaultKey) : LIVE_SERVERS).map((srv) => {
