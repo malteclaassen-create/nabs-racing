@@ -101,6 +101,21 @@ describe("conflictsWithServer", () => {
     expect(conflictsWithServer(MANIFEST, "track", "baku_2022", lacking)).toEqual(["models_nabs_baku.ini"]);
   });
 
+  it("ignores what only looks: a different map.ini still races on the server", () => {
+    const withMap = {
+      ...MANIFEST,
+      files: [
+        ...MANIFEST.files,
+        { group: "track baku_2022 (nabs_baku)", path: "content/tracks/baku_2022/nabs_baku/data/map.ini", md5: MD5("m"), level: "cosmetic" },
+      ],
+    };
+    const mine = [...TRACK_REF.files, { p: "nabs_baku/data/map.ini", s: 1, m: MD5("0") }];
+    expect(conflictsWithServer(withMap, "track", "baku_2022", mine)).toEqual([]);
+    expect(conflictsWithServer(withMap, "track", "baku_2022", TRACK_REF.files)).toEqual([]);
+    const { references } = referenceEntriesFor(withMap, { read: reader([{ ...TRACK_REF, files: mine }]) });
+    expect(references[0].stale).toBe(false);
+  });
+
   it("does not mind the case of a path, like Windows", () => {
     const upper = CAR_REF.files.map((f) => (f.p === "data.acd" ? { ...f, p: "DATA.acd" } : f));
     expect(conflictsWithServer(MANIFEST, "car", "formula_2010", upper)).toEqual([]);

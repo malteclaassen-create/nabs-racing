@@ -568,8 +568,10 @@ try {
       Say "    -> Delete the folder marked DELETE THIS. Nothing needs reinstalling." 'Cyan'
     } elseif ($serious.Count -gt 0) {
       Say "    -> Delete $folder completely, then install it fresh from the NABS Google Drive." 'Cyan'
-    } else {
+    } elseif (@($looks | Where-Object { $_.Path -notmatch '\\skins\\' }).Count -eq 0) {
       Say '    -> Optional: get the skin pack from the NABS Google Drive.' 'Cyan'
+    } else {
+      Say "    -> Nothing to do for racing. For an identical copy, reinstall $folder from the NABS Google Drive." 'Cyan'
     }
   }
 
