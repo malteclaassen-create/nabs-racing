@@ -64,6 +64,8 @@ router.get("/", async (req, res, next) => {
         promoVideoUrl: s.promoVideoUrl,
         promoLoopUrl: s.promoLoopUrl,
         promoAt: s.promoAt,
+        // The headline over the loop on the event page's main card.
+        promoTagline: s.promoTagline,
       }))
     );
   } catch (e) {

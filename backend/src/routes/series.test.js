@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { eventDateOf, eventRaceOf } from "./series.js";
-import { parseKind } from "../lib/series.js";
+import { parseKind, parsePromoTagline, PROMO_TAGLINE_MAX } from "../lib/series.js";
 
 const NOW = Date.parse("2026-10-17T12:00:00Z");
 
@@ -43,6 +43,19 @@ describe("parseKind", () => {
 
   it("rejects anything else", () => {
     expect(parseKind("cup").ok).toBe(false);
+  });
+});
+
+describe("parsePromoTagline", () => {
+  it("keeps one tidy line, blank meaning none", () => {
+    expect(parsePromoTagline("  Ready for some\n  Oval Action? ")).toEqual({ ok: true, value: "Ready for some Oval Action?" });
+    expect(parsePromoTagline("   ")).toEqual({ ok: true, value: null });
+    expect(parsePromoTagline(null)).toEqual({ ok: true, value: null });
+  });
+
+  it("rejects a headline longer than the card can carry", () => {
+    expect(parsePromoTagline("x".repeat(PROMO_TAGLINE_MAX)).ok).toBe(true);
+    expect(parsePromoTagline("x".repeat(PROMO_TAGLINE_MAX + 1)).ok).toBe(false);
   });
 });
 

@@ -66,6 +66,7 @@ function FilmCard({ series, race, children }) {
   return (
     <section
       aria-label="Promo film"
+      style={{ containerType: "inline-size" }}
       className="relative aspect-video min-w-0 flex-[999_1_640px] overflow-hidden rounded-[1.75rem] bg-ink shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:ring-white/10"
     >
       <EventFilm
@@ -85,6 +86,58 @@ function FilmCard({ series, race, children }) {
       </EventFilm>
       {children}
     </section>
+  );
+}
+
+// The facts over the main card's loop, laid out like the event's poster: the
+// admin's headline (Series.promoTagline, else the series name), car and track,
+// the start in UTC, and the league's mark (in white, as on the poster). Only
+// over a loop: the promo film carries its facts in its own last frame. Sized
+// in container units so the card says the same at 360 px as at 1000 px.
+const UTC = { timeZone: "UTC" };
+
+function LoopPoster({ series, race, car }) {
+  const kickoff = race ? raceKickoff(race.date) : null;
+  const rise = (i) => ({ animationDelay: `${0.25 + i * 0.12}s` });
+  return (
+    <div className="pointer-events-none absolute inset-0 text-white" aria-hidden="true">
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/30 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/60 to-transparent" />
+      <div className="absolute inset-0 flex flex-col p-[5cqw]">
+        <div
+          className="hero-anim max-w-[58%] font-display font-black leading-[1.02] tracking-tight text-brand [text-wrap:balance]"
+          style={{ fontSize: "clamp(20px, 5.6cqw, 58px)", ...rise(0) }}
+        >
+          {series?.promoTagline || series?.name}
+        </div>
+        {(car || race?.track) && (
+          <div
+            className="hero-anim mt-[2.2cqw] font-display font-black leading-[1.1]"
+            style={{ fontSize: "clamp(12px, 3.1cqw, 32px)", ...rise(1) }}
+          >
+            {car && <div>{car}</div>}
+            {race?.track && <div>{race.track}</div>}
+          </div>
+        )}
+        {kickoff && (
+          <div
+            className="hero-anim mt-auto font-display font-black leading-[1.08]"
+            style={{ fontSize: "clamp(12px, 3.4cqw, 36px)", ...rise(2) }}
+          >
+            <div>{kickoff.toLocaleDateString("en-US", { weekday: "long", ...UTC })}</div>
+            <div>{kickoff.toLocaleDateString("en-US", { month: "short", day: "numeric", ...UTC })}</div>
+            <div>{kickoff.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", ...UTC })} UTC</div>
+          </div>
+        )}
+      </div>
+      <div className="hero-anim absolute bottom-[5cqw] right-[5cqw] flex items-center gap-[1.6cqw]" style={rise(3)}>
+        <div className="hidden text-right uppercase leading-tight sm:block" style={{ fontSize: "clamp(9px, 1.5cqw, 15px)" }}>
+          <div className="font-bold tracking-wide" style={{ fontSize: "1.45em" }}>NABS Racing League</div>
+          <div className="tracking-wider text-white/80">Assetto Corsa sim racing</div>
+        </div>
+        <img src={series?.logoDarkUrl || "/logo-dark.png"} alt="" className="h-[clamp(28px,6.5cqw,64px)] w-auto brightness-0 invert" />
+      </div>
+    </div>
   );
 }
 
@@ -109,7 +162,9 @@ function EventBefore({ series, race }) {
   return (
     <div className="content-in space-y-5">
       <div className="flex flex-wrap items-stretch gap-5">
-        <FilmCard series={series} race={race} />
+        <FilmCard series={series} race={race}>
+          {series?.promoLoopUrl && <LoopPoster series={series} race={race} car={car} />}
+        </FilmCard>
 
         {/* The race card: the same card as the next race on a championship's
             home (circuit, countdown, date, the way in), with how full the grid

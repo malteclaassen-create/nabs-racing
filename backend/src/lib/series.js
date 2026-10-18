@@ -34,6 +34,7 @@ function shapeSeries(r) {
     promoVideoUrl: r.promoVideoUrl || null,
     promoAt: r.promoAt || null,
     promoLoopUrl: r.promoLoopUrl || null,
+    promoTagline: r.promoTagline || null,
     createdAt: r.createdAt,
   };
 }
@@ -264,7 +265,17 @@ export async function dbCreateSeries(prisma, { name, slug, game, description, ac
   return getSeriesById(prisma, id);
 }
 
-// Update name/game/description/order/isPublic/accentColor/kind/promo. The slug is deliberately NOT
+// The headline over the main card's loop on a special event's page ("Ready for
+// some Oval Action?"): one line of the admin's own, whitespace collapsed.
+// Blank = none (the card then leads with the series name).
+export const PROMO_TAGLINE_MAX = 60;
+export function parsePromoTagline(input) {
+  const v = String(input ?? "").replace(/\s+/g, " ").trim();
+  if (v.length > PROMO_TAGLINE_MAX) return { ok: false, error: `Headline is limited to ${PROMO_TAGLINE_MAX} characters` };
+  return { ok: true, value: v || null };
+}
+
+// Update name/game/description/order/isPublic/accentColor/kind/promo/promoTagline. The slug is deliberately NOT
 // updatable — it's the URL identity shared links depend on.
 export async function dbUpdateSeries(prisma, id, patch) {
   const sets = [];
@@ -301,6 +312,12 @@ export async function dbUpdateSeries(prisma, id, patch) {
   if (patch.promo !== undefined) {
     sets.push(`"promoAt" = ?`);
     vals.push(patch.promo ? new Date().toISOString() : null);
+  }
+  if (patch.promoTagline !== undefined) {
+    const t = parsePromoTagline(patch.promoTagline);
+    if (!t.ok) throw Object.assign(new Error(t.error), { status: 400 });
+    sets.push(`"promoTagline" = ?`);
+    vals.push(t.value);
   }
   if (patch.kind !== undefined) {
     const k = parseKind(patch.kind);

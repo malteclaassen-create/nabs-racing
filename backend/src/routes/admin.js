@@ -4991,7 +4991,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoTagline? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {

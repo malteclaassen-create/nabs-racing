@@ -6032,6 +6032,12 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
         onSaved={onSaved}
         onError={onError}
       />
+      {series.kind === "event" && (
+        <>
+          <span className="h-3 w-px bg-border" />
+          <LoopHeadline series={series} off={off} onSaved={onSaved} onError={onError} />
+        </>
+      )}
       <span className="h-3 w-px bg-border" />
       <span className="text-light">
         Promo page:{" "}
@@ -6048,6 +6054,46 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
         Preview
       </Link>
     </div>
+  );
+}
+
+// The headline the event page sets over the loop (Series.promoTagline), saved
+// when the field is left. Blank: the card leads with the series name.
+function LoopHeadline({ series, off, onSaved, onError }) {
+  const [value, setValue] = useState(series.promoTagline || "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setValue(series.promoTagline || ""), [series.promoTagline]);
+
+  async function save() {
+    const next = value.replace(/\s+/g, " ").trim();
+    if (next === (series.promoTagline || "")) return;
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promoTagline: next });
+      onSaved(next ? `Headline over the loop: "${next}".` : "Headline over the loop removed; the card shows the series name.");
+    } catch (err) {
+      onError(err.message);
+      setValue(series.promoTagline || "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label className="flex items-center gap-1.5 text-light" title="Shown over the main card's loop on the event page, with car, track and start time. Blank = the series name">
+      Headline
+      <input
+        type="text"
+        value={value}
+        maxLength={60}
+        placeholder={series.name}
+        disabled={off || busy}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        className="w-56 rounded border border-border bg-surface px-2 py-1 text-xs text-dark"
+      />
+    </label>
   );
 }
 
