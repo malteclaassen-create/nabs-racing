@@ -68,6 +68,7 @@ function FilmCard({ series, race, children }) {
     >
       <EventFilm
         src={series?.promoVideoUrl}
+        loop={series?.promoLoopUrl}
         fallback={still}
         alt={`${series?.name || "Special event"}${race?.track ? `, ${race.track}` : ""}`}
       >

@@ -62,6 +62,7 @@ router.get("/", async (req, res, next) => {
         // Promo film for the series' main card, and the admin's "show the
         // promo page" switch (the time it was switched on, else null).
         promoVideoUrl: s.promoVideoUrl,
+        promoLoopUrl: s.promoLoopUrl,
         promoAt: s.promoAt,
       }))
     );

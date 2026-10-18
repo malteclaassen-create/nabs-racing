@@ -536,7 +536,8 @@ export default function Welcome() {
   const photoRef = useParallax(0.08);
   // The car tile plays the series' promo film while the page is left alone
   // (same as the member home's main card, see hooks/useIdleFilm.js).
-  const film = useIdleFilm(useSeries().current?.promoVideoUrl);
+  const filmSeries = useSeries().current;
+  const film = useIdleFilm(filmSeries?.promoLoopUrl || filmSeries?.promoVideoUrl);
 
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
   // Same rule as Home: trainings count as the next race (utils/raceFormat.js).

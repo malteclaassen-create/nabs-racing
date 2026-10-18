@@ -83,6 +83,11 @@ model Series {
   // on arrival; the time is part of the "seen" key, so off-and-on again shows
   // it once more. Raw-SQL column (ensureSchema).
   promoAt       String?
+  // A short loop for the special event page's main card (and a championship's
+  // idle film), e.g. "/api/uploads/series/<id>-loop.mp4?v=<ts>". null = the
+  // promo film plays there instead (once, resting on its last frame). The
+  // promo page always plays the full promo film. Raw-SQL column.
+  promoLoopUrl  String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

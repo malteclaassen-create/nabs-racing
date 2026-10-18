@@ -561,7 +561,8 @@ export default function Home() {
   // The series' promo film takes the card over while the page is left alone,
   // the text and buttons (the HUD) fading out for it; any movement brings
   // them straight back.
-  const film = useIdleFilm(useSeries().current?.promoVideoUrl);
+  const filmSeries = useSeries().current;
+  const film = useIdleFilm(filmSeries?.promoLoopUrl || filmSeries?.promoVideoUrl);
 
   // Championship rounds only (special events have no round number / aren't scored).
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);

@@ -5981,44 +5981,13 @@ function SeriesLogo({ series, onSaved, onError }) {
   );
 }
 
-// The series' promo: the film its main card plays while nobody touches the
-// page (an MP4/WebM, streamed up with a progress figure since it runs to tens
-// of megabytes), and the switch for the promo page every visitor gets once on
-// arrival. "Preview" opens that page on the real site without switching it on.
+// The series' promo: its two films, the full promo film (the promo page plays
+// it; the main card too while there is no loop) and a short loop for the main
+// card, and the switch for the promo page every visitor gets once on arrival.
+// "Preview" opens that page on the real site without switching it on.
 function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
-  const ask = useAsk();
-  const fileRef = useRef(null);
-  const [progress, setProgress] = useState(null);
   const [busy, setBusy] = useState(false);
-  const off = panelBusy || busy || progress !== null;
-
-  async function pick(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setProgress(0);
-    try {
-      await api.uploadSeriesPromoVideo(series.id, file, setProgress);
-      onSaved(`Promo film uploaded for ${series.name}. Leave its home page alone for 8 seconds to see it play.`);
-    } catch (err) {
-      onError(err.message);
-    } finally {
-      setProgress(null);
-    }
-  }
-
-  async function removeFilm() {
-    if (!(await ask({ title: `Remove ${series.name}'s promo film?`, danger: true, confirmLabel: "Remove film" }))) return;
-    setBusy(true);
-    try {
-      await api.clearSeriesPromoVideo(series.id);
-      onSaved(`Promo film removed from ${series.name}.`);
-    } catch (err) {
-      onError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const off = panelBusy || busy;
 
   async function togglePromo() {
     const on = !series.promoAt;
@@ -6042,23 +6011,27 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
   return (
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-surface2/60 px-3 py-2 text-xs">
       <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Promo</span>
-      <input aria-label={`Promo film for ${series.name}`} ref={fileRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={pick} />
-      {progress !== null ? (
-        <span className="font-semibold text-medium">Uploading film… {progress}%</span>
-      ) : (
-        <>
-          <span className="text-light">{series.promoVideoUrl ? "Film uploaded" : "No film"}</span>
-          <button type="button" className="font-semibold text-link hover:underline" disabled={off}
-            onClick={() => fileRef.current?.click()} title="MP4 or WebM, up to 300 MB. Muted, looped; 1080p H.264 MP4 plays everywhere">
-            {series.promoVideoUrl ? "Replace film" : "Upload film"}
-          </button>
-          {series.promoVideoUrl && (
-            <button type="button" className="font-semibold text-light hover:text-link" disabled={off} onClick={removeFilm}>
-              Remove film
-            </button>
-          )}
-        </>
-      )}
+      <FilmSlot
+        series={series}
+        kind="promo"
+        label="Film"
+        url={series.promoVideoUrl}
+        title="The full film of the promo page (and of the main card while there is no loop). MP4 or WebM, up to 300 MB; 1080p H.264 MP4 plays everywhere"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
+      <span className="h-3 w-px bg-border" />
+      <FilmSlot
+        series={series}
+        kind="loop"
+        label="Main card loop"
+        url={series.promoLoopUrl}
+        title="A short clip the main card plays over and over, muted. MP4 or WebM, up to 300 MB"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
       <span className="h-3 w-px bg-border" />
       <span className="text-light">
         Promo page:{" "}
@@ -6075,6 +6048,66 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
         Preview
       </Link>
     </div>
+  );
+}
+
+// One of a series' two films (kind "promo" or "loop"): upload with a progress
+// figure (they run to tens of megabytes), replace, remove.
+function FilmSlot({ series, kind, label, url, title, off, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [progress, setProgress] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const disabled = off || busy || progress !== null;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setProgress(0);
+    try {
+      await api.uploadSeriesPromoVideo(series.id, file, setProgress, kind);
+      onSaved(`${label} uploaded for ${series.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function remove() {
+    if (!(await ask({ title: `Remove ${series.name}'s ${label.toLowerCase()}?`, danger: true, confirmLabel: "Remove" }))) return;
+    setBusy(true);
+    try {
+      await api.clearSeriesPromoVideo(series.id, kind);
+      onSaved(`${label} removed from ${series.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <input aria-label={`${label} for ${series.name}`} ref={fileRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={pick} />
+      <span className="text-light">{label}:</span>
+      {progress !== null ? (
+        <span className="font-semibold text-medium">uploading… {progress}%</span>
+      ) : (
+        <>
+          <button type="button" className="font-semibold text-link hover:underline" disabled={disabled}
+            onClick={() => fileRef.current?.click()} title={title}>
+            {url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <button type="button" className="font-semibold text-light hover:text-link" disabled={disabled} onClick={remove}>
+              Remove
+            </button>
+          )}
+        </>
+      )}
+    </>
   );
 }
 

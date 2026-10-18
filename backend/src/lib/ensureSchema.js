@@ -379,6 +379,9 @@ export async function ensureAppSchema(prisma) {
   // switched on, null = off.
   await addColumn(prisma, "Series", "promoVideoUrl", "TEXT");
   await addColumn(prisma, "Series", "promoAt", "TEXT");
+  // A short film the event page's main card loops (muted) instead of playing
+  // the promo film once. null = the promo film does that job.
+  await addColumn(prisma, "Series", "promoLoopUrl", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.

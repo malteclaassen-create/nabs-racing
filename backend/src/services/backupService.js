@@ -60,7 +60,7 @@ export async function tryCreateBackup(prisma, label) {
 // downloaded, and it eventually just aborted. Streaming starts the download
 // immediately and keeps memory flat. Images are STORED rather than deflated
 // (they're already compressed); the DB snapshot still shrinks well.
-const PROMO_FILM_RE = /^series\/[^/]+-promo\.(mp4|webm)$/;
+const PROMO_FILM_RE = /^series\/[^/]+-(promo|loop)\.(mp4|webm)$/;
 
 export async function streamFullBackupZip(prisma, res) {
   const snap = await createBackup(prisma, "full-download");

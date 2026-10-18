@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { filmAllowed } from "../hooks/useIdleFilm.js";
 import { usePromoOpen } from "../utils/promoOpen.js";
 
-// The main card of a special event's home page: the promo film IS the card.
-// Its last frame carries the event's facts (when, where, which car), so the
-// film plays through once and then rests on that frame, which stays as the
-// card's picture.
+// The main card of a special event's home page: a film IS the card.
+//
+// With a `loop` (Series.promoLoopUrl) the card simply plays that, muted and
+// over and over; the page around it carries the facts. Without one it falls
+// back to the promo film, whose last frame carries the event's facts (when,
+// where, which car), so that one plays through once and then rests on the
+// frame, which stays as the card's picture:
 //
 //   - Once per browser session and film it plays from the start, as soon as
 //     the promo page (if up) is closed. Hopping to the entry list and back
@@ -35,7 +38,37 @@ function markFilmSeen(src) {
   }
 }
 
-export default function EventFilm({ src, fallback, alt, children, still = false }) {
+export default function EventFilm(props) {
+  return props.loop && !props.still ? <LoopFilm {...props} /> : <OnceFilm {...props} />;
+}
+
+// The loop: muted, round and round. Without moving pictures (reduced motion,
+// low-effects mode, Save-Data) its first frame, held.
+function LoopFilm({ loop, fallback, alt }) {
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const moving = filmAllowed();
+  if (failed) return fallback ? <img src={fallback} alt={alt || ""} className="absolute inset-0 h-full w-full object-cover" /> : null;
+  return (
+    <>
+      {fallback && !ready && <img src={fallback} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+      <video
+        src={loop}
+        autoPlay={moving}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-label={alt}
+        onLoadedData={() => setReady(true)}
+        onError={() => setFailed(true)}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${ready ? "opacity-100" : "opacity-0"}`}
+      />
+    </>
+  );
+}
+
+function OnceFilm({ src, fallback, alt, children, still = false }) {
   const ref = useRef(null);
   const promoUp = usePromoOpen();
   const [failed, setFailed] = useState(false);

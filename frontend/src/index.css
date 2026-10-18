@@ -510,22 +510,16 @@ html.update-reveal.update-reveal-go body::after {
 [data-film="on"] .hero-hud * {
   pointer-events: none;
 }
-/* The special-event promo page (components/EventPromo.jsx): the screen fades
-   up from black, then the lines rise in one after another. */
+/* The special-event promo page (components/EventPromo.jsx) fades up from
+   black. */
 @keyframes promo-in {
   from { opacity: 0; }
-}
-@keyframes promo-rise {
-  from { opacity: 0; transform: translateY(18px); }
 }
 .promo-in {
   animation: promo-in 500ms var(--e-out) both;
 }
-.promo-rise {
-  animation: promo-rise 700ms var(--e-out) both;
-}
 @media (prefers-reduced-motion: reduce) {
-  .promo-in, .promo-rise { animation: none; }
+  .promo-in { animation: none; }
 }
 
 .speed-hatch {
