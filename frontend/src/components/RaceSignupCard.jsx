@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { Hourglass, Fingerprint, Copy, Check, Undo2, Link2 } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
@@ -10,7 +11,6 @@ import { api } from "../api/client.js";
 import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
 import { threeLetterMonths } from "../utils/format.js";
-import { EventCarFields, takenNumbers, draftFrom, draftProblem, draftBody } from "./EventCar.jsx";
 import { defaultLiveriesFor } from "../data/defaultLiveries.js";
 
 // Quiet by default, colour only where it means something: the three answer
@@ -327,39 +327,22 @@ export default function RaceSignupCard({
   async function answer(status) {
     if (myOffer && status === "ACCEPTED" && !(await confirmTakingSeatBack())) return;
     if (status !== "ACCEPTED" && !(await confirmLeavingTheGrid(status))) return;
-    // A special event wants the car before the seat: a number, and the livery
-    // link if they have one. Asked once; after that the answer buttons work as
-    // anywhere else and the car is changed in its own panel.
+    // A special event wants the car before the seat, and its sign-up is a
+    // page of its own (pages/EventSignup.jsx). Once the car is known, the
+    // answer buttons work as anywhere else and the car is changed in its panel.
     if (ev.isEvent && status !== "DECLINED" && myCarNumber == null) {
-      setCarFor(status);
-      setCarError(null);
+      navigate(seriesPath("/signup"));
       return;
     }
     onSetStatus(ev.id, status);
   }
 
-  // The car form of a special event (see answer above). `carFor` is the answer
-  // waiting for it.
+  // A special event's own number, if this member has picked one already.
   const myCarNumber = ["ACCEPTED", "TENTATIVE", WAITLIST]
     .flatMap((s) => ev.rsvps[s] || [])
     .find((r) => myIds.has(r.driverId))?.carNumber ?? null;
-  const [carFor, setCarFor] = useState(null);
-  const defaults = defaultLiveriesFor(eventCar);
-  const [carDraft, setCarDraft] = useState(() => draftFrom(null, defaults));
-  const [carError, setCarError] = useState(null);
-  const [carBusy, setCarBusy] = useState(false);
-  useEffect(() => setCarFor(null), [ev.id]);
-  const taken = takenNumbers(ev, myIds);
-  async function submitCar() {
-    const p = draftProblem(carDraft, taken, defaults);
-    if (p) return setCarError(p);
-    setCarBusy(true);
-    setCarError(null);
-    const err = await onSetStatus(ev.id, carFor, draftBody(carDraft));
-    setCarBusy(false);
-    if (err) setCarError(err);
-    else setCarFor(null);
-  }
+  const navigate = useNavigate();
+  const { seriesPath } = useSeriesPath();
   // A reserve already picked for the seat loses it, and should not find out
   // from the entry list. Only asked when there is somebody to lose it.
   async function confirmTakingSeatBack() {
@@ -599,34 +582,6 @@ export default function RaceSignupCard({
           </Link>
         )}
       </div>
-
-      {/* A special event asks for the car before the seat (see answer()). */}
-      {carFor && (
-        <div className="space-y-4 border-b border-border bg-surface2/40 px-5 py-4">
-          <div>
-            <p className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Your car</p>
-            <p className="mt-0.5 text-sm text-light">
-              Pick your livery and a number nobody else has. You can change both later.
-            </p>
-          </div>
-          <EventCarFields
-            draft={carDraft}
-            setDraft={setCarDraft}
-            taken={taken}
-            deadline={ev.liveryDeadline}
-            defaults={defaults}
-          />
-          {carError && <p className="text-sm font-semibold text-bad">{carError}</p>}
-          <div className="flex flex-wrap gap-2">
-            <button onClick={submitCar} disabled={carBusy} className="btn-primary">
-              {carBusy ? "..." : carFor === WAITLIST ? "Join the waiting list" : carFor === "TENTATIVE" ? "Sign up as tentative" : "Sign up"}
-            </button>
-            <button onClick={() => setCarFor(null)} disabled={carBusy} className="btn-secondary">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* The Steam ids are off by default and off again as soon as the card
           moves to another race: they are not something to leave lying around

@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useEventRace } from "../hooks/useEventRace.js";
+import { useMyEventEntry } from "../hooks/useMyEventEntry.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import EventFilm from "../components/EventFilm.jsx";
 import Flag from "../components/Flag.jsx";
@@ -155,8 +156,11 @@ function EventBefore({ series, race }) {
   const car = season?.game || series?.game || null;
 
   // What the button can honestly offer right now.
+  // Somebody who is in goes to the attendance page (entry list, their car).
+  const signedUp = useMyEventEntry(race?.id);
   let signUp = "Sign up";
-  if (ev?.gridFull) signUp = "Grid full · join the waiting list";
+  if (signedUp) signUp = "You're in · your car";
+  else if (ev?.gridFull) signUp = "Grid full · join the waiting list";
   else if (ev && !ev.attendanceOpen && ev.attendanceOpensAt) signUp = `Sign-up opens ${fmtRaceDate(ev.attendanceOpensAt)}`;
 
   return (
@@ -174,7 +178,7 @@ function EventBefore({ series, race }) {
             race={race}
             corner="Special event"
             radius="rounded-xl"
-            to={seriesPath(`/attendance?race=${race.id}`)}
+            to={seriesPath(signedUp ? "/attendance" : "/signup")}
             cta={signUp}
             className="flex min-w-0 flex-col xl:col-span-1"
           >

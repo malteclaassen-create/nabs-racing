@@ -355,9 +355,15 @@ export function eventEntryLabel(phase, signedUp) {
   return phase === "live" || phase === "pending" ? "Entry list" : "Sign up";
 }
 
+// Where that item leads: the sign-up page of its own while it says "Sign up",
+// the attendance page (entry list, and the car to change) otherwise.
+export function eventEntryPath(phase, signedUp) {
+  return eventEntryLabel(phase, signedUp) === "Sign up" ? "/signup" : "/attendance";
+}
+
 export function eventNavLinks(p, race, phase, signedUp = false) {
   const home = { to: p(""), label: "Event", end: true, alsoActiveOn: "/" };
-  const entry = { to: p("/attendance"), label: eventEntryLabel(phase, signedUp) };
+  const entry = { to: p(eventEntryPath(phase, signedUp)), label: eventEntryLabel(phase, signedUp) };
   const ready = { to: "/downloads", label: "Get ready" };
   const live = { to: p("/live"), label: "Live" };
   if (phase === "after" && race) {
@@ -591,7 +597,7 @@ function BottomNav({ seriesPath, liveNow, onTap, event = null }) {
     { key: "home", to: seriesPath(""), end: true, label: "Event", icon: TAB_ICONS.home, forced: location.pathname === "/" },
     event.phase === "after" && event.race
       ? { key: "results", to: seriesPath(`/races?race=${event.race.id}`), label: "Results", icon: TAB_ICONS.standings }
-      : { key: "entry", to: seriesPath("/attendance"), label: eventEntryLabel(event.phase, event.signedUp), icon: TAB_ICONS.races },
+      : { key: "entry", to: seriesPath(eventEntryPath(event.phase, event.signedUp)), label: eventEntryLabel(event.phase, event.signedUp), icon: TAB_ICONS.races },
   ];
   const tabs = [
     ...(eventTabs || [
@@ -1419,7 +1425,7 @@ export default function NavBar() {
                   </>
                 )}
                 {isEvent && eventPhase !== "after" && (
-                  <SheetTile to={seriesPath("/attendance")} Icon={CalendarCheck} label={eventEntryLabel(eventPhase, eventSignedUp)} hint={eventSignedUp ? "Your car, who is in" : "Sign up, who is in"} />
+                  <SheetTile to={seriesPath(eventEntryPath(eventPhase, eventSignedUp))} Icon={CalendarCheck} label={eventEntryLabel(eventPhase, eventSignedUp)} hint={eventSignedUp ? "Your car, who is in" : "Sign up, who is in"} />
                 )}
                 {!isEvent && <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />}
                 {!isEvent && attendanceOpen && (

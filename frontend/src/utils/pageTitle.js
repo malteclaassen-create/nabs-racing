@@ -108,6 +108,7 @@ const SECTIONS = {
   transfers: (label) => `${label} transfers and team history`,
   live: () => "Live timing",
   attendance: (label) => `${label} sign-ups and attendance`,
+  signup: (label) => `Sign up for ${label}`,
 };
 // Sections whose title stands without a season in it (the Hall of Fame is
 // all-time, live timing is now), so they can be titled before the season list

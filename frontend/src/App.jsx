@@ -36,6 +36,7 @@ import HallOfFame from "./pages/HallOfFame.jsx";
 import Transfers from "./pages/Transfers.jsx";
 import Races from "./pages/Races.jsx";
 import Attendance from "./pages/Attendance.jsx";
+import EventSignup from "./pages/EventSignup.jsx";
 import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
@@ -257,6 +258,7 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/results" element={<Races />} />
         <Route path="/s/:seriesSlug/calendar" element={<Races />} />
         <Route path="/s/:seriesSlug/attendance" element={<Attendance />} />
+        <Route path="/s/:seriesSlug/signup" element={<EventSignup />} />
         <Route path="/s/:seriesSlug/live" element={<Live />} />
         <Route path="/s/:seriesSlug/recap/:raceId" element={<RaceRecapPage />} />
 
