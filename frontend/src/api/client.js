@@ -1261,11 +1261,12 @@ export const api = {
   },
   clearSeriesLogo: (id) => request(`/admin/series/${id}/logo`, { method: "DELETE", auth: true }),
   // The series' films (MP4/WebM, up to 300 MB): kind "promo" = the promo
-  // page's full film, kind "loop" = the main card's loop.
+  // page's full film, "phone" = the same for a phone held upright (9:16),
+  // "loop" = the main card's loop.
   uploadSeriesPromoVideo: (id, file, onProgress, kind = "promo") =>
-    adminUploadWithProgress(`/admin/series/${id}/promo-video${kind === "loop" ? "?kind=loop" : ""}`, file, onProgress),
+    adminUploadWithProgress(`/admin/series/${id}/promo-video${kind === "promo" ? "" : `?kind=${kind}`}`, file, onProgress),
   clearSeriesPromoVideo: (id, kind = "promo") =>
-    request(`/admin/series/${id}/promo-video${kind === "loop" ? "?kind=loop" : ""}`, { method: "DELETE", auth: true }),
+    request(`/admin/series/${id}/promo-video${kind === "promo" ? "" : `?kind=${kind}`}`, { method: "DELETE", auth: true }),
   // Every page of a series as a pasted link shows it (Site -> Link previews).
   adminLinkPreviews: (id) => request(`/admin/series/${id}/link-previews`, { auth: true }),
   // A page's own link-preview title/description (blank = automatic).

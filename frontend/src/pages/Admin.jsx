@@ -6121,6 +6121,17 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
       <span className="h-3 w-px bg-border" />
       <FilmSlot
         series={series}
+        kind="phone"
+        label="Phone film (9:16)"
+        url={series.promoPhoneUrl}
+        title="The promo film cut upright for phones. Phones held upright get this one, everything else the film above. MP4 or WebM, up to 300 MB"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
+      <span className="h-3 w-px bg-border" />
+      <FilmSlot
+        series={series}
         kind="loop"
         label="Main card loop"
         url={series.promoLoopUrl}

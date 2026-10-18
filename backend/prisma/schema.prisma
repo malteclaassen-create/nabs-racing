@@ -88,6 +88,10 @@ model Series {
   // promo film plays there instead (once, resting on its last frame). The
   // promo page always plays the full promo film. Raw-SQL column.
   promoLoopUrl  String?
+  // The promo film cut for a phone held upright (9:16), e.g.
+  // "/api/uploads/series/<id>-phone.mp4?v=<ts>". null = phones get the
+  // landscape film. Raw-SQL column.
+  promoPhoneUrl String?
   // The headline over that loop on the event page ("Ready for some Oval
   // Action?"), at most 60 characters. null = none. Raw-SQL column.
   promoTagline  String?

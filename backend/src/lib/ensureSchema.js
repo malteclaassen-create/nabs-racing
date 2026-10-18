@@ -382,6 +382,9 @@ export async function ensureAppSchema(prisma) {
   // A short film the event page's main card loops (muted) instead of playing
   // the promo film once. null = the promo film does that job.
   await addColumn(prisma, "Series", "promoLoopUrl", "TEXT");
+  // The promo film for a phone held upright (9:16). null = phones get the
+  // landscape film.
+  await addColumn(prisma, "Series", "promoPhoneUrl", "TEXT");
   // The headline the event page sets over that loop. null = none.
   await addColumn(prisma, "Series", "promoTagline", "TEXT");
   // Promo page once per browser (0) or every time the series is opened (1).

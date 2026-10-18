@@ -170,7 +170,35 @@ const CAPTION_RISE_S = 0.45;
 const CAPTION_FADE_S = 0.35;
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const easeOut = (p) => 1 - (1 - p) ** 3;
-const cqh = (share) => `${(share * 100).toFixed(3)}cqh`;
+// Sizes: a share of the picture's height, as a length. The captions were
+// drawn against a 16:9 picture; held upright a phone's screen is far taller
+// than it is wide, and a share of ITS height would run the words off the side.
+// So the unit is the height of a 16:9 picture as wide as the stage when that
+// is the smaller of the two: on a landscape screen nothing changes, upright
+// the words keep the size and side margin they have on a 16:9 picture of that
+// width.
+const cqh = (share) => {
+  const v = share * 100;
+  return `min(${v.toFixed(3)}cqh, ${(v * 0.5625).toFixed(3)}cqw)`;
+};
+// Heights on the screen (how far up a line sits): a share of the stage's own
+// height, so upright the words stay clear of the bottom edge and its gesture
+// bar instead of crowding it.
+const stageY = (share) => `${(share * 100).toFixed(3)}cqh`;
+
+// Whether the screen is held upright (a phone in the hand).
+function usePortrait() {
+  const query = "(orientation: portrait)";
+  const [portrait, setPortrait] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return undefined;
+    const on = () => setPortrait(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  return portrait;
+}
 
 function PromoCaptions({ videoRef, captions }) {
   const [t, setT] = useState(-1);
@@ -205,7 +233,7 @@ function PromoCaptions({ videoRef, captions }) {
         <div
           className="absolute inset-x-0 text-center"
           style={{
-            top: cqh(0.8 - intro.lines[0].size * 0.8),
+            top: `calc(${stageY(0.8)} - ${cqh(intro.lines[0].size * 0.8)})`,
             opacity: introOpacity,
             fontFamily: intro.font,
             fontWeight: intro.weight,
@@ -227,7 +255,9 @@ function PromoCaptions({ videoRef, captions }) {
           style={{
             left: cqh(0.085),
             // The box's foot sits a descender below the baseline.
-            bottom: `calc(${cqh(c.line === "above" ? 0.139 : 0.067)} - 0.22em)`,
+            // The main line's foot where the file puts its baseline; the line
+            // above it sits that line's height higher.
+            bottom: `calc(${stageY(0.067)} + ${c.line === "above" ? cqh(0.072) : "0px"} - 0.22em)`,
             fontSize: cqh(c.size),
             lineHeight: 1.15,
             opacity: c.fade,
@@ -340,7 +370,11 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
   const kickoff = race ? raceKickoff(race.date) : null;
   const phase = race ? racePhase(race.date) : null;
   const poster = data?.heroImageUrl || data?.carImageUrl || null;
-  const film = series?.promoVideoUrl || null;
+  // A phone held upright gets the upright cut when there is one, full screen,
+  // with the facts coming in from the bottom. Everything else the 16:9 film.
+  const portrait = usePortrait();
+  const phone = portrait && !!series?.promoPhoneUrl;
+  const film = (phone ? series?.promoPhoneUrl : series?.promoVideoUrl) || null;
 
   const facts = race
     ? [
@@ -410,7 +444,11 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
     >
       {/* Top bar: who is talking, and the ways out. Over the film from md up,
           above it on a phone. */}
-      <div className="relative z-20 flex items-center justify-between gap-3 px-5 py-4 sm:px-10 sm:py-7 md:absolute md:inset-x-0 md:top-0">
+      <div
+        className={`z-20 flex items-center justify-between gap-3 px-5 py-4 sm:px-10 sm:py-7 ${
+          phone ? "fixed inset-x-0 top-0" : "relative md:absolute md:inset-x-0 md:top-0"
+        }`}
+      >
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.3em]" style={{ color: "var(--promo)" }}>
           ★ NABS Special Event
         </span>
@@ -460,7 +498,9 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
           should keep lettering of its own away from the edges. The full screen
           from md up; on a phone the 16:9 picture at the top. */}
       <div
-        className="pointer-events-none relative aspect-video w-full overflow-hidden md:fixed md:inset-0 md:aspect-auto"
+        className={`pointer-events-none overflow-hidden ${
+          phone ? "fixed inset-0" : "relative aspect-video w-full md:fixed md:inset-0 md:aspect-auto"
+        }`}
         style={{ containerType: "size" }}
       >
         {/* While the film loads the stage stays black: no picture, no
@@ -509,7 +549,11 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
           stored: track, start, laps, qualifying, grid, car. */}
       <div
         aria-hidden={!shown}
-        className={`relative z-10 transition-all duration-700 ease-out md:fixed md:inset-0 md:flex md:items-center md:overflow-y-auto md:bg-gradient-to-r md:from-black/85 md:via-black/45 md:to-transparent ${
+        className={`z-10 transition-all duration-700 ease-out ${
+          phone
+            ? "fixed inset-0 flex items-end overflow-y-auto bg-gradient-to-t from-black via-black/70 to-transparent"
+            : "relative md:fixed md:inset-0 md:flex md:items-center md:overflow-y-auto md:bg-gradient-to-r md:from-black/85 md:via-black/45 md:to-transparent"
+        } ${
           shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"
         }`}
       >
