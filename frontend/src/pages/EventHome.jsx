@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -8,9 +8,10 @@ import { useEventRace } from "../hooks/useEventRace.js";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import EventFilm from "../components/EventFilm.jsx";
 import Flag from "../components/Flag.jsx";
+import NextRaceCard from "../components/NextRaceCard.jsx";
 import { Skeleton } from "../components/ui.jsx";
 import { flagFor } from "../data/circuits.js";
-import { raceKickoff, fmtRaceTime } from "../utils/raceTime.js";
+import { raceKickoff } from "../utils/raceTime.js";
 import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
 import { fmtLap, fmtRaceDate } from "../utils/format.js";
 
@@ -20,8 +21,9 @@ import { fmtLap, fmtRaceDate } from "../utils/format.js";
 // with where it stands (utils/eventPhase.js):
 //
 //   before   the promo film as the main card (its last frame carries the
-//            facts), a pit-board countdown, the four things a driver needs to
-//            know, and every seat of the grid, taken or free.
+//            facts), the race card (circuit, countdown, sign-up), the four
+//            things a driver needs to know, and every seat of the grid, taken
+//            or free.
 //   live     the running order straight from the live timing, lap count and
 //            the way into the full live page. "pending" (run, result not in
 //            yet) is the same page saying so.
@@ -88,27 +90,11 @@ function FilmCard({ series, race, children }) {
 
 // --- BEFORE ------------------------------------------------------------------
 
-function useCountdown(date) {
-  const target = raceKickoff(date)?.getTime() ?? null;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (target == null) return undefined;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [target]);
-  if (target == null || target <= now) return null;
-  const s = Math.floor((target - now) / 1000);
-  return { days: Math.floor(s / 86400), hours: Math.floor(s / 3600) % 24, minutes: Math.floor(s / 60) % 60 };
-}
-
-const pad2 = (n) => String(n).padStart(2, "0");
-
 function EventBefore({ series, race }) {
   const { seriesPath } = useSeriesPath();
   const { current: season } = useSeason();
   const events = useApi(useCallback(() => api.events(), []));
   const ev = (events.data || []).find((e) => e.id === race?.id) || null;
-  const countdown = useCountdown(race?.date);
   const kickoff = race ? raceKickoff(race.date) : null;
 
   const capacity = ev?.capacity || 40;
@@ -125,55 +111,35 @@ function EventBefore({ series, race }) {
       <div className="flex flex-wrap items-stretch gap-5">
         <FilmCard series={series} race={race} />
 
-        {/* The race card as a pit board: the countdown in the board's big rows. */}
-        <aside aria-label="Race card" className="flex flex-[1_1_320px] flex-col gap-3.5">
-          <div className="rounded-[1.4rem] border-[6px] border-slate-800 bg-ink p-5 text-white">
-            <div className="mb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-brand">
-              ★ {countdown ? "Lights out in" : kickoff ? "Race night" : "Date to come"}
-            </div>
-            {countdown ? (
-              [
-                [countdown.days, "Days"],
-                [countdown.hours, "Hrs"],
-                [countdown.minutes, "Min"],
-              ].map(([n, label], i) => (
-                <div
-                  key={label}
-                  className={`flex items-baseline justify-between py-1 ${i < 2 ? "border-b-[3px] border-brand" : ""}`}
-                >
-                  <span className={`font-display text-5xl font-black leading-none tabular-nums sm:text-6xl ${i === 2 ? "text-brand" : ""}`}>
-                    {pad2(n)}
-                  </span>
-                  <span className="font-display text-lg font-black uppercase text-slate-300 sm:text-xl">{label}</span>
-                </div>
-              ))
-            ) : (
-              <div className="py-4 font-display text-3xl font-black uppercase">{kickoff ? "Tonight" : "Stay tuned"}</div>
-            )}
-          </div>
-          <div className="card flex flex-1 flex-col gap-3.5 p-5">
-            <div className="font-display text-lg font-black uppercase tracking-tight text-dark">
-              {kickoff ? `${fmtRaceDate(kickoff)} · ${fmtRaceTime(race.date)}` : "Date to be announced"}
-            </div>
-            <div>
-              <div className="flex justify-between text-sm font-semibold text-medium">
+        {/* The race card: the same card as the next race on a championship's
+            home (circuit, countdown, date, the way in), with how full the grid
+            is above the button. */}
+        {race ? (
+          <NextRaceCard
+            race={race}
+            corner="Special event"
+            to={seriesPath(`/attendance?race=${race.id}`)}
+            cta={signUp}
+            className="flex min-w-0 flex-[1_1_320px] flex-col"
+          >
+            <div className="mt-5">
+              <div className="flex justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-ink/60 dark:text-white/65">
                 <span>Seats taken</span>
-                <span className="font-mono">
+                <span>
                   {taken.length} / {capacity}
                 </span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface2">
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10 dark:bg-white/15">
                 <div className="h-full bg-brand" style={{ width: `${Math.min(100, (taken.length / capacity) * 100)}%` }} />
               </div>
             </div>
-            <Link
-              to={seriesPath("/attendance")}
-              className="mt-auto flex min-h-[52px] items-center justify-center rounded-xl bg-brand px-4 text-center text-[15px] font-extrabold uppercase tracking-wide text-onbrand transition hover:brightness-105"
-            >
-              {signUp}
-            </Link>
-          </div>
-        </aside>
+          </NextRaceCard>
+        ) : (
+          <aside aria-label="Race card" className="card flex flex-[1_1_320px] flex-col justify-center gap-2 p-5">
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">Next Race</div>
+            <div className="font-display text-2xl font-black uppercase tracking-tight text-dark">Date to be announced</div>
+          </aside>
+        )}
       </div>
 
       {/* Four tiles: what a driver needs to know. */}

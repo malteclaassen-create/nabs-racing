@@ -84,6 +84,7 @@ export const DEFAULT_TYPES = {
   LeMans: ["power", "highspeed"],
   Daytona: ["power", "braking"],
   Poznan: ["technical"],
+  Talladega: ["power", "highspeed"],
 };
 
 // An admin's pick, cleaned: known keys only, each once, in the order of

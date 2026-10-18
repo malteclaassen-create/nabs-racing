@@ -1,6 +1,6 @@
 # Vendored OpenStreetMap circuit data
 
-Raw [Overpass API](https://overpass-api.de/) responses for 7 circuits that are
+Raw [Overpass API](https://overpass-api.de/) responses for 8 circuits that are
 **not** in the `bacinger/f1-circuits` dataset (they're only raced in the archive
 seasons / special events). `generate-circuits.mjs` reads these, stitches the
 segments into one ring, and writes the outline into `src/data/circuits.js`.
@@ -21,6 +21,7 @@ mapping changes. `kind` matches the `EXTRA_TRACKS` config in the generator.
 | `daytona.json`     | way  | `way["highway"="raceway"](around:1800,29.1840074,-81.0703186);out geom;` (tri-oval only: `embankment=yes` ways) |
 | `bathurst.json`    | rel  | `rel(6942508);out geom;` — relation "Mount Panorama Circuit" (public-road circuit) |
 | `lemans.json`      | rel  | `rel(2126739);out geom;` — relation "Circuit des 24 Heures du Mans" |
+| `talladega.json`   | way  | `way["highway"="raceway"](33.556,-86.075,33.580,-86.050);out geom;` (tri-oval + "Pit Lane", which the name filter drops) |
 | `poznan.json`      | way  | `way["highway"="raceway"](52.40,16.77,52.44,16.84);out geom;`, then hand-filtered to the 24 ways of the main loop (see below) |
 
 Poznań is the one file that is **not** the raw response: the site also holds a
