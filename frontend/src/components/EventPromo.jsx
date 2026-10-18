@@ -3,17 +3,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { useDismiss, useFocusTrap, useScrollLock } from "./overlay.jsx";
-import Flag from "./Flag.jsx";
-import { flagFor } from "../data/circuits.js";
 import { raceKickoff, racePhase, fmtRaceTime } from "../utils/raceTime.js";
 import { deriveSeriesAccent, DEFAULT_THEME_COLOR } from "../utils/seriesColor.js";
 import { filmAllowed } from "../hooks/useIdleFilm.js";
 
 // ---------------------------------------------------------------------------
 // The promo page of a special event: the whole screen, the event's film first,
-// unobstructed (it has lettering of its own), and in its last five seconds the
-// facts a driver wants before signing up come in along the bottom while the
-// film settles on its last frame. It stands in front of the site rather than
+// unobstructed, and in its last five seconds the facts a driver wants before
+// signing up come in over its left side while the film settles on its last
+// frame. It stands in front of the site rather than
 // replacing a page, so whatever was asked for is right there once it is closed.
 //
 // When it shows (PromoHost below):
@@ -190,7 +188,6 @@ function EventPromo({ slug, onClose, onUnavailable }) {
 
   const accent = series?.accentColor || DEFAULT_THEME_COLOR;
   const onAccent = deriveSeriesAccent(accent)?.onBrand || "#0f172a";
-  const flag = race ? flagFor(race.track, race.country) : null;
   const kickoff = race ? raceKickoff(race.date) : null;
   const phase = race ? racePhase(race.date) : null;
   const poster = data?.heroImageUrl || data?.carImageUrl || null;
@@ -335,90 +332,96 @@ function EventPromo({ slug, onClose, onUnavailable }) {
         )}
       </div>
 
-      {/* The facts: in the film's last seconds, a band along the bottom (from
-          md up) that leaves the film's own lettering free; on a phone, below
-          the film. */}
+      {/* The facts: in the film's last seconds they come in over its left
+          side (from md up), on a darkening that leaves the right of the
+          picture free; on a phone, below the film. All of it from the race as
+          stored: track, start, laps, qualifying, grid, car. */}
       <div
         aria-hidden={!shown}
-        className={`relative z-10 transition-all duration-700 ease-out md:fixed md:inset-x-0 md:bottom-0 md:bg-gradient-to-t md:from-black md:from-45% md:via-black/90 md:to-transparent md:pt-40 ${
+        className={`relative z-10 transition-all duration-700 ease-out md:fixed md:inset-0 md:flex md:items-center md:overflow-y-auto md:bg-gradient-to-r md:from-black/85 md:via-black/45 md:to-transparent ${
           shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"
         }`}
       >
         {data && (
-          <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-10 pt-6 sm:px-10 md:pb-12 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0 space-y-2">
-              {race && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-white/80">
-                  {flag && <Flag code={flag.country} title={flag.countryName} className="rounded-sm" />}
-                  <span>{race.track}</span>
-                  {kickoff && (
-                    <span>
-                      · {kickoff.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {fmtRaceTime(race.date)}
-                    </span>
-                  )}
-                </div>
-              )}
-              <h1 className="font-display text-4xl font-black uppercase leading-[0.9] tracking-tight sm:text-5xl">{series.name}</h1>
-              {series.description && <p className="max-w-xl text-sm text-white/80 sm:text-base">{series.description}</p>}
-            </div>
+          <div className="mx-auto w-full max-w-7xl px-5 pb-10 pt-6 sm:px-10 md:py-28">
+            <div className="flex max-w-2xl flex-col gap-6">
+              <div className="min-w-0 space-y-3">
+                {race && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-white/85">
+                    <span>{race.track}</span>
+                    {kickoff && (
+                      <>
+                        <span className="h-3 w-px bg-white/40" aria-hidden="true" />
+                        <span>
+                          {kickoff.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })} ·{" "}
+                          {fmtRaceTime(race.date)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <h1 className="font-display text-5xl font-black uppercase leading-[0.9] tracking-tight sm:text-6xl lg:text-8xl">{series.name}</h1>
+                {series.description && <p className="max-w-xl text-sm text-white/85 sm:text-base">{series.description}</p>}
+              </div>
 
-            <div className="flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-end lg:flex-nowrap">
-              {countdown ? (
-                <div className="flex gap-2" aria-label="Time to lights out">
-                  {[
-                    ["Days", countdown.days],
-                    ["Hrs", countdown.hours],
-                    ["Min", countdown.minutes],
-                    ["Sec", countdown.seconds],
-                  ].map(([label, n]) => (
-                    <div key={label} className="w-16 rounded-xl bg-white/10 px-2 py-2 text-center backdrop-blur">
-                      <div className="font-mono text-2xl font-bold tabular-nums">{pad2(n)}</div>
-                      <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-white/60">{label}</div>
+              <div className="flex flex-col gap-6">
+                {countdown ? (
+                  <div className="flex gap-2" aria-label="Time to lights out">
+                    {[
+                      ["Days", countdown.days],
+                      ["Hrs", countdown.hours],
+                      ["Min", countdown.minutes],
+                      ["Sec", countdown.seconds],
+                    ].map(([label, n]) => (
+                      <div key={label} className="w-16 rounded-xl bg-white/10 px-2 py-2 text-center backdrop-blur">
+                        <div className="font-mono text-2xl font-bold tabular-nums">{pad2(n)}</div>
+                        <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-white/60">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  phase === "live" && (
+                    <div
+                      className="inline-flex self-start rounded-full px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest"
+                      style={{ background: "var(--promo)", color: "var(--promo-on)" }}
+                    >
+                      Lights out · racing now
                     </div>
-                  ))}
-                </div>
-              ) : (
-                phase === "live" && (
-                  <div
-                    className="inline-flex self-start rounded-full px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest"
+                  )
+                )}
+
+                {facts.length > 0 && (
+                  <dl className="flex flex-wrap gap-x-6 gap-y-3">
+                    {facts.map((f) => (
+                      <div key={f.label}>
+                        <dt className="font-mono text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--promo)" }}>
+                          {f.label}
+                        </dt>
+                        <dd className="whitespace-nowrap font-display text-lg font-bold uppercase tracking-tight">{f.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+
+                <div className="flex gap-3">
+                  <Link
+                    to={`/s/${series.slug}/attendance`}
+                    onClick={onClose}
+                    tabIndex={shown ? undefined : -1}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wide transition hover:brightness-110"
                     style={{ background: "var(--promo)", color: "var(--promo-on)" }}
                   >
-                    Lights out · racing now
-                  </div>
-                )
-              )}
-
-              {facts.length > 0 && (
-                <dl className="flex flex-wrap gap-x-6 gap-y-3">
-                  {facts.map((f) => (
-                    <div key={f.label}>
-                      <dt className="font-mono text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--promo)" }}>
-                        {f.label}
-                      </dt>
-                      <dd className="whitespace-nowrap font-display text-lg font-bold uppercase tracking-tight">{f.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-
-              <div className="flex gap-3">
-                <Link
-                  to={`/s/${series.slug}/attendance`}
-                  onClick={onClose}
-                  tabIndex={shown ? undefined : -1}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wide transition hover:brightness-110"
-                  style={{ background: "var(--promo)", color: "var(--promo-on)" }}
-                >
-                  Sign up
-                </Link>
-                <Link
-                  to={`/s/${series.slug}`}
-                  onClick={onClose}
-                  tabIndex={shown ? undefined : -1}
-                  className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-white/30 px-6 py-3.5 text-sm font-bold uppercase tracking-wide transition hover:bg-white/10"
-                >
-                  Event page
-                </Link>
+                    Sign up
+                  </Link>
+                  <Link
+                    to={`/s/${series.slug}`}
+                    onClick={onClose}
+                    tabIndex={shown ? undefined : -1}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-xl border border-white/30 px-6 py-3.5 text-sm font-bold uppercase tracking-wide transition hover:bg-white/10"
+                  >
+                    Event page
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
