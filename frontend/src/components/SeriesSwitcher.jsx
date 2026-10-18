@@ -167,6 +167,10 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
     : next
       ? `Next: ${next.name}${eventDateLabel(next.eventAt) ? ` · ${eventDateLabel(next.eventAt)}` : ""}`
       : `${events.length} event${events.length === 1 ? "" : "s"}`;
+  // While there is only one event, the entry opens it straight away: a second
+  // level holding a single row is just an extra tap. The list one level down
+  // only appears once a second event exists.
+  const onlyEvent = events.length === 1 ? events[0] : null;
   const rowProps = (s, i) => ({ s, i, viewing: !!current && s.slug === current.slug, onClick: () => pick(s) });
 
   return (
@@ -235,9 +239,10 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
               {events.length > 0 && (
                 <button
                   type="button"
-                  role="menuitem"
-                  aria-haspopup="menu"
-                  onClick={() => setPanel("events")}
+                  role={onlyEvent ? "menuitemradio" : "menuitem"}
+                  aria-checked={onlyEvent ? viewingEvent : undefined}
+                  aria-haspopup={onlyEvent ? undefined : "menu"}
+                  onClick={() => (onlyEvent ? pick(onlyEvent) : setPanel("events"))}
                   style={{ "--i": championships.length }}
                   className={`glass-menu-item mt-1 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
                     viewingEvent ? "liquid-glass-lens" : "hover:bg-surface2"
@@ -245,12 +250,26 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
                 >
                   <StarIcon className="h-4 w-4 shrink-0 text-brand" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
-                      Special events
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                        Special events
+                      </span>
+                      {onlyEvent?.isPublic === false && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
+                          <LockIcon className="h-2.5 w-2.5" />
+                          Private
+                        </span>
+                      )}
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{eventsSub}</span>
                   </span>
-                  <ChevronRight />
+                  {onlyEvent && viewingEvent ? (
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12l5 5L20 6" />
+                    </svg>
+                  ) : !onlyEvent ? (
+                    <ChevronRight />
+                  ) : null}
                 </button>
               )}
             </>
