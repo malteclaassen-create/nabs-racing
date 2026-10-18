@@ -6121,6 +6121,17 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
       <span className="h-3 w-px bg-border" />
       <FilmSlot
         series={series}
+        kind="phone"
+        label="Phone film (9:16)"
+        url={series.promoPhoneUrl}
+        title="The promo film cut upright for phones. Phones held upright get this one, everything else the film above. MP4 or WebM, up to 300 MB"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
+      <span className="h-3 w-px bg-border" />
+      <FilmSlot
+        series={series}
         kind="loop"
         label="Main card loop"
         url={series.promoLoopUrl}
@@ -6129,6 +6140,8 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
         onSaved={onSaved}
         onError={onError}
       />
+      <span className="h-3 w-px bg-border" />
+      <CaptionsSlot series={series} off={off} onSaved={onSaved} onError={onError} />
       {series.kind === "event" && (
         <>
           <span className="h-3 w-px bg-border" />
@@ -6163,6 +6176,72 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
         Preview
       </Link>
     </div>
+  );
+}
+
+// The promo film's captions (Series.promoCaptions): a JSON file from whoever
+// cut the film, laid over it on the promo page as text timed to the film.
+function CaptionsSlot({ series, off, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const count = series.promoCaptions?.captions?.length || 0;
+  const hasIntro = !!series.promoCaptions?.intro;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const text = await file.text();
+      await api.updateSeries(series.id, { promoCaptions: text });
+      onSaved(`Captions for ${series.name}'s promo film saved.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    const ok = await ask({
+      title: "Remove the captions?",
+      body: "The promo film then plays without words over it.",
+      danger: true,
+      confirmLabel: "Remove captions",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promoCaptions: null });
+      onSaved(`Captions removed from ${series.name}'s promo film.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-1.5 text-light" title="A JSON file with the film's words and their times, shown over the film on the promo page">
+      Captions:
+      {count || hasIntro ? (
+        <span className="font-semibold text-dark">
+          {count} line{count === 1 ? "" : "s"}
+          {hasIntro ? " + intro" : ""}
+        </span>
+      ) : null}
+      <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={pick} />
+      <button type="button" className="font-semibold text-link hover:underline" disabled={off || busy} onClick={() => fileRef.current?.click()}>
+        {busy ? "Saving…" : count || hasIntro ? "Replace" : "Upload"}
+      </button>
+      {(count || hasIntro) && !busy ? (
+        <button type="button" className="font-semibold text-link hover:underline" disabled={off} onClick={remove}>
+          Remove
+        </button>
+      ) : null}
+    </span>
   );
 }
 

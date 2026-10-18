@@ -63,6 +63,8 @@ router.get("/", async (req, res, next) => {
         // promo page" switch (the time it was switched on, else null).
         promoVideoUrl: s.promoVideoUrl,
         promoLoopUrl: s.promoLoopUrl,
+        // The promo film cut for a phone held upright (9:16).
+        promoPhoneUrl: s.promoPhoneUrl,
         promoAt: s.promoAt,
         // The headline over the loop on the event page's main card.
         promoTagline: s.promoTagline,
@@ -115,7 +117,10 @@ router.get("/:slug/promo", async (req, res, next) => {
         accentColor: series.accentColor,
         logoDarkUrl: series.logoDarkUrl,
         promoVideoUrl: series.promoVideoUrl,
+        promoPhoneUrl: series.promoPhoneUrl,
         promoAt: series.promoAt,
+        // Words laid over the film, timed to it (lib/series.js).
+        promoCaptions: series.promoCaptions,
         isPublic: series.isPublic,
       },
       race: race && {

@@ -384,6 +384,8 @@ export default function AdminHealth() {
             const db = storage.data.databaseBytes;
             const total = areas.reduce((s, a) => s + a.bytes, 0) + (db || 0);
             const max = Math.max(1, ...areas.map((a) => a.bytes), db || 0);
+            const disk = storage.data.disk;
+            const diskTight = !!disk && disk.freeBytes < disk.totalBytes * 0.1;
             const Row = ({ label, bytes, files }) => (
               <li className="py-2">
                 <div className="flex items-baseline justify-between gap-3 text-sm">
@@ -406,6 +408,26 @@ export default function AdminHealth() {
                   <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">Total</span>
                   <span className="font-display text-xl font-black tabular-nums text-dark">{fmtSize(total)}</span>
                 </div>
+                {/* The volume as the server sees it: Railway's own number. Used
+                    beyond the areas above is space held by something that is no
+                    file any more (deleted while still open) or by the file
+                    system itself. */}
+                {disk && (
+                  <div className="mb-3 rounded-lg bg-surface2/60 px-3 py-2 text-sm">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-medium">Volume</span>
+                      <span className={`font-mono text-xs tabular-nums ${diskTight ? "font-bold text-bad" : "text-light"}`}>
+                        {fmtSize(disk.usedBytes)} used of {fmtSize(disk.totalBytes)} · {fmtSize(disk.freeBytes)} free
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface">
+                      <div
+                        className={`h-full rounded-full ${diskTight ? "bg-bad" : "bg-brand/70"}`}
+                        style={{ width: `${Math.min(100, (disk.usedBytes / Math.max(1, disk.totalBytes)) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <ul className="divide-y divide-border">
                   {db != null && <Row label="Database" bytes={db} />}
                   {areas.map((a) => (

@@ -88,12 +88,19 @@ model Series {
   // promo film plays there instead (once, resting on its last frame). The
   // promo page always plays the full promo film. Raw-SQL column.
   promoLoopUrl  String?
+  // The promo film cut for a phone held upright (9:16), e.g.
+  // "/api/uploads/series/<id>-phone.mp4?v=<ts>". null = phones get the
+  // landscape film. Raw-SQL column.
+  promoPhoneUrl String?
   // The headline over that loop on the event page ("Ready for some Oval
   // Action?"), at most 60 characters. null = none. Raw-SQL column.
   promoTagline  String?
   // Promo page once per browser (0) or every time a visitor comes to the
   // series' page from elsewhere (1). Raw-SQL column (ensureSchema).
   promoRepeat   Int      @default(0)
+  // Captions laid over the promo film, timed to it: JSON { intro, captions }
+  // (lib/series.js parsePromoCaptions). null = none. Raw-SQL column.
+  promoCaptions String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

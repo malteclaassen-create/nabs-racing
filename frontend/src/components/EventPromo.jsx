@@ -33,6 +33,10 @@ import { filmAllowed } from "../hooks/useIdleFilm.js";
 // ---------------------------------------------------------------------------
 
 const SEEN_PREFIX = "nabs_promo_seen:";
+// A promo shown on every visit, closed during this stay in its series. In the
+// tab's own storage rather than in memory: a deploy makes the next click a
+// full page load, and that is not a new visit.
+const STAY_PREFIX = "nabs_promo_stay:";
 const NO_PROMO_PATHS = /^\/(admin|auth|race-control)/;
 
 function seenPromo(series) {
@@ -40,6 +44,21 @@ function seenPromo(series) {
     return localStorage.getItem(SEEN_PREFIX + series.id) === series.promoAt;
   } catch {
     return false;
+  }
+}
+function closedThisStay(series) {
+  try {
+    return sessionStorage.getItem(STAY_PREFIX + series.id) === "1";
+  } catch {
+    return false;
+  }
+}
+function setClosedThisStay(series, on) {
+  try {
+    if (on) sessionStorage.setItem(STAY_PREFIX + series.id, "1");
+    else sessionStorage.removeItem(STAY_PREFIX + series.id);
+  } catch {
+    /* private mode: the in-memory set below still covers the stay */
   }
 }
 function markPromoSeen(series) {
@@ -78,10 +97,9 @@ export default function PromoHost() {
       let changed = false;
       const next = new Set(c);
       for (const s of seriesList) {
-        if (s.promoRepeat && next.has(s.id) && s.slug !== inSeries) {
-          next.delete(s.id);
-          changed = true;
-        }
+        if (!s.promoRepeat || s.slug === inSeries) continue;
+        setClosedThisStay(s, false);
+        if (next.delete(s.id)) changed = true;
       }
       return changed ? next : c;
     });
@@ -97,7 +115,11 @@ export default function PromoHost() {
       show =
         seriesList.find(
           (s) =>
-            s.slug === here && s.promoAt && !eventOver(s) && !closed.has(s.id) && (s.promoRepeat || !seenPromo(s))
+            s.slug === here &&
+            s.promoAt &&
+            !eventOver(s) &&
+            !closed.has(s.id) &&
+            (s.promoRepeat ? !closedThisStay(s) : !seenPromo(s))
         ) || null;
     }
   }
@@ -108,7 +130,10 @@ export default function PromoHost() {
       // A preview (?promo=) is not the visit: closing it must not count as
       // having seen the promo, or the admin who checked it first never gets
       // it on the event page afterwards.
-      if (!params.has("promo")) markPromoSeen(series);
+      if (!params.has("promo")) {
+        markPromoSeen(series);
+        setClosedThisStay(series, true);
+      }
       setClosed((c) => new Set(c).add(series.id));
       // Drop the ?promo= so closing a preview does not reopen it.
       if (params.has("promo")) {
@@ -125,10 +150,134 @@ export default function PromoHost() {
     <EventPromo
       key={show.id}
       slug={show.slug}
+      initial={show}
       onClose={() => close(show)}
       // Not closed by anybody, so not "seen": it comes back once it can load.
       onUnavailable={() => setClosed((c) => new Set(c).add(show.id))}
     />
+  );
+}
+
+// The film's words as page text over it, timed to the film (Series.
+// promoCaptions, uploaded by an admin as JSON; backend lib/series.js says what
+// is kept). Everything is sized and placed in units of the stage's height
+// (cqh), the way the captions were drawn for the film, so they sit right on
+// any screen shape: the main line bottom left, the smaller one above it, the
+// intro centred low. A caption rises into its line, clipped to it, and fades
+// out after its end; while one is up, a soft dark rises from the bottom edge.
+// Reads the film's clock itself every frame, so only this re-renders.
+const CAPTION_RISE_S = 0.45;
+const CAPTION_FADE_S = 0.35;
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+const easeOut = (p) => 1 - (1 - p) ** 3;
+// Sizes: a share of the picture's height, as a length. The captions were
+// drawn against a 16:9 picture; held upright a phone's screen is far taller
+// than it is wide, and a share of ITS height would run the words off the side.
+// So the unit is the height of a 16:9 picture as wide as the stage when that
+// is the smaller of the two: on a landscape screen nothing changes, upright
+// the words keep the size and side margin they have on a 16:9 picture of that
+// width.
+const cqh = (share) => {
+  const v = share * 100;
+  return `min(${v.toFixed(3)}cqh, ${(v * 0.5625).toFixed(3)}cqw)`;
+};
+// Heights on the screen (how far up a line sits): a share of the stage's own
+// height, so upright the words stay clear of the bottom edge and its gesture
+// bar instead of crowding it.
+const stageY = (share) => `${(share * 100).toFixed(3)}cqh`;
+
+// Whether the screen is held upright (a phone in the hand).
+function usePortrait() {
+  const query = "(orientation: portrait)";
+  const [portrait, setPortrait] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return undefined;
+    const on = () => setPortrait(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  return portrait;
+}
+
+function PromoCaptions({ videoRef, captions }) {
+  const [t, setT] = useState(-1);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const v = videoRef.current;
+      if (v) setT(v.currentTime);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [videoRef]);
+
+  const shown = (captions.captions || [])
+    .filter((c) => t >= c.start && t < c.end + CAPTION_FADE_S)
+    .map((c) => ({ ...c, rise: easeOut(clamp01((t - c.start) / CAPTION_RISE_S)), fade: 1 - clamp01((t - c.end) / CAPTION_FADE_S) }));
+  const intro = captions.intro;
+  const introOpacity =
+    intro && t >= intro.start && t < intro.end + intro.fadeOut
+      ? Math.min(clamp01((t - intro.start) / (intro.fadeIn || 0.001)), 1 - clamp01((t - intro.end) / (intro.fadeOut || 0.001)))
+      : 0;
+  const backdrop = shown.reduce((m, c) => Math.max(m, Math.min(c.rise, c.fade)), 0);
+
+  return (
+    <div className="absolute inset-0" aria-hidden="true">
+      <div
+        className="absolute inset-x-0 bottom-0"
+        style={{ height: "45%", opacity: backdrop, background: "linear-gradient(to top, rgba(0,0,0,0.42), rgba(0,0,0,0))" }}
+      />
+      {introOpacity > 0 && (
+        <div
+          className="absolute inset-x-0 text-center"
+          style={{
+            top: `calc(${stageY(0.8)} - ${cqh(intro.lines[0].size * 0.8)})`,
+            opacity: introOpacity,
+            fontFamily: intro.font,
+            fontWeight: intro.weight,
+            color: intro.color,
+            textShadow: `0 0 ${cqh(0.017)} rgba(0,0,0,0.7)`,
+          }}
+        >
+          {intro.lines.map((l, i) => (
+            <div key={i} style={{ fontSize: cqh(l.size), letterSpacing: `${l.letterSpacing}em`, lineHeight: 1.25 }}>
+              {l.text}
+            </div>
+          ))}
+        </div>
+      )}
+      {shown.map((c, i) => (
+        <div
+          key={`${c.start}-${i}`}
+          className="absolute overflow-hidden whitespace-nowrap"
+          style={{
+            left: cqh(0.085),
+            // The box's foot sits a descender below the baseline.
+            // The main line's foot where the file puts its baseline; the line
+            // above it sits that line's height higher.
+            bottom: `calc(${stageY(0.067)} + ${c.line === "above" ? cqh(0.072) : "0px"} - 0.22em)`,
+            fontSize: cqh(c.size),
+            lineHeight: 1.15,
+            opacity: c.fade,
+          }}
+        >
+          <span
+            className="block"
+            style={{
+              transform: `translateY(${((1 - c.rise) * 100).toFixed(2)}%)`,
+              fontFamily: c.font,
+              fontWeight: c.weight,
+              color: c.color,
+              textShadow: `0 ${(c.size * 4).toFixed(3)}cqh ${cqh(c.size / 4)} rgba(0,0,0,0.35)`,
+            }}
+          >
+            {c.text}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -162,7 +311,7 @@ function filmHasAudio(v) {
   return true;
 }
 
-function EventPromo({ slug, onClose, onUnavailable }) {
+function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
   const panelRef = useRef(null);
   const closeRef = useRef(null);
   const videoRef = useRef(null);
@@ -203,7 +352,10 @@ function EventPromo({ slug, onClose, onUnavailable }) {
   useFocusTrap(true, panelRef, { initialFocus: closeRef });
   useDismiss(true, onClose, { outside: false });
 
-  const series = data?.series;
+  // The series list already holds its name, colour and film, so the page
+  // opens in the right colour with the film loading at once, instead of the
+  // default pink and an empty stage until the promo's own data arrives.
+  const series = data?.series || initial;
   const race = data?.race;
   const countdown = useCountdown(race?.date);
 
@@ -218,7 +370,11 @@ function EventPromo({ slug, onClose, onUnavailable }) {
   const kickoff = race ? raceKickoff(race.date) : null;
   const phase = race ? racePhase(race.date) : null;
   const poster = data?.heroImageUrl || data?.carImageUrl || null;
-  const film = series?.promoVideoUrl || null;
+  // A phone held upright gets the upright cut when there is one, full screen,
+  // with the facts coming in from the bottom. Everything else the 16:9 film.
+  const portrait = usePortrait();
+  const phone = portrait && !!series?.promoPhoneUrl;
+  const film = (phone ? series?.promoPhoneUrl : series?.promoVideoUrl) || null;
 
   const facts = race
     ? [
@@ -288,7 +444,11 @@ function EventPromo({ slug, onClose, onUnavailable }) {
     >
       {/* Top bar: who is talking, and the ways out. Over the film from md up,
           above it on a phone. */}
-      <div className="relative z-20 flex items-center justify-between gap-3 px-5 py-4 sm:px-10 sm:py-7 md:absolute md:inset-x-0 md:top-0">
+      <div
+        className={`z-20 flex items-center justify-between gap-3 px-5 py-4 sm:px-10 sm:py-7 ${
+          phone ? "fixed inset-x-0 top-0" : "relative md:absolute md:inset-x-0 md:top-0"
+        }`}
+      >
         <span className="font-mono text-[11px] font-bold uppercase tracking-[0.3em]" style={{ color: "var(--promo)" }}>
           ★ NABS Special Event
         </span>
@@ -337,8 +497,15 @@ function EventPromo({ slug, onClose, onUnavailable }) {
           picture's edge goes, rather than black bars beside it, so the film
           should keep lettering of its own away from the edges. The full screen
           from md up; on a phone the 16:9 picture at the top. */}
-      <div className="pointer-events-none relative aspect-video w-full overflow-hidden md:fixed md:inset-0 md:aspect-auto">
-        {poster && (!film || !filmReady) && (
+      <div
+        className={`pointer-events-none overflow-hidden ${
+          phone ? "fixed inset-0" : "relative aspect-video w-full md:fixed md:inset-0 md:aspect-auto"
+        }`}
+        style={{ containerType: "size" }}
+      >
+        {/* While the film loads the stage stays black: no picture, no
+            gradient, nothing for a moment before the film's own first frame. */}
+        {poster && !film && (
           <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
         )}
         {film && (
@@ -367,7 +534,8 @@ function EventPromo({ slug, onClose, onUnavailable }) {
             }`}
           />
         )}
-        {!poster && !film && (
+        {film && series?.promoCaptions && !reveal && <PromoCaptions videoRef={videoRef} captions={series.promoCaptions} />}
+        {data && !poster && !film && (
           <div
             className="absolute inset-0"
             style={{ background: "radial-gradient(ellipse at 70% 30%, color-mix(in srgb, var(--promo) 45%, transparent), transparent 65%)" }}
@@ -381,7 +549,11 @@ function EventPromo({ slug, onClose, onUnavailable }) {
           stored: track, start, laps, qualifying, grid, car. */}
       <div
         aria-hidden={!shown}
-        className={`relative z-10 transition-all duration-700 ease-out md:fixed md:inset-0 md:flex md:items-center md:overflow-y-auto md:bg-gradient-to-r md:from-black/85 md:via-black/45 md:to-transparent ${
+        className={`z-10 transition-all duration-700 ease-out ${
+          phone
+            ? "fixed inset-0 flex items-end overflow-y-auto bg-gradient-to-t from-black via-black/70 to-transparent"
+            : "relative md:fixed md:inset-0 md:flex md:items-center md:overflow-y-auto md:bg-gradient-to-r md:from-black/85 md:via-black/45 md:to-transparent"
+        } ${
           shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-6 opacity-0"
         }`}
       >

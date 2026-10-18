@@ -2,8 +2,9 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, statfsSync } from "fs";
 import { join, extname, basename, dirname } from "path";
+import { PROMO_TMP_PREFIX, sweepStalePromoUploads } from "../lib/promoUploads.js";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
@@ -118,6 +119,7 @@ import {
   writeSeriesLogo,
   writeSeriesPromoVideo,
   writeSeriesPromoLoop,
+  writeSeriesPromoPhone,
   writeSeriesShareImage,
   SHARE_PAGES,
   parseShareText,
@@ -165,7 +167,7 @@ import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js
 import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
-import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR } from "../lib/dataDirs.js";
+import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR, DATA_ROOT } from "../lib/dataDirs.js";
 import {
   LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap, serverAssignment,
   serverKeyForSeries,
@@ -443,18 +445,39 @@ function dirUsage(dir) {
 // The SQLite file behind DATABASE_URL ("file:./dev.db" resolves relative to
 // backend/prisma, where the schema lives). Null when it can't be found — the
 // overview then just leaves the database row out rather than guessing.
-function databaseFileSize() {
-  try {
-    const url = process.env.DATABASE_URL || "";
-    if (!url.startsWith("file:")) return null;
-    const raw = url.slice(5);
-    const prismaDir = join(dirname(fileURLToPath(import.meta.url)), "../../prisma");
-    const p = raw.startsWith("/") || /^[A-Za-z]:/.test(raw) ? raw : join(prismaDir, raw);
-    return statSync(p).size;
-  } catch {
-    return null;
-  }
+function databaseFilePath() {
+  const url = process.env.DATABASE_URL || "";
+  if (!url.startsWith("file:")) return null;
+  const raw = url.slice(5).split("?")[0];
+  const prismaDir = join(dirname(fileURLToPath(import.meta.url)), "../../prisma");
+  return raw.startsWith("/") || /^[A-Za-z]:/.test(raw) ? raw : join(prismaDir, raw);
 }
+// The database with the files SQLite keeps beside it: the write-ahead log
+// (-wal) can grow to many times the database itself before it is folded back
+// in, and it lives on the same capped volume.
+function databaseFileSize() {
+  const p = databaseFilePath();
+  if (!p) return null;
+  let total = null;
+  for (const f of [p, `${p}-wal`, `${p}-shm`, `${p}-journal`]) {
+    try {
+      total = (total || 0) + statSync(f).size;
+    } catch {
+      /* not there */
+    }
+  }
+  return total;
+}
+
+// Names for the other folders the server keeps on the volume, which the
+// overview used to leave out: a volume reported 490 MB used while the areas
+// added up to 260.
+const OTHER_AREA_LABELS = {
+  "telemetry-laps": "Telemetry laps",
+  "track-maps": "Track map cache",
+  "report-files": "Report attachments",
+  "feedback-files": "Feedback pictures",
+};
 
 // GET /api/admin/storage -> { areas: [{ key, label, bytes, files }], databaseBytes }
 router.get("/storage", async (_req, res, next) => {
@@ -466,7 +489,7 @@ router.get("/storage", async (_req, res, next) => {
       ["avatars", "Driver photos"],
       ["teams", "Team logos"],
       ["seasons", "Season images"],
-      ["series", "Series logos"],
+      ["series", "Series logos & promo films"],
       ["tracks", "Track maps"],
       ["social", "Social covers"],
       ["cards", "Card photos"],
@@ -490,7 +513,36 @@ router.get("/storage", async (_req, res, next) => {
     areas.push({ key: "backups", label: "Backups", ...dirUsage(BACKUPS_DIR) });
     areas.push({ key: "results-archive", label: "Raw result files", ...dirUsage(RESULTS_ARCHIVE_DIR) });
     areas.push({ key: "logs", label: "Logs", ...dirUsage(LOGS_DIR) });
-    res.json({ areas, databaseBytes: databaseFileSize() });
+    // Everything else on the volume, so the total is the volume's own. Only
+    // with DATA_DIR set: without it the data root is the backend folder
+    // itself, source code and all.
+    if (process.env.DATA_DIR) {
+      const known = new Set(["uploads", "downloads", "backups", "results-archive", "logs"]);
+      const db = databaseFilePath();
+      const dbNames = db ? new Set([db, `${db}-wal`, `${db}-shm`, `${db}-journal`].map((f) => basename(f))) : new Set();
+      try {
+        for (const name of readdirSync(DATA_ROOT)) {
+          if (known.has(name) || dbNames.has(name)) continue;
+          const p = join(DATA_ROOT, name);
+          const st = statSync(p);
+          const usage = st.isDirectory() ? dirUsage(p) : { bytes: st.size, files: 1 };
+          areas.push({ key: `other/${name}`, label: OTHER_AREA_LABELS[name] || `Other: ${name}`, ...usage });
+        }
+      } catch {
+        /* unreadable data root: the known areas still stand */
+      }
+    }
+    // The volume as the operating system sees it (Railway's own number).
+    let disk = null;
+    try {
+      const fs = statfsSync(DATA_ROOT);
+      const total = fs.blocks * fs.bsize;
+      const free = fs.bavail * fs.bsize;
+      disk = { totalBytes: total, freeBytes: free, usedBytes: total - fs.bfree * fs.bsize };
+    } catch {
+      /* not every platform answers */
+    }
+    res.json({ areas, databaseBytes: databaseFileSize(), disk });
   } catch (e) {
     next(e);
   }
@@ -5002,7 +5054,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoRepeat?, promoTagline? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoRepeat?, promoCaptions?, promoTagline? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
@@ -5079,7 +5131,7 @@ router.delete("/series/:id", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/series/:id/promo-video[?kind=loop]  (multipart: file=<mp4|webm>)
+// POST /api/admin/series/:id/promo-video[?kind=loop|phone]  (multipart: file=<mp4|webm>)
 // Uploads (or replaces) one of the series' two films:
 //   - the promo film (default): the full film of its promo page, and what the
 //     main card plays while no loop is uploaded;
@@ -5093,21 +5145,27 @@ const PROMO_VIDEO_EXT = { "video/mp4": ".mp4", "video/webm": ".webm" };
 const PROMO_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 // Which film a request is about: its file name stem and where its URL is kept.
 function promoFilmKind(req) {
-  return req.query.kind === "loop"
-    ? { stem: "loop", write: writeSeriesPromoLoop, field: "promoLoopUrl" }
-    : { stem: "promo", write: writeSeriesPromoVideo, field: "promoVideoUrl" };
+  if (req.query.kind === "loop") return { stem: "loop", write: writeSeriesPromoLoop, field: "promoLoopUrl" };
+  // The promo film for a phone held upright (9:16).
+  if (req.query.kind === "phone") return { stem: "phone", write: writeSeriesPromoPhone, field: "promoPhoneUrl" };
+  return { stem: "promo", write: writeSeriesPromoVideo, field: "promoVideoUrl" };
 }
+// Half-written film uploads left by a dropped upload: swept at start and
+// before every new film (lib/promoUploads.js).
+sweepStalePromoUploads(SERIES_DIR);
+
 const promoVideoUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
       try {
         mkdirSync(SERIES_DIR, { recursive: true });
+        sweepStalePromoUploads(SERIES_DIR);
         cb(null, SERIES_DIR);
       } catch (e) {
         cb(e);
       }
     },
-    filename: (req, file, cb) => cb(null, `.promo-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+    filename: (req, file, cb) => cb(null, `${PROMO_TMP_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`),
   }),
   limits: { fileSize: PROMO_VIDEO_MAX_BYTES },
 });
@@ -5164,7 +5222,7 @@ router.post("/series/:id/promo-video", takePromoVideo, async (req, res, next) =>
   }
 });
 
-// DELETE /api/admin/series/:id/promo-video[?kind=loop] -> remove that film
+// DELETE /api/admin/series/:id/promo-video[?kind=loop|phone] -> remove that film
 // (without a loop the main card falls back to the promo film, without either
 // to its still picture).
 router.delete("/series/:id/promo-video", async (req, res, next) => {
