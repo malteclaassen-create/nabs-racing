@@ -497,6 +497,30 @@ html.update-reveal.update-reveal-go body::after {
 .dark .hero-hatch {
   --hatch-c: rgba(255, 255, 255, 0.06);
 }
+/* A main card playing its promo film (components/IdleFilm.jsx): everything
+   drawn over the picture, the scrims and the text and buttons alike, fades out
+   so the film has the card, and comes straight back on the first movement. */
+.hero-hud {
+  transition: opacity 600ms var(--e-out);
+}
+[data-film="on"] .hero-hud {
+  opacity: 0;
+  pointer-events: none;
+}
+[data-film="on"] .hero-hud * {
+  pointer-events: none;
+}
+/* The special-event promo page (components/EventPromo.jsx) fades up from
+   black. */
+@keyframes promo-in {
+  from { opacity: 0; }
+}
+.promo-in {
+  animation: promo-in 500ms var(--e-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .promo-in { animation: none; }
+}
 
 .speed-hatch {
   background-image: repeating-linear-gradient(

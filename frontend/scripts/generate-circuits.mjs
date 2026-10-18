@@ -3,8 +3,8 @@
 // Sources:
 //   * F1 circuits -> bacinger/f1-circuits (MIT), derived from OpenStreetMap.
 //   * Most (cz)   -> OpenStreetMap way "Autodrom Most" (id 60905520), vendored.
-//   * 7 non-F1 tracks (Fuji, Road America, Zolder, Daytona, Bathurst, Le Mans,
-//     Tor Poznań)
+//   * 8 non-F1 tracks (Fuji, Road America, Zolder, Daytona, Bathurst, Le Mans,
+//     Tor Poznań, Talladega)
 //     -> raw Overpass responses vendored in frontend/scripts/osm/. These circuits
 //     are mapped in OSM as many named corner/straight segments (or a route
 //     relation), so we stitch the segments end-to-end into one ring (see stitch()).
@@ -105,6 +105,8 @@ const EXTRA_TRACKS = {
   // paddock road ("Depot"), none of which the name filter would catch — so the
   // vendored file holds ONLY the 24 ways of the main loop. See osm/README.md.
   Poznan:      { file: "poznan.json",      kind: "way", country: "pl", countryName: "Poland",        circuit: "Tor Poznań" },
+  // The tri-oval's four segments; the pit lane goes by its name.
+  Talladega:   { file: "talladega.json",   kind: "way", country: "us", countryName: "United States", circuit: "Talladega Superspeedway" },
 };
 
 // Extra spellings a stored track name might use, mapped onto a canonical key.

@@ -21,6 +21,9 @@ import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import IdleFilm from "../components/IdleFilm.jsx";
+import { useIdleFilm } from "../hooks/useIdleFilm.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
@@ -555,6 +558,11 @@ export default function Home() {
   // Hero motion: the photo drifts slowly on scroll; the primary CTA is magnetic.
   const heroImgRef = useParallax(0.08);
   const ctaRef = useMagnetic({ strength: 0.25 });
+  // The series' promo film takes the card over while the page is left alone,
+  // the text and buttons (the HUD) fading out for it; any movement brings
+  // them straight back.
+  const filmSeries = useSeries().current;
+  const film = useIdleFilm(filmSeries?.promoLoopUrl || filmSeries?.promoVideoUrl);
 
   // Championship rounds only (special events have no round number / aren't scored).
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
@@ -1077,7 +1085,13 @@ export default function Home() {
       {/* The hero follows the site theme: dark mode keeps the classic dark
           card, light mode gets a proper WHITE version — white scrims over the
           photo and ink text (the inner elements carry light+dark variants). */}
-      <section className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10">
+      <section
+        ref={film.ref}
+        // An attribute, not a class: useScrollReveal adds `is-visible` to this
+        // element by hand, and a className React rewrites would drop it.
+        data-film={film.showing ? "on" : undefined}
+        className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
+      >
         <img
           ref={heroImgRef}
           key={heroFor(season, heroRace)}
@@ -1092,31 +1106,32 @@ export default function Home() {
           // hangs over the rounded corners, so nothing can be drawn past them.
           className="absolute inset-0 h-full w-full object-cover object-center"
         />
+        <IdleFilm film={film} />
         {/* Backdrop scrim — white in light mode, dark in dark mode. The archive
             scrim reaches further across so the centred podium sits on solid
             ground. The light scrim runs slightly stronger: ink text needs more
             ground on a photo than white text does. */}
         <div
-          className={`absolute inset-0 bg-gradient-to-tr ${
+          className={`hero-hud absolute inset-0 bg-gradient-to-tr ${
             isPast
               ? "from-white via-white/85 to-white/15 dark:from-ink dark:via-ink/80 dark:to-ink/10"
               : "from-white via-white/80 to-white/5 dark:from-ink dark:via-ink/75 dark:to-ink/0"
           }`}
         />
         <div
-          className={`absolute inset-0 bg-gradient-to-t from-white/95 to-transparent dark:from-ink/95 ${
+          className={`hero-hud absolute inset-0 bg-gradient-to-t from-white/95 to-transparent dark:from-ink/95 ${
             isPast ? "via-white/25 dark:via-ink/20" : "via-transparent"
           }`}
         />
         <div
-          className="hero-hatch absolute inset-y-0 right-0 w-[18%]"
+          className="hero-hud hero-hatch absolute inset-y-0 right-0 w-[18%]"
           style={{
             WebkitMaskImage: "linear-gradient(to left, #000 35%, transparent 100%)",
             maskImage: "linear-gradient(to left, #000 35%, transparent 100%)",
           }}
         />
 
-        <div className="relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
+        <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
             /* SEASON COMPLETE — one hero for every finished season, live finale
                and archive alike: the "<season> complete" line over the final

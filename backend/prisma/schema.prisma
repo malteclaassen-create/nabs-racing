@@ -67,6 +67,30 @@ model Series {
   // Per-page link-preview wording, JSON { <page>: { title?, description? } }.
   // Goes into the og:/twitter: tags only, never the page title. Raw-SQL column.
   shareTexts    String?
+  // What the series is (ensureSchema adds the column): null/"championship" =
+  // a season-long league like Friday/Sunday, "event" = a one-off special event
+  // (a single race weekend in a series of its own). An event sits under the
+  // championships in the switcher, with its date, and its standings menu
+  // leaves out the constructors and transfers. Raw-SQL column.
+  kind          String?
+  // Admin-uploaded promo film, e.g. "/api/uploads/series/<id>-promo.mp4?v=<ts>".
+  // The series' Home/Welcome main card plays it (muted, looped) after a few
+  // seconds without input, with the overlay faded out. null = no film.
+  // Raw-SQL column (ensureSchema).
+  promoVideoUrl String?
+  // The promo page switch: the ISO time an admin switched it on, null = off.
+  // While on, every visitor who can see the series gets the promo page once
+  // on arrival; the time is part of the "seen" key, so off-and-on again shows
+  // it once more. Raw-SQL column (ensureSchema).
+  promoAt       String?
+  // A short loop for the special event page's main card (and a championship's
+  // idle film), e.g. "/api/uploads/series/<id>-loop.mp4?v=<ts>". null = the
+  // promo film plays there instead (once, resting on its last frame). The
+  // promo page always plays the full promo film. Raw-SQL column.
+  promoLoopUrl  String?
+  // The headline over that loop on the event page ("Ready for some Oval
+  // Action?"), at most 60 characters. null = none. Raw-SQL column.
+  promoTagline  String?
   createdAt   DateTime @default(now())
 
   seasons Season[]

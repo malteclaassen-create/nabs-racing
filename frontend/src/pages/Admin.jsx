@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
@@ -3503,6 +3503,39 @@ function DriverIntake({ seasonId, seasonName, db, rosterNames, allSeries, onAllS
   // per series — "who races there now" is almost always the top entry.
   const sources = (seasons.data || []).filter((s) => s.id !== seasonId && (s._count?.drivers || 0) > 0);
   const picked = sources.find((s) => s.id === from) || null;
+  // A special event invites the league as it races today: the current season
+  // of every championship, active drivers only. Somebody who drives in both
+  // the Friday and the Sunday series comes over once (the person link says
+  // they are one person, and the endpoint skips who is here already).
+  const target = (seasons.data || []).find((s) => s.id === seasonId) || null;
+  const leagueSources =
+    target?.seriesKind === "event"
+      ? (seasons.data || []).filter(
+          (s) => s.isActive && s.seriesId && s.seriesId !== target.seriesId && s.seriesKind !== "event"
+        )
+      : [];
+
+  async function bringLeague() {
+    setBusy(true);
+    try {
+      let created = 0;
+      let already = 0;
+      for (const src of leagueSources) {
+        const r = await api.cloneDrivers(seasonId, src.id, true, { onlyActive: true });
+        created += r.created || 0;
+        already += (r.skipped || []).length;
+      }
+      onDone(
+        `${created} driver(s) from ${leagueSources.map((s) => s.seriesName || s.name).join(" + ")} added to the ` +
+          `Reserve pool of ${seasonName || "this event"}.` +
+          (already ? ` ${already} were on the roster already (or race in both series).` : "")
+      );
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function bringAll() {
     if (!picked) return;
@@ -3531,6 +3564,17 @@ function DriverIntake({ seasonId, seasonName, db, rosterNames, allSeries, onAllS
         photo, flag, racing number and the Steam id the result import matches on. Everyone keeps their career: the
         new entry is linked to the person it came from. Nobody is added twice, so pressing it again is safe.
       </p>
+      {leagueSources.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2.5">
+          <p className="min-w-0 flex-1 text-sm text-medium">
+            <span className="font-semibold text-dark">Special event:</span> everyone racing in{" "}
+            {leagueSources.map((s) => `${s.seriesName} (${s.name})`).join(" and ")} right now, each person once.
+          </p>
+          <button className="btn-primary px-4 py-1.5 text-sm" disabled={busy} onClick={bringLeague}>
+            {busy ? "Adding…" : "Bring the whole league"}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Season to take the drivers from"
@@ -5937,6 +5981,182 @@ function SeriesLogo({ series, onSaved, onError }) {
   );
 }
 
+// The series' promo: its two films, the full promo film (the promo page plays
+// it; the main card too while there is no loop) and a short loop for the main
+// card, and the switch for the promo page every visitor gets once on arrival.
+// "Preview" opens that page on the real site without switching it on.
+function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
+  const [busy, setBusy] = useState(false);
+  const off = panelBusy || busy;
+
+  async function togglePromo() {
+    const on = !series.promoAt;
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promo: on });
+      onSaved(
+        on
+          ? series.isPublic
+            ? `Promo page on: everyone who opens ${series.name}'s page sees the promo once.`
+            : `Promo page on: admins see it once on ${series.name}'s page, visitors too once the series is public.`
+          : `Promo page off for ${series.name}.`
+      );
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-surface2/60 px-3 py-2 text-xs">
+      <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Promo</span>
+      <FilmSlot
+        series={series}
+        kind="promo"
+        label="Film"
+        url={series.promoVideoUrl}
+        title="The full film of the promo page (and of the main card while there is no loop). MP4 or WebM, up to 300 MB; 1080p H.264 MP4 plays everywhere"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
+      <span className="h-3 w-px bg-border" />
+      <FilmSlot
+        series={series}
+        kind="loop"
+        label="Main card loop"
+        url={series.promoLoopUrl}
+        title="A short clip the main card plays over and over, muted. MP4 or WebM, up to 300 MB"
+        off={off}
+        onSaved={onSaved}
+        onError={onError}
+      />
+      {series.kind === "event" && (
+        <>
+          <span className="h-3 w-px bg-border" />
+          <LoopHeadline series={series} off={off} onSaved={onSaved} onError={onError} />
+        </>
+      )}
+      <span className="h-3 w-px bg-border" />
+      <span className="text-light">
+        Promo page:{" "}
+        {series.promoAt ? (
+          <span className="font-semibold text-ok">on{series.isPublic ? "" : " (admins only until public)"}</span>
+        ) : (
+          <span className="font-semibold">off</span>
+        )}
+      </span>
+      <button type="button" className="font-semibold text-link hover:underline" disabled={off} onClick={togglePromo}>
+        {series.promoAt ? "Switch off" : "Switch on"}
+      </button>
+      <Link to={`/s/${series.slug}?promo=${encodeURIComponent(series.slug)}`} className="font-semibold text-link hover:underline">
+        Preview
+      </Link>
+    </div>
+  );
+}
+
+// The headline the event page sets over the loop (Series.promoTagline), saved
+// when the field is left. Blank: the card leads with the series name.
+function LoopHeadline({ series, off, onSaved, onError }) {
+  const [value, setValue] = useState(series.promoTagline || "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setValue(series.promoTagline || ""), [series.promoTagline]);
+
+  async function save() {
+    const next = value.replace(/\s+/g, " ").trim();
+    if (next === (series.promoTagline || "")) return;
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promoTagline: next });
+      onSaved(next ? `Headline over the loop: "${next}".` : "Headline over the loop removed; the card shows the series name.");
+    } catch (err) {
+      onError(err.message);
+      setValue(series.promoTagline || "");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label className="flex items-center gap-1.5 text-light" title="Shown over the main card's loop on the event page, with car, track and start time. Blank = the series name">
+      Headline
+      <input
+        type="text"
+        value={value}
+        maxLength={60}
+        placeholder={series.name}
+        disabled={off || busy}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        className="w-56 rounded border border-border bg-surface px-2 py-1 text-xs text-dark"
+      />
+    </label>
+  );
+}
+
+// One of a series' two films (kind "promo" or "loop"): upload with a progress
+// figure (they run to tens of megabytes), replace, remove.
+function FilmSlot({ series, kind, label, url, title, off, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [progress, setProgress] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const disabled = off || busy || progress !== null;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setProgress(0);
+    try {
+      await api.uploadSeriesPromoVideo(series.id, file, setProgress, kind);
+      onSaved(`${label} uploaded for ${series.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function remove() {
+    if (!(await ask({ title: `Remove ${series.name}'s ${label.toLowerCase()}?`, danger: true, confirmLabel: "Remove" }))) return;
+    setBusy(true);
+    try {
+      await api.clearSeriesPromoVideo(series.id, kind);
+      onSaved(`${label} removed from ${series.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <input aria-label={`${label} for ${series.name}`} ref={fileRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={pick} />
+      <span className="text-light">{label}:</span>
+      {progress !== null ? (
+        <span className="font-semibold text-medium">uploading… {progress}%</span>
+      ) : (
+        <>
+          <button type="button" className="font-semibold text-link hover:underline" disabled={disabled}
+            onClick={() => fileRef.current?.click()} title={title}>
+            {url ? "Replace" : "Upload"}
+          </button>
+          {url && (
+            <button type="button" className="font-semibold text-light hover:text-link" disabled={disabled} onClick={remove}>
+              Remove
+            </button>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 // --- SERIES ------------------------------------------------------------------
 // The level above seasons: several championships (Friday F1, Sunday GT, …) in
 // one deployment. The slug (the /s/<slug>/ URL identity) is set once at
@@ -5947,7 +6167,7 @@ function SeriesPanel() {
   const ask = useAsk();
   const { data: series, reload } = useApi(useCallback(() => api.adminSeries(), []));
   const { setSlug } = useSeries();
-  const [form, setForm] = useState({ name: "", game: "", accentColor: "" });
+  const [form, setForm] = useState({ name: "", game: "", accentColor: "", kind: "championship" });
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -5964,9 +6184,15 @@ function SeriesPanel() {
         name: form.name.trim(),
         game: form.game.trim() || null,
         accentColor: form.accentColor.trim() || null,
+        kind: form.kind,
       });
-      setMsg(`Series "${s.name}" created (URL: /s/${s.slug}). It starts private, so build its seasons and then publish it. Pick it in the bar above to start editing.`);
-      setForm({ name: "", game: "", accentColor: "" });
+      setMsg(
+        `${s.kind === "event" ? "Special event" : "Series"} "${s.name}" created (URL: /s/${s.slug}). It starts private, so build its seasons and then publish it. Pick it in the bar above to start editing.` +
+          (s.kind === "event"
+            ? " Give it one season with its race, then use \"Bring the whole league\" on the Drivers tab."
+            : "")
+      );
+      setForm({ name: "", game: "", accentColor: "", kind: "championship" });
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -5997,6 +6223,18 @@ function SeriesPanel() {
     try {
       await api.updateSeries(s.id, { isPublic: !s.isPublic });
       setMsg(s.isPublic ? `${s.name} is now private and hidden from the public.` : `${s.name} is now public.`);
+      reload(); nudge();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  // Championship <-> special event. Only changes where it sits in the
+  // switcher and what its standings menu offers; no data moves.
+  async function toggleKind(s) {
+    const kind = s.kind === "event" ? "championship" : "event";
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeries(s.id, { kind });
+      setMsg(kind === "event" ? `${s.name} is now a special event.` : `${s.name} is now a championship.`);
       reload(); nudge();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -6061,6 +6299,7 @@ function SeriesPanel() {
             <div className="min-w-0">
               <span className="font-display text-base font-bold text-dark">{s.name}</span>
               {s.isActive && <span className="ml-2 pill bg-emerald-500/15 text-ok">primary</span>}
+              {s.kind === "event" && <span className="ml-2 pill bg-brand/15 text-brand">special event</span>}
               {!s.isActive && s.isPublic === false && (
                 <span className="ml-2 pill bg-rose-500/15 text-rose-600">private · hidden</span>
               )}
@@ -6118,6 +6357,11 @@ function SeriesPanel() {
               </button>
               <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
                 onClick={() => rename(s)}>Rename</button>
+              <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                onClick={() => toggleKind(s)}
+                title="A special event is a one-off race in a series of its own: it sits under the championships in the switcher">
+                {s.kind === "event" ? "Make championship" : "Make special event"}
+              </button>
               {!s.isActive && (
                 <>
                   <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
@@ -6131,6 +6375,7 @@ function SeriesPanel() {
                 </>
               )}
             </div>
+            <SeriesPromo series={s} busy={busy} onSaved={(m) => { setMsg(m); setError(null); reload(); nudge(); }} onError={setError} />
           </li>
         ))}
       </ul>
@@ -6149,7 +6394,14 @@ function SeriesPanel() {
         />
         <input aria-label="Accent colour hex code" className="input w-28 font-mono" placeholder="#6de0fc" value={form.accentColor}
           onChange={(e) => setForm({ ...form, accentColor: e.target.value })} />
-        <button className="btn-primary" disabled={busy || !form.name.trim()}>Create series</button>
+        <select aria-label="Kind of series" className="input w-auto" value={form.kind}
+          onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <option value="championship">Championship</option>
+          <option value="event">Special event</option>
+        </select>
+        <button className="btn-primary" disabled={busy || !form.name.trim()}>
+          {form.kind === "event" ? "Create event" : "Create series"}
+        </button>
       </form>
       {error && <Notice kind="error">{error}</Notice>}
       {msg && <Notice kind="success">{msg}</Notice>}

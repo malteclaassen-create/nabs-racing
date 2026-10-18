@@ -49,11 +49,16 @@ export function circuitMark(track, { area = MARK_AREA, maxW = 120, maxH = 100, r
   return { rotate, style: { width: Math.round(width * fit), height: Math.round(height * fit) } };
 }
 
-export default function NextRaceCard({ race, className = "", style = null }) {
+// A special event's home page uses the same card for its one race, saying so
+// in the corner (`corner`), with its own way in (`to`, `cta`: the sign-up page
+// of the event's series, and what that button can honestly offer right now)
+// and `children` (how full the grid is) just above the button.
+export default function NextRaceCard({ race, className = "", style = null, corner = null, to = null, cta = "Sign Up", children = null }) {
   if (!race) return null;
 
   const circuit = flagFor(race.track, race.country);
   const date = race.date ? new Date(race.date) : null;
+  const longWord = Math.max(0, ...String(race.track || "").split(/\s+/).map((w) => w.length)) > 11;
   const mark = race.track ? circuitMark(race.track, { area: 14000, maxW: 236, maxH: 92, rotateBelow: 1 }) : null;
 
   return (
@@ -67,7 +72,7 @@ export default function NextRaceCard({ race, className = "", style = null }) {
         {/* Trainings have no round number but still are the next race —
             an unlabeled corner would read like a missing number. */}
         <span className="ml-auto text-ink/40 dark:text-white/50">
-          {race.number != null ? `Round ${race.number}` : race.type === "TRAINING" ? "Training" : "Event"}
+          {corner ?? (race.number != null ? `Round ${race.number}` : race.type === "TRAINING" ? "Training" : "Event")}
         </span>
       </div>
 
@@ -94,7 +99,14 @@ export default function NextRaceCard({ race, className = "", style = null }) {
         </div>
       )}
 
-      <div className="mt-4 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white sm:text-3xl">
+      {/* A name with one long word ("Talladega Superspeedway") stays a size
+          down: at sm:text-3xl the word is wider than the card beside a film
+          and breaks mid-word. */}
+      <div
+        className={`mt-4 break-words font-display text-2xl font-black uppercase leading-[1.05] tracking-tight text-ink dark:text-white ${
+          longWord ? "" : "sm:text-3xl"
+        }`}
+      >
         {race.track}
       </div>
       {/* skip the circuit line when it just repeats the race name (e.g. race
@@ -120,13 +132,18 @@ export default function NextRaceCard({ race, className = "", style = null }) {
         </div>
       )}
 
-      <Link
-        to={`/attendance?race=${race.id}`}
-        className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
-      >
-        Sign Up
-        <span className="transition group-hover:translate-x-0.5">→</span>
-      </Link>
+      {/* mt-auto: in a card stretched to the height of its row (the event
+          page's film), the button sits on the bottom edge, not mid-air. */}
+      <div className="mt-auto">
+        {children}
+        <Link
+          to={to || `/attendance?race=${race.id}`}
+          className="shine group mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+        >
+          {cta}
+          <span className="transition group-hover:translate-x-0.5">→</span>
+        </Link>
+      </div>
     </div>
   );
 }

@@ -57,6 +57,7 @@ const CIRCUITS = {
   LeMans: { circuit: "Circuit de la Sarthe", country: "fr" },
   Daytona: { circuit: "Daytona", country: "us" },
   Poznan: { circuit: "Tor Poznań", country: "pl" },
+  Talladega: { circuit: "Talladega Superspeedway", country: "us" },
 };
 
 // Raw track strings (AC ids, country names, alternate spellings) -> CIRCUITS key.

@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useSeriesPath } from "../context/SeriesContext.jsx";
+import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
+import { useEventRace } from "../hooks/useEventRace.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useProfileHome } from "../hooks/useProfileHome.js";
@@ -339,6 +340,25 @@ function navLinks(p) {
   ];
 }
 
+// A special event's nav (Series.kind "event"): one race, so no standings and
+// no calendar. What it offers follows the race (utils/eventPhase.js):
+//   before  Event · Entry list · Get ready · Live (greyed until race night)
+//   live    Live first, then Event · Entry list · Get ready
+//   after   Event · Results · Race replay
+// `disabled` items render as plain text with their `hint` (the race date).
+export function eventNavLinks(p, race, phase) {
+  const home = { to: p(""), label: "Event", end: true, alsoActiveOn: "/" };
+  const entry = { to: p("/attendance"), label: "Entry list" };
+  const ready = { to: "/downloads", label: "Get ready" };
+  const live = { to: p("/live"), label: "Live" };
+  if (phase === "after" && race) {
+    return [home, { to: p(`/races?race=${race.id}`), label: "Results" }, { to: p(`/recap/${race.id}`), label: "Race replay" }];
+  }
+  if (phase === "live" || phase === "pending") return [live, home, entry, ready];
+  const day = race?.date ? new Date(race.date).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : null;
+  return [home, entry, ready, { ...live, disabled: true, hint: day }];
+}
+
 // Desktop variant: the active page's highlight is ONE pill that GLIDES between
 // the items (see the sliding span in the desktop nav), so the item itself only
 // switches its text colour and carries the `is-active` marker the pill follows.
@@ -351,17 +371,19 @@ const desktopLinkClass = ({ isActive }) =>
 // phone sheet alike. `preview` is what the panel beside the desktop menu shows
 // while that row is pointed at: the drivers' table, the teams', the latest
 // moves or the Hall of Fame (components/StandingsPreview.jsx).
-function standingsPages(seriesPath, transfers, multiTier) {
+// A special event (Series.kind "event") is one race in a series of its own:
+// it has a driver table but no constructors' fight and no transfer market.
+function standingsPages(seriesPath, transfers, multiTier, isEvent = false) {
   return [
     { to: seriesPath("/drivers"), Icon: User, title: "Drivers", sub: "Driver standings", tour: "nav-drivers", preview: "drivers" },
-    {
+    !isEvent && {
       to: seriesPath("/constructors"),
       Icon: Users,
       title: "Constructors",
       sub: multiTier ? "Tier 1 & Tier 2" : "Constructor standings",
       preview: "constructors",
     },
-    transfers && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
+    transfers && !isEvent && { to: seriesPath("/transfers"), Icon: ArrowDownUp, title: "Transfers", sub: "Team changes, round by round", preview: "transfers" },
     { to: seriesPath("/records"), Icon: Trophy, title: "Hall of Fame", sub: "All-time records", preview: "records" },
   ].filter(Boolean);
 }
@@ -483,7 +505,7 @@ const STANDINGS_PAGES = ["/drivers", "/constructors", "/transfers", "/records"];
 // every floating toast read, so nothing ends up hidden behind it. The glass
 // look (.liquid-glass) is in index.css, with why it can afford the blur the top
 // bar gives up on phones.
-function BottomNav({ seriesPath, liveNow, onTap }) {
+function BottomNav({ seriesPath, liveNow, onTap, event = null }) {
   const location = useLocation();
   const { user, isLoggedIn } = useAuth();
   const { total, summary } = useAdminAttention();
@@ -554,10 +576,20 @@ function BottomNav({ seriesPath, liveNow, onTap }) {
 
   const name = isLoggedIn ? user.driverName || user.discordName || "Profile" : "";
   const profileTo = isLoggedIn ? pathFor(user.driverId) : "/profile";
+  // A special event has four tabs: no standings, and the race's own pages in
+  // place of the calendar (see eventNavLinks).
+  const eventTabs = event && [
+    { key: "home", to: seriesPath(""), end: true, label: "Event", icon: TAB_ICONS.home, forced: location.pathname === "/" },
+    event.phase === "after" && event.race
+      ? { key: "results", to: seriesPath(`/races?race=${event.race.id}`), label: "Results", icon: TAB_ICONS.standings }
+      : { key: "entry", to: seriesPath("/attendance"), label: "Entry list", icon: TAB_ICONS.races },
+  ];
   const tabs = [
-    { key: "home", to: seriesPath(""), end: true, label: "Home", icon: TAB_ICONS.home, forced: location.pathname === "/" },
-    { key: "races", to: seriesPath("/races"), label: "Races", icon: TAB_ICONS.races },
-    {
+    ...(eventTabs || [
+      { key: "home", to: seriesPath(""), end: true, label: "Home", icon: TAB_ICONS.home, forced: location.pathname === "/" },
+      { key: "races", to: seriesPath("/races"), label: "Races", icon: TAB_ICONS.races },
+    ]),
+    !event && {
       key: "standings",
       to: seriesPath("/drivers"),
       label: "Standings",
@@ -572,7 +604,7 @@ function BottomNav({ seriesPath, liveNow, onTap }) {
       icon: TAB_ICONS.me,
       forced: pathNoSeries.startsWith("/profile") || (isLoggedIn && location.pathname === profileTo),
     },
-  ];
+  ].filter(Boolean);
 
   return (
     <nav
@@ -774,7 +806,8 @@ function StandingsNav({ seriesPath }) {
     `glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
       isActive ? "liquid-glass-lens" : "hover:bg-surface2"
     }`;
-  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier);
+  const isEvent = useSeries().current?.kind === "event";
+  const pages = standingsPages(seriesPath, transfers, preview.data?.multiTier, isEvent);
 
   return (
     <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={closeSoon}>
@@ -906,6 +939,7 @@ function NavGlidePill({ box }) {
 
 export default function NavBar() {
   const { seriesPath, slug: viewedSeries } = useSeriesPath();
+  const { current } = useSeries();
   // Members get the extra menu row to their own feedback threads; a visitor has
   // no threads to read (there is no account for an answer to land in).
   const { isLoggedIn } = useAuth();
@@ -1040,7 +1074,11 @@ export default function NavBar() {
     return () => { alive = false; };
   }, [attCacheKey, location.pathname]);
 
-  const links = navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
+  const isEvent = current?.kind === "event";
+  const { race: eventRace, phase: eventPhase } = useEventRace(isEvent);
+  const links = isEvent
+    ? eventNavLinks(seriesPath, eventRace, eventPhase)
+    : navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
   // Reserve drivers only, and only until they have looked or applied.
   const seats = useReserveSeats();
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
@@ -1103,7 +1141,7 @@ export default function NavBar() {
 
   // No preview in the phone sheet: the rows are what it is for, and asking for
   // three tables every time the menu opens would cost more than it shows.
-  const sheetPages = standingsPages(seriesPath, transfersVisible, false);
+  const sheetPages = standingsPages(seriesPath, transfersVisible, false, current?.kind === "event");
 
   // Pulling the sheet down by its grip. It follows the finger straight, with
   // no React render per frame; let go far enough down and it closes from where
@@ -1197,6 +1235,11 @@ export default function NavBar() {
           {links.map((l) =>
             l.standings ? (
               <StandingsNav key="standings" seriesPath={seriesPath} />
+            ) : l.disabled ? (
+              <span key={l.label} className="flex items-center gap-1.5 whitespace-nowrap px-2 py-2 text-[13px] font-semibold text-faint xl:px-3 xl:text-sm">
+                {l.label}
+                {l.hint && <span className="font-mono text-[11px] font-bold uppercase">{l.hint}</span>}
+              </span>
             ) : (
               <NavLink
                 key={l.to}
@@ -1346,17 +1389,30 @@ export default function NavBar() {
                 </>
               )}
 
-              <MobileMenuLabel>Standings</MobileMenuLabel>
-              {sheetPages.map((pg) => (
-                <SheetRow key={pg.title} to={pg.to} Icon={pg.Icon} title={pg.title} sub={pg.sub} />
-              ))}
+              {!isEvent && (
+                <>
+                  <MobileMenuLabel>Standings</MobileMenuLabel>
+                  {sheetPages.map((pg) => (
+                    <SheetRow key={pg.title} to={pg.to} Icon={pg.Icon} title={pg.title} sub={pg.sub} />
+                  ))}
+                </>
+              )}
 
-              <MobileMenuLabel>League</MobileMenuLabel>
+              <MobileMenuLabel>{isEvent ? "Event" : "League"}</MobileMenuLabel>
               {/* Four to a row: with three the last row sat behind the tab bar. */}
               <div className="grid grid-cols-4 gap-2 pt-1">
-                <SheetTile to={seriesPath("")} end alsoActiveOn="/" Icon={House} label="Home" />
-                <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />
-                {attendanceOpen && (
+                <SheetTile to={seriesPath("")} end alsoActiveOn="/" Icon={House} label={isEvent ? "Event" : "Home"} />
+                {isEvent && eventPhase === "after" && eventRace && (
+                  <>
+                    <SheetTile to={seriesPath(`/races?race=${eventRace.id}`)} Icon={Flag} label="Results" hint="The full order" />
+                    <SheetTile to={seriesPath(`/recap/${eventRace.id}`)} Icon={Trophy} label="Replay" hint="Lap by lap" />
+                  </>
+                )}
+                {isEvent && eventPhase !== "after" && (
+                  <SheetTile to={seriesPath("/attendance")} Icon={CalendarCheck} label="Entry list" hint="Sign up, who is in" />
+                )}
+                {!isEvent && <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />}
+                {!isEvent && attendanceOpen && (
                   <SheetTile
                     to={seriesPath("/attendance")}
                     Icon={CalendarCheck}
@@ -1386,7 +1442,7 @@ export default function NavBar() {
                     ) : null
                   }
                 />
-                <SheetTile to="/downloads" Icon={FileText} label="Race Info" hint="Rules & downloads" />
+                <SheetTile to="/downloads" Icon={FileText} label={isEvent ? "Get ready" : "Race Info"} hint="Rules & downloads" />
                 <SheetTile to="/help" Icon={CircleHelp} label="Help" hint="Checksums, kicks, sign-up" />
                 {/* The phone's way to the feedback panel: the floating button in
                     the corner is desktop-only, so this square is what opens it here. */}
@@ -1420,7 +1476,7 @@ export default function NavBar() {
         </div>
       )}
     </header>
-    <BottomNav seriesPath={seriesPath} liveNow={liveNow} onTap={closeMenu} />
+    <BottomNav seriesPath={seriesPath} liveNow={liveNow} onTap={closeMenu} event={isEvent ? { race: eventRace, phase: eventPhase } : null} />
     </>
   );
 }

@@ -26,9 +26,87 @@ function LockIcon({ className = "h-3 w-3" }) {
   );
 }
 
+// Star marking a special event (Series.kind "event"), in the list and on the
+// button while one is being viewed.
+function StarIcon({ className = "h-3 w-3" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M12 2.8l2.75 5.6 6.15.9-4.45 4.33 1.05 6.12L12 16.87l-5.5 2.88 1.05-6.12L3.1 9.3l6.15-.9z" />
+    </svg>
+  );
+}
+
+// "Fri 6 Nov · 18:30" in the viewer's own time zone: the line under a special
+// event's name, where a championship shows its game.
+function eventDateLabel(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
+// Events still to come (soonest first, undated ones after them) and the ones
+// that are over (latest first). Over = its race was more than a day ago, the
+// same day of grace the server gives eventAt (routes/series.js).
+function splitEvents(events, now = Date.now()) {
+  const t = (s) => (s.eventAt ? new Date(s.eventAt).getTime() : NaN);
+  const isPast = (s) => t(s) < now - 24 * 3600e3;
+  const upcoming = events
+    .filter((s) => !isPast(s))
+    .sort((a, b) => (Number.isNaN(t(a)) ? 1 : Number.isNaN(t(b)) ? -1 : t(a) - t(b)));
+  const past = events.filter(isPast).sort((a, b) => t(b) - t(a));
+  return { upcoming, past };
+}
+
+function ChevronRight({ className = "h-4 w-4 shrink-0 text-eyebrow" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+// One entry of the menu: a championship, or an event on the second level.
+function SeriesRow({ s, i, viewing, sub, onClick }) {
+  return (
+    <button
+      role="menuitemradio"
+      aria-checked={viewing}
+      onClick={onClick}
+      style={{ "--i": i }}
+      className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+        viewing ? "liquid-glass-lens" : "hover:bg-surface2"
+      }`}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
+          {s.isPublic === false && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
+              <LockIcon className="h-2.5 w-2.5" />
+              Private
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{sub}</span>
+      </span>
+      {viewing && (
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M5 12l5 5L20 6" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function SeriesSwitcher({ mobile = false, onPick }) {
   const { seriesList, current, setSlug } = useSeries();
   const [open, setOpen] = useState(false);
+  // Which list the menu shows: the series, or (one level down) the special
+  // events. Every open starts at the top.
+  const [panel, setPanel] = useState("series");
   const wrapRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,7 +115,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   // dismisses exactly the way the drawers, the dialogs and the other four
   // dropdowns do. It also gains touchstart, which this hand-rolled version
   // lacked: on a phone a tap outside left the menu up until the tap finished.
-  useDismiss(open, useCallback(() => setOpen(false), []), { ref: wrapRef });
+  useDismiss(open, useCallback(() => { setOpen(false); setPanel("series"); }, []), { ref: wrapRef });
 
   // Hidden entirely while there is nothing to switch between.
   if (seriesList.length <= 1) return null;
@@ -50,6 +128,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
 
   const pick = (s) => {
     setOpen(false);
+    setPanel("series");
     const to = seriesSwitchTarget(location.pathname, s.slug);
     if (!to) {
       // A page with no series in its address (admin, profile, Race Info, …):
@@ -75,6 +154,20 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
   };
 
   const label = current ? current.name : "Series";
+  // The championships keep the admin's order. The special events sit one
+  // level down, behind a single "Special events" entry, so the top of the menu
+  // stays Friday / Sunday however many one-offs pile up over the years.
+  const championships = seriesList.filter((s) => s.kind !== "event");
+  const { upcoming, past } = splitEvents(seriesList.filter((s) => s.kind === "event"));
+  const events = [...upcoming, ...past];
+  const viewingEvent = current?.kind === "event";
+  const next = upcoming[0] || null;
+  const eventsSub = viewingEvent
+    ? current.name
+    : next
+      ? `Next: ${next.name}${eventDateLabel(next.eventAt) ? ` · ${eventDateLabel(next.eventAt)}` : ""}`
+      : `${events.length} event${events.length === 1 ? "" : "s"}`;
+  const rowProps = (s, i) => ({ s, i, viewing: !!current && s.slug === current.slug, onClick: () => pick(s) });
 
   return (
     <span ref={wrapRef} className={`relative ${mobile ? "block" : "inline-flex"}`}>
@@ -82,7 +175,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { setOpen((o) => !o); setPanel("series"); }}
         title="Switch series"
         className={
           mobile
@@ -98,6 +191,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
           <>
             <span className="flex min-w-0 items-center gap-2">
               {current?.isPublic === false && <LockIcon className="h-3 w-3 shrink-0 text-warn" />}
+              {current?.kind === "event" && <StarIcon className="h-3 w-3 shrink-0 text-brand" />}
               <span className="truncate">{label}</span>
             </span>
             <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Series</span>
@@ -105,6 +199,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
         ) : (
           <>
             {current?.isPublic === false && <LockIcon className="h-2.5 w-2.5 shrink-0 text-warn" />}
+            {current?.kind === "event" && <StarIcon className="h-2.5 w-2.5 shrink-0 text-brand" />}
             <span className="block truncate text-xs font-semibold uppercase tracking-widest text-light transition group-hover:text-dark">
               {label}
             </span>
@@ -127,46 +222,61 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
       {/* Menu — rendered from the /series list, so it scales to any number. */}
       <div
         role="menu"
-        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-64 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-72 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
       >
         {/* py-px so the highlighted entry's ring isn't shaved off at the
             list's own clipping edge (see SeasonPicker for the same fix). */}
         <div className="max-h-[60vh] overflow-y-auto py-px scrollbar-slim">
-          {seriesList.map((s, i) => {
-            const viewing = current && s.slug === current.slug;
-            return (
+          {panel === "series" ? (
+            <>
+              {championships.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, i)} sub={s.isPublic === false ? "Only admins can see this series" : s.game || s.description || "Racing series"} />
+              ))}
+              {events.length > 0 && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  onClick={() => setPanel("events")}
+                  style={{ "--i": championships.length }}
+                  className={`glass-menu-item mt-1 flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
+                    viewingEvent ? "liquid-glass-lens" : "hover:bg-surface2"
+                  }`}
+                >
+                  <StarIcon className="h-4 w-4 shrink-0 text-brand" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-display text-sm font-bold uppercase tracking-tight text-dark">
+                      Special events
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-light">{eventsSub}</span>
+                  </span>
+                  <ChevronRight />
+                </button>
+              )}
+            </>
+          ) : (
+            <>
               <button
-                key={s.id}
-                role="menuitemradio"
-                aria-checked={viewing}
-                onClick={() => pick(s)}
-                style={{ "--i": i }}
-                className={`glass-menu-item flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left ${
-                  viewing ? "liquid-glass-lens" : "hover:bg-surface2"
-                }`}
+                type="button"
+                onClick={() => setPanel("series")}
+                className="mb-1 flex w-full items-center gap-1.5 rounded-xl px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow transition hover:bg-surface2 hover:text-dark"
               >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="truncate font-display text-sm font-bold uppercase tracking-tight text-dark">{s.name}</span>
-                    {s.isPublic === false && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-warn">
-                        <LockIcon className="h-2.5 w-2.5" />
-                        Private
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block truncate font-mono text-[11px] text-light">
-                    {s.isPublic === false ? "Only admins can see this series" : s.game || s.description || "Racing series"}
-                  </span>
-                </span>
-                {viewing && (
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-eyebrow" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 12l5 5L20 6" />
-                  </svg>
-                )}
+                <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+                Special events
               </button>
-            );
-          })}
+              {upcoming.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, i)} sub={eventDateLabel(s.eventAt) || s.game || "Date to be announced"} />
+              ))}
+              {past.length > 0 && (
+                <div className="mx-2.5 mb-1 mt-2 border-t border-border pt-2 font-mono text-[10px] font-bold uppercase tracking-widest text-faint">
+                  Past events
+                </div>
+              )}
+              {past.map((s, i) => (
+                <SeriesRow key={s.id} {...rowProps(s, upcoming.length + i)} sub={eventDateLabel(s.eventAt) || s.game || "Special event"} />
+              ))}
+            </>
+          )}
         </div>
       </div>
     </span>

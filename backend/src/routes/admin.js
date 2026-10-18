@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
@@ -116,6 +116,8 @@ import {
   dbListSeries, dbCreateSeries, dbUpdateSeries, dbActivateSeries, dbDeleteSeries,
   getSeriesById, resolveSeries, seasonIdsOfSeries, seasonSeriesMap, setSeasonSeries,
   writeSeriesLogo,
+  writeSeriesPromoVideo,
+  writeSeriesPromoLoop,
   writeSeriesShareImage,
   SHARE_PAGES,
   parseShareText,
@@ -4969,7 +4971,7 @@ router.get("/series", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/series  { name, game?, description?, accentColor? }
+// POST /api/admin/series  { name, game?, description?, accentColor?, kind? }
 // The slug is derived from the name once and then frozen.
 router.post("/series", async (req, res, next) => {
   try {
@@ -4981,6 +4983,7 @@ router.post("/series", async (req, res, next) => {
       game: req.body?.game,
       description: req.body?.description,
       accentColor: req.body?.accentColor,
+      kind: req.body?.kind,
     });
     res.status(201).json(series);
   } catch (e) {
@@ -4988,7 +4991,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoTagline? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
@@ -5060,6 +5063,110 @@ router.delete("/series/:id", async (req, res, next) => {
     }
     await dbDeleteSeries(prisma, series.id);
     res.json({ ok: true, deletedSeasons: seasons.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/series/:id/promo-video[?kind=loop]  (multipart: file=<mp4|webm>)
+// Uploads (or replaces) one of the series' two films:
+//   - the promo film (default): the full film of its promo page, and what the
+//     main card plays while no loop is uploaded;
+//   - ?kind=loop: a short loop the main card plays over and over (an event
+//     page's main card, a championship's idle film).
+// Far
+// too big for the 10 MB in-memory image upload, so it streams to disk like a
+// download does, under a temporary name, and is renamed into place only once
+// it is complete and of the right type.
+const PROMO_VIDEO_EXT = { "video/mp4": ".mp4", "video/webm": ".webm" };
+const PROMO_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+// Which film a request is about: its file name stem and where its URL is kept.
+function promoFilmKind(req) {
+  return req.query.kind === "loop"
+    ? { stem: "loop", write: writeSeriesPromoLoop, field: "promoLoopUrl" }
+    : { stem: "promo", write: writeSeriesPromoVideo, field: "promoVideoUrl" };
+}
+const promoVideoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      try {
+        mkdirSync(SERIES_DIR, { recursive: true });
+        cb(null, SERIES_DIR);
+      } catch (e) {
+        cb(e);
+      }
+    },
+    filename: (req, file, cb) => cb(null, `.promo-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+  }),
+  limits: { fileSize: PROMO_VIDEO_MAX_BYTES },
+});
+// The app-wide error handler names the 20 MB attachment limit; a film has its own.
+function takePromoVideo(req, res, next) {
+  promoVideoUpload.single("file")(req, res, (err) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `The film is too big. The limit is ${PROMO_VIDEO_MAX_BYTES / 1024 / 1024} MB.` });
+    }
+    next(err);
+  });
+}
+router.post("/series/:id/promo-video", takePromoVideo, async (req, res, next) => {
+  const tmp = req.file?.path;
+  const dropTmp = () => {
+    try {
+      if (tmp && existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+  };
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = PROMO_VIDEO_EXT[req.file.mimetype];
+    if (!ext) {
+      dropTmp();
+      return res.status(400).json({ error: "Unsupported video type (use MP4 or WebM)" });
+    }
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) {
+      dropTmp();
+      return res.status(404).json({ error: "Series not found" });
+    }
+    const kind = promoFilmKind(req);
+    const filename = `${series.id}-${kind.stem}${ext}`;
+    const dest = safeUploadPath(SERIES_DIR, filename);
+    if (!dest) {
+      dropTmp();
+      return res.status(400).json({ error: "This series' id can't be used as a file name" });
+    }
+    renameSync(tmp, dest);
+    // The other format's file from an earlier upload would otherwise linger.
+    for (const other of Object.values(PROMO_VIDEO_EXT)) {
+      if (other === ext) continue;
+      const old = safeUploadPath(SERIES_DIR, `${series.id}-${kind.stem}${other}`);
+      if (old && existsSync(old)) unlinkSync(old);
+    }
+    const url = `/api/uploads/series/${filename}?v=${Date.now()}`;
+    await kind.write(prisma, series.id, url);
+    res.json({ ok: true, [kind.field]: url });
+  } catch (e) {
+    dropTmp();
+    next(e);
+  }
+});
+
+// DELETE /api/admin/series/:id/promo-video[?kind=loop] -> remove that film
+// (without a loop the main card falls back to the promo film, without either
+// to its still picture).
+router.delete("/series/:id/promo-video", async (req, res, next) => {
+  try {
+    const series = await getSeriesById(prisma, req.params.id);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const kind = promoFilmKind(req);
+    for (const ext of Object.values(PROMO_VIDEO_EXT)) {
+      const file = safeUploadPath(SERIES_DIR, `${series.id}-${kind.stem}${ext}`);
+      if (file && existsSync(file)) unlinkSync(file);
+    }
+    await kind.write(prisma, series.id, null);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
@@ -5243,6 +5350,7 @@ router.get("/seasons", async (req, res, next) => {
             seriesId,
             seriesName: series?.name || null,
             seriesSlug: series?.slug || null,
+            seriesKind: series?.kind || null,
             teamDropWorst: extra.teamDropWorst == null ? null : Number(extra.teamDropWorst),
             teamDropMode: extra.teamDropMode === "rounds" ? "rounds" : null,
             fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
@@ -5406,6 +5514,10 @@ router.post("/seasons", async (req, res, next) => {
       return res.status(409).json({ error: `A season with that number already exists in ${series.name}` });
     }
     const data = { number: n, name, game: game || null };
+    // A special event is one race: dropping a competitor's worst rounds would
+    // drop the only one there is. Its season counts every round unless the
+    // admin says otherwise.
+    if (series.kind === "event" && req.body?.dropWorst === undefined) data.dropWorst = 0;
     const scoringError = applyScoringInput(req.body || {}, data);
     if (scoringError) return res.status(400).json({ error: scoringError });
     const raw = parseSeasonRawFields(req.body || {});
@@ -5704,7 +5816,7 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/seasons/:id/clone-drivers  { fromSeasonId }
+// POST /api/admin/seasons/:id/clone-drivers  { fromSeasonId, toReservePool?, onlyActive? }
 // Copies only the DRIVERS of another season into this one, into the teams that
 // are already here.
 //
@@ -5730,13 +5842,19 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
     // being invented. It also crosses series, where team names mean nothing to
     // each other anyway.
     const toPool = !!req.body?.toReservePool;
+    // Only the drivers still racing in the source: a special event invites the
+    // league as it is today, not everybody who ever held a seat there.
+    const onlyActive = !!req.body?.onlyActive;
     const target = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!target) return res.status(404).json({ error: "Target season not found" });
     if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
     if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
 
     const [sourceDrivers, targetTeams, present, persons] = await Promise.all([
-      prisma.driver.findMany({ where: { seasonId: fromSeasonId }, include: { team: true } }),
+      prisma.driver.findMany({
+        where: { seasonId: fromSeasonId, ...(onlyActive ? { isActive: true } : {}) },
+        include: { team: true },
+      }),
       prisma.team.findMany({ where: { seasonId: target.id } }),
       prisma.driver.findMany({ where: { seasonId: target.id }, select: { id: true, name: true } }),
       getPersonGroups(prisma),
