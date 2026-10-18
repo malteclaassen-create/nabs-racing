@@ -175,6 +175,6 @@ export const RACE_INFO_EVENT_DEFAULTS = {
     },
   ],
   pointsFootnote: "",
-  rulebook: RACE_INFO_DEFAULTS.rulebook.filter((g) => ["Track limits", "Racing", "Blue flags", "Engagement rules", "Safety car"].includes(g.subject)),
+  rulebook: RACE_INFO_DEFAULTS.rulebook.filter((g) => ["Track limits", "Racing", "Engagement rules", "Safety car"].includes(g.subject)),
   rulebookFootnote: RACE_INFO_DEFAULTS.rulebookFootnote,
 };

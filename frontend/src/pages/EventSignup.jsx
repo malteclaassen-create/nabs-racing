@@ -15,7 +15,8 @@ import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { fmtRaceDate } from "../utils/format.js";
 import { currentSignupRace } from "../utils/signupQueue.js";
-import { defaultLiveriesFor } from "../data/defaultLiveries.js";
+import { Download } from "lucide-react";
+import { defaultLiveriesFor, carStoreUrl } from "../data/defaultLiveries.js";
 import { announceRsvpChanged } from "../hooks/useMyEventEntry.js";
 import { EventCarFields, takenNumbers, draftFrom, draftProblem, draftBody, holdsCar } from "../components/EventCar.jsx";
 
@@ -60,6 +61,7 @@ export default function EventSignup() {
   );
 
   const defaults = defaultLiveriesFor(season?.game || series?.game);
+  const carUrl = carStoreUrl(season?.game || series?.game);
   const [draft, setDraft] = useState(() => draftFrom(null, defaults));
   // The default livery is the menu's first pick only once the car is known.
   useEffect(() => setDraft((d) => (d.number || d.link || d.old ? d : draftFrom(null, defaults))), [defaults.length]);
@@ -99,7 +101,19 @@ export default function EventSignup() {
 
   return (
     <div className="content-in space-y-6">
-      <PageHeader eyebrow="Special event" title="Sign up" />
+      <PageHeader
+        eyebrow="Special event"
+        title="Sign up"
+        right={
+          // The car itself: without it there is nothing to sign up with.
+          carUrl && (
+            <a href={carUrl} target="_blank" rel="noopener noreferrer" className="btn-primary gap-2">
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Get the car
+            </a>
+          )
+        }
+      />
 
       {firstLoad && <TableSkeleton rows={5} />}
       {!firstLoad && events.error && <ErrorBox message={events.error} onRetry={events.reload} />}

@@ -343,8 +343,8 @@ function navLinks(p) {
 
 // A special event's nav (Series.kind "event"): one race, so no standings and
 // no calendar. What it offers follows the race (utils/eventPhase.js):
-//   before  Event · Entry list · Get ready · Live (greyed until race night)
-//   live    Live first, then Event · Entry list · Get ready
+//   before  Event · Sign up · Race Info · Live (greyed until race night)
+//   live    Live first, then Event · Entry list · Race Info
 //   after   Event · Results · Race replay
 // `disabled` items render as plain text with their `hint` (the race date).
 // The entry list is named after what it is to the viewer: "Sign up" until they
@@ -364,7 +364,7 @@ export function eventEntryPath(phase, signedUp) {
 export function eventNavLinks(p, race, phase, signedUp = false) {
   const home = { to: p(""), label: "Event", end: true, alsoActiveOn: "/" };
   const entry = { to: p(eventEntryPath(phase, signedUp)), label: eventEntryLabel(phase, signedUp) };
-  const ready = { to: "/downloads", label: "Get ready" };
+  const ready = { to: "/downloads", label: "Race Info" };
   const live = { to: p("/live"), label: "Live" };
   if (phase === "after" && race) {
     return [home, { to: p(`/races?race=${race.id}`), label: "Results" }, { to: p(`/recap/${race.id}`), label: "Race replay" }];
@@ -1458,7 +1458,7 @@ export default function NavBar() {
                     ) : null
                   }
                 />
-                <SheetTile to="/downloads" Icon={FileText} label={isEvent ? "Get ready" : "Race Info"} hint="Rules & downloads" />
+                <SheetTile to="/downloads" Icon={FileText} label="Race Info" hint="Rules & downloads" />
                 <SheetTile to="/help" Icon={CircleHelp} label="Help" hint="Checksums, kicks, sign-up" />
                 {/* The phone's way to the feedback panel: the floating button in
                     the corner is desktop-only, so this square is what opens it here. */}
