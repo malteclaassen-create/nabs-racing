@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import { useApi } from "../hooks/useApi.js";
-import { api } from "../api/client.js";
+import { api, withApiBase } from "../api/client.js";
 import { md5File } from "../utils/md5.js";
 import { canPickFolder, pickAcFolder, readerFromDrop } from "../utils/acFolder.js";
 
@@ -251,6 +251,23 @@ export default function ContentCheck() {
               </p>
             )}
             {folderName && !busy && <p className="text-xs text-faint">Read: {folderName}</p>}
+          </div>
+
+          {/* The same check as a program, for whoever the page can't serve:
+              Firefox has no folder picker, and the tool finds the folder itself. */}
+          <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-dark">Rather use a program? Windows tool</p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                Finds your Assetto Corsa folder by itself, asks which server you want to join and lists every file that
+                differs. Double-click it after downloading. Windows may warn first because it is a script: click{" "}
+                <i>More info</i>, then <i>Run anyway</i>. It only reads your files, and you can open it in Notepad to see
+                exactly what it does.
+              </p>
+            </div>
+            <a className="btn-secondary shrink-0 px-4" href={withApiBase("/api/content-check/tool")} download>
+              Download for Windows
+            </a>
           </div>
 
           {problem && <Notice kind="error">{problem}</Notice>}

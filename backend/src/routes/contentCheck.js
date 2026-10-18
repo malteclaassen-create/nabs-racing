@@ -10,8 +10,24 @@
 import { Router } from "express";
 import { getContentCheck, contentCheckServers } from "../services/contentCheckService.js";
 import { isValidServerKey, DEFAULT_SERVER_KEY } from "../lib/liveServers.js";
+import { contentCheckTool, CONTENT_CHECK_TOOL_NAME } from "../lib/contentCheckTool.js";
 
 const router = Router();
+
+// GET /api/content-check/tool -> the same check as a Windows download
+// (lib/contentCheckTool.js), pointed at the address it was downloaded from.
+// Public like the manifest it reads.
+router.get("/tool", (req, res) => {
+  // `trust proxy` is set, so this is the address the visitor used.
+  const body = contentCheckTool(`${req.protocol}://${req.get("host")}`);
+  if (!body) return res.status(400).json({ error: "Unusable site address" });
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${CONTENT_CHECK_TOOL_NAME}"`);
+  // Built from the request's Host header: never let a cache hand one visitor's
+  // copy to another.
+  res.setHeader("Cache-Control", "no-store");
+  res.send(body);
+});
 
 router.get("/", async (req, res, next) => {
   try {
