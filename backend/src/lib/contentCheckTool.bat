@@ -301,21 +301,31 @@ function Save-Reference([string]$Ac, $Data) {
   Say
   Say '  SAVE THIS INSTALL AS THE REFERENCE' 'White'
   Say '  Only do this when the cars and the track work for you on the server.' 'DarkGray'
+  Say '  Admins signed in on the website: open the Content Check page, click "Code for the tool",' 'DarkGray'
+  Say '  and paste the code here (right-click or Ctrl+V). The admin PIN works too.' 'DarkGray'
   # Hidden while typing; a piped-in answer (scripted runs) cannot be read that way.
   if ([Console]::IsInputRedirected) {
-    $pin = Read-Host '  Admin PIN'
+    $secret = Read-Host '  Code or admin PIN'
   } else {
-    $secure = Read-Host '  Admin PIN' -AsSecureString
+    $secure = Read-Host '  Code or admin PIN' -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try { $pin = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    try { $secret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
   }
+  $secret = "$secret".Trim()
+  if (-not $secret) { Say '  Not saved: no code or PIN.' 'Yellow'; return }
   $by = Read-Host "  Your name, shown with the reference (Enter = $env:USERNAME)"
   if (-not "$by".Trim()) { $by = "$env:USERNAME" }
-  try {
-    $login = Invoke-RestMethod -Uri "$Site/api/admin/login" -Method Post -ContentType 'application/json' -Body (ConvertTo-Json @{ pin = $pin }) -UseBasicParsing -TimeoutSec 60
-  } catch {
-    Say "  Not saved: $(Get-ApiError $_)" 'Red'
-    return
+  # The website's code is a long token with dots in it; anything else is a PIN.
+  if ($secret.Length -gt 40 -and $secret.Contains('.')) {
+    $token = $secret
+  } else {
+    try {
+      $login = Invoke-RestMethod -Uri "$Site/api/admin/login" -Method Post -ContentType 'application/json' -Body (ConvertTo-Json @{ pin = $secret }) -UseBasicParsing -TimeoutSec 60
+      $token = $login.token
+    } catch {
+      Say "  Not saved: $(Get-ApiError $_)" 'Red'
+      return
+    }
   }
 
   # What belongs to the session: its cars with the liveries on the grid, and
@@ -367,7 +377,7 @@ function Save-Reference([string]$Ac, $Data) {
 
   try {
     $bytes = [Text.Encoding]::UTF8.GetBytes($json.ToString())
-    $res = Invoke-RestMethod -Uri "$Site/api/content-check/reference" -Method Post -ContentType 'application/json; charset=utf-8' -Body $bytes -Headers @{ Authorization = "Bearer $($login.token)" } -UseBasicParsing -TimeoutSec 300
+    $res = Invoke-RestMethod -Uri "$Site/api/content-check/reference" -Method Post -ContentType 'application/json; charset=utf-8' -Body $bytes -Headers @{ Authorization = "Bearer $token" } -UseBasicParsing -TimeoutSec 300
     Say
     foreach ($s in @($res.saved)) { Say "  SAVED: $($s.kind) $($s.name) ($($s.files) files)" 'Green' }
     Say '  From now on every check also compares against this install.' 'DarkGray'

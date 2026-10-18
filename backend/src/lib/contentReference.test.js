@@ -167,3 +167,37 @@ describe("referenceEntriesFor", () => {
     expect(JSON.stringify(MANIFEST)).toBe(before);
   });
 });
+
+describe("the reference code (middleware/auth.js)", async () => {
+  const { signReferenceCode, requireReferenceAccess, requireAdmin } = await import("../middleware/auth.js");
+  const call = async (mw, token) => {
+    let status = null;
+    let passed = false;
+    const res = {
+      status(c) {
+        status = c;
+        return this;
+      },
+      json() {
+        return this;
+      },
+    };
+    await mw({ headers: { authorization: token ? `Bearer ${token}` : "" } }, res, () => {
+      passed = true;
+    });
+    return { passed, status };
+  };
+
+  it("lets a code save a reference", async () => {
+    expect((await call(requireReferenceAccess, signReferenceCode())).passed).toBe(true);
+  });
+
+  it("opens no other admin door", async () => {
+    expect(await call(requireAdmin, signReferenceCode())).toEqual({ passed: false, status: 401 });
+  });
+
+  it("refuses a made-up code and no code at all", async () => {
+    expect(await call(requireReferenceAccess, "x.y.z")).toEqual({ passed: false, status: 401 });
+    expect(await call(requireReferenceAccess, null)).toEqual({ passed: false, status: 401 });
+  });
+});

@@ -658,6 +658,9 @@ export const api = {
   // page compares them against the driver's own copies in the browser.
   contentCheck: (server = null) =>
     request(`/content-check${server ? `?server=${encodeURIComponent(server)}` : ""}`),
+  // A two-hour code an admin pastes into the Windows tool instead of the admin
+  // PIN, to save their install as the reference (admins only).
+  contentReferenceCode: () => request("/content-check/reference-code", { auth: true }),
   // Live championship projection (only { active: true } while a league race is
   // running). auth:true so an admin's ?simulate demo request is recognised.
   // `server` is the Live page's switch: the projection has to be about the board
