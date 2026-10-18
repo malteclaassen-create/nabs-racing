@@ -144,12 +144,7 @@ function Get-Manifest([string]$ServerKey) {
   try {
     return Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 180 -Headers @{ Accept = 'application/json' }
   } catch {
-    $msg = $_.Exception.Message
-    try {
-      $body = $_.ErrorDetails.Message | ConvertFrom-Json
-      if ($body.error) { $msg = $body.error }
-    } catch {}
-    throw "Could not get the race server's file list from $Site. $msg"
+    throw "Could not get the race server's file list from $Site. $(Get-ApiError $_)"
   }
 }
 
@@ -250,6 +245,137 @@ function Write-Finding($F) {
   if ($F.Detail) { Say "                            $($F.Detail)" 'DarkGray' }
 }
 
+# Whose install a car or track was also compared with, or why not.
+function Write-ReferenceLine($Data, [string]$Group) {
+  foreach ($r in @($Data.references)) {
+    if ("$($r.group)" -ne $Group) { continue }
+    $when = ''
+    try { $when = ([datetime]$r.at).ToString('yyyy-MM-dd') } catch {}
+    if ($r.stale) {
+      Say "    (The reference install of $($r.by) from $when is out of date: the server has a newer version. Admins: save it again.)" 'Yellow'
+    } else {
+      Say "    Also compared with the reference install of $($r.by) ($when): 3D models and liveries included." 'DarkGray'
+    }
+  }
+}
+
+function Format-Size($Bytes) {
+  $b = [double]$Bytes
+  if ($b -ge 1MB) { return ('{0:N1} MB' -f ($b / 1MB)) }
+  if ($b -ge 1KB) { return ('{0:N0} KB' -f ($b / 1KB)) }
+  return "$([int64]$b) bytes"
+}
+
+# The site's own error message out of a failed request, if it sent one.
+function Get-ApiError($Err) {
+  $msg = $Err.Exception.Message
+  try {
+    $body = $Err.ErrorDetails.Message | ConvertFrom-Json
+    if ($body.error) { $msg = $body.error }
+  } catch {}
+  return $msg
+}
+
+function ConvertTo-JsonText([string]$Text) {
+  $sb = New-Object System.Text.StringBuilder
+  [void]$sb.Append('"')
+  foreach ($ch in $Text.ToCharArray()) {
+    $code = [int]$ch
+    if ($ch -eq '"') { [void]$sb.Append('\"') }
+    elseif ($ch -eq '\') { [void]$sb.Append('\\') }
+    elseif ($code -lt 32) { [void]$sb.Append(('\u{0:x4}' -f $code)) }
+    else { [void]$sb.Append($ch) }
+  }
+  [void]$sb.Append('"')
+  return $sb.ToString()
+}
+
+# --- Saving this install as the reference (admins) -----------------------------
+#
+# Hashes the session's car and track folders on THIS PC and sends the list -
+# paths, sizes and checksums, never the files - to the site. The site only
+# takes it when everything the server itself holds matches, and from then on
+# every driver's check compares against it too.
+
+function Save-Reference([string]$Ac, $Data) {
+  Say
+  Say '  SAVE THIS INSTALL AS THE REFERENCE' 'White'
+  Say '  Only do this when the cars and the track work for you on the server.' 'DarkGray'
+  # Hidden while typing; a piped-in answer (scripted runs) cannot be read that way.
+  if ([Console]::IsInputRedirected) {
+    $pin = Read-Host '  Admin PIN'
+  } else {
+    $secure = Read-Host '  Admin PIN' -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { $pin = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+  }
+  $by = Read-Host "  Your name, shown with the reference (Enter = $env:USERNAME)"
+  if (-not "$by".Trim()) { $by = "$env:USERNAME" }
+  try {
+    $login = Invoke-RestMethod -Uri "$Site/api/admin/login" -Method Post -ContentType 'application/json' -Body (ConvertTo-Json @{ pin = $pin }) -UseBasicParsing -TimeoutSec 60
+  } catch {
+    Say "  Not saved: $(Get-ApiError $_)" 'Red'
+    return
+  }
+
+  # What belongs to the session: its cars with the liveries on the grid, and
+  # its track (every layout; the site picks the one in play).
+  $groups = @()
+  foreach ($f in @($Data.files)) {
+    if ($f.source -eq 'reference') { continue }
+    $m = [regex]::Match("$($f.path)", '^content/cars/([^/]+)/data\.acd$')
+    if ($m.Success) { $groups += @{ kind = 'car'; name = $m.Groups[1].Value } }
+  }
+  if ($Data.track) { $groups += @{ kind = 'track'; name = "$($Data.track)" } }
+  $skins = @{}
+  foreach ($p in @($Data.present)) {
+    $m = [regex]::Match("$($p.path)", '^content/cars/([^/]+)/skins/([^/]+)$')
+    if ($m.Success) { $skins["$($m.Groups[1].Value)/$($m.Groups[2].Value)".ToLower()] = $true }
+  }
+
+  $json = New-Object System.Text.StringBuilder
+  [void]$json.Append('{"server":' + (ConvertTo-JsonText "$($Data.server.key)") + ',"by":' + (ConvertTo-JsonText $by) + ',"groups":[')
+  $firstGroup = $true
+  foreach ($g in $groups) {
+    $sub = 'cars'
+    if ($g.kind -eq 'track') { $sub = 'tracks' }
+    $root = Join-Path $Ac "content\$sub\$($g.name)"
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { Say "  skipped $($g.kind) $($g.name): not installed here" 'Yellow'; continue }
+    $rootFull = (Get-Item -LiteralPath $root).FullName.TrimEnd('\', '/')
+    $files = @(Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force -ErrorAction SilentlyContinue)
+    $entries = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $files.Count; $i++) {
+      $file = $files[$i]
+      $rel = $file.FullName.Substring($rootFull.Length + 1) -replace '\\', '/'
+      $parts = $rel.ToLower().Split('/')
+      if ($parts[0] -eq 'ui') { continue }
+      if ($g.kind -eq 'car') {
+        if ($parts[0] -eq 'data') { continue }
+        if ($parts[0] -eq 'skins' -and ($parts.Count -lt 3 -or -not $skins["$($g.name)/$($parts[1])".ToLower()])) { continue }
+      }
+      Write-Progress -Activity "Hashing $($g.kind) $($g.name)" -Status $rel -PercentComplete ([int](100 * $i / [Math]::Max(1, $files.Count)))
+      [void]$entries.Add('{"p":' + (ConvertTo-JsonText $rel) + ',"s":' + $file.Length + ',"m":"' + (Get-Md5 $file.FullName) + '"}')
+    }
+    Write-Progress -Activity "Hashing $($g.kind) $($g.name)" -Completed
+    if ($entries.Count -eq 0) { continue }
+    if (-not $firstGroup) { [void]$json.Append(',') }
+    $firstGroup = $false
+    [void]$json.Append('{"kind":"' + $g.kind + '","name":' + (ConvertTo-JsonText $g.name) + ',"files":[' + ($entries -join ',') + ']}')
+    Say "  hashed $($g.kind) $($g.name): $($entries.Count) files" 'DarkGray'
+  }
+  [void]$json.Append(']}')
+
+  try {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($json.ToString())
+    $res = Invoke-RestMethod -Uri "$Site/api/content-check/reference" -Method Post -ContentType 'application/json; charset=utf-8' -Body $bytes -Headers @{ Authorization = "Bearer $($login.token)" } -UseBasicParsing -TimeoutSec 300
+    Say
+    foreach ($s in @($res.saved)) { Say "  SAVED: $($s.kind) $($s.name) ($($s.files) files)" 'Green' }
+    Say '  From now on every check also compares against this install.' 'DarkGray'
+  } catch {
+    Say "  Not saved: $(Get-ApiError $_)" 'Red'
+  }
+}
+
 # --- Main --------------------------------------------------------------------
 
 try {
@@ -301,24 +427,40 @@ try {
   $checked = @{}   # group -> how many things were checked
   $skipped = 0
 
-  # 1. Files the server holds: yours must be byte-identical.
-  foreach ($f in @($data.files)) {
+  # 1. Files with a known checksum - the server's own, or a reference
+  #    install's (an admin's install that matches the server, which also
+  #    covers the 3D models and liveries the server does not hand out).
+  #    Yours must be byte-identical. A different size settles it without
+  #    reading the file.
+  $allFiles = @($data.files)
+  for ($i = 0; $i -lt $allFiles.Count; $i++) {
+    $f = $allFiles[$i]
     if (-not (Test-SafePath $f.path)) { continue }
     if (-not $f.md5) { $skipped++; continue }
     $checked[$f.group] = 1 + [int]$checked[$f.group]
+    $source = 'server'
+    if ($f.source -eq 'reference') { $source = 'reference' }
     $local = Join-Path $ac ($f.path -replace '/', '\')
+    Write-Progress -Activity 'Comparing your files' -Status $f.path -PercentComplete ([int](100 * $i / [Math]::Max(1, $allFiles.Count)))
     if (-not (Test-Path -LiteralPath $local -PathType Leaf)) {
       [void]$findings.Add((New-Finding $f 'MISSING'))
       continue
     }
+    $item = Get-Item -LiteralPath $local
+    $date = $item.LastWriteTime.ToString('yyyy-MM-dd')
+    if ($null -ne $f.size -and [int64]$item.Length -ne [int64]$f.size) {
+      [void]$findings.Add((New-Finding $f 'WRONG VERSION' "yours $(Format-Size $item.Length) (from $date), $source $(Format-Size $f.size)"))
+      continue
+    }
     $hash = Get-Md5 $local
     if ($hash -ne $f.md5) {
-      $date = (Get-Item -LiteralPath $local).LastWriteTime.ToString('yyyy-MM-dd')
-      [void]$findings.Add((New-Finding $f 'WRONG VERSION' "yours $($hash.Substring(0, 8)) (from $date), server $($f.md5.Substring(0, 8))"))
+      [void]$findings.Add((New-Finding $f 'WRONG VERSION' "yours $($hash.Substring(0, 8)) (from $date), $source $($f.md5.Substring(0, 8))"))
     }
   }
+  Write-Progress -Activity 'Comparing your files' -Completed
 
   # 2. Things that must exist: models, liveries, the car and layout folders.
+  $missingDirs = @()
   foreach ($p in @($data.present)) {
     if (-not (Test-SafePath $p.path)) { continue }
     $checked[$p.group] = 1 + [int]$checked[$p.group]
@@ -342,6 +484,7 @@ try {
           [void]$findings.Add((New-Finding $p 'NOT INSTALLED'))
         } else {
           [void]$findings.Add((New-Finding $p 'MISSING'))
+          $missingDirs += ($p.path -replace '/', '\')
         }
       }
     } else {
@@ -360,7 +503,7 @@ try {
 
   # A missing car, track or layout folder makes every line under it say
   # "missing": one line saying so is the answer, the rest is noise.
-  $goneRoots = @($findings | Where-Object { $_.Kind -eq 'NOT INSTALLED' } | ForEach-Object { $_.Path })
+  $goneRoots = @($findings | Where-Object { $_.Kind -eq 'NOT INSTALLED' } | ForEach-Object { $_.Path }) + $missingDirs
   if ($goneRoots.Count) {
     $kept = @($findings | Where-Object {
       $cand = $_
@@ -381,9 +524,11 @@ try {
     $looks = @($mine | Where-Object { $_.Level -eq 'cosmetic' })
     if ($mine.Count -eq 0) {
       Say "  $(Format-Group $g)   all good ($([int]$checked[$g]) checked)" 'Green'
+      Write-ReferenceLine $data $g
       continue
     }
     Say "  $(Format-Group $g)" 'White'
+    Write-ReferenceLine $data $g
     foreach ($f in $serious) {
       Write-Finding $f
       $line = "$($f.Level.ToUpper()) $($f.Kind): $($f.Path)"
@@ -459,10 +604,16 @@ try {
     $color = 'Yellow'
     if ($kicks) { $color = 'Red' }
     Say "  FOUND: $($parts -join ', ')." $color
-    Say '  Fix the KICK lines first, then run this again.' 'Gray'
+    if ($kicks) { Say '  Fix the KICK lines first, then run this again.' 'Gray' } else { Say '  Fix the PROBLEM lines, then run this again.' 'Gray' }
   }
   if ($skipped -gt 0) { Say "  $skipped file(s) the server could not hand out were not compared." 'DarkGray' }
-  Say '  Not comparable: the 3D models themselves (.kn5). The server only says which ones must exist.' 'DarkGray'
+  # The server never hands out the 3D models: only a reference install can
+  # say whether they are the right ones.
+  $withRef = @(@($data.references) | Where-Object { $_ -and -not $_.stale } | ForEach-Object { "$($_.group)" })
+  $noRef = @($groups | Where-Object { $withRef -notcontains $_ })
+  if ($noRef.Count) {
+    Say "  No reference install yet for: $($noRef -join ', '). Their 3D models were only checked for being there." 'DarkGray'
+  }
 
   # What a driver pastes into Discord, so the answer there is a file name.
   try {
@@ -470,6 +621,17 @@ try {
     Say
     Say '  The result is copied: paste it into the Discord with Ctrl+V.' 'Cyan'
   } catch {}
+
+  # A clean install can become the reference for everyone else.
+  if ($kicks + $problems -eq 0) {
+    Say
+    $answer = Read-Host '  Press Enter to close (admins: R and Enter saves this install as the reference)'
+    if ("$answer".Trim() -match '^[rR]$') {
+      Save-Reference $ac $data
+      Finish
+    }
+    exit 0
+  }
   Finish
 } catch {
   Say

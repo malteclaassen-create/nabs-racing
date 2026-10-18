@@ -271,6 +271,11 @@ export default function ContentCheck() {
                 then <i>Run anyway</i>. It only reads your files, and you can open it in Notepad to see exactly what it
                 does.
               </p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                <b className="text-medium">Admins:</b> after a clean check the tool can save your install as the
+                reference (checksums only, no files). From then on everybody&rsquo;s 3D models and liveries are compared
+                against it too, which the race server alone can&rsquo;t do.
+              </p>
             </div>
             <a className="btn-secondary shrink-0 px-4" href={withApiBase("/api/content-check/tool")} download>
               Download for Windows

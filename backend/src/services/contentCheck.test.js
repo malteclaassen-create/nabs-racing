@@ -9,7 +9,12 @@ import {
   kn5FilesOfModelsIni,
   classifyTrackFile,
 } from "../lib/acServerContent.js";
-import { getContentCheck, getFullContentCheck, invalidateContentCheckCache } from "./contentCheckService.js";
+import {
+  getContentCheck,
+  getFullContentCheck,
+  getServerFullContentCheck,
+  invalidateContentCheckCache,
+} from "./contentCheckService.js";
 
 // ---------------------------------------------------------------------------
 // The "Checksum failed" check. Two halves worth pinning down:
@@ -306,10 +311,19 @@ describe("getFullContentCheck", () => {
 
   it("is cached apart from the short list the page uses", async () => {
     stubFull();
-    const full = await getFullContentCheck("nabs1");
+    const full = await getServerFullContentCheck("nabs1");
     const short = await getContentCheck("nabs1");
     expect(full).not.toBe(short);
     expect(short.present).toBeUndefined();
-    expect(await getFullContentCheck("nabs1")).toBe(full);
+    expect(await getServerFullContentCheck("nabs1")).toBe(full);
+  });
+
+  it("merges the reference installs in fresh on every call, without touching the cache", async () => {
+    stubFull();
+    const merged = await getFullContentCheck("nabs1");
+    const cachedOne = await getServerFullContentCheck("nabs1");
+    expect(merged).not.toBe(cachedOne);
+    expect(merged.references).toEqual([]);
+    expect(cachedOne.references).toBeUndefined();
   });
 });

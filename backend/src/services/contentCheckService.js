@@ -27,6 +27,7 @@ import {
   isSafeSegment,
   fetchServerText,
 } from "../lib/acServerContent.js";
+import { referenceEntriesFor } from "../lib/contentReference.js";
 
 const CACHE_MS = 5 * 60 * 1000;
 // A full grid is ~30 cars; beyond that something is wrong with the entry list
@@ -61,7 +62,20 @@ export async function getContentCheck(serverKey, { sessionId = null } = {}) {
 // The FULL manifest for the newest session (the Windows tool's list): every
 // file the server holds for the session's cars and track, not just the two
 // the join checksums. See buildFullContentCheck.
+//
+// The reference installs (lib/contentReference.js) are merged in on every
+// call rather than cached with the rest: an admin who has just saved one
+// should see it used on the very next check.
 export async function getFullContentCheck(serverKey) {
+  const manifest = await getServerFullContentCheck(serverKey);
+  if (!manifest?.session) return manifest;
+  const { entries, references } = referenceEntriesFor(manifest);
+  return { ...manifest, files: [...manifest.files, ...entries], references };
+}
+
+// The full manifest as the race server alone sees it: what a reference upload
+// is checked against.
+export async function getServerFullContentCheck(serverKey) {
   const server = serverFor(serverKey);
   if (!server) return null;
   return cached(`full|${server.key}`, () => buildFullContentCheck(server));

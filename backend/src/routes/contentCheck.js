@@ -8,7 +8,14 @@
 // of files the server already hands out unauthenticated.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
-import { getContentCheck, getFullContentCheck, contentCheckServers } from "../services/contentCheckService.js";
+import {
+  getContentCheck,
+  getFullContentCheck,
+  getServerFullContentCheck,
+  contentCheckServers,
+} from "../services/contentCheckService.js";
+import { parseReferenceUpload, conflictsWithServer, writeReference } from "../lib/contentReference.js";
+import { requireAdmin } from "../middleware/auth.js";
 import { isValidServerKey, DEFAULT_SERVER_KEY } from "../lib/liveServers.js";
 import { contentCheckTool, CONTENT_CHECK_TOOL_NAME } from "../lib/contentCheckTool.js";
 
@@ -37,6 +44,40 @@ router.get("/tool", (req, res) => {
 router.get("/full", (req, res, next) => sendManifest(req, res, next, getFullContentCheck));
 
 router.get("/", (req, res, next) => sendManifest(req, res, next, getContentCheck));
+
+// POST /api/content-check/reference  { server, by, groups } -> saves an
+// admin's install as the reference for the session's cars and track
+// (lib/contentReference.js). Sent by the Windows tool after a clean check.
+// Refused for anything not in the server's current session, and for any car
+// or track whose files disagree with the server's own copies: a reference
+// that argues with the server would send every driver to the wrong fix.
+router.post("/reference", requireAdmin, async (req, res, next) => {
+  try {
+    const parsed = parseReferenceUpload(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const key = isValidServerKey(req.body?.server) ? req.body.server : DEFAULT_SERVER_KEY;
+    const manifest = await getServerFullContentCheck(key);
+    if (!manifest?.session) return res.status(409).json({ error: "This server has no session to check against" });
+    const cars = new Set(
+      manifest.files.map((f) => f.path.match(/^content\/cars\/([^/]+)\/data\.acd$/)?.[1]).filter(Boolean)
+    );
+    for (const g of parsed.groups) {
+      const inSession = g.kind === "car" ? cars.has(g.name) : g.name === manifest.track;
+      if (!inSession) return res.status(400).json({ error: `${g.kind} ${g.name} is not in the server's current session` });
+      const conflicts = conflictsWithServer(manifest, g.kind, g.name, g.files);
+      if (conflicts.length) {
+        return res.status(409).json({
+          error: `${g.kind} ${g.name} does not match the server (${conflicts.slice(0, 3).join(", ")}). Fix that first.`,
+        });
+      }
+    }
+    const at = new Date().toISOString();
+    for (const g of parsed.groups) writeReference({ v: 1, kind: g.kind, name: g.name, by: parsed.by, at, files: g.files });
+    res.json({ saved: parsed.groups.map((g) => ({ kind: g.kind, name: g.name, files: g.files.length })) });
+  } catch (e) {
+    next(e);
+  }
+});
 
 async function sendManifest(req, res, next, build) {
   try {
