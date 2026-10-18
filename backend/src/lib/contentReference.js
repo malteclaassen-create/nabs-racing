@@ -91,23 +91,28 @@ export function parseReferenceUpload(body) {
 // The files of a group the server ALSO hashes (from the full manifest), keyed
 // by their path inside the car / track folder, lower case: Windows does not
 // mind case, and neither does the comparison.
-function serverHashesFor(manifest, base) {
+//
+// `racingOnly` leaves out what only looks (map.ini and the like): a driver's
+// copy may differ there and still race on the server, so it must neither stop
+// an admin from saving a reference nor mark a saved one as out of date.
+function serverHashesFor(manifest, base, { racingOnly = false } = {}) {
   const out = new Map();
   for (const f of manifest?.files || []) {
     if (f.source === "reference" || !f.md5 || !f.path.startsWith(`${base}/`)) continue;
+    if (racingOnly && f.level === "cosmetic") continue;
     out.set(f.path.slice(base.length + 1).toLowerCase(), f.md5);
   }
   return out;
 }
 
-// Files the server hashes that the reference lacks or has in another version.
-// Empty means the reference install matches the server wherever both can be
-// compared.
+// Files the server hashes that the reference lacks or has in another version,
+// counting only what matters for racing (kick / problem). Empty means the
+// reference install races exactly like the server's content.
 export function conflictsWithServer(manifest, kind, name, files) {
   const base = `content/${kind === "car" ? "cars" : "tracks"}/${name}`;
   const mine = new Map(files.map((f) => [f.p.toLowerCase(), f.m]));
   const out = [];
-  for (const [rel, md5] of serverHashesFor(manifest, base)) {
+  for (const [rel, md5] of serverHashesFor(manifest, base, { racingOnly: true })) {
     if (mine.get(rel) !== md5) out.push(rel);
   }
   return out;
