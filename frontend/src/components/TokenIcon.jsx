@@ -1,5 +1,3 @@
-import { useSeries } from "../context/SeriesContext.jsx";
-
 // The NABS Tokens mark. One image for every size it appears in: the nav bar
 // pill, the price tags in the shop, the balance card. Kept square by the
 // className (h-4 w-4 and the like), so the callers did not change.
@@ -22,22 +20,19 @@ import { useSeries } from "../context/SeriesContext.jsx";
 // rather than fight it.
 const DEEPEN_IN_LIGHT = "brightness-[0.72] saturate-[1.6] dark:brightness-100 dark:saturate-100";
 
+// The mark takes the colour of the series you are looking at: the star's shape
+// as a mask over the series' brand colour (--c-brand, which SeriesProvider sets
+// from Series.accentColor and which is the league pink without one). The file
+// is one flat colour, so nothing of it is lost. It used to swap between a pink
+// and a cyan file, which left every other series colour with a cyan coin.
+const MASK = "url(/nabs-star.webp) center / contain no-repeat";
+
 export default function TokenIcon({ className = "h-4 w-4" }) {
-  // The mark takes the colour of the series you are looking at. Keyed on
-  // whether that series carries an accent colour of its own, NOT on its slug:
-  // a slug written into the code stops matching the moment an admin creates
-  // the series with a different one (utils/seriesColor.js learned that the
-  // hard way). The primary series has no colour set and keeps the league pink.
-  const { current } = useSeries();
-  const cyan = !!current?.accentColor;
   return (
-    <img
-      src={cyan ? "/nabs-star-cyan.webp" : "/nabs-star.webp"}
-      alt=""
+    <span
       aria-hidden="true"
-      draggable="false"
-      className={`inline-block shrink-0 select-none object-contain ${DEEPEN_IN_LIGHT} ${className}`}
+      className={`inline-block shrink-0 select-none bg-brand ${DEEPEN_IN_LIGHT} ${className}`}
+      style={{ WebkitMask: MASK, mask: MASK }}
     />
   );
 }
-
