@@ -4,7 +4,7 @@ import { syncRaceToDiscord } from "../services/discordService.js";
 import { hotlapsShownFor } from "../lib/attendanceHotlaps.js";
 import { optionalUser, resolveDriverId, isAdminRequest } from "../middleware/auth.js";
 import { resolveSeasonId, getPrivateSeasonIds } from "../services/seasonService.js";
-import { resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
+import { resolveSeries, seasonIdsOfSeries, seasonSeriesMap } from "../lib/series.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import { readRaceHotlaps } from "../lib/raceHotlaps.js";
@@ -43,6 +43,10 @@ export async function eventSeasonIds(prisma, req) {
   const series = await resolveSeries(prisma, req.query.series, { includePrivate: admin });
   const ids = series ? (await seasonIdsOfSeries(prisma, series.id)).map((s) => s.id) : [];
   if (!ids.length) {
+    // A series without a season yet (a special event just created) has
+    // nothing to sign up for. Falling back here put the primary series' rounds,
+    // sign-ups and driver market on the new series' entry list.
+    if (series && [...(await seasonSeriesMap(prisma)).values()].some(Boolean)) return [];
     // Unmigrated single-series data: fall back to the active season.
     const id = await resolveSeasonId(prisma, undefined, { includePrivate: admin });
     return id ? [id] : [];

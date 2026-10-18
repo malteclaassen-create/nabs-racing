@@ -5613,6 +5613,8 @@ function Seasons({ gotoRaces, gotoInSeason }) {
   const ask = useAsk();
   const { data: seasons, reload } = useApi(useCallback(() => api.adminSeasons(), []));
   const { season: editingSeason } = useSeason();
+  const { current: editingSeries } = useSeries();
+  const isEvent = editingSeries?.kind === "event";
   const [form, setForm] = useState({ number: "", name: "", game: "", dropWorst: "3", points: "" });
   const [cloneFrom, setCloneFrom] = useState({}); // seasonId -> sourceSeasonId
   // Which seasons are unfolded. Every season carries a photo, a car picture, a
@@ -5640,6 +5642,18 @@ function Seasons({ gotoRaces, gotoInSeason }) {
       });
       setMsg(`Season ${form.name} created. It is not public yet. Activate it when ready.`);
       setForm({ number: "", name: "", game: "", dropWorst: "3", points: "" });
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  // A special event is one race: no season planning, just the one season that
+  // holds its race and roster. Private like every new season, and every
+  // result counts (dropping a driver's worst round would drop the only one).
+  async function setUpEvent() {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.createSeason({ number: 1, name: editingSeries.name, game: editingSeries.game || null, dropWorst: 0 });
+      setMsg(`${editingSeries.name} is set up. Next: its race in Races & Events, then its drivers.`);
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -5771,9 +5785,39 @@ function Seasons({ gotoRaces, gotoInSeason }) {
         photo, its scoring, the roster copy (see TabNotice). */}
     <TabNotice msg={msg} error={error} onClose={() => { setMsg(null); setError(null); }} />
     <div className="space-y-6">
-    {seasons && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
+    {seasons && !isEvent && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
     <SeriesPanel />
     <div className="grid gap-6 lg:grid-cols-2">
+      {isEvent ? (
+        <div className="card space-y-4 p-5">
+          <CardHead eyebrow="Special event" title={(seasons || []).length ? "The event is set up" : "Set up the event"} />
+          {(seasons || []).length ? (
+            <p className="text-sm text-light">
+              {editingSeries.name} has what holds its race and roster. Its race goes in{" "}
+              <span className="font-semibold text-medium">Races &amp; Events</span>, its drivers in{" "}
+              <span className="font-semibold text-medium">Drivers</span> (&ldquo;Bring the whole league&rdquo;). It stays
+              private until you make the series public.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-light">
+                A special event is one race, so it needs no season planning. One click creates what holds its race and
+                roster: private, and every result counts. Then put its race in{" "}
+                <span className="font-semibold text-medium">Races &amp; Events</span> and bring its drivers over in{" "}
+                <span className="font-semibold text-medium">Drivers</span>.
+              </p>
+              <button type="button" className="btn-primary w-full" disabled={busy || !seasons} onClick={setUpEvent}>
+                {busy ? "Setting up…" : `Set up ${editingSeries.name}`}
+              </button>
+            </>
+          )}
+          {(seasons || []).length > 0 && gotoRaces && (
+            <button type="button" className="btn-secondary w-full" onClick={() => gotoRaces(seasons[0])}>
+              Races &amp; Events →
+            </button>
+          )}
+        </div>
+      ) : (
       <form onSubmit={create} className="card space-y-4 p-5">
         <CardHead eyebrow="Seasons" title="Create a season" />
         <p className="text-sm text-light">
@@ -5805,6 +5849,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
         </div>
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create season"}</button>
       </form>
+      )}
 
       <div className="card p-5">
         <CardHead eyebrow="All seasons" title={`Seasons (${(seasons || []).length})`} />

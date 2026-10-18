@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSeries } from "../context/SeriesContext.jsx";
 
 // NABS logo — uses the real logo images. Two versions swap by theme:
-//   logo-light.png (black mark) on light mode, logo-dark.png (pink mark) on dark.
+//   logo-light.png (black mark) on light mode, logo-dark.png on dark, drawn in
+//   the series' accent colour (pink without one; see `tinted` below).
 // A series can override the DARK-mode mark via an admin upload (Seasons tab ->
 // Racing series -> Logo): Series.logoDarkUrl, read straight off the resolved
 // series object. null -> the shared default logo-dark.png. Light mode always
@@ -76,6 +77,8 @@ async function rememberImage(slug, url) {
   }
 }
 
+const DEFAULT_MASK = "url(/logo-dark.png) center / contain no-repeat";
+
 export default function Logo({ size = 40, className = "" }) {
   const { current, slug, loaded } = useSeries();
   // What this series' mark SHOULD be, once the list is in. Until then, whatever
@@ -87,6 +90,8 @@ export default function Logo({ size = 40, className = "" }) {
   const [shown, setShown] = useState(wanted);
   const stored = useMemo(() => rememberedImage(slug), [slug]);
   const src = stored && stored.url === shown ? stored.data : shown;
+  // No upload of its own: the shared mark, tinted to the series' colour.
+  const tinted = shown === "/logo-dark.png";
 
   useEffect(() => {
     if (!loaded) return;
@@ -119,17 +124,29 @@ export default function Logo({ size = 40, className = "" }) {
         alt="NABS Racing"
         className={`block dark:hidden ${className}`}
       />
-      <img
-        src={src}
-        width={size}
-        height={size}
-        alt="NABS Racing"
-        className={`hidden dark:block ${className}`}
-        onError={(e) => {
-          const img = e.currentTarget;
-          if (!img.src.endsWith("/logo-dark.png")) img.src = "/logo-dark.png";
-        }}
-      />
+      {tinted ? (
+        // The shared mark in the series' own colour: its shape as a mask over
+        // --c-brand (the file is one flat pink, so nothing of it is lost).
+        // The league pink without a series colour, like the tokens.
+        <span
+          role="img"
+          aria-label="NABS Racing"
+          className={`hidden bg-brand dark:block ${className}`}
+          style={{ width: size, height: size, WebkitMask: DEFAULT_MASK, mask: DEFAULT_MASK }}
+        />
+      ) : (
+        <img
+          src={src}
+          width={size}
+          height={size}
+          alt="NABS Racing"
+          className={`hidden dark:block ${className}`}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (!img.src.endsWith("/logo-dark.png")) img.src = "/logo-dark.png";
+          }}
+        />
+      )}
     </>
   );
 }
