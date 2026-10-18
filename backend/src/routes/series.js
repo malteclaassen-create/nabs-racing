@@ -66,6 +66,8 @@ router.get("/", async (req, res, next) => {
         promoAt: s.promoAt,
         // The headline over the loop on the event page's main card.
         promoTagline: s.promoTagline,
+        // Promo page once per browser (false) or on every arrival (true).
+        promoRepeat: s.promoRepeat,
       }))
     );
   } catch (e) {

@@ -5002,7 +5002,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoTagline? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoRepeat?, promoTagline? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {

@@ -6089,6 +6089,22 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
     }
   }
 
+  async function setRepeat(every) {
+    setBusy(true);
+    try {
+      await api.updateSeries(series.id, { promoRepeat: every });
+      onSaved(
+        every
+          ? `${series.name}'s promo now shows every time someone comes to the series.`
+          : `${series.name}'s promo now shows once per visitor.`
+      );
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-surface2/60 px-3 py-2 text-xs">
       <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Promo</span>
@@ -6131,6 +6147,18 @@ function SeriesPromo({ series, busy: panelBusy, onSaved, onError }) {
       <button type="button" className="font-semibold text-link hover:underline" disabled={off} onClick={togglePromo}>
         {series.promoAt ? "Switch off" : "Switch on"}
       </button>
+      <label className="flex items-center gap-1.5 text-light" title="Once: each visitor sees it one time. Every visit: each time someone comes to the series from elsewhere on the site">
+        Shows
+        <select
+          className="rounded border border-border bg-surface px-1.5 py-1 text-xs text-dark"
+          value={series.promoRepeat ? "every" : "once"}
+          disabled={off}
+          onChange={(e) => setRepeat(e.target.value === "every")}
+        >
+          <option value="once">once per visitor</option>
+          <option value="every">on every visit</option>
+        </select>
+      </label>
       <Link to={`/s/${series.slug}?promo=${encodeURIComponent(series.slug)}`} className="font-semibold text-link hover:underline">
         Preview
       </Link>

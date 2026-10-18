@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
-import { useSeries } from "../context/SeriesContext.jsx";
+import { useSeries, slugFromPath } from "../context/SeriesContext.jsx";
 import { useDismiss, useFocusTrap, useScrollLock } from "./overlay.jsx";
 import { raceKickoff, racePhase, fmtRaceTime } from "../utils/raceTime.js";
 import { deriveSeriesAccent, DEFAULT_THEME_COLOR } from "../utils/seriesColor.js";
@@ -16,10 +16,15 @@ import { filmAllowed } from "../hooks/useIdleFilm.js";
 //
 // When it shows (PromoHost below):
 //   - on the event's own page (/s/<slug>), when an admin switched it on for
-//     the series (Series.promoAt), its event is not over, and this browser has
-//     not closed this promo yet. Switching it off and on again counts as a new
-//     promo. Nowhere else on the site: whoever opens the league's pages or a
-//     sign-up link is not stopped by a film.
+//     the series (Series.promoAt) and its event is not over. Nowhere else on
+//     the site: whoever opens the league's pages or a sign-up link is not
+//     stopped by a film.
+//   - how often is the admin's call (Series.promoRepeat): once per browser
+//     (switching it off and on again counts as a new promo), or every time a
+//     visitor comes to the series from elsewhere on the site. Moving between
+//     the event's own pages (entry list and back) is not coming to it again.
+//   - with sound: it starts unmuted, and falls back to muted only where the
+//     browser refuses sound before the visitor has touched the page.
 //   - for whoever may see the series: a private one is in the series list of
 //     admins only, so while it is unpublished only admins get its promo.
 //   - or the address carries ?promo=<slug>: the admin's preview and a link to
@@ -64,6 +69,24 @@ export default function PromoHost() {
   const navigate = useNavigate();
   const [closed, setClosed] = useState(() => new Set());
 
+  // A promo shown on every arrival is closed only for the stay: once the
+  // visitor is outside its series (another series, a global page), the next
+  // arrival at its page brings it back.
+  useEffect(() => {
+    const inSeries = slugFromPath(location.pathname);
+    setClosed((c) => {
+      let changed = false;
+      const next = new Set(c);
+      for (const s of seriesList) {
+        if (s.promoRepeat && next.has(s.id) && s.slug !== inSeries) {
+          next.delete(s.id);
+          changed = true;
+        }
+      }
+      return changed ? next : c;
+    });
+  }, [location.pathname, seriesList]);
+
   const asked = new URLSearchParams(location.search).get("promo");
   let show = null;
   if (loaded && !NO_PROMO_PATHS.test(location.pathname)) {
@@ -73,7 +96,8 @@ export default function PromoHost() {
       const here = slugOfHome(location.pathname);
       show =
         seriesList.find(
-          (s) => s.slug === here && s.promoAt && !eventOver(s) && !closed.has(s.id) && !seenPromo(s)
+          (s) =>
+            s.slug === here && s.promoAt && !eventOver(s) && !closed.has(s.id) && (s.promoRepeat || !seenPromo(s))
         ) || null;
     }
   }
@@ -206,6 +230,22 @@ function EventPromo({ slug, onClose, onUnavailable }) {
       ].filter(Boolean)
     : [];
 
+  // Plays with sound. A browser that allows no sound before the visitor has
+  // touched the page (a cold load straight onto the event) refuses that, and
+  // then the film runs muted, with the sound button to turn it on.
+  function start() {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = false;
+    v.play()
+      .then(() => setSound(true))
+      .catch(() => {
+        v.muted = true;
+        setSound(false);
+        v.play().catch(() => {});
+      });
+  }
+
   function toggleSound() {
     const v = videoRef.current;
     if (!v) return;
@@ -306,12 +346,11 @@ function EventPromo({ slug, onClose, onUnavailable }) {
             ref={videoRef}
             src={film}
             poster={poster || undefined}
-            autoPlay={!!moving}
-            muted
             playsInline
             preload="auto"
             onLoadedMetadata={() => {
-              if (!moving) toEnd();
+              if (moving) start();
+              else toEnd();
             }}
             onPlaying={() => {
               setFilmReady(true);
