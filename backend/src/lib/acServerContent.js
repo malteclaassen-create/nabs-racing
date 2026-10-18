@@ -95,8 +95,18 @@ export async function fetchSessionJson(origin, id) {
 // it means the server checksums something else, not that the check failed.
 export async function hashServerFile(origin, relPath) {
   try {
-    const buf = await fetchWithTimeout(`${origin.replace(/\/$/, "")}/${relPath}`, { as: "buffer" });
+    const buf = await fetchWithTimeout(`${origin.replace(/\/$/, "")}/${encodePath(relPath)}`, { as: "buffer" });
     return { md5: createHash("md5").update(buf).digest("hex"), size: buf.length };
+  } catch (e) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
+// A small text file of the server's content folder, or null on a 404.
+export async function fetchServerText(origin, relPath) {
+  try {
+    return await fetchWithTimeout(`${origin.replace(/\/$/, "")}/${encodePath(relPath)}`);
   } catch (e) {
     if (e?.status === 404) return null;
     throw e;
@@ -156,4 +166,130 @@ export function sessionContentOf(json) {
     config: json?.TrackConfig || "",
     cars,
   };
+}
+
+// Which skin each car of the entry list runs, { model: [skin, …] }. The full
+// check (services/contentCheckFull.js) looks for those livery folders on the
+// driver's disk.
+export function sessionSkinsOf(json) {
+  const out = {};
+  for (const c of json?.Cars || []) {
+    if (!c?.Model || !c?.Skin) continue;
+    (out[c.Model] ||= new Set()).add(c.Skin);
+  }
+  return Object.fromEntries(Object.entries(out).map(([m, s]) => [m, [...s].sort()]));
+}
+
+// --- Walking the server's content folder ------------------------------------
+//
+// The manager answers a folder URL with a plain index page (<pre> and one
+// <a href> per entry, folders ending in "/"). That is what lets the full
+// check compare EVERY file the server holds for a car or a track instead of
+// the two the join checksums — everything except the .kn5 models, which the
+// manager does not hand out (and, for tracks, does not even hold).
+
+// One path segment as it may appear in a content path: a plain name, never a
+// way out of the folder it was listed in.
+export function isSafeSegment(name) {
+  return typeof name === "string" && name !== "" && name !== "." && name !== ".." && !/[\\/:\0]/.test(name);
+}
+
+// The entries of one index page. Exported for the tests.
+export function parseDirListing(html) {
+  const out = [];
+  for (const m of String(html || "").matchAll(/<a\s+href="([^"?#]+)"/gi)) {
+    let href = m[1];
+    const dir = href.endsWith("/");
+    if (dir) href = href.slice(0, -1);
+    let name;
+    try {
+      name = decodeURIComponent(href);
+    } catch {
+      continue;
+    }
+    if (!isSafeSegment(name)) continue; // "../", absolute links, anything odd
+    out.push({ name, dir });
+  }
+  return out;
+}
+
+// A folder's entries, or null when the server has no such folder.
+export async function listServerDir(origin, relDir) {
+  try {
+    const html = await fetchWithTimeout(`${origin.replace(/\/$/, "")}/${encodePath(relDir)}/`);
+    return parseDirListing(html);
+  } catch (e) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
+function encodePath(rel) {
+  return String(rel).split("/").map(encodeURIComponent).join("/");
+}
+
+// Every file under a folder, as content paths. Bounded in depth and count: a
+// track folder is a handful of entries, and a server that suddenly lists
+// thousands is not one we want to read through.
+export async function walkServerTree(origin, relDir, { maxDepth = 6, maxFiles = 500 } = {}) {
+  const files = [];
+  async function walk(dir, depth) {
+    const entries = await listServerDir(origin, dir);
+    if (!entries) return;
+    for (const e of entries) {
+      if (files.length >= maxFiles) return;
+      const path = `${dir}/${e.name}`;
+      if (e.dir) {
+        if (depth < maxDepth) await walk(path, depth + 1);
+      } else {
+        files.push(path);
+      }
+    }
+  }
+  await walk(String(relDir).replace(/\/$/, ""), 0);
+  return files;
+}
+
+// The models a track layout loads, from its models_<layout>.ini (or
+// models.ini): every FILE= line, relative to the track folder. A .kn5 named
+// there and missing on disk means the track does not load at all.
+export function kn5FilesOfModelsIni(text) {
+  const out = new Set();
+  for (const m of String(text || "").matchAll(/^\s*FILE\s*=\s*(.+?)\s*$/gim)) {
+    const rel = m[1].replace(/\\/g, "/");
+    if (rel.split("/").every(isSafeSegment)) out.add(rel);
+  }
+  return [...out];
+}
+
+// A track file the server holds, judged by what a different copy would do.
+// `rel` is the path inside the track (or layout) folder.
+//
+//   kick     - the join checksums it: a different copy is "Checksum failed"
+//   problem  - a different copy changes the race for you (DRS zones, pit lane,
+//              the models loaded) without the server noticing
+//   cosmetic - only looks
+//   null     - not worth comparing: pictures and JSON the manager generates
+//              or Content Manager rewrites on the driver's side, which would
+//              be false alarms
+export function classifyTrackFile(rel) {
+  const parts = String(rel).toLowerCase().split("/");
+  const name = parts[parts.length - 1];
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot) : "";
+  if (parts.includes("ui")) return null;
+  if ([".png", ".jpg", ".jpeg", ".dds", ".json", ".bin", ".gob", ".txt", ".md"].includes(ext)) return null;
+  if (name === "surfaces.ini" && parts[parts.length - 2] === "data") {
+    return { level: "kick", what: "the track's surfaces. The server checks this file: a different version gets you kicked (Checksum failed)." };
+  }
+  if (name === "drs_zones.ini") return { level: "problem", what: "DRS zones: you would get DRS in different places than everyone else." };
+  if (name === "map.ini") return { level: "cosmetic", what: "scale of the track map app." };
+  if (name === "pit_lane.ai" || name === "pit_lane_with_grid.ai") {
+    return { level: "problem", what: "pit lane line: the pit lane can be detected in the wrong place (pit limiter, penalties)." };
+  }
+  if (ext === ".ai") return { level: "problem", what: "racing line, used by the AI and by apps." };
+  if (name.startsWith("models") && ext === ".ini") return { level: "problem", what: "which 3D models the track loads." };
+  if (parts.includes("extension")) return { level: "problem", what: "CSP track config (lights, grass, sometimes grip)." };
+  if (ext === ".ini" || ext === ".lua") return { level: "problem", what: "track data." };
+  return { level: "cosmetic", what: "track file." };
 }

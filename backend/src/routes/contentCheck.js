@@ -8,7 +8,7 @@
 // of files the server already hands out unauthenticated.
 // ---------------------------------------------------------------------------
 import { Router } from "express";
-import { getContentCheck, contentCheckServers } from "../services/contentCheckService.js";
+import { getContentCheck, getFullContentCheck, contentCheckServers } from "../services/contentCheckService.js";
 import { isValidServerKey, DEFAULT_SERVER_KEY } from "../lib/liveServers.js";
 import { contentCheckTool, CONTENT_CHECK_TOOL_NAME } from "../lib/contentCheckTool.js";
 
@@ -29,7 +29,16 @@ router.get("/tool", (req, res) => {
   res.send(body);
 });
 
-router.get("/", async (req, res, next) => {
+// GET /api/content-check/full[?server=nabs1] -> what the Windows tool
+// compares: every file the server holds for the session's cars and track,
+// plus the models and liveries that must exist on the driver's disk
+// (services/contentCheckService.js, buildFullContentCheck). Same rules as the
+// short list below: newest session only, cached, public.
+router.get("/full", (req, res, next) => sendManifest(req, res, next, getFullContentCheck));
+
+router.get("/", (req, res, next) => sendManifest(req, res, next, getContentCheck));
+
+async function sendManifest(req, res, next, build) {
   try {
     const key = isValidServerKey(req.query.server) ? req.query.server : DEFAULT_SERVER_KEY;
     // Always the server's newest session, never a caller-named one: a session
@@ -38,7 +47,7 @@ router.get("/", async (req, res, next) => {
     // servers therefore have exactly two possible answers between them, and
     // both sit in the cache. The service still takes an id for a future admin
     // view, which is not a public door.
-    const data = await getContentCheck(key);
+    const data = await build(key);
     if (!data) return res.status(404).json({ error: "Unknown server" });
     res.json({ servers: contentCheckServers().map(({ key, name }) => ({ key, name })), ...data });
   } catch (e) {
@@ -49,6 +58,6 @@ router.get("/", async (req, res, next) => {
     }
     next(e);
   }
-});
+}
 
 export default router;

@@ -253,16 +253,23 @@ export default function ContentCheck() {
             {folderName && !busy && <p className="text-xs text-faint">Read: {folderName}</p>}
           </div>
 
-          {/* The same check as a program, for whoever the page can't serve:
-              Firefox has no folder picker, and the tool finds the folder itself. */}
+          {/* The deeper check as a program: it compares EVERY file the server
+              holds for the session (the page only does the two the join
+              checksums), checks the models and liveries that must exist, and
+              finds the folder by itself, Firefox included. */}
           <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-dark">Rather use a program? Windows tool</p>
+              <p className="text-sm font-semibold text-dark">The full check: Windows tool</p>
               <p className="mt-1 text-xs leading-relaxed text-light">
-                Finds your Assetto Corsa folder by itself, asks which server you want to join and lists every file that
-                differs. Double-click it after downloading. Windows may warn first because it is a script: click{" "}
-                <i>More info</i>, then <i>Run anyway</i>. It only reads your files, and you can open it in Notepad to see
-                exactly what it does.
+                Goes further than this page: compares every file the server has for tonight&rsquo;s cars and track (DRS
+                zones, pit lane, the models list), checks that every 3D model the track loads and every livery on the grid is
+                there, and looks for Custom Shaders Patch and Real Penalty. For each problem it says what it does and what
+                to delete. It finds your Assetto Corsa folder by itself.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                Double-click it after downloading. Windows may warn first because it is a script: click <i>More info</i>,
+                then <i>Run anyway</i>. It only reads your files, and you can open it in Notepad to see exactly what it
+                does.
               </p>
             </div>
             <a className="btn-secondary shrink-0 px-4" href={withApiBase("/api/content-check/tool")} download>
