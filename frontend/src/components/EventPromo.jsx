@@ -33,6 +33,10 @@ import { filmAllowed } from "../hooks/useIdleFilm.js";
 // ---------------------------------------------------------------------------
 
 const SEEN_PREFIX = "nabs_promo_seen:";
+// A promo shown on every visit, closed during this stay in its series. In the
+// tab's own storage rather than in memory: a deploy makes the next click a
+// full page load, and that is not a new visit.
+const STAY_PREFIX = "nabs_promo_stay:";
 const NO_PROMO_PATHS = /^\/(admin|auth|race-control)/;
 
 function seenPromo(series) {
@@ -40,6 +44,21 @@ function seenPromo(series) {
     return localStorage.getItem(SEEN_PREFIX + series.id) === series.promoAt;
   } catch {
     return false;
+  }
+}
+function closedThisStay(series) {
+  try {
+    return sessionStorage.getItem(STAY_PREFIX + series.id) === "1";
+  } catch {
+    return false;
+  }
+}
+function setClosedThisStay(series, on) {
+  try {
+    if (on) sessionStorage.setItem(STAY_PREFIX + series.id, "1");
+    else sessionStorage.removeItem(STAY_PREFIX + series.id);
+  } catch {
+    /* private mode: the in-memory set below still covers the stay */
   }
 }
 function markPromoSeen(series) {
@@ -78,10 +97,9 @@ export default function PromoHost() {
       let changed = false;
       const next = new Set(c);
       for (const s of seriesList) {
-        if (s.promoRepeat && next.has(s.id) && s.slug !== inSeries) {
-          next.delete(s.id);
-          changed = true;
-        }
+        if (!s.promoRepeat || s.slug === inSeries) continue;
+        setClosedThisStay(s, false);
+        if (next.delete(s.id)) changed = true;
       }
       return changed ? next : c;
     });
@@ -97,7 +115,11 @@ export default function PromoHost() {
       show =
         seriesList.find(
           (s) =>
-            s.slug === here && s.promoAt && !eventOver(s) && !closed.has(s.id) && (s.promoRepeat || !seenPromo(s))
+            s.slug === here &&
+            s.promoAt &&
+            !eventOver(s) &&
+            !closed.has(s.id) &&
+            (s.promoRepeat ? !closedThisStay(s) : !seenPromo(s))
         ) || null;
     }
   }
@@ -108,7 +130,10 @@ export default function PromoHost() {
       // A preview (?promo=) is not the visit: closing it must not count as
       // having seen the promo, or the admin who checked it first never gets
       // it on the event page afterwards.
-      if (!params.has("promo")) markPromoSeen(series);
+      if (!params.has("promo")) {
+        markPromoSeen(series);
+        setClosedThisStay(series, true);
+      }
       setClosed((c) => new Set(c).add(series.id));
       // Drop the ?promo= so closing a preview does not reopen it.
       if (params.has("promo")) {
@@ -125,6 +150,7 @@ export default function PromoHost() {
     <EventPromo
       key={show.id}
       slug={show.slug}
+      initial={show}
       onClose={() => close(show)}
       // Not closed by anybody, so not "seen": it comes back once it can load.
       onUnavailable={() => setClosed((c) => new Set(c).add(show.id))}
@@ -162,7 +188,7 @@ function filmHasAudio(v) {
   return true;
 }
 
-function EventPromo({ slug, onClose, onUnavailable }) {
+function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
   const panelRef = useRef(null);
   const closeRef = useRef(null);
   const videoRef = useRef(null);
@@ -203,7 +229,10 @@ function EventPromo({ slug, onClose, onUnavailable }) {
   useFocusTrap(true, panelRef, { initialFocus: closeRef });
   useDismiss(true, onClose, { outside: false });
 
-  const series = data?.series;
+  // The series list already holds its name, colour and film, so the page
+  // opens in the right colour with the film loading at once, instead of the
+  // default pink and an empty stage until the promo's own data arrives.
+  const series = data?.series || initial;
   const race = data?.race;
   const countdown = useCountdown(race?.date);
 
@@ -367,7 +396,7 @@ function EventPromo({ slug, onClose, onUnavailable }) {
             }`}
           />
         )}
-        {!poster && !film && (
+        {data && !poster && !film && (
           <div
             className="absolute inset-0"
             style={{ background: "radial-gradient(ellipse at 70% 30%, color-mix(in srgb, var(--promo) 45%, transparent), transparent 65%)" }}
