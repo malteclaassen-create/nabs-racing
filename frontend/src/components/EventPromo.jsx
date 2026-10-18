@@ -130,8 +130,9 @@ function EventPromo({ slug, onClose, onUnavailable }) {
     };
   }, [slug]);
 
-  // Tells the main card's intro (hooks/useIdleFilm.js) to wait until this is
-  // closed. A layout effect, so it is set before the card can start it.
+  // Tells the event page's film (components/EventFilm.jsx, utils/promoOpen.js)
+  // to wait until this is closed. A layout effect, so it is set before the
+  // card can start playing.
   useLayoutEffect(() => {
     document.documentElement.dataset.promo = "open";
     window.dispatchEvent(new Event("nabs-promo"));

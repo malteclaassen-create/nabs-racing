@@ -197,6 +197,9 @@ router.get("/", async (req, res, next) => {
           driverId: r.driverId,
           name: r.driver.name,
           discordName: r.driver.discordName,
+          // The driver's own racing number (self-set on /profile), for the
+          // seat map of a special event's home page. null = none picked.
+          number: r.driver.number ?? null,
           // When this answer was last given. It orders the waiting list (first
           // in, first onto the grid) and it is what finally answers "who was
           // the last one in" for a round that filled up — the admin's Steam-id

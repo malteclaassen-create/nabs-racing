@@ -560,10 +560,8 @@ export default function Home() {
   const ctaRef = useMagnetic({ strength: 0.25 });
   // The series' promo film takes the card over while the page is left alone,
   // the text and buttons (the HUD) fading out for it; any movement brings
-  // them straight back. A special event's page also opens with it, as an
-  // intro: the HUD comes in when the film ends.
-  const viewedSeries = useSeries().current;
-  const film = useIdleFilm(viewedSeries?.promoVideoUrl, { intro: viewedSeries?.kind === "event" });
+  // them straight back.
+  const film = useIdleFilm(useSeries().current?.promoVideoUrl);
 
   // Championship rounds only (special events have no round number / aren't scored).
   const champRaces = (races.data || []).filter((r) => !r.isSpecialEvent && r.number != null);
@@ -1090,7 +1088,7 @@ export default function Home() {
         ref={film.ref}
         // An attribute, not a class: useScrollReveal adds `is-visible` to this
         // element by hand, and a className React rewrites would drop it.
-        data-film={film.hideHud ? "on" : undefined}
+        data-film={film.showing ? "on" : undefined}
         className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
       >
         <img

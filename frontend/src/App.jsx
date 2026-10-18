@@ -27,6 +27,7 @@ import { usePreviewMode, applyPreviewFromUrl } from "./preview.js";
 import { setFallbackTitle, titleFor } from "./utils/pageTitle.js";
 import Home from "./pages/Home.jsx";
 import Welcome from "./pages/Welcome.jsx";
+import EventHome from "./pages/EventHome.jsx";
 import DriverStandings from "./pages/DriverStandings.jsx";
 import DriverProfile from "./pages/DriverProfile.jsx";
 import Constructors from "./pages/Constructors.jsx";
@@ -141,9 +142,14 @@ function PrivateSeasonBanner() {
 // Home route switches on login: logged-out visitors (newcomers we know nothing
 // about) get the Welcome landing ("what is NABS / how to join"); logged-in
 // members get the normal animated home.
+//
+// A special event (Series.kind "event") has a home of its own instead, the
+// same for members and visitors: one race, before / live / after.
 function HomeRoute() {
   const { isLoggedIn } = useAuth();
+  const { current } = useSeries();
   const preview = usePreviewMode(); // owner-only override: "welcome" | "home" | null
+  if (current?.kind === "event") return <EventHome />;
   const showWelcome = preview ? preview === "welcome" : !isLoggedIn;
   return showWelcome ? <Welcome /> : <Home />;
 }
