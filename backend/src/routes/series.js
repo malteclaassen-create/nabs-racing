@@ -116,6 +116,8 @@ router.get("/:slug/promo", async (req, res, next) => {
         logoDarkUrl: series.logoDarkUrl,
         promoVideoUrl: series.promoVideoUrl,
         promoAt: series.promoAt,
+        // Words laid over the film, timed to it (lib/series.js).
+        promoCaptions: series.promoCaptions,
         isPublic: series.isPublic,
       },
       race: race && {

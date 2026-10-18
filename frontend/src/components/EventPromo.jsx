@@ -158,6 +158,99 @@ export default function PromoHost() {
   );
 }
 
+// The film's words as page text over it, timed to the film (Series.
+// promoCaptions, uploaded by an admin as JSON; backend lib/series.js says what
+// is kept). Everything is sized and placed in units of the stage's height
+// (cqh), the way the captions were drawn for the film, so they sit right on
+// any screen shape: the main line bottom left, the smaller one above it, the
+// intro centred low. A caption rises into its line, clipped to it, and fades
+// out after its end; while one is up, a soft dark rises from the bottom edge.
+// Reads the film's clock itself every frame, so only this re-renders.
+const CAPTION_RISE_S = 0.45;
+const CAPTION_FADE_S = 0.35;
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+const easeOut = (p) => 1 - (1 - p) ** 3;
+const cqh = (share) => `${(share * 100).toFixed(3)}cqh`;
+
+function PromoCaptions({ videoRef, captions }) {
+  const [t, setT] = useState(-1);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const v = videoRef.current;
+      if (v) setT(v.currentTime);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [videoRef]);
+
+  const shown = (captions.captions || [])
+    .filter((c) => t >= c.start && t < c.end + CAPTION_FADE_S)
+    .map((c) => ({ ...c, rise: easeOut(clamp01((t - c.start) / CAPTION_RISE_S)), fade: 1 - clamp01((t - c.end) / CAPTION_FADE_S) }));
+  const intro = captions.intro;
+  const introOpacity =
+    intro && t >= intro.start && t < intro.end + intro.fadeOut
+      ? Math.min(clamp01((t - intro.start) / (intro.fadeIn || 0.001)), 1 - clamp01((t - intro.end) / (intro.fadeOut || 0.001)))
+      : 0;
+  const backdrop = shown.reduce((m, c) => Math.max(m, Math.min(c.rise, c.fade)), 0);
+
+  return (
+    <div className="absolute inset-0" aria-hidden="true">
+      <div
+        className="absolute inset-x-0 bottom-0"
+        style={{ height: "45%", opacity: backdrop, background: "linear-gradient(to top, rgba(0,0,0,0.42), rgba(0,0,0,0))" }}
+      />
+      {introOpacity > 0 && (
+        <div
+          className="absolute inset-x-0 text-center"
+          style={{
+            top: cqh(0.8 - intro.lines[0].size * 0.8),
+            opacity: introOpacity,
+            fontFamily: intro.font,
+            fontWeight: intro.weight,
+            color: intro.color,
+            textShadow: `0 0 ${cqh(0.017)} rgba(0,0,0,0.7)`,
+          }}
+        >
+          {intro.lines.map((l, i) => (
+            <div key={i} style={{ fontSize: cqh(l.size), letterSpacing: `${l.letterSpacing}em`, lineHeight: 1.25 }}>
+              {l.text}
+            </div>
+          ))}
+        </div>
+      )}
+      {shown.map((c, i) => (
+        <div
+          key={`${c.start}-${i}`}
+          className="absolute overflow-hidden whitespace-nowrap"
+          style={{
+            left: cqh(0.085),
+            // The box's foot sits a descender below the baseline.
+            bottom: `calc(${cqh(c.line === "above" ? 0.139 : 0.067)} - 0.22em)`,
+            fontSize: cqh(c.size),
+            lineHeight: 1.15,
+            opacity: c.fade,
+          }}
+        >
+          <span
+            className="block"
+            style={{
+              transform: `translateY(${((1 - c.rise) * 100).toFixed(2)}%)`,
+              fontFamily: c.font,
+              fontWeight: c.weight,
+              color: c.color,
+              textShadow: `0 ${(c.size * 4).toFixed(3)}cqh ${cqh(c.size / 4)} rgba(0,0,0,0.35)`,
+            }}
+          >
+            {c.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Days / hours / minutes / seconds to kickoff, ticking.
 function useCountdown(date) {
   const target = raceKickoff(date)?.getTime() ?? null;
@@ -366,8 +459,13 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
           picture's edge goes, rather than black bars beside it, so the film
           should keep lettering of its own away from the edges. The full screen
           from md up; on a phone the 16:9 picture at the top. */}
-      <div className="pointer-events-none relative aspect-video w-full overflow-hidden md:fixed md:inset-0 md:aspect-auto">
-        {poster && (!film || !filmReady) && (
+      <div
+        className="pointer-events-none relative aspect-video w-full overflow-hidden md:fixed md:inset-0 md:aspect-auto"
+        style={{ containerType: "size" }}
+      >
+        {/* While the film loads the stage stays black: no picture, no
+            gradient, nothing for a moment before the film's own first frame. */}
+        {poster && !film && (
           <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
         )}
         {film && (
@@ -396,6 +494,7 @@ function EventPromo({ slug, initial = null, onClose, onUnavailable }) {
             }`}
           />
         )}
+        {film && series?.promoCaptions && !reveal && <PromoCaptions videoRef={videoRef} captions={series.promoCaptions} />}
         {data && !poster && !film && (
           <div
             className="absolute inset-0"

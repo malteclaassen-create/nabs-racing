@@ -4,6 +4,7 @@ import multer from "multer";
 import bcrypt from "bcryptjs";
 import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync } from "fs";
 import { join, extname, basename, dirname } from "path";
+import { PROMO_TMP_PREFIX, sweepStalePromoUploads } from "../lib/promoUploads.js";
 import { fileURLToPath } from "url";
 import prisma from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
@@ -466,7 +467,7 @@ router.get("/storage", async (_req, res, next) => {
       ["avatars", "Driver photos"],
       ["teams", "Team logos"],
       ["seasons", "Season images"],
-      ["series", "Series logos"],
+      ["series", "Series logos & promo films"],
       ["tracks", "Track maps"],
       ["social", "Social covers"],
       ["cards", "Card photos"],
@@ -5002,7 +5003,7 @@ router.post("/series", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoRepeat?, promoTagline? }
+// PUT /api/admin/series/:id  { name?, game?, description?, order?, isPublic?, accentColor?, kind?, promo?, promoRepeat?, promoCaptions?, promoTagline? }
 // The slug is deliberately NOT editable (bookmarked URLs must keep working).
 router.put("/series/:id", async (req, res, next) => {
   try {
@@ -5097,17 +5098,22 @@ function promoFilmKind(req) {
     ? { stem: "loop", write: writeSeriesPromoLoop, field: "promoLoopUrl" }
     : { stem: "promo", write: writeSeriesPromoVideo, field: "promoVideoUrl" };
 }
+// Half-written film uploads left by a dropped upload: swept at start and
+// before every new film (lib/promoUploads.js).
+sweepStalePromoUploads(SERIES_DIR);
+
 const promoVideoUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
       try {
         mkdirSync(SERIES_DIR, { recursive: true });
+        sweepStalePromoUploads(SERIES_DIR);
         cb(null, SERIES_DIR);
       } catch (e) {
         cb(e);
       }
     },
-    filename: (req, file, cb) => cb(null, `.promo-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+    filename: (req, file, cb) => cb(null, `${PROMO_TMP_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2)}`),
   }),
   limits: { fileSize: PROMO_VIDEO_MAX_BYTES },
 });

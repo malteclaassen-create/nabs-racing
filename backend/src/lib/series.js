@@ -36,6 +36,7 @@ function shapeSeries(r) {
     promoLoopUrl: r.promoLoopUrl || null,
     promoTagline: r.promoTagline || null,
     promoRepeat: !!Number(r.promoRepeat ?? 0),
+    promoCaptions: readPromoCaptions(r.promoCaptions),
     createdAt: r.createdAt,
   };
 }
@@ -276,8 +277,105 @@ export function parsePromoTagline(input) {
   return { ok: true, value: v || null };
 }
 
+// The captions of a series' promo film, laid over the film on the promo page
+// as page text so they sit right on any screen shape (components/
+// EventPromo.jsx). An admin uploads them as JSON, the shape the film's maker
+// hands over: an optional `intro` (lines centred low in the picture) and
+// `captions` (one line each, bottom left, "main" or the smaller "above" it),
+// times in seconds of the film, sizes as a share of the picture's height.
+// Cleaned to what the page draws, every number bounded; null = none.
+const CAPTION_FONTS = ["Montserrat", "Archivo", "Inter"];
+const MAX_CAPTIONS = 40;
+const MAX_CAPTION_TEXT = 120;
+
+function num(v, min, max) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+function cleanText(v) {
+  const t = String(v ?? "").replace(/\s+/g, " ").trim();
+  return t ? t.slice(0, MAX_CAPTION_TEXT) : null;
+}
+function cleanColor(v, fallback) {
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(v || "")) ? String(v) : fallback;
+}
+function cleanFont(v) {
+  return CAPTION_FONTS.includes(v) ? v : "Montserrat";
+}
+function cleanWeight(v, fallback) {
+  const n = num(v, 100, 900);
+  return n == null ? fallback : Math.round(n / 100) * 100;
+}
+
+export function parsePromoCaptions(input) {
+  if (input == null || input === "") return { ok: true, value: null };
+  let raw = input;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return { ok: false, error: "Captions must be a JSON file" };
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Captions must be a JSON object" };
+  const list = Array.isArray(raw.captions) ? raw.captions : [];
+  if (list.length > MAX_CAPTIONS) return { ok: false, error: `At most ${MAX_CAPTIONS} captions` };
+  const captions = [];
+  for (const c of list) {
+    const text = cleanText(c?.text);
+    const start = num(c?.start, 0, 3600);
+    const end = num(c?.end, 0, 3600);
+    if (!text || start == null || end == null || end <= start) continue;
+    captions.push({
+      text,
+      start,
+      end,
+      size: num(c.size, 0.005, 0.3) ?? 0.085,
+      weight: cleanWeight(c.weight, 900),
+      font: cleanFont(c.font),
+      color: cleanColor(c.color, "#FFFFFF"),
+      line: c.line === "above" ? "above" : "main",
+    });
+  }
+  let intro = null;
+  const i = raw.intro;
+  if (i && typeof i === "object") {
+    const lines = (Array.isArray(i.lines) ? i.lines : [])
+      .slice(0, 3)
+      .map((l) => ({
+        text: cleanText(l?.text),
+        size: num(l?.size, 0.005, 0.3) ?? 0.03,
+        letterSpacing: num(l?.letterSpacing, 0, 2) ?? 0,
+      }))
+      .filter((l) => l.text);
+    const start = num(i.start, 0, 3600);
+    const end = num(i.end, 0, 3600);
+    if (lines.length && start != null && end != null && end > start) {
+      intro = {
+        lines,
+        start,
+        end,
+        fadeIn: num(i.fadeIn, 0, 10) ?? 0.9,
+        fadeOut: num(i.fadeOut, 0, 10) ?? 0.5,
+        font: cleanFont(i.font),
+        weight: cleanWeight(i.weight, 600),
+        color: cleanColor(i.color, "#FFFFFF"),
+      };
+    }
+  }
+  if (!captions.length && !intro) return { ok: false, error: "No usable captions in that file" };
+  return { ok: true, value: { intro, captions } };
+}
+
+// The stored column back as an object (null when unset or unreadable).
+function readPromoCaptions(raw) {
+  if (!raw) return null;
+  const parsed = parsePromoCaptions(raw);
+  return parsed.ok ? parsed.value : null;
+}
+
 // Update name/game/description/order/isPublic/accentColor/kind/promo/
-// promoRepeat/promoTagline. The slug is deliberately NOT
+// promoRepeat/promoCaptions/promoTagline. The slug is deliberately NOT
 // updatable — it's the URL identity shared links depend on.
 export async function dbUpdateSeries(prisma, id, patch) {
   const sets = [];
@@ -320,6 +418,12 @@ export async function dbUpdateSeries(prisma, id, patch) {
   if (patch.promoRepeat !== undefined) {
     sets.push(`"promoRepeat" = ?`);
     vals.push(patch.promoRepeat ? 1 : 0);
+  }
+  if (patch.promoCaptions !== undefined) {
+    const c = parsePromoCaptions(patch.promoCaptions);
+    if (!c.ok) throw Object.assign(new Error(c.error), { status: 400 });
+    sets.push(`"promoCaptions" = ?`);
+    vals.push(c.value ? JSON.stringify(c.value) : null);
   }
   if (patch.promoTagline !== undefined) {
     const t = parsePromoTagline(patch.promoTagline);

@@ -386,6 +386,8 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "Series", "promoTagline", "TEXT");
   // Promo page once per browser (0) or every time the series is opened (1).
   await addColumn(prisma, "Series", "promoRepeat", "INTEGER NOT NULL DEFAULT 0");
+  // The promo film's captions as JSON (lib/series.js parsePromoCaptions).
+  await addColumn(prisma, "Series", "promoCaptions", "TEXT");
   // Default series: created once; the SLUG is the stable URL identity, the
   // NAME is admin-renamable. Seasons without a series (pre-migration data or
   // a fresh seed) are adopted by the active series on every boot.
