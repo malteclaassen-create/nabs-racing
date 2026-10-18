@@ -110,6 +110,16 @@ function useCountdown(date) {
 
 const pad2 = (n) => String(n).padStart(2, "0");
 
+// Each browser has its own way of telling; one that has none says yes, so the
+// button is never hidden from a film that might have sound.
+function filmHasAudio(v) {
+  if (!v) return false;
+  if (typeof v.mozHasAudio === "boolean") return v.mozHasAudio;
+  if (typeof v.webkitAudioDecodedByteCount === "number") return v.webkitAudioDecodedByteCount > 0;
+  if (v.audioTracks) return v.audioTracks.length > 0;
+  return true;
+}
+
 function EventPromo({ slug, onClose, onUnavailable }) {
   const panelRef = useRef(null);
   const closeRef = useRef(null);
@@ -118,6 +128,9 @@ function EventPromo({ slug, onClose, onUnavailable }) {
   const [failed, setFailed] = useState(false);
   const [sound, setSound] = useState(false);
   const [filmReady, setFilmReady] = useState(false);
+  // Whether the film has a sound track at all (null until it has played a
+  // moment): a sound button on a silent film would do nothing.
+  const [hasAudio, setHasAudio] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -204,7 +217,10 @@ function EventPromo({ slug, onClose, onUnavailable }) {
             muted
             loop
             playsInline
-            onPlaying={() => setFilmReady(true)}
+            onPlaying={() => {
+              setFilmReady(true);
+              if (hasAudio === null) setTimeout(() => setHasAudio(filmHasAudio(videoRef.current)), 1500);
+            }}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
               filmReady ? "opacity-100" : "opacity-0"
             }`}
@@ -332,7 +348,7 @@ function EventPromo({ slug, onClose, onUnavailable }) {
         )}
       </div>
 
-      {film && (
+      {film && hasAudio && (
         <button
           type="button"
           onClick={toggleSound}
