@@ -35,6 +35,7 @@ function shapeSeries(r) {
     promoAt: r.promoAt || null,
     promoLoopUrl: r.promoLoopUrl || null,
     promoTagline: r.promoTagline || null,
+    promoRepeat: !!Number(r.promoRepeat ?? 0),
     createdAt: r.createdAt,
   };
 }
@@ -275,7 +276,8 @@ export function parsePromoTagline(input) {
   return { ok: true, value: v || null };
 }
 
-// Update name/game/description/order/isPublic/accentColor/kind/promo/promoTagline. The slug is deliberately NOT
+// Update name/game/description/order/isPublic/accentColor/kind/promo/
+// promoRepeat/promoTagline. The slug is deliberately NOT
 // updatable — it's the URL identity shared links depend on.
 export async function dbUpdateSeries(prisma, id, patch) {
   const sets = [];
@@ -312,6 +314,12 @@ export async function dbUpdateSeries(prisma, id, patch) {
   if (patch.promo !== undefined) {
     sets.push(`"promoAt" = ?`);
     vals.push(patch.promo ? new Date().toISOString() : null);
+  }
+  // How often a visitor gets the promo page: false = once per browser, true =
+  // every time they come to the series' page from elsewhere on the site.
+  if (patch.promoRepeat !== undefined) {
+    sets.push(`"promoRepeat" = ?`);
+    vals.push(patch.promoRepeat ? 1 : 0);
   }
   if (patch.promoTagline !== undefined) {
     const t = parsePromoTagline(patch.promoTagline);
