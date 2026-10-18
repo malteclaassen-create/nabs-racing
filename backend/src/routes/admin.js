@@ -4761,6 +4761,11 @@ router.post("/events", async (req, res, next) => {
     if (extras.error) return res.status(400).json({ error: extras.error });
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
+    // A series without a season (a special event not set up yet) has nowhere
+    // to put a race: say so instead of a database error.
+    if (!targetSeasonId) {
+      return res.status(400).json({ error: "This series has no season yet. Set it up on the Seasons tab first." });
+    }
     // The grid size the league is on right now (Attendance tab), so a new round
     // is born with the same number of seats as the rest of the calendar.
     const season = await prisma.season.findUnique({ where: { id: targetSeasonId }, select: { seriesId: true } });
