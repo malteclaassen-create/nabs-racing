@@ -161,7 +161,7 @@ export const RACE_INFO_EVENT_DEFAULTS = {
     {
       icon: "flag",
       title: "Sign-up & livery",
-      text: "Sign up with a car number nobody else has. Got your own livery? Paste the link when you sign up. Links are due **{deadline}**, without one you race a default skin.",
+      text: "Sign up with a car number nobody else has, then pick your livery: a **new custom** one (paste the link), one of the car's **default** liveries, or your **old custom** one from last time. Due **{deadline}**.",
     },
     {
       icon: "clock",

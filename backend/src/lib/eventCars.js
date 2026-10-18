@@ -8,7 +8,11 @@
 // driver's own. The organiser collects the livery links to build the server's
 // car pack, which is why there is a deadline and why only admins see the links.
 //
-// Two columns on RaceRsvp, the sign-up they belong to. Raw-SQL managed
+// Three ways to bring a livery: a link to a new one, the name of one the
+// organiser already has from last time (liveryOld), or neither, which is one
+// of the car's default liveries, the one that carries the race number.
+//
+// Columns on RaceRsvp, the sign-up they belong to. Raw-SQL managed
 // (ensureAppSchema) like the other late columns, and written with a plain
 // UPDATE on purpose: RaceRsvp.updatedAt is the waiting list's queue position
 // (lib/waitlist.js), and Prisma would bump it on every edit of a link.
@@ -18,6 +22,7 @@ import { raceKickoff } from "./raceKickoff.js";
 export const CAR_NUMBER_MIN = 1;
 export const CAR_NUMBER_MAX = 99;
 const LIVERY_URL_MAX = 500;
+const LIVERY_OLD_MAX = 120;
 // The links are due the day before the race, an hour before the race's own
 // clock time: Thursday 17:30 UTC for a Friday 18:30 UTC start. That is when the
 // organiser builds the car pack.
@@ -69,6 +74,14 @@ export function parseLiveryUrl(v) {
   return { ok: true, value: u.toString() };
 }
 
+// { ok, value } for the name of an old custom livery: free text, empty = none.
+export function parseLiveryOld(v) {
+  const s = typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
+  if (!s) return { ok: true, value: null };
+  if (s.length > LIVERY_OLD_MAX) return { ok: false, error: `Keep the livery name under ${LIVERY_OLD_MAX} characters` };
+  return { ok: true, value: s };
+}
+
 // Is this race the race of a special event?
 export async function isEventRace(prisma, raceId) {
   try {
@@ -95,14 +108,15 @@ export async function readCars(prisma, raceIds) {
   try {
     const ph = ids.map(() => "?").join(",");
     const rows = await prisma.$queryRawUnsafe(
-      `SELECT "raceId", "driverId", "carNumber", "liveryUrl" FROM "RaceRsvp"
-        WHERE "raceId" IN (${ph}) AND ("carNumber" IS NOT NULL OR "liveryUrl" IS NOT NULL)`,
+      `SELECT "raceId", "driverId", "carNumber", "liveryUrl", "liveryOld" FROM "RaceRsvp"
+        WHERE "raceId" IN (${ph}) AND ("carNumber" IS NOT NULL OR "liveryUrl" IS NOT NULL OR "liveryOld" IS NOT NULL)`,
       ...ids
     );
     for (const r of rows) {
       out.set(`${r.raceId}:${r.driverId}`, {
         carNumber: r.carNumber == null ? null : Number(r.carNumber),
         liveryUrl: r.liveryUrl || null,
+        liveryOld: r.liveryOld || null,
       });
     }
   } catch {
@@ -138,9 +152,11 @@ export async function writeCar(prisma, raceId, driverId, fields) {
     sets.push(`"carNumber" = ?`);
     vals.push(fields.carNumber);
   }
-  if ("liveryUrl" in fields) {
-    sets.push(`"liveryUrl" = ?`);
-    vals.push(fields.liveryUrl);
+  for (const k of ["liveryUrl", "liveryOld"]) {
+    if (k in fields) {
+      sets.push(`"${k}" = ?`);
+      vals.push(fields[k]);
+    }
   }
   if (!sets.length) return;
   await prisma.$executeRawUnsafe(

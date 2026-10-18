@@ -21,7 +21,7 @@ import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
-  isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, liveryDeadline, carLocked,
+  isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, parseLiveryOld, liveryDeadline, carLocked,
 } from "../lib/eventCars.js";
 
 const router = Router();
@@ -612,18 +612,19 @@ async function checkCar(race, driverId, body) {
     return { status: 400, error: "Pick a car number to sign up for this event", needsCar: true };
   }
 
-  if ("liveryUrl" in body) {
-    const u = parseLiveryUrl(body.liveryUrl);
+  for (const [key, parse] of [["liveryUrl", parseLiveryUrl], ["liveryOld", parseLiveryOld]]) {
+    if (!(key in body)) continue;
+    const u = parse(body[key]);
     if (!u.ok) return { status: 400, error: u.error, needsCar: true };
-    if (u.value !== (stored?.liveryUrl ?? null)) {
+    if (u.value !== (stored?.[key] ?? null)) {
       if (locked) {
         const when = liveryDeadline(race);
         return {
           status: 403,
-          error: `Livery links closed ${when ? fmtUtc(when) : "before the race"}. You race with the default skin`,
+          error: `Liveries closed ${when ? fmtUtc(when) : "before the race"}. Ask an admin if yours has to change`,
         };
       }
-      fields.liveryUrl = u.value;
+      fields[key] = u.value;
     }
   }
   return { fields };
@@ -666,6 +667,7 @@ router.get("/:id/my-car", optionalUser, async (req, res, next) => {
       status: rsvp?.status || null,
       carNumber: car?.carNumber ?? null,
       liveryUrl: car?.liveryUrl ?? null,
+      liveryOld: car?.liveryOld ?? null,
       deadline: liveryDeadline(race)?.toISOString() ?? null,
       locked: carLocked(race),
     });
@@ -674,7 +676,7 @@ router.get("/:id/my-car", optionalUser, async (req, res, next) => {
   }
 });
 
-// PUT /api/events/:id/my-car { carNumber?, liveryUrl? } -> change the car after
+// PUT /api/events/:id/my-car { carNumber?, liveryUrl?, liveryOld? } -> change the car after
 // signing up (the panel on the attendance page). Only for somebody who is in,
 // tentatively in or waiting: a declined answer holds no car.
 router.put("/:id/my-car", optionalUser, async (req, res, next) => {
@@ -694,13 +696,13 @@ router.put("/:id/my-car", optionalUser, async (req, res, next) => {
     if (car.error) return res.status(car.status).json({ error: car.error });
     await writeCar(prisma, race.id, row.id, car.fields);
     const now = (await readCars(prisma, [race.id])).get(`${race.id}:${row.id}`);
-    res.json({ ok: true, carNumber: now?.carNumber ?? null, liveryUrl: now?.liveryUrl ?? null });
+    res.json({ ok: true, carNumber: now?.carNumber ?? null, liveryUrl: now?.liveryUrl ?? null, liveryOld: now?.liveryOld ?? null });
   } catch (e) {
     next(e);
   }
 });
 
-// GET /api/events/:id/cars -> { cars: { <driverId>: { carNumber, liveryUrl } } }
+// GET /api/events/:id/cars -> { cars: { <driverId>: { carNumber, liveryUrl, liveryOld } } }
 // Admins only: the livery links are for the organiser building the car pack.
 router.get("/:id/cars", optionalUser, async (req, res, next) => {
   try {

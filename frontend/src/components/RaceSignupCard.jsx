@@ -10,7 +10,7 @@ import { api } from "../api/client.js";
 import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
 import { threeLetterMonths } from "../utils/format.js";
-import { EventCarFields, numberProblem, takenNumbers } from "./EventCar.jsx";
+import { EventCarFields, takenNumbers, draftFrom, draftProblem, draftBody } from "./EventCar.jsx";
 import { defaultLiveriesFor } from "../data/defaultLiveries.js";
 
 // Quiet by default, colour only where it means something: the three answer
@@ -152,14 +152,23 @@ function SteamTag({ steamId }) {
   );
 }
 
-// A special event's livery link beside the name in the admin view: opens it in
-// a new tab. "Default" when the driver brings none.
+// What a driver races in, for whoever builds the car pack: the link to a new
+// livery, the name of an old one, or which default car.
+export function liveryLine(car, defaults = []) {
+  if (car?.liveryUrl) return car.liveryUrl;
+  if (car?.liveryOld) return `old livery: ${car.liveryOld}`;
+  const d = defaults.find((x) => x.number === car?.carNumber);
+  return d ? `default ${d.skin}` : "no livery";
+}
+
+// A special event's livery beside the name in the admin view. A link opens in
+// a new tab.
 function LiveryTag({ car, defaults = [] }) {
   if (!car?.liveryUrl) {
-    const d = defaults.find((x) => x.number === car?.carNumber);
+    const line = liveryLine(car, defaults);
     return (
-      <span className="font-mono text-[10px] uppercase tracking-wider text-faint" title={d?.skin}>
-        {d ? `default ${d.skin}` : "no livery"}
+      <span className="max-w-[12rem] truncate font-mono text-[10px] uppercase tracking-wider text-faint" title={line}>
+        {line}
       </span>
     );
   }
@@ -335,18 +344,18 @@ export default function RaceSignupCard({
     .flatMap((s) => ev.rsvps[s] || [])
     .find((r) => myIds.has(r.driverId))?.carNumber ?? null;
   const [carFor, setCarFor] = useState(null);
-  const [carNumber, setCarNumber] = useState("");
-  const [carLivery, setCarLivery] = useState("");
+  const defaults = defaultLiveriesFor(eventCar);
+  const [carDraft, setCarDraft] = useState(() => draftFrom(null, defaults));
   const [carError, setCarError] = useState(null);
   const [carBusy, setCarBusy] = useState(false);
   useEffect(() => setCarFor(null), [ev.id]);
   const taken = takenNumbers(ev, myIds);
   async function submitCar() {
-    const p = numberProblem(carNumber, taken);
+    const p = draftProblem(carDraft, taken, defaults);
     if (p) return setCarError(p);
     setCarBusy(true);
     setCarError(null);
-    const err = await onSetStatus(ev.id, carFor, { carNumber: Number(carNumber), liveryUrl: carLivery.trim() });
+    const err = await onSetStatus(ev.id, carFor, draftBody(carDraft));
     setCarBusy(false);
     if (err) setCarError(err);
     else setCarFor(null);
@@ -390,10 +399,7 @@ export default function RaceSignupCard({
       .map((r) => ({ name: r.name, ...(cars?.[r.driverId] || {}) }))
       .sort((a, b) => (a.carNumber ?? 999) - (b.carNumber ?? 999));
     const text = rows
-      .map((r) => {
-        const d = !r.liveryUrl && defaultLiveriesFor(eventCar).find((x) => x.number === r.carNumber);
-        return `${r.carNumber != null ? `#${r.carNumber}` : "#-"} ${r.name}: ${r.liveryUrl || (d ? `default ${d.skin}` : "no livery")}`;
-      })
+      .map((r) => `${r.carNumber != null ? `#${r.carNumber}` : "#-"} ${r.name}: ${liveryLine(r, defaultLiveriesFor(eventCar))}`)
       .join("\n");
     setCopiedLinks(await copyText(text));
     setTimeout(() => setCopiedLinks(false), 2000);
@@ -600,17 +606,15 @@ export default function RaceSignupCard({
           <div>
             <p className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Your car</p>
             <p className="mt-0.5 text-sm text-light">
-              Pick a number nobody else has. Got your own livery? Paste the link to it. You can change both later.
+              Pick your livery and a number nobody else has. You can change both later.
             </p>
           </div>
           <EventCarFields
-            number={carNumber}
-            setNumber={setCarNumber}
-            livery={carLivery}
-            setLivery={setCarLivery}
+            draft={carDraft}
+            setDraft={setCarDraft}
             taken={taken}
             deadline={ev.liveryDeadline}
-            defaults={defaultLiveriesFor(eventCar)}
+            defaults={defaults}
           />
           {carError && <p className="text-sm font-semibold text-bad">{carError}</p>}
           <div className="flex flex-wrap gap-2">
@@ -659,7 +663,7 @@ export default function RaceSignupCard({
             {ev.isEvent && cars && (
               <button onClick={copyLiveryLinks} className="inline-flex items-center gap-1.5 text-xs font-semibold text-link hover:underline">
                 {copiedLinks ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-                {copiedLinks ? "Copied" : "Copy all livery links"}
+                {copiedLinks ? "Copied" : "Copy all liveries"}
               </button>
             )}
           </div>
