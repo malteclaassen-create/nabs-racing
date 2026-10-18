@@ -70,6 +70,10 @@ const SERIES_SEGMENTS = new Set([
   "attendance",
   "live",
 ]);
+// Pages that exist only under a series, never as a flat address: a special
+// event's sign-up (/s/<slug>/signup). Flat /signup is an old alias of the
+// calendar below and stays one.
+const SERIES_ONLY_SEGMENTS = new Set(["signup"]);
 // Aliases the app maps onto a page of their own.
 const ALIASES = { signup: "/races", rennen: "/races" };
 
@@ -183,6 +187,7 @@ export function isKnownRoute(path) {
   // /s/<slug>[/<segment>[/<id>]]
   if (parts[0] === "s") {
     if (parts.length === 2) return true; // the series home
+    if (parts.length === 3 && SERIES_ONLY_SEGMENTS.has(parts[2])) return true;
     if (parts.length === 3 || parts.length === 4) return SERIES_SEGMENTS.has(parts[2]);
     return false;
   }
