@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import { useApi } from "../hooks/useApi.js";
-import { api } from "../api/client.js";
+import { api, withApiBase } from "../api/client.js";
 import { md5File } from "../utils/md5.js";
 import { canPickFolder, pickAcFolder, readerFromDrop } from "../utils/acFolder.js";
 
@@ -251,6 +251,35 @@ export default function ContentCheck() {
               </p>
             )}
             {folderName && !busy && <p className="text-xs text-faint">Read: {folderName}</p>}
+          </div>
+
+          {/* The deeper check as a program: it compares EVERY file the server
+              holds for the session (the page only does the two the join
+              checksums), checks the models and liveries that must exist, and
+              finds the folder by itself, Firefox included. */}
+          <div className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-dark">The full check: Windows tool</p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                Goes further than this page: compares every file the server has for tonight&rsquo;s cars and track (DRS
+                zones, pit lane, the models list), checks that every 3D model the track loads and every livery on the grid is
+                there, and looks for Custom Shaders Patch and Real Penalty. For each problem it says what it does and what
+                to delete. It finds your Assetto Corsa folder by itself.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                Double-click it after downloading. Windows may warn first because it is a script: click <i>More info</i>,
+                then <i>Run anyway</i>. It only reads your files, and you can open it in Notepad to see exactly what it
+                does.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-light">
+                <b className="text-medium">Admins:</b> after a clean check the tool can save your install as the
+                reference (checksums only, no files). From then on everybody&rsquo;s 3D models and liveries are compared
+                against it too, which the race server alone can&rsquo;t do.
+              </p>
+            </div>
+            <a className="btn-secondary shrink-0 px-4" href={withApiBase("/api/content-check/tool")} download>
+              Download for Windows
+            </a>
           </div>
 
           {problem && <Notice kind="error">{problem}</Notice>}

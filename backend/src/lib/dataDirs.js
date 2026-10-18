@@ -49,6 +49,12 @@ export const LIVE_PITS_DIR = join(DATA_ROOT, "live-pits");
 // the board anyway.
 export const LIVE_BEST_LAPS_DIR = join(DATA_ROOT, "live-best-laps");
 
+// The reference installs for the Windows Content Check (lib/contentReference.js):
+// per car and per track, the file list with checksums of an admin's install
+// that matches the race server. Lets the check compare what the server does
+// not hand out, the 3D models and livery textures.
+export const CONTENT_REFERENCE_DIR = join(DATA_ROOT, "content-reference");
+
 // Times waiting for an answer (lib/liveResetKeep.js). When the race server
 // resets, the practice session's best laps are put here instead of onto the
 // board, because a reset usually means a new version of the track went up and
