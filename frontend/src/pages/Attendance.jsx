@@ -21,6 +21,10 @@ import { fmtRaceTime } from "../utils/raceTime.js";
 import { currentSignupRace, signupRaceIds } from "../utils/signupQueue.js";
 import { fmtRaceDate } from "../utils/format.js";
 import SessionPlan from "../components/SessionPlan.jsx";
+import { EventCarPanel, holdsCar } from "../components/EventCar.jsx";
+import { announceRsvpChanged } from "../hooks/useMyEventEntry.js";
+import { defaultLiveriesFor } from "../data/defaultLiveries.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 
 // Which answer a ?rsvp= link stands for. Deliberately a fixed map, so an
 // arbitrary value in the URL can never be forwarded to the API as a status.
@@ -78,6 +82,9 @@ export default function Attendance() {
   // tab title has named the season all along. Same label as there
   // (utils/pageTitle.js), so the two never disagree.
   const seasonName = seasonLabelOf(season);
+  // A special event's car, for its default liveries.
+  const { current: series } = useSeries();
+  const eventCar = season?.game || series?.game || null;
   const seasonHeading = seasonName ? `${seasonName} Attendance` : "Attendance";
   const driverId = isLoggedIn ? user?.driverId : null;
   const canSignUp = isLoggedIn && !!driverId;
@@ -130,6 +137,14 @@ export default function Attendance() {
   // still wins, so a one-tap answer out of a notification or a Discord post
   // lands on the round it was sent for even when that isn't the next one.
   const ev = useMemo(() => currentSignupRace(list, wantRace), [list, wantRace]);
+  // A special event's car for the signed-in member (number + livery link). Once
+  // they are in, it takes the column the hotlap video has on a championship.
+  const myCar = useApi(
+    useCallback(
+      () => (ev?.isEvent && isLoggedIn ? api.myCar(ev.id) : Promise.resolve(null)),
+      [ev?.id, ev?.isEvent, isLoggedIn]
+    )
+  );
   // More than one event can be taking answers at once: a one-off night (an F2
   // sprint + feature evening, say) sits in front of the round that an admin has
   // already forced open. The page still shows ONE of them — but it must not be
@@ -150,16 +165,21 @@ export default function Attendance() {
   // RSVP actions (identity from the Discord login; forgery-proof server-side).
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
-  async function setStatus(raceId, status) {
+  // Returns the error message, or null once the answer is in. With a special
+  // event's `car` the sign-up card shows the message beside its form instead.
+  async function setStatus(raceId, status, car = null) {
     setError(null);
     setBusy(`${raceId}:${status}`);
     try {
-      await api.rsvp(raceId, driverId, status);
+      await api.rsvp(raceId, driverId, status, car);
       // The answer can move the market too: declining puts a full-time
       // driver's seat up, saying yes again takes it back.
-      await Promise.all([events.reload(), market.reload()]);
+      await Promise.all([events.reload(), market.reload(), myCar.reload()]);
+      announceRsvpChanged();
+      return null;
     } catch (e) {
-      setError(e.message);
+      if (!car) setError(e.message);
+      return e.message;
     } finally {
       setBusy(null);
     }
@@ -201,7 +221,8 @@ export default function Attendance() {
     setBusy(`${raceId}:clear`);
     try {
       await api.removeRsvp(raceId, driverId);
-      await events.reload();
+      await Promise.all([events.reload(), myCar.reload()]);
+      announceRsvpChanged();
     } finally {
       setBusy(null);
     }
@@ -354,6 +375,7 @@ export default function Attendance() {
               // from their own admin-only request, so this only decides whether
               // the button is there to press.
               isAdmin={!!user?.isAdmin}
+              eventCar={eventCar}
               // Takes the height the video leaves over in the split layout; no
               // effect in the single-column one, where nothing is flexing.
               className="lg:grow"
@@ -372,14 +394,26 @@ export default function Attendance() {
           // A series that films nothing switches the column off in the admin
           // (Photos & Videos). Then there is no second column at all: an empty
           // half beside the entry list is worse than a full-width entry list.
-          const showVideo = ev.showHotlaps !== false;
-          const videoPanel = showVideo ? (
+          // A special event's driver who is in sees their car there instead:
+          // number and livery link, still to be changed until the links close.
+          const carPanel =
+            ev.isEvent && holdsCar(myCar.data?.status) ? (
+              <EventCarPanel
+                ev={ev}
+                initial={myCar.data}
+                myIds={new Set([driverId, myCar.data.driverId].filter(Boolean))}
+                onSaved={events.reload}
+                defaults={defaultLiveriesFor(eventCar)}
+              />
+            ) : null;
+          const showVideo = !!carPanel || ev.showHotlaps !== false;
+          const videoPanel = carPanel || (showVideo ? (
             <HotlapVideos
               track={ev.track}
               videos={ownLaps || hist.data?.videos}
               loading={!ownLaps && hist.loading}
             />
-          ) : null;
+          ) : null);
           const errorBox = error ? <ErrorBox message={error} /> : null;
 
           // ONE arrangement, always: the race and the sign-up down the left,

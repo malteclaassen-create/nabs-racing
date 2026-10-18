@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Hourglass, Fingerprint, Copy, Check, Undo2 } from "lucide-react";
+import { Hourglass, Fingerprint, Copy, Check, Undo2, Link2 } from "lucide-react";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";
@@ -10,6 +10,8 @@ import { api } from "../api/client.js";
 import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
 import { threeLetterMonths } from "../utils/format.js";
+import { EventCarFields, numberProblem, takenNumbers } from "./EventCar.jsx";
+import { defaultLiveriesFor } from "../data/defaultLiveries.js";
 
 // Quiet by default, colour only where it means something: the three answer
 // buttons are neutral outlines with a tinted icon, and fill with their status
@@ -150,6 +152,40 @@ function SteamTag({ steamId }) {
   );
 }
 
+// A special event's livery link beside the name in the admin view: opens it in
+// a new tab. "Default" when the driver brings none.
+function LiveryTag({ car, defaults = [] }) {
+  if (!car?.liveryUrl) {
+    const d = defaults.find((x) => x.number === car?.carNumber);
+    return (
+      <span className="font-mono text-[10px] uppercase tracking-wider text-faint" title={d?.skin}>
+        {d ? `default ${d.skin}` : "no livery"}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={car.liveryUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={car.liveryUrl}
+      className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-link hover:underline"
+    >
+      <Link2 className="h-3 w-3" aria-hidden="true" />
+      livery
+    </a>
+  );
+}
+
+// The race number in front of a name on a special event's entry list.
+function CarNo({ n }) {
+  return (
+    <span className="w-7 shrink-0 font-mono text-[12px] font-bold tabular-nums text-medium">
+      {n != null ? `#${n}` : "#-"}
+    </span>
+  );
+}
+
 // The admin's switch for the Steam ids: one button, in one place, in both
 // states. It used to be two different controls — a bare fingerprint square in
 // the grid row while off, and a row of its own with a big filled pill (and a
@@ -197,6 +233,9 @@ export default function RaceSignupCard({
   // Unlocks the Steam-id view in the header. The ids themselves are fetched
   // separately and only when asked for — see the header strip below.
   isAdmin = false,
+  // A special event's car (the season's game, e.g. "RSS Hyperion"): which
+  // default liveries the car form offers.
+  eventCar = null,
 }) {
   // The market context of the RACE's season — see the note further down at
   // SeatMarket for why it is read this way even when null.
@@ -279,7 +318,38 @@ export default function RaceSignupCard({
   async function answer(status) {
     if (myOffer && status === "ACCEPTED" && !(await confirmTakingSeatBack())) return;
     if (status !== "ACCEPTED" && !(await confirmLeavingTheGrid(status))) return;
+    // A special event wants the car before the seat: a number, and the livery
+    // link if they have one. Asked once; after that the answer buttons work as
+    // anywhere else and the car is changed in its own panel.
+    if (ev.isEvent && status !== "DECLINED" && myCarNumber == null) {
+      setCarFor(status);
+      setCarError(null);
+      return;
+    }
     onSetStatus(ev.id, status);
+  }
+
+  // The car form of a special event (see answer above). `carFor` is the answer
+  // waiting for it.
+  const myCarNumber = ["ACCEPTED", "TENTATIVE", WAITLIST]
+    .flatMap((s) => ev.rsvps[s] || [])
+    .find((r) => myIds.has(r.driverId))?.carNumber ?? null;
+  const [carFor, setCarFor] = useState(null);
+  const [carNumber, setCarNumber] = useState("");
+  const [carLivery, setCarLivery] = useState("");
+  const [carError, setCarError] = useState(null);
+  const [carBusy, setCarBusy] = useState(false);
+  useEffect(() => setCarFor(null), [ev.id]);
+  const taken = takenNumbers(ev, myIds);
+  async function submitCar() {
+    const p = numberProblem(carNumber, taken);
+    if (p) return setCarError(p);
+    setCarBusy(true);
+    setCarError(null);
+    const err = await onSetStatus(ev.id, carFor, { carNumber: Number(carNumber), liveryUrl: carLivery.trim() });
+    setCarBusy(false);
+    if (err) setCarError(err);
+    else setCarFor(null);
   }
   // A reserve already picked for the seat loses it, and should not find out
   // from the entry list. Only asked when there is somebody to lose it.
@@ -303,11 +373,31 @@ export default function RaceSignupCard({
   const [adminView, setAdminView] = useState(false);
   const [steamIds, setSteamIds] = useState(null);
   const [steamError, setSteamError] = useState(null);
+  // A special event's cars with the livery links, fetched with the Steam ids.
+  const [cars, setCars] = useState(null);
+  const [copiedLinks, setCopiedLinks] = useState(false);
   useEffect(() => {
     setAdminView(false);
     setSteamIds(null);
     setSteamError(null);
+    setCars(null);
   }, [ev.id]);
+  // Every livery link of the grid as one block of text, "#12 Name: link", in
+  // number order, for whoever builds the car pack.
+  async function copyLiveryLinks() {
+    const rows = ["ACCEPTED", "TENTATIVE", WAITLIST]
+      .flatMap((s) => ev.rsvps[s] || [])
+      .map((r) => ({ name: r.name, ...(cars?.[r.driverId] || {}) }))
+      .sort((a, b) => (a.carNumber ?? 999) - (b.carNumber ?? 999));
+    const text = rows
+      .map((r) => {
+        const d = !r.liveryUrl && defaultLiveriesFor(eventCar).find((x) => x.number === r.carNumber);
+        return `${r.carNumber != null ? `#${r.carNumber}` : "#-"} ${r.name}: ${r.liveryUrl || (d ? `default ${d.skin}` : "no livery")}`;
+      })
+      .join("\n");
+    setCopiedLinks(await copyText(text));
+    setTimeout(() => setCopiedLinks(false), 2000);
+  }
   async function toggleAdminView() {
     if (adminView) {
       setAdminView(false);
@@ -316,8 +406,12 @@ export default function RaceSignupCard({
     setAdminView(true);
     if (steamIds) return;
     try {
-      const res = await api.raceSteamIds(ev.id);
+      const [res, carRes] = await Promise.all([
+        api.raceSteamIds(ev.id),
+        ev.isEvent ? api.raceCars(ev.id) : Promise.resolve(null),
+      ]);
       setSteamIds(res?.ids || {});
+      if (carRes) setCars(carRes.cars || {});
     } catch (e) {
       setSteamError(e.message);
     }
@@ -500,6 +594,36 @@ export default function RaceSignupCard({
         )}
       </div>
 
+      {/* A special event asks for the car before the seat (see answer()). */}
+      {carFor && (
+        <div className="space-y-4 border-b border-border bg-surface2/40 px-5 py-4">
+          <div>
+            <p className="font-display text-base font-extrabold uppercase tracking-tight text-dark">Your car</p>
+            <p className="mt-0.5 text-sm text-light">
+              Pick a number nobody else has. Got your own livery? Paste the link to it. You can change both later.
+            </p>
+          </div>
+          <EventCarFields
+            number={carNumber}
+            setNumber={setCarNumber}
+            livery={carLivery}
+            setLivery={setCarLivery}
+            taken={taken}
+            deadline={ev.liveryDeadline}
+            defaults={defaultLiveriesFor(eventCar)}
+          />
+          {carError && <p className="text-sm font-semibold text-bad">{carError}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={submitCar} disabled={carBusy} className="btn-primary">
+              {carBusy ? "..." : carFor === WAITLIST ? "Join the waiting list" : carFor === "TENTATIVE" ? "Sign up as tentative" : "Sign up"}
+            </button>
+            <button onClick={() => setCarFor(null)} disabled={carBusy} className="btn-secondary">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* The Steam ids are off by default and off again as soon as the card
           moves to another race: they are not something to leave lying around
           on a page with a league in it. The switch sits in the grid row; a
@@ -530,7 +654,15 @@ export default function RaceSignupCard({
           />
         </div>
         {adminView && (
-          <p className="mt-2 text-xs text-light">{steamError || "Tap an ID to copy it. Admins only."}</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-light">{steamError || "Tap an ID to copy it. Admins only."}</p>
+            {ev.isEvent && cars && (
+              <button onClick={copyLiveryLinks} className="inline-flex items-center gap-1.5 text-xs font-semibold text-link hover:underline">
+                {copiedLinks ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                {copiedLinks ? "Copied" : "Copy all livery links"}
+              </button>
+            )}
+          </div>
         )}
       </div>
       )}
@@ -568,13 +700,17 @@ export default function RaceSignupCard({
                       with two cars per team the colour alone was a quiz, and
                       the logo says who at a glance. Falls back to the
                       colour-tinted monogram for a team without one. */}
-                  <TeamLogo
-                    id={r.team.id}
-                    name={r.team.name}
-                    color={r.team.color}
-                    logoUrl={r.team.logoUrl}
-                    size={18}
-                  />
+                  {ev.isEvent && status !== "DECLINED" ? (
+                    <CarNo n={r.carNumber} />
+                  ) : (
+                    <TeamLogo
+                      id={r.team.id}
+                      name={r.team.name}
+                      color={r.team.color}
+                      logoUrl={r.team.logoUrl}
+                      size={18}
+                    />
+                  )}
                   {/* The full name is a hover away: the grid is three columns
                       on a laptop and longer names get cut. In the admin view the
                       tooltip carries when they answered as well, which is what
@@ -595,7 +731,8 @@ export default function RaceSignupCard({
                   <SubMark sub={r.sub} />
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden shrink-0 sm:inline-block" />
                   {adminView && (
-                    <span className="ml-auto">
+                    <span className="ml-auto flex items-center gap-2">
+                      {ev.isEvent && status !== "DECLINED" && cars && <LiveryTag car={cars[r.driverId]} defaults={defaultLiveriesFor(eventCar)} />}
                       <SteamTag steamId={steamIds?.[r.driverId]} />
                     </span>
                   )}
@@ -630,13 +767,17 @@ export default function RaceSignupCard({
               <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
                 <div className={`flex min-w-0 ${adminView ? "flex-wrap" : "flex-nowrap"} items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2`}>
                   <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">{i + 1}.</span>
-                  <TeamLogo
-                    id={r.team.id}
-                    name={r.team.name}
-                    color={r.team.color}
-                    logoUrl={r.team.logoUrl}
-                    size={18}
-                  />
+                  {ev.isEvent ? (
+                    <CarNo n={r.carNumber} />
+                  ) : (
+                    <TeamLogo
+                      id={r.team.id}
+                      name={r.team.name}
+                      color={r.team.color}
+                      logoUrl={r.team.logoUrl}
+                      size={18}
+                    />
+                  )}
                   <span
                     className={`min-w-[3.5rem] truncate ${myIds.has(r.driverId) ? "font-bold text-dark" : "text-dark"}`}
                     title={adminView && r.answeredAt ? `${r.name} · joined ${answerTime(r.answeredAt)}` : r.name}
@@ -645,7 +786,8 @@ export default function RaceSignupCard({
                   </span>
                   <Flag code={countryFor(r.driverId, r.country)} w={16} h={12} className="hidden shrink-0 sm:inline-block" />
                   {adminView && (
-                    <span className="ml-auto">
+                    <span className="ml-auto flex items-center gap-2">
+                      {ev.isEvent && cars && <LiveryTag car={cars[r.driverId]} defaults={defaultLiveriesFor(eventCar)} />}
                       <SteamTag steamId={steamIds?.[r.driverId]} />
                     </span>
                   )}

@@ -20,6 +20,9 @@ import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
+import {
+  isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, liveryDeadline, carLocked,
+} from "../lib/eventCars.js";
 
 const router = Router();
 // WAITLIST is an answer like any other in the table, but not one the admin
@@ -139,6 +142,11 @@ router.get("/", async (req, res, next) => {
     // Laps this event filmed for itself. Only the ones that HAVE their own are
     // in the map; the attendance page falls back to the circuit's for the rest.
     const hotlaps = await readRaceHotlaps(prisma, races.map((r) => r.id));
+    // A special event's cars: the race number every sign-up picked. The livery
+    // links stay out of this feed (admins only, see /:id/cars).
+    const eventIds = new Set();
+    for (const r of races) if (await isEventRace(prisma, r.id)) eventIds.add(r.id);
+    const cars = await readCars(prisma, [...eventIds]);
     // Does this series draw the hotlap column at all? A league that films
     // nothing gets half a page of "No hotlap yet" otherwise, so it can switch
     // the column off and give the width back to the sign-up.
@@ -204,6 +212,9 @@ router.get("/", async (req, res, next) => {
           // The driver's own racing number (self-set on /profile), for the
           // seat map of a special event's home page. null = none picked.
           number: r.driver.number ?? null,
+          // The number they picked for THIS race (special events only), which
+          // is the one on their car. null = not an event, or none picked yet.
+          carNumber: cars.get(`${race.id}:${r.driverId}`)?.carNumber ?? null,
           // When this answer was last given. It orders the waiting list (first
           // in, first onto the grid) and it is what finally answers "who was
           // the last one in" for a round that filled up — the admin's Steam-id
@@ -270,6 +281,10 @@ router.get("/", async (req, res, next) => {
         attendanceForcedOpen: gate.forced === "open",
         // Only ever true in the admin's own view (see the filter above).
         hidden: hidden.has(race.id),
+        // A special event asks every sign-up for a car number and a livery
+        // link, the link due by `liveryDeadline` (lib/eventCars.js).
+        isEvent: eventIds.has(race.id),
+        liveryDeadline: eventIds.has(race.id) ? liveryDeadline(race)?.toISOString() ?? null : null,
         visibleStatuses: notify.attendanceShow,
         // Is there still a seat to accept? The grid size is a rule now, not a
         // label: past it the Accept button becomes "join the waiting list".
@@ -432,6 +447,16 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     }
     if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
+    // A special event's car (lib/eventCars.js). Checked before anything is
+    // written, so a taken number leaves the answer as it was. A driver who
+    // declines needs no car; everybody else needs a number, either one they
+    // picked before or one sent with this answer.
+    let car = null;
+    if (status !== "DECLINED" && (await isEventRace(prisma, race.id))) {
+      car = await checkCar(race, driver.id, req.body || {});
+      if (car.error) return res.status(car.status).json({ error: car.error, needsCar: car.needsCar || undefined });
+    }
+
     // A seat on the Driver Market has already answered this question (the
     // offer files a DECLINED with it). Saying yes takes the seat back: the
     // offer comes off the market, and a reserve already picked for it loses
@@ -503,6 +528,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // contradict each other. The one just written is the one they meant, so
     // it is the one that stays.
     await clearOtherAnswers(race.id, driver.id).catch(() => {});
+    if (car?.fields) await writeCar(prisma, race.id, driver.id, car.fields);
 
     // Fire-and-await Discord sync, but don't fail the request if Discord errors.
     const discord = await syncRaceToDiscord(prisma, race.id);
@@ -547,6 +573,142 @@ router.delete("/:id/rsvp/:driverId", optionalUser, async (req, res, next) => {
     await promoteFromWaitlist(prisma, req.params.id);
     const discord = await syncRaceToDiscord(prisma, req.params.id);
     res.json({ ok: true, discord });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The person's rows other than `driverId` (the same human on a second roster
+// row of the season), so their own old answer never "takes" their number.
+async function siblingRows(driverId) {
+  const { byDriver, byPerson } = await getPersonGroups(prisma);
+  return (byPerson.get(byDriver.get(driverId)) || []).filter((id) => id !== driverId);
+}
+
+// Validate a special event's car sent with a sign-up or an edit. Returns
+// { fields } to write (only what was sent and changes), or { status, error }.
+// A number is always needed: the one stored, or one sent now.
+//
+// After the deadline the livery link is fixed: the car pack is being built from
+// the links that came in. A number can still be picked by somebody who signs
+// up late and has none, but no longer changed.
+async function checkCar(race, driverId, body) {
+  const stored = (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`) || null;
+  const locked = carLocked(race);
+  const fields = {};
+
+  if ("carNumber" in body) {
+    const n = parseCarNumber(body.carNumber);
+    if (!n.ok) return { status: 400, error: n.error, needsCar: true };
+    if (n.value !== (stored?.carNumber ?? null)) {
+      if (locked && stored?.carNumber != null) {
+        return { status: 403, error: "Car numbers are fixed now. Ask an admin if yours has to change" };
+      }
+      const holder = await numberTakenBy(prisma, race.id, n.value, [driverId, ...(await siblingRows(driverId))]);
+      if (holder) return { status: 409, error: `#${n.value} is already taken by ${holder.name}. Pick another number`, needsCar: true };
+      fields.carNumber = n.value;
+    }
+  } else if (stored?.carNumber == null) {
+    return { status: 400, error: "Pick a car number to sign up for this event", needsCar: true };
+  }
+
+  if ("liveryUrl" in body) {
+    const u = parseLiveryUrl(body.liveryUrl);
+    if (!u.ok) return { status: 400, error: u.error, needsCar: true };
+    if (u.value !== (stored?.liveryUrl ?? null)) {
+      if (locked) {
+        const when = liveryDeadline(race);
+        return {
+          status: 403,
+          error: `Livery links closed ${when ? fmtUtc(when) : "before the race"}. You race with the default skin`,
+        };
+      }
+      fields.liveryUrl = u.value;
+    }
+  }
+  return { fields };
+}
+
+function fmtUtc(d) {
+  return `${new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  }).format(d)} UTC`;
+}
+
+// The signed-in member's row for this race's season, or null.
+async function myRaceRow(req, race) {
+  const driverId = await resolveDriverId(prisma, req.user);
+  if (!driverId) return null;
+  const base = await prisma.driver.findUnique({ where: { id: driverId } });
+  if (!base) return null;
+  return seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
+}
+
+// GET /api/events/:id/my-car -> { status, carNumber, liveryUrl, deadline, locked }
+// The signed-in member's own answer and car for a special event. The nav bar
+// asks it too: "Sign up" turns into "Attendance" once there is an answer.
+router.get("/:id/my-car", optionalUser, async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    const row = await myRaceRow(req, race);
+    const rsvp = row
+      ? await prisma.raceRsvp.findUnique({
+          where: { raceId_driverId: { raceId: race.id, driverId: row.id } },
+          select: { status: true },
+        })
+      : null;
+    const car = rsvp ? (await readCars(prisma, [race.id])).get(`${race.id}:${row.id}`) : null;
+    res.json({
+      // The row the answer sits on, which can be another season's row than the
+      // login's: the page needs it to know which entry in the list is "me".
+      driverId: row?.id || null,
+      status: rsvp?.status || null,
+      carNumber: car?.carNumber ?? null,
+      liveryUrl: car?.liveryUrl ?? null,
+      deadline: liveryDeadline(race)?.toISOString() ?? null,
+      locked: carLocked(race),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/events/:id/my-car { carNumber?, liveryUrl? } -> change the car after
+// signing up (the panel on the attendance page). Only for somebody who is in,
+// tentatively in or waiting: a declined answer holds no car.
+router.put("/:id/my-car", optionalUser, async (req, res, next) => {
+  try {
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (race.isCompleted) return res.status(400).json({ error: "Race already completed" });
+    if (!(await isEventRace(prisma, race.id))) return res.status(400).json({ error: "Only special events have a car to set" });
+    const row = await myRaceRow(req, race);
+    if (!row) return res.status(401).json({ error: "Sign in with Discord first" });
+    const rsvp = await prisma.raceRsvp.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId: row.id } },
+      select: { status: true },
+    });
+    if (!rsvp || rsvp.status === "DECLINED") return res.status(400).json({ error: "Sign up for the race first" });
+    const car = await checkCar(race, row.id, req.body || {});
+    if (car.error) return res.status(car.status).json({ error: car.error });
+    await writeCar(prisma, race.id, row.id, car.fields);
+    const now = (await readCars(prisma, [race.id])).get(`${race.id}:${row.id}`);
+    res.json({ ok: true, carNumber: now?.carNumber ?? null, liveryUrl: now?.liveryUrl ?? null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/events/:id/cars -> { cars: { <driverId>: { carNumber, liveryUrl } } }
+// Admins only: the livery links are for the organiser building the car pack.
+router.get("/:id/cars", optionalUser, async (req, res, next) => {
+  try {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: "Admins only" });
+    const cars = {};
+    const prefix = `${req.params.id}:`;
+    for (const [key, car] of await readCars(prisma, [req.params.id])) cars[key.slice(prefix.length)] = car;
+    res.json({ cars });
   } catch (e) {
     next(e);
   }

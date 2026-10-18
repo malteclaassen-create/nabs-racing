@@ -79,7 +79,7 @@ import { scoringRaces } from "../services/standingsService.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { readTrackCountries, writeTrackCountry, seedRaceCountry, staticCountryFor } from "../lib/raceCountries.js";
 import { normKey } from "../lib/trackKeys.js";
-import { readRaceInfo, writeRaceInfo } from "../lib/raceInfo.js";
+import { readRaceInfo, writeRaceInfo, raceInfoKeyFor } from "../lib/raceInfo.js";
 import { readPrivacyInfo, writePrivacyInfo } from "../lib/privacyInfo.js";
 import { readAndroidApp, writeAndroidApp } from "../lib/androidApp.js";
 import { readWelcomeFaq, writeWelcomeFaq } from "../lib/welcomeFaq.js";
@@ -7452,7 +7452,9 @@ router.delete("/download-folders/:id", async (req, res, next) => {
 
 router.get("/race-info", async (req, res, next) => {
   try {
-    res.json({ content: await readRaceInfo(prisma) });
+    // ?series=<slug>: a special event edits its own page.
+    const { key, event } = await raceInfoKeyFor(prisma, req.query.series, { includePrivate: true });
+    res.json({ content: await readRaceInfo(prisma, key), event });
   } catch (e) {
     next(e);
   }
@@ -7460,7 +7462,8 @@ router.get("/race-info", async (req, res, next) => {
 
 router.put("/race-info", async (req, res, next) => {
   try {
-    const content = await writeRaceInfo(prisma, req.body?.content ?? null);
+    const { key } = await raceInfoKeyFor(prisma, req.query.series, { includePrivate: true });
+    const content = await writeRaceInfo(prisma, req.body?.content ?? null, key);
     res.json({ ok: true, content });
   } catch (e) {
     next(e);

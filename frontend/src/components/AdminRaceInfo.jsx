@@ -4,7 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Field } from "./ui.jsx";
 import Icon, { PICKABLE_ICONS } from "./InfoIcon.jsx";
 import { useAsk } from "./overlay.jsx";
-import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
+import { RACE_INFO_DEFAULTS, RACE_INFO_EVENT_DEFAULTS } from "../data/raceInfoDefaults.js";
 import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 
 // Editor for the public Race Info page: the intro line, the "New here?" hint,
@@ -16,13 +16,13 @@ import { UnsavedHint, useUnsavedGuard } from "../hooks/useUnsavedGuard.js";
 const smallBtn = "flex h-7 w-7 items-center justify-center rounded-lg bg-surface2 text-medium transition hover:bg-border disabled:opacity-30";
 
 // content object -> editable form state (rules become one-per-line text).
-function toForm(content) {
-  const c = content || RACE_INFO_DEFAULTS;
+function toForm(content, defaults = RACE_INFO_DEFAULTS) {
+  const c = content || defaults;
   return {
     subtitle: c.subtitle || "",
     // Saved content from before the hint was editable has no key at all and
     // keeps the standard hint; an empty string means the admin removed it.
-    newHere: c.newHere ?? RACE_INFO_DEFAULTS.newHere,
+    newHere: c.newHere ?? defaults.newHere,
     cards: (c.cards || []).map((x) => ({ icon: x.icon || "info", title: x.title || "", text: x.text || "" })),
     pointsFootnote: c.pointsFootnote || "",
     rulebook: (c.rulebook || []).map((g) => ({
@@ -99,10 +99,13 @@ export default function AdminRaceInfo() {
   const [savedForm, setSavedForm] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  // A special event edits its own page, which starts from its own text.
+  const isEvent = !!data?.event;
+  const defaults = isEvent ? RACE_INFO_EVENT_DEFAULTS : RACE_INFO_DEFAULTS;
 
   useEffect(() => {
     if (!loading && !error && !form) {
-      const f = toForm(data?.content);
+      const f = toForm(data?.content, defaults);
       setForm(f);
       setSavedForm(f);
     }
@@ -142,12 +145,19 @@ export default function AdminRaceInfo() {
       }))
     )
       return;
-    setForm(toForm(RACE_INFO_DEFAULTS));
+    setForm(toForm(defaults, defaults));
     setMsg(null);
   }
 
   return (
     <div className="space-y-6">
+      {isEvent && (
+        <p className="rounded-xl border border-dashed border-accent/40 bg-primary/10 px-4 py-3 text-sm text-medium">
+          You are editing this <span className="font-semibold text-dark">special event's own</span> Race Info page.
+          The championships keep theirs. Extra placeholders: {"{car}"}, {"{carLink}"} and {"{deadline}"}. A link is written
+          {" [text](https://...)"}.
+        </p>
+      )}
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm leading-relaxed text-medium">
         This is the text of the public <b>Race Info</b> page. Writing tips:{" "}
         <code className="rounded bg-card px-1.5 py-0.5 text-xs">**words**</code> makes words bold, and these

@@ -711,8 +711,14 @@ export const api = {
     return request(`/events${q}${extra}`, { auth: true });
   },
   attendanceOpen: () => request(`/events/open${seriesQ()}`, { auth: true }),
-  rsvp: (raceId, driverId, status) =>
-    request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status }, userAuth: true }),
+  // `car` = a special event's { carNumber, liveryUrl }, sent with the sign-up.
+  rsvp: (raceId, driverId, status, car = null) =>
+    request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status, ...(car || {}) }, userAuth: true }),
+  // A special event's car for the signed-in member: read it, change it after
+  // signing up. And all of them with the livery links, admins only.
+  myCar: (raceId) => request(`/events/${raceId}/my-car`, { userAuth: true }),
+  updateMyCar: (raceId, car) => request(`/events/${raceId}/my-car`, { method: "PUT", body: car, userAuth: true }),
+  raceCars: (raceId) => request(`/events/${raceId}/cars`, { identityAuth: true }),
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
   // Steam ids for one race's entry list, admins only. Its own request rather
@@ -1723,9 +1729,10 @@ export const api = {
     request(`/admin/attendance-grid${seriesQ()}`, { method: "PUT", body: { size }, auth: true }),
 
   // Race Info page content (public read + admin edit)
-  raceInfo: () => request("/settings/race-info"),
-  adminRaceInfo: () => request("/admin/race-info", { auth: true }),
-  saveRaceInfo: (content) => request("/admin/race-info", { method: "PUT", body: { content }, auth: true }),
+  // Per series: a special event has a Race Info page of its own.
+  raceInfo: () => request(`/settings/race-info${seriesQ()}`, { auth: true }),
+  adminRaceInfo: () => request(`/admin/race-info${seriesQ()}`, { auth: true }),
+  saveRaceInfo: (content) => request(`/admin/race-info${seriesQ()}`, { method: "PUT", body: { content }, auth: true }),
 
   // Privacy page: who is responsible, and the app's name (public read + admin edit)
   // The changelog's commit count and the entries of merged pull requests,

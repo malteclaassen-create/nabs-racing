@@ -260,6 +260,12 @@ export async function ensureAppSchema(prisma) {
   // regular driver; 'safety' = safety car driver. Admin-set (Drivers tab).
   await addColumn(prisma, "Driver", "role", "TEXT");
 
+  // --- A special event's car per sign-up: race number (1..99, one per car on
+  // the grid) and the link to the driver's own livery, null = default skin.
+  // See lib/eventCars.js.
+  await addColumn(prisma, "RaceRsvp", "carNumber", "INTEGER");
+  await addColumn(prisma, "RaceRsvp", "liveryUrl", "TEXT");
+
   // --- Admin-set: remove a (deactivated) driver from the public driver
   // standings entirely. Race results and constructor points stay untouched;
   // reactivating the driver clears the flag. Admin Drivers tab.

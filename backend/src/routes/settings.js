@@ -3,7 +3,8 @@
 // Setting table under `social_<platform>` keys.
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { readRaceInfo } from "../lib/raceInfo.js";
+import { readRaceInfo, raceInfoKeyFor } from "../lib/raceInfo.js";
+import { isAdminRequest } from "../middleware/auth.js";
 import { readWelcomeFaq } from "../lib/welcomeFaq.js";
 import { readHelpFaq } from "../lib/helpFaq.js";
 import { readNotifySettings } from "../lib/notifications.js";
@@ -155,8 +156,10 @@ router.get("/live", async (req, res, next) => {
 // `answers` = the sign-up answers switched on, for the {answers} placeholder.
 router.get("/race-info", async (req, res, next) => {
   try {
-    const [content, notify] = await Promise.all([readRaceInfo(prisma), readNotifySettings(prisma)]);
-    res.json({ content, answers: notify.attendanceShow });
+    // ?series=<slug>: a special event reads its own page (lib/raceInfo.js).
+    const { key, event } = await raceInfoKeyFor(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
+    const [content, notify] = await Promise.all([readRaceInfo(prisma, key), readNotifySettings(prisma)]);
+    res.json({ content, answers: notify.attendanceShow, event });
   } catch (e) {
     next(e);
   }

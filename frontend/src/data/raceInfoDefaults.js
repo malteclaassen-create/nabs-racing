@@ -135,3 +135,46 @@ export const RACE_INFO_DEFAULTS = {
   rulebookFootnote:
     "Incidents are reviewed by the stewards in Discord after the race. Penalties are added as seconds on your race time, so the final classification can shift once stewarding is done.",
 };
+
+// A special event's Race Info page (Series.kind "event"): one race, no points,
+// everyone in the same car. Stored per event and edited in the same admin tab
+// while that event is the series being edited. Two more placeholders here:
+//   {car}       -> the event's car (the season's game field, e.g. RSS Hyperion)
+//   {carLink}   -> "Get the car here." linked to the car's shop, if known
+//   {deadline}  -> when the livery links are due, in UTC
+// and a link is written [like this](https://...).
+export const RACE_INFO_EVENT_DEFAULTS = {
+  subtitle: "Everything you need for the race: the car, the format and the rules. One night, no points, just for fun.",
+  newHere:
+    "**Racing with us for the first time?** Get the car, sign up with a car number, and read the rules below. That's all.",
+  cards: [
+    {
+      icon: "wheel",
+      title: "The car",
+      text: "Everyone races the **{car}**. {carLink} Get it before race night and drive a few laps, so the first time you sit in it is not the race.",
+    },
+    {
+      icon: "shield",
+      title: "Non-championship",
+      text: "This race is a one-off. There are **no points** and it counts for no championship. Race hard, race fair, have fun.",
+    },
+    {
+      icon: "flag",
+      title: "Sign-up & livery",
+      text: "Sign up with a car number nobody else has. Got your own livery? Paste the link when you sign up. Links are due **{deadline}**, without one you race a default skin.",
+    },
+    {
+      icon: "clock",
+      title: "Qualifying",
+      text: "**Solo qualifying.** Your time is the **average over 3 laps**, so one lucky lap is not enough.",
+    },
+    {
+      icon: "align",
+      title: "The start",
+      text: "A **double-file start**: two cars side by side in every row, in qualifying order.",
+    },
+  ],
+  pointsFootnote: "",
+  rulebook: RACE_INFO_DEFAULTS.rulebook.filter((g) => ["Track limits", "Racing", "Blue flags", "Engagement rules", "Safety car"].includes(g.subject)),
+  rulebookFootnote: RACE_INFO_DEFAULTS.rulebookFootnote,
+};

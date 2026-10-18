@@ -1,9 +1,20 @@
+import { resolveSeries } from "./series.js";
+
 // Admin-editable content of the Race Info page (intro, "New here?" hint, rule
 // cards, sporting regulations, footnotes). Stored as one JSON blob in the
 // Setting table; the frontend falls back to its built-in defaults while
 // nothing is saved yet.
 
 export const RACE_INFO_KEY = "race_info_content";
+
+// A special event (Series.kind "event") has a Race Info page of its own: its
+// car, its format and its rules, none of the championship's points or tiers.
+// Stored per series. Championships all share the one page above.
+export async function raceInfoKeyFor(prisma, slug, { includePrivate = false } = {}) {
+  const series = await resolveSeries(prisma, slug, { includePrivate });
+  if (series?.kind === "event") return { key: `${RACE_INFO_KEY}:series:${series.id}`, event: true };
+  return { key: RACE_INFO_KEY, event: false };
+}
 
 const str = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -43,8 +54,8 @@ export function sanitizeRaceInfo(input) {
   return out;
 }
 
-export async function readRaceInfo(prisma) {
-  const row = await prisma.setting.findUnique({ where: { key: RACE_INFO_KEY } });
+export async function readRaceInfo(prisma, key = RACE_INFO_KEY) {
+  const row = await prisma.setting.findUnique({ where: { key } });
   if (!row) return null;
   try {
     return sanitizeRaceInfo(JSON.parse(row.value));
@@ -54,18 +65,18 @@ export async function readRaceInfo(prisma) {
 }
 
 // content = null clears the override (page goes back to the built-in defaults).
-export async function writeRaceInfo(prisma, content) {
+export async function writeRaceInfo(prisma, content, key = RACE_INFO_KEY) {
   if (content == null) {
-    await prisma.setting.deleteMany({ where: { key: RACE_INFO_KEY } });
+    await prisma.setting.deleteMany({ where: { key } });
     return null;
   }
   const clean = sanitizeRaceInfo(content);
   if (!clean) throw Object.assign(new Error("Invalid race info content"), { status: 400 });
   const value = JSON.stringify(clean);
   await prisma.setting.upsert({
-    where: { key: RACE_INFO_KEY },
+    where: { key },
     update: { value },
-    create: { key: RACE_INFO_KEY, value },
+    create: { key, value },
   });
   return clean;
 }

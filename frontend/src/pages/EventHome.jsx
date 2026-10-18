@@ -252,7 +252,7 @@ function EventBefore({ series, race }) {
                 title={d.name}
                 className="flex h-16 flex-col items-center justify-center gap-0.5 rounded-xl bg-ink px-1 text-white dark:bg-white dark:text-ink"
               >
-                <span className="font-mono text-base font-bold text-brand dark:text-ink">{d.number != null ? `#${d.number}` : "·"}</span>
+                <span className="font-mono text-base font-bold text-brand dark:text-ink">{(d.carNumber ?? d.number) != null ? `#${d.carNumber ?? d.number}` : "·"}</span>
                 <span className="max-w-full truncate text-[11px] font-semibold">{d.name}</span>
               </li>
             ) : (

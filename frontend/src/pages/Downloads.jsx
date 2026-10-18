@@ -15,7 +15,10 @@ import { answerWords, withLiveAnswers } from "../utils/signupAnswers.mjs";
 import { SocialIcon } from "../components/SocialLinks.jsx";
 import Icon from "../components/InfoIcon.jsx";
 import { singularOne, threeLetterMonths } from "../utils/format.js";
-import { RACE_INFO_DEFAULTS } from "../data/raceInfoDefaults.js";
+import { RACE_INFO_DEFAULTS, RACE_INFO_EVENT_DEFAULTS } from "../data/raceInfoDefaults.js";
+import { useSeries } from "../context/SeriesContext.jsx";
+import { raceKickoff } from "../utils/raceTime.js";
+import { carStoreUrl } from "../data/defaultLiveries.js";
 
 // League default points. Fallback only; seasons can override via pointsTable.
 const DEFAULT_POINTS = [35, 30, 25, 22, 20, 18, 16, 14, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
@@ -40,12 +43,34 @@ const BOLD = "font-semibold text-dark";
 // The rulebook marks its key values a little louder, so "160 km/h" or
 // "4 seconds" can be found again at a glance.
 const MARK = "rounded bg-primary/30 px-1 font-semibold text-dark";
-function rich(s, cls = BOLD) {
+function bold(s, cls, keyBase = "") {
   const parts = String(s ?? "").split(/\*\*(.+?)\*\*/g);
   if (parts.length === 1) return s;
   return parts.map((p, i) =>
-    i % 2 ? <span key={i} className={cls}>{p}</span> : p
+    i % 2 ? <span key={`${keyBase}${i}`} className={cls}>{p}</span> : p
   );
+}
+// [label](https://...) becomes a link that opens in a new tab, so a special
+// event's page can point at the car's store. Only http(s) addresses.
+const LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+function rich(s, cls = BOLD) {
+  const str = String(s ?? "");
+  if (!LINK.test(str)) return bold(s, cls);
+  LINK.lastIndex = 0;
+  const out = [];
+  let last = 0;
+  let m;
+  while ((m = LINK.exec(str))) {
+    if (m.index > last) out.push(bold(str.slice(last, m.index), cls, `t${m.index}-`));
+    out.push(
+      <a key={`a${m.index}`} href={m[2]} target="_blank" rel="noopener noreferrer" className="font-semibold text-link hover:underline">
+        {m[1]}
+      </a>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < str.length) out.push(bold(str.slice(last), cls, "end-"));
+  return out;
 }
 const text = (s, tokens) => rich(fill(s, tokens));
 
@@ -80,18 +105,19 @@ function readMinutes(content, tokens) {
 // Title on the left, a table of contents on the right (under it on a phone).
 // Every row jumps to its section; the counts come from the same content the
 // sections render, so they can't disagree.
-function Header({ content, tokens, pointsCount, isLoggedIn, fileCount, requiredCount }) {
+function Header({ content, tokens, pointsCount, isLoggedIn, fileCount, requiredCount, isEvent = false }) {
   const ruleCount = content.rulebook.reduce((n, g) => n + g.rules.length, 0);
   const cardCount = content.cards.length;
   // Admin text (Race Info tab). Content saved before it was editable has no
   // key and keeps the standard hint; an empty one hides the box.
-  const newHere = content.newHere ?? RACE_INFO_DEFAULTS.newHere;
+  const newHere = content.newHere ?? (isEvent ? RACE_INFO_EVENT_DEFAULTS : RACE_INFO_DEFAULTS).newHere;
+  // A special event scores nothing, so it has no points section.
   const rows = [
-    { id: "format", title: "How the championship works", meta: `${cardCount} ${cardCount === 1 ? "card" : "cards"}` },
-    { id: "points", title: "Points per finish", meta: pointsCount ? `P1 to P${pointsCount}` : null },
+    { id: "format", title: isEvent ? "How the event works" : "How the championship works", meta: `${cardCount} ${cardCount === 1 ? "card" : "cards"}` },
+    !isEvent && { id: "points", title: "Points per finish", meta: pointsCount ? `P1 to P${pointsCount}` : null },
     { id: "regulations", title: "Sporting regulations", meta: `${ruleCount} ${ruleCount === 1 ? "rule" : "rules"}` },
     { id: "downloads", title: "Downloads", members: true },
-  ];
+  ].filter(Boolean);
 
   return (
     <header className="mb-4 grid grid-cols-1 gap-6 border-b border-border pb-5 sm:mb-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
@@ -155,7 +181,7 @@ function Header({ content, tokens, pointsCount, isLoggedIn, fileCount, requiredC
           })}
           <li>
             <Link to="/content-check" className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface2">
-              <span className="w-5 font-mono text-xs font-bold text-faint">05</span>
+              <span className="w-5 font-mono text-xs font-bold text-faint">{String(rows.length + 1).padStart(2, "0")}</span>
               <span className="min-w-0 flex-1 font-semibold text-dark">Checksum failed? Content Check</span>
               <ChevronRight className="h-4 w-4 text-faint" strokeWidth={2} aria-hidden="true" />
             </Link>
@@ -204,10 +230,10 @@ function CardVisual({ card, rounds, counted, answers }) {
   return null;
 }
 
-function FormatCards({ content, tokens, rounds, counted, answers }) {
+function FormatCards({ content, tokens, rounds, counted, answers, title = "How the championship works" }) {
   return (
     <section id="format" className="reveal scroll-mt-28 space-y-4">
-      <SectionHeading eyebrow="01 · The rules" title="How the championship works" />
+      <SectionHeading eyebrow="01 · The rules" title={title} />
       <div className="cascade grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
         {content.cards.map((c, i) => (
           <div key={i} style={{ "--i": Math.min(i, 8) }}>
@@ -283,7 +309,7 @@ function PointsTable({ content, tokens, pointsTable, fastestLapPoints }) {
 
 // Subjects on the left (swipeable chips on a phone), the chosen subject's
 // numbered rules on the right. Subject n's rules are numbered n.1, n.2, ...
-function Rulebook({ content, tokens }) {
+function Rulebook({ content, tokens, num = "03" }) {
   const groups = content.rulebook || [];
   const [sel, setSel] = useState(0);
   const total = groups.reduce((n, g) => n + g.rules.length, 0);
@@ -295,7 +321,7 @@ function Rulebook({ content, tokens }) {
   return (
     <section id="regulations" className="reveal scroll-mt-28 space-y-4">
       <SectionHeading
-        eyebrow="03 · On track"
+        eyebrow={`${num} · On track`}
         title="Sporting regulations"
         right={
           <span className="hidden font-mono text-[11px] uppercase tracking-wider text-light sm:inline">
@@ -658,14 +684,14 @@ function Catalogue({ data, loading, error, reload, query, roundOf }) {
 // The downloads are where a wrong mod version comes from, so the page that
 // finds one belongs right under them, and it needs no login: being unable to
 // join is not a reason to make somebody sign in first.
-function ContentCheckNotice() {
+function ContentCheckNotice({ num = "05" }) {
   return (
     <div className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:p-6">
       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-warn/10 text-warn">
         <TriangleAlert className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className={EYEBROW}>05 · Content Check</div>
+        <div className={EYEBROW}>{num} · Content Check</div>
         <h3 className="mt-1 font-display text-base font-extrabold uppercase tracking-tight text-dark sm:text-lg">
           Kicked with &ldquo;Checksum failed&rdquo;?
         </h3>
@@ -703,8 +729,19 @@ export default function Downloads() {
   const files = useApi(useCallback(() => (isLoggedIn ? api.downloads() : Promise.resolve(null)), [isLoggedIn]));
   const [query, setQuery] = useState("");
 
+  // A special event has a page of its own (its car, its format, no points).
+  const { current: series } = useSeries();
+  const isEvent = info.data ? !!info.data.event : series?.kind === "event";
   // Admin-saved content wins; the built-in defaults cover a fresh site.
-  const content = info.data?.content || RACE_INFO_DEFAULTS;
+  const content = info.data?.content || (isEvent ? RACE_INFO_EVENT_DEFAULTS : RACE_INFO_DEFAULTS);
+  // When the livery links are due: the day before the race, an hour before
+  // its clock time (backend lib/eventCars.js).
+  const eventKickoff = isEvent ? raceKickoff((races.data || []).find((r) => !r.isCompleted)?.date || races.data?.[0]?.date) : null;
+  const liveryDue = eventKickoff
+    ? `${new Intl.DateTimeFormat("en-GB", {
+        timeZone: "UTC", weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+      }).format(new Date(eventKickoff.getTime() - 25 * 3600e3))} UTC`
+    : "the day before the race";
 
   // Live numbers the text placeholders can reference.
   const { era, platform } = seasonGameParts(season);
@@ -723,6 +760,10 @@ export default function Downloads() {
     era: era || "Formula 1",
     // Only the sign-up buttons that exist (Admin -> Notifications).
     answers: answerWords(info.data?.answers),
+    car: season?.game || series?.game || "",
+    // "[Get the car](store)" for a car we know the shop of, else nothing.
+    carLink: carStoreUrl(season?.game || series?.game) ? `[Get the car here](${carStoreUrl(season?.game || series?.game)}).` : "",
+    deadline: liveryDue,
   };
   const pointsTable =
     Array.isArray(season?.pointsTable) && season.pointsTable.length ? season.pointsTable : DEFAULT_POINTS;
@@ -744,6 +785,7 @@ export default function Downloads() {
         isLoggedIn={isLoggedIn}
         fileCount={fileCount}
         requiredCount={requiredCount}
+        isEvent={isEvent}
       />
 
       <div className="space-y-7 sm:space-y-10">
@@ -753,19 +795,22 @@ export default function Downloads() {
           rounds={totalRounds}
           counted={counted}
           answers={info.data?.answers}
+          title={isEvent ? "How the event works" : undefined}
         />
-        <PointsTable
-          content={content}
-          tokens={tokens}
-          pointsTable={pointsTable}
-          fastestLapPoints={season?.fastestLapPoints}
-        />
-        <Rulebook content={content} tokens={tokens} />
+        {!isEvent && (
+          <PointsTable
+            content={content}
+            tokens={tokens}
+            pointsTable={pointsTable}
+            fastestLapPoints={season?.fastestLapPoints}
+          />
+        )}
+        <Rulebook content={content} tokens={tokens} num={isEvent ? "02" : "03"} />
       </div>
 
       <section id="downloads" className="reveal scroll-mt-28 space-y-4">
         <SectionHeading
-          eyebrow="04 · Members"
+          eyebrow={`${isEvent ? "03" : "04"} · Members`}
           title="Downloads"
           right={
             isLoggedIn ? (
@@ -805,7 +850,7 @@ export default function Downloads() {
         ) : (
           <LoginGate />
         )}
-        <ContentCheckNotice />
+        <ContentCheckNotice num={isEvent ? "04" : "05"} />
       </section>
     </div>
   );

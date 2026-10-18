@@ -4,6 +4,7 @@ import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTransfersVisible } from "../hooks/useTransfersVisible.js";
 import { useEventRace } from "../hooks/useEventRace.js";
+import { useMyEventEntry } from "../hooks/useMyEventEntry.js";
 import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useProfileHome } from "../hooks/useProfileHome.js";
@@ -346,9 +347,17 @@ function navLinks(p) {
 //   live    Live first, then Event · Entry list · Get ready
 //   after   Event · Results · Race replay
 // `disabled` items render as plain text with their `hint` (the race date).
-export function eventNavLinks(p, race, phase) {
+// The entry list is named after what it is to the viewer: "Sign up" until they
+// have, "Attendance" once they are in. On race night there is nothing left to
+// sign up for, so it is the entry list again for everybody else.
+export function eventEntryLabel(phase, signedUp) {
+  if (signedUp) return "Attendance";
+  return phase === "live" || phase === "pending" ? "Entry list" : "Sign up";
+}
+
+export function eventNavLinks(p, race, phase, signedUp = false) {
   const home = { to: p(""), label: "Event", end: true, alsoActiveOn: "/" };
-  const entry = { to: p("/attendance"), label: "Entry list" };
+  const entry = { to: p("/attendance"), label: eventEntryLabel(phase, signedUp) };
   const ready = { to: "/downloads", label: "Get ready" };
   const live = { to: p("/live"), label: "Live" };
   if (phase === "after" && race) {
@@ -582,7 +591,7 @@ function BottomNav({ seriesPath, liveNow, onTap, event = null }) {
     { key: "home", to: seriesPath(""), end: true, label: "Event", icon: TAB_ICONS.home, forced: location.pathname === "/" },
     event.phase === "after" && event.race
       ? { key: "results", to: seriesPath(`/races?race=${event.race.id}`), label: "Results", icon: TAB_ICONS.standings }
-      : { key: "entry", to: seriesPath("/attendance"), label: "Entry list", icon: TAB_ICONS.races },
+      : { key: "entry", to: seriesPath("/attendance"), label: eventEntryLabel(event.phase, event.signedUp), icon: TAB_ICONS.races },
   ];
   const tabs = [
     ...(eventTabs || [
@@ -1076,8 +1085,9 @@ export default function NavBar() {
 
   const isEvent = current?.kind === "event";
   const { race: eventRace, phase: eventPhase } = useEventRace(isEvent);
+  const eventSignedUp = useMyEventEntry(isEvent && eventPhase !== "after" ? eventRace?.id : null);
   const links = isEvent
-    ? eventNavLinks(seriesPath, eventRace, eventPhase)
+    ? eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp)
     : navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
   // Reserve drivers only, and only until they have looked or applied.
   const seats = useReserveSeats();
@@ -1409,7 +1419,7 @@ export default function NavBar() {
                   </>
                 )}
                 {isEvent && eventPhase !== "after" && (
-                  <SheetTile to={seriesPath("/attendance")} Icon={CalendarCheck} label="Entry list" hint="Sign up, who is in" />
+                  <SheetTile to={seriesPath("/attendance")} Icon={CalendarCheck} label={eventEntryLabel(eventPhase, eventSignedUp)} hint={eventSignedUp ? "Your car, who is in" : "Sign up, who is in"} />
                 )}
                 {!isEvent && <SheetTile to={seriesPath("/races")} Icon={Flag} label="Races" hint="Calendar & results" />}
                 {!isEvent && attendanceOpen && (
@@ -1476,7 +1486,7 @@ export default function NavBar() {
         </div>
       )}
     </header>
-    <BottomNav seriesPath={seriesPath} liveNow={liveNow} onTap={closeMenu} event={isEvent ? { race: eventRace, phase: eventPhase } : null} />
+    <BottomNav seriesPath={seriesPath} liveNow={liveNow} onTap={closeMenu} event={isEvent ? { race: eventRace, phase: eventPhase, signedUp: eventSignedUp } : null} />
     </>
   );
 }
