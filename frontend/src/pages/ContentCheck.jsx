@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PageHeader, ErrorBox, Notice, CardHead } from "../components/ui.jsx";
 import { useApi } from "../hooks/useApi.js";
-import { api, withApiBase } from "../api/client.js";
+import { api, withApiBase, getToken } from "../api/client.js";
+import { useAuth } from "../hooks/useAuth.js";
 import { md5File } from "../utils/md5.js";
 import { canPickFolder, pickAcFolder, readerFromDrop } from "../utils/acFolder.js";
 
@@ -53,7 +54,72 @@ function ResultRow({ row }) {
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+// For admins: the code the tool asks for before it saves a reference install,
+// so nobody needs the admin PIN (most admins sign in through Discord). Fetched
+// on click, never kept: it is a two-hour key to one thing.
+function ReferenceCode() {
+  const [code, setCode] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  async function load() {
+    setBusy(true);
+    setErr(null);
+    try {
+      setCode(await api.contentReferenceCode());
+    } catch (e) {
+      setErr(e?.message || "No code. Are you still signed in as an admin?");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function copy() {
+    navigator.clipboard?.writeText(code.code).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => setErr("Copying didn't work. Select the code by hand.")
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {!code ? (
+        <button className="btn-secondary px-3 py-1 text-xs" disabled={busy} onClick={load}>
+          {busy ? "Getting code…" : "Code for the tool"}
+        </button>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <input
+              readOnly
+              value={code.code}
+              onFocus={(e) => e.target.select()}
+              className="input min-w-0 flex-1 py-1 font-mono text-[11px]"
+              aria-label="Code for the tool"
+            />
+            <button className="btn-secondary shrink-0 px-3 py-1 text-xs" onClick={copy}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="text-[11px] text-faint">
+            Paste it when the tool asks for &ldquo;Code or admin PIN&rdquo;. It only saves references and stops working
+            after two hours. Don&rsquo;t post it in Discord.
+          </p>
+        </>
+      )}
+      {err && <p className="text-xs text-bad">{err}</p>}
+    </div>
+  );
+}
+
 export default function ContentCheck() {
+  const { user } = useAuth();
+  // Discord-designated admins and PIN sessions alike; the server checks again.
+  const isAdmin = !!user?.isAdmin || !!getToken();
   const [serverKey, setServerKey] = useState(null);
   const fetcher = useCallback(() => api.contentCheck(serverKey), [serverKey]);
   const { data, loading, error, reload } = useApi(fetcher);
@@ -276,6 +342,7 @@ export default function ContentCheck() {
                 reference (checksums only, no files). From then on everybody&rsquo;s 3D models and liveries are compared
                 against it too, which the race server alone can&rsquo;t do.
               </p>
+              {isAdmin && <ReferenceCode />}
             </div>
             <a className="btn-secondary shrink-0 px-4" href={withApiBase("/api/content-check/tool")} download>
               Download for Windows

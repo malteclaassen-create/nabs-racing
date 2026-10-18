@@ -42,6 +42,15 @@ export function signAdminToken() {
   return jwt.sign({ role: "admin" }, JWT_SECRET, { expiresIn: "12h" });
 }
 
+// A code an admin copies from the Content Check page into the Windows tool, so
+// a reference install can be saved without the admin PIN (most admins sign in
+// through Discord and never had it). It opens exactly one door, POST
+// /api/content-check/reference, and only for two hours: a code pasted into
+// the wrong Discord channel is worth little and not for long.
+export function signReferenceCode() {
+  return jwt.sign({ role: "content-reference" }, JWT_SECRET, { expiresIn: "2h" });
+}
+
 // Sign a token for a logged-in driver (via Discord).
 export function signUserToken(payload) {
   return jwt.sign({ role: "user", ...payload }, JWT_SECRET, { expiresIn: "30d" });
@@ -253,6 +262,18 @@ export function isAdminRequest(req) {
 //   * the PIN admin token (role "admin"), or
 //   * a Discord user token whose account is a currently-designated admin
 //     (lib/adminUsers.js) — re-checked live so granting/revoking is immediate.
+// The reference upload: an admin session, or a code from signReferenceCode.
+export async function requireReferenceAccess(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  try {
+    if (token && jwt.verify(token, JWT_SECRET)?.role === "content-reference") return next();
+  } catch {
+    return res.status(401).json({ error: "The code is wrong or has expired. Get a new one from the Content Check page." });
+  }
+  return requireAdmin(req, res, next);
+}
+
 export async function requireAdmin(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;

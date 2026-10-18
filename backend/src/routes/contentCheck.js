@@ -15,7 +15,7 @@ import {
   contentCheckServers,
 } from "../services/contentCheckService.js";
 import { parseReferenceUpload, conflictsWithServer, writeReference } from "../lib/contentReference.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireReferenceAccess, signReferenceCode } from "../middleware/auth.js";
 import { isValidServerKey, DEFAULT_SERVER_KEY } from "../lib/liveServers.js";
 import { contentCheckTool, CONTENT_CHECK_TOOL_NAME } from "../lib/contentCheckTool.js";
 
@@ -45,13 +45,21 @@ router.get("/full", (req, res, next) => sendManifest(req, res, next, getFullCont
 
 router.get("/", (req, res, next) => sendManifest(req, res, next, getContentCheck));
 
+// GET /api/content-check/reference-code -> { code, expiresAt }: what an admin
+// signed in on the site pastes into the tool instead of the admin PIN
+// (middleware/auth.js, signReferenceCode).
+router.get("/reference-code", requireAdmin, (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ code: signReferenceCode(), expiresAt: new Date(Date.now() + 2 * 3600 * 1000).toISOString() });
+});
+
 // POST /api/content-check/reference  { server, by, groups } -> saves an
 // admin's install as the reference for the session's cars and track
 // (lib/contentReference.js). Sent by the Windows tool after a clean check.
 // Refused for anything not in the server's current session, and for any car
 // or track whose files disagree with the server's own copies: a reference
 // that argues with the server would send every driver to the wrong fix.
-router.post("/reference", requireAdmin, async (req, res, next) => {
+router.post("/reference", requireReferenceAccess, async (req, res, next) => {
   try {
     const parsed = parseReferenceUpload(req.body);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
