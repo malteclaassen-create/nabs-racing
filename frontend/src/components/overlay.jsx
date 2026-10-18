@@ -249,7 +249,11 @@ export function Modal({
 
   const sizes = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
   const shells = {
-    center: `relative m-auto w-full ${sizes[size] || sizes.md} rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base ${
+    // max-h-full + a column, as the sheet below: a dialog taller than the
+    // screen scrolls its body between a pinned header and footer. Without it
+    // the overlay's fixed box cut the bottom off on a phone and nothing
+    // scrolled: the link-picture editor lost its fields and its Save button.
+    center: `relative m-auto flex max-h-full w-full flex-col ${sizes[size] || sizes.md} rounded-2xl border border-border bg-card shadow-2xl shadow-ink/30 transition duration-base ${
       show ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.98] opacity-0"
     }`,
     // Rounded on all four corners, not just the top. The sheet does not sit on
@@ -329,8 +333,8 @@ export function Modal({
                 ? "min-h-0 flex-1 overflow-y-auto"
                 : // A sheet keeps the padding it always had and gains the
                   // scroll, for the case where its content is taller than the
-                  // screen.
-                  variant === "sheet"
+                  // screen. So does a centred dialog.
+                  variant === "sheet" || variant === "center"
                   ? "min-h-0 flex-1 overflow-y-auto px-5 py-4"
                   : variant === "bare"
                   // min-h-0 matters: without it this flex child takes its
