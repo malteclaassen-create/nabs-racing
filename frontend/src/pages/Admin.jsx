@@ -4701,6 +4701,8 @@ function AddSeveralRounds({ races, seasonId, onCreated }) {
 function DiscordEvents({ onJump }) {
   const ask = useAsk();
   const { current } = useSeason();
+  const { current: series } = useSeries();
+  const isEvent = series?.kind === "event";
   // Only whether announcements can go out: the webhook itself is set up with
   // the other Discord connections, under System → Discord.
   const { data: hook } = useApi(useCallback(() => api.getWebhook(), []));
@@ -4871,9 +4873,20 @@ function DiscordEvents({ onJump }) {
               onChange={(e) => setEvent({ ...event, type: e.target.value })}>
               <option value="CHAMPIONSHIP">Championship round (scored, has a round number)</option>
               <option value="TRAINING">Training / session (not scored, RSVP works)</option>
-              <option value="SPECIAL">Special event (not scored, announcement only)</option>
+              <option value="SPECIAL">
+                {isEvent ? "Announcement only (not scored, no sign-up)" : "Special event (not scored, announcement only)"}
+              </option>
             </select>
           </Field>
+          {/* "Special event" as a race type is an announcement without a
+              sign-up. A special event SERIES races a championship round:
+              only that gets the sign-up, the countdown and a result. */}
+          {isEvent && event.type !== "CHAMPIONSHIP" && (
+            <Notice kind="warn">
+              For {series.name}&apos;s race itself pick <strong>Championship round</strong> (round 1): only that one gets the
+              sign-up, the countdown on the event page and a result.
+            </Notice>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {event.type === "CHAMPIONSHIP" && (
               <input aria-label="Round number" className="input" type="number" placeholder="Round #" value={event.number}
@@ -4884,6 +4897,19 @@ function DiscordEvents({ onJump }) {
           </div>
           <input aria-label="Date & time" className="input" type="datetime-local" value={event.date}
             onChange={(e) => setEvent({ ...event, date: e.target.value })} />
+          {/* The field is in this computer's time zone, and summer time may
+              differ between today and race day: the start in UTC, spelled out. */}
+          {fromLocalInput(event.date) && (
+            <div className="-mt-1 text-xs text-light">
+              Your time zone. In UTC that is{" "}
+              <span className="font-semibold text-medium">
+                {new Date(fromLocalInput(event.date)).toLocaleString("en-GB", {
+                  weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+                })}{" "}
+                UTC
+              </span>
+            </div>
+          )}
           {/* session format + free text: all optional, shown in the Discord
               announcement and on the site's upcoming-race panels */}
           <Field label="Race day" tone="plain">
