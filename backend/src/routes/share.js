@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
-import { sharePictureState } from "../lib/sharePictures.js";
+import { cachedSharePictureState } from "../lib/sharePictures.js";
 import { renderSharePicture } from "../lib/sharePictureDraw.js";
 
 const router = Router();
@@ -26,7 +26,11 @@ const requestOf = (req) => ({
 router.get("/version", async (req, res, next) => {
   try {
     const { path, query } = requestOf(req);
-    const state = await sharePictureState(prisma, path, query);
+    // The same 10-second memory the HTML's link preview uses. The site asks
+    // this on every visit and page switch, and working the state out fresh
+    // costs the standings and a round's results each time; the version can
+    // only change with a results save anyway.
+    const state = await cachedSharePictureState(prisma, path, query);
     res.setHeader("Cache-Control", "no-store");
     res.json({ version: state?.version ?? null });
   } catch (e) {
@@ -37,7 +41,7 @@ router.get("/version", async (req, res, next) => {
 router.get("/picture.jpg", async (req, res, next) => {
   try {
     const { path, query } = requestOf(req);
-    const state = await sharePictureState(prisma, path, query);
+    const state = await cachedSharePictureState(prisma, path, query);
     if (!state) return res.status(404).json({ error: "No picture for this page" });
     const jpeg = await renderSharePicture(state);
     res.type("jpeg");

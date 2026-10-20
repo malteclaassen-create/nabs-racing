@@ -1,7 +1,22 @@
 import { PrismaClient } from "@prisma/client";
 
+// How many SQLite connections Prisma may hold open. Its default is two per CPU
+// core plus one, counting the cores of the whole machine: 9 on a 4-core laptop,
+// dozens on a large Railway host, each with its own page cache and statement
+// cache in memory. SQLite writes one at a time anyway and WAL lets readers run
+// beside the writer, so a handful covers this site's traffic. A DATABASE_URL
+// that names its own connection_limit keeps it.
+export const SQLITE_CONNECTION_LIMIT = 4;
+
+export function withConnectionLimit(url, limit = SQLITE_CONNECTION_LIMIT) {
+  if (!url || !url.startsWith("file:") || /[?&]connection_limit=/.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}connection_limit=${limit}`;
+}
+
+const databaseUrl = withConnectionLimit(process.env.DATABASE_URL);
+
 // Single shared Prisma client instance.
-const prisma = new PrismaClient();
+const prisma = new PrismaClient(databaseUrl ? { datasources: { db: { url: databaseUrl } } } : undefined);
 
 // SQLite tuning, applied once at boot. The default rollback-journal mode makes
 // readers block while a write is in progress: on race night an import commit
