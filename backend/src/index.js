@@ -32,6 +32,7 @@ import raceControlRoutes from "./routes/raceControl.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { compressOldBackups } from "./services/backupService.js";
+import { startDbMaintenance } from "./services/dbMaintenance.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import widgetRoutes from "./routes/widget.js";
@@ -832,6 +833,17 @@ setInterval(sweepReports, REPORT_SWEEP_MS).unref();
 // one pass a minute after boot catches up with whatever an older version of
 // the server left behind as plain files.
 setTimeout(() => compressOldBackups(), 60_000).unref();
+
+// Nightly database upkeep (services/dbMaintenance.js): month-old live
+// incidents out, the WAL cut back, a VACUUM when deletions have left the file
+// half empty. The VACUUM waits for a night when nobody is out on any server.
+startDbMaintenance(prisma, {
+  isQuiet: () =>
+    LIVE_SERVERS.every((srv) => {
+      const board = getBoard(srv.key);
+      return !(board.ok && !board.stale && (board.entries || []).some((e) => e.onTrack));
+    }),
+});
 
 const REMINDER_TICK_MS = 5 * 60 * 1000;
 setInterval(() => {
