@@ -76,6 +76,7 @@ import { repairImportedRaceTimesOnce, dropPreStartPayoutsOnce } from "./lib/toke
 import { ensureTuning } from "./lib/tokenTuning.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 import { avatarThumbRoute } from "./lib/avatarThumbs.js";
+import { contentEtag } from "./lib/contentEtag.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
 // in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
@@ -546,14 +547,24 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     // link preview and the canonical address, and static delivery would skip
     // both on the one page that needs them most.
     index: false,
+    // No Last-Modified: it is the build's time, new on every deploy, and a
+    // browser revalidating with it would download unchanged files again. The
+    // content ETag below carries the revalidation on its own.
+    lastModified: false,
     // Tell browsers to keep static files instead of re-asking on every page
     // switch (matters a lot over a tunnel, where each request costs ~0.5s).
-    setHeaders(res, filePath) {
+    setHeaders(res, filePath, stat) {
       if (/[\\/]assets[\\/]/.test(filePath)) {
         // Vite build output has a content hash in the file name -> can never
         // go stale, cache "forever".
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?)$/i.test(filePath)) {
+        return;
+      }
+      // Everything else keeps its name from build to build, so its tag has to
+      // come from the content to survive a deploy (lib/contentEtag.js).
+      const etag = contentEtag(filePath, stat);
+      if (etag) res.setHeader("ETag", etag);
+      if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?)$/i.test(filePath)) {
         // Flags, team logos, fonts, hero images: stable files, 7 days.
         res.setHeader("Cache-Control", "public, max-age=604800");
       } else {

@@ -733,7 +733,7 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
 // ---------------------------------------------------------------------------
 // The shop's artwork.
 //
-// A real picture wins whenever there is one: drop <key>.jpg (or .png/.webp)
+// A real picture wins whenever there is one: drop <key>.webp (or .jpg/.png)
 // into frontend/public/shop and the tile picks it up, no code involved. See
 // that folder's README.
 //
@@ -742,7 +742,10 @@ function EarnList({ rules, multiplier = 1, startDay = null, earning = true }) {
 // site does not want, and six different gradients say nothing about six
 // different things anyway. The same quiet panel for all of them.
 // ---------------------------------------------------------------------------
-const ART_EXTENSIONS = ["jpg", "png", "webp"];
+// WebP first: the shipped pictures are WebP (a sixth of the PNGs they were),
+// and every miss before the hit costs a request that comes back as the site's
+// HTML.
+const ART_EXTENSIONS = ["webp", "jpg", "png"];
 
 // Which picture an entry has, worked out ONCE per key and remembered for the
 // rest of the visit: null while we are still looking, false for "there is none",

@@ -77,13 +77,19 @@ async function rememberImage(slug, url) {
   }
 }
 
-const DEFAULT_MASK = "url(/logo-dark.png) center / contain no-repeat";
+// The shared marks at 192px: the bar draws them at 40-46px, so this covers a
+// 3x phone screen and weighs a fraction of the 1080px originals, which both
+// load on every first visit (the light one even while hidden in dark mode).
+// The originals stay for the graphics that draw the mark big.
+const SHARED_DARK = "/logo-dark-192.png";
+const SHARED_LIGHT = "/logo-light-192.png";
+const DEFAULT_MASK = `url(${SHARED_DARK}) center / contain no-repeat`;
 
 export default function Logo({ size = 40, className = "" }) {
   const { current, slug, loaded } = useSeries();
   // What this series' mark SHOULD be, once the list is in. Until then, whatever
   // it was last time.
-  const wanted = loaded ? current?.logoDarkUrl || "/logo-dark.png" : remembered(slug) || "/logo-dark.png";
+  const wanted = loaded ? current?.logoDarkUrl || SHARED_DARK : remembered(slug) || SHARED_DARK;
   // What is on screen. The new mark is only put up once it has actually
   // decoded: pointing an <img> at a file it does not have yet empties it first,
   // which is the blank beat between two series' logos.
@@ -91,7 +97,7 @@ export default function Logo({ size = 40, className = "" }) {
   const stored = useMemo(() => rememberedImage(slug), [slug]);
   const src = stored && stored.url === shown ? stored.data : shown;
   // No upload of its own: the shared mark, tinted to the series' colour.
-  const tinted = shown === "/logo-dark.png";
+  const tinted = shown === SHARED_DARK;
 
   useEffect(() => {
     if (!loaded) return;
@@ -108,7 +114,7 @@ export default function Logo({ size = 40, className = "" }) {
     pre.onload = () => alive && setShown(wanted);
     // A remembered file an admin has since deleted, or a broken upload: fall
     // back to the shared mark rather than leaving the old series' one up.
-    pre.onerror = () => alive && setShown("/logo-dark.png");
+    pre.onerror = () => alive && setShown(SHARED_DARK);
     pre.src = wanted;
     return () => {
       alive = false;
@@ -118,7 +124,7 @@ export default function Logo({ size = 40, className = "" }) {
   return (
     <>
       <img
-        src="/logo-light.png"
+        src={SHARED_LIGHT}
         width={size}
         height={size}
         alt="NABS Racing"
@@ -143,7 +149,7 @@ export default function Logo({ size = 40, className = "" }) {
           className={`hidden dark:block ${className}`}
           onError={(e) => {
             const img = e.currentTarget;
-            if (!img.src.endsWith("/logo-dark.png")) img.src = "/logo-dark.png";
+            if (!img.src.endsWith(SHARED_DARK)) img.src = SHARED_DARK;
           }}
         />
       )}
