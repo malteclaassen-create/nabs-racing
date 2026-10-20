@@ -310,7 +310,10 @@ export default function AdminHealth() {
         <p className="-mt-2 mb-4 text-sm text-light">
           A backup is created automatically before race results are saved. To restore: stop the server,
           copy the backup file from <span className="font-mono">backend/backups/</span> over{" "}
-          <span className="font-mono">backend/prisma/dev.db</span>, then start the server again.
+          <span className="font-mono">backend/prisma/dev.db</span>, then start the server again. The
+          newest three are plain files; older ones are kept compressed (
+          <span className="font-mono">.db.gz</span>) to save disk space, so unpack one of those first
+          (gunzip, or 7-Zip on Windows).
         </p>
         <Notice kind="info">
           The snapshots below live on the same disk as the live database. Use{" "}

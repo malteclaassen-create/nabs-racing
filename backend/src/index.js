@@ -31,6 +31,7 @@ import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
+import { compressOldBackups } from "./services/backupService.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import widgetRoutes from "./routes/widget.js";
@@ -825,6 +826,12 @@ const sweepReports = () =>
   sweepReportFiles(prisma).catch((e) => console.error("[reports]", e?.message || e));
 setTimeout(sweepReports, 20_000).unref();
 setInterval(sweepReports, REPORT_SWEEP_MS).unref();
+
+// Database snapshots older than the newest few are kept gzipped
+// (services/backupService.js). Each new snapshot packs the ones behind it; this
+// one pass a minute after boot catches up with whatever an older version of
+// the server left behind as plain files.
+setTimeout(() => compressOldBackups(), 60_000).unref();
 
 const REMINDER_TICK_MS = 5 * 60 * 1000;
 setInterval(() => {
