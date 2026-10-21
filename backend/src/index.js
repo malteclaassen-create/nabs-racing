@@ -31,6 +31,8 @@ import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
+import { compressOldBackups } from "./services/backupService.js";
+import { startDbMaintenance } from "./services/dbMaintenance.js";
 import { IS_DEPLOYED } from "./lib/deployment.js";
 import searchRoutes from "./routes/search.js";
 import widgetRoutes from "./routes/widget.js";
@@ -76,6 +78,7 @@ import { repairImportedRaceTimesOnce, dropPreStartPayoutsOnce } from "./lib/toke
 import { ensureTuning } from "./lib/tokenTuning.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 import { avatarThumbRoute } from "./lib/avatarThumbs.js";
+import { contentEtag } from "./lib/contentEtag.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
 // in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
@@ -546,14 +549,24 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
     // link preview and the canonical address, and static delivery would skip
     // both on the one page that needs them most.
     index: false,
+    // No Last-Modified: it is the build's time, new on every deploy, and a
+    // browser revalidating with it would download unchanged files again. The
+    // content ETag below carries the revalidation on its own.
+    lastModified: false,
     // Tell browsers to keep static files instead of re-asking on every page
     // switch (matters a lot over a tunnel, where each request costs ~0.5s).
-    setHeaders(res, filePath) {
+    setHeaders(res, filePath, stat) {
       if (/[\\/]assets[\\/]/.test(filePath)) {
         // Vite build output has a content hash in the file name -> can never
         // go stale, cache "forever".
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?)$/i.test(filePath)) {
+        return;
+      }
+      // Everything else keeps its name from build to build, so its tag has to
+      // come from the content to survive a deploy (lib/contentEtag.js).
+      const etag = contentEtag(filePath, stat);
+      if (etag) res.setHeader("ETag", etag);
+      if (/\.(png|jpe?g|webp|svg|gif|ico|woff2?)$/i.test(filePath)) {
         // Flags, team logos, fonts, hero images: stable files, 7 days.
         res.setHeader("Cache-Control", "public, max-age=604800");
       } else {
@@ -814,6 +827,23 @@ const sweepReports = () =>
   sweepReportFiles(prisma).catch((e) => console.error("[reports]", e?.message || e));
 setTimeout(sweepReports, 20_000).unref();
 setInterval(sweepReports, REPORT_SWEEP_MS).unref();
+
+// Database snapshots older than the newest few are kept gzipped
+// (services/backupService.js). Each new snapshot packs the ones behind it; this
+// one pass a minute after boot catches up with whatever an older version of
+// the server left behind as plain files.
+setTimeout(() => compressOldBackups(), 60_000).unref();
+
+// Nightly database upkeep (services/dbMaintenance.js): month-old live
+// incidents out, the WAL cut back, a VACUUM when deletions have left the file
+// half empty. The VACUUM waits for a night when nobody is out on any server.
+startDbMaintenance(prisma, {
+  isQuiet: () =>
+    LIVE_SERVERS.every((srv) => {
+      const board = getBoard(srv.key);
+      return !(board.ok && !board.stale && (board.entries || []).some((e) => e.onTrack));
+    }),
+});
 
 const REMINDER_TICK_MS = 5 * 60 * 1000;
 setInterval(() => {

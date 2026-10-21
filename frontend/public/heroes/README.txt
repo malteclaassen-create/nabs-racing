@@ -19,4 +19,6 @@ The easier route, and the one that needs no code at all: Admin -> Seasons ->
 Upload hero. That always wins over the files here.
 
 - Recommended size: a wide landscape image, at least 1920x800, JPG.
-- If a season file is missing, the site falls back to /public/hero.jpg.
+- If a season file is missing, the site falls back to /public/hero.webp (the
+  link-preview pictures the server draws use /public/hero.jpg, the same photo).
+  Replacing the default photo means replacing both.

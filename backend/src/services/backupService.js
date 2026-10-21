@@ -6,13 +6,24 @@
 // An automatic backup runs before every results save (import commit / editor
 // save), so any mistake is one file-copy away from being undone: stop the
 // server, copy the backup file over prisma/dev.db, start again.
+//
+// Only the newest few stay a plain .db. Every older one is gzipped in the
+// background (nabs-....db.gz): a SQLite file shrinks to a fraction of its size,
+// and forty full copies of the database were the biggest predictable thing on
+// the volume, growing with every season the database holds. The ones anybody
+// realistically restores - the snapshot right before the last save - are still
+// a plain file to copy; an older one is unpacked first (gunzip).
 // ---------------------------------------------------------------------------
-import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "fs";
+import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync, renameSync, utimesSync, createReadStream, createWriteStream } from "fs";
 import { join, basename } from "path";
+import { pipeline } from "stream/promises";
+import { createGzip } from "zlib";
 import archiver from "archiver";
 import { BACKUPS_DIR as BACKUP_DIR, UPLOADS_DIR } from "../lib/dataDirs.js";
 
 const KEEP_N = 40;
+// How many of the newest snapshots stay uncompressed.
+const KEEP_PLAIN = 3;
 
 // A backup file name: nabs-20260703-142530-r11.db
 function backupName(label) {
@@ -32,7 +43,74 @@ export async function createBackup(prisma, label) {
   await prisma.$executeRawUnsafe(`VACUUM INTO '${sqlitePath}'`);
   pruneBackups();
   const st = statSync(file);
+  // Not awaited: the save this snapshot protects must not wait for gzip.
+  compressOldBackups();
   return { file: basename(file), size: st.size, createdAt: st.mtime };
+}
+
+// Gzip every plain snapshot except the newest KEEP_PLAIN. One run at a time
+// (a burst of saves only queues one more pass), each file streamed through
+// zlib off the main thread, written under a .part name and renamed when
+// complete, so a crash mid-way never leaves a broken .gz behind - only a
+// .part that the next pass clears. Never throws: a snapshot that cannot be
+// compressed simply stays as it is.
+let compressing = null;
+let compressAgain = false;
+export function compressOldBackups() {
+  if (compressing) {
+    compressAgain = true;
+    return compressing;
+  }
+  compressing = (async () => {
+    do {
+      compressAgain = false;
+      await compressPass();
+    } while (compressAgain);
+  })()
+    .catch((e) => console.error("[backups] compress:", e?.message || e))
+    .finally(() => {
+      compressing = null;
+    });
+  return compressing;
+}
+
+async function compressPass() {
+  let names;
+  try {
+    names = readdirSync(BACKUP_DIR);
+  } catch {
+    return; // no backups folder yet
+  }
+  for (const name of names) {
+    if (name.endsWith(".part")) {
+      try {
+        unlinkSync(join(BACKUP_DIR, name));
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const plain = listBackups().filter((b) => b.file.endsWith(".db"));
+  for (const b of plain.slice(KEEP_PLAIN)) {
+    const src = join(BACKUP_DIR, b.file);
+    const part = `${src}.gz.part`;
+    try {
+      await pipeline(createReadStream(src), createGzip(), createWriteStream(part));
+      // The list and the 40-file cap sort by modification time: the packed
+      // copy keeps the snapshot's own time, or it would count as the newest
+      // backup and push a genuinely newer one out.
+      utimesSync(part, b.createdAt, b.createdAt);
+      renameSync(part, `${src}.gz`);
+      unlinkSync(src);
+    } catch (e) {
+      console.error(`[backups] could not compress ${b.file}:`, e?.message || e);
+      try {
+        unlinkSync(part);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 // Best-effort variant for automatic pre-save snapshots: a failing backup must
@@ -99,7 +177,7 @@ export async function streamFullBackupZip(prisma, res) {
 export function listBackups() {
   let files;
   try {
-    files = readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".db"));
+    files = readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".db") || f.endsWith(".db.gz"));
   } catch {
     return [];
   }
@@ -125,7 +203,7 @@ function pruneBackups() {
 // A snapshot file name as this service writes them, and nothing else — the
 // delete endpoints go through this so a request can only ever name a backup,
 // never reach for another file on the disk.
-const isBackupFile = (name) => /^nabs-[a-z0-9-]+\.db$/i.test(String(name || "")) && basename(name) === name;
+const isBackupFile = (name) => /^nabs-[a-z0-9-]+\.db(\.gz)?$/i.test(String(name || "")) && basename(name) === name;
 
 // Delete ONE snapshot by name. True when it's gone, false for a name that
 // isn't a backup or doesn't exist.

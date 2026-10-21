@@ -9,8 +9,11 @@
 //   2. public/heroes/s<number>.jpg — drop-a-file convention for anyone who DOES
 //      have file access; still works, untouched by the upload feature. The
 //      season number has to be listed in SEASONS_WITH_OWN_HERO below.
-//   3. the shared /hero.jpg.
-export const DEFAULT_HERO = "/hero.jpg";
+//   3. the shared default photo, as WebP (a third of the JPG's size, same
+//      picture). public/hero.jpg stays next to it for the link-preview
+//      pictures the server draws (backend lib/sharePictures.js) and as the
+//      admin previews' background.
+export const DEFAULT_HERO = "/hero.webp";
 
 // Which seasons really have their own file in public/heroes/. The folder ships
 // with s1..s8 as eight byte-identical copies of /hero.jpg, and pointing six

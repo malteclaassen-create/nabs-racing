@@ -68,7 +68,7 @@ async function loadLocal(url) {
 // per family holds every weight, and the weight is picked with the wght axis
 // (setFont below). A weight in the font string alone is ignored, and the text
 // came out at the file's default weight.
-const FACES = { Display: "archivo-900", Body: "inter-400", Mono: "jetbrains-mono-500" };
+const FACES = { Display: "archivo", Body: "inter", Mono: "jetbrains-mono" };
 let fontsReady = false;
 function registerFonts(GlobalFonts) {
   if (fontsReady) return;
