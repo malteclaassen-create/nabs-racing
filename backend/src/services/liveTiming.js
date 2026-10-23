@@ -40,6 +40,7 @@ import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
 import { noteBoard, sectorLinesFor } from "../lib/sectorLines.js";
 import { dropImpossibleSectors } from "../lib/impossibleSectors.js";
+import { repairCumulativeSplits } from "../lib/cumulativeSplits.js";
 import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
 import { dbListSeries } from "../lib/series.js";
@@ -1205,7 +1206,9 @@ function createRelay(server) {
         elapsed < practiceElapsed - PRACTICE_RESTART_GAP_MS;
       if (now !== was || restarted) parkPracticeLaps(nextSi);
     }
-    status = next;
+    // A track that reports two splits, the second a running total, becomes
+    // three sectors here, before anything reads them (lib/cumulativeSplits.js).
+    status = repairCumulativeSplits(next);
     lastSnapshotAt = Date.now();
     // Keep the per-car telemetry across snapshots — clearing it here blanked
     // every map dot for a beat (pos gone until each car's next ET53). Only
