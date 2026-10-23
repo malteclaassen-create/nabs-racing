@@ -1610,6 +1610,7 @@ export const api = {
   unblockFromReport: (id, discordId) =>
     request(`/admin/reports/${id}/blocks/${discordId}`, { method: "DELETE", auth: true }),
   deleteReport: (id) => request(`/admin/reports/${id}`, { method: "DELETE", auth: true }),
+  deleteReports: (ids) => request("/admin/reports/bulk-delete", { method: "POST", body: { ids }, auth: true }),
   // What the stewards decided for one round, and how much of it has already
   // been written into the classification. The results editor fills the rest in.
   raceReportPenalties: (raceId) => request(`/admin/races/${raceId}/report-penalties`, { auth: true }),
