@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check } from "lucide-react";
 import { api, myDiscordId } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardBar, ErrorBox, Field, Notice } from "./ui.jsx";
@@ -826,6 +827,20 @@ export default function AdminReports() {
   const filtering = !!(q.trim() || roundId || source || unnamedOnly);
   const [busy, setBusy] = useState(false);
   const ask = useAsk();
+  // Ticking several to delete at once. A race night can leave a pile of
+  // in-game reports nobody wants, and opening each one to delete it is slow.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState(() => new Set());
+  const togglePick = (ids, on) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) on ? next.add(id) : next.delete(id);
+      return next;
+    });
+  const stopPicking = () => {
+    setPicking(false);
+    setPicked(new Set());
+  };
   // The in-game URL's two destructive buttons stay out of reach until asked
   // for. Resets itself after either one runs.
   const [unlocked, setUnlocked] = useState(false);
@@ -1082,6 +1097,17 @@ function ContactSuggestions({ report }) {
           >
             Names nobody
           </button>
+          <button
+            aria-pressed={picking}
+            className={`rounded-lg border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
+              picking
+                ? "border-brand bg-brand/10 text-dark"
+                : "border-border text-light hover:border-link hover:text-dark"
+            }`}
+            onClick={() => (picking ? stopPicking() : setPicking(true))}
+          >
+            Select
+          </button>
           {filtering && (
             <button
               className="text-sm font-semibold text-link transition hover:underline"
@@ -1110,25 +1136,104 @@ function ContactSuggestions({ report }) {
         </Notice>
       )}
 
-      {groups.map((g) => (
+      {picking && data && visible.length > 0 && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-brand bg-surface px-4 py-2.5 shadow-lg">
+          <span className="text-sm font-semibold text-dark">{picked.size} selected</span>
+          <button
+            className="text-sm font-semibold text-link transition hover:underline"
+            onClick={() => togglePick(visible.map((r) => r.id), true)}
+          >
+            Select all shown ({visible.length})
+          </button>
+          {picked.size > 0 && (
+            <button
+              className="text-sm font-semibold text-link transition hover:underline"
+              onClick={() => setPicked(new Set())}
+            >
+              Unselect all
+            </button>
+          )}
+          <span className="flex-1" />
+          <button className="btn-secondary py-1.5 text-sm" onClick={stopPicking}>
+            Cancel
+          </button>
+          <button
+            className="transition inline-flex items-center rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40"
+            disabled={busy || picked.size === 0}
+            onClick={async () => {
+              const n = picked.size;
+              if (
+                !(await ask({
+                  title: `Delete ${n} report${n === 1 ? "" : "s"}?`,
+                  body: "Their threads and everything written in them go too. This cannot be undone.",
+                  danger: true,
+                  confirmLabel: `Delete ${n}`,
+                }))
+              )
+                return;
+              setBusy(true);
+              try {
+                await api.deleteReports([...picked]);
+                stopPicking();
+                changed();
+                reload();
+              } catch (e) {
+                await ask({ title: "Could not delete", body: e.message, alert: true });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Delete {picked.size || ""}
+          </button>
+        </div>
+      )}
+
+      {groups.map((g) => {
+        const groupIds = g.reports.map((r) => r.id);
+        const allPicked = groupIds.every((id) => picked.has(id));
+        return (
         <div key={g.race?.id || "none"} className="card overflow-hidden">
           <CardBar
             title={g.race ? raceLabel(g.race) : "No round given"}
             right={
-              <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
-                {g.reports.length} report{g.reports.length === 1 ? "" : "s"}
-              </span>
+              picking ? (
+                <button
+                  className="text-sm font-semibold text-link transition hover:underline"
+                  onClick={() => togglePick(groupIds, !allPicked)}
+                >
+                  {allPicked ? "Unselect round" : "Select round"}
+                </button>
+              ) : (
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+                  {g.reports.length} report{g.reports.length === 1 ? "" : "s"}
+                </span>
+              )
             }
           />
           <ul className="divide-y divide-border">
             {g.reports.map((r) => {
               const s = uiOf(r.status);
+              const on = picked.has(r.id);
               return (
                 <li key={r.id}>
                   <button
-                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-left transition hover:bg-surface2/60"
-                    onClick={() => setOpenId(r.id)}
+                    aria-pressed={picking ? on : undefined}
+                    className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 text-left transition hover:bg-surface2/60 ${
+                      on ? "bg-brand/10" : ""
+                    }`}
+                    onClick={() => (picking ? togglePick([r.id], !on) : setOpenId(r.id))}
                   >
+                    {picking && (
+                      <span
+                        aria-hidden
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          on ? "border-brand bg-brand text-white" : "border-border"
+                        }`}
+                      >
+                        {on && <Check size={12} strokeWidth={3} />}
+                      </span>
+                    )}
                     <span className={`pill ${s.cls}`}>{s.label}</span>
                     {r.source === "INGAME" && (
                       <span className="pill bg-brand/15 text-brand" title="Fired from inside the race by webPenalty">
@@ -1182,7 +1287,8 @@ function ContactSuggestions({ report }) {
             })}
           </ul>
         </div>
-      ))}
+        );
+      })}
 
       {data && <AdminIncidentWatch />}
 

@@ -8318,6 +8318,20 @@ router.delete("/reports/:id", async (req, res, next) => {
   }
 });
 
+// Several at once, ticked in the list. A race night can leave a dozen in-game
+// reports nobody wants, and clicking through them one by one is the whole
+// evening again.
+router.post("/reports/bulk-delete", async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))].slice(0, 500) : [];
+    if (!ids.length) return res.status(400).json({ error: "No reports picked" });
+    for (const id of ids) removeAttachmentFiles(id, await dbDeleteReport(prisma, id));
+    res.json({ ok: true, deleted: ids.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // --- Feedback (bug reports & feature wishes from the site) -------------------
 // Written by anyone through the floating Feedback button (routes/feedback.js);
 // read, sorted and worked through here. Private throughout — a report can name
