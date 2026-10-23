@@ -69,6 +69,8 @@ const SERIES_SEGMENTS = new Set([
   "calendar",
   "attendance",
   "live",
+  // The streamer notes (/s/<slug>/stream), the page casters read off mid-race.
+  "stream",
 ]);
 // Pages that exist only under a series, never as a flat address: a special
 // event's sign-up (/s/<slug>/signup). Flat /signup is an old alias of the

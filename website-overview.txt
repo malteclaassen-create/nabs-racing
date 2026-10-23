@@ -71,6 +71,17 @@ Live timing
   best and last lap, gaps, tyres, pit stops and who is out on track right now.
   If no session is running it just says it is waiting for the server.
 
+Streamer notes
+  A page for whoever streams the round to read off during the race
+  (/s/<series>/stream, linked from Live timing). It has the next round with
+  how many rounds and points are left, the title maths (who can still win,
+  whether the leader can wrap it up tonight and with which finish, who could
+  be knocked out tonight), the circuit's history (earlier winners, poles,
+  fastest laps, records and the admin's own track facts), and one line per
+  driver on tonight's grid: points, gap, wins, podiums, poles, last three
+  results and what they did at this track before. The talking points can be
+  copied as plain text. Nothing on it is typed in; it comes from the results.
+
 Telemetry tips
   The lap comparison on the Tools page has a Tips panel. It is written for the
   driver of the slower of the two laps: where the gap goes corner by corner,

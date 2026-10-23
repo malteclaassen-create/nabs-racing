@@ -30,6 +30,7 @@ import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
+import { titleMath } from "../utils/streamNotes.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
@@ -48,66 +49,14 @@ const TILE_ICONS = {
 // The championship battle while the title is still open: everyone who can
 // still mathematically catch the leader, their gaps, and how many points are
 // left on the table. Disappears once the maths (or the calendar) settle it.
-//
-// "Still in it" is EXACT under the season's drop rule: a chaser survives when
-// their best-case final total (maximum points in every remaining round, then
-// the N worst rounds dropped) at least matches the leader's guaranteed floor
-// (zero in every remaining round, same drop rule). The per-round maximum is
-// the best single-round haul seen this season.
-function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, totalRounds, tableMax = 0, sprintRounds = [], customPoints = {} }) {
-  const completedCount = completedNumbers.length;
-  const remaining = totalRounds - completedCount;
-  if (remaining <= 0 || completedCount < 1 || standings.length < 2) return null;
-
-  const done = new Set(completedNumbers);
-  // A sprint+feature weekend pays twice — both races score the full table —
-  // so those rounds are priced at double below, and an observed haul from one
-  // counts as two races' worth in the single-race maximum.
-  const sprint = new Set(sprintRounds);
-  // A round with its own points table pays what THAT table's P1 says.
-  const customMax = (n) => (Array.isArray(customPoints?.[n]) && customPoints[n].length ? customPoints[n][0] : null);
-  // Points a round can pay at most: the season's OWN points table (P1's score —
-  // admin-editable per season, so a rule change flows straight in here), or,
-  // when the season runs on the league default (no stored table), the best
-  // single-round haul actually seen. The observed value also wins if official/
-  // bonus points ever exceeded the table.
-  const maxPerRound = Math.max(
-    tableMax || 0,
-    ...standings.flatMap((d) =>
-      Object.entries(d.perRace || {})
-        // A round on its own table says nothing about a normal one.
-        .filter(([n]) => done.has(Number(n)) && customMax(Number(n)) == null)
-        // A sprint weekend's haul is two races' worth: halve it to keep the
-        // fallback a single-race figure.
-        .map(([n, r]) => (sprint.has(Number(n)) ? (r?.points || 0) / 2 : r?.points || 0))
-    )
-  );
-  if (!maxPerRound) return null;
-  // What a round can pay at most: its own table's P1 where it has one, twice
-  // over for a sprint weekend.
-  const maxFor = (n) => (customMax(n) ?? maxPerRound) * (sprint.has(n) ? 2 : 1);
-
-  const dropN = Math.min(dropWorst ?? 0, raceNumbers.length);
-  const dropSum = (vals) => vals.sort((a, b) => a - b).slice(dropN).reduce((s, v) => s + v, 0);
-  // Current standing under the drop rule with the remaining rounds still at 0.
-  // Recomputed (not read from d.total) so the demo's rewound rounds are
-  // consistent too; on the live season this equals the server total.
-  const floorTotal = (d) =>
-    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : 0)));
-  // Best possible final total: max points in every remaining round, then drop.
-  const maxFinal = (d) =>
-    dropSum(raceNumbers.map((n) => (done.has(n) ? d.perRace?.[n]?.points ?? 0 : maxFor(n))));
-
-  const rows = standings
-    .map((d) => ({ d, cur: floorTotal(d) }))
-    .sort((a, b) => b.cur - a.cur);
-  const leader = rows[0];
-  if (!leader.cur) return null;
-  const contenders = rows.filter((r) => r === leader || maxFinal(r.d) >= leader.cur).slice(0, 4);
-  if (contenders.length < 2) return null;
-  // What is still on the table: each remaining round at its own maximum (a
-  // double-points finale counts for what it really pays).
-  const potential = raceNumbers.filter((n) => !done.has(n)).reduce((s, n) => s + maxFor(n), 0) || remaining * maxPerRound;
+// The maths itself (exact under the drop rule, sprint and own-table rounds
+// priced for what they pay) lives in utils/streamNotes.js, shared with the
+// streamer notes so the two pages never disagree about who is alive.
+function TitleFight(props) {
+  const math = titleMath(props);
+  if (!math || math.decided) return null;
+  const { remaining, potential, leader } = math;
+  const contenders = math.alive.slice(0, 4);
   return (
     <section className="reveal space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-2">

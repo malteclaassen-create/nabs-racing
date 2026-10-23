@@ -295,4 +295,9 @@ describe("isKnownRoute", () => {
     }
     expect(isKnownRoute("/helpx")).toBe(false);
   });
+
+  it("knows the streamer notes, flat and under a series", () => {
+    expect(isKnownRoute("/s/friday-f1/stream")).toBe(true);
+    expect(isKnownRoute("/stream")).toBe(true);
+  });
 });
