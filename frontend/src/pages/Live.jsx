@@ -4027,6 +4027,15 @@ export default function Live() {
                   and leaves you to guess what. */}
               {!tvSeen && <span className="pill bg-brand/30 text-[9px] text-dark">New</span>}
             </button>
+            {/* The caster's other screen: title maths and fun facts to read
+                out while the board runs. */}
+            <Link
+              to="/stream"
+              title="Title maths, track history and fun facts to read out on stream"
+              className="hidden items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark sm:inline-flex"
+            >
+              Streamer notes
+            </Link>
             {/* Stewards on a phone: straight into the TV board with race
                 control on, the one reason to open it there. */}
             {rcAllowed && (

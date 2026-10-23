@@ -30,6 +30,8 @@ const PAGES = [
     words: ["live", "timing", "leaderboard", "board", "zeiten"] },
   { key: "records", label: "Hall of Fame", hint: "Champions and all-time records", icon: "crown", where: "league", path: "/records",
     words: ["records", "hall of fame", "champions", "all time", "rekorde", "bestenliste"] },
+  { key: "stream", label: "Streamer notes", hint: "Title maths and fun facts to read out mid-race", icon: "message", where: "league", path: "/stream",
+    words: ["stream", "streamer", "streaming", "broadcast", "caster", "commentary", "notes", "facts", "fun facts", "title maths", "kommentar"] },
   { key: "transfers", label: "Transfers", hint: "Seat moves between rounds", icon: "arrows", where: "league", path: "/transfers",
     words: ["transfers", "seats", "market", "wechsel", "transfermarkt"] },
 
