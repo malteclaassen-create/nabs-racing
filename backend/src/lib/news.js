@@ -22,6 +22,8 @@
 // page renders itself. No HTML ever goes through: what a writer types is text.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "node:crypto";
+import { readdirSync, statSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 
 export const NEWS_CATEGORIES = {
   RACES: "Races",
@@ -361,4 +363,65 @@ export async function updateArticle(prisma, existing, fields) {
 
 export async function deleteArticle(prisma, id) {
   await prisma.$executeRawUnsafe(`DELETE FROM "NewsArticle" WHERE "id" = ?`, id);
+}
+
+// --- pictures nobody uses ----------------------------------------------------
+// A picture is uploaded the moment a writer picks it (routes/news.js, POST
+// /desk/cover), because the editor has to show it before anything is saved.
+// So a picture taken out of the text again, a cover swapped for another, an
+// article left without saving or an article deleted all leave a file in
+// uploads/news/ that no article points at. This sweep takes those away.
+//
+// A file younger than the grace period stays whatever happens: it may belong
+// to an article that is being written right now and has not been saved yet.
+
+export const NEWS_UPLOAD_GRACE_MS = 24 * 60 * 60 * 1000;
+const NEWS_FILE_RE = /\/api\/uploads\/news\/([A-Za-z0-9._-]+)/g;
+
+// The upload file names an article's cover and text point at.
+export function referencedNewsFiles(rows) {
+  const out = new Set();
+  for (const r of rows || []) {
+    for (const text of [r.coverUrl, r.body]) {
+      for (const m of String(text || "").matchAll(NEWS_FILE_RE)) out.add(m[1]);
+    }
+  }
+  return out;
+}
+
+// Which of `files` ([{ name, mtimeMs }]) can go. Pure, for the test.
+export function unusedNewsFiles(files, referenced, now = Date.now(), graceMs = NEWS_UPLOAD_GRACE_MS) {
+  return files.filter((f) => !referenced.has(f.name) && now - f.mtimeMs > graceMs).map((f) => f.name);
+}
+
+export async function sweepUnusedNewsUploads(prisma, dir, now = Date.now()) {
+  let names = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return 0; // nothing uploaded yet
+  }
+  const files = [];
+  for (const name of names) {
+    try {
+      const st = statSync(join(dir, name));
+      if (st.isFile()) files.push({ name, mtimeMs: st.mtimeMs });
+    } catch {
+      /* gone already */
+    }
+  }
+  if (!files.length) return 0;
+  // Every article, drafts too: a draft's pictures are kept like a published one's.
+  const rows = await prisma.$queryRawUnsafe(`SELECT "coverUrl", "body" FROM "NewsArticle"`);
+  let removed = 0;
+  for (const name of unusedNewsFiles(files, referencedNewsFiles(rows), now)) {
+    try {
+      unlinkSync(join(dir, name));
+      removed += 1;
+    } catch {
+      /* busy or gone: the next sweep tries again */
+    }
+  }
+  if (removed) console.log(`[news] removed ${removed} picture(s) no article uses`);
+  return removed;
 }

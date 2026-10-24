@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { slugify, sanitizeArticleInput, checkCoverUrl, readingMinutes } from "./news.js";
+import {
+  slugify,
+  sanitizeArticleInput,
+  checkCoverUrl,
+  readingMinutes,
+  referencedNewsFiles,
+  unusedNewsFiles,
+  NEWS_UPLOAD_GRACE_MS,
+} from "./news.js";
 import { composeRaceReport } from "./newsRaceReport.js";
 
 describe("slugify", () => {
@@ -126,5 +134,30 @@ describe("composeRaceReport", () => {
       standingsBefore: [{ driverId: "a", name: "Munti", total: 90 }],
     });
     expect(a.body).toContain("new championship leader: Dieguiosk takes over from Munti");
+  });
+});
+
+describe("pictures nobody uses", () => {
+  const rows = [
+    { coverUrl: "/api/uploads/news/cover-a.jpg", body: "Text ![](/api/uploads/news/in-text.png) more" },
+    { coverUrl: "/api/uploads/races/r1-x.jpg", body: "" },
+    { coverUrl: null, body: null },
+  ];
+
+  it("finds the uploads an article's cover and text use", () => {
+    expect([...referencedNewsFiles(rows)].sort()).toEqual(["cover-a.jpg", "in-text.png"]);
+  });
+
+  it("lets go of old pictures nothing uses, keeps fresh ones and used ones", () => {
+    const now = 10 * NEWS_UPLOAD_GRACE_MS;
+    const old = now - NEWS_UPLOAD_GRACE_MS - 1;
+    const fresh = now - 1000;
+    const files = [
+      { name: "cover-a.jpg", mtimeMs: old },
+      { name: "in-text.png", mtimeMs: old },
+      { name: "taken-out-again.jpg", mtimeMs: old },
+      { name: "being-written.jpg", mtimeMs: fresh },
+    ];
+    expect(unusedNewsFiles(files, referencedNewsFiles(rows), now)).toEqual(["taken-out-again.jpg"]);
   });
 });
