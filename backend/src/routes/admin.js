@@ -166,6 +166,7 @@ import {
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
+import { draftRaceReport } from "../lib/newsRaceReport.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR, DATA_ROOT } from "../lib/dataDirs.js";
 import {
@@ -797,7 +798,12 @@ router.post("/races/commit", async (req, res, next) => {
     // the event, with whichever save completed the pair.
     if (results.length) {
       resultsBellRace(prisma, race, sprintOf)
-        .then((bell) => bell && notifyResultsSaved(prisma, bell))
+        .then((bell) => {
+          if (!bell) return;
+          notifyResultsSaved(prisma, bell);
+          // The news desk's race report, drafted from the result (lib/newsRaceReport.js).
+          draftRaceReport(prisma, bell);
+        })
         .catch(() => {});
     }
     // New results can tip a driver over a card-unlock threshold (and the finale
@@ -2773,6 +2779,8 @@ router.put("/races/:id/results", async (req, res, next) => {
     // pings the members, edits stay silent). A sprint child stays quiet, as
     // on import — the evening's bell rings once, with the feature.
     if (results.length && !isSprint) notifyResultsSaved(prisma, race);
+    // A round typed in by hand gets its race report too (at most once per round).
+    if (results.length && !isSprint) draftRaceReport(prisma, race);
     if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
     res.json({ ok: true, raceId: race.id, session: isSprint ? "SPRINT" : "RACE" });
   } catch (e) {

@@ -1045,6 +1045,38 @@ export const api = {
       `/admin/race-recap/preview?raceId=${encodeURIComponent(raceId)}${driverId ? `&driverId=${encodeURIComponent(driverId)}` : ""}`,
       { auth: true }
     ),
+  // The news (backend routes/news.js). Reading is public; the desk takes an
+  // admin OR a member an admin named a news writer, so it rides on whichever
+  // token is there (the PIN, else the Discord session) and the server decides.
+  news: ({ category = "", q = "", before = "" } = {}) => {
+    const qs = new URLSearchParams();
+    if (category) qs.set("category", category);
+    if (q) qs.set("q", q);
+    if (before) qs.set("before", before);
+    const s = qs.toString();
+    return request(`/news${s ? `?${s}` : ""}`);
+  },
+  newsArticle: (slug) => request(`/news/article/${encodeURIComponent(slug)}`),
+  newsDeskAccess: () => request("/news/desk/access", { auth: true }),
+  newsDesk: () => request("/news/desk", { auth: true }),
+  newsDeskArticle: (id) => request(`/news/desk/${encodeURIComponent(id)}`, { auth: true }),
+  createNewsArticle: (article) => request("/news/desk", { method: "POST", body: article, auth: true }),
+  updateNewsArticle: (id, article) =>
+    request(`/news/desk/${encodeURIComponent(id)}`, { method: "PUT", body: article, auth: true }),
+  deleteNewsArticle: (id) => request(`/news/desk/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
+  uploadNewsCover: async (file) => {
+    const fd = new FormData();
+    fd.append("file", await wholeFile(file), file.name);
+    return request("/news/desk/cover", { method: "POST", body: fd, auth: true, form: true });
+  },
+  newsDeskRounds: () => request("/news/desk/rounds", { auth: true }),
+  newsByRace: (ids) => request(`/news/desk/by-race?ids=${ids.map(encodeURIComponent).join(",")}`, { auth: true }),
+  createNewsRaceReports: (raceIds, publish) =>
+    request("/news/desk/race-reports", { method: "POST", body: { raceIds, publish }, auth: true }),
+  draftNewsRaceReport: (raceId) => request("/news/desk/race-report", { method: "POST", body: { raceId }, auth: true }),
+  newsDeskSettings: () => request("/news/desk/settings", { auth: true }),
+  saveNewsDeskSettings: (settings) => request("/news/desk/settings", { method: "PUT", body: settings, auth: true }),
+  newsDeskMembers: (q) => request(`/news/desk/members?q=${encodeURIComponent(q)}`, { auth: true }),
   // The newcomer names who brought them in: a code, or the member's name.
   nameInviter: (name) => request("/tokens/invited-by", { method: "POST", body: { name }, userAuth: true }),
   // `text` is only read for the flair you write yourself (choice "custom").

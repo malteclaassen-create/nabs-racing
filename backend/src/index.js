@@ -39,6 +39,7 @@ import widgetRoutes from "./routes/widget.js";
 import shareRoutes from "./routes/share.js";
 import contentCheckRoutes from "./routes/contentCheck.js";
 import changelogRoutes from "./routes/changelog.js";
+import newsRoutes from "./routes/news.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng, getTrackIds } from "./services/liveTiming.js";
@@ -371,6 +372,8 @@ app.use("/api/content-check", contentCheckRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/reports", reportsRoutes);
+// The league's articles and the desk they are written at (routes/news.js).
+app.use("/api/news", newsRoutes);
 // Signing in as any driver, for testing both sides of a report on one machine.
 // The router refuses to mount on anything that looks like a deployment, and
 // refuses every request that did not come from the loopback address. See the

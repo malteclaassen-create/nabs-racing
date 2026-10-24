@@ -337,6 +337,7 @@ function navLinks(p) {
     { to: p("/races"), label: "Races", tour: "nav-races" },
     { to: p("/attendance"), label: "Attendance", tour: "nav-attendance" },
     { to: p("/live"), label: "Live", tour: "nav-live" },
+    { to: "/news", label: "News" },
     { to: "/downloads", label: "Race Info" },
   ];
 }

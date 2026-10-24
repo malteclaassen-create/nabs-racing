@@ -110,6 +110,9 @@ export const NOTIFY_DEFAULTS = {
   results: true, // "results are in" broadcast
   photos: true, // "photos from the round are up" broadcast (first batch only)
   downloads: true, // "new download" broadcast
+  // The news (lib/news.js). Both off until the league switches them on.
+  newsPublished: false, // "new article" broadcast, once per article when it is first published
+  newsDrafts: false, // personal note to writers and admins when the site has drafted a race report
   seatOffers: "reserves", // who hears about seat offers: "reserves" | "all" | "off"
   seatFilled: true, // personal "you got the seat" note to the picked reserve
   adminAlerts: true, // no longer read: admin to-dos are the admin area's To do card now (kept so stored settings round-trip)
@@ -131,6 +134,8 @@ export function sanitizeNotifySettings(input) {
     results: o.results !== false,
     photos: o.photos !== false,
     downloads: o.downloads !== false,
+    newsPublished: o.newsPublished === true,
+    newsDrafts: o.newsDrafts === true,
     seatOffers: ["reserves", "all", "off"].includes(o.seatOffers) ? o.seatOffers : "reserves",
     seatFilled: o.seatFilled !== false,
     adminAlerts: o.adminAlerts !== false,
@@ -280,7 +285,7 @@ async function seriesPrefixForSeason(prisma, seasonId) {
 // broadcast — results imports and market changes there stay invisible until
 // the season is published. isPublic is a raw-SQL column -> raw read; treat a
 // missing column (fresh checkout) as public, like seasonService does.
-async function seasonIsPublic(prisma, seasonId) {
+export async function seasonIsPublic(prisma, seasonId) {
   if (!seasonId) return true;
   try {
     const rows = await prisma.$queryRawUnsafe(
@@ -300,7 +305,7 @@ const roundName = (race) => (race?.number ? `Round ${race.number}` : race?.track
 // on the current one) and the race id — the Races page picks the round AND the
 // right session tab (rounds/training/special) from it. Falls back to the plain
 // calendar when the season row is gone.
-async function racePageLink(prisma, race) {
+export async function racePageLink(prisma, race) {
   const prefix = await seriesPrefixForSeason(prisma, race?.seasonId);
   if (!race?.id) return `${prefix}/races`;
   let seasonNumber = null;

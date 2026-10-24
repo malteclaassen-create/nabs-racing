@@ -68,6 +68,14 @@ function TypeIcon({ type }) {
           <path d="M4 17v3h16v-3" />
         </svg>
       );
+    case "NEWS": // newspaper — an article went out, or a draft waits on the desk
+      return (
+        <svg {...common}>
+          <path d="M4 5h13v14H6a2 2 0 01-2-2V5z" />
+          <path d="M17 9h3v8a2 2 0 01-2 2" />
+          <path d="M7 9h7M7 12h7M7 15h4" />
+        </svg>
+      );
     case "PHOTOS": // camera — a round's gallery went up
       return (
         <svg {...common}>

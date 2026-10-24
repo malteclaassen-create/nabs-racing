@@ -84,6 +84,10 @@ const Help = lazy(() => import("./pages/Help.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 // What changed on the site. A page people open now and then, not on arrival.
 const Changelog = lazy(() => import("./pages/Changelog.jsx"));
+// The league's news: the list, one article, and the desk they are written at.
+const News = lazy(() => import("./pages/News.jsx"));
+const NewsArticle = lazy(() => import("./pages/NewsArticle.jsx"));
+const NewsDesk = lazy(() => import("./pages/NewsDesk.jsx"));
 // The race recap: a member lands here once after each saved round, and can
 // come back from the race page. Never on a first page view of a visitor.
 const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
@@ -314,6 +318,10 @@ function AppRoutes() {
         <Route path="/privacy" element={<Privacy />} />
         {/* What changed on the site, newest first (data/changelog.js). */}
         <Route path="/changelog" element={<Changelog />} />
+        <Route path="/news" element={<News />} />
+        <Route path="/news/desk" element={<NewsDesk />} />
+        <Route path="/news/desk/:id" element={<NewsDesk />} />
+        <Route path="/news/:slug" element={<NewsArticle />} />
         <Route path="/delete-account" element={<DeleteAccount />} />
         {/* Race-prep calculators. Not in the nav on purpose: linked from the
             upcoming-race panel and the private profile. */}
@@ -399,6 +407,7 @@ function footerLinks(p) {
     // The install walkthrough. Its own announcement in the bell fires once and
     // is then read; this is the standing way back to it.
     { to: "/app", label: "Add to phone" },
+    { to: "/news", label: "News" },
     { to: "/changelog", label: "What's new" },
   ];
 }
