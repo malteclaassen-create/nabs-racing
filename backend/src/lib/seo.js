@@ -145,6 +145,10 @@ const GLOBAL_SEGMENTS = new Set([
   "content-check",
   // What's new. The bell's announcement links here, and it answered 404.
   "changelog",
+  // The league's articles (/news, /news/<slug>) and the desk they are
+  // written at (/news/desk/<id>). Every published article rings the bell
+  // with a link here, and a race report is exactly what gets shared.
+  "news",
   // A member's own feedback and report threads. The notification that tells
   // somebody the admins have answered links straight to /feedback?id=… and
   // /reports?id=…, and the server was answering both 404 (the app rendered the

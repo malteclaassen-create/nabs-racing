@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { isBanned, mainAccountId } from "../lib/members.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
+import { isNewsWriter } from "../lib/news.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { IS_DEPLOYED } from "../lib/deployment.js";
@@ -303,4 +304,46 @@ export async function requireAdmin(req, res, next) {
     }
   }
   return res.status(401).json({ error: "Invalid or expired token" });
+}
+
+// The news desk (routes/news.js). Admins get in the usual two ways; a member
+// whose Discord account an admin has named a news writer (lib/news.js) gets in
+// with their own member token, and only here. Resolves to { desk } with
+// desk = { admin, discordId, name } (the name signs the articles), or to
+// { status, error }.
+export async function newsDeskFor(req) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return { status: 401, error: "Sign in first" };
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    return { status: 401, error: "Invalid or expired session" };
+  }
+  if (payload.role === "admin") return { desk: { admin: true, discordId: null, name: "NABS League Office" } };
+  if (payload.role !== "user" || !payload.discordId) return { status: 401, error: "Invalid or expired session" };
+  try {
+    const member = await memberSession(payload);
+    if (member.banned) return { status: 403, error: "This account has been suspended by the league admins." };
+    const login = loginDiscordId(payload);
+    const admin = await isDiscordAdmin(prisma, login);
+    if (!admin && !(await isNewsWriter(prisma, login))) {
+      return { status: 403, error: "Only the league's news writers can do that" };
+    }
+    return {
+      user: member.user,
+      desk: { admin, discordId: String(login), name: payload.driverName || payload.discordName || "NABS News Desk" },
+    };
+  } catch {
+    return { status: 401, error: "Invalid or expired session" };
+  }
+}
+
+export async function requireNewsDesk(req, res, next) {
+  const r = await newsDeskFor(req);
+  if (!r.desk) return res.status(r.status).json({ error: r.error });
+  req.newsDesk = r.desk;
+  if (r.user) req.user = r.user;
+  next();
 }

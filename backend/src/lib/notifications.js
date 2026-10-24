@@ -280,7 +280,7 @@ async function seriesPrefixForSeason(prisma, seasonId) {
 // broadcast — results imports and market changes there stay invisible until
 // the season is published. isPublic is a raw-SQL column -> raw read; treat a
 // missing column (fresh checkout) as public, like seasonService does.
-async function seasonIsPublic(prisma, seasonId) {
+export async function seasonIsPublic(prisma, seasonId) {
   if (!seasonId) return true;
   try {
     const rows = await prisma.$queryRawUnsafe(
@@ -300,7 +300,7 @@ const roundName = (race) => (race?.number ? `Round ${race.number}` : race?.track
 // on the current one) and the race id — the Races page picks the round AND the
 // right session tab (rounds/training/special) from it. Falls back to the plain
 // calendar when the season row is gone.
-async function racePageLink(prisma, race) {
+export async function racePageLink(prisma, race) {
   const prefix = await seriesPrefixForSeason(prisma, race?.seasonId);
   if (!race?.id) return `${prefix}/races`;
   let seasonNumber = null;

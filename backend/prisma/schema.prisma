@@ -988,3 +988,28 @@ model Incident {
 
   @@index([server, sessionKey, atMs], map: "Incident_session_idx")
 }
+
+// The news desk's articles (lib/news.js). Managed through raw SQL like the
+// tables around it (lib/ensureSchema.js + migration news_articles); this model
+// only mirrors it. The partial unique index on raceId for source AUTO (one
+// site-written race report per round) lives in the migration, Prisma has no
+// syntax for it.
+model NewsArticle {
+  id              String    @id
+  slug            String    @unique
+  title           String
+  summary         String?
+  body            String    @default("")
+  category        String    @default("RACES")
+  coverUrl        String?
+  status          String    @default("DRAFT")
+  source          String    @default("MANUAL")
+  raceId          String?
+  authorDiscordId String?
+  authorName      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now())
+  publishedAt     DateTime?
+
+  @@index([status, publishedAt])
+}

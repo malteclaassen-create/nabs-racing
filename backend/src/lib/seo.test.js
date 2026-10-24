@@ -295,4 +295,11 @@ describe("isKnownRoute", () => {
     }
     expect(isKnownRoute("/helpx")).toBe(false);
   });
+
+  it("answers 200 for the news, an article and the desk", () => {
+    for (const p of ["/news", "/news/takoda-conquers-turkey", "/news/desk", "/news/desk/abc"]) {
+      expect(isKnownRoute(p), p).toBe(true);
+    }
+    expect(isKnownRoute("/newsx")).toBe(false);
+  });
 });

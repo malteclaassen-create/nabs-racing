@@ -47,6 +47,8 @@ const PAGES = [
     words: ["cards", "editions", "collection", "karten", "sammlung"] },
   { key: "install", label: "Add to phone", hint: "Install the site as an app", icon: "phone", where: "flat", path: "/app",
     words: ["app", "install", "phone", "home screen", "handy", "installieren"] },
+  { key: "news", label: "News", hint: "Race reports, transfers and league stories", icon: "book", where: "flat", path: "/news",
+    words: ["news", "articles", "race report", "reports", "transfers", "stories", "nachrichten", "berichte", "artikel"] },
   { key: "changelog", label: "What's new", hint: "Everything that changed on the site", icon: "history", where: "flat", path: "/changelog",
     words: ["changelog", "whats new", "what's new", "updates", "news", "release notes", "neu", "neuigkeiten", "aenderungen"] },
   { key: "privacy", label: "Privacy", hint: "What the site stores", icon: "shield", where: "flat", path: "/privacy",
