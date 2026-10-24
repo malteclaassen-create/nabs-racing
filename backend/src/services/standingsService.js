@@ -726,7 +726,17 @@ export function attachPrevPositions(rows, raceNumbers, dropN, manualOf = () => n
 // dropped yet. Capped at the season's own drop count; ignored on a frozen
 // mid-season view. Movement arrows are left off, since the previous round's
 // table was never ranked this way.
-export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, projectDrops = null, _depth = 1 } = {}) {
+//
+// `asOfRound` is the table exactly as the standings PAGE showed it the moment
+// that round's result went in: every round of the season stays in the list,
+// only the results after it are left out. The difference to upToRound is the
+// drop rule. There, the round is the end of the list, so the N worst REAL
+// results come off at once; on the page at the time, the rounds still to run
+// counted as 0 and took the drops. The news desk's race report uses this, so
+// "X leads by Y" says what the table said that night. Like upToRound, a frozen
+// view leaves out the hand-set points, the official final sheet and the
+// decided champion. Ignored when upToRound is given.
+export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, asOfRound = null, projectDrops = null, _depth = 1 } = {}) {
   const [drivers, allRaces, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
@@ -738,6 +748,9 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
 
   const partial = upToRound != null && allRaces.some((r) => r.number > upToRound);
   const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
+  const asOf = upToRound == null && Number.isInteger(asOfRound) ? asOfRound : null;
+  // Either way the table is a past one, not the season's own.
+  const frozen = partial || (asOf != null && allRaces.some((r) => r.number > asOf));
 
   // The rounds plus their sprint classifications, each under its round number
   // (scoringRaces). Results are read for exactly those races: a training
@@ -745,7 +758,8 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // used to land in perRace keyed "undefined", which the head-to-head on a
   // driver profile then counted as a shared round, so a season whose only
   // completed session was a friendly showed records for whoever turned up.
-  const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, races);
+  const { raceNumberById, sprintRaceIds, raceIds: allRaceIds } = await scoringRaces(prisma, races);
+  const raceIds = asOf != null ? allRaceIds.filter((id) => raceNumberById.get(id) <= asOf) : allRaceIds;
   const [results, { sprintRounds, customPoints }] = await Promise.all([
     prisma.raceResult.findMany({ where: { raceId: { in: raceIds } } }),
     roundFormats(prisma, races),
@@ -767,7 +781,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   const hidden = new Set(hiddenRows.map((r) => r.id));
 
   // The projection drops over the rounds already run, and only those.
-  const projecting = !partial && Number.isInteger(projectDrops) && projectDrops >= 0 && scoring.dropWorst > 0;
+  const projecting = !frozen && Number.isInteger(projectDrops) && projectDrops >= 0 && scoring.dropWorst > 0;
   const dropN = projecting ? Math.min(projectDrops, scoring.dropWorst) : scoring.dropWorst;
   const runRounds = new Set(appliedResults.map((r) => raceNumberById.get(r.raceId)).filter((n) => n != null));
   const dropRounds = projecting ? raceNumbers.filter((n) => runRounds.has(n)) : raceNumbers;
@@ -776,7 +790,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // bonus/penalty on top of the computed total, or a total typed in whole.
   // Not on a frozen mid-season view — the same reasoning as the official final
   // sheet below: these are the season's numbers, not round four's.
-  const manualPoints = partial ? new Map() : await readManualPoints(prisma, seasonId);
+  const manualPoints = frozen ? new Map() : await readManualPoints(prisma, seasonId);
 
   const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
     const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table, sprintRaceIds);
@@ -857,7 +871,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // for a mid-season view, though: the official sheet is where the season
   // ENDED, so stamping it onto "after round 4" would answer a question nobody
   // asked with numbers from eight rounds later.
-  if (!partial) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
+  if (!frozen) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
 
   // Points the league set by hand — last, so they win over the computed total
   // and over an official sheet alike (see applyManualTotals).
@@ -869,7 +883,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // mid-season view, which is a question about the points as they stood.
   // The Hall of Fame, the honours and the seals read the table's first row,
   // so they follow without knowing the rule.
-  const championOverride = !partial ? applyChampionOverride(rows, scoring.championDriverId) : null;
+  const championOverride = !frozen ? applyChampionOverride(rows, scoring.championDriverId) : null;
 
   // officialTotals tells the UI the totals come from the league's official
   // final sheet (not computed), so per-race sums may not add up exactly.
@@ -888,7 +902,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // Bonus the fastest race lap pays this season (0 = none), so the table
     // can footnote it and explain the cells that carry it.
     fastestLapPoints: scoring.fastestLapPoints || 0,
-    officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
+    officialTotals: !frozen && !!scoring.finalStandings?.drivers?.length,
     // True when at least one row's total was set or nudged by hand, so the
     // table can footnote it (rows carry pointsAdjust / pointsOverride).
     manualPoints: rows.some((r) => r.pointsAdjust || r.pointsOverride != null),
