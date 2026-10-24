@@ -40,6 +40,7 @@ import shareRoutes from "./routes/share.js";
 import contentCheckRoutes from "./routes/contentCheck.js";
 import changelogRoutes from "./routes/changelog.js";
 import newsRoutes from "./routes/news.js";
+import { sweepUnusedNewsUploads } from "./lib/news.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
 import { initLiveTiming, getBoard, getTrackMapPng, getTrackIds } from "./services/liveTiming.js";
@@ -830,6 +831,12 @@ const sweepReports = () =>
   sweepReportFiles(prisma).catch((e) => console.error("[reports]", e?.message || e));
 setTimeout(sweepReports, 20_000).unref();
 setInterval(sweepReports, REPORT_SWEEP_MS).unref();
+
+// Pictures uploaded on the news desk that no article ended up using (lib/news.js).
+const sweepNewsUploads = () =>
+  sweepUnusedNewsUploads(prisma, join(UPLOADS_DIR, "news")).catch((e) => console.error("[news]", e?.message || e));
+setTimeout(sweepNewsUploads, 30_000).unref();
+setInterval(sweepNewsUploads, REPORT_SWEEP_MS).unref();
 
 // Database snapshots older than the newest few are kept gzipped
 // (services/backupService.js). Each new snapshot packs the ones behind it; this
