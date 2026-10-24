@@ -8,6 +8,7 @@ import NewsBody from "../components/NewsBody.jsx";
 import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtStamp } from "../utils/format.js";
+import { shrinkImage } from "../utils/imageResize.js";
 import { CategoryChip, NewsCover, useNewsDeskAccess } from "./News.jsx";
 
 // ---------------------------------------------------------------------------
@@ -279,6 +280,13 @@ const FORMAT_HELP = [
   ["![caption](picture address)", "a picture on its own line"],
 ];
 
+// Pictures are made smaller in the browser before they go up (utils/imageResize.js,
+// as the race gallery does): at most 2048px on the long side, which is still
+// more than an article shows even on a sharp phone screen, and a JPEG at a
+// quality where the difference cannot be seen. A picture already small enough,
+// and every GIF (it would lose its animation), goes up as it is.
+const NEWS_SHRINK = { maxSide: 2048, quality: 0.86 };
+
 const EMPTY = { title: "", summary: "", body: "", category: "RACES", coverUrl: "", status: "DRAFT" };
 
 function Editor({ id }) {
@@ -393,7 +401,7 @@ function Editor({ id }) {
     setBusy(true);
     setErr(null);
     try {
-      const { url } = await api.uploadNewsCover(file);
+      const { url } = await api.uploadNewsCover(await shrinkImage(file, NEWS_SHRINK));
       setForm((f) => ({ ...f, coverUrl: url }));
     } catch (e) {
       setErr(e.message);
@@ -409,7 +417,7 @@ function Editor({ id }) {
     setBusy(true);
     setErr(null);
     try {
-      const { url } = await api.uploadNewsCover(file);
+      const { url } = await api.uploadNewsCover(await shrinkImage(file, NEWS_SHRINK));
       const el = bodyRef.current;
       setForm((f) => {
         const at = el ? el.selectionStart : f.body.length;
