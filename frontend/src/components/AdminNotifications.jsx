@@ -528,6 +528,18 @@ export default function AdminNotifications() {
               onChange={(v) => set("downloads", v)}
             />
             <ToggleRow
+              label="News articles"
+              help="Everyone gets a note when an article on the news page is published (once per article; later edits stay silent)."
+              value={form.newsPublished}
+              onChange={(v) => set("newsPublished", v)}
+            />
+            <ToggleRow
+              label="Race report drafts"
+              help="News writers and admins get a personal note when the site has drafted a race report for them to finish (only when automatic race reports are on, News desk settings)."
+              value={form.newsDrafts}
+              onChange={(v) => set("newsDrafts", v)}
+            />
+            <ToggleRow
               label="Seat filled"
               help="The picked reserve gets a personal note when a driver (or an admin) hands them the seat."
               value={form.seatFilled}

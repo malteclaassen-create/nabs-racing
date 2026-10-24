@@ -20,7 +20,7 @@ import { readRaceHeroes } from "./raceHero.js";
 import { readRaceTypes } from "./raceTypes.js";
 import { prettyTrack } from "./pageMeta.js";
 import { createArticle, findAutoReport, readNewsWriters } from "./news.js";
-import { racePageLink, seasonIsPublic, dbCreateNotification } from "./notifications.js";
+import { racePageLink, seasonIsPublic, dbCreateNotification, readNotifySettings } from "./notifications.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
 
 export const AUTO_REPORT_KEY = "news_auto_reports";
@@ -38,11 +38,11 @@ export async function autoReportMode(prisma) {
   } catch {
     /* fresh database */
   }
-  return "draft";
+  return "off";
 }
 
 export async function setAutoReportMode(prisma, mode) {
-  const value = AUTO_REPORT_MODES.includes(mode) ? mode : "draft";
+  const value = AUTO_REPORT_MODES.includes(mode) ? mode : "off";
   await prisma.setting.upsert({
     where: { key: AUTO_REPORT_KEY },
     create: { key: AUTO_REPORT_KEY, value },
@@ -328,8 +328,9 @@ async function markDone(prisma, raceId) {
 }
 
 // Tell the desk a draft is waiting: a personal bell entry for every writer and
-// every Discord admin.
+// every Discord admin. Only when the newsDrafts bell is switched on.
 async function tellTheDesk(prisma, article, race) {
+  if (!(await readNotifySettings(prisma)).newsDrafts) return;
   const ids = new Set([...(await readNewsWriters(prisma)), ...(await getAdminDiscordIds(prisma))]);
   const track = prettyTrack(race.track) || "the last round";
   for (const recipientId of ids) {
@@ -344,9 +345,11 @@ async function tellTheDesk(prisma, article, race) {
   }
 }
 
-// Announce a freshly published article to everyone (once per article).
+// Announce a freshly published article to everyone (once per article). Only
+// when the newsPublished bell is switched on.
 export async function announceArticle(prisma, article) {
   if (!article || article.status !== "PUBLISHED") return;
+  if (!(await readNotifySettings(prisma)).newsPublished) return;
   await dbCreateNotification(prisma, {
     type: "NEWS",
     title: article.title,

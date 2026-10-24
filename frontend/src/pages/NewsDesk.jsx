@@ -21,10 +21,10 @@ import { CategoryChip, NewsCover, useNewsDeskAccess } from "./News.jsx";
 // ---------------------------------------------------------------------------
 
 const MODE_TEXT = {
-  off: "Off. The site writes nothing by itself.",
+  off: "Off. The site writes nothing by itself. The Write draft button above still works for any round.",
   draft:
-    "Draft. After each saved round the site writes the race report from the results and leaves it here as a draft. Writers get a bell; nothing is public until somebody presses publish.",
-  publish: "Publish. The race report goes live by itself the moment the results are saved, and everyone gets a bell.",
+    "Draft. After each saved round the site writes the race report from the results and leaves it here as a draft. Nothing is public until somebody presses publish.",
+  publish: "Publish. The race report goes live by itself the moment the results are saved.",
 };
 
 function DeskSettings() {
@@ -94,6 +94,10 @@ function DeskSettings() {
           />
         </div>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-light">{MODE_TEXT[data.mode]}</p>
+        <p className="mt-1 max-w-2xl text-xs text-faint">
+          Whether anybody gets a bell for a new article or a waiting draft is set with the other notifications (Admin,
+          Notifications: News articles, Race report drafts). Both are off until switched on.
+        </p>
       </div>
 
       <div>
@@ -357,7 +361,7 @@ function Editor({ id }) {
       setMsg(
         article.status === "PUBLISHED"
           ? status === "PUBLISHED" && saved?.status !== "PUBLISHED"
-            ? "Published. Everyone gets a bell."
+            ? "Published."
             : "Saved. The live article is updated."
           : status === "DRAFT" && saved?.status === "PUBLISHED"
             ? "Taken offline. It is a draft again."
