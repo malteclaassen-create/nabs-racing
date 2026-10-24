@@ -44,6 +44,7 @@ import {
   Trophy,
   User,
   Users,
+  Newspaper,
 } from "lucide-react";
 
 // The token count, sitting against the profile chip. Only there while the trial
@@ -1459,6 +1460,7 @@ export default function NavBar() {
                     ) : null
                   }
                 />
+                {!isEvent && <SheetTile to="/news" Icon={Newspaper} label="News" hint="Race reports & stories" />}
                 <SheetTile to="/downloads" Icon={FileText} label="Race Info" hint="Rules & downloads" />
                 <SheetTile to="/help" Icon={CircleHelp} label="Help" hint="Checksums, kicks, sign-up" />
                 {/* The phone's way to the feedback panel: the floating button in

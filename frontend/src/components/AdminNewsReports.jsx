@@ -130,16 +130,20 @@ export default function AdminNewsReports({ rounds, roundOf }) {
                       disabled={has || busy}
                       onChange={() => toggle(r.id)}
                     />
-                    <span className="w-16 shrink-0 font-mono text-xs font-bold text-eyebrow">{roundOf(r)}</span>
+                    <span className="shrink-0 font-mono text-xs font-bold text-eyebrow sm:w-16">{roundOf(r)}</span>
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{r.track}</span>
                     <span className="hidden text-xs text-light sm:inline">{fmtDate(r.date)}</span>
-                    <span className="w-40 shrink-0 text-right text-xs">
+                    <span className="shrink-0 text-right text-xs sm:w-40">
                       {has ? (
                         <Link to={`/news/desk/${articles[0].id}`} className="font-semibold text-link hover:underline">
-                          {articles[0].status === "PUBLISHED" ? "Published" : "Draft"} · open
+                          {articles[0].status === "PUBLISHED" ? "Published" : "Draft"}
+                          <span className="hidden sm:inline"> · open</span>
                         </Link>
                       ) : (
-                        <span className="text-faint">no article yet</span>
+                        <span className="text-faint">
+                          <span className="sm:hidden">–</span>
+                          <span className="hidden sm:inline">no article yet</span>
+                        </span>
                       )}
                     </span>
                   </li>
