@@ -15,6 +15,8 @@
 //   POST   /api/news/desk/cover           upload a picture -> { url }
 //   POST   /api/news/desk/race-report     { raceId } -> a fresh draft of that round's report
 //   GET    /api/news/desk/rounds          finished rounds to write a report for
+//   GET    /api/news/desk/by-race?ids=a,b the articles already written about those rounds
+//   POST   /api/news/desk/race-reports    { raceIds, publish } -> one report per round, in one go
 //
 // Admins only, on the desk:
 //   GET/PUT /api/news/desk/settings       { mode, writers }
@@ -30,6 +32,7 @@ import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
 import { sniffImageType, checkImageUpload } from "../lib/imageIntegrity.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
+import { seasonIsPublic } from "../lib/notifications.js";
 import {
   NEWS_CATEGORIES,
   isArticleId,
@@ -42,6 +45,7 @@ import {
   updateArticle,
   deleteArticle,
   latestPublishedExcept,
+  articlesForRaces,
   readNewsWriters,
   writeNewsWriters,
 } from "../lib/news.js";
@@ -193,6 +197,55 @@ router.post("/desk/race-report", async (req, res, next) => {
       { author: req.newsDesk, source: "MANUAL", raceId }
     );
     res.json({ article: shapeArticle(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/desk/by-race", async (req, res, next) => {
+  try {
+    const ids = String(req.query.ids || "").split(",").map((s) => s.trim()).filter(Boolean);
+    res.json({ byRace: Object.fromEntries(await articlesForRaces(prisma, ids)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Several rounds at once (Admin, Content, News). A round that already has an
+// article is left alone rather than given a second one; a round of a private
+// season is only ever written as a draft, so publishing cannot leak a season
+// that is not out yet. Answers what was written and what was not, and why.
+const MAX_BATCH = 40;
+router.post("/desk/race-reports", async (req, res, next) => {
+  try {
+    const raceIds = [...new Set((Array.isArray(req.body?.raceIds) ? req.body.raceIds : []).map(String))].filter(Boolean);
+    if (!raceIds.length) return res.status(400).json({ error: "Pick at least one round" });
+    if (raceIds.length > MAX_BATCH) return res.status(400).json({ error: `At most ${MAX_BATCH} rounds at once` });
+    const publish = req.body?.publish === true;
+    const existing = await articlesForRaces(prisma, raceIds);
+    const created = [];
+    const skipped = [];
+    for (const raceId of raceIds) {
+      if (existing.get(raceId)?.length) {
+        skipped.push({ raceId, reason: "already has an article" });
+        continue;
+      }
+      const built = await buildRaceReport(prisma, raceId, { draft: !publish });
+      if (!built) {
+        skipped.push({ raceId, reason: "no classified result" });
+        continue;
+      }
+      const live = publish && (await seasonIsPublic(prisma, built.race.seasonId));
+      const row = await createArticle(
+        prisma,
+        { ...built.article, status: live ? "PUBLISHED" : "DRAFT" },
+        { author: req.newsDesk, source: "MANUAL", raceId }
+      );
+      if (row?.status === "PUBLISHED") await announceArticle(prisma, row);
+      created.push(shapeArticle(row));
+      if (publish && !live) skipped.push({ raceId, reason: "private season, kept as a draft" });
+    }
+    res.json({ created, skipped });
   } catch (e) {
     next(e);
   }

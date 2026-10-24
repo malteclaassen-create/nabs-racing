@@ -262,6 +262,23 @@ export async function findAutoReport(prisma, raceId) {
   return rows[0] || null;
 }
 
+// The articles written about these rounds (any source, drafts too), newest
+// first per round: Map raceId -> [shaped article].
+export async function articlesForRaces(prisma, raceIds) {
+  const ids = [...new Set((raceIds || []).filter(Boolean).map(String))].slice(0, 400);
+  const out = new Map();
+  if (!ids.length) return out;
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT ${LIST_COLUMNS} FROM "NewsArticle" WHERE "raceId" IN (${ids.map(() => "?").join(",")}) ORDER BY "createdAt" DESC`,
+    ...ids
+  );
+  for (const r of rows) {
+    if (!out.has(r.raceId)) out.set(r.raceId, []);
+    out.get(r.raceId).push(shapeArticle(r, { withBody: false }));
+  }
+  return out;
+}
+
 // Neighbours in the published list, for "read next".
 export async function latestPublishedExcept(prisma, id, limit = 3) {
   const rows = await prisma.$queryRawUnsafe(

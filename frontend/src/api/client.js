@@ -1070,6 +1070,9 @@ export const api = {
     return request("/news/desk/cover", { method: "POST", body: fd, auth: true, form: true });
   },
   newsDeskRounds: () => request("/news/desk/rounds", { auth: true }),
+  newsByRace: (ids) => request(`/news/desk/by-race?ids=${ids.map(encodeURIComponent).join(",")}`, { auth: true }),
+  createNewsRaceReports: (raceIds, publish) =>
+    request("/news/desk/race-reports", { method: "POST", body: { raceIds, publish }, auth: true }),
   draftNewsRaceReport: (raceId) => request("/news/desk/race-report", { method: "POST", body: { raceId }, auth: true }),
   newsDeskSettings: () => request("/news/desk/settings", { auth: true }),
   saveNewsDeskSettings: (settings) => request("/news/desk/settings", { method: "PUT", body: settings, auth: true }),
