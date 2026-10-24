@@ -279,9 +279,19 @@ async function gatherFacts(prisma, raceId) {
   let standingsBefore = [];
   if (isChampionship && race.number != null && race.seasonId) {
     try {
+      // The newest round run is the standings page itself, hand-set points
+      // and all. An older one is the table as the page showed it that night,
+      // not the season cut off at that round: see asOfRound in
+      // services/standingsService.js.
+      const latest = await prisma.race.findFirst({
+        where: { seasonId: race.seasonId, isCompleted: true, isSpecialEvent: false, number: { not: null } },
+        orderBy: { number: "desc" },
+        select: { number: true },
+      });
+      const afterOpts = latest && race.number >= latest.number ? {} : { asOfRound: race.number };
       const [after, before] = await Promise.all([
-        getDriverStandings(prisma, race.seasonId, { upToRound: race.number }),
-        race.number > 1 ? getDriverStandings(prisma, race.seasonId, { upToRound: race.number - 1 }) : null,
+        getDriverStandings(prisma, race.seasonId, afterOpts),
+        race.number > 1 ? getDriverStandings(prisma, race.seasonId, { asOfRound: race.number - 1 }) : null,
       ]);
       standingsAfter = after?.standings || [];
       standingsBefore = before?.standings || [];
