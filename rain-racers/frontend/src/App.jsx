@@ -17,6 +17,7 @@ import History from "./pages/History.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { useRainTransition, RainOverlay } from "./components/RainTransition.jsx";
 import DiscordButton from "./components/DiscordButton.jsx";
+import PhoneMenu from "./components/PhoneMenu.jsx";
 
 // Only the admin ever opens it, so visitors never download it.
 const Admin = lazy(() => import("./admin/Admin.jsx"));
@@ -67,8 +68,9 @@ function Account({ floating }) {
 }
 
 // Which series the series pages show. Switching keeps the page you are on
-// (standings stay standings), on the other series.
-function SeriesSwitcher({ inline = false }) {
+// (standings stay standings), on the other series. (On a phone the menu
+// picks the series by their banners, see PhoneMenu.)
+function SeriesSwitcher() {
   const { seriesList, series } = useSite();
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -89,18 +91,6 @@ function SeriesSwitcher({ inline = false }) {
   };
   const dot = (s) => <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color || "rgb(var(--ink))" }} />;
 
-  if (inline) {
-    return (
-      <div className="flex flex-wrap gap-2 px-3 py-2">
-        {shown.map((s) => (
-          <button key={s.slug} onClick={() => go(s.slug)} className={`btn border py-1.5 ${s.slug === series.slug ? "border-ink" : "border-line text-muted"}`}>
-            {dot(s)}
-            {s.name}
-          </button>
-        ))}
-      </div>
-    );
-  }
   if (shown.length < 2) {
     return (
       <NavLink to={`/series/${series.slug}`} end className={linkClass}>
@@ -206,31 +196,7 @@ function NavBar() {
           </svg>
         </button>
       </div>
-      {open && (
-        <div className="rise max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line lg:hidden">
-          <nav className="page flex flex-col py-2">
-            <NavLink to="/" end className={linkClass}>
-              Home
-            </NavLink>
-            {seriesLinks.length > 0 && <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-wider text-muted">Series</div>}
-            <SeriesSwitcher inline />
-            {seriesLinks.map((l) => (
-              <NavLink key={l.to} to={l.to} className={linkClass}>
-                {l.label}
-              </NavLink>
-            ))}
-            {seriesLinks.length > 0 && <div className="my-2 h-px bg-line" />}
-            {tail.map((l) => (
-              <NavLink key={l.to} to={l.to} className={linkClass}>
-                {l.label}
-              </NavLink>
-            ))}
-            <div className="px-3 py-3">
-              <Account />
-            </div>
-          </nav>
-        </div>
-      )}
+      {open && <PhoneMenu seriesLinks={seriesLinks} account={<Account />} />}
     </header>
   );
 }
