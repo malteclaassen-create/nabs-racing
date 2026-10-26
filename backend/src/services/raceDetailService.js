@@ -30,6 +30,7 @@ import { readRaceTypes } from "../lib/raceTypes.js";
 import { dbReplaysByRace } from "../lib/downloads.js";
 import { readRaceCountries, staticCountryFor } from "../lib/raceCountries.js";
 import { readRacePhotos, withUrls } from "../lib/racePhotos.js";
+import { publishedForRace } from "../lib/news.js";
 import { hasArchiveFor } from "../lib/cockpitArchive.js";
 import { resultTeamId } from "../lib/resultTeam.js";
 
@@ -287,6 +288,9 @@ export async function raceDetailPayload(prisma, race) {
     : race.number;
   return {
     photos,
+    // Published news about this round (News desk, "Round" picker), shown
+    // with the photos under the classification.
+    news: await publishedForRace(prisma, race.id).catch(() => []),
     race: {
       id: race.id,
       number: race.number,

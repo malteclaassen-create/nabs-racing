@@ -14,6 +14,7 @@ import RaceLapChart from "../components/RaceLapChart.jsx";
 import RaceFacts from "../components/RaceFacts.jsx";
 import { RaceRecapButton } from "../components/RaceRecap.jsx";
 import RaceGallery from "../components/RaceGallery.jsx";
+import RaceNews from "../components/RaceNews.jsx";
 import VideoEmbed from "../components/VideoEmbed.jsx";
 import UpcomingRacePanel from "../components/UpcomingRacePanel.jsx";
 import { motionOff } from "../hooks/motion.js";
@@ -1357,6 +1358,9 @@ export default function Races() {
                       {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
                         <RaceFacts key={`facts-${detail.race.id}`} race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
+                      {/* What the news desk wrote about the round, between
+                          the facts and the photos. */}
+                      {!detailIsStale && <RaceNews key={`news-${detail.race.id}`} articles={detail.news} />}
                       {/* The night's photos, last: the classification is what
                           people come for, the gallery is what they stay for. */}
                       {!detailIsStale && <RaceGallery key={`gallery-${detail.race.id}`} photos={detail.photos} title={detail.race.track} />}

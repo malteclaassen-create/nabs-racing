@@ -3,7 +3,7 @@
 //
 // Public:
 //   GET  /api/news?category=&q=&before=   published articles, newest first
-//   GET  /api/news/article/:slug          one published article (+ read next)
+//   GET  /api/news/article/:slug          one published article (+ its round, read next)
 //   GET  /api/news/desk/access            { canWrite, admin } for the caller
 //
 // The desk (admins and news writers, middleware requireNewsDesk):
@@ -15,6 +15,7 @@
 //   POST   /api/news/desk/cover           upload a picture -> { url }
 //   POST   /api/news/desk/race-report     { raceId } -> a fresh draft of that round's report
 //   GET    /api/news/desk/rounds          finished rounds to write a report for
+//   GET    /api/news/desk/races           every round, finished or not, to tie an article to
 //   GET    /api/news/desk/by-race?ids=a,b the articles already written about those rounds
 //   POST   /api/news/desk/race-reports    { raceIds, publish } -> one report per round, in one go
 //
@@ -33,6 +34,8 @@ import { safeUploadPath } from "../lib/safeUpload.js";
 import { sniffImageType, checkImageUpload } from "../lib/imageIntegrity.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonIsPublic } from "../lib/notifications.js";
+import { readParentIds } from "../lib/sprintRaces.js";
+import { readRaceTypes } from "../lib/raceTypes.js";
 import {
   NEWS_CATEGORIES,
   isArticleId,
@@ -60,6 +63,35 @@ import {
 const router = Router();
 const NEWS_DIR = join(UPLOADS_DIR, "news");
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+// The round an article is tied to, as the article page links it: which
+// series' results page, which round. null when there is none, it is gone, or
+// its season is not out yet (`showPrivate` for the desk).
+async function raceLink(raceId, { showPrivate = false } = {}) {
+  if (!raceId) return null;
+  const race = await prisma.race.findUnique({
+    where: { id: raceId },
+    select: {
+      id: true,
+      number: true,
+      track: true,
+      date: true,
+      seasonId: true,
+      season: { select: { number: true, series: { select: { slug: true, name: true } } } },
+    },
+  });
+  if (!race) return null;
+  if (!showPrivate && race.seasonId && (await getPrivateSeasonIds(prisma)).has(race.seasonId)) return null;
+  return {
+    id: race.id,
+    number: race.number,
+    track: race.track,
+    date: race.date,
+    season: race.season?.number ?? null,
+    seriesSlug: race.season?.series?.slug || null,
+    seriesName: race.season?.series?.name || null,
+  };
+}
+
 const EXT = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif" };
 
 // --- public ------------------------------------------------------------------
@@ -83,7 +115,11 @@ router.get("/article/:slug", async (req, res, next) => {
   try {
     const row = await findArticle(prisma, { slug: String(req.params.slug).slice(0, 120) });
     if (!row || row.status !== "PUBLISHED") return res.status(404).json({ error: "Article not found" });
-    res.json({ article: shapeArticle(row), more: await latestPublishedExcept(prisma, row.id, 3) });
+    res.json({
+      article: shapeArticle(row),
+      race: await raceLink(row.raceId),
+      more: await latestPublishedExcept(prisma, row.id, 3),
+    });
   } catch (e) {
     next(e);
   }
@@ -185,6 +221,55 @@ router.get("/desk/rounds", async (_req, res, next) => {
   }
 });
 
+// Every round an article can be about, newest first: finished or still to
+// come, training and special events too, but not a sprint's hidden second
+// row. A writer who is not an admin never sees a season that is not out yet.
+router.get("/desk/races", async (req, res, next) => {
+  try {
+    const hidden = req.newsDesk?.admin ? new Set() : await getPrivateSeasonIds(prisma);
+    const races = (
+      await prisma.race.findMany({
+        orderBy: [{ date: "desc" }, { number: "desc" }],
+        take: 400,
+        select: {
+          id: true,
+          number: true,
+          track: true,
+          date: true,
+          isCompleted: true,
+          seasonId: true,
+          season: { select: { number: true, series: { select: { name: true } } } },
+        },
+      })
+    ).filter((r) => !hidden.has(r.seasonId));
+    const ids = races.map((r) => r.id);
+    const [parents, types] = await Promise.all([readParentIds(prisma, ids), readRaceTypes(prisma, ids)]);
+    res.json({
+      races: races
+        .filter((r) => !parents.get(r.id))
+        .map((r) => ({
+          id: r.id,
+          number: r.number,
+          track: r.track,
+          date: r.date,
+          isCompleted: r.isCompleted,
+          type: types.get(r.id) || "CHAMPIONSHIP",
+          season: r.season?.number ?? null,
+          series: r.season?.series?.name || null,
+        })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// An article may only point at a round that exists.
+async function checkRace(article) {
+  if (!article.raceId) return null;
+  const race = await prisma.race.findUnique({ where: { id: article.raceId }, select: { id: true } });
+  return race ? null : "That round no longer exists";
+}
+
 router.post("/desk/race-report", async (req, res, next) => {
   try {
     const raceId = String(req.body?.raceId || "");
@@ -279,7 +364,7 @@ router.get("/desk/:id", async (req, res, next) => {
     if (!isArticleId(req.params.id)) return res.status(404).json({ error: "Article not found" });
     const row = await findArticle(prisma, { id: req.params.id });
     if (!row) return res.status(404).json({ error: "Article not found" });
-    res.json({ article: shapeArticle(row) });
+    res.json({ article: shapeArticle(row), race: await raceLink(row.raceId, { showPrivate: true }) });
   } catch (e) {
     next(e);
   }
@@ -288,7 +373,8 @@ router.get("/desk/:id", async (req, res, next) => {
 router.post("/desk", async (req, res, next) => {
   try {
     const { article, error } = sanitizeArticleInput(req.body);
-    if (error) return res.status(400).json({ error });
+    const bad = error || (await checkRace(article));
+    if (bad) return res.status(400).json({ error: bad });
     const row = await createArticle(prisma, article, { author: req.newsDesk });
     if (row?.status === "PUBLISHED") await announceArticle(prisma, row);
     res.json({ article: shapeArticle(row) });
@@ -303,7 +389,8 @@ router.put("/desk/:id", async (req, res, next) => {
     const existing = await findArticle(prisma, { id: req.params.id });
     if (!existing) return res.status(404).json({ error: "Article not found" });
     const { article, error } = sanitizeArticleInput(req.body, { partial: true });
-    if (error) return res.status(400).json({ error });
+    const bad = error || (await checkRace(article));
+    if (bad) return res.status(400).json({ error: bad });
     const row = await updateArticle(prisma, existing, article);
     // The bell rings once per article, the first time it goes out.
     if (row?.status === "PUBLISHED" && existing.status !== "PUBLISHED") await announceArticle(prisma, row);

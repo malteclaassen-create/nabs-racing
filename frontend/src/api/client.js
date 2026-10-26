@@ -1073,6 +1073,7 @@ export const api = {
     return request("/news/desk/cover", { method: "POST", body: fd, auth: true, form: true });
   },
   newsDeskRounds: () => request("/news/desk/rounds", { auth: true }),
+  newsDeskRaces: () => request("/news/desk/races", { auth: true }),
   newsByRace: (ids) => request(`/news/desk/by-race?ids=${ids.map(encodeURIComponent).join(",")}`, { auth: true }),
   createNewsRaceReports: (raceIds, publish) =>
     request("/news/desk/race-reports", { method: "POST", body: { raceIds, publish }, auth: true }),

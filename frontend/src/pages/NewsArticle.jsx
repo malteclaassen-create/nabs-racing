@@ -50,6 +50,15 @@ export default function NewsArticle() {
         {article.authorName && <span className="font-semibold text-medium">{article.authorName}</span>}
         <time dateTime={article.publishedAt}>{fmtDateLong(article.publishedAt)}</time>
         <span>· {article.readingMinutes} min read</span>
+        {data.race && (
+          <Link
+            to={`${data.race.seriesSlug ? `/s/${data.race.seriesSlug}` : ""}/results?race=${encodeURIComponent(data.race.id)}`}
+            className="ml-auto font-semibold text-link hover:underline"
+          >
+            {data.race.number != null ? `Round ${data.race.number}, ` : ""}
+            {data.race.track}: results →
+          </Link>
+        )}
       </div>
 
       {article.coverUrl && (

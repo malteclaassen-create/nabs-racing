@@ -279,7 +279,52 @@ const FORMAT_HELP = [
   ["![caption](picture address)", "a picture on its own line"],
 ];
 
-const EMPTY = { title: "", summary: "", body: "", category: "RACES", coverUrl: "", status: "DRAFT" };
+const EMPTY = { title: "", summary: "", body: "", category: "RACES", raceId: "", coverUrl: "", status: "DRAFT" };
+
+const RACE_KIND = { TRAINING: "Training", SPECIAL: "Special event" };
+
+function raceLabel(r) {
+  const head = r.number != null ? `R${r.number}` : RACE_KIND[r.type] || "Event";
+  return `${head} · ${r.track}${r.date ? ` · ${fmtStamp(r.date)}` : ""}${r.isCompleted ? "" : " (upcoming)"}`;
+}
+
+// Which round a Races article is about. Its results page then shows the
+// article with the photos and the race facts. Grouped by series and season,
+// newest first, so last Friday's round is at the top.
+function RacePicker({ value, onChange, locked }) {
+  const { data } = useApi(useCallback(() => api.newsDeskRaces(), []));
+  const races = data?.races || [];
+  const groups = [];
+  for (const r of races) {
+    const name = [r.series, r.season != null ? `Season ${r.season}` : null].filter(Boolean).join(" · ") || "Other";
+    let g = groups.find((x) => x.name === name);
+    if (!g) groups.push((g = { name, races: [] }));
+    g.races.push(r);
+  }
+  const known = !value || races.some((r) => r.id === value);
+  return (
+    <select
+      className="input max-w-full py-1.5 text-sm sm:max-w-[26rem]"
+      value={value}
+      onChange={onChange}
+      disabled={locked || !data}
+      aria-label="Round"
+      title={locked ? "The site wrote this report for this round, so it stays with it" : undefined}
+    >
+      <option value="">{data ? "No particular round" : "Loading rounds…"}</option>
+      {!known && <option value={value}>The round it was written for</option>}
+      {groups.map((g) => (
+        <optgroup key={g.name} label={g.name}>
+          {g.races.map((r) => (
+            <option key={r.id} value={r.id}>
+              {raceLabel(r)}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 function Editor({ id }) {
   const navigate = useNavigate();
@@ -316,6 +361,7 @@ function Editor({ id }) {
           summary: article.summary || "",
           body: article.body || "",
           category: article.category,
+          raceId: article.raceId || "",
           coverUrl: article.coverUrl || "",
           status: article.status,
         };
@@ -329,23 +375,30 @@ function Editor({ id }) {
     };
   }, [id, isNew]);
 
-  // A race report can take its cover from that round's gallery.
+  // An article about a round can take its cover from that round's gallery.
+  const raceId = form?.raceId || "";
   useEffect(() => {
-    if (!meta?.raceId) return undefined;
+    setPhotos([]);
+    if (!raceId) return undefined;
     let alive = true;
     api
-      .raceResults(meta.raceId)
+      .raceResults(raceId)
       .then((d) => alive && setPhotos((d.photos || []).slice(0, 12)))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [meta?.raceId]);
+  }, [raceId]);
 
   const dirty = !!form && !!saved && JSON.stringify(form) !== JSON.stringify(saved);
   useUnsavedGuard(dirty, "the article");
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // Only a Races article is about a round; another category lets go of it.
+  const setCategory = (e) => {
+    const category = e.target.value;
+    setForm((f) => ({ ...f, category, raceId: category === "RACES" || meta?.source === "AUTO" ? f.raceId : "" }));
+  };
 
   async function save(status) {
     setBusy(true);
@@ -354,7 +407,7 @@ function Editor({ id }) {
     const body = { ...form, status: status || form.status };
     try {
       const { article } = isNew ? await api.createNewsArticle(body) : await api.updateNewsArticle(id, body);
-      const f = { ...body, coverUrl: article.coverUrl || "", status: article.status };
+      const f = { ...body, raceId: article.raceId || "", coverUrl: article.coverUrl || "", status: article.status };
       setSaved(f);
       setForm(f);
       setMeta(article);
@@ -461,8 +514,8 @@ function Editor({ id }) {
           onChange={set("title")}
           aria-label="Headline"
         />
-        <div className="flex flex-wrap gap-3">
-          <select className="input py-1.5 text-sm" value={form.category} onChange={set("category")} aria-label="Category">
+        <div className="flex flex-wrap items-center gap-3">
+          <select className="input py-1.5 text-sm" value={form.category} onChange={setCategory} aria-label="Category">
             {Object.entries(categories).map(([k, label]) => (
               <option key={k} value={k}>
                 {label}
@@ -470,7 +523,13 @@ function Editor({ id }) {
             ))}
             {!categories[form.category] && <option value={form.category}>{form.category}</option>}
           </select>
+          {form.category === "RACES" && (
+            <RacePicker value={form.raceId} onChange={set("raceId")} locked={meta?.source === "AUTO"} />
+          )}
         </div>
+        {form.category === "RACES" && form.raceId && (
+          <p className="-mt-2 text-xs text-light">Once published, it shows on this round&apos;s results page with the photos.</p>
+        )}
         <textarea
           className="input w-full text-sm"
           rows={2}

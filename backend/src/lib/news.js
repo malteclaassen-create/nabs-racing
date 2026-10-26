@@ -162,6 +162,14 @@ export function sanitizeArticleInput(input, { partial = false } = {}) {
     if (cover.error) return { error: cover.error };
     out.coverUrl = cover.url;
   }
+  // The round the article is about. Only a Races article has one; any other
+  // category drops it (the route says which way a partial update goes).
+  if (!partial || "raceId" in src) {
+    const raceId = String(src.raceId ?? "").trim();
+    if (raceId && !ARTICLE_ID_RE.test(raceId)) return { error: "That round is not one the site knows" };
+    out.raceId = raceId || null;
+  }
+  if (out.category && out.category !== "RACES") out.raceId = null;
   if (!partial || "status" in src) {
     const status = String(src.status ?? "DRAFT").toUpperCase();
     out.status = NEWS_STATUSES.includes(status) ? status : "DRAFT";
@@ -279,6 +287,16 @@ export async function articlesForRaces(prisma, raceIds) {
   return out;
 }
 
+// The published articles about one round, newest first, for its results page.
+export async function publishedForRace(prisma, raceId) {
+  if (!raceId) return [];
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT ${LIST_COLUMNS} FROM "NewsArticle" WHERE "raceId" = ? AND "status" = 'PUBLISHED' ORDER BY "publishedAt" DESC LIMIT 12`,
+    String(raceId)
+  );
+  return rows.map((r) => shapeArticle(r, { withBody: false }));
+}
+
 // Neighbours in the published list, for "read next".
 export async function latestPublishedExcept(prisma, id, limit = 3) {
   const rows = await prisma.$queryRawUnsafe(
@@ -304,7 +322,8 @@ async function uniqueSlug(prisma, title, exceptId = null) {
 // Creates an article. `fields` is already sanitised. Returns the stored row.
 // An AUTO article whose round already has one is not written twice: the
 // unique index says no and the existing one comes back.
-export async function createArticle(prisma, fields, { author = null, source = "MANUAL", raceId = null } = {}) {
+export async function createArticle(prisma, fields, { author = null, source = "MANUAL", raceId: forRace = null } = {}) {
+  const raceId = forRace || fields.raceId || null;
   const id = randomUUID();
   const now = new Date().toISOString();
   const slug = await uniqueSlug(prisma, fields.title);
@@ -335,22 +354,26 @@ export async function createArticle(prisma, fields, { author = null, source = "M
 
 // Applies a sanitised partial update. A first publish stamps publishedAt; a
 // renamed draft gets a new address, a published article keeps the one that
-// may already have been shared.
+// may already have been shared. A report the site wrote keeps its round for
+// good: that link is how it knows the round already has one.
 export async function updateArticle(prisma, existing, fields) {
   const next = { ...existing, ...fields };
+  if (existing.source === "AUTO") next.raceId = existing.raceId;
+  else if (next.category !== "RACES") next.raceId = null;
   if (fields.title && fields.title !== existing.title && existing.status !== "PUBLISHED") {
     next.slug = await uniqueSlug(prisma, fields.title, existing.id);
   }
   const now = new Date().toISOString();
   if (next.status === "PUBLISHED" && !existing.publishedAt) next.publishedAt = now;
   await prisma.$executeRawUnsafe(
-    `UPDATE "NewsArticle" SET "slug"=?, "title"=?, "summary"=?, "body"=?, "category"=?, "coverUrl"=?, "status"=?, "publishedAt"=?, "updatedAt"=? WHERE "id"=?`,
+    `UPDATE "NewsArticle" SET "slug"=?, "title"=?, "summary"=?, "body"=?, "category"=?, "coverUrl"=?, "raceId"=?, "status"=?, "publishedAt"=?, "updatedAt"=? WHERE "id"=?`,
     next.slug,
     next.title,
     next.summary ?? null,
     next.body ?? "",
     next.category,
     next.coverUrl ?? null,
+    next.raceId ?? null,
     next.status,
     next.publishedAt ? iso(next.publishedAt) : null,
     now,

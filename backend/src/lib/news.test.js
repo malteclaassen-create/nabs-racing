@@ -53,6 +53,14 @@ describe("sanitizeArticleInput", () => {
     const { article } = sanitizeArticleInput({ status: "PUBLISHED" }, { partial: true });
     expect(article).toEqual({ status: "PUBLISHED" });
   });
+
+  it("ties a Races article to a round, and no other kind", () => {
+    expect(sanitizeArticleInput({ title: "Spa", raceId: "cmabc12345" }).article.raceId).toBe("cmabc12345");
+    expect(sanitizeArticleInput({ title: "Spa", raceId: "" }).article.raceId).toBe(null);
+    expect(sanitizeArticleInput({ title: "Move", category: "TRANSFERS", raceId: "cmabc12345" }).article.raceId).toBe(null);
+    expect(sanitizeArticleInput({ title: "Spa", raceId: "x'; DROP" }).error).toBeTruthy();
+    expect(sanitizeArticleInput({ raceId: "cmabc12345" }, { partial: true }).article).toEqual({ raceId: "cmabc12345" });
+  });
 });
 
 describe("readingMinutes", () => {
