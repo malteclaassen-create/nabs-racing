@@ -265,26 +265,6 @@ body {
   }
 }
 
-/* The live dot. */
-.live-dot {
-  position: relative;
-}
-.live-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: currentColor;
-  animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-@keyframes ping {
-  75%,
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
-
 /* ---- Small things -------------------------------------------------------- */
 
 html {

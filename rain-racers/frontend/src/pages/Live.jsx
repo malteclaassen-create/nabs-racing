@@ -182,7 +182,7 @@ export default function Live() {
     <div>
       <PageHeader eyebrow="Live timing" title={session ? session.name : "Live"}>
         <span className={`inline-flex items-center gap-2 text-sm font-bold ${board?.connected ? "text-emerald-400" : "text-muted"}`}>
-          <span className={`h-2.5 w-2.5 rounded-full ${board?.connected ? "live-dot bg-emerald-400 text-emerald-400" : "bg-muted"}`} />
+          <span className={`h-2.5 w-2.5 rounded-full ${board?.connected ? "bg-emerald-400" : "bg-muted"}`} />
           {!online ? "Connecting…" : board?.connected ? "Live" : "Waiting for the server"}
         </span>
       </PageHeader>

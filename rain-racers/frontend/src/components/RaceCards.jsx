@@ -60,7 +60,7 @@ export function NextRace({ race, color = null, label = "Next race", extraImages 
         <RoundPicture race={race} extra={extraImages} color={color} label={label} imgClassName="transition duration-700 group-hover:scale-[1.03]" />
         <span className="absolute inset-x-0 bottom-0 h-1" style={{ background: accent }} />
         <span className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full bg-black/80 px-3 py-1 text-[11px] font-black uppercase italic tracking-wider text-white">
-          <span className="live-dot h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
           {label}
         </span>
       </Link>
