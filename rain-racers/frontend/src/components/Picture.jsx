@@ -51,11 +51,14 @@ export function Img({ sources, alt = "", className = "", fallback = null, ...res
 // The stand-in for a round without any picture: the series colour, the
 // streaks and the round number in the leaning capitals.
 // A mystery track gets a big question mark instead.
-export function PosterPanel({ color, round, label, mystery = false, className = "" }) {
+// `className` positions it ("relative" in the flow, or "absolute inset-0" to
+// fill a frame); the base classes leave the position to it on purpose, as
+// "relative" would win over "absolute" in the stylesheet.
+export function PosterPanel({ color, round, label, mystery = false, className = "relative" }) {
   const bg = color || "#1a1a1a";
   const ink = inkOn(bg);
   return (
-    <div className={`relative flex items-end overflow-hidden ${className}`} style={{ background: bg, color: ink }}>
+    <div className={`flex items-end overflow-hidden ${className}`} style={{ background: bg, color: ink }}>
       <Streaks tone={ink === "#000" ? "black" : "white"} opacity={0.12} className="streaks-full" />
       {mystery && (
         <span className="display pointer-events-none absolute -right-2 top-1/2 -translate-y-1/2 select-none text-[11rem] leading-none opacity-25 sm:text-[14rem]" aria-hidden="true">

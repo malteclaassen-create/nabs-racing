@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
 import { Loading, ErrorBox, SeasonPicker, Streaks, rise } from "../components/ui.jsx";
 import { NextRace, LastRace, TopDrivers, TopTeams } from "../components/RaceCards.jsx";
-import { Img } from "../components/Picture.jsx";
+import { Img, thumbnails } from "../components/Picture.jsx";
 import LineChart from "../components/LineChart.jsx";
 
 // The home of one series: its next race, last result, the top of both tables
@@ -13,7 +13,20 @@ export default function SeriesHome() {
   if (!series || (loading && !data)) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const prog = data.progression;
-  const banner = data.season?.imageUrl || series.imageUrl;
+  // the season's banner; the series' one (which may be the current season's)
+  // only for the current season; else a recording of the season
+  const bannerSources = [
+    data.season?.imageUrl,
+    data.season?.isCurrent ? series.imageUrl : null,
+    ...thumbnails(data.lastRace?.videoUrl),
+  ].filter(Boolean);
+  const banner = bannerSources.length > 0;
+  const progress =
+    data.roundsTotal === 0
+      ? null
+      : data.roundsDone > 0 && data.roundsDone < data.roundsTotal
+        ? `Round ${data.roundsDone} of ${data.roundsTotal}`
+        : `${data.roundsTotal} ${data.roundsTotal === 1 ? "round" : "rounds"}`;
   // the season's own words, else the series'; the first lines only
   const about = (data.season?.description || series.description || "").split("\n").slice(0, 2).join("\n");
 
@@ -21,15 +34,17 @@ export default function SeriesHome() {
     <div className="space-y-8">
       <section className="card relative overflow-hidden">
         <Streaks opacity={0.05} />
-        <div className={`relative grid items-center gap-8 px-6 py-8 sm:px-10 sm:py-10 ${banner ? "lg:grid-cols-[1fr_1.1fr]" : ""}`}>
+        <div className={`relative grid items-center gap-8 px-6 py-8 sm:px-10 sm:py-10 [&>*]:min-w-0 ${banner ? "lg:grid-cols-[1fr_1.1fr]" : ""}`}>
           <div>
             <div className="eyebrow rise mb-3">
               {data.season?.name}
-              {data.roundsTotal > 0 && ` · Round ${data.roundsDone} of ${data.roundsTotal}`}
+              {progress && ` · ${progress}`}
             </div>
-            <h1 className="display flex items-center gap-4 text-5xl sm:text-6xl">
-              <span className="logo-in inline-block h-8 w-8 shrink-0 rounded-full sm:h-10 sm:w-10" style={{ background: series.color || "rgb(var(--accent))" }} />
-              <span className="title-line">
+            {/* sized to the screen, so a long name like "Formula International
+                Series" fits a phone */}
+            <h1 className="display flex items-center gap-4 text-[clamp(2rem,9vw,3.75rem)] [overflow-wrap:anywhere]">
+              <span className="logo-in hidden h-10 w-10 shrink-0 rounded-full sm:inline-block" style={{ background: series.color || "rgb(var(--accent))" }} />
+              <span className="title-line min-w-0">
                 <span style={{ "--d": "100ms" }}>{series.name}</span>
               </span>
             </h1>
@@ -55,7 +70,7 @@ export default function SeriesHome() {
           </div>
           {banner && (
             <div className="logo-in overflow-hidden rounded-2xl border border-line shadow-2xl">
-              <Img sources={[banner]} className="aspect-video w-full object-cover" />
+              <Img sources={bannerSources} className="aspect-video w-full object-cover" />
             </div>
           )}
         </div>
