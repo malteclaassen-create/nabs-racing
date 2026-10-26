@@ -85,7 +85,7 @@ function TabStrip({ badges }) {
     <div className="mb-6 hidden flex-wrap gap-x-6 gap-y-3 border-b border-line lg:flex">
       {TAB_GROUPS.map((g) => (
         <div key={g.label}>
-          <div className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted/70">{g.label}</div>
+          <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-muted/70">{g.label}</div>
           <div className="flex flex-wrap gap-1">
             {g.tabs.map((t) => (
               <NavLink
@@ -130,7 +130,7 @@ function SideRail({ tab, badges, phoneOnly = false }) {
         className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-2.5 text-left lg:hidden"
       >
         <span className="min-w-0">
-          <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-muted">{active?.group || "Admin"}</span>
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-muted">{active?.group || "Admin"}</span>
           <span className="display block truncate text-base leading-tight">{active?.label || "Pick a section"}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-muted">
@@ -153,7 +153,7 @@ function SideRail({ tab, badges, phoneOnly = false }) {
                 className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-white/5 ${holdsActive ? "text-ink" : "text-muted hover:text-ink"}`}
               >
                 <Chevron open={isOpen} className="h-3.5 w-3.5" />
-                <span className="flex-1 text-[11px] font-bold uppercase tracking-[0.18em]">{g.label}</span>
+                <span className="flex-1 text-[11px] font-bold uppercase tracking-wider">{g.label}</span>
                 {!isOpen && holdsActive && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />}
                 {!isOpen && <Badge n={hidden} />}
               </button>

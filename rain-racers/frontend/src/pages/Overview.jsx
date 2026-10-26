@@ -39,11 +39,7 @@ export default function Overview() {
             </div>
           </div>
           <div className="hidden justify-center lg:flex">
-            <div className="logo-in">
-              <div className="float glow">
-                <Logo size={300} />
-              </div>
-            </div>
+            <Logo size={300} />
           </div>
         </div>
       </section>
@@ -163,7 +159,7 @@ function SeriesCard({ card }) {
         <span className="absolute inset-x-0 bottom-0 h-1.5" style={{ background: color }} />
       </div>
       <div className="flex flex-1 flex-col p-6">
-        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted">{season?.name ?? "No season yet"}</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-muted">{season?.name ?? "No season yet"}</div>
         <div className="display mt-1 text-3xl">{series.name}</div>
         {series.schedule && <div className="display mt-1 text-sm" style={{ color }}>{series.schedule}</div>}
         <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
@@ -236,7 +232,7 @@ function Upcoming({ races, banners }) {
                     {r.series.name} · {r.track || "Mystery track"} · {dateTime(r.startsAt)}
                   </span>
                 </span>
-                <span className="text-xs text-muted">{r.signedUp} in</span>
+                {r.signedUp > 0 && <span className="shrink-0 text-xs text-muted">{r.signedUp} signed up</span>}
               </Link>
             </li>
           ))}

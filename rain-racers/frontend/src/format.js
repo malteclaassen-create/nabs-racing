@@ -20,12 +20,20 @@ export function gapText(ms) {
   return `+${(ms / 1000).toFixed(3)}`;
 }
 
+// Dates and times as the league writes them ("Wed 28 Oct 2026", "19:15"), in
+// the visitor's own time zone. Written out here rather than by the browser,
+// whose words follow the phone's language: a phone set to German would mix
+// "Mi., 28. Okt." into the English pages.
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 export function dateLong(iso) {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const d = new Date(iso);
+  return `${dayShort(iso)} ${d.getFullYear()}`;
 }
 
 export function dateTime(iso) {
-  return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return `${dayShort(iso)}, ${clock(iso)}`;
 }
 
 export function points(n) {
@@ -52,12 +60,17 @@ export function inkOn(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 150 ? "#000" : "#fff";
 }
 
-// "Wed 28 Oct", "20:15" and "CET" of a start, in the visitor's own time zone.
 export function dayShort(iso) {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  const d = new Date(iso);
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 export function clock(iso) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+export function monthYear(iso) {
+  const d = new Date(iso);
+  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 export function fileSize(bytes) {

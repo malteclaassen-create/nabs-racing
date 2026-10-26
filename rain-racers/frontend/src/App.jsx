@@ -212,7 +212,7 @@ function NavBar() {
             <NavLink to="/" end className={linkClass}>
               Home
             </NavLink>
-            {seriesLinks.length > 0 && <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Series</div>}
+            {seriesLinks.length > 0 && <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-wider text-muted">Series</div>}
             <SeriesSwitcher inline />
             {seriesLinks.map((l) => (
               <NavLink key={l.to} to={l.to} className={linkClass}>

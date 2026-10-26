@@ -62,7 +62,7 @@ function PinLogin() {
   return (
     <form onSubmit={submit} className="card mx-auto mt-10 max-w-sm space-y-4 p-6">
       <div>
-        <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted">League office</div>
+        <div className="text-[11px] font-bold uppercase tracking-wider text-muted">League office</div>
         <h1 className="h2 text-xl">Admin</h1>
       </div>
       <input className="input" type="password" inputMode="numeric" autoComplete="current-password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} autoFocus />
@@ -179,7 +179,7 @@ function TodoCard({ todo, onRound, onGo }) {
   if (!overdue.length && !unlinked) return null;
   return (
     <section className="mb-6 rounded-2xl border border-line bg-card p-4 sm:p-5">
-      <h2 className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-muted">
+      <h2 className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted">
         <span className="h-2 w-2 rounded-full bg-red-600" aria-hidden="true" />
         To do
       </h2>
@@ -250,7 +250,7 @@ function Office() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 sm:mb-6">
         <div className="flex w-full items-end justify-between gap-3 lg:w-auto">
           <div>
-            <div className="hidden text-[11px] font-bold uppercase tracking-[0.22em] text-muted sm:block">League office</div>
+            <div className="hidden text-[11px] font-bold uppercase tracking-wider text-muted sm:block">League office</div>
             <h1 className="h1">Admin</h1>
           </div>
           <button className="btn-ghost shrink-0 py-1.5 lg:hidden" onClick={signOut}>

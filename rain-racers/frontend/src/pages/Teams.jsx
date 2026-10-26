@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName, CountUp, rise } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName, rise } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { flag, points } from "../format.js";
 
@@ -53,7 +53,7 @@ export default function Teams() {
                       ))}
                       <td className="text-center tabular">{t.standing.wins}</td>
                       <td className="pr-5 text-right text-base font-black tabular">
-                        <CountUp value={t.standing.points} format={points} />
+                        {points(t.standing.points)}
                       </td>
                     </tr>
                   ))}
@@ -82,12 +82,12 @@ export default function Teams() {
                   <div className="absolute inset-y-0 left-0 w-1.5" style={{ background: t.color || "rgb(var(--line))" }} />
                   <div className="flex items-start justify-between gap-4 pl-2">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-widest text-muted">{t.standing ? `P${t.standing.position}` : "No points yet"}</div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted">{t.standing ? `P${t.standing.position}` : "No points yet"}</div>
                       <h3 className="display mt-1 text-xl">{t.name}</h3>
                     </div>
                     <div className="text-right">
                       <div className="text-2xl font-black tabular">{points(t.standing?.points ?? 0)}</div>
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-muted">points</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">points</div>
                     </div>
                   </div>
                   <ul className="mt-4 space-y-1.5 pl-2">

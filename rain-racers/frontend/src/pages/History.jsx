@@ -2,9 +2,7 @@ import { Link } from "react-router-dom";
 import { useApi } from "../site.jsx";
 import { Loading, ErrorBox, Empty, PageHeader, TeamDot, rise } from "../components/ui.jsx";
 import { Img, PosterPanel, thumbnails } from "../components/Picture.jsx";
-import { inkOn } from "../format.js";
-
-const monthYear = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+import { inkOn, monthYear } from "../format.js";
 
 // Every season the league has run, newest first and grouped by year: the
 // banner (or a round's poster or recording), when it ran, how many rounds
@@ -67,7 +65,9 @@ function SeasonCard({ s }) {
       </div>
       <div className="flex flex-1 flex-col p-5">
         <div className="eyebrow mb-1">
-          {s.season.name} · {monthYear(s.from)}
+          {/* a season named after its year does not say the year twice */}
+          {/^\d{4}$/.test(s.season.name) ? "" : `${s.season.name} · `}
+          {monthYear(s.from)}
           {monthYear(s.from) !== monthYear(s.to) ? ` – ${monthYear(s.to)}` : ""}
         </div>
         <div className="display text-2xl leading-tight">{s.series.name}</div>
@@ -78,7 +78,7 @@ function SeasonCard({ s }) {
         <div className="mt-auto pt-4">
           {s.champion ? (
             <div className="flex items-center gap-2 text-sm">
-              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black uppercase text-black">{s.running ? "Leader" : "Champion"}</span>
+              <span className="text-muted">{s.running ? "Leader" : s.rounds === 1 ? "Winner" : "Champion"}</span>
               <TeamDot team={s.champion.team} />
               <span className="truncate font-bold">{s.champion.name}</span>
             </div>

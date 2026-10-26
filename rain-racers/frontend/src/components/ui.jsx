@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSite } from "../site.jsx";
 import { flag } from "../format.js";
@@ -58,29 +57,7 @@ export function Streaks({ opacity = 0.07, tone = "white", className = "" }) {
   );
 }
 
-// A number that counts up to its value when it first shows (straight to the
-// value for anyone who asked their system for less motion).
-export function CountUp({ value, format = (v) => v, duration = 900 }) {
-  const target = Number(value) || 0;
-  const [shown, setShown] = useState(() => (prefersLessMotion() ? target : 0));
-  useEffect(() => {
-    if (prefersLessMotion()) return setShown(target);
-    let frame;
-    const start = performance.now();
-    const from = 0;
-    const step = (now) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - (1 - t) ** 3;
-      setShown(from + (target - from) * eased);
-      if (t < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [target, duration]);
-  const rounded = Number.isInteger(target) ? Math.round(shown) : Math.round(shown * 10) / 10;
-  return <>{format(rounded)}</>;
-}
-
+// Whether the visitor asked their system for less motion.
 export function prefersLessMotion() {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;

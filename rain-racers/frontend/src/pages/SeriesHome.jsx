@@ -43,7 +43,7 @@ export default function SeriesHome() {
             {/* sized to the screen, so a long name like "Formula International
                 Series" fits a phone */}
             <h1 className="display flex items-center gap-4 text-[clamp(2rem,9vw,3.75rem)] [overflow-wrap:anywhere]">
-              <span className="logo-in hidden h-10 w-10 shrink-0 rounded-full sm:inline-block" style={{ background: series.color || "rgb(var(--accent))" }} />
+              <span className="hidden h-10 w-10 shrink-0 rounded-full sm:inline-block" style={{ background: series.color || "rgb(var(--accent))" }} />
               <span className="title-line min-w-0">
                 <span style={{ "--d": "100ms" }}>{series.name}</span>
               </span>

@@ -245,8 +245,10 @@ export default function RacePage() {
                   {race.season.name} · Round {race.round}
                 </span>
               </div>
-              <h1 className="h1 flex items-start gap-4 [overflow-wrap:anywhere]">
-                <span className="logo-in round-block mt-1 h-12 w-12 shrink-0 text-3xl" style={{ background: color, color: inkOn(color) }}>
+              {/* a long word ("International") steps down a size on a phone
+                  rather than breaking in the middle */}
+              <h1 className={`h1 flex items-start gap-4 [overflow-wrap:anywhere] ${/\S{12,}/.test(race.name) ? "max-sm:text-[1.75rem]" : ""}`}>
+                <span className="round-block mt-1 h-12 w-12 shrink-0 text-3xl" style={{ background: color, color: inkOn(color) }}>
                   {race.round}
                 </span>
                 <span className="title-line">
@@ -263,10 +265,9 @@ export default function RacePage() {
             {race.timetable.length > 0 && <Timetable rows={race.timetable} />}
             {!done && !race.past && (
               <div className="mt-auto space-y-4 border-t border-line pt-5">
-                <div>
-                  <div className="eyebrow mb-2">Starts in</div>
-                  <Countdown to={race.startsAt} compact />
-                </div>
+                <p className="text-muted">
+                  Starts in <Countdown to={race.startsAt} className="text-lg text-ink" />
+                </p>
                 {race.signupOpen && <Signup raceId={race.id} status={race.mySignup} onChange={reload} />}
               </div>
             )}
@@ -313,7 +314,7 @@ function SignupList({ signups }) {
           const list = signups.filter((s) => s.status === status);
           return (
             <div key={status}>
-              <div className={`mb-2 text-xs font-bold uppercase tracking-widest ${tone}`}>
+              <div className={`mb-2 text-xs font-bold uppercase tracking-wider ${tone}`}>
                 {label} · {list.length}
               </div>
               <ul className="space-y-1.5 text-sm">

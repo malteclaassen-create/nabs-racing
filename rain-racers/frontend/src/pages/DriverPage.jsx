@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, Position, TeamName, SeriesBadge, CountUp, rise } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, Position, TeamName, SeriesBadge } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { flag, points } from "../format.js";
 
@@ -76,12 +76,12 @@ function StatTiles({ detail }) {
   const s = detail.stats;
   const tiles = [
     ["Position", detail.standing ? `P${detail.standing.position}` : "—"],
-    ["Points", detail.standing ? <CountUp value={detail.standing.points} format={points} /> : "0"],
-    ["Wins", <CountUp value={s.wins} />],
-    ["Podiums", <CountUp value={s.podiums} />],
-    ["Poles", <CountUp value={s.poles} />],
-    ["Fastest laps", <CountUp value={s.fastestLaps} />],
-    ["Starts", <CountUp value={s.starts} />],
+    ["Points", detail.standing ? points(detail.standing.points) : "0"],
+    ["Wins", s.wins],
+    ["Podiums", s.podiums],
+    ["Poles", s.poles],
+    ["Fastest laps", s.fastestLaps],
+    ["Starts", s.starts],
     ["Best finish", s.bestFinish ? `P${s.bestFinish}` : "—"],
     ["Avg finish", s.avgFinish ?? "—"],
     ["Avg grid", s.avgGrid ?? "—"],
@@ -89,11 +89,11 @@ function StatTiles({ detail }) {
     ["DNFs", s.dnfs],
   ];
   return (
-    <dl className="mt-6 grid grid-cols-2 gap-2 pl-2 sm:grid-cols-4 lg:grid-cols-6">
-      {tiles.map(([label, value], i) => (
-        <div key={label} {...rise(i, 40)} className="rise rounded-xl border border-transparent bg-bg px-4 py-3 transition-colors hover:border-line">
-          <dt className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</dt>
-          <dd className="text-2xl font-black italic tabular">{value}</dd>
+    <dl className="mt-6 grid grid-cols-3 gap-x-4 gap-y-4 pl-2 sm:grid-cols-4 lg:grid-cols-6">
+      {tiles.map(([label, value]) => (
+        <div key={label} className="border-l border-line pl-3">
+          <dt className="text-xs text-muted">{label}</dt>
+          <dd className="text-xl font-black italic tabular">{value}</dd>
         </div>
       ))}
     </dl>
@@ -177,7 +177,7 @@ function HeadToHead({ driver, detail }) {
       <div>
         <div className="mb-1 flex justify-between text-sm">
           <b className="tabular">{a}</b>
-          <span className="text-xs font-bold uppercase tracking-widest text-muted">{label}</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-muted">{label}</span>
           <b className="tabular">{b}</b>
         </div>
         <div className="grow-x flex h-2.5 overflow-hidden rounded-full bg-line">
@@ -210,7 +210,7 @@ function HeadToHead({ driver, detail }) {
           {bar(data.race.a, data.race.b, "Race")}
           {data.quali.a + data.quali.b > 0 && bar(data.quali.a, data.quali.b, "Qualifying")}
           {bar(data.points.a, data.points.b, "Points")}
-          <p className="text-xs text-muted">Over the {data.rounds.length} rounds both started.</p>
+          <p className="text-xs text-muted">Over the {data.rounds.length === 1 ? "round" : `${data.rounds.length} rounds`} both started.</p>
         </div>
       )}
     </section>

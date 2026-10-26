@@ -148,7 +148,10 @@ function pickShade(shades) {
 // half the side of that frame's square that covers the whole screen.
 function makeScene(W, H) {
   const palette = readPalette();
-  const h = ((W + H) * Math.SQRT1_2) / 2 + 4;
+  // with room to spare: on a phone the browser's bars come and go while the
+  // drops are out (the page scrolls to the top under them), and the way out
+  // runs the same drops on the taller or shorter screen
+  const h = ((W + H * 1.3) * Math.SQRT1_2) / 2 + 4;
   // the streaks' size follows the screen's (about 25 to 60 pixels wide on a phone)
   const unit = Math.max(W, H) / 40;
   // lanes side by side (a black base, so no page shows between drops), each
@@ -193,8 +196,9 @@ function drop(path, x, w, front, len) {
 
 // One frame. `t` counts from the start of the way in or out (covered: the
 // way in finished). Returns whether anything is still moving.
-function paint(ctx, scene, dpr, way, t) {
-  const { W, H, h, palette } = scene;
+function paint(ctx, scene, size, way, t) {
+  const { h, palette } = scene;
+  const { W, H, dpr } = size;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -279,15 +283,18 @@ export function RainOverlay({ phase }) {
       el.height = Math.round(H * dpr);
     }
     // the way out runs off the same drops, in the same shades, that came in
-    if (phase !== "out" || !scene.current || scene.current.W !== W || scene.current.H !== H) scene.current = makeScene(W, H);
+    // (also when the screen has changed size meanwhile: new drops would bring
+    // the colours of the page underneath, which is already the next one)
+    if (phase !== "out" || !scene.current) scene.current = makeScene(W, H);
+    const size = { W, H, dpr };
     const start = performance.now();
     let raf = 0;
     const frame = (now) => {
       const t = now - start;
       let moving = true;
       // the opening: covered, with the spray running behind the logo, then out
-      if (phase === "intro" && t < INTRO_HOLD) paint(ctx, scene.current, dpr, "in", t + IN_MS);
-      else moving = paint(ctx, scene.current, dpr, phase === "in" ? "in" : "out", phase === "intro" ? t - INTRO_HOLD : t);
+      if (phase === "intro" && t < INTRO_HOLD) paint(ctx, scene.current, size, "in", t + IN_MS);
+      else moving = paint(ctx, scene.current, size, phase === "in" ? "in" : "out", phase === "intro" ? t - INTRO_HOLD : t);
       if (moving) raf = requestAnimationFrame(frame);
     };
     frame(start);

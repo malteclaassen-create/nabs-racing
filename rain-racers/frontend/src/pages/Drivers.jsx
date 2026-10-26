@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, DriverName, TeamName, CountUp, rise } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, DriverName, TeamName, rise } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { points } from "../format.js";
 
@@ -131,7 +131,7 @@ export default function Drivers() {
                   <td className="hidden text-center tabular sm:table-cell">{d.wins}</td>
                   <td className="hidden text-center tabular sm:table-cell">{d.podiums}</td>
                   <td className="pr-5 text-right text-base font-black tabular">
-                    <CountUp value={d.points} format={points} />
+                    {points(d.points)}
                     {d.manual !== 0 && (
                       <span className="ml-1 align-super text-[10px] font-bold text-sky-300" title={`Manual points: ${points(d.manual)}${d.manualNotes.length ? ` (${d.manualNotes.join(", ")})` : ""}`}>
                         M

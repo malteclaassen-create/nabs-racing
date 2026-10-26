@@ -66,7 +66,7 @@ export function PosterPanel({ color, round, label, mystery = false, className = 
         </span>
       )}
       <div className="relative w-full p-5">
-        {label && <div className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">{label}</div>}
+        {label && <div className="text-[11px] font-bold uppercase tracking-wider opacity-70">{label}</div>}
         {round != null && <div className="display text-7xl leading-none opacity-90">R{round}</div>}
         {mystery && round != null && <div className="display mt-1 text-lg opacity-80">Mystery track</div>}
       </div>

@@ -15,7 +15,7 @@ export default function DiscordButton({ children, className = "", floating = fal
     return () => clearTimeout(t);
   }, [note]);
 
-  const look = `btn whitespace-nowrap bg-[#5865F2] text-white shadow-[0_8px_24px_-12px_#5865F2] hover:bg-[#4752c4] ${className}`;
+  const look = `btn whitespace-nowrap bg-[#5865F2] text-white hover:bg-[#4752c4] ${className}`;
   const body = (
     <>
       <SocialIcon name="discord" />
