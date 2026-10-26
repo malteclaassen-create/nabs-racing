@@ -61,6 +61,7 @@ import { invalidateTeamAllTimeCache } from "../services/teamAllTimeService.js";
 import { invalidateTrackStrengthCache } from "../services/trackStrengthService.js";
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
+import { readTeamLinks, writeTeamLinks, cleanTeamLinks, suggestTeamLinks, linkMap } from "../lib/teamLineage.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
 import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
@@ -6144,6 +6145,38 @@ router.get("/teams/library", async (req, res, next) => {
           (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0) || a.name.localeCompare(b.name)
       );
     res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/team-links?series=   -> { links, names, suggestions }
+// PUT /api/admin/team-links  { links: [{ from, to }] }
+// "Volvo Racing is the same team as Volvo": joins a renamed team's seasons up
+// on its team page (lib/teamLineage.js). The links are global; `names` and
+// `suggestions` come from the series being edited, to pick from.
+router.get("/team-links", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.query.series });
+    const season = seasonId ? await prisma.season.findUnique({ where: { id: seasonId } }) : null;
+    const [links, teams] = await Promise.all([
+      readTeamLinks(prisma),
+      prisma.team.findMany({ where: { season: { seriesId: season?.seriesId ?? null } }, select: { name: true } }),
+    ]);
+    const names = [...new Set(teams.map((t) => t.name.trim()))].sort((a, b) => a.localeCompare(b));
+    res.json({ links, names, suggestions: suggestTeamLinks(names, linkMap(links)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/team-links", async (req, res, next) => {
+  try {
+    const out = cleanTeamLinks(req.body?.links);
+    if (out.error) return res.status(400).json({ error: out.error });
+    const links = await writeTeamLinks(prisma, out.links);
+    invalidateTeamAllTimeCache();
+    res.json({ links });
   } catch (e) {
     next(e);
   }

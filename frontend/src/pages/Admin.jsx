@@ -6830,6 +6830,109 @@ function TeamImport({ seasonId, onImported, onError }) {
   );
 }
 
+// "Volvo Racing is the same team as Volvo". A team page gathers the team's
+// seasons and drivers by name, forgiving capitals, spaces and punctuation; a
+// team that raced under another name (a sponsor, a rebrand) needs a link to be
+// counted as one team. Saved for the whole league (lib/teamLineage.js).
+function TeamLinks({ onSaved, onError }) {
+  const { data, reload } = useApi(useCallback(() => api.teamLinks(), []));
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const links = data?.links || [];
+  const suggestions = data?.suggestions || [];
+
+  async function save(next, message) {
+    setBusy(true);
+    try {
+      await api.saveTeamLinks(next);
+      onSaved?.(message);
+      reload();
+      return true;
+    } catch (e) {
+      onError?.(e.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add(link) {
+    const l = { from: link.from.trim(), to: link.to.trim() };
+    if (!l.from || !l.to) return;
+    if (await save([...links, l], `${l.from} and ${l.to} now count as one team.`)) {
+      setFrom("");
+      setTo("");
+    }
+  }
+
+  return (
+    <div className="card space-y-3 p-5">
+      <CardHead eyebrow="Teams" title="Same team, other name" />
+      <p className="-mt-2 text-sm text-light">
+        When a team raced under another name, link the two so its team page shows every season and all its drivers.
+        Capitals, spaces and punctuation are already ignored.
+      </p>
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add({ from, to });
+        }}
+      >
+        <datalist id="team-link-names">
+          {(data?.names || []).map((n) => <option key={n} value={n} />)}
+        </datalist>
+        <input className="input" list="team-link-names" placeholder="Other name, e.g. Volvo Racing" aria-label="Other name"
+          value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input className="input" list="team-link-names" placeholder="Is the same team as, e.g. Volvo" aria-label="Is the same team as"
+          value={to} onChange={(e) => setTo(e.target.value)} />
+        <button className="btn-primary w-full" disabled={busy || !from.trim() || !to.trim()}>
+          {busy ? "Saving…" : "Link as one team"}
+        </button>
+      </form>
+      {suggestions.length > 0 && (
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-wider text-light">Might be the same team</p>
+          <ul className="-mx-1 divide-y divide-border">
+            {suggestions.slice(0, 8).map((s) => (
+              <li key={`${s.from}|${s.to}`} className="flex items-center gap-3 px-1 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-dark">{s.from} → {s.to}</span>
+                <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" disabled={busy} onClick={() => add(s)}>
+                  Link
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {links.length > 0 && (
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-wider text-light">Linked</p>
+          <ul className="-mx-1 divide-y divide-border">
+            {links.map((l) => (
+              <li key={`${l.from}|${l.to}`} className="flex items-center gap-3 px-1 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-dark">{l.from} → {l.to}</span>
+                <button
+                  type="button"
+                  title={`Unlink ${l.from}`}
+                  disabled={busy}
+                  onClick={() => save(links.filter((x) => x !== l), `${l.from} and ${l.to} are separate teams again.`)}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-light transition hover:bg-rose-500/10 hover:text-rose-500"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Teams() {
   const ask = useAsk();
   const { current } = useSeason();
@@ -7023,6 +7126,11 @@ function Teams() {
         <TeamImport
           seasonId={current?.id}
           onImported={(t) => { setError(null); setMsg(`${t.name} added to ${current?.name || "this season"}.`); reload(); }}
+          onError={(m) => { setMsg(null); setError(m); }}
+        />
+
+        <TeamLinks
+          onSaved={(m) => { setError(null); setMsg(m); }}
           onError={(m) => { setMsg(null); setError(m); }}
         />
 
