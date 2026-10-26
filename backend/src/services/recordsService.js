@@ -16,7 +16,8 @@ import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
-import { finishesOf, startsOf } from "../lib/standingsRow.js";
+import { classificationsOf, finishesOf, startsOf } from "../lib/standingsRow.js";
+import { teamLineageKey } from "../lib/teamLineage.js";
 
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
@@ -96,6 +97,42 @@ export function longestStreak(winners) {
   return best;
 }
 
+// A constructor row's points WITHOUT the drop rule, the team's counterpart of
+// seasonPointsBeforeDrop: the total the table shows (an official sheet's
+// figure for an archived season) plus what every drop mode took off it, which
+// each builder lists per round in droppedPerRace. Pure, exported for the test.
+export function constructorPointsBeforeDrop(row) {
+  const dropped = Object.values(row.droppedPerRace || {}).reduce((sum, p) => sum + (p || 0), 0);
+  return (row.total || 0) + dropped;
+}
+
+// One season of driver standings folded into the all-time team counts: the
+// wins, podiums and starts of every classification, credited to the team the
+// drive was FOR. `teamOf(driverId, round, sprint)` is the team stamped on that
+// result (a reserve's subForTeamId, else the result's teamId) or null, and
+// then the row's season team stands in, as on the team page's all-time
+// drivers (teamAllTimeService.js). `keyOf(teamId)` is the team's line across
+// seasons (lib/teamLineage.js), or null for a team that is no constructor (the
+// reserve pool), whose drives count for nobody. `bucketFor(key)` hands out the
+// aggregate. Pure otherwise, exported for the test.
+export function addSeasonToTeamCareers({ rows, teamOf, keyOf, bucketFor }) {
+  for (const row of rows || []) {
+    for (const [num, cell] of Object.entries(row.perRace || {})) {
+      for (const c of classificationsOf([cell])) {
+        if (!c.status || c.status === "DNS") continue;
+        const key = keyOf(teamOf(row.driverId, Number(num), c.sprint) ?? row.team?.id ?? null);
+        if (!key) continue;
+        const b = bucketFor(key);
+        b.starts += 1;
+        if (c.status === "FINISHED" && c.position != null) {
+          if (c.position === 1) b.wins += 1;
+          if (c.position <= 3) b.podiums += 1;
+        }
+      }
+    }
+  }
+}
+
 const pickPerson = (p) => ({
   driverId: p.driverId, // newest row = the career profile link
   name: p.name,
@@ -130,7 +167,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     await prisma.season.findMany({ where: { seriesId: series.id }, orderBy: { number: "asc" } })
   ).filter((s) => !priv.has(s.id));
   if (!seasons.length)
-    return { seriesName: series.name, seasons: 0, totals: { races: 0, drivers: 0, champions: 0 }, lists: [], records: [], champions: [] };
+    return { seriesName: series.name, seasons: 0, totals: { races: 0, drivers: 0, champions: 0 }, lists: [], teamLists: [], records: [], champions: [] };
 
   const seasonIds = seasons.map((s) => s.id);
   const { byDriver } = await getPersonGroups(prisma);
@@ -233,7 +270,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     },
     select: {
       driverId: true, raceId: true, grid: true, bestLapMs: true, position: true, status: true,
-      overtakes: true, lapsLed: true, contacts: true,
+      overtakes: true, lapsLed: true, contacts: true, teamId: true, subForTeamId: true,
     },
   });
   const addTo = (map, driverId, n = 1) => {
@@ -247,9 +284,12 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   const bestLapByRace = new Map(); // raceId -> { driverId, ms }
   const raceIdsInPlay = new Set(results.map((r) => r.raceId));
   const poleByRace = await readPoleHolders(prisma, [...roundIds, ...sprintChildren.keys()]);
+  const poleHolders = []; // [{ driverId, raceIds: [feature, sprint?] }], for the team lists
   for (const roundId of roundIds) {
     const holder = poleByRace.get(roundId) ?? poleByRace.get(childOfRound.get(roundId)) ?? null;
-    if (holder) addTo(poles, holder);
+    if (!holder) continue;
+    addTo(poles, holder);
+    poleHolders.push({ driverId: holder, raceIds: [roundId, childOfRound.get(roundId)].filter(Boolean) });
   }
   for (const r of results) {
     if (r.overtakes) addTo(overtakes, r.driverId, r.overtakes);
@@ -319,6 +359,80 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   }
   champions.sort((a, b) => b.seasonNumber - a.seasonNumber);
 
+  // --- team careers, one bucket per team LINE across seasons -----------------
+  // Team ids are per season, so a team is followed by its name, spelling
+  // forgiven and renames joined up (lib/teamLineage.js), exactly as the team
+  // page follows it. Only constructors count: the reserve pool (tier 0) is
+  // nobody's team, and a reserve's drive counts for the team they subbed for.
+  // Points are the constructor tables' own, which already price a Tier-2 drive
+  // the way the league does, with the drop rule undone as for the drivers.
+  // Wins, podiums, starts, poles and fastest laps are the drivers' ones, each
+  // credited to the team the result was stamped for.
+  const teamRows = (
+    await prisma.team.findMany({
+      where: { seasonId: { in: seasonIds } },
+      select: { id: true, name: true, tier: true, color: true, logoUrl: true, seasonId: true },
+    })
+  ).filter((t) => t.tier > 0);
+  const seasonNumberById = new Map(seasons.map((s) => [s.id, s.number]));
+  const teamKeyById = new Map(teamRows.map((t) => [t.id, teamLineageKey(t.name)]));
+  const keyOf = (teamId) => (teamId ? teamKeyById.get(teamId) ?? null : null);
+  const teamCareers = new Map(); // lineage key -> aggregate
+  const teamBucketFor = (key) => {
+    let b = teamCareers.get(key);
+    if (!b) {
+      b = { titles: 0, points: 0, wins: 0, podiums: 0, starts: 0, poles: 0, fastestLaps: 0, newestSeason: -1, identity: null };
+      teamCareers.set(key, b);
+    }
+    return b;
+  };
+  // The newest season's row is the face of the line (name, colour, logo, link).
+  for (const t of teamRows) {
+    const n = seasonNumberById.get(t.seasonId);
+    const b = teamBucketFor(teamKeyById.get(t.id));
+    if (n > b.newestSeason) {
+      b.newestSeason = n;
+      b.identity = { teamId: t.id, name: t.name, color: t.color, logoUrl: t.logoUrl || null };
+    }
+  }
+  const stampByResult = new Map(); // `${driverId}|${raceId}` -> team the drive was for
+  for (const r of results) {
+    const t = r.subForTeamId || r.teamId;
+    if (t) stampByResult.set(`${r.driverId}|${r.raceId}`, t);
+  }
+  const seasonTeamOf = new Map(); // driverId -> the driver's season team
+  for (const { standings, races, t1, t2 } of perSeason) {
+    const rows = standings.standings || [];
+    for (const row of rows) if (row.team?.id) seasonTeamOf.set(row.driverId, row.team.id);
+    const featureByNum = new Map(races.filter((r) => r.number != null).map((r) => [r.number, r.id]));
+    addSeasonToTeamCareers({
+      rows,
+      teamOf: (driverId, num, sprint) => {
+        const featureId = featureByNum.get(num);
+        const raceId = sprint ? childOfRound.get(featureId) : featureId;
+        return raceId ? stampByResult.get(`${driverId}|${raceId}`) ?? null : null;
+      },
+      keyOf,
+      bucketFor: teamBucketFor,
+    });
+    for (const row of [...(t1?.standings || []), ...(t2?.standings || [])]) {
+      const key = keyOf(row.teamId);
+      if (key) teamBucketFor(key).points += constructorPointsBeforeDrop(row);
+    }
+  }
+  const teamOfDrive = (driverId, raceIds) =>
+    keyOf(
+      raceIds.map((id) => stampByResult.get(`${driverId}|${id}`)).find(Boolean) ?? seasonTeamOf.get(driverId) ?? null
+    );
+  for (const p of poleHolders) {
+    const key = teamOfDrive(p.driverId, p.raceIds);
+    if (key) teamBucketFor(key).poles += 1;
+  }
+  for (const [raceId, fl] of bestLapByRace) {
+    const key = teamOfDrive(fl.driverId, [raceId]);
+    if (key) teamBucketFor(key).fastestLaps += 1;
+  }
+
   // --- shape the output: data-driven top lists + record tiles ----------------
   const identityOf = (personId) => {
     const b = persons.get(personId);
@@ -348,6 +462,32 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("contacts", "Most contacts", "car-to-car contacts (telemetry seasons)", (b, id) => contacts.get(id) || 0, { unit: "hits" }),
   ].filter(Boolean);
 
+  // Constructors' titles, both tiers, off the champions timeline below the
+  // page's head, so the two can never disagree.
+  for (const c of champions) {
+    for (const t of c.teams) {
+      const key = keyOf(t.teamId);
+      if (key) teamBucketFor(key).titles += 1;
+    }
+  }
+  const teamTopList = (key, label, note, valueOf, { unit = "" } = {}) => {
+    const rows = [...teamCareers.values()]
+      .filter((b) => b.identity && valueOf(b) >= 1)
+      .map((b) => ({ ...b.identity, seasonNumber: b.newestSeason, value: valueOf(b) }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+      .slice(0, 10);
+    return rows.length ? { key, label, note, unit, rows } : null;
+  };
+  const teamLists = [
+    teamTopList("titles", "Most championships", "constructors' titles, Tier 1 and Tier 2", (b) => b.titles, { unit: "titles" }),
+    teamTopList("wins", "Most wins", "races won by its drivers, sprints included", (b) => b.wins, { unit: "wins" }),
+    teamTopList("podiums", "Most podiums", "top-3 finishes by its drivers, sprints included", (b) => b.podiums, { unit: "podiums" }),
+    teamTopList("points", "Most constructor points", "every round counted, nothing dropped", (b) => b.points, { unit: "pts" }),
+    teamTopList("starts", "Most starts", "cars on the grid, sprints included", (b) => b.starts, { unit: "starts" }),
+    teamTopList("poles", "Most pole positions", "fastest in qualifying, where the session is on record", (b) => b.poles, { unit: "poles" }),
+    teamTopList("fastestLaps", "Most fastest laps", "best lap of a race, sprints included", (b) => b.fastestLaps, { unit: "laps" }),
+  ].filter(Boolean);
+
   const recordEntry = (key, label, rec, detail) =>
     rec && identityOf(rec.person)
       ? { key, label, holder: identityOf(rec.person), value: rec.value ?? rec.length, detail }
@@ -371,5 +511,5 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     champions: new Set(champions.map((c) => personOf(c.driver.driverId))).size,
   };
 
-  return { seriesName: series.name, seasons: seasons.length, totals, lists, records, champions };
+  return { seriesName: series.name, seasons: seasons.length, totals, lists, teamLists, records, champions };
 }
