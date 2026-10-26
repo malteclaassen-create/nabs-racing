@@ -14,6 +14,7 @@ import Transfers from "./pages/Transfers.jsx";
 import Live from "./pages/Live.jsx";
 import Info from "./pages/Info.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import { useRainTransition, RainOverlay } from "./components/RainTransition.jsx";
 
 // Only the admin ever opens it, so visitors never download it.
 const Admin = lazy(() => import("./admin/Admin.jsx"));
@@ -270,11 +271,8 @@ function ToSeries({ sub }) {
 function Shell() {
   const { settings } = useSite();
   const location = useLocation();
-  // braces matter: newer browsers return a Promise from scrollTo, and React
-  // would take that for a clean-up function
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location.pathname]);
+  // the page shown follows the address once the streaks cover the screen
+  const { display, displayKey, phase, enter } = useRainTransition(location);
   useEffect(() => {
     if (settings?.leagueName) document.title = settings.leagueName;
   }, [settings?.leagueName]);
@@ -282,15 +280,15 @@ function Shell() {
   return (
     <div className="flex min-h-screen flex-col">
       <NavBar />
-      <main className="page flex-1 py-8 sm:py-10">
+      <main className="page flex-1 py-8 sm:py-10" style={{ "--enter": enter }}>
         {!settings ? (
           <Loading />
         ) : (
           <Suspense fallback={<Loading />}>
-            {/* keyed on the address, so every page rises in (the admin's tabs
+            {/* keyed on the page, so every page rises in (the admin's tabs
                 stay one page, so the series picked there is kept) */}
-            <div key={location.pathname.startsWith("/admin") ? "admin" : location.pathname} className="page-in">
-            <Routes>
+            <div key={displayKey} className="page-in">
+            <Routes location={display}>
               <Route path="/" element={<Overview />} />
               <Route path="/series/:slug" element={<SeriesHome />} />
               <Route path="/series/:slug/drivers" element={<Drivers />} />
@@ -312,6 +310,7 @@ function Shell() {
         )}
       </main>
       <Footer />
+      <RainOverlay phase={phase} />
     </div>
   );
 }
