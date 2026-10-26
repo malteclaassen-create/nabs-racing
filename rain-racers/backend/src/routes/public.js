@@ -8,6 +8,7 @@ import { resolveSeason, seasonRaces, seasonStandings, resultInclude } from "../l
 import { requireUser } from "../auth.js";
 import { liveSeries } from "../live/relay.js";
 import { serverLinks } from "../live/links.js";
+import { seasonNumbers } from "../lib/seasonNumbers.js";
 
 const router = Router();
 
@@ -218,6 +219,8 @@ router.get("/home", async (req, res) => {
     progression: { ...standings.progression, drivers: standings.progression.drivers.slice(0, 6), teams: standings.progression.teams.slice(0, 6) },
     roundsDone: roundsRaced(races),
     roundsTotal: races.length,
+    // once nothing is left to race: the season in numbers
+    numbers: next ? null : seasonNumbers(races, standings),
   });
 });
 

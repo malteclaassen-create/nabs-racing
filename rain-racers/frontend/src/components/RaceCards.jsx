@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useApi } from "../site.jsx";
-import { DriverName, TeamName, TeamDot, rise } from "./ui.jsx";
+import { DriverName, TeamName, TeamDot, Streaks, rise } from "./ui.jsx";
 import Countdown from "./Countdown.jsx";
 import Signup from "./Signup.jsx";
 import { RoundPicture, PlayBadge } from "./Picture.jsx";
@@ -85,6 +85,89 @@ export function NextRace({ race, color = null, label = "Next race", extraImages 
           </Link>
         </div>
       </div>
+    </section>
+  );
+}
+
+// A season that is over, told in numbers: its champion, how much was raced,
+// how many drivers started and won, who won most and took most poles, and
+// the closest finish. Stands where the next race would.
+export function SeasonNumbers({ numbers: n, color = null, seasonId = null }) {
+  const accent = color || "rgb(var(--accent))";
+  const who = (m) =>
+    m.drivers.map((d, i) => (
+      <span key={d.id}>
+        {i > 0 && ", "}
+        <DriverName driver={d} season={seasonId} />
+      </span>
+    ));
+  const counts = [
+    ["Rounds", n.rounds],
+    ["Races", n.races],
+    ["Drivers", n.drivers],
+    ["Winners", n.winners],
+  ];
+  return (
+    <section className="card relative flex h-full flex-col overflow-hidden p-6">
+      <Streaks />
+      <div className="eyebrow relative mb-4">Season in numbers</div>
+      {n.champion && (
+        <div className="relative flex items-stretch gap-4">
+          <span className="w-1.5 rounded-full" style={{ background: accent }} />
+          <div className="min-w-0">
+            <div className="text-sm text-muted">Champion</div>
+            <div className="display truncate text-4xl leading-tight">
+              <DriverName driver={n.champion} season={seasonId} />
+            </div>
+            <div className="text-sm text-muted">
+              {points(n.champion.points)} pts · {n.champion.wins} {n.champion.wins === 1 ? "win" : "wins"}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* on a wide screen the card is as tall as the last result beside it:
+          the counts grow into the room */}
+      <dl className="relative my-6 grid flex-1 grid-cols-4 content-center gap-3 border-y border-line py-5 lg:grid-cols-2 lg:gap-y-8">
+        {counts.map(([label, value]) => (
+          <div key={label} className="flex flex-col-reverse">
+            <dt className="text-sm text-muted lg:text-base">{label}</dt>
+            <dd className="display text-4xl leading-none lg:text-6xl">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <dl className="relative divide-y divide-line text-sm">
+        {n.mostWins && (
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt className="shrink-0 text-muted">Most wins</dt>
+            <dd className="min-w-0 text-right font-semibold">
+              {who(n.mostWins)} <span className="font-normal text-muted">· {n.mostWins.count}</span>
+            </dd>
+          </div>
+        )}
+        {n.mostPoles && (
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt className="shrink-0 text-muted">Most poles</dt>
+            <dd className="min-w-0 text-right font-semibold">
+              {who(n.mostPoles)} <span className="font-normal text-muted">· {n.mostPoles.count}</span>
+            </dd>
+          </div>
+        )}
+        {n.closest && (
+          <div className="flex items-baseline justify-between gap-4 py-3">
+            <dt className="shrink-0 text-muted">Closest finish</dt>
+            <dd className="min-w-0 text-right">
+              <Link to={`/races/${n.closest.raceId}`} className="font-semibold hover:opacity-70">
+                {(n.closest.gapMs / 1000).toFixed(3)} s
+              </Link>
+              <span className="text-muted">
+                {" "}
+                · R{n.closest.round}
+                {n.closest.race ? ` race ${n.closest.race}` : ""}, {n.closest.winner} ahead of {n.closest.second}
+              </span>
+            </dd>
+          </div>
+        )}
+      </dl>
     </section>
   );
 }

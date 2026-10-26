@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
 import { Loading, ErrorBox, SeasonPicker, Streaks, rise } from "../components/ui.jsx";
-import { NextRace, LastRace, TopDrivers, TopTeams } from "../components/RaceCards.jsx";
+import { NextRace, LastRace, TopDrivers, TopTeams, SeasonNumbers } from "../components/RaceCards.jsx";
 import { Img, thumbnails } from "../components/Picture.jsx";
 import LineChart from "../components/LineChart.jsx";
 
@@ -78,11 +78,15 @@ export default function SeriesHome() {
 
       <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <div {...rise(1, 90)}>
-          <NextRace
-            race={data.nextRace}
-            color={series.color}
-            emptyText={data.roundsTotal > 0 ? "This season is over. Every round is on the calendar." : "No race on the calendar yet."}
-          />
+          {!data.nextRace && data.numbers ? (
+            <SeasonNumbers numbers={data.numbers} color={series.color} seasonId={data.season?.id} />
+          ) : (
+            <NextRace
+              race={data.nextRace}
+              color={series.color}
+              emptyText={data.roundsTotal > 0 ? "This season is over. Every round is on the calendar." : "No race on the calendar yet."}
+            />
+          )}
         </div>
         <div {...rise(2, 90)}>
           <LastRace race={data.lastRace} color={series.color} />
