@@ -149,18 +149,18 @@ function pickShade(shades) {
 function makeScene(W, H) {
   const palette = readPalette();
   const h = ((W + H) * Math.SQRT1_2) / 2 + 4;
-  // the streaks' size follows the screen's (about 20 to 50 pixels wide on a phone)
+  // the streaks' size follows the screen's (about 25 to 60 pixels wide on a phone)
   const unit = Math.max(W, H) / 40;
   // lanes side by side (a black base, so no page shows between drops), each
   // a train of drops of their own length and shade, long enough to cover the
   // lane; the lanes start one after another, so the front is ragged
   const lanes = [];
   for (let x = -h; x < h; ) {
-    const w = rnd(1, 2.4) * unit;
+    const w = rnd(1.2, 2.8) * unit;
     const drops = [];
     let y = 0;
     while (y < 2 * h + 60) {
-      const len = rnd(2.5, 8) * w;
+      const len = rnd(4, 12) * w;
       drops.push({ y, len, shade: pickShade(palette.shades) });
       y += len + rnd(5, 11);
     }
@@ -168,7 +168,7 @@ function makeScene(W, H) {
     x += w;
   }
   // the spray: small drops falling fast, ahead on the way in, behind on the way out
-  const spray = Array.from({ length: Math.min(160, Math.round((h * h) / 2600)) }, () => ({
+  const spray = Array.from({ length: Math.min(70, Math.round((h * h) / 6000)) }, () => ({
     x: rnd(-h, h),
     len: rnd(24, 80),
     w: rnd(3, 6),
