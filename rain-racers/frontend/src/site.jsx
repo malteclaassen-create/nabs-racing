@@ -41,9 +41,13 @@ export function SiteProvider({ children, location: shown = null }) {
   }, [reload]);
 
   const routeSlug = matchPath("/series/:slug/*", location.pathname)?.params.slug || matchPath("/series/:slug", location.pathname)?.params.slug;
+  // The series on screen: the one in the address, else the running one looked
+  // at last, else the first running one. Between seasons (nothing running)
+  // there is none outside a series' own pages, so the menu shows no series.
   const series = useMemo(() => {
-    const wanted = routeSlug || readLast();
-    return seriesList.find((s) => s.slug === wanted) || seriesList.find((s) => !s.archived) || seriesList[0] || null;
+    const running = seriesList.filter((s) => !s.archived);
+    if (routeSlug) return seriesList.find((s) => s.slug === routeSlug) || null;
+    return running.find((s) => s.slug === readLast()) || running[0] || null;
   }, [seriesList, routeSlug]);
 
   // A link may name the season (?season=<id>, e.g. from the history).

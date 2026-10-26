@@ -106,7 +106,7 @@ export default function Live() {
   const { board, online } = useLiveBoard(!!settings.liveEnabled, slug);
   const links = useApi(settings.liveEnabled && slug ? `/live/links?series=${slug}` : null).data;
 
-  if (!settings.liveEnabled) return <Empty>Live timing is not set up yet.</Empty>;
+  if (!settings.liveEnabled) return <Empty>{seriesList.some((s) => !s.archived) ? "Live timing is not set up yet." : "No series is running right now."}</Empty>;
 
   const session = board?.session;
   const isRace = session?.type === "Race";

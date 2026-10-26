@@ -8,7 +8,7 @@ import { dateTime, dateLong, points, inkOn } from "../format.js";
 // The league's home: every series it runs at a glance, then the next races,
 // the latest results and the latest recordings across all of them.
 export default function Overview() {
-  const { settings } = useSite();
+  const { settings, seriesList } = useSite();
   const { data, error, loading } = useApi("/overview");
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} />;
@@ -46,7 +46,19 @@ export default function Overview() {
 
       {data.series.length === 0 ? (
         <div className="rise">
-          <Empty>No series yet. Create the first one in the admin under Series &amp; seasons.</Empty>
+          {seriesList.length > 0 ? (
+            <section className="card p-6 sm:p-8">
+              <h2 className="h2 text-2xl">Between seasons</h2>
+              <p className="mt-2 max-w-2xl text-muted">
+                No series is running right now. Every season so far, with its standings and results, is in the league history; the next series is announced on Discord.
+              </p>
+              <Link to="/history" className="btn-accent mt-5">
+                League history
+              </Link>
+            </section>
+          ) : (
+            <Empty>No series yet. Create the first one in the admin under Series &amp; seasons.</Empty>
+          )}
         </div>
       ) : (
         <section>

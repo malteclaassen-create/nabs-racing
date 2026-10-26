@@ -190,7 +190,7 @@ function NavBar() {
               {l.label}
             </NavLink>
           ))}
-          <span className="mx-1 h-5 w-px bg-line" />
+          {seriesLinks.length > 0 && <span className="mx-1 h-5 w-px bg-line" />}
           {tail.map((l) => (
             <NavLink key={l.to} to={l.to} className={linkClass}>
               {l.label}
@@ -219,7 +219,7 @@ function NavBar() {
                 {l.label}
               </NavLink>
             ))}
-            <div className="my-2 h-px bg-line" />
+            {seriesLinks.length > 0 && <div className="my-2 h-px bg-line" />}
             {tail.map((l) => (
               <NavLink key={l.to} to={l.to} className={linkClass}>
                 {l.label}
