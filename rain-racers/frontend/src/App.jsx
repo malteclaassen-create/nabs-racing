@@ -15,6 +15,7 @@ import Live from "./pages/Live.jsx";
 import Info from "./pages/Info.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { useRainTransition, RainOverlay } from "./components/RainTransition.jsx";
+import DiscordButton from "./components/DiscordButton.jsx";
 
 // Only the admin ever opens it, so visitors never download it.
 const Admin = lazy(() => import("./admin/Admin.jsx"));
@@ -34,7 +35,7 @@ function useSeriesLinks() {
   ];
 }
 
-function Account() {
+function Account({ floating }) {
   const { me, reload } = useSite();
   if (me.user) {
     return (
@@ -57,11 +58,10 @@ function Account() {
       </div>
     );
   }
-  if (!me.discordEnabled) return null;
   return (
-    <a href="/api/auth/discord" className="btn bg-[#5865F2] px-3 py-1.5 text-white hover:bg-[#4752c4]">
+    <DiscordButton className="px-3 py-1.5" floating={floating}>
       Sign in
-    </a>
+    </DiscordButton>
   );
 }
 
@@ -190,7 +190,7 @@ function NavBar() {
           ))}
         </nav>
         <div className="ml-auto hidden lg:block">
-          <Account />
+          <Account floating />
         </div>
         <button className="ml-auto rounded-lg border border-line p-2 lg:hidden" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -204,7 +204,7 @@ function NavBar() {
             <NavLink to="/" end className={linkClass}>
               Home
             </NavLink>
-            <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Series</div>
+            {seriesLinks.length > 0 && <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Series</div>}
             <SeriesSwitcher inline />
             {seriesLinks.map((l) => (
               <NavLink key={l.to} to={l.to} className={linkClass}>

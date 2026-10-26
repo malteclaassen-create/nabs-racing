@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { useSite } from "../site.jsx";
+import DiscordButton from "./DiscordButton.jsx";
 
 const OPTIONS = [
   { value: "in", label: "I'm in", on: "bg-emerald-500 text-bg border-emerald-500" },
@@ -14,14 +15,7 @@ export default function Signup({ raceId, status, onChange }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  if (!me.user) {
-    if (!me.discordEnabled) return null;
-    return (
-      <a href="/api/auth/discord" className="btn bg-[#5865F2] text-white hover:bg-[#4752c4]">
-        Sign in with Discord to sign up
-      </a>
-    );
-  }
+  if (!me.user) return <DiscordButton>Sign in with Discord to sign up</DiscordButton>;
 
   async function pick(value) {
     setBusy(true);
