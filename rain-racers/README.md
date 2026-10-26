@@ -118,11 +118,13 @@ The current seasons carry their points rules and timetables from Grid Finder.
 An empty database loads it on its first start (set `SEED_HISTORY=off` to
 start empty instead). A database with data gets it from **Settings → Load
 the Rain Racers history**, which leaves alone every series that is already
-there. `backend/seed/rain-racers-results.json` holds the results Grid Finder
-has (FIS 2 rounds 1 to 4, Sahara Saturdays rounds 1 to 4, the whole RX8
-Cup): they go into the rounds that have none yet, also once into a database
-that got the history before them. The older seasons have no results on
-record; they are imported per round like any other.
+there. `backend/seed/rain-racers-results.json` holds the results: from Grid
+Finder (FIS 2 rounds 1 to 4, Sahara Saturdays rounds 1 to 4, the whole RX8
+Cup) and from the league's race server (Protosprint, Ultimate Touring
+Challenge, Fictional F3, Vacation Tour, Miata Madness). They go into the
+rounds that have none yet, also once into a database that got an older
+version of the history. FIS 1, DTM 2002, GT4 World Series and Japanese Summer
+have no results on record; they are imported per round like any other.
 
 ### Tests
 

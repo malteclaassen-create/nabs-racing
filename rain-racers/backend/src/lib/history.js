@@ -122,6 +122,12 @@ export async function loadResults(client = prisma) {
           include: { _count: { select: { results: true, qualifying: true } } },
         });
         if (!race || race._count.results || race._count.qualifying) continue;
+        // a round the history first had as one race, the results show as more
+        const count = Math.min(4, (result.races || []).length);
+        if (count > race.raceCount) {
+          await client.race.update({ where: { id: race.id }, data: { raceCount: count } });
+          race.raceCount = count;
+        }
         const enter = async (name) => {
           const id = await driverId(name);
           await client.entry.upsert({
@@ -146,6 +152,8 @@ export async function loadResults(client = prisma) {
                 status: r.status || "FIN",
                 laps: r.laps ?? 0,
                 totalTimeMs: r.totalTimeMs ?? null,
+                bestLapMs: r.bestLapMs ?? null,
+                carModel: r.car ?? null,
                 penaltyMs: r.penaltyMs ?? 0,
                 pointsAdjust: r.pointsAdjust ?? 0,
               },
@@ -161,22 +169,19 @@ export async function loadResults(client = prisma) {
 }
 
 // On start: an empty database gets the history (unless SEED_HISTORY=off). A
-// database that got the history before the results existed gets the results
-// once (remembered in the settings table, so results deleted on purpose in
-// the admin do not come back).
-const RESULTS_LOADED = "historyResultsLoaded";
+// database that has it from an older version of the seed gets what was added
+// since once: new series, and results for rounds that have none (remembered
+// in the settings table by the seed's version, so results deleted on purpose
+// in the admin do not come back).
+const SEED_VERSION_KEY = "historyResultsLoaded";
+const SEED_VERSION = "2";
 export async function loadHistoryIfEmpty() {
   if (process.env.SEED_HISTORY === "off") return;
-  const done = await prisma.setting.findUnique({ where: { key: RESULTS_LOADED } });
-  const remember = () => prisma.setting.upsert({ where: { key: RESULTS_LOADED }, create: { key: RESULTS_LOADED, value: "true" }, update: { value: "true" } });
-  if ((await prisma.series.count()) === 0) {
-    const { added, results } = await loadHistory();
-    await remember();
-    if (added.length) console.log(`Loaded the Rain Racers history: ${added.join(", ")} (${results} rounds with results).`);
-    return;
-  }
-  if (done) return;
-  const results = await loadResults();
-  await remember();
-  if (results) console.log(`Loaded the Rain Racers results into ${results} rounds.`);
+  const stored = await prisma.setting.findUnique({ where: { key: SEED_VERSION_KEY } });
+  if (stored?.value === SEED_VERSION) return;
+  const empty = (await prisma.series.count()) === 0;
+  const { added, results } = await loadHistory();
+  await prisma.setting.upsert({ where: { key: SEED_VERSION_KEY }, create: { key: SEED_VERSION_KEY, value: SEED_VERSION }, update: { value: SEED_VERSION } });
+  if (empty) console.log(`Loaded the Rain Racers history: ${added.join(", ")} (${results} rounds with results).`);
+  else if (added.length || results) console.log(`Added to the Rain Racers history: ${[...added, results ? `results in ${results} rounds` : ""].filter(Boolean).join(", ")}.`);
 }

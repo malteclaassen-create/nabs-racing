@@ -30,8 +30,20 @@ qualifying time are left out of the qualifying (Grid Finder gives them no
 points). `pointsAdjust` is what Grid Finder paid on top of the points table:
 the fastest-lap point in FIS 2 and one stewards' deduction of 10.
 
-Not in it: results of the seasons before Grid Finder (not public anywhere)
-and the broadcasts the channel did for other communities. The RX8 Cup's first three
+The results of Protosprint, the Ultimate Touring Challenge, Fictional F3,
+Vacation Tour (round 1) and Miata Madness come from the league's AC Server
+Manager (<https://sahara.emperorservers.com/results>, collected on 26 October
+2026): its result files, read with the site's own importer (`parseAcResult`).
+A driver's names are tied together by the Steam id in those files (and in
+Grid Finder applications): one name per person, the one they chose on Grid
+Finder, else the nickname they use most. The ids are not kept. Names with
+"_DSQ_" in front (set by the stewards) count as disqualified in that race.
+The points rules of those seasons are not on record: their tables use
+today's points table, as their descriptions say.
+
+Not in it: results of FIS 1, DTM 2002, GT4 World Series, Japanese Summer
+(they ran on other servers) and the broadcasts the channel did for other
+communities. The RX8 Cup's first three
 rounds have Grid Finder placeholder times; they are set to the usual Sunday
 evening the streams show.
 

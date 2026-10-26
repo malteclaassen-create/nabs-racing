@@ -1456,16 +1456,16 @@
     {
      "name": "2025",
      "isCurrent": true,
-     "description": "A 5 race series travelling around the globe with different cars and tracks. As the name suggests the cars represent countries that love to visit the countries where the track is located. Starting off in Croatia with a Czech car and finishing in America with the Brazilian Stock Car.",
+     "description": "A 5 race series travelling around the globe with different cars and tracks. As the name suggests the cars represent countries that love to visit the countries where the track is located. Starting off in Croatia with a Czech car and finishing in America with the Brazilian Stock Car.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
      "rounds": [
       {
        "round": 1,
        "name": "Octavia Cup at Grobnik",
        "track": "Grobnik",
-       "startsAt": "2025-08-29T18:00:00.000Z",
+       "startsAt": "2025-09-02T18:29:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=8-FQ3aIrFBc",
        "car": "Škoda Octavia Cup",
-       "raceCount": 1
+       "raceCount": 2
       }
      ]
     }
@@ -1483,7 +1483,7 @@
     {
      "name": "2025",
      "isCurrent": true,
-     "description": "Welcome to the Fictional F3. Street tracks, huge corners, large elevation is all that awaits us in this 7 round championship. Open wheel cars are what we are using and the grid is super competitive. Cash prize pool and glory is all to win.",
+     "description": "Welcome to the Fictional F3. Street tracks, huge corners, large elevation is all that awaits us in this 7 round championship. Open wheel cars are what we are using and the grid is super competitive. Cash prize pool and glory is all to win.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
      "rounds": [
       {
        "round": 1,
@@ -1492,7 +1492,7 @@
        "startsAt": "2025-05-23T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=vVD4ZI7aTx0",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 2,
@@ -1501,7 +1501,7 @@
        "startsAt": "2025-05-30T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=wlPurST6Wp0",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 3,
@@ -1510,7 +1510,7 @@
        "startsAt": "2025-06-06T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=UqF5gIVW4_w",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 4,
@@ -1519,7 +1519,7 @@
        "startsAt": "2025-06-13T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=iltw8GXZQW8",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 5,
@@ -1528,7 +1528,7 @@
        "startsAt": "2025-06-20T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=Pkbn4IDHAF4",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 6,
@@ -1537,7 +1537,7 @@
        "startsAt": "2025-06-27T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=1lFOWDhV1og",
        "car": "Formula 3",
-       "raceCount": 1
+       "raceCount": 2
       }
      ]
     }
@@ -1555,7 +1555,7 @@
     {
      "name": "2025",
      "isCurrent": true,
-     "description": "The best of touring cars all over the world in one series: a different class every round.",
+     "description": "The best of touring cars all over the world in one series: a different class every round.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
      "rounds": [
       {
        "round": 1,
@@ -1564,7 +1564,7 @@
        "startsAt": "2025-03-28T19:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=CtH-IuS4VMo",
        "car": "Alfa Romeo 155 TI V6",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 2,
@@ -1573,7 +1573,7 @@
        "startsAt": "2025-04-04T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=SDPyAsMGeto",
        "car": "Super GT500",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 3,
@@ -1582,7 +1582,7 @@
        "car": "NASCAR",
        "startsAt": "2025-04-11T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=beHVen8AwhA",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 4,
@@ -1591,7 +1591,7 @@
        "startsAt": "2025-04-18T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=a0IOjd3j2bM",
        "car": "BTCC",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 5,
@@ -1600,7 +1600,7 @@
        "startsAt": "2025-04-25T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=a6JMoDmRRDI",
        "car": "Porsche 911 RS 2.7",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 6,
@@ -1609,7 +1609,7 @@
        "startsAt": "2025-05-02T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=jjEwlzDzJuA",
        "car": "Aussie Racing Cars",
-       "raceCount": 1
+       "raceCount": 2
       },
       {
        "round": 7,
@@ -1618,8 +1618,8 @@
        "startsAt": "2025-05-09T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=RvCPz3w5Vmc",
        "car": "TCR",
-       "pointsMultiplier": 2,
-       "raceCount": 1
+       "raceCount": 2,
+       "pointsMultiplier": 2
       }
      ]
     }
@@ -1637,7 +1637,7 @@
     {
      "name": "2025",
      "isCurrent": true,
-     "description": "LMP3 around German and other tracks around the world.",
+     "description": "LMP3 around German and other tracks around the world.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
      "rounds": [
       {
        "round": 1,
@@ -1694,6 +1694,33 @@
        "raceCount": 1
       }
      ]
+    }
+   ]
+  },
+  {
+   "slug": "miata-madness",
+   "name": "Miata Madness",
+   "color": "#ec4899",
+   "schedule": null,
+   "archived": true,
+   "description": "One evening of Mazda Miatas on two tracks.",
+   "order": 10,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Miata Madness",
+       "track": "Charlotte Motor Speedway (oval) and Oulton Park",
+       "car": "Mazda MX-5 Miata",
+       "startsAt": "2025-05-16T18:37:00.000Z",
+       "raceCount": 2,
+       "notes": "Race 1 on the Charlotte oval, race 2 at Oulton Park."
+      }
+     ],
+     "description": "Results from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time."
     }
    ]
   }
