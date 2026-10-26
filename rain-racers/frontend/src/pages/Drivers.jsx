@@ -71,7 +71,11 @@ export default function Drivers() {
       </PageHeader>
 
       {data.drivers.length === 0 ? (
-        <Empty>No results yet. The standings appear after the first race.</Empty>
+        <Empty>
+          {data.season && !data.season.isCurrent
+            ? "No results on record for this season. Recordings of its races are in the calendar."
+            : "No results yet. The standings appear after the first race."}
+        </Empty>
       ) : view === "chart" ? (
         <section className="card rise p-6">
           <h2 className="h2 mb-4">Points after each round</h2>
