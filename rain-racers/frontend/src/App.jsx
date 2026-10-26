@@ -1,14 +1,16 @@
-import { useEffect, useState, lazy, Suspense } from "react";
-import { Routes, Route, NavLink, Link, useLocation } from "react-router-dom";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { Routes, Route, NavLink, Link, Navigate, useLocation, useNavigate, matchPath } from "react-router-dom";
 import { SiteProvider, useSite } from "./site.jsx";
 import { api } from "./api.js";
 import { Logo, Loading, SocialIcon } from "./components/ui.jsx";
-import Home from "./pages/Home.jsx";
+import Overview from "./pages/Overview.jsx";
+import SeriesHome from "./pages/SeriesHome.jsx";
 import Drivers from "./pages/Drivers.jsx";
 import DriverPage from "./pages/DriverPage.jsx";
 import Teams from "./pages/Teams.jsx";
 import Races from "./pages/Races.jsx";
 import RacePage from "./pages/RacePage.jsx";
+import Transfers from "./pages/Transfers.jsx";
 import Live from "./pages/Live.jsx";
 import Info from "./pages/Info.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -16,15 +18,18 @@ import NotFound from "./pages/NotFound.jsx";
 // Only the admin ever opens it, so visitors never download it.
 const Admin = lazy(() => import("./admin/Admin.jsx"));
 
-function useNavLinks() {
-  const { settings } = useSite();
+const linkClass = ({ isActive }) =>
+  `whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-black uppercase italic tracking-wide transition ${isActive ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`;
+
+// The pages of the series being looked at.
+function useSeriesLinks() {
+  const { seriesPath, series } = useSite();
+  if (!series) return [];
   return [
-    { to: "/", label: "Home", end: true },
-    { to: "/drivers", label: "Drivers" },
-    { to: "/teams", label: "Teams" },
-    { to: "/races", label: "Races" },
-    ...(settings?.liveEnabled ? [{ to: "/live", label: "Live" }] : []),
-    { to: "/info", label: "Race Info" },
+    { to: seriesPath("/drivers"), label: "Standings" },
+    { to: seriesPath("/teams"), label: "Teams" },
+    { to: seriesPath("/races"), label: "Races" },
+    { to: seriesPath("/transfers"), label: "Transfers" },
   ];
 }
 
@@ -38,7 +43,7 @@ function Account() {
         ) : (
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-line text-xs font-bold">{me.user.name[0]}</span>
         )}
-        <span className="hidden text-sm font-semibold lg:inline">{me.user.name}</span>
+        <span className="hidden text-sm font-semibold xl:inline">{me.user.name}</span>
         <button
           className="text-xs text-muted hover:text-ink"
           onClick={async () => {
@@ -59,51 +64,141 @@ function Account() {
   );
 }
 
+// Which series the series pages show. Switching keeps the page you are on
+// (standings stay standings), on the other series.
+function SeriesSwitcher({ inline = false }) {
+  const { seriesList, series } = useSite();
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const ref = useRef(null);
+  useEffect(() => {
+    const close = (e) => ref.current && !ref.current.contains(e.target) && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  if (!series) return null;
+  const sub = matchPath("/series/:slug/:page/*", location.pathname)?.params.page;
+  const go = (slug) => {
+    setOpen(false);
+    navigate(`/series/${slug}${sub ? `/${sub}` : ""}`);
+  };
+  const dot = (s) => <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color || "rgb(var(--ink))" }} />;
+
+  if (inline) {
+    return (
+      <div className="flex flex-wrap gap-2 px-3 py-2">
+        {seriesList.map((s) => (
+          <button key={s.slug} onClick={() => go(s.slug)} className={`btn border py-1.5 ${s.slug === series.slug ? "border-ink" : "border-line text-muted"}`}>
+            {dot(s)}
+            {s.name}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  if (seriesList.length < 2) {
+    return (
+      <NavLink to={`/series/${series.slug}`} end className={linkClass}>
+        <span className="inline-flex items-center gap-2">
+          {dot(series)}
+          {series.name}
+        </span>
+      </NavLink>
+    );
+  }
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        className="inline-flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm font-black uppercase italic hover:border-ink"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        {dot(series)}
+        {series.name}
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <ul className="absolute left-0 top-full z-40 mt-2 min-w-[220px] overflow-hidden rounded-xl border border-line bg-card py-1 shadow-2xl" role="listbox">
+          {seriesList.map((s) => (
+            <li key={s.slug}>
+              <button
+                onClick={() => go(s.slug)}
+                className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm hover:bg-white/5 ${s.slug === series.slug ? "font-bold" : ""}`}
+                role="option"
+                aria-selected={s.slug === series.slug}
+              >
+                {dot(s)}
+                <span className="flex-1">{s.name}</span>
+                {s.schedule && <span className="text-xs text-muted">{s.schedule}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function NavBar() {
   const { settings } = useSite();
-  const links = useNavLinks();
+  const seriesLinks = useSeriesLinks();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
-
-  const linkClass = ({ isActive }) =>
-    `rounded-full px-3 py-1.5 text-sm font-black uppercase italic tracking-wide transition ${isActive ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`;
+  const tail = [...(settings?.liveEnabled ? [{ to: "/live", label: "Live" }] : []), { to: "/info", label: "Race Info" }];
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
-      <div className="page flex h-16 items-center gap-4">
-        <Link to="/" className="flex items-center gap-3">
+      <div className="page flex h-16 items-center gap-3">
+        <Link to="/" className="flex shrink-0 items-center gap-3">
           <Logo size={40} />
           <span className="display text-xl">{settings?.leagueName ?? ""}</span>
         </Link>
-        <nav className="ml-4 hidden items-center gap-1 md:flex">
-          {links.map((l) => (
-            <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+        <nav className="ml-3 hidden items-center gap-1 lg:flex">
+          <SeriesSwitcher />
+          {seriesLinks.map((l) => (
+            <NavLink key={l.to} to={l.to} className={linkClass}>
+              {l.label}
+            </NavLink>
+          ))}
+          <span className="mx-1 h-5 w-px bg-line" />
+          {tail.map((l) => (
+            <NavLink key={l.to} to={l.to} className={linkClass}>
               {l.label}
             </NavLink>
           ))}
         </nav>
-        <div className="ml-auto hidden md:block">
+        <div className="ml-auto hidden lg:block">
           <Account />
         </div>
-        <button
-          className="ml-auto rounded-lg border border-line p-2 md:hidden"
-          aria-label="Menu"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
+        <button className="ml-auto rounded-lg border border-line p-2 lg:hidden" aria-label="Menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
           </svg>
         </button>
       </div>
       {open && (
-        <div className="border-t border-line md:hidden">
+        <div className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line lg:hidden">
           <nav className="page flex flex-col py-2">
-            {links.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+            <NavLink to="/" end className={linkClass}>
+              Home
+            </NavLink>
+            <div className="mt-2 px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Series</div>
+            <SeriesSwitcher inline />
+            {seriesLinks.map((l) => (
+              <NavLink key={l.to} to={l.to} className={linkClass}>
+                {l.label}
+              </NavLink>
+            ))}
+            <div className="my-2 h-px bg-line" />
+            {tail.map((l) => (
+              <NavLink key={l.to} to={l.to} className={linkClass}>
                 {l.label}
               </NavLink>
             ))}
@@ -150,6 +245,14 @@ function Footer() {
   );
 }
 
+// Old flat addresses (/drivers, /races, ...) go to the same page of the
+// series being looked at.
+function ToSeries({ sub }) {
+  const { series, seriesList } = useSite();
+  if (!seriesList.length) return <Loading />;
+  return <Navigate to={series ? `/series/${series.slug}${sub}` : "/"} replace />;
+}
+
 function Shell() {
   const { settings } = useSite();
   const location = useLocation();
@@ -171,11 +274,16 @@ function Shell() {
         ) : (
           <Suspense fallback={<Loading />}>
             <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/drivers" element={<Drivers />} />
+              <Route path="/" element={<Overview />} />
+              <Route path="/series/:slug" element={<SeriesHome />} />
+              <Route path="/series/:slug/drivers" element={<Drivers />} />
+              <Route path="/series/:slug/teams" element={<Teams />} />
+              <Route path="/series/:slug/races" element={<Races />} />
+              <Route path="/series/:slug/transfers" element={<Transfers />} />
+              <Route path="/drivers" element={<ToSeries sub="/drivers" />} />
+              <Route path="/teams" element={<ToSeries sub="/teams" />} />
+              <Route path="/races" element={<ToSeries sub="/races" />} />
               <Route path="/drivers/:id" element={<DriverPage />} />
-              <Route path="/teams" element={<Teams />} />
-              <Route path="/races" element={<Races />} />
               <Route path="/races/:id" element={<RacePage />} />
               <Route path="/live" element={<Live />} />
               <Route path="/info" element={<Info />} />

@@ -1,10 +1,22 @@
 # Rain Racers
 
-The website of the Rain Racers sim racing league (Assetto Corsa): driver and
-team standings, the race calendar with results, sign-ups for the next races
-with Discord, live timing from the race server, and a Race Info page with the
-rules and downloads. Everything is run from an admin area: import the result
-file after a race and every table updates.
+The website of the Rain Racers sim racing league (Assetto Corsa). The league
+runs several series side by side (RX8 Cup, DTM 2002, ...), and each has its
+own teams, seasons, calendar and standings:
+
+- **Standings** for drivers and teams, with round-by-round results, points
+  charts, sprint results, poles, fastest laps and dropped rounds
+- **Calendar and results**: feature race, sprint and qualifying per round,
+  with grid, places gained and steward penalties
+- **Driver profiles**: season stats, form chart, head-to-head against any
+  other driver, and a career across every series
+- **Transfers**: each driver's team round by round, and the moves
+- **Sign-ups** for the next races with Discord
+- **Live timing** from each series' race server
+- **Race Info** with the rules and downloads
+- **Admin area**: import the server's result files (or type a result in),
+  manage series, seasons, entry lists, transfers, points rules and see who
+  is still turning up
 
 - **Backend:** Node.js, Express, Prisma with SQLite (one database file, no
   database server), WebSocket relay for the live timing
@@ -13,7 +25,8 @@ file after a race and every table updates.
 ```
 rain-racers/
 ├── backend/    API, database (prisma/), live timing relay (src/live/), tests (test/)
-└── frontend/   the website
+├── frontend/   the website
+└── brand/      the league's logo and graphics, with where they come from
 ```
 
 ## Run it on your computer
@@ -39,23 +52,37 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
 
 ### First steps in the admin
 
-1. **Settings:** league name, colour, logo, Discord invite, YouTube channel,
-   points table, the Race Info text. Out of the box the site carries the Rain
-   Racers logo, black and white look, Discord invite and YouTube channel
-   (see `brand/README.md` for where they come from).
-2. **Seasons:** create the first season.
-3. **Teams:** create the teams with their colours.
-4. **Races & results:** add the races of the season.
-5. After a race: **Races & results → Results → Import result file** and pick
-   the `*_RACE.json` from the server's `results` folder. The preview shows
-   which driver each line is booked on (by Steam id, else by name), the team
-   and the status (FIN / DNF / DSQ / DNS). Fix what is wrong, then save.
-   Drivers who are not known yet are created on the spot.
+1. **Settings:** league name, logo, Discord invite, YouTube channel, the
+   default points tables (race and sprint), the Race Info text.
+2. **Series & seasons:** create a series (e.g. "RX8 Cup", with its colour and
+   schedule); it starts with its first season. The bar at the top of the
+   admin picks the series and season the other tabs work on. Per season:
+   its own points tables, how many worst rounds each driver drops, manual
+   points (a pole award, a deduction) and a champion named by hand.
+3. **Teams:** the teams of the series, with their colours.
+4. **Entry list & transfers:** who drives in the season, for which team and
+   with which number. A team change during the season is a **move** from a
+   round on: a round already raced moves its results and team points to the
+   new team, a round ahead applies itself when its result is saved.
+5. **Races & results:** add the rounds. Tick "Sprint + feature race" for a
+   round with two races, and give a round its own points table if it needs
+   one (a double-points finale).
+6. After a race: **Results**, pick the session (feature race, sprint or
+   qualifying) and **Import** the result file from the server's `results`
+   folder (`*_RACE.json`, `*_QUALIFY.json`). The preview shows which driver
+   each line is booked on (by Steam id, else by name) and the status (FIN /
+   DNF / DSQ / DNS); fix what is wrong, then save. Unknown drivers are created
+   and put on the entry list. No file? **Type in by hand**: the drivers in
+   finishing order, the DNFs marked.
+7. Afterwards in the same place: a **time penalty** (seconds, with a reason)
+   is added to the race time and re-orders the finishers; **± pts** adds or
+   takes off points; the arrows change the order by hand.
+8. **Attendance:** every driver against every round: raced, what they
+   answered in the sign-up, and who said yes and did not start (CSV export).
 
 Points are never stored: the standings are worked out from the results with
-the points table in the settings, so a change to the table applies to the
-whole season at once. Per result there is a field for penalty or bonus
-points, and per race a points multiplier (double points for a finale).
+the points tables, so a change to a table applies to the whole season at
+once. The qualifying decides the pole and fills the feature race's grid.
 
 ### Tests
 
@@ -66,8 +93,9 @@ cd backend && npm test
 ## Live timing
 
 The live page follows an **AC Server Manager** (for example the ones from
-Emperor Servers). In the admin under **Settings → Live timing**, enter the
-server manager's live socket, usually
+Emperor Servers). Each series can have its own server (**Series & seasons →
+Edit → Live socket**); **Settings → Live timing** is the default for the
+series without one. Enter the server manager's live socket, usually
 
 ```
 wss://<your-server-manager-address>/api/race-control
@@ -75,7 +103,8 @@ wss://<your-server-manager-address>/api/race-control
 
 The server manager refuses browsers from other websites, so the backend
 connects for them and passes the timing on. It only stays connected while
-someone has the live page open. Leave the field empty and the Live page
+someone has the live page open. With several series on a server, the live
+page has a button per series. Leave every address empty and the Live page
 disappears from the menu.
 
 To try it without a race server: `npm run fake-live` in `backend/` starts a

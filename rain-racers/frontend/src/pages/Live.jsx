@@ -5,7 +5,7 @@ import { lapTime, gapText } from "../format.js";
 
 // Follows /api/live/ws. The server sends the whole board about once a second
 // while something changes; a dropped connection is retried with a growing wait.
-function useLiveBoard(enabled) {
+function useLiveBoard(enabled, slug) {
   const [board, setBoard] = useState(null);
   const [online, setOnline] = useState(false);
   useEffect(() => {
@@ -16,7 +16,7 @@ function useLiveBoard(enabled) {
     let timer;
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/api/live/ws`);
+      ws = new WebSocket(`${proto}://${location.host}/api/live/ws${slug ? `?series=${encodeURIComponent(slug)}` : ""}`);
       ws.onopen = () => {
         delay = 1000;
         setOnline(true);
@@ -42,7 +42,7 @@ function useLiveBoard(enabled) {
       clearTimeout(timer);
       ws?.close();
     };
-  }, [enabled]);
+  }, [enabled, slug]);
   return { board, online };
 }
 
@@ -77,8 +77,11 @@ function SessionClock({ session }) {
 }
 
 export default function Live() {
-  const { settings } = useSite();
-  const { board, online } = useLiveBoard(!!settings.liveEnabled);
+  const { settings, seriesList, series } = useSite();
+  const live = seriesList.filter((s) => s.live);
+  const [picked, setPicked] = useState(null);
+  const slug = picked || (live.some((s) => s.slug === series?.slug) ? series.slug : live[0]?.slug) || null;
+  const { board, online } = useLiveBoard(!!settings.liveEnabled, slug);
 
   if (!settings.liveEnabled) return <Empty>Live timing is not set up yet.</Empty>;
 
@@ -94,6 +97,21 @@ export default function Live() {
           {!online ? "Connecting…" : board?.connected ? "Live" : "Waiting for the server"}
         </span>
       </PageHeader>
+
+      {live.length > 1 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {live.map((s) => (
+            <button
+              key={s.slug}
+              onClick={() => setPicked(s.slug)}
+              className={`btn border py-1.5 ${s.slug === slug ? "border-ink" : "border-line text-muted"}`}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color || "rgb(var(--ink))" }} />
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {!session ? (
         <Empty>

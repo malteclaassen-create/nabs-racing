@@ -1,19 +1,18 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { seasonQuery } from "../api.js";
 import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamDot } from "../components/ui.jsx";
 import { dateTime } from "../format.js";
 
 export default function Races() {
-  const { seasonId } = useSite();
-  const { data, error, loading } = useApi(`/races${seasonQuery(seasonId)}`);
-  if (loading && !data) return <Loading />;
+  const { series, scope } = useSite();
+  const { data, error, loading } = useApi(series ? `/races${scope}` : null);
+  if (!series || (loading && !data)) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const nextId = data.races.find((r) => !r.done)?.id;
 
   return (
     <div>
-      <PageHeader eyebrow={data.season?.name} title="Calendar">
+      <PageHeader eyebrow={`${series.name} · ${data.season?.name ?? ""}`} title="Calendar">
         <SeasonPicker />
       </PageHeader>
       {data.races.length === 0 ? (
@@ -39,6 +38,8 @@ export default function Races() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="display truncate text-2xl">{race.track || race.name}</span>
                       {race.id === nextId && <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-black uppercase italic text-accent-ink">Next</span>}
+                      {race.hasSprint && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-black uppercase italic text-muted">Sprint</span>}
+                      {race.customPoints && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-black uppercase italic text-muted">Own points</span>}
                       {race.pointsMultiplier !== 1 && (
                         <span className="rounded border border-amber-400/50 px-1.5 py-0.5 text-[10px] font-black uppercase text-amber-300">
                           ×{race.pointsMultiplier} points

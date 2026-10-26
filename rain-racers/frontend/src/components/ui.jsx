@@ -92,18 +92,30 @@ export function PageHeader({ eyebrow, title, children }) {
   );
 }
 
+// The seasons of the series being looked at, when it has more than one.
 export function SeasonPicker() {
-  const { seasons, seasonId, setSeasonId } = useSite();
+  const { series, seasonId, setSeasonId } = useSite();
+  const seasons = series?.seasons || [];
   if (seasons.length < 2) return null;
-  const current = seasons.find((s) => s.isCurrent)?.id ?? seasons[0]?.id;
   return (
-    <select className="input w-auto" value={seasonId ?? current} onChange={(e) => setSeasonId(Number(e.target.value))} aria-label="Season">
+    <select className="input w-auto" value={seasonId ?? ""} onChange={(e) => setSeasonId(Number(e.target.value))} aria-label="Season">
       {seasons.map((s) => (
         <option key={s.id} value={s.id}>
           {s.name}
         </option>
       ))}
     </select>
+  );
+}
+
+// A series' name with its colour, as a small pill.
+export function SeriesBadge({ series, className = "" }) {
+  if (!series) return null;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] font-black uppercase italic ${className}`}>
+      <span className="h-2 w-2 rounded-full" style={{ background: series.color || "rgb(var(--ink))" }} />
+      {series.name}
+    </span>
   );
 }
 

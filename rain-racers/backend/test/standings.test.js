@@ -27,18 +27,18 @@ const res = (d, position, extra = {}) => ({
 describe("points", () => {
   it("scores the table, the fastest lap and adjustments", () => {
     const r = res(ann, 1);
-    expect(pointsFor(r, DEFAULTS)).toBe(25);
-    expect(pointsFor(r, DEFAULTS, 2)).toBe(50);
-    expect(pointsFor(r, DEFAULTS, 1, true)).toBe(26);
-    expect(pointsFor({ ...r, pointsAdjust: -5 }, DEFAULTS)).toBe(20);
-    expect(pointsFor({ ...r, position: 11 }, DEFAULTS, 1, true)).toBe(0); // outside the top 10: no fastest-lap point
+    expect(pointsFor(r, DEFAULTS.pointsTable, DEFAULTS)).toBe(25);
+    expect(pointsFor(r, DEFAULTS.pointsTable, DEFAULTS, 2)).toBe(50);
+    expect(pointsFor(r, DEFAULTS.pointsTable, DEFAULTS, 1, true)).toBe(26);
+    expect(pointsFor({ ...r, pointsAdjust: -5 }, DEFAULTS.pointsTable, DEFAULTS)).toBe(20);
+    expect(pointsFor({ ...r, position: 11 }, DEFAULTS.pointsTable, DEFAULTS, 1, true)).toBe(0); // outside the top 10: no fastest-lap point
   });
 
   it("gives a DNF nothing unless DNFs score", () => {
     const r = res(ann, 3, { status: "DNF" });
-    expect(pointsFor(r, DEFAULTS)).toBe(0);
-    expect(pointsFor(r, { ...DEFAULTS, dnfScores: true })).toBe(15);
-    expect(pointsFor(r, DEFAULTS, 1, true)).toBe(0);
+    expect(pointsFor(r, DEFAULTS.pointsTable, DEFAULTS)).toBe(0);
+    expect(pointsFor(r, DEFAULTS.pointsTable, { ...DEFAULTS, dnfScores: true })).toBe(15);
+    expect(pointsFor(r, DEFAULTS.pointsTable, DEFAULTS, 1, true)).toBe(0);
   });
 
   it("finds the fastest lap, skipping DNS and DSQ", () => {

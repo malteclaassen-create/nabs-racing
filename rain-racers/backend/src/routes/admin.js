@@ -5,8 +5,11 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import prisma from "../db.js";
 import { requireAdmin } from "../auth.js";
-import { getSettings, saveSettings } from "../lib/settings.js";
+import { getSettings, saveSettings, parsePointsList } from "../lib/settings.js";
 import { parseAcResult } from "../lib/acResult.js";
+import { orderWithPenalties } from "../lib/points.js";
+import { attendance, teamAt } from "../lib/stats.js";
+import { teamsAtRound, recomputeResultTeams, seasonRaces } from "../lib/seasonData.js";
 import { UPLOAD_DIR } from "../config.js";
 import { restartLive } from "../live/relay.js";
 
@@ -40,6 +43,15 @@ const text = (v, max = 200) => (v == null ? "" : String(v).trim().slice(0, max))
 const optText = (v, max = 200) => text(v, max) || null;
 const optInt = (v) => (v === "" || v == null ? null : Number.isInteger(Number(v)) ? Number(v) : null);
 const color = (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v || "")) ? String(v).toLowerCase() : null);
+const STATUSES = ["FIN", "DNF", "DSQ", "DNS"];
+const SESSIONS = ["FEATURE", "SPRINT"];
+const sessionParam = (v) => (SESSIONS.includes(String(v).toUpperCase()) ? String(v).toUpperCase() : "FEATURE");
+// A points table typed as "25, 18, 15" (empty = none of its own).
+const tableJson = (v) => {
+  if (v == null || String(v).trim() === "") return null;
+  const list = parsePointsList(v);
+  return list.length ? JSON.stringify(list) : null;
+};
 
 // Prisma's "record not found" and "unique constraint" become readable answers.
 function wrap(fn) {
@@ -50,10 +62,11 @@ function wrap(fn) {
       if (err.code === "P2025") return res.status(404).json({ error: "Not found." });
       if (err.code === "P2002") return res.status(409).json({ error: `Already taken: ${err.meta?.target ?? "value"}.` });
       console.error(err);
-      res.status(500).json({ error: err.message || "Something went wrong." });
+      res.status(err.status || 500).json({ error: err.message || "Something went wrong." });
     }
   };
 }
+const fail = (status, message) => Object.assign(new Error(message), { status });
 
 // ---- Settings ---------------------------------------------------------------
 
@@ -87,33 +100,120 @@ function removeUpload(url) {
   fs.rm(path.join(m[1] === "images" ? IMAGES_DIR : FILES_DIR, m[2]), { force: true }, () => {});
 }
 
-// ---- Seasons ----------------------------------------------------------------
+// ---- Series -----------------------------------------------------------------
 
-router.get("/admin/seasons", wrap(async (_req, res) => {
-  res.json(await prisma.season.findMany({ orderBy: { id: "desc" }, include: { _count: { select: { races: true } } } }));
+const slugify = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 40);
+
+function seriesData(body) {
+  const data = {};
+  if (body.name != null) data.name = text(body.name, 60);
+  if (body.slug != null) data.slug = slugify(body.slug);
+  if (body.color !== undefined) data.color = color(body.color);
+  if (body.description !== undefined) data.description = optText(body.description, 500);
+  if (body.schedule !== undefined) data.schedule = optText(body.schedule, 80);
+  if (body.order != null) data.order = optInt(body.order) ?? 0;
+  if (body.liveWsUrl !== undefined) data.liveWsUrl = /^wss?:\/\//.test(text(body.liveWsUrl)) ? text(body.liveWsUrl, 300) : null;
+  if (body.liveOrigin !== undefined) data.liveOrigin = optText(body.liveOrigin, 200);
+  return data;
+}
+
+router.get("/admin/series", wrap(async (_req, res) => {
+  res.json(
+    await prisma.series.findMany({
+      orderBy: [{ order: "asc" }, { id: "asc" }],
+      include: { _count: { select: { seasons: true, teams: true } } },
+    }),
+  );
 }));
 
-async function makeCurrent(seasonId) {
+router.post("/admin/series", wrap(async (req, res) => {
+  const data = seriesData(req.body || {});
+  if (!data.name) return res.status(400).json({ error: "A series needs a name." });
+  data.slug = data.slug || slugify(data.name);
+  if (!data.slug) return res.status(400).json({ error: "The address name needs letters or digits." });
+  if (data.order == null) data.order = await prisma.series.count();
+  const series = await prisma.series.create({ data });
+  // A series starts with its first season, so races can go in right away.
+  if (req.body?.seasonName !== "") {
+    await prisma.season.create({ data: { seriesId: series.id, name: text(req.body?.seasonName, 80) || `Season ${new Date().getFullYear()}`, isCurrent: true } });
+  }
+  res.json(series);
+}));
+
+router.put("/admin/series/:id", wrap(async (req, res) => {
+  const data = seriesData(req.body || {});
+  if (data.name === "") return res.status(400).json({ error: "A series needs a name." });
+  if (data.slug === "") return res.status(400).json({ error: "The address name needs letters or digits." });
+  const series = await prisma.series.update({ where: { id: id(req.params.id) }, data });
+  if ("liveWsUrl" in data || "liveOrigin" in data) restartLive();
+  res.json(series);
+}));
+
+router.delete("/admin/series/:id", wrap(async (req, res) => {
+  await prisma.series.delete({ where: { id: id(req.params.id) } });
+  restartLive();
+  res.json({ ok: true });
+}));
+
+// ---- Seasons ----------------------------------------------------------------
+
+router.get("/admin/seasons", wrap(async (req, res) => {
+  res.json(
+    await prisma.season.findMany({
+      where: req.query.series ? { seriesId: id(req.query.series) } : {},
+      orderBy: { id: "desc" },
+      include: { series: true, _count: { select: { races: true, entries: true } } },
+    }),
+  );
+}));
+
+async function makeCurrent(season) {
   await prisma.$transaction([
-    prisma.season.updateMany({ data: { isCurrent: false } }),
-    prisma.season.update({ where: { id: seasonId }, data: { isCurrent: true } }),
+    prisma.season.updateMany({ where: { seriesId: season.seriesId }, data: { isCurrent: false } }),
+    prisma.season.update({ where: { id: season.id }, data: { isCurrent: true } }),
   ]);
 }
 
 router.post("/admin/seasons", wrap(async (req, res) => {
+  const seriesId = id(req.body?.seriesId);
   const name = text(req.body?.name, 80);
-  if (!name) return res.status(400).json({ error: "A season needs a name." });
-  const first = (await prisma.season.count()) === 0;
-  const season = await prisma.season.create({ data: { name } });
-  if (first || req.body?.isCurrent) await makeCurrent(season.id);
+  if (!seriesId || !name) return res.status(400).json({ error: "A season needs a series and a name." });
+  const first = (await prisma.season.count({ where: { seriesId } })) === 0;
+  const season = await prisma.season.create({ data: { seriesId, name } });
+  // Carry the entry list over from the season it follows, if asked to.
+  const from = id(req.body?.copyEntriesFrom);
+  if (from) {
+    const entries = await prisma.entry.findMany({ where: { seasonId: from } });
+    const transfers = await prisma.transfer.findMany({ where: { seasonId: from } });
+    const lastRound = (await prisma.race.findFirst({ where: { seasonId: from }, orderBy: { round: "desc" } }))?.round ?? 999;
+    for (const e of entries) {
+      const teamId = teamAt({ entry: e, transfers: transfers.filter((t) => t.driverId === e.driverId) }, lastRound);
+      await prisma.entry.create({ data: { seasonId: season.id, driverId: e.driverId, teamId, number: e.number } });
+    }
+  }
+  if (first || req.body?.isCurrent) await makeCurrent(season);
   res.json(season);
 }));
 
 router.put("/admin/seasons/:id", wrap(async (req, res) => {
+  const b = req.body || {};
   const data = {};
-  if (req.body?.name != null) data.name = text(req.body.name, 80) || "Season";
+  if (b.name != null) data.name = text(b.name, 80) || "Season";
+  if (b.pointsTable !== undefined) data.pointsTable = tableJson(b.pointsTable);
+  if (b.sprintPointsTable !== undefined) data.sprintPointsTable = tableJson(b.sprintPointsTable);
+  if (b.dropWorst != null) data.dropWorst = Math.max(0, Math.min(20, optInt(b.dropWorst) ?? 0));
+  if (b.championId !== undefined) data.championId = optInt(b.championId);
+  if (b.championNote !== undefined) data.championNote = optText(b.championNote, 300);
   const season = await prisma.season.update({ where: { id: id(req.params.id) }, data });
-  if (req.body?.isCurrent) await makeCurrent(season.id);
+  if (b.isCurrent) await makeCurrent(season);
   res.json(season);
 }));
 
@@ -122,10 +222,114 @@ router.delete("/admin/seasons/:id", wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Manual points (a pole award, a deduction, a total from an old sheet).
+router.get("/admin/seasons/:id/manual", wrap(async (req, res) => {
+  res.json(await prisma.manualPoints.findMany({ where: { seasonId: id(req.params.id) }, include: { driver: true }, orderBy: { id: "asc" } }));
+}));
+
+router.post("/admin/seasons/:id/manual", wrap(async (req, res) => {
+  const points = Number(req.body?.points);
+  const driverId = id(req.body?.driverId);
+  if (!driverId || !Number.isFinite(points)) return res.status(400).json({ error: "Pick a driver and enter the points (negative for a deduction)." });
+  res.json(await prisma.manualPoints.create({ data: { seasonId: id(req.params.id), driverId, points, note: optText(req.body?.note, 200) } }));
+}));
+
+router.delete("/admin/manual/:id", wrap(async (req, res) => {
+  await prisma.manualPoints.delete({ where: { id: id(req.params.id) } });
+  res.json({ ok: true });
+}));
+
+// ---- Entry list and transfers -----------------------------------------------
+
+router.get("/admin/seasons/:id/entries", wrap(async (req, res) => {
+  const seasonId = id(req.params.id);
+  const [entries, transfers, races] = await Promise.all([
+    prisma.entry.findMany({ where: { seasonId }, include: { driver: { include: { user: true } }, team: true } }),
+    prisma.transfer.findMany({ where: { seasonId }, include: { team: true }, orderBy: [{ fromRound: "asc" }, { id: "asc" }] }),
+    prisma.race.findMany({ where: { seasonId }, orderBy: { round: "asc" }, select: { round: true, track: true, importedAt: true } }),
+  ]);
+  res.json({
+    rounds: races,
+    entries: entries
+      .map((e) => ({ ...e, transfers: transfers.filter((t) => t.driverId === e.driverId) }))
+      // teams alphabetically, drivers without a team last
+      .sort((a, b) => (a.team ? 0 : 1) - (b.team ? 0 : 1) || (a.team && b.team ? a.team.name.localeCompare(b.team.name) : 0) || a.driver.name.localeCompare(b.driver.name)),
+  });
+}));
+
+router.post("/admin/seasons/:id/entries", wrap(async (req, res) => {
+  const seasonId = id(req.params.id);
+  let driverId = id(req.body?.driverId);
+  if (!driverId) {
+    const name = text(req.body?.name, 80);
+    if (!name) return res.status(400).json({ error: "Pick a driver or type a new name." });
+    driverId = (await prisma.driver.create({ data: { name } })).id;
+  }
+  const entry = await prisma.entry.create({
+    data: { seasonId, driverId, teamId: optInt(req.body?.teamId), number: optInt(req.body?.number) },
+  });
+  await recomputeResultTeams(prisma, seasonId, driverId);
+  res.json(entry);
+}));
+
+router.put("/admin/entries/:id", wrap(async (req, res) => {
+  const data = {};
+  if (req.body?.teamId !== undefined) data.teamId = optInt(req.body.teamId);
+  if (req.body?.number !== undefined) data.number = optInt(req.body.number);
+  const entry = await prisma.entry.update({ where: { id: id(req.params.id) }, data });
+  if ("teamId" in data) await recomputeResultTeams(prisma, entry.seasonId, entry.driverId);
+  res.json(entry);
+}));
+
+router.delete("/admin/entries/:id", wrap(async (req, res) => {
+  const entry = await prisma.entry.delete({ where: { id: id(req.params.id) } });
+  await prisma.transfer.deleteMany({ where: { seasonId: entry.seasonId, driverId: entry.driverId } });
+  res.json({ ok: true });
+}));
+
+// A team change from a round on. A round already raced moves that round's
+// results (and its team points) to the new team; a round ahead applies itself
+// when its result is saved.
+router.post("/admin/seasons/:id/transfers", wrap(async (req, res) => {
+  const seasonId = id(req.params.id);
+  const driverId = id(req.body?.driverId);
+  const fromRound = optInt(req.body?.fromRound);
+  if (!driverId || !fromRound) return res.status(400).json({ error: "Pick a driver and the round the move applies from." });
+  const entry = await prisma.entry.findUnique({ where: { seasonId_driverId: { seasonId, driverId } } });
+  if (!entry) return res.status(400).json({ error: "The driver is not on this season's entry list." });
+  const transfer = await prisma.transfer.create({ data: { seasonId, driverId, teamId: optInt(req.body?.teamId), fromRound } });
+  await recomputeResultTeams(prisma, seasonId, driverId);
+  res.json(transfer);
+}));
+
+router.delete("/admin/transfers/:id", wrap(async (req, res) => {
+  const t = await prisma.transfer.delete({ where: { id: id(req.params.id) } });
+  await recomputeResultTeams(prisma, t.seasonId, t.driverId);
+  res.json({ ok: true });
+}));
+
+// ---- Attendance -------------------------------------------------------------
+
+router.get("/admin/attendance", wrap(async (req, res) => {
+  const seasonId = id(req.query.season);
+  const [races, entries, signups] = await Promise.all([
+    seasonRaces(seasonId),
+    prisma.entry.findMany({ where: { seasonId }, include: { driver: true, team: true } }),
+    prisma.signup.findMany({ where: { race: { seasonId } }, include: { user: { include: { driver: true } } } }),
+  ]);
+  res.json(attendance({ races, entries, signups }));
+}));
+
 // ---- Teams ------------------------------------------------------------------
 
-router.get("/admin/teams", wrap(async (_req, res) => {
-  res.json(await prisma.team.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { drivers: true, results: true } } } }));
+router.get("/admin/teams", wrap(async (req, res) => {
+  res.json(
+    await prisma.team.findMany({
+      where: req.query.series ? { seriesId: id(req.query.series) } : {},
+      orderBy: { name: "asc" },
+      include: { _count: { select: { entries: true, results: true } } },
+    }),
+  );
 }));
 
 function teamData(body) {
@@ -138,8 +342,9 @@ function teamData(body) {
 
 router.post("/admin/teams", wrap(async (req, res) => {
   const data = teamData(req.body || {});
-  if (!data.name) return res.status(400).json({ error: "A team needs a name." });
-  res.json(await prisma.team.create({ data }));
+  const seriesId = id(req.body?.seriesId);
+  if (!data.name || !seriesId) return res.status(400).json({ error: "A team needs a series and a name." });
+  res.json(await prisma.team.create({ data: { ...data, seriesId } }));
 }));
 
 router.put("/admin/teams/:id", wrap(async (req, res) => {
@@ -159,7 +364,7 @@ router.get("/admin/drivers", wrap(async (_req, res) => {
   res.json(
     await prisma.driver.findMany({
       orderBy: { name: "asc" },
-      include: { team: true, user: true, _count: { select: { results: true } } },
+      include: { user: true, entries: { include: { season: { include: { series: true } }, team: true } }, _count: { select: { results: true } } },
     }),
   );
 }));
@@ -170,7 +375,6 @@ function driverData(body) {
   if (body.number !== undefined) data.number = optInt(body.number);
   if (body.country !== undefined) data.country = optText(body.country, 2)?.toUpperCase() ?? null;
   if (body.steamGuid !== undefined) data.steamGuid = optText(body.steamGuid, 40);
-  if (body.teamId !== undefined) data.teamId = optInt(body.teamId);
   if (body.userId !== undefined) data.userId = optInt(body.userId);
   return data;
 }
@@ -217,12 +421,22 @@ router.delete("/admin/users/:id", wrap(async (req, res) => {
 // ---- Races ------------------------------------------------------------------
 
 router.get("/admin/races", wrap(async (req, res) => {
+  const races = await prisma.race.findMany({
+    where: { seasonId: id(req.query.season) },
+    orderBy: [{ round: "asc" }, { startsAt: "asc" }],
+    include: { results: { select: { session: true } }, _count: { select: { signups: true, qualifying: true } } },
+  });
   res.json(
-    await prisma.race.findMany({
-      where: { seasonId: id(req.query.season) },
-      orderBy: [{ round: "asc" }, { startsAt: "asc" }],
-      include: { _count: { select: { results: true, signups: true } } },
-    }),
+    races.map(({ results, ...r }) => ({
+      ...r,
+      pointsTable: r.pointsTable ? JSON.parse(r.pointsTable).join(", ") : "",
+      counts: {
+        FEATURE: results.filter((x) => x.session === "FEATURE").length,
+        SPRINT: results.filter((x) => x.session === "SPRINT").length,
+        QUALIFY: r._count.qualifying,
+        signups: r._count.signups,
+      },
+    })),
   );
 }));
 
@@ -232,6 +446,8 @@ function raceData(body) {
   if (body.track != null) data.track = text(body.track, 120);
   if (body.round != null) data.round = optInt(body.round) ?? 1;
   if (body.notes !== undefined) data.notes = optText(body.notes, 5000);
+  if (body.hasSprint !== undefined) data.hasSprint = !!body.hasSprint;
+  if (body.pointsTable !== undefined) data.pointsTable = tableJson(body.pointsTable);
   if (body.pointsMultiplier != null) {
     const m = Number(body.pointsMultiplier);
     data.pointsMultiplier = Number.isFinite(m) && m >= 0 ? m : 1;
@@ -263,9 +479,13 @@ router.delete("/admin/races/:id", wrap(async (req, res) => {
 // ---- Results ----------------------------------------------------------------
 
 router.get("/admin/races/:id/results", wrap(async (req, res) => {
+  const raceId = id(req.params.id);
+  if (String(req.query.session).toUpperCase() === "QUALIFY") {
+    return res.json(await prisma.qualiResult.findMany({ where: { raceId }, orderBy: { position: "asc" }, include: { driver: true } }));
+  }
   res.json(
     await prisma.result.findMany({
-      where: { raceId: id(req.params.id) },
+      where: { raceId, session: sessionParam(req.query.session) },
       orderBy: { position: "asc" },
       include: { driver: true, team: true },
     }),
@@ -273,73 +493,111 @@ router.get("/admin/races/:id/results", wrap(async (req, res) => {
 }));
 
 // Step 1 of an import: read the file and say who is who. Nothing is saved.
-// Each row gets the driver it would be booked on: the Steam id first, then
-// the name; `driverId: null` means a new driver would be created.
+// Each row gets the driver it would be booked on (the Steam id first, then
+// the name; null = a new driver) and the team they drive for in this round.
 router.post("/admin/races/:id/import/preview", wrap(async (req, res) => {
-  const race = await prisma.race.findUnique({ where: { id: id(req.params.id) } });
+  const race = await prisma.race.findUnique({ where: { id: id(req.params.id) }, include: { season: true } });
   if (!race) return res.status(404).json({ error: "Race not found." });
+  const session = String(req.body?.session || "FEATURE").toUpperCase();
   let parsed;
   try {
     parsed = parseAcResult(req.body?.file, await getSettings());
   } catch (err) {
     return res.status(400).json({ error: err.message || "Could not read the file." });
   }
-  const drivers = await prisma.driver.findMany({ include: { team: true } });
-  const teams = await prisma.team.findMany();
+  const [drivers, teams, teamNow] = await Promise.all([
+    prisma.driver.findMany(),
+    prisma.team.findMany({ where: { seriesId: race.season.seriesId } }),
+    teamsAtRound(race.seasonId, race.round),
+  ]);
   const byGuid = new Map(drivers.filter((d) => d.steamGuid).map((d) => [d.steamGuid, d]));
   const byName = new Map(drivers.map((d) => [d.name.toLowerCase(), d]));
   const teamByName = new Map(teams.map((t) => [t.name.toLowerCase(), t]));
   const rows = parsed.rows.map((row) => {
     const match = (row.guid && byGuid.get(row.guid)) || byName.get(row.name.toLowerCase()) || null;
     const fileTeam = row.team ? teamByName.get(row.team.toLowerCase()) : null;
+    const entered = match && teamNow.has(match.id);
     return {
       ...row,
       driverId: match?.id ?? null,
       matchedBy: match ? (row.guid && match.steamGuid === row.guid ? "steam" : "name") : null,
-      teamId: match?.teamId ?? fileTeam?.id ?? null,
+      teamId: entered ? teamNow.get(match.id) : fileTeam?.id ?? null,
+      onEntryList: !!entered,
     };
   });
-  res.json({ type: parsed.type, track: parsed.track, rows, replaces: await prisma.result.count({ where: { raceId: race.id } }) });
+  const existing =
+    session === "QUALIFY"
+      ? await prisma.qualiResult.count({ where: { raceId: race.id } })
+      : await prisma.result.count({ where: { raceId: race.id, session: sessionParam(session) } });
+  res.json({ type: parsed.type, track: parsed.track, rows, replaces: existing });
 }));
 
-// Step 2: save the rows as the race's results, replacing any there were.
+// Step 2: save the rows as the session's results, replacing any there were.
+// Also takes rows typed in by hand (driverId and status, no times). Drivers
+// who are new, or not yet on the season's entry list, are added to it.
 router.post("/admin/races/:id/import", wrap(async (req, res) => {
   const raceId = id(req.params.id);
   const race = await prisma.race.findUnique({ where: { id: raceId } });
   if (!race) return res.status(404).json({ error: "Race not found." });
+  const session = String(req.body?.session || "FEATURE").toUpperCase();
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
-  if (!rows.length) return res.status(400).json({ error: "No rows to import." });
-  const statuses = ["FIN", "DNF", "DSQ", "DNS"];
+  if (!rows.length) return res.status(400).json({ error: "No rows to save." });
 
   await prisma.$transaction(async (tx) => {
-    await tx.result.deleteMany({ where: { raceId } });
-    const used = new Set();
-    for (const [i, row] of rows.entries()) {
+    // Every row on a driver: known, or created now (their Steam id is only
+    // stored when nobody else has it).
+    const driverIds = [];
+    for (const row of rows) {
       let driverId = optInt(row.driverId);
+      const guid = optText(row.guid, 40);
       if (!driverId) {
-        // A new driver. Their Steam id may already sit on someone (the admin
-        // picked "new" on purpose), so it is only stored when it is free.
-        const guid = optText(row.guid, 40);
         const taken = guid ? await tx.driver.findUnique({ where: { steamGuid: guid } }) : null;
-        const created = await tx.driver.create({
-          data: { name: text(row.name, 80) || "Unknown driver", steamGuid: taken ? null : guid, teamId: optInt(row.teamId) },
-        });
-        driverId = created.id;
-      } else if (row.guid) {
-        // Remember the Steam id for the next import if the driver has none yet.
+        driverId = (await tx.driver.create({ data: { name: text(row.name, 80) || "Unknown driver", steamGuid: taken ? null : guid } })).id;
+      } else if (guid) {
         const d = await tx.driver.findUnique({ where: { id: driverId } });
-        const free = !(await tx.driver.findUnique({ where: { steamGuid: String(row.guid) } }));
-        if (d && !d.steamGuid && free) await tx.driver.update({ where: { id: driverId }, data: { steamGuid: String(row.guid) } });
+        const free = !(await tx.driver.findUnique({ where: { steamGuid: guid } }));
+        if (d && !d.steamGuid && free) await tx.driver.update({ where: { id: driverId }, data: { steamGuid: guid } });
       }
-      if (used.has(driverId)) throw new Error(`A driver appears twice in the result (row ${i + 1}).`);
-      used.add(driverId);
+      if (driverIds.includes(driverId)) throw fail(400, `A driver appears twice (row ${driverIds.length + 1}).`);
+      driverIds.push(driverId);
+      // onto the entry list, with the team picked in the preview
+      await tx.entry.upsert({
+        where: { seasonId_driverId: { seasonId: race.seasonId, driverId } },
+        create: { seasonId: race.seasonId, driverId, teamId: optInt(row.teamId) },
+        update: {},
+      });
+    }
+
+    if (session === "QUALIFY") {
+      await tx.qualiResult.deleteMany({ where: { raceId } });
+      for (const [i, row] of rows.entries()) {
+        await tx.qualiResult.create({ data: { raceId, driverId: driverIds[i], position: i + 1, bestLapMs: optInt(row.bestLapMs) } });
+      }
+      // the feature race's grid follows the qualifying where it has none of its own
+      const feature = await tx.result.findMany({ where: { raceId, session: "FEATURE", grid: null } });
+      for (const r of feature) {
+        const i = driverIds.indexOf(r.driverId);
+        if (i >= 0) await tx.result.update({ where: { id: r.id }, data: { grid: i + 1 } });
+      }
+      return;
+    }
+
+    const s = sessionParam(session);
+    const teamNow = await teamsAtRound(race.seasonId, race.round, tx);
+    const quali = s === "FEATURE" ? await tx.qualiResult.findMany({ where: { raceId } }) : [];
+    await tx.result.deleteMany({ where: { raceId, session: s } });
+    for (const [i, row] of rows.entries()) {
+      const driverId = driverIds[i];
+      const teamId = teamNow.has(driverId) ? teamNow.get(driverId) : optInt(row.teamId);
       await tx.result.create({
         data: {
           raceId,
+          session: s,
           driverId,
-          teamId: optInt(row.teamId),
+          teamId,
           position: i + 1,
-          status: statuses.includes(row.status) ? row.status : "FIN",
+          grid: optInt(row.grid) ?? quali.find((q) => q.driverId === driverId)?.position ?? null,
+          status: STATUSES.includes(row.status) ? row.status : "FIN",
           laps: optInt(row.laps) ?? 0,
           totalTimeMs: optInt(row.totalTimeMs),
           bestLapMs: optInt(row.bestLapMs),
@@ -352,24 +610,39 @@ router.post("/admin/races/:id/import", wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// One result: status, team, laps, grid, best lap, points adjustment, and a
+// steward time penalty (which re-orders the session's finishers by time).
 router.put("/admin/results/:id", wrap(async (req, res) => {
   const b = req.body || {};
   const data = {};
-  if (b.status != null && ["FIN", "DNF", "DSQ", "DNS"].includes(b.status)) data.status = b.status;
+  if (b.status != null && STATUSES.includes(b.status)) data.status = b.status;
   if (b.teamId !== undefined) data.teamId = optInt(b.teamId);
   if (b.laps != null) data.laps = optInt(b.laps) ?? 0;
+  if (b.grid !== undefined) data.grid = optInt(b.grid);
   if (b.pointsAdjust != null) data.pointsAdjust = Number(b.pointsAdjust) || 0;
   if (b.bestLapMs !== undefined) data.bestLapMs = optInt(b.bestLapMs);
-  res.json(await prisma.result.update({ where: { id: id(req.params.id) }, data }));
+  if (b.penaltySeconds != null) data.penaltyMs = Math.max(0, Math.round((Number(b.penaltySeconds) || 0) * 1000));
+  if (b.penaltyNote !== undefined) data.penaltyNote = optText(b.penaltyNote, 200);
+  const result = await prisma.result.update({ where: { id: id(req.params.id) }, data });
+  if ("penaltyMs" in data || "status" in data) {
+    const all = await prisma.result.findMany({ where: { raceId: result.raceId, session: result.session } });
+    const order = orderWithPenalties(all);
+    await prisma.$transaction([
+      ...order.map((r, i) => prisma.result.update({ where: { id: r.id }, data: { position: 1000 + i } })),
+      ...order.map((r, i) => prisma.result.update({ where: { id: r.id }, data: { position: i + 1 } })),
+    ]);
+  }
+  res.json(result);
 }));
 
-// New finishing order: { order: [resultId, ...] }, top to bottom.
+// New finishing order: { session, order: [resultId, ...] }, top to bottom.
 router.put("/admin/races/:id/order", wrap(async (req, res) => {
   const raceId = id(req.params.id);
+  const session = sessionParam(req.body?.session);
   const order = (Array.isArray(req.body?.order) ? req.body.order : []).map(id);
-  const existing = await prisma.result.findMany({ where: { raceId }, select: { id: true } });
+  const existing = await prisma.result.findMany({ where: { raceId, session }, select: { id: true } });
   if (order.length !== existing.length || !existing.every((r) => order.includes(r.id))) {
-    return res.status(400).json({ error: "The order has to list every result of the race once." });
+    return res.status(400).json({ error: "The order has to list every result of the session once." });
   }
   // Two passes, so no two rows share a position half way through.
   await prisma.$transaction([
@@ -381,8 +654,12 @@ router.put("/admin/races/:id/order", wrap(async (req, res) => {
 
 router.delete("/admin/races/:id/results", wrap(async (req, res) => {
   const raceId = id(req.params.id);
-  await prisma.result.deleteMany({ where: { raceId } });
-  await prisma.race.update({ where: { id: raceId }, data: { importedAt: null } });
+  if (String(req.query.session).toUpperCase() === "QUALIFY") {
+    await prisma.qualiResult.deleteMany({ where: { raceId } });
+    return res.json({ ok: true });
+  }
+  await prisma.result.deleteMany({ where: { raceId, session: sessionParam(req.query.session) } });
+  if (!(await prisma.result.count({ where: { raceId } }))) await prisma.race.update({ where: { id: raceId }, data: { importedAt: null } });
   res.json({ ok: true });
 }));
 

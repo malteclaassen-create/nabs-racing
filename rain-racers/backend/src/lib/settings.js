@@ -15,6 +15,9 @@ export const DEFAULTS = {
   rules: "# Rules\n- Be respectful on and off track.\n- Join the Discord for briefings and stewarding.",
   // Points for P1, P2, ... Anything past the end of the list scores nothing.
   pointsTable: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+  // The same for a sprint race. A season can set its own tables, a round
+  // its own feature table.
+  sprintPointsTable: [8, 7, 6, 5, 4, 3, 2, 1],
   // Extra point for the fastest lap, only for a finisher inside the top N.
   fastestLapPoints: 1,
   fastestLapTopN: 10,
@@ -38,6 +41,7 @@ const PUBLIC_KEYS = [
   "youtubeUrl",
   "rules",
   "pointsTable",
+  "sprintPointsTable",
   "fastestLapPoints",
   "fastestLapTopN",
   "dnfScores",
@@ -64,6 +68,16 @@ export async function getSettings() {
 export async function publicSettings() {
   const all = await getSettings();
   return Object.fromEntries(PUBLIC_KEYS.map((k) => [k, all[k]]));
+}
+
+// "25, 18, 15" (or a list) -> [25, 18, 15]. Also used for the season and
+// round tables.
+export function parsePointsList(value) {
+  return (Array.isArray(value) ? value : String(value ?? "").split(/[\s,;]+/))
+    .filter((v) => v !== "")
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .slice(0, 60);
 }
 
 // Checks and normalises what the admin sends. Unknown keys are dropped.
@@ -95,14 +109,10 @@ export function cleanSettings(input) {
       case "logoUrl":
         out[key] = value ? str(value, 300) : null;
         break;
-      case "pointsTable": {
-        const list = (Array.isArray(value) ? value : String(value).split(/[\s,;]+/))
-          .map(Number)
-          .filter((n) => Number.isFinite(n) && n >= 0)
-          .slice(0, 60);
-        out[key] = list;
+      case "pointsTable":
+      case "sprintPointsTable":
+        out[key] = parsePointsList(value);
         break;
-      }
       case "fastestLapPoints":
       case "fastestLapTopN": {
         const n = Number(value);

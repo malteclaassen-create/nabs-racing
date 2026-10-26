@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.js";
 import { useAdminList, useAction, Message, Section, Field, confirmDelete } from "./common.jsx";
+import { useScope } from "./scope.jsx";
 
 function TeamRow({ team, onSaved, run }) {
   const [name, setName] = useState(team.name);
@@ -11,7 +12,7 @@ function TeamRow({ team, onSaved, run }) {
       <input type="color" className="h-9 w-11 cursor-pointer rounded border border-line bg-bg" value={color} onChange={(e) => setColor(e.target.value)} aria-label="Team colour" />
       <input className="input max-w-xs" value={name} onChange={(e) => setName(e.target.value)} />
       <span className="text-sm text-muted">
-        {team._count.drivers} drivers · {team._count.results} results
+        {team._count.entries} entries · {team._count.results} results
       </span>
       {team.archived && <span className="text-xs font-bold uppercase text-muted">archived</span>}
       <div className="ml-auto flex gap-2">
@@ -35,19 +36,20 @@ function TeamRow({ team, onSaved, run }) {
 }
 
 export default function TeamsAdmin() {
-  const { data, reload } = useAdminList("/admin/teams");
+  const { seriesId, currentSeries } = useScope();
+  const { data, reload } = useAdminList(seriesId ? `/admin/teams?series=${seriesId}` : null);
   const { busy, message, run } = useAction();
   const [name, setName] = useState("");
   const [color, setColor] = useState("#38bdf8");
 
   return (
     <div className="space-y-6">
-      <Section title="New team">
+      <Section title={`New team in ${currentSeries?.name ?? "…"}`}>
         <form
           className="flex flex-wrap items-end gap-3"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (await run(() => api.post("/admin/teams", { name, color }), "Team created.")) {
+            if (await run(() => api.post("/admin/teams", { name, color, seriesId }), "Team created.")) {
               setName("");
               reload();
             }
@@ -67,7 +69,7 @@ export default function TeamsAdmin() {
           <Message message={message} />
         </div>
       </Section>
-      <Section title="Teams">
+      <Section title={`Teams of ${currentSeries?.name ?? "…"}`}>
         <ul className="divide-y divide-line">
           {data?.map((t) => (
             <TeamRow key={`${t.id}-${t.name}-${t.color}-${t.archived}`} team={t} onSaved={reload} run={run} />

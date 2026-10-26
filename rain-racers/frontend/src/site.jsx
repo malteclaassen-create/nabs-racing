@@ -1,40 +1,79 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { matchPath, useLocation } from "react-router-dom";
 import { api } from "./api.js";
 import { hexToRgb } from "./format.js";
 
-// What every page needs: the league's settings, who is signed in, the seasons
-// and which one is being looked at.
+// What every page needs: the league's settings, who is signed in, the series
+// with their seasons, which series is being looked at (from the address, else
+// the last one looked at) and which season of it.
 const SiteContext = createContext(null);
+const LAST_SERIES = "rr.series";
+
+const readLast = () => {
+  try {
+    return localStorage.getItem(LAST_SERIES);
+  } catch {
+    return null;
+  }
+};
 
 export function SiteProvider({ children }) {
   const [settings, setSettings] = useState(null);
   const [me, setMe] = useState({ user: null, isAdmin: false, discordEnabled: false });
-  const [seasons, setSeasons] = useState([]);
-  const [seasonId, setSeasonId] = useState(null); // null = the current season
+  const [seriesList, setSeriesList] = useState([]);
+  const [seasonBySeries, setSeasonBySeries] = useState({}); // slug -> season id
+  const location = useLocation();
 
   const reload = useCallback(async () => {
-    const [s, m, list] = await Promise.all([api.get("/settings"), api.get("/me"), api.get("/seasons")]);
+    const [s, m, list] = await Promise.all([api.get("/settings"), api.get("/me"), api.get("/series")]);
     setSettings(s);
     setMe(m);
-    setSeasons(list);
+    setSeriesList(list);
   }, []);
 
   useEffect(() => {
     reload().catch(() => setSettings((s) => s || { leagueName: "Rain Racers", pointsTable: [] }));
   }, [reload]);
 
+  const routeSlug = matchPath("/series/:slug/*", location.pathname)?.params.slug || matchPath("/series/:slug", location.pathname)?.params.slug;
+  const series = useMemo(() => {
+    const wanted = routeSlug || readLast();
+    return seriesList.find((s) => s.slug === wanted) || seriesList[0] || null;
+  }, [seriesList, routeSlug]);
+
   useEffect(() => {
-    const rgb = hexToRgb(settings?.accentColor);
+    if (!routeSlug || !series) return;
+    try {
+      localStorage.setItem(LAST_SERIES, series.slug);
+    } catch {
+      // private mode: fine, the address still carries the series
+    }
+  }, [routeSlug, series]);
+
+  const seasonId = series ? seasonBySeries[series.slug] ?? series.currentSeason?.id ?? null : null;
+  const setSeasonId = useCallback(
+    (sid) => series && setSeasonBySeries((m) => ({ ...m, [series.slug]: sid })),
+    [series],
+  );
+
+  // The league colour, or the series colour on a series' own pages.
+  const accent = (routeSlug && series?.color) || settings?.accentColor;
+  useEffect(() => {
+    const rgb = hexToRgb(accent);
     if (!rgb) return;
     const root = document.documentElement.style;
     root.setProperty("--accent", rgb);
-    // black text on a light league colour, white on a dark one
+    // black text on a light colour, white on a dark one
     const [r, g, b] = rgb.split(" ").map(Number);
     root.setProperty("--accent-ink", 0.2126 * r + 0.7152 * g + 0.0722 * b > 150 ? "0 0 0" : "255 255 255");
-  }, [settings?.accentColor]);
+  }, [accent]);
+
+  // "?series=rx8-cup&season=3" for the API calls of the series pages.
+  const scope = series ? `?series=${encodeURIComponent(series.slug)}${seasonId ? `&season=${seasonId}` : ""}` : "";
+  const seriesPath = (sub = "") => (series ? `/series/${series.slug}${sub}` : "/");
 
   return (
-    <SiteContext.Provider value={{ settings, me, seasons, seasonId, setSeasonId, reload }}>
+    <SiteContext.Provider value={{ settings, me, reload, seriesList, series, seasonId, setSeasonId, scope, seriesPath }}>
       {children}
     </SiteContext.Provider>
   );

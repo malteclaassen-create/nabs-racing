@@ -1,71 +1,26 @@
 import { Link } from "react-router-dom";
-import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, DriverName, TeamName, TeamDot, Logo, Streaks, SocialButtons } from "../components/ui.jsx";
-import Countdown from "../components/Countdown.jsx";
-import Signup from "../components/Signup.jsx";
-import { dateTime, dateLong, points } from "../format.js";
+import { useApi } from "../site.jsx";
+import { DriverName, TeamName, TeamDot } from "./ui.jsx";
+import Countdown from "./Countdown.jsx";
+import Signup from "./Signup.jsx";
+import { dateTime, dateLong, points, hexToRgb } from "../format.js";
 
-export default function Home() {
-  const { settings } = useSite();
-  const { data, error, loading } = useApi("/home");
-  if (loading && !data) return <Loading />;
-  if (error) return <ErrorBox error={error} />;
-
-  return (
-    <div className="space-y-8">
-      <Hero settings={settings} season={data.season} done={data.roundsDone} total={data.roundsTotal} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <NextRace race={data.nextRace} />
-        <LastRace race={data.lastRace} />
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <TopDrivers rows={data.drivers} />
-        <TopTeams rows={data.teams} />
-      </div>
-    </div>
-  );
-}
-
-function Hero({ settings, season, done, total }) {
-  return (
-    <section className="card relative overflow-hidden">
-      <Streaks />
-      <div className="relative grid items-center gap-10 px-6 py-12 sm:px-10 sm:py-16 lg:grid-cols-[1.5fr_1fr]">
-        <div>
-          {season && (
-            <div className="eyebrow mb-4">
-              {season.name}
-              {total > 0 && ` · Round ${done} of ${total}`}
-            </div>
-          )}
-          <h1 className="display max-w-[10ch] text-6xl sm:text-8xl">{settings.leagueName}</h1>
-          {settings.tagline && <p className="mt-6 max-w-xl text-lg text-muted">{settings.tagline}</p>}
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/drivers" className="btn-accent">
-              Standings
-            </Link>
-            <Link to="/races" className="btn-ghost">
-              Calendar
-            </Link>
-            <SocialButtons />
-          </div>
-        </div>
-        <div className="hidden justify-center lg:flex">
-          <Logo size={300} />
-        </div>
-      </div>
-    </section>
-  );
+// Black or white text on a colour, whichever reads.
+export function inkOn(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return "#000";
+  const [r, g, b] = rgb.split(" ").map(Number);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 150 ? "#000" : "#fff";
 }
 
 // The next race the way the league announces one: a slanted colour panel
 // with the round and the start, the countdown and sign-up next to it.
-function NextRace({ race }) {
+export function NextRace({ race, color = null, label = "Next race" }) {
   const detail = useApi(race ? `/races/${race.id}` : null);
   if (!race) {
     return (
       <section className="card p-6">
-        <div className="eyebrow mb-2">Next race</div>
+        <div className="eyebrow mb-2">{label}</div>
         <p className="text-muted">No race on the calendar yet.</p>
       </section>
     );
@@ -73,8 +28,15 @@ function NextRace({ race }) {
   const start = new Date(race.startsAt);
   return (
     <section className="card overflow-hidden">
-      <Link to={`/races/${race.id}`} className="slant block bg-accent px-6 pb-9 pt-6 text-accent-ink sm:pr-14">
-        <div className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">Next race · Round {race.round}</div>
+      <Link
+        to={`/races/${race.id}`}
+        className="slant block bg-accent px-6 pb-9 pt-6 text-accent-ink sm:pr-14"
+        style={color ? { background: color, color: inkOn(color) } : undefined}
+      >
+        <div className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">
+          {label} · Round {race.round}
+          {race.hasSprint && " · Sprint + Feature"}
+        </div>
         <div className="display mt-2 text-3xl sm:text-4xl">{race.name}</div>
         <div className="display mt-3 text-base opacity-80">
           {start.toLocaleDateString("en-GB", { weekday: "long" })}s{" "}
@@ -97,7 +59,7 @@ function NextRace({ race }) {
   );
 }
 
-function LastRace({ race }) {
+export function LastRace({ race }) {
   return (
     <section className="card p-6">
       <div className="eyebrow mb-2">Last result</div>
@@ -139,12 +101,12 @@ function LastRace({ race }) {
   );
 }
 
-function TopDrivers({ rows }) {
+export function TopDrivers({ rows, more }) {
   return (
     <section className="card overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5">
         <h2 className="h2">Drivers</h2>
-        <Link to="/drivers" className="text-sm text-muted hover:opacity-70">
+        <Link to={more} className="text-sm text-muted hover:opacity-70">
           Full standings →
         </Link>
       </div>
@@ -170,12 +132,12 @@ function TopDrivers({ rows }) {
   );
 }
 
-function TopTeams({ rows }) {
+export function TopTeams({ rows, more }) {
   return (
     <section className="card overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5">
         <h2 className="h2">Teams</h2>
-        <Link to="/teams" className="text-sm text-muted hover:opacity-70">
+        <Link to={more} className="text-sm text-muted hover:opacity-70">
           All teams →
         </Link>
       </div>

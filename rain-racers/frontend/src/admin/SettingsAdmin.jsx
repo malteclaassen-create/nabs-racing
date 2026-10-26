@@ -8,7 +8,7 @@ export default function SettingsAdmin() {
   const [f, setF] = useState(null);
   const { busy, message, run } = useAction();
   useEffect(() => {
-    api.get("/admin/settings").then((s) => setF({ ...s, pointsTable: s.pointsTable.join(", ") }));
+    api.get("/admin/settings").then((s) => setF({ ...s, pointsTable: s.pointsTable.join(", "), sprintPointsTable: s.sprintPointsTable.join(", ") }));
   }, []);
   if (!f) return null;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
@@ -17,7 +17,7 @@ export default function SettingsAdmin() {
     e.preventDefault();
     const saved = await run(() => api.put("/admin/settings", f), "Settings saved.");
     if (saved) {
-      setF({ ...saved, pointsTable: saved.pointsTable.join(", ") });
+      setF({ ...saved, pointsTable: saved.pointsTable.join(", "), sprintPointsTable: saved.sprintPointsTable.join(", ") });
       reloadSite();
     }
   }
@@ -85,12 +85,16 @@ export default function SettingsAdmin() {
         </div>
       </Section>
 
-      <Section title="Points">
+      <Section title="Default points">
+        <p className="mb-4 text-sm text-muted">Every season uses these unless it sets its own (Series &amp; seasons), and a round can have its own table too.</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Points for P1, P2, P3, …" className="sm:col-span-2">
+          <Field label="Points for P1, P2, P3, …">
             <input className="input font-mono" value={f.pointsTable} onChange={set("pointsTable")} />
           </Field>
-          <Field label="Fastest lap points">
+          <Field label="Sprint points for P1, P2, P3, …">
+            <input className="input font-mono" value={f.sprintPointsTable} onChange={set("sprintPointsTable")} />
+          </Field>
+          <Field label="Fastest lap points (feature race)">
             <input className="input" type="number" min="0" step="0.5" value={f.fastestLapPoints} onChange={set("fastestLapPoints")} />
           </Field>
           <Field label="…only for finishers in the top">
@@ -107,8 +111,9 @@ export default function SettingsAdmin() {
         <p className="mt-3 text-xs text-muted">Changes apply to every race at once: the standings are always worked out from the results.</p>
       </Section>
 
-      <Section title="Live timing">
+      <Section title="Live timing (default server)">
         <p className="mb-4 text-sm text-muted">
+          Used by every series that has no server of its own (set one per series under Series &amp; seasons).{" "}
           The live socket of your AC Server Manager, usually <code className="text-ink">wss://&lt;your-server&gt;/api/race-control</code>. Leave it empty to hide the Live page.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">

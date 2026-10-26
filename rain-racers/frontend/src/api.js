@@ -19,5 +19,3 @@ export const api = {
   put: (url, body) => request("PUT", url, body ?? {}),
   del: (url) => request("DELETE", url),
 };
-
-export const seasonQuery = (seasonId) => (seasonId ? `?season=${seasonId}` : "");
