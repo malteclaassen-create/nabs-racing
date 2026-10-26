@@ -72,7 +72,7 @@ export default function Drivers() {
 
       {data.drivers.length === 0 ? (
         <Empty>
-          {data.season && !data.season.isCurrent
+          {series.archived || (data.season && !data.season.isCurrent)
             ? "No results on record for this season. Recordings of its races are in the calendar."
             : "No results yet. The standings appear after the first race."}
         </Empty>
