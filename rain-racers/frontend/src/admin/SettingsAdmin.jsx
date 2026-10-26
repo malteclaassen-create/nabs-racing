@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useSite } from "../site.jsx";
-import { useAction, Message, Section, Field } from "./common.jsx";
+import { useAction, Message, Section, Field, LiveTestButton } from "./common.jsx";
 
 // One form for the league's settings, shown in three tabs: `part` is
 // "settings" (league, default points, history), "live" or "raceinfo".
@@ -117,10 +117,9 @@ export default function SettingsAdmin({ part = "settings" }) {
       )}
 
       {part === "live" && (
-        <Section title="Live timing (default server)">
+        <Section title="Default server">
           <p className="mb-4 text-sm text-muted">
-            Used by every series that has no server of its own (set one per series under Series &amp; seasons).{" "}
-            The live socket of your AC Server Manager, usually <code className="text-ink">wss://&lt;your-server&gt;/api/race-control</code>. Leave it empty to hide the Live page.
+            For every running series without a server of its own above. Leave it empty if each series has its own.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Live socket address">
@@ -129,6 +128,9 @@ export default function SettingsAdmin({ part = "settings" }) {
             <Field label="Origin (optional, else taken from the address)">
               <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin} onChange={set("liveOrigin")} />
             </Field>
+          </div>
+          <div className="mt-3">
+            <LiveTestButton url={f.liveWsUrl} origin={f.liveOrigin} />
           </div>
         </Section>
       )}

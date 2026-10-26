@@ -34,7 +34,10 @@ export async function loadHistory(client = prisma) {
   const added = [];
   const skipped = [];
   for (const s of series) {
-    if (await client.series.findUnique({ where: { slug: s.slug } })) {
+    const existing = await client.series.findUnique({ where: { slug: s.slug } });
+    if (existing) {
+      // only the live server comes in, where the series has none
+      if (s.liveWsUrl && !existing.liveWsUrl) await client.series.update({ where: { id: existing.id }, data: { liveWsUrl: s.liveWsUrl } });
       skipped.push(s.name);
       continue;
     }
@@ -48,6 +51,7 @@ export async function loadHistory(client = prisma) {
         archived: !!s.archived,
         order: s.order ?? 0,
         imageUrl: seedImage(s.image),
+        liveWsUrl: s.liveWsUrl ?? null,
       },
     });
     for (const season of s.seasons) {
@@ -175,7 +179,7 @@ export async function loadResults(client = prisma) {
 // in the settings table by the seed's version, so results deleted on purpose
 // in the admin do not come back).
 const SEED_VERSION_KEY = "historyResultsLoaded";
-const SEED_VERSION = "3";
+const SEED_VERSION = "4";
 export async function loadHistoryIfEmpty() {
   if (process.env.SEED_HISTORY === "off") return;
   const stored = await prisma.setting.findUnique({ where: { key: SEED_VERSION_KEY } });

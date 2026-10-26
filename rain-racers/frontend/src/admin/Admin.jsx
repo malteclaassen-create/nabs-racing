@@ -15,6 +15,7 @@ import AttendanceAdmin from "./AttendanceAdmin.jsx";
 import MembersAdmin from "./MembersAdmin.jsx";
 import DownloadsAdmin from "./DownloadsAdmin.jsx";
 import SettingsAdmin from "./SettingsAdmin.jsx";
+import LiveAdmin from "./LiveAdmin.jsx";
 
 // The admin ("League office"). From the top:
 //
@@ -35,7 +36,7 @@ const PAGES = {
   teams: TeamsAdmin,
   drivers: DriversAdmin,
   members: MembersAdmin,
-  live: () => <SettingsAdmin part="live" />,
+  live: LiveAdmin,
   raceinfo: () => <SettingsAdmin part="raceinfo" />,
   downloads: DownloadsAdmin,
   settings: SettingsAdmin,

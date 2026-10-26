@@ -145,18 +145,23 @@ cd backend && npm test
 ## Live timing
 
 The live page follows an **AC Server Manager** (for example the ones from
-Emperor Servers). Each series can have its own server (**Series & seasons →
-Edit → Live socket**); **Live timing** (Community) is the default for the
-series without one. Enter the server manager's live socket, usually
+Emperor Servers). A league can have more than one: **Live timing**
+(Community) in the admin has an address per running series, with a **Test**
+button that connects to it, and a default server for the series without one.
+The address is the server manager's live socket, usually
 
 ```
 wss://<your-server-manager-address>/api/race-control
 ```
 
+Rain Racers runs two, and the history brings them in: the Formula
+International Series on `wss://rain.emperorservers.com/api/race-control`,
+Sahara Saturdays on `wss://sahara.emperorservers.com/api/race-control`.
+
 The server manager refuses browsers from other websites, so the backend
 connects for them and passes the timing on. It only stays connected while
-someone has the live page open. With several series on a server, the live
-page has a button per series. Leave every address empty and the Live page
+someone has the live page open. The live page has a button per series;
+archived series are left off. With no address anywhere the Live page
 disappears from the menu.
 
 To try it without a race server: `npm run fake-live` in `backend/` starts a

@@ -124,3 +124,26 @@ export function PictureField({ url, endpoint, onChange, label = "Picture", hint 
     </div>
   );
 }
+
+// Tries a live server address (connects to it from the backend, like the
+// live page does) and says what answered.
+export function LiveTestButton({ url, origin }) {
+  const [state, setState] = useState(null);
+  async function test() {
+    setState({ busy: true });
+    try {
+      const out = await api.post("/admin/live/test", { url, origin });
+      setState(out.ok ? { ok: true, text: `Connected${out.server ? `: ${out.server}` : ""}` } : { ok: false, text: out.error });
+    } catch (e) {
+      setState({ ok: false, text: e.message });
+    }
+  }
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <button type="button" className="btn-ghost shrink-0 py-1.5" disabled={!url || state?.busy} onClick={test}>
+        {state?.busy ? "Testing…" : "Test"}
+      </button>
+      {state && !state.busy && <span className={`min-w-0 truncate text-xs ${state.ok ? "text-emerald-400" : "text-red-300"}`}>{state.text}</span>}
+    </span>
+  );
+}

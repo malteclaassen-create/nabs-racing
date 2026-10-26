@@ -6,6 +6,7 @@
    "name": "Formula International Series",
    "color": "#e3061b",
    "schedule": "Wednesdays 20:00 CET",
+   "liveWsUrl": "wss://rain.emperorservers.com/api/race-control",
    "description": "Formula 4 around the world, every Wednesday.",
    "order": 0,
    "seasons": [
@@ -612,6 +613,7 @@
    "name": "Sahara Saturdays",
    "color": "#ff6100",
    "schedule": "Saturdays 20:00 CET",
+   "liveWsUrl": "wss://sahara.emperorservers.com/api/race-control",
    "description": "A new car and a new track every week, legends and meme cars alike.",
    "order": 1,
    "seasons": [

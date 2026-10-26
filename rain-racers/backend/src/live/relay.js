@@ -19,11 +19,13 @@ import { buildBoard, createProgress } from "./board.js";
 const BOARD_EVERY_MS = 1000;
 const IDLE_CLOSE_MS = 60 * 1000;
 
-// The series with a live server: [{ slug, name, url, origin }].
+// The running series with a live server: [{ slug, name, url, origin }]. An
+// archived series is left off the live page even when the league's default
+// server would cover it.
 export async function liveSeries() {
   const [settings, series] = await Promise.all([
     getSettings(),
-    prisma.series.findMany({ orderBy: [{ order: "asc" }, { id: "asc" }] }),
+    prisma.series.findMany({ where: { archived: false }, orderBy: [{ order: "asc" }, { id: "asc" }] }),
   ]);
   return series
     .map((s) => ({
@@ -44,6 +46,43 @@ const originOf = (url, origin) => {
     return null;
   }
 };
+
+// Whether a server manager answers on `url`, for the admin's Test button:
+// connects, waits for the first snapshot and hangs up. Resolves to
+// { ok: true, server, session } or { ok: false, error }.
+export function probeServer(url, origin, timeoutMs = 6000) {
+  return new Promise((resolve) => {
+    let ws;
+    const done = (out) => {
+      clearTimeout(timer);
+      try {
+        ws?.terminate();
+      } catch {
+        // already gone
+      }
+      resolve(out);
+    };
+    const timer = setTimeout(() => done({ ok: false, error: "No answer within a few seconds." }), timeoutMs);
+    try {
+      ws = new WebSocket(url, { headers: { Origin: originOf(url, origin) || "" } });
+    } catch (e) {
+      done({ ok: false, error: e.message });
+      return;
+    }
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(String(raw));
+        if (msg.EventType !== 200) return;
+        const info = msg.Message?.SessionInfo || {};
+        done({ ok: true, server: info.ServerName || null, session: info.Name || null });
+      } catch {
+        // not a snapshot; keep waiting
+      }
+    });
+    ws.on("unexpected-response", (_req, res) => done({ ok: false, error: `The server answered ${res.statusCode}.` }));
+    ws.on("error", (e) => done({ ok: false, error: e.message }));
+  });
+}
 
 function createRelay(url, origin) {
   const clients = new Set();

@@ -11,7 +11,7 @@ import { orderWithPenalties, MAX_RACES } from "../lib/points.js";
 import { attendance, teamAt } from "../lib/stats.js";
 import { teamsAtRound, recomputeResultTeams, seasonRaces } from "../lib/seasonData.js";
 import { UPLOAD_DIR } from "../config.js";
-import { restartLive } from "../live/relay.js";
+import { restartLive, probeServer } from "../live/relay.js";
 import { loadHistory } from "../lib/history.js";
 
 const router = Router();
@@ -226,6 +226,13 @@ router.put("/admin/series/:id", wrap(async (req, res) => {
   const series = await prisma.series.update({ where: { id: id(req.params.id) }, data });
   if ("liveWsUrl" in data || "liveOrigin" in data) restartLive();
   res.json(series);
+}));
+
+// Tries a live server address before it is saved.
+router.post("/admin/live/test", wrap(async (req, res) => {
+  const url = text(req.body?.url, 300);
+  if (!/^wss?:\/\//.test(url)) return res.status(400).json({ error: "The address starts with wss:// (or ws://)." });
+  res.json(await probeServer(url, optText(req.body?.origin, 200)));
 }));
 
 router.delete("/admin/series/:id", wrap(async (req, res) => {
