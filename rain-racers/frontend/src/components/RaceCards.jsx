@@ -89,11 +89,12 @@ export function NextRace({ race, color = null, label = "Next race", extraImages 
   );
 }
 
-// A season that is over, told in numbers: its champion, how much was raced,
-// how many drivers started and won, who won most and took most poles, and
-// the closest finish. Stands where the next race would.
+// A season that is over, told in numbers, as tiles: the champion's in the
+// series colour, then how much was raced, how many drivers started and won,
+// who won most and took most poles, and the closest finish. Stands where the
+// next race would; on a wide screen as tall as the last result beside it.
 export function SeasonNumbers({ numbers: n, color = null, seasonId = null }) {
-  const accent = color || "rgb(var(--accent))";
+  const accent = color || "#ffffff";
   const who = (m) =>
     m.drivers.map((d, i) => (
       <span key={d.id}>
@@ -101,73 +102,59 @@ export function SeasonNumbers({ numbers: n, color = null, seasonId = null }) {
         <DriverName driver={d} season={seasonId} />
       </span>
     ));
-  const counts = [
-    ["Rounds", n.rounds],
-    ["Races", n.races],
-    ["Drivers", n.drivers],
-    ["Winners", n.winners],
-  ];
+  const tiles = [
+    { label: "Rounds", value: n.rounds },
+    { label: "Races", value: n.races },
+    { label: "Drivers", value: n.drivers },
+    { label: "Winners", value: n.winners },
+    n.mostWins && { label: "Most wins", value: n.mostWins.count, small: true, under: who(n.mostWins) },
+    n.mostPoles && { label: "Most poles", value: n.mostPoles.count, small: true, under: who(n.mostPoles) },
+    n.closest && {
+      label: "Closest finish",
+      value: (n.closest.gapMs / 1000).toFixed(3),
+      unit: "s",
+      small: true,
+      to: `/races/${n.closest.raceId}`,
+      title: `${n.closest.winner} ahead of ${n.closest.second}`,
+      under: `R${n.closest.round}${n.closest.race ? ` race ${n.closest.race}` : ""}`,
+    },
+  ].filter(Boolean);
+  // the last tile fills the row it ends: two to a row on a phone, three
+  // (after the champion's double one) on a wide screen
+  const lastWide = `${tiles.length % 2 ? "col-span-2" : ""} ${(tiles.length + 2) % 3 === 2 ? "lg:col-span-2" : (tiles.length + 2) % 3 === 1 ? "lg:col-span-3" : "lg:col-span-1"}`;
+  const tile = "flex min-h-[6.5rem] flex-col justify-between gap-3 rounded-xl border border-line bg-white/[0.03] p-4";
   return (
-    <section className="card relative flex h-full flex-col overflow-hidden p-6">
-      <Streaks />
-      <div className="eyebrow relative mb-4">Season in numbers</div>
-      {n.champion && (
-        <div className="relative flex items-stretch gap-4">
-          <span className="w-1.5 rounded-full" style={{ background: accent }} />
-          <div className="min-w-0">
-            <div className="text-sm text-muted">Champion</div>
-            <div className="display truncate text-4xl leading-tight">
+    <section className="card flex h-full flex-col p-5 sm:p-6">
+      <div className="eyebrow mb-4">Season in numbers</div>
+      <div className="grid flex-1 grid-cols-2 gap-3 lg:auto-rows-fr lg:grid-cols-3">
+        {n.champion && (
+          <div className="relative col-span-2 min-h-[9rem] overflow-hidden rounded-xl p-5" style={{ background: accent, color: inkOn(accent) }}>
+            <Streaks opacity={0.12} className="streaks-full" />
+            <div className="relative text-sm font-bold opacity-75">Champion</div>
+            <div className="display relative mt-1 truncate text-4xl leading-tight sm:text-5xl">
               <DriverName driver={n.champion} season={seasonId} />
             </div>
-            <div className="text-sm text-muted">
+            <div className="relative mt-1 text-sm font-semibold opacity-75">
               {points(n.champion.points)} pts · {n.champion.wins} {n.champion.wins === 1 ? "win" : "wins"}
             </div>
           </div>
-        </div>
-      )}
-      {/* on a wide screen the card is as tall as the last result beside it:
-          the counts grow into the room */}
-      <dl className="relative my-6 grid flex-1 grid-cols-4 content-center gap-3 border-y border-line py-5 lg:grid-cols-2 lg:gap-y-8">
-        {counts.map(([label, value]) => (
-          <div key={label} className="flex flex-col-reverse">
-            <dt className="text-sm text-muted lg:text-base">{label}</dt>
-            <dd className="display text-4xl leading-none lg:text-6xl">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <dl className="relative divide-y divide-line text-sm">
-        {n.mostWins && (
-          <div className="flex items-baseline justify-between gap-4 py-3">
-            <dt className="shrink-0 text-muted">Most wins</dt>
-            <dd className="min-w-0 text-right font-semibold">
-              {who(n.mostWins)} <span className="font-normal text-muted">· {n.mostWins.count}</span>
-            </dd>
-          </div>
         )}
-        {n.mostPoles && (
-          <div className="flex items-baseline justify-between gap-4 py-3">
-            <dt className="shrink-0 text-muted">Most poles</dt>
-            <dd className="min-w-0 text-right font-semibold">
-              {who(n.mostPoles)} <span className="font-normal text-muted">· {n.mostPoles.count}</span>
-            </dd>
-          </div>
-        )}
-        {n.closest && (
-          <div className="flex items-baseline justify-between gap-4 py-3">
-            <dt className="shrink-0 text-muted">Closest finish</dt>
-            <dd className="min-w-0 text-right">
-              <Link to={`/races/${n.closest.raceId}`} className="font-semibold hover:opacity-70">
-                {(n.closest.gapMs / 1000).toFixed(3)} s
-              </Link>
-              <span className="text-muted">
-                {" "}
-                · R{n.closest.round}
-                {n.closest.race ? ` race ${n.closest.race}` : ""}, {n.closest.winner} ahead of {n.closest.second}
+        {tiles.map((t, i) => {
+          const Box = t.to ? Link : "div";
+          return (
+            <Box key={t.label} to={t.to} title={t.title} className={`${tile} ${t.to ? "hover:border-white/30" : ""} ${i === tiles.length - 1 ? lastWide : ""}`}>
+              <span className="text-sm text-muted">{t.label}</span>
+              <span className="min-w-0">
+                <span className="block leading-none">
+                  <span className={`display ${t.small ? "text-3xl" : "text-4xl lg:text-5xl"}`}>{t.value}</span>
+                  {t.unit && <span className="ml-1 text-sm font-semibold text-muted">{t.unit}</span>}
+                </span>
+                {t.under && <span className="mt-1 block truncate text-sm font-semibold">{t.under}</span>}
               </span>
-            </dd>
-          </div>
-        )}
-      </dl>
+            </Box>
+          );
+        })}
+      </div>
     </section>
   );
 }
