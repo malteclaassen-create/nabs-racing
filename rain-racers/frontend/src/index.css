@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: 56 189 248; /* replaced by the league colour from the admin */
+  --bg: 8 13 24;
+  --card: 15 23 38;
+  --line: 32 44 66;
+  --ink: 236 242 250;
+  --muted: 138 153 178;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-card;
+  }
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.22em] text-accent;
+  }
+  .h1 {
+    @apply text-3xl font-black uppercase italic tracking-tight sm:text-4xl;
+  }
+  .h2 {
+    @apply text-lg font-black uppercase italic tracking-tight;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-accent {
+    @apply btn bg-accent text-bg hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-line text-ink hover:border-accent/60 hover:text-accent;
+  }
+  .btn-danger {
+    @apply btn border border-red-500/40 text-red-300 hover:bg-red-500/10;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-accent;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-muted;
+  }
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply whitespace-nowrap px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted;
+  }
+  .table td {
+    @apply whitespace-nowrap px-3 py-2.5;
+  }
+  .table tbody tr {
+    @apply border-t border-line/70;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Falling rain behind the home page's header. Two layers of thin streaks at
+   different speeds; off for anyone who asked their system for less motion. */
+.rain {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent);
+  mask-image: linear-gradient(to bottom, black 40%, transparent);
+}
+.rain::before,
+.rain::after {
+  content: "";
+  position: absolute;
+  inset: -100% 0 0 0;
+  background-image: repeating-linear-gradient(
+    100deg,
+    transparent 0 22px,
+    rgb(var(--accent) / 0.16) 22px 23px,
+    transparent 23px 61px
+  );
+  background-size: 140px 90px;
+  animation: rain-fall 0.9s linear infinite;
+}
+.rain::after {
+  background-size: 90px 60px;
+  opacity: 0.6;
+  animation-duration: 1.4s;
+}
+@keyframes rain-fall {
+  to {
+    transform: translateY(50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rain::before,
+  .rain::after {
+    animation: none;
+  }
+}

@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// League-wide settings (name, colours, points table, live timing, ...),
+// one row per key, the value as JSON. See src/lib/settings.js for the keys
+// and their defaults.
+model Setting {
+  key   String @id
+  value String
+}
+
+model Season {
+  id        Int      @id @default(autoincrement())
+  name      String
+  // The season the site shows by default. Exactly one is current.
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+  races     Race[]
+}
+
+model Team {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  color    String? // hex like "#38bdf8"
+  // Archived teams keep their results but are no longer offered in the admin.
+  archived Boolean  @default(false)
+  drivers  Driver[]
+  results  Result[]
+}
+
+model Driver {
+  id        Int      @id @default(autoincrement())
+  name      String
+  number    Int?
+  country   String? // ISO code, e.g. "DE"
+  // The id Assetto Corsa writes into the result files (the SteamID64).
+  // Never sent by the public API.
+  steamGuid String?  @unique
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  userId    Int?     @unique
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  results   Result[]
+  createdAt DateTime @default(now())
+}
+
+// Someone who signed in with Discord.
+model User {
+  id        Int      @id @default(autoincrement())
+  discordId String   @unique
+  name      String
+  avatar    String?
+  driver    Driver?
+  signups   Signup[]
+  createdAt DateTime @default(now())
+}
+
+model Race {
+  id               Int       @id @default(autoincrement())
+  seasonId         Int
+  season           Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round            Int
+  name             String // "Spa 6 Hours"
+  track            String
+  startsAt         DateTime
+  notes            String?
+  // 2 = double points (e.g. a season finale).
+  pointsMultiplier Float     @default(1)
+  importedAt       DateTime?
+  results          Result[]
+  signups          Signup[]
+}
+
+model Result {
+  id           Int     @id @default(autoincrement())
+  raceId       Int
+  race         Race    @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  driverId     Int
+  driver       Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  // The team the driver raced for in this round (kept when they move later).
+  teamId       Int?
+  team         Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  position     Int
+  status       String  @default("FIN") // FIN | DNF | DSQ | DNS
+  laps         Int     @default(0)
+  totalTimeMs  Int?
+  bestLapMs    Int?
+  carModel     String?
+  // Manual bonus or penalty on top of the points from the table (e.g. -5).
+  pointsAdjust Float   @default(0)
+
+  @@unique([raceId, driverId])
+}
+
+model Signup {
+  id        Int      @id @default(autoincrement())
+  raceId    Int
+  race      Race     @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String // in | maybe | out
+  updatedAt DateTime @updatedAt
+
+  @@unique([raceId, userId])
+}
+
+model Download {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  // An external link (most car and track packs are too big to host here)
+  // or a file uploaded through the admin ("/api/uploads/<name>").
+  url         String
+  fileName    String? // set for uploaded files, so deleting one removes the file
+  sizeBytes   Int?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}

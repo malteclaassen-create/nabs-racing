@@ -1,0 +1,2492 @@
+{
+ "TrackName": "spa",
+ "TrackConfig": "",
+ "Type": "RACE",
+ "DurationSecs": 0,
+ "RaceLaps": 20,
+ "Cars": [
+  {
+   "CarId": 0,
+   "Driver": {
+    "Name": "Alex Storm",
+    "Team": "Thunder Racing",
+    "Guid": "76561190000000001",
+    "GuidsList": [
+     "76561190000000001"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 1,
+   "Driver": {
+    "Name": "Mia Drizzle",
+    "Team": "Thunder Racing",
+    "Guid": "76561190000000002",
+    "GuidsList": [
+     "76561190000000002"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 2,
+   "Driver": {
+    "Name": "Jonas Puddle",
+    "Team": "Cloudburst GP",
+    "Guid": "76561190000000003",
+    "GuidsList": [
+     "76561190000000003"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 3,
+   "Driver": {
+    "Name": "Lena Mist",
+    "Team": "Cloudburst GP",
+    "Guid": "76561190000000004",
+    "GuidsList": [
+     "76561190000000004"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 4,
+   "Driver": {
+    "Name": "Tom Gale",
+    "Team": "Monsoon Motorsport",
+    "Guid": "76561190000000005",
+    "GuidsList": [
+     "76561190000000005"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 5,
+   "Driver": {
+    "Name": "Sara Hail",
+    "Team": "Monsoon Motorsport",
+    "Guid": "76561190000000006",
+    "GuidsList": [
+     "76561190000000006"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 6,
+   "Driver": {
+    "Name": "Ben Fog",
+    "Team": "",
+    "Guid": "76561190000000007",
+    "GuidsList": [
+     "76561190000000007"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "CarId": 7,
+   "Driver": {
+    "Name": "Nora Sleet",
+    "Team": "",
+    "Guid": "76561190000000008",
+    "GuidsList": [
+     "76561190000000008"
+    ]
+   },
+   "Model": "ks_porsche_911_gt3_r_2016",
+   "Skin": "00_official",
+   "BallastKG": 0,
+   "Restrictor": 0
+  }
+ ],
+ "Result": [
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 118076,
+   "TotalTime": 2371000,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 118495,
+   "TotalTime": 2382583,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 118822,
+   "TotalTime": 2389564,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 119267,
+   "TotalTime": 2398974,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 119580,
+   "TotalTime": 2405391,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 120024,
+   "TotalTime": 2415622,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 120446,
+   "TotalTime": 1697560,
+   "BallastKG": 0,
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Nora Sleet",
+   "DriverGuid": "76561190000000008",
+   "CarId": 7,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "BestLap": 999999999,
+   "TotalTime": 0,
+   "BallastKG": 0,
+   "Restrictor": 0
+  }
+ ],
+ "Laps": [
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 118663,
+   "LapTime": 118663,
+   "Sectors": [
+    39554,
+    39554,
+    39555
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 236971,
+   "LapTime": 118308,
+   "Sectors": [
+    39436,
+    39436,
+    39436
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 355779,
+   "LapTime": 118808,
+   "Sectors": [
+    39602,
+    39602,
+    39604
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 475112,
+   "LapTime": 119333,
+   "Sectors": [
+    39777,
+    39777,
+    39779
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 593210,
+   "LapTime": 118098,
+   "Sectors": [
+    39366,
+    39366,
+    39366
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 711358,
+   "LapTime": 118148,
+   "Sectors": [
+    39382,
+    39382,
+    39384
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 830455,
+   "LapTime": 119097,
+   "Sectors": [
+    39699,
+    39699,
+    39699
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 948647,
+   "LapTime": 118192,
+   "Sectors": [
+    39397,
+    39397,
+    39398
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1067395,
+   "LapTime": 118748,
+   "Sectors": [
+    39582,
+    39582,
+    39584
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1186588,
+   "LapTime": 119193,
+   "Sectors": [
+    39731,
+    39731,
+    39731
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1304706,
+   "LapTime": 118118,
+   "Sectors": [
+    39372,
+    39372,
+    39374
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1423745,
+   "LapTime": 119039,
+   "Sectors": [
+    39679,
+    39679,
+    39681
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1542184,
+   "LapTime": 118439,
+   "Sectors": [
+    39479,
+    39479,
+    39481
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1660260,
+   "LapTime": 118076,
+   "Sectors": [
+    39358,
+    39358,
+    39360
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1778436,
+   "LapTime": 118176,
+   "Sectors": [
+    39392,
+    39392,
+    39392
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1897324,
+   "LapTime": 118888,
+   "Sectors": [
+    39629,
+    39629,
+    39630
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2016180,
+   "LapTime": 118856,
+   "Sectors": [
+    39618,
+    39618,
+    39620
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2134323,
+   "LapTime": 118143,
+   "Sectors": [
+    39381,
+    39381,
+    39381
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2252815,
+   "LapTime": 118492,
+   "Sectors": [
+    39497,
+    39497,
+    39498
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Alex Storm",
+   "DriverGuid": "76561190000000001",
+   "CarId": 0,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2371000,
+   "LapTime": 118185,
+   "Sectors": [
+    39395,
+    39395,
+    39395
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 119528,
+   "LapTime": 119528,
+   "Sectors": [
+    39842,
+    39842,
+    39844
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 238797,
+   "LapTime": 119269,
+   "Sectors": [
+    39756,
+    39756,
+    39757
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 357318,
+   "LapTime": 118521,
+   "Sectors": [
+    39507,
+    39507,
+    39507
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 476876,
+   "LapTime": 119558,
+   "Sectors": [
+    39852,
+    39852,
+    39854
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 595529,
+   "LapTime": 118653,
+   "Sectors": [
+    39551,
+    39551,
+    39551
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 714386,
+   "LapTime": 118857,
+   "Sectors": [
+    39619,
+    39619,
+    39619
+   ],
+   "Cuts": 1,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 834077,
+   "LapTime": 119691,
+   "Sectors": [
+    39897,
+    39897,
+    39897
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 953761,
+   "LapTime": 119684,
+   "Sectors": [
+    39894,
+    39894,
+    39896
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1073354,
+   "LapTime": 119593,
+   "Sectors": [
+    39864,
+    39864,
+    39865
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1191880,
+   "LapTime": 118526,
+   "Sectors": [
+    39508,
+    39508,
+    39510
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1311461,
+   "LapTime": 119581,
+   "Sectors": [
+    39860,
+    39860,
+    39861
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1431060,
+   "LapTime": 119599,
+   "Sectors": [
+    39866,
+    39866,
+    39867
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1550272,
+   "LapTime": 119212,
+   "Sectors": [
+    39737,
+    39737,
+    39738
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1668773,
+   "LapTime": 118501,
+   "Sectors": [
+    39500,
+    39500,
+    39501
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1787625,
+   "LapTime": 118852,
+   "Sectors": [
+    39617,
+    39617,
+    39618
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1906120,
+   "LapTime": 118495,
+   "Sectors": [
+    39498,
+    39498,
+    39499
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2025660,
+   "LapTime": 119540,
+   "Sectors": [
+    39846,
+    39846,
+    39848
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2144332,
+   "LapTime": 118672,
+   "Sectors": [
+    39557,
+    39557,
+    39558
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2263325,
+   "LapTime": 118993,
+   "Sectors": [
+    39664,
+    39664,
+    39665
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Mia Drizzle",
+   "DriverGuid": "76561190000000002",
+   "CarId": 1,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2382583,
+   "LapTime": 119258,
+   "Sectors": [
+    39752,
+    39752,
+    39754
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 118995,
+   "LapTime": 118995,
+   "Sectors": [
+    39665,
+    39665,
+    39665
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 238802,
+   "LapTime": 119807,
+   "Sectors": [
+    39935,
+    39935,
+    39937
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 357743,
+   "LapTime": 118941,
+   "Sectors": [
+    39647,
+    39647,
+    39647
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 477612,
+   "LapTime": 119869,
+   "Sectors": [
+    39956,
+    39956,
+    39957
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 596943,
+   "LapTime": 119331,
+   "Sectors": [
+    39777,
+    39777,
+    39777
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 716790,
+   "LapTime": 119847,
+   "Sectors": [
+    39949,
+    39949,
+    39949
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 836886,
+   "LapTime": 120096,
+   "Sectors": [
+    40032,
+    40032,
+    40032
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 955956,
+   "LapTime": 119070,
+   "Sectors": [
+    39690,
+    39690,
+    39690
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1074867,
+   "LapTime": 118911,
+   "Sectors": [
+    39637,
+    39637,
+    39637
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1194758,
+   "LapTime": 119891,
+   "Sectors": [
+    39963,
+    39963,
+    39965
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1314627,
+   "LapTime": 119869,
+   "Sectors": [
+    39956,
+    39956,
+    39957
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1434635,
+   "LapTime": 120008,
+   "Sectors": [
+    40002,
+    40002,
+    40004
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1553719,
+   "LapTime": 119084,
+   "Sectors": [
+    39694,
+    39694,
+    39696
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1673181,
+   "LapTime": 119462,
+   "Sectors": [
+    39820,
+    39820,
+    39822
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1792080,
+   "LapTime": 118899,
+   "Sectors": [
+    39633,
+    39633,
+    39633
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1911901,
+   "LapTime": 119821,
+   "Sectors": [
+    39940,
+    39940,
+    39941
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2032059,
+   "LapTime": 120158,
+   "Sectors": [
+    40052,
+    40052,
+    40054
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2150887,
+   "LapTime": 118828,
+   "Sectors": [
+    39609,
+    39609,
+    39610
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2270742,
+   "LapTime": 119855,
+   "Sectors": [
+    39951,
+    39951,
+    39953
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Jonas Puddle",
+   "DriverGuid": "76561190000000003",
+   "CarId": 2,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2389564,
+   "LapTime": 118822,
+   "Sectors": [
+    39607,
+    39607,
+    39608
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 120367,
+   "LapTime": 120367,
+   "Sectors": [
+    40122,
+    40122,
+    40123
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 239888,
+   "LapTime": 119521,
+   "Sectors": [
+    39840,
+    39840,
+    39841
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 360004,
+   "LapTime": 120116,
+   "Sectors": [
+    40038,
+    40038,
+    40040
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 480497,
+   "LapTime": 120493,
+   "Sectors": [
+    40164,
+    40164,
+    40165
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 600685,
+   "LapTime": 120188,
+   "Sectors": [
+    40062,
+    40062,
+    40064
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 720660,
+   "LapTime": 119975,
+   "Sectors": [
+    39991,
+    39991,
+    39993
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 840403,
+   "LapTime": 119743,
+   "Sectors": [
+    39914,
+    39914,
+    39915
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 960456,
+   "LapTime": 120053,
+   "Sectors": [
+    40017,
+    40017,
+    40019
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1080755,
+   "LapTime": 120299,
+   "Sectors": [
+    40099,
+    40099,
+    40101
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1200783,
+   "LapTime": 120028,
+   "Sectors": [
+    40009,
+    40009,
+    40010
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1320623,
+   "LapTime": 119840,
+   "Sectors": [
+    39946,
+    39946,
+    39948
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1440336,
+   "LapTime": 119713,
+   "Sectors": [
+    39904,
+    39904,
+    39905
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1559944,
+   "LapTime": 119608,
+   "Sectors": [
+    39869,
+    39869,
+    39870
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1679412,
+   "LapTime": 119468,
+   "Sectors": [
+    39822,
+    39822,
+    39824
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1799943,
+   "LapTime": 120531,
+   "Sectors": [
+    40177,
+    40177,
+    40177
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1919542,
+   "LapTime": 119599,
+   "Sectors": [
+    39866,
+    39866,
+    39867
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2038809,
+   "LapTime": 119267,
+   "Sectors": [
+    39755,
+    39755,
+    39757
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2159085,
+   "LapTime": 120276,
+   "Sectors": [
+    40092,
+    40092,
+    40092
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2278799,
+   "LapTime": 119714,
+   "Sectors": [
+    39904,
+    39904,
+    39906
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Lena Mist",
+   "DriverGuid": "76561190000000004",
+   "CarId": 3,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2398974,
+   "LapTime": 120175,
+   "Sectors": [
+    40058,
+    40058,
+    40059
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 120513,
+   "LapTime": 120513,
+   "Sectors": [
+    40171,
+    40171,
+    40171
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 240716,
+   "LapTime": 120203,
+   "Sectors": [
+    40067,
+    40067,
+    40069
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 361709,
+   "LapTime": 120993,
+   "Sectors": [
+    40331,
+    40331,
+    40331
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 482128,
+   "LapTime": 120419,
+   "Sectors": [
+    40139,
+    40139,
+    40141
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 602217,
+   "LapTime": 120089,
+   "Sectors": [
+    40029,
+    40029,
+    40031
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 722964,
+   "LapTime": 120747,
+   "Sectors": [
+    40249,
+    40249,
+    40249
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 842613,
+   "LapTime": 119649,
+   "Sectors": [
+    39883,
+    39883,
+    39883
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 962354,
+   "LapTime": 119741,
+   "Sectors": [
+    39913,
+    39913,
+    39915
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1082902,
+   "LapTime": 120548,
+   "Sectors": [
+    40182,
+    40182,
+    40184
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1203258,
+   "LapTime": 120356,
+   "Sectors": [
+    40118,
+    40118,
+    40120
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1323095,
+   "LapTime": 119837,
+   "Sectors": [
+    39945,
+    39945,
+    39947
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1443295,
+   "LapTime": 120200,
+   "Sectors": [
+    40066,
+    40066,
+    40068
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1563106,
+   "LapTime": 119811,
+   "Sectors": [
+    39937,
+    39937,
+    39937
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1683607,
+   "LapTime": 120501,
+   "Sectors": [
+    40167,
+    40167,
+    40167
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1803970,
+   "LapTime": 120363,
+   "Sectors": [
+    40121,
+    40121,
+    40121
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1923550,
+   "LapTime": 119580,
+   "Sectors": [
+    39860,
+    39860,
+    39860
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2044418,
+   "LapTime": 120868,
+   "Sectors": [
+    40289,
+    40289,
+    40290
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2164076,
+   "LapTime": 119658,
+   "Sectors": [
+    39886,
+    39886,
+    39886
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2284718,
+   "LapTime": 120642,
+   "Sectors": [
+    40214,
+    40214,
+    40214
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Tom Gale",
+   "DriverGuid": "76561190000000005",
+   "CarId": 4,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2405391,
+   "LapTime": 120673,
+   "Sectors": [
+    40224,
+    40224,
+    40225
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 120542,
+   "LapTime": 120542,
+   "Sectors": [
+    40180,
+    40180,
+    40182
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 241138,
+   "LapTime": 120596,
+   "Sectors": [
+    40198,
+    40198,
+    40200
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 362461,
+   "LapTime": 121323,
+   "Sectors": [
+    40441,
+    40441,
+    40441
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 483078,
+   "LapTime": 120617,
+   "Sectors": [
+    40205,
+    40205,
+    40207
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 604195,
+   "LapTime": 121117,
+   "Sectors": [
+    40372,
+    40372,
+    40373
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 725112,
+   "LapTime": 120917,
+   "Sectors": [
+    40305,
+    40305,
+    40307
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 846199,
+   "LapTime": 121087,
+   "Sectors": [
+    40362,
+    40362,
+    40363
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 967033,
+   "LapTime": 120834,
+   "Sectors": [
+    40278,
+    40278,
+    40278
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1087073,
+   "LapTime": 120040,
+   "Sectors": [
+    40013,
+    40013,
+    40014
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1207164,
+   "LapTime": 120091,
+   "Sectors": [
+    40030,
+    40030,
+    40031
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1327616,
+   "LapTime": 120452,
+   "Sectors": [
+    40150,
+    40150,
+    40152
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1448486,
+   "LapTime": 120870,
+   "Sectors": [
+    40290,
+    40290,
+    40290
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1569813,
+   "LapTime": 121327,
+   "Sectors": [
+    40442,
+    40442,
+    40443
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1691073,
+   "LapTime": 121260,
+   "Sectors": [
+    40420,
+    40420,
+    40420
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1811106,
+   "LapTime": 120033,
+   "Sectors": [
+    40011,
+    40011,
+    40011
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1931130,
+   "LapTime": 120024,
+   "Sectors": [
+    40008,
+    40008,
+    40008
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2052527,
+   "LapTime": 121397,
+   "Sectors": [
+    40465,
+    40465,
+    40467
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2173863,
+   "LapTime": 121336,
+   "Sectors": [
+    40445,
+    40445,
+    40446
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2294397,
+   "LapTime": 120534,
+   "Sectors": [
+    40178,
+    40178,
+    40178
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Sara Hail",
+   "DriverGuid": "76561190000000006",
+   "CarId": 5,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 2415622,
+   "LapTime": 121225,
+   "Sectors": [
+    40408,
+    40408,
+    40409
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 121583,
+   "LapTime": 121583,
+   "Sectors": [
+    40527,
+    40527,
+    40529
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 243378,
+   "LapTime": 121795,
+   "Sectors": [
+    40598,
+    40598,
+    40599
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 364690,
+   "LapTime": 121312,
+   "Sectors": [
+    40437,
+    40437,
+    40438
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 485672,
+   "LapTime": 120982,
+   "Sectors": [
+    40327,
+    40327,
+    40328
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 607539,
+   "LapTime": 121867,
+   "Sectors": [
+    40622,
+    40622,
+    40623
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 728729,
+   "LapTime": 121190,
+   "Sectors": [
+    40396,
+    40396,
+    40398
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 850498,
+   "LapTime": 121769,
+   "Sectors": [
+    40589,
+    40589,
+    40591
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 971608,
+   "LapTime": 121110,
+   "Sectors": [
+    40370,
+    40370,
+    40370
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1092054,
+   "LapTime": 120446,
+   "Sectors": [
+    40148,
+    40148,
+    40150
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1213399,
+   "LapTime": 121345,
+   "Sectors": [
+    40448,
+    40448,
+    40449
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1334526,
+   "LapTime": 121127,
+   "Sectors": [
+    40375,
+    40375,
+    40377
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1455270,
+   "LapTime": 120744,
+   "Sectors": [
+    40248,
+    40248,
+    40248
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1576921,
+   "LapTime": 121651,
+   "Sectors": [
+    40550,
+    40550,
+    40551
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  },
+  {
+   "DriverName": "Ben Fog",
+   "DriverGuid": "76561190000000007",
+   "CarId": 6,
+   "CarModel": "ks_porsche_911_gt3_r_2016",
+   "Timestamp": 1697560,
+   "LapTime": 120639,
+   "Sectors": [
+    40213,
+    40213,
+    40213
+   ],
+   "Cuts": 0,
+   "BallastKG": 0,
+   "Tyre": "S",
+   "Restrictor": 0
+  }
+ ],
+ "Events": []
+}
