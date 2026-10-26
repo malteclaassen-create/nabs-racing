@@ -38,8 +38,14 @@ export function SiteProvider({ children }) {
   const routeSlug = matchPath("/series/:slug/*", location.pathname)?.params.slug || matchPath("/series/:slug", location.pathname)?.params.slug;
   const series = useMemo(() => {
     const wanted = routeSlug || readLast();
-    return seriesList.find((s) => s.slug === wanted) || seriesList[0] || null;
+    return seriesList.find((s) => s.slug === wanted) || seriesList.find((s) => !s.archived) || seriesList[0] || null;
   }, [seriesList, routeSlug]);
+
+  // A link may name the season (?season=<id>, e.g. from the history).
+  const urlSeason = Number(new URLSearchParams(location.search).get("season")) || null;
+  useEffect(() => {
+    if (routeSlug && urlSeason) setSeasonBySeries((m) => ({ ...m, [routeSlug]: urlSeason }));
+  }, [routeSlug, urlSeason]);
 
   useEffect(() => {
     if (!routeSlug || !series) return;

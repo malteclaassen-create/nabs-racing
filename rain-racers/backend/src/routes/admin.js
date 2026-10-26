@@ -7,11 +7,12 @@ import prisma from "../db.js";
 import { requireAdmin } from "../auth.js";
 import { getSettings, saveSettings, parsePointsList } from "../lib/settings.js";
 import { parseAcResult } from "../lib/acResult.js";
-import { orderWithPenalties } from "../lib/points.js";
+import { orderWithPenalties, MAX_RACES } from "../lib/points.js";
 import { attendance, teamAt } from "../lib/stats.js";
 import { teamsAtRound, recomputeResultTeams, seasonRaces } from "../lib/seasonData.js";
 import { UPLOAD_DIR } from "../config.js";
 import { restartLive } from "../live/relay.js";
+import { loadHistory } from "../lib/history.js";
 
 const router = Router();
 router.use("/admin", requireAdmin);
@@ -44,13 +45,49 @@ const optText = (v, max = 200) => text(v, max) || null;
 const optInt = (v) => (v === "" || v == null ? null : Number.isInteger(Number(v)) ? Number(v) : null);
 const color = (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v || "")) ? String(v).toLowerCase() : null);
 const STATUSES = ["FIN", "DNF", "DSQ", "DNS"];
-const SESSIONS = ["FEATURE", "SPRINT"];
-const sessionParam = (v) => (SESSIONS.includes(String(v).toUpperCase()) ? String(v).toUpperCase() : "FEATURE");
+// The results of race 1, 2, ... of a round are the sessions R1, R2, ...
+const sessionParam = (v) => {
+  const m = /^R([1-9])$/.exec(String(v || "").toUpperCase());
+  return m && Number(m[1]) <= MAX_RACES ? `R${m[1]}` : "R1";
+};
+const isQuali = (v) => String(v || "").toUpperCase() === "QUALIFY";
 // A points table typed as "25, 18, 15" (empty = none of its own).
 const tableJson = (v) => {
   if (v == null || String(v).trim() === "") return null;
   const list = parsePointsList(v);
   return list.length ? JSON.stringify(list) : null;
+};
+// The season's tables for rounds of 2, 3, ... races: { "2": "35, 29" } (one
+// table for every race) or { "2": ["8, 7", "25, 18"] } (one per race; an empty
+// one pays the season's table).
+const raceTablesJson = (v) => {
+  if (!v || typeof v !== "object") return null;
+  const out = {};
+  for (let n = 2; n <= MAX_RACES; n++) {
+    const entry = v[n];
+    if (Array.isArray(entry) && entry.length && !entry.every((x) => typeof x === "number")) {
+      const list = entry.slice(0, n).map((t) => (tableJson(t) ? JSON.parse(tableJson(t)) : null));
+      if (list.some(Boolean)) out[n] = list;
+    } else if (tableJson(entry)) out[n] = JSON.parse(tableJson(entry));
+  }
+  return Object.keys(out).length ? JSON.stringify(out) : null;
+};
+// A picture: one uploaded here, or a link to one elsewhere (https).
+const imageRef = (v) => {
+  const t = text(v, 500);
+  return /^\/api\/uploads\/images\/[\w.-]+$/.test(t) || /^https:\/\//.test(t) ? t : null;
+};
+// The sessions of a round's day, as [{ label, at, length }].
+const timetableJson = (v) => {
+  if (!Array.isArray(v)) return null;
+  const rows = v
+    .map((x) => {
+      const at = new Date(x?.at);
+      return { label: text(x?.label, 40), at: Number.isNaN(at.getTime()) ? null : at.toISOString(), length: optText(x?.length, 30) };
+    })
+    .filter((x) => x.label)
+    .slice(0, 12);
+  return rows.length ? JSON.stringify(rows) : null;
 };
 
 // Prisma's "record not found" and "unique constraint" become readable answers.
@@ -79,6 +116,14 @@ router.put("/admin/settings", wrap(async (req, res) => {
   res.json(after);
 }));
 
+// The league's series, seasons and calendars from Grid Finder and YouTube
+// (series that already exist are left alone).
+router.post("/admin/history", wrap(async (_req, res) => {
+  const result = await loadHistory();
+  restartLive();
+  res.json(result);
+}));
+
 router.post("/admin/logo", imageUpload.single("file"), wrap(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "PNG, JPG or WebP up to 3 MB." });
   const old = (await getSettings()).logoUrl;
@@ -100,6 +145,31 @@ function removeUpload(url) {
   fs.rm(path.join(m[1] === "images" ? IMAGES_DIR : FILES_DIR, m[2]), { force: true }, () => {});
 }
 
+// A picture for a series, season or round: upload it, or remove it again.
+function pictureRoutes(path, model) {
+  router.post(`/admin/${path}/:id/image`, imageUpload.single("file"), wrap(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "PNG, JPG or WebP up to 3 MB." });
+    const before = await prisma[model].findUnique({ where: { id: id(req.params.id) } });
+    if (!before) {
+      removeUpload(`/api/uploads/images/${req.file.filename}`);
+      return res.status(404).json({ error: "Not found." });
+    }
+    const row = await prisma[model].update({ where: { id: before.id }, data: { imageUrl: `/api/uploads/images/${req.file.filename}` } });
+    removeUpload(before.imageUrl);
+    res.json(row);
+  }));
+  router.delete(`/admin/${path}/:id/image`, wrap(async (req, res) => {
+    const before = await prisma[model].findUnique({ where: { id: id(req.params.id) } });
+    if (!before) return res.status(404).json({ error: "Not found." });
+    const row = await prisma[model].update({ where: { id: before.id }, data: { imageUrl: null } });
+    removeUpload(before.imageUrl);
+    res.json(row);
+  }));
+}
+pictureRoutes("series", "series");
+pictureRoutes("seasons", "season");
+pictureRoutes("races", "race");
+
 // ---- Series -----------------------------------------------------------------
 
 const slugify = (s) =>
@@ -120,6 +190,7 @@ function seriesData(body) {
   if (body.description !== undefined) data.description = optText(body.description, 500);
   if (body.schedule !== undefined) data.schedule = optText(body.schedule, 80);
   if (body.order != null) data.order = optInt(body.order) ?? 0;
+  if (body.archived !== undefined) data.archived = !!body.archived;
   if (body.liveWsUrl !== undefined) data.liveWsUrl = /^wss?:\/\//.test(text(body.liveWsUrl)) ? text(body.liveWsUrl, 300) : null;
   if (body.liveOrigin !== undefined) data.liveOrigin = optText(body.liveOrigin, 200);
   return data;
@@ -207,8 +278,11 @@ router.put("/admin/seasons/:id", wrap(async (req, res) => {
   const b = req.body || {};
   const data = {};
   if (b.name != null) data.name = text(b.name, 80) || "Season";
+  if (b.description !== undefined) data.description = optText(b.description, 2000);
+  if (b.pointsMode !== undefined) data.pointsMode = b.pointsMode === "REVERSE" ? "REVERSE" : "TABLE";
   if (b.pointsTable !== undefined) data.pointsTable = tableJson(b.pointsTable);
-  if (b.sprintPointsTable !== undefined) data.sprintPointsTable = tableJson(b.sprintPointsTable);
+  if (b.raceTables !== undefined) data.raceTables = raceTablesJson(b.raceTables);
+  if (b.qualiPointsTable !== undefined) data.qualiPointsTable = tableJson(b.qualiPointsTable);
   if (b.dropWorst != null) data.dropWorst = Math.max(0, Math.min(20, optInt(b.dropWorst) ?? 0));
   if (b.championId !== undefined) data.championId = optInt(b.championId);
   if (b.championNote !== undefined) data.championNote = optText(b.championNote, 300);
@@ -430,9 +504,9 @@ router.get("/admin/races", wrap(async (req, res) => {
     races.map(({ results, ...r }) => ({
       ...r,
       pointsTable: r.pointsTable ? JSON.parse(r.pointsTable).join(", ") : "",
+      timetable: r.timetable ? JSON.parse(r.timetable) : [],
       counts: {
-        FEATURE: results.filter((x) => x.session === "FEATURE").length,
-        SPRINT: results.filter((x) => x.session === "SPRINT").length,
+        ...Object.fromEntries(Array.from({ length: MAX_RACES }, (_, i) => [`R${i + 1}`, results.filter((x) => x.session === `R${i + 1}`).length])),
         QUALIFY: r._count.qualifying,
         signups: r._count.signups,
       },
@@ -446,7 +520,12 @@ function raceData(body) {
   if (body.track != null) data.track = text(body.track, 120);
   if (body.round != null) data.round = optInt(body.round) ?? 1;
   if (body.notes !== undefined) data.notes = optText(body.notes, 5000);
-  if (body.hasSprint !== undefined) data.hasSprint = !!body.hasSprint;
+  if (body.raceCount != null) data.raceCount = Math.max(1, Math.min(MAX_RACES, optInt(body.raceCount) ?? 1));
+  if (body.car !== undefined) data.car = optText(body.car, 120);
+  if (body.mysteryTrack !== undefined) data.mysteryTrack = !!body.mysteryTrack;
+  if (body.videoUrl !== undefined) data.videoUrl = /^https:\/\//.test(text(body.videoUrl, 500)) ? text(body.videoUrl, 500) : null;
+  if (body.imageUrl !== undefined) data.imageUrl = imageRef(body.imageUrl);
+  if (body.timetable !== undefined) data.timetable = timetableJson(body.timetable);
   if (body.pointsTable !== undefined) data.pointsTable = tableJson(body.pointsTable);
   if (body.pointsMultiplier != null) {
     const m = Number(body.pointsMultiplier);
@@ -468,7 +547,14 @@ router.post("/admin/races", wrap(async (req, res) => {
 }));
 
 router.put("/admin/races/:id", wrap(async (req, res) => {
-  res.json(await prisma.race.update({ where: { id: id(req.params.id) }, data: raceData(req.body || {}) }));
+  const data = raceData(req.body || {});
+  // fewer races only once the dropped races have no results left
+  if (data.raceCount != null) {
+    const later = await prisma.result.findMany({ where: { raceId: id(req.params.id) }, select: { session: true }, distinct: ["session"] });
+    const highest = Math.max(0, ...later.map((r) => Number(r.session.slice(1)) || 1));
+    if (highest > data.raceCount) throw fail(409, `Race ${highest} has results. Delete them first, then take the race out.`);
+  }
+  res.json(await prisma.race.update({ where: { id: id(req.params.id) }, data }));
 }));
 
 router.delete("/admin/races/:id", wrap(async (req, res) => {
@@ -480,7 +566,7 @@ router.delete("/admin/races/:id", wrap(async (req, res) => {
 
 router.get("/admin/races/:id/results", wrap(async (req, res) => {
   const raceId = id(req.params.id);
-  if (String(req.query.session).toUpperCase() === "QUALIFY") {
+  if (isQuali(req.query.session)) {
     return res.json(await prisma.qualiResult.findMany({ where: { raceId }, orderBy: { position: "asc" }, include: { driver: true } }));
   }
   res.json(
@@ -498,7 +584,7 @@ router.get("/admin/races/:id/results", wrap(async (req, res) => {
 router.post("/admin/races/:id/import/preview", wrap(async (req, res) => {
   const race = await prisma.race.findUnique({ where: { id: id(req.params.id) }, include: { season: true } });
   if (!race) return res.status(404).json({ error: "Race not found." });
-  const session = String(req.body?.session || "FEATURE").toUpperCase();
+  const session = isQuali(req.body?.session) ? "QUALIFY" : sessionParam(req.body?.session);
   let parsed;
   try {
     parsed = parseAcResult(req.body?.file, await getSettings());
@@ -539,7 +625,7 @@ router.post("/admin/races/:id/import", wrap(async (req, res) => {
   const raceId = id(req.params.id);
   const race = await prisma.race.findUnique({ where: { id: raceId } });
   if (!race) return res.status(404).json({ error: "Race not found." });
-  const session = String(req.body?.session || "FEATURE").toUpperCase();
+  const session = isQuali(req.body?.session) ? "QUALIFY" : sessionParam(req.body?.session);
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
   if (!rows.length) return res.status(400).json({ error: "No rows to save." });
 
@@ -573,9 +659,9 @@ router.post("/admin/races/:id/import", wrap(async (req, res) => {
       for (const [i, row] of rows.entries()) {
         await tx.qualiResult.create({ data: { raceId, driverId: driverIds[i], position: i + 1, bestLapMs: optInt(row.bestLapMs) } });
       }
-      // the feature race's grid follows the qualifying where it has none of its own
-      const feature = await tx.result.findMany({ where: { raceId, session: "FEATURE", grid: null } });
-      for (const r of feature) {
+      // race 1's grid follows the qualifying where it has none of its own
+      const first = await tx.result.findMany({ where: { raceId, session: "R1", grid: null } });
+      for (const r of first) {
         const i = driverIds.indexOf(r.driverId);
         if (i >= 0) await tx.result.update({ where: { id: r.id }, data: { grid: i + 1 } });
       }
@@ -584,7 +670,7 @@ router.post("/admin/races/:id/import", wrap(async (req, res) => {
 
     const s = sessionParam(session);
     const teamNow = await teamsAtRound(race.seasonId, race.round, tx);
-    const quali = s === "FEATURE" ? await tx.qualiResult.findMany({ where: { raceId } }) : [];
+    const quali = s === "R1" ? await tx.qualiResult.findMany({ where: { raceId } }) : [];
     await tx.result.deleteMany({ where: { raceId, session: s } });
     for (const [i, row] of rows.entries()) {
       const driverId = driverIds[i];
@@ -654,7 +740,7 @@ router.put("/admin/races/:id/order", wrap(async (req, res) => {
 
 router.delete("/admin/races/:id/results", wrap(async (req, res) => {
   const raceId = id(req.params.id);
-  if (String(req.query.session).toUpperCase() === "QUALIFY") {
+  if (isQuali(req.query.session)) {
     await prisma.qualiResult.deleteMany({ where: { raceId } });
     return res.json({ ok: true });
   }

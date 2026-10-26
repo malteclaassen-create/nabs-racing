@@ -1,35 +1,67 @@
-// Points of one race. Kept as pure functions: the standings call them for
+// Points of one round. Kept as pure functions: the standings call them for
 // every result, so a change to a points table applies to the whole season at
 // once, with nothing stored that could go stale.
+//
+// A round has one or more races; their results are the sessions R1, R2, ...
+// (race 1, race 2, ...). A qualifying can pay points too.
 
-const parseTable = (json) => {
-  if (!json) return null;
+const parseJson = (json) => {
+  if (json == null) return null;
+  if (typeof json !== "string") return json;
   try {
-    const list = typeof json === "string" ? JSON.parse(json) : json;
-    return Array.isArray(list) ? list.map(Number).filter((n) => Number.isFinite(n)) : null;
+    return JSON.parse(json);
   } catch {
     return null;
   }
 };
 
-// The tables a round pays by: its own feature table, else the season's, else
-// the league's; the sprint by the season's sprint table, else the league's.
-export function tablesFor(race, season, settings) {
-  return {
-    FEATURE: parseTable(race?.pointsTable) ?? parseTable(season?.pointsTable) ?? settings.pointsTable,
-    SPRINT: parseTable(season?.sprintPointsTable) ?? settings.sprintPointsTable,
-  };
+const parseTable = (json) => {
+  const list = parseJson(json);
+  return Array.isArray(list) && list.length ? list.map(Number).filter((n) => Number.isFinite(n)) : null;
+};
+
+export const sessionOf = (r) => r.session ?? "R1";
+export const raceCountOf = (race) => Math.max(1, Math.min(MAX_RACES, race?.raceCount || 1));
+export const MAX_RACES = 4;
+// ["R1", "R2", ...] of a round
+export const sessionsOf = (race) => Array.from({ length: raceCountOf(race) }, (_, i) => `R${i + 1}`);
+export const raceNumber = (session) => Number(String(session).replace(/^R/, "")) || 1;
+
+// The season's tables for rounds with more than one race: { "2": table or
+// [table per race], ... }. Returns the table for race `no` of a round with
+// `count` races, or null.
+export function multiRaceTable(raceTables, count, no) {
+  const entry = parseJson(raceTables)?.[count];
+  if (!Array.isArray(entry)) return null;
+  const perRace = entry.some((x) => x === null || Array.isArray(x));
+  return perRace ? parseTable(entry[no - 1]) : parseTable(entry);
 }
 
-// `fastest` says whether this result holds the race's fastest lap; the bonus
-// is only paid in the feature race.
-export function pointsFor(result, table, { fastestLapPoints, fastestLapTopN, dnfScores }, multiplier = 1, fastest = false) {
+// The table race `no` of a round pays by: the round's own table, else the
+// season's table for rounds with this many races, else the season's table,
+// else the league's.
+export function tableFor(race, season, settings, no = 1) {
+  return (
+    parseTable(race?.pointsTable) ??
+    (raceCountOf(race) > 1 ? multiRaceTable(season?.raceTables, raceCountOf(race), no) : null) ??
+    parseTable(season?.pointsTable) ??
+    settings.pointsTable
+  );
+}
+
+export const isReverse = (season) => season?.pointsMode === "REVERSE";
+
+// Points of one result. `fastest` says whether it holds the race's fastest
+// lap. With `reverseOf` set (back-to-front scoring) the table is not used: the
+// last of `reverseOf` scoring drivers gets 1, the one ahead 2, and so on.
+export function pointsFor(result, table, { fastestLapPoints, fastestLapTopN, dnfScores }, multiplier = 1, fastest = false, reverseOf = null) {
   const scores = result.status === "FIN" || (result.status === "DNF" && dnfScores);
   let points = 0;
-  if (scores) points += (table[result.position - 1] ?? 0) * multiplier;
-  if (fastest && (result.session ?? "FEATURE") === "FEATURE" && result.status === "FIN" && result.position <= fastestLapTopN) {
-    points += fastestLapPoints;
+  if (scores) {
+    const base = reverseOf != null ? Math.max(0, reverseOf - result.position + 1) : table[result.position - 1] ?? 0;
+    points += base * multiplier;
   }
+  if (fastest && result.status === "FIN" && result.position <= fastestLapTopN) points += fastestLapPoints;
   return points + (result.pointsAdjust || 0);
 }
 
@@ -44,28 +76,36 @@ export function fastestLapResultId(results) {
   return best ? best.id : null;
 }
 
-export const sessionOf = (r) => r.session ?? "FEATURE";
-
-// Points of every result of a round, keyed by result id, and the fastest
-// lap of each session.
+// Points of every result of a round, keyed by result id; the fastest lap of
+// each race; and the qualifying points, keyed by driver id.
 export function racePoints(race, season, settings) {
-  const tables = tablesFor(race, season, settings);
   const fastest = {};
-  for (const s of ["FEATURE", "SPRINT"]) fastest[s] = fastestLapResultId(race.results.filter((r) => sessionOf(r) === s));
   const points = new Map();
-  for (const r of race.results) {
-    const s = sessionOf(r);
-    points.set(r.id, pointsFor(r, tables[s], settings, race.pointsMultiplier ?? 1, r.id === fastest[s]));
+  const multiplier = race.pointsMultiplier ?? 1;
+  for (const s of sessionsOf(race)) {
+    const rows = race.results.filter((r) => sessionOf(r) === s);
+    fastest[s] = fastestLapResultId(rows);
+    const table = tableFor(race, season, settings, raceNumber(s));
+    const reverseOf = isReverse(season) ? rows.filter((r) => r.status === "FIN" || (r.status === "DNF" && settings.dnfScores)).length : null;
+    for (const r of rows) points.set(r.id, pointsFor(r, table, settings, multiplier, r.id === fastest[s], reverseOf));
   }
-  return { points, fastest };
+  const quali = new Map();
+  const qualiTable = parseTable(season?.qualiPointsTable);
+  if (qualiTable && race.results.length) {
+    for (const q of race.qualifying || []) {
+      const p = qualiTable[q.position - 1] ?? 0;
+      if (p) quali.set(q.driverId, p);
+    }
+  }
+  return { points, fastest, quali };
 }
 
 // The pole sitter of a round: qualifying P1 if a qualifying was imported,
-// else whoever started the feature race from grid slot 1.
+// else whoever started race 1 from grid slot 1.
 export function poleDriverId(race) {
   const q = (race.qualifying || []).find((x) => x.position === 1);
   if (q) return q.driverId;
-  const g = race.results.find((r) => sessionOf(r) === "FEATURE" && r.grid === 1);
+  const g = race.results.find((r) => sessionOf(r) === "R1" && r.grid === 1);
   return g ? g.driverId : null;
 }
 

@@ -2,7 +2,7 @@ import { Router } from "express";
 import prisma from "../db.js";
 import { getSettings, publicSettings } from "../lib/settings.js";
 import { publicStandings } from "../lib/standings.js";
-import { racePoints, sessionOf, poleDriverId } from "../lib/points.js";
+import { racePoints, sessionOf, sessionsOf, raceCountOf, poleDriverId } from "../lib/points.js";
 import { driverSeasonStats, headToHead, teamAt } from "../lib/stats.js";
 import { resolveSeason, seasonRaces, seasonStandings, resultInclude } from "../lib/seasonData.js";
 import { requireUser } from "../auth.js";
@@ -11,8 +11,35 @@ import { liveSeries } from "../live/relay.js";
 const router = Router();
 
 const teamOut = (t) => (t ? { id: t.id, name: t.name, color: t.color } : null);
-const seriesOut = (s) => (s ? { id: s.id, name: s.name, slug: s.slug, color: s.color, schedule: s.schedule } : null);
-const seasonOut = (s) => (s ? { id: s.id, name: s.name, isCurrent: s.isCurrent, series: seriesOut(s.series) } : null);
+const seriesOut = (s) => (s ? { id: s.id, name: s.name, slug: s.slug, color: s.color, schedule: s.schedule, imageUrl: s.imageUrl ?? null } : null);
+const seasonOut = (s) =>
+  s ? { id: s.id, name: s.name, isCurrent: s.isCurrent, description: s.description, imageUrl: s.imageUrl, series: seriesOut(s.series) } : null;
+const parseList = (json) => {
+  try {
+    const list = JSON.parse(json || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+};
+// A round counts as over three hours after its start, results or not.
+const OVER_AFTER_MS = 3 * 60 * 60 * 1000;
+const isOver = (race) => new Date(race.startsAt).getTime() < Date.now() - OVER_AFTER_MS;
+
+// Where and with what a round is raced. A mystery track stays hidden until
+// the round has results (its picture is the admin's choice: a teaser).
+function roundInfo(race) {
+  const hidden = race.mysteryTrack && !race.results?.length;
+  return {
+    track: hidden ? null : race.track,
+    mysteryTrack: !!race.mysteryTrack,
+    car: race.car,
+    imageUrl: race.imageUrl,
+    videoUrl: race.videoUrl,
+    raceCount: raceCountOf(race),
+    past: isOver(race),
+  };
+}
 // Teams alphabetically, drivers without a team last.
 const byTeamThenName = (x, y) => (x ? 0 : 1) - (y ? 0 : 1) || (x && y ? x.localeCompare(y) : 0);
 const driverOut = (d) => ({ id: d.id, name: d.name, number: d.number, country: d.country });
@@ -25,7 +52,7 @@ function sessionOut(race, session, points, fastest) {
     .filter((r) => sessionOf(r) === session)
     .sort((a, b) => a.position - b.position)
     .map((r) => {
-      const grid = r.grid ?? (session === "FEATURE" ? qualiPos.get(r.driverId) ?? null : null);
+      const grid = r.grid ?? (session === "R1" ? qualiPos.get(r.driverId) ?? null : null);
       return {
         id: r.id,
         position: r.position,
@@ -47,21 +74,38 @@ function sessionOut(race, session, points, fastest) {
     });
 }
 
+// The podium of a round: the race's top three, or with more races the three
+// drivers with the most points over the day.
+function podiumOf(race, points, fastest, quali) {
+  if (!race.results.length) return [];
+  if (raceCountOf(race) === 1) return sessionOut(race, "R1", points, fastest).slice(0, 3);
+  const byDriver = new Map();
+  for (const r of race.results) {
+    const row = byDriver.get(r.driverId) || { driver: driverOut(r.driver), team: teamOut(r.team), points: quali.get(r.driverId) || 0, finishes: [] };
+    row.points += points.get(r.id) || 0;
+    if (r.status === "FIN") row.finishes.push(r.position);
+    byDriver.set(r.driverId, row);
+  }
+  return [...byDriver.values()]
+    .sort((a, b) => b.points - a.points || Math.min(99, ...a.finishes) - Math.min(99, ...b.finishes))
+    .slice(0, 3)
+    .map(({ finishes, ...row }, i) => ({ ...row, position: i + 1, points: Math.round(row.points * 100) / 100 }));
+}
+
 function raceSummary(race, season, settings) {
   const done = race.results.length > 0;
-  const { points, fastest } = racePoints(race, season, settings);
+  const { points, fastest, quali } = racePoints(race, season, settings);
   return {
     id: race.id,
     round: race.round,
     name: race.name,
-    track: race.track,
+    ...roundInfo(race),
     startsAt: race.startsAt,
-    hasSprint: race.hasSprint,
     pointsMultiplier: race.pointsMultiplier,
     customPoints: !!race.pointsTable,
     done,
     signedUp: race._count?.signups ?? 0,
-    podium: done ? sessionOut(race, "FEATURE", points, fastest).slice(0, 3) : [],
+    podium: podiumOf(race, points, fastest, quali),
   };
 }
 
@@ -71,9 +115,11 @@ router.get("/settings", async (_req, res) => {
   res.json({ ...(await publicSettings()), liveEnabled: (await liveSeries()).length > 0 });
 });
 
+// Every series, the archived ones too (the menu leaves those out; their
+// pages and seasons stay reachable from the history).
 router.get("/series", async (_req, res) => {
   const [list, live] = await Promise.all([
-    prisma.series.findMany({ orderBy: [{ order: "asc" }, { id: "asc" }], include: { seasons: { orderBy: { id: "desc" } } } }),
+    prisma.series.findMany({ orderBy: [{ order: "asc" }, { id: "asc" }], include: { seasons: { orderBy: { id: "desc" } }, _count: { select: { teams: true } } } }),
     liveSeries(),
   ]);
   res.json(
@@ -81,6 +127,10 @@ router.get("/series", async (_req, res) => {
       const current = s.seasons.find((x) => x.isCurrent) || s.seasons[0] || null;
       return {
         ...seriesOut(s),
+        imageUrl: s.imageUrl || current?.imageUrl || null,
+        archived: s.archived,
+        // a series without teams (one driver, one entry) hides the team pages
+        hasTeams: s._count.teams > 0,
         description: s.description,
         live: live.some((l) => l.slug === s.slug),
         currentSeason: current ? { id: current.id, name: current.name } : null,
@@ -90,11 +140,11 @@ router.get("/series", async (_req, res) => {
   );
 });
 
-// The league home: every series at a glance, the next races and the latest
-// results across all of them.
+// The league home: every running series at a glance, the next races, the
+// latest results, and the latest recordings of any series.
 router.get("/overview", async (_req, res) => {
   const settings = await getSettings();
-  const series = await prisma.series.findMany({ orderBy: [{ order: "asc" }, { id: "asc" }] });
+  const series = await prisma.series.findMany({ where: { archived: false }, orderBy: [{ order: "asc" }, { id: "asc" }] });
   const now = Date.now();
   const cards = [];
   const upcoming = [];
@@ -105,7 +155,7 @@ router.get("/overview", async (_req, res) => {
     const standings = await seasonStandings(season, races);
     const next = races.find((r) => !r.results.length && new Date(r.startsAt).getTime() > now - 3 * 60 * 60 * 1000);
     cards.push({
-      series: { ...seriesOut(s), description: s.description },
+      series: { ...seriesOut(s), imageUrl: s.imageUrl || season?.imageUrl || null, description: s.description },
       season: season ? { id: season.id, name: season.name } : null,
       roundsDone: races.filter((r) => r.results.length).length,
       roundsTotal: races.length,
@@ -120,7 +170,22 @@ router.get("/overview", async (_req, res) => {
   }
   upcoming.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
   latest.sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
-  res.json({ series: cards, upcoming: upcoming.slice(0, 6), latest: latest.slice(0, 4) });
+  const recorded = await prisma.race.findMany({
+    where: { videoUrl: { not: null }, startsAt: { lt: new Date(now - OVER_AFTER_MS) } },
+    orderBy: { startsAt: "desc" },
+    take: 8,
+    include: { season: { include: { series: true } }, results: { select: { id: true } } },
+  });
+  const replays = recorded.map((r) => ({
+    id: r.id,
+    round: r.round,
+    name: r.name,
+    ...roundInfo(r),
+    startsAt: r.startsAt,
+    season: { id: r.season.id, name: r.season.name },
+    series: seriesOut(r.season.series),
+  }));
+  res.json({ series: cards, upcoming: upcoming.slice(0, 6), latest: latest.slice(0, 4), replays });
 });
 
 // The home of one series (its current or the asked-for season).
@@ -131,7 +196,9 @@ router.get("/home", async (req, res) => {
   const standings = await seasonStandings(season, races);
   const now = Date.now();
   const next = races.find((r) => !r.results.length && new Date(r.startsAt).getTime() > now - 3 * 60 * 60 * 1000);
-  const last = [...races].reverse().find((r) => r.results.length);
+  // the latest round with results, else (a season without any on record)
+  // the latest one that is over, for its recording
+  const last = [...races].reverse().find((r) => r.results.length) || [...races].reverse().find(isOver);
   res.json({
     season: seasonOut(season),
     nextRace: next ? raceSummary(next, season, settings) : null,
@@ -173,7 +240,7 @@ router.get("/races/:id", async (req, res) => {
   });
   if (!race) return res.status(404).json({ error: "Race not found." });
   const settings = await getSettings();
-  const { points, fastest } = racePoints(race, race.season, settings);
+  const { points, fastest, quali } = racePoints(race, race.season, settings);
   const mine = req.user ? race.signups.find((s) => s.userId === req.user.id) : null;
   // the team each member drives for in this round
   const entries = await prisma.entry.findMany({ where: { seasonId: race.seasonId }, include: { team: true } });
@@ -190,20 +257,19 @@ router.get("/races/:id", async (req, res) => {
     id: race.id,
     round: race.round,
     name: race.name,
-    track: race.track,
+    ...roundInfo(race),
     startsAt: race.startsAt,
     notes: race.notes,
-    hasSprint: race.hasSprint,
+    timetable: parseList(race.timetable),
     pointsMultiplier: race.pointsMultiplier,
     customPoints: !!race.pointsTable,
     season: seasonOut(race.season),
-    sessions: {
-      FEATURE: sessionOut(race, "FEATURE", points, fastest),
-      SPRINT: sessionOut(race, "SPRINT", points, fastest),
-    },
+    sessions: Object.fromEntries(sessionsOf(race).map((s) => [s, sessionOut(race, s, points, fastest)])),
+    podium: podiumOf(race, points, fastest, quali),
     qualifying: race.qualifying.map((q, i, list) => ({
       position: q.position,
       bestLapMs: q.bestLapMs,
+      points: quali.get(q.driverId) || 0,
       gapMs: q.bestLapMs && list[0]?.bestLapMs ? q.bestLapMs - list[0].bestLapMs : null,
       driver: driverOut(q.driver),
       team: teamOut(teamOfDriver(q.driverId)),
@@ -217,7 +283,7 @@ router.get("/races/:id", async (req, res) => {
       team: teamOut(s.user.driver ? teamOfDriver(s.user.driver.id) : null),
     })),
     mySignup: mine?.status ?? null,
-    signupOpen: race.results.length === 0,
+    signupOpen: race.results.length === 0 && !isOver(race),
   });
 });
 
@@ -225,7 +291,7 @@ router.put("/races/:id/signup", requireUser, async (req, res) => {
   const status = req.body?.status;
   const race = await prisma.race.findUnique({ where: { id: Number(req.params.id) || 0 }, include: { _count: { select: { results: true } } } });
   if (!race) return res.status(404).json({ error: "Race not found." });
-  if (race._count.results > 0) return res.status(409).json({ error: "This race is over." });
+  if (race._count.results > 0 || isOver(race)) return res.status(409).json({ error: "This race is over." });
   if (status === null || status === "none") {
     await prisma.signup.deleteMany({ where: { raceId: race.id, userId: req.user.id } });
     return res.json({ status: null });
@@ -350,7 +416,7 @@ router.get("/transfers", async (req, res) => {
   const season = await resolveSeason(req.query);
   if (!season) return res.json({ season: null, rounds: [], rows: [], moves: [] });
   const [races, entries, transfers, teams] = await Promise.all([
-    prisma.race.findMany({ where: { seasonId: season.id }, orderBy: { round: "asc" }, include: { results: { where: { session: "FEATURE" }, select: { driverId: true, status: true } } } }),
+    prisma.race.findMany({ where: { seasonId: season.id }, orderBy: { round: "asc" }, include: { results: { select: { driverId: true, status: true } } } }),
     prisma.entry.findMany({ where: { seasonId: season.id }, include: { driver: true, team: true } }),
     prisma.transfer.findMany({ where: { seasonId: season.id }, include: { driver: true, team: true }, orderBy: [{ fromRound: "asc" }, { id: "asc" }] }),
     prisma.team.findMany({ where: { seriesId: season.seriesId } }),
@@ -363,8 +429,8 @@ router.get("/transfers", async (req, res) => {
         driver: driverOut(e.driver),
         cells: races.map((race) => {
           const teamId = teamAt({ entry: e, transfers: mine }, race.round);
-          const result = race.results.find((r) => r.driverId === e.driverId);
-          return { raceId: race.id, team: teamById.get(teamId) || null, raced: !!result && result.status !== "DNS", done: race.results.length > 0 };
+          const raced = race.results.some((r) => r.driverId === e.driverId && r.status !== "DNS");
+          return { raceId: race.id, team: teamById.get(teamId) || null, raced, done: race.results.length > 0 };
         }),
       };
     })
@@ -372,7 +438,7 @@ router.get("/transfers", async (req, res) => {
   const doneRounds = new Set(races.filter((r) => r.results.length).map((r) => r.round));
   res.json({
     season: seasonOut(season),
-    rounds: races.map((r) => ({ id: r.id, round: r.round, track: r.track, done: r.results.length > 0 })),
+    rounds: races.map((r) => ({ id: r.id, round: r.round, track: roundInfo(r).track, done: r.results.length > 0 })),
     rows,
     moves: transfers.map((t) => {
       const entry = entries.find((e) => e.driverId === t.driverId);
@@ -387,6 +453,44 @@ router.get("/transfers", async (req, res) => {
       };
     }),
   });
+});
+
+// The league's history: every season of every series, newest first, with
+// its dates, a picture and the champion (named by hand, or the leader once
+// every round is over and has results).
+router.get("/history", async (_req, res) => {
+  const seasons = await prisma.season.findMany({
+    include: { series: true, races: { orderBy: { round: "asc" }, select: { id: true, startsAt: true, imageUrl: true, videoUrl: true, _count: { select: { results: true } } } } },
+  });
+  const out = [];
+  for (const season of seasons) {
+    const races = season.races;
+    if (!races.length) continue;
+    const done = races.filter((r) => r._count.results > 0);
+    let champion = null;
+    const finished = races.every((r) => r._count.results > 0 || isOver(r));
+    if (done.length && (season.championId || finished)) {
+      const standings = await seasonStandings(season, await seasonRaces(season.id));
+      const top = standings.drivers[0];
+      if (top) champion = { ...driverOut(top), points: top.points, team: top.team };
+    }
+    // the season's banner, else the first round's poster, else a recording
+    const poster = races.find((r) => r.imageUrl)?.imageUrl;
+    out.push({
+      series: { ...seriesOut(season.series), archived: season.series.archived },
+      season: { id: season.id, name: season.name, description: season.description, isCurrent: season.isCurrent },
+      imageUrl: season.imageUrl || season.series.imageUrl || poster || null,
+      videoUrl: races.find((r) => r.videoUrl)?.videoUrl ?? null,
+      from: races[0].startsAt,
+      to: races[races.length - 1].startsAt,
+      rounds: races.length,
+      roundsWithResults: done.length,
+      running: !finished,
+      champion,
+    });
+  }
+  out.sort((a, b) => new Date(b.from) - new Date(a.from));
+  res.json(out);
 });
 
 router.get("/downloads", async (_req, res) => {

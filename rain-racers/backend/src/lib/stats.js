@@ -1,14 +1,15 @@
-import { racePoints, sessionOf, poleDriverId } from "./points.js";
+import { racePoints, sessionOf, sessionsOf, poleDriverId } from "./points.js";
 import { round } from "./standings.js";
 
 // Per-driver numbers for one season, from the same rounds the standings use
-// (each with results and qualifying). `race.season` may be absent; the points
-// then use the season passed in.
+// (each with results and qualifying). Every race of a round counts: a round
+// of two races is two starts.
 
-const feature = (race, driverId) => race.results.find((r) => r.driverId === driverId && sessionOf(r) === "FEATURE");
-const sprint = (race, driverId) => race.results.find((r) => r.driverId === driverId && sessionOf(r) === "SPRINT");
 const qualiPos = (race, driverId) => (race.qualifying || []).find((q) => q.driverId === driverId)?.position ?? null;
-const gridOf = (race, r) => r?.grid ?? qualiPos(race, r?.driverId) ?? null;
+// the grid of race 1 follows the qualifying where the file gave none
+const gridOf = (race, r) => r?.grid ?? (sessionOf(r) === "R1" ? qualiPos(race, r.driverId) : null) ?? null;
+// the driver's result in each race of the round (null where they have none)
+const racesOf = (race, driverId) => sessionsOf(race).map((s) => race.results.find((r) => r.driverId === driverId && sessionOf(r) === s) || null);
 
 export function driverSeasonStats(driverId, races, settings, season) {
   const done = [...races].filter((r) => r.results?.length).sort((a, b) => a.round - b.round);
@@ -23,52 +24,49 @@ export function driverSeasonStats(driverId, races, settings, season) {
     avgFinish: null,
     avgGrid: null,
     placesGained: 0,
-    sprintWins: 0,
-    sprintPodiums: 0,
   };
   const finishes = [];
   const grids = [];
   const form = [];
 
   for (const race of done) {
-    const { points, fastest } = racePoints(race, season, settings);
-    const f = feature(race, driverId);
-    const sp = sprint(race, driverId);
+    const { points, fastest, quali } = racePoints(race, season, settings);
+    const mine = racesOf(race, driverId);
     const q = qualiPos(race, driverId);
-    if (!f && !sp && q == null) continue;
-    if (poleDriverId(race) === driverId) s.poles++;
-    let roundPoints = 0;
-    if (f) {
-      roundPoints += points.get(f.id) || 0;
-      if (f.status !== "DNS") s.starts++;
-      if (f.status === "DNF") s.dnfs++;
-      if (f.id === fastest.FEATURE) s.fastestLaps++;
-      const grid = gridOf(race, f);
-      if (grid != null) grids.push(grid);
-      if (f.status === "FIN") {
-        finishes.push(f.position);
-        if (f.position === 1) s.wins++;
-        if (f.position <= 3) s.podiums++;
-        if (grid != null) s.placesGained += grid - f.position;
+    if (!mine.some(Boolean) && q == null) continue;
+    const pole = poleDriverId(race) === driverId;
+    if (pole) s.poles++;
+    let roundPoints = quali.get(driverId) || 0;
+    let fastestLap = false;
+    for (const r of mine) {
+      if (!r) continue;
+      roundPoints += points.get(r.id) || 0;
+      if (r.status !== "DNS") s.starts++;
+      if (r.status === "DNF") s.dnfs++;
+      if (r.id === fastest[sessionOf(r)]) {
+        s.fastestLaps++;
+        fastestLap = true;
       }
-    }
-    if (sp) {
-      roundPoints += points.get(sp.id) || 0;
-      if (sp.status === "FIN" && sp.position === 1) s.sprintWins++;
-      if (sp.status === "FIN" && sp.position <= 3) s.sprintPodiums++;
+      const grid = gridOf(race, r);
+      if (grid != null) grids.push(grid);
+      if (r.status === "FIN") {
+        finishes.push(r.position);
+        if (r.position === 1) s.wins++;
+        if (r.position <= 3) s.podiums++;
+        if (grid != null) s.placesGained += grid - r.position;
+      }
     }
     form.push({
       raceId: race.id,
       round: race.round,
       track: race.track,
       name: race.name,
-      finish: f ? { position: f.position, status: f.status } : null,
-      sprint: sp ? { position: sp.position, status: sp.status } : null,
-      grid: f ? gridOf(race, f) : null,
+      races: mine.map((r) => (r ? { position: r.position, status: r.status } : null)),
+      grid: mine[0] ? gridOf(race, mine[0]) : q,
       quali: q,
       points: round(roundPoints),
-      fastestLap: !!f && f.id === fastest.FEATURE,
-      pole: poleDriverId(race) === driverId,
+      fastestLap,
+      pole,
     });
   }
   if (finishes.length) {
@@ -79,31 +77,32 @@ export function driverSeasonStats(driverId, races, settings, season) {
   return { stats: s, form };
 }
 
-// Two drivers of one season against each other, over the rounds both took
-// part in: who finished ahead (a finisher beats a DNF, a DNF on more laps
-// beats one on fewer), who qualified ahead, and the points of those rounds.
+// Two drivers of one season against each other: every race both started
+// (who finished ahead), every qualifying both set a time in, and the points
+// of the rounds both raced.
 export function headToHead(aId, bId, races, settings, season) {
   const out = { rounds: [], race: { a: 0, b: 0 }, quali: { a: 0, b: 0 }, points: { a: 0, b: 0 } };
   for (const race of [...races].filter((r) => r.results?.length).sort((x, y) => x.round - y.round)) {
-    const fa = feature(race, aId);
-    const fb = feature(race, bId);
-    if (!fa || !fb || fa.status === "DNS" || fb.status === "DNS") continue;
-    const { points } = racePoints(race, season, settings);
-    const pa = race.results.filter((r) => r.driverId === aId).reduce((sum, r) => sum + (points.get(r.id) || 0), 0);
-    const pb = race.results.filter((r) => r.driverId === bId).reduce((sum, r) => sum + (points.get(r.id) || 0), 0);
-    const aAhead = fa.position < fb.position;
-    out.race[aAhead ? "a" : "b"]++;
+    const ra = racesOf(race, aId);
+    const rb = racesOf(race, bId);
+    const both = ra.map((x, i) => [x, rb[i]]).filter(([x, y]) => x && y && x.status !== "DNS" && y.status !== "DNS");
+    if (!both.length) continue;
+    const { points, quali } = racePoints(race, season, settings);
+    const sum = (id) => race.results.filter((r) => r.driverId === id).reduce((t, r) => t + (points.get(r.id) || 0), quali.get(id) || 0);
+    for (const [x, y] of both) out.race[x.position < y.position ? "a" : "b"]++;
     const qa = qualiPos(race, aId);
     const qb = qualiPos(race, bId);
     if (qa != null && qb != null) out.quali[qa < qb ? "a" : "b"]++;
+    const pa = sum(aId);
+    const pb = sum(bId);
     out.points.a += pa;
     out.points.b += pb;
     out.rounds.push({
       raceId: race.id,
       round: race.round,
       track: race.track,
-      a: { position: fa.position, status: fa.status, quali: qa, points: round(pa) },
-      b: { position: fb.position, status: fb.status, quali: qb, points: round(pb) },
+      a: { races: ra.map((r) => (r ? { position: r.position, status: r.status } : null)), quali: qa, points: round(pa) },
+      b: { races: rb.map((r) => (r ? { position: r.position, status: r.status } : null)), quali: qb, points: round(pb) },
     });
   }
   out.points.a = round(out.points.a);
@@ -126,7 +125,7 @@ export function teamAt({ entry, transfers }, roundNo) {
 
 // Who turned up: every driver on the entry list (and every member who
 // answered a sign-up without being on it) against every round. A round counts
-// as raced when there is a result that is not a DNS; a "yes" without a start
+// as raced when any of its races has a result that is not a DNS; a "yes" without a start
 // on a finished round is a no-show.
 export function attendance({ races, entries, signups }) {
   const ordered = [...races].sort((a, b) => a.round - b.round);
@@ -149,10 +148,11 @@ export function attendance({ races, entries, signups }) {
   }
   for (const race of ordered) {
     for (const r of race.results || []) {
-      if (sessionOf(r) !== "FEATURE") continue;
       const row = rows.get(key(r.driverId));
       if (!row) continue;
-      (row.cells[race.id] ??= {}).raced = r.status !== "DNS";
+      const cell = (row.cells[race.id] ??= {});
+      // raced if they started any race of the round
+      cell.raced = cell.raced || r.status !== "DNS";
     }
   }
   const done = ordered.filter((r) => r.results?.length);

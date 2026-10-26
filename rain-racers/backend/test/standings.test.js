@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { pointsFor, fastestLapResultId } from "../src/lib/points.js";
 import { buildStandings } from "../src/lib/standings.js";
-import { DEFAULTS } from "../src/lib/settings.js";
+import { DEFAULTS as LEAGUE } from "../src/lib/settings.js";
+
+// A plain table to count with (the league's own default is longer).
+const DEFAULTS = { ...LEAGUE, pointsTable: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], fastestLapPoints: 1, fastestLapTopN: 10 };
 
 const teamA = { id: 1, name: "Thunder", color: "#ff0000" };
 const teamB = { id: 2, name: "Cloudburst", color: null };
@@ -68,7 +71,7 @@ describe("buildStandings", () => {
       ["Cloudburst", 30],
     ]);
     expect(s.rounds.map((r) => r.done)).toEqual([true, true, false]);
-    expect(s.drivers[0].rounds[10]).toMatchObject({ position: 1, points: 25 });
+    expect(s.drivers[0].rounds[10]).toMatchObject({ points: 25, races: [{ position: 1, points: 25 }] });
   });
 
   it("breaks the tie on second places when wins are level", () => {

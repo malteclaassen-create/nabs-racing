@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useSite } from "../site.jsx";
 import { useScope } from "./scope.jsx";
-import { useAdminList, useAction, Message, Section, Field, confirmDelete } from "./common.jsx";
+import { useAdminList, useAction, Message, Section, Field, PictureField, confirmDelete } from "./common.jsx";
 
 const blankSeries = { name: "", slug: "", color: "#e10600", schedule: "", description: "", liveWsUrl: "", liveOrigin: "", order: 0 };
 
-function SeriesForm({ initial, onSubmit, submitLabel, busy, onCancel, isNew }) {
+function SeriesForm({ initial, onSubmit, submitLabel, busy, onCancel, isNew, children }) {
   const [f, setF] = useState(initial);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   return (
     <form
       className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
@@ -33,7 +33,7 @@ function SeriesForm({ initial, onSubmit, submitLabel, busy, onCancel, isNew }) {
         <input className="input" placeholder="Sundays 19:00 CET" value={f.schedule ?? ""} onChange={set("schedule")} />
       </Field>
       <Field label="Description" className="sm:col-span-2">
-        <input className="input" placeholder="Mazda RX-8 one-make cup" value={f.description ?? ""} onChange={set("description")} />
+        <input className="input" placeholder="The rotary on short and wacky circuits" value={f.description ?? ""} onChange={set("description")} />
       </Field>
       {isNew ? (
         <Field label="First season">
@@ -44,13 +44,21 @@ function SeriesForm({ initial, onSubmit, submitLabel, busy, onCancel, isNew }) {
           <input className="input" type="number" value={f.order} onChange={set("order")} />
         </Field>
       )}
-      <div />
+      {isNew ? (
+        <div />
+      ) : (
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input type="checkbox" checked={!!f.archived} onChange={set("archived")} />
+          Archived (no longer runs)
+        </label>
+      )}
       <Field label="Live socket of this series' server (optional)" className="sm:col-span-2">
         <input className="input font-mono text-xs" placeholder="wss://…/api/race-control" value={f.liveWsUrl ?? ""} onChange={set("liveWsUrl")} />
       </Field>
       <Field label="Origin (optional)">
         <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin ?? ""} onChange={set("liveOrigin")} />
       </Field>
+      {children && <div className="sm:col-span-2 lg:col-span-4">{children}</div>}
       <div className="flex items-end gap-2">
         <button className="btn-accent whitespace-nowrap" disabled={busy || !f.name.trim()}>
           {submitLabel}
@@ -115,7 +123,15 @@ function SeriesList() {
                       done();
                     }
                   }}
-                />
+                >
+                  <PictureField
+                    label="Banner of the series"
+                    url={s.imageUrl}
+                    endpoint={`/admin/series/${s.id}/image`}
+                    onChange={done}
+                    hint="Optional: without one, the current season's banner is used."
+                  />
+                </SeriesForm>
               </li>
             ) : (
               <li key={s.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
@@ -127,6 +143,7 @@ function SeriesList() {
                   {s._count.seasons} seasons · {s._count.teams} teams
                 </span>
                 {s.liveWsUrl && <span className="text-xs text-emerald-400">live server set</span>}
+                {s.archived && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-black uppercase text-muted">archived</span>}
                 <div className="ml-auto flex gap-2">
                   <button className="btn-ghost py-1" onClick={() => setEditing(s.id)}>
                     Edit
@@ -225,9 +242,30 @@ function Seasons() {
   );
 }
 
-// Points rules of the season being worked on.
+const listText = (t) => (Array.isArray(t) ? t.join(", ") : "");
+
+// The tables of rounds with 2, 3 or 4 races, as the form edits them: one
+// table for every race, or (ticked) one per race.
+function raceTablesForm(json) {
+  let all = {};
+  try {
+    all = JSON.parse(json || "{}") || {};
+  } catch {
+    all = {};
+  }
+  const out = {};
+  for (const n of [2, 3, 4]) {
+    const v = all[n];
+    const perRace = Array.isArray(v) && v.some((x) => x === null || Array.isArray(x));
+    out[n] = { perRace, all: perRace ? "" : listText(v), races: Array.from({ length: n }, (_, i) => (perRace ? listText(v[i]) : "")) };
+  }
+  return out;
+}
+
+// The season being worked on: its words and banner, and its points rules.
 function Rules() {
   const { currentSeason, reloadSeasons } = useScope();
+  const { reload: reloadSite } = useSite();
   const { data: entryData } = useAdminList(currentSeason ? `/admin/seasons/${currentSeason.id}/entries` : null);
   const { busy, message, run } = useAction();
   const [f, setF] = useState(null);
@@ -235,8 +273,11 @@ function Rules() {
     if (!currentSeason) return setF(null);
     const list = (j) => (j ? JSON.parse(j).join(", ") : "");
     setF({
+      description: currentSeason.description ?? "",
+      pointsMode: currentSeason.pointsMode || "TABLE",
       pointsTable: list(currentSeason.pointsTable),
-      sprintPointsTable: list(currentSeason.sprintPointsTable),
+      raceTables: raceTablesForm(currentSeason.raceTables),
+      qualiPointsTable: list(currentSeason.qualiPointsTable),
       dropWorst: currentSeason.dropWorst,
       championId: currentSeason.championId ?? "",
       championNote: currentSeason.championNote ?? "",
@@ -244,26 +285,85 @@ function Rules() {
   }, [currentSeason]);
   if (!currentSeason || !f) return null;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const setTables = (n, patch) => setF({ ...f, raceTables: { ...f.raceTables, [n]: { ...f.raceTables[n], ...patch } } });
+  const reverse = f.pointsMode === "REVERSE";
 
   return (
-    <Section title={`Points rules · ${currentSeason.name}`}>
+    <Section title={`Season · ${currentSeason.name}`}>
       <form
         className="grid gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (await run(() => api.put(`/admin/seasons/${currentSeason.id}`, f), "Rules saved.")) reloadSeasons();
+          const raceTables = Object.fromEntries(Object.entries(f.raceTables).map(([n, t]) => [n, t.perRace ? t.races : t.all]));
+          if (await run(() => api.put(`/admin/seasons/${currentSeason.id}`, { ...f, raceTables }), "Saved.")) {
+            reloadSeasons();
+            reloadSite();
+          }
         }}
       >
-        <Field label="Points for P1, P2, … (empty = the league's table)">
-          <input className="input font-mono" placeholder="25, 18, 15, 12, 10, 8, 6, 4, 2, 1" value={f.pointsTable} onChange={set("pointsTable")} />
+        <Field label="About the season (shown on the series page)" className="sm:col-span-2">
+          <textarea className="input" rows={3} value={f.description} onChange={set("description")} />
         </Field>
-        <Field label="Sprint points (empty = the league's sprint table)">
-          <input className="input font-mono" placeholder="8, 7, 6, 5, 4, 3, 2, 1" value={f.sprintPointsTable} onChange={set("sprintPointsTable")} />
+        <div className="sm:col-span-2">
+          <PictureField
+            label="Banner of the season"
+            url={currentSeason.imageUrl}
+            endpoint={`/admin/seasons/${currentSeason.id}/image`}
+            onChange={() => {
+              reloadSeasons();
+              reloadSite();
+            }}
+            hint="Shown on the home page, the series page and in the history; rounds without a poster of their own fall back to it."
+          />
+        </div>
+        <Field label="How races score" className="sm:col-span-2">
+          <select className="input" value={f.pointsMode} onChange={set("pointsMode")}>
+            <option value="TABLE">From the points tables</option>
+            <option value="REVERSE">Back to front: the last classified driver gets 1, the one ahead 2, …</option>
+          </select>
+        </Field>
+        {!reverse && (
+          <>
+            <Field label="Points for P1, P2, … of a single race (empty = the league's table)" className="sm:col-span-2">
+              <input className="input font-mono" placeholder="50, 40, 35, 32, 30, 28, 26, 24, 22, 20" value={f.pointsTable} onChange={set("pointsTable")} />
+            </Field>
+            {[2, 3, 4].map((n) => {
+              const t = f.raceTables[n];
+              return (
+                <div key={n} className="rounded-xl border border-line p-3 sm:col-span-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="label mb-0">Rounds with {n} races (empty = the table above)</span>
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      <input type="checkbox" checked={t.perRace} onChange={(e) => setTables(n, { perRace: e.target.checked })} />
+                      own table per race (e.g. a sprint and a feature)
+                    </label>
+                  </div>
+                  {t.perRace ? (
+                    <div className="grid gap-2">
+                      {t.races.map((v, i) => (
+                        <input
+                          key={i}
+                          className="input font-mono"
+                          placeholder={`Race ${i + 1}`}
+                          value={v}
+                          onChange={(e) => setTables(n, { races: t.races.map((x, j) => (j === i ? e.target.value : x)) })}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <input className="input font-mono" placeholder={n === 2 ? "35, 29, 24, 21, 19, …" : "20, 17, 15, 13, 11, …"} value={t.all} onChange={(e) => setTables(n, { all: e.target.value })} />
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
+        <Field label="Qualifying points for P1, P2, … (empty = none)">
+          <input className="input font-mono" placeholder="10, 8, 7, 6, 5, 4, 3, 2, 1, 1" value={f.qualiPointsTable} onChange={set("qualiPointsTable")} />
         </Field>
         <Field label="Drop each driver's worst rounds">
           <input className="input" type="number" min="0" max="20" value={f.dropWorst} onChange={set("dropWorst")} />
         </Field>
-        <div />
         <Field label="Champion named by hand (empty = whoever leads on points)">
           <select className="input" value={f.championId} onChange={set("championId")}>
             <option value="">By points</option>
@@ -279,12 +379,12 @@ function Rules() {
         </Field>
         <div className="flex items-center gap-3 sm:col-span-2">
           <button className="btn-accent" disabled={busy}>
-            Save rules
+            Save season
           </button>
           <Message message={message} />
         </div>
       </form>
-      <p className="mt-3 text-xs text-muted">A single round can have its own points table too (Races &amp; results → Edit).</p>
+      <p className="mt-3 text-xs text-muted">A single round can have its own points table too (Races &amp; results → Edit), e.g. a finale.</p>
       <ManualPoints season={currentSeason} entries={entryData?.entries || []} />
     </Section>
   );

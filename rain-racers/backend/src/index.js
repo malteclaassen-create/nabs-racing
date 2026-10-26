@@ -10,6 +10,7 @@ import adminRoutes from "./routes/admin.js";
 import { attachLive } from "./live/relay.js";
 import { publicSettings } from "./lib/settings.js";
 import prisma from "./db.js";
+import { loadHistoryIfEmpty } from "./lib/history.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIST = path.resolve(here, "../../frontend/dist");
@@ -69,3 +70,4 @@ if (fs.existsSync(FRONTEND_DIST)) {
 
 const server = app.listen(PORT, () => console.log(`Rain Racers on http://localhost:${PORT}`));
 attachLive(server);
+loadHistoryIfEmpty().catch((err) => console.error("Could not load the Rain Racers history:", err));

@@ -4,34 +4,40 @@ import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, DriverName, TeamNam
 import LineChart from "../components/LineChart.jsx";
 import { points } from "../format.js";
 
-// The colour of a round's cell: podiums stand out, a DNF is dimmed.
+// The colour of a race's cell: podiums stand out, a DNF is dimmed.
 function cellTone(r) {
-  if (!r || r.status == null) return "text-muted";
-  if (r.status !== "FIN") return "text-muted";
+  if (!r || r.status !== "FIN") return "text-muted";
   if (r.position === 1) return "bg-amber-400/20 text-amber-300";
   if (r.position <= 3) return "bg-accent/15 text-ink";
   return "";
 }
 
+const place = (r) => (!r ? "–" : r.status === "FIN" ? r.position : r.status);
+
+// A round in the table: the finish of each of its races, side by side, with
+// the pole, fastest laps and a dropped round marked.
 function RoundCell({ r }) {
   if (!r) return <span className="text-muted/40">·</span>;
+  const races = r.races || [];
   const title = [
     `${points(r.points)} pts`,
-    r.sprint ? `sprint ${r.sprint.status === "FIN" ? `P${r.sprint.position}` : r.sprint.status}` : null,
+    ...(races.length > 1 ? races.map((x, i) => `race ${i + 1}: ${x ? (x.status === "FIN" ? `P${x.position}` : x.status) : "–"}`) : []),
+    r.qualiPoints ? `${points(r.qualiPoints)} qualifying pts` : null,
     r.pole ? "pole" : null,
-    r.fastestLap ? "fastest lap" : null,
+    races.some((x) => x?.fastestLap) ? "fastest lap" : null,
     r.dropped ? "dropped" : null,
   ]
     .filter(Boolean)
     .join(" · ");
   return (
-    <span className={`relative inline-flex min-w-9 flex-col items-center rounded px-1 py-0.5 leading-tight ${cellTone(r)} ${r.dropped ? "opacity-50" : ""}`} title={title}>
-      <span className={`text-xs font-bold tabular ${r.dropped ? "line-through" : ""}`}>
-        {r.status == null ? "–" : r.status === "FIN" ? r.position : r.status}
-        {r.fastestLap && <span className="text-fuchsia-400">•</span>}
-        {r.pole && <span className="ml-0.5 text-[9px] text-sky-300">P</span>}
-      </span>
-      {r.sprint && <span className="text-[10px] text-muted">S{r.sprint.status === "FIN" ? r.sprint.position : ` ${r.sprint.status}`}</span>}
+    <span className={`inline-flex gap-0.5 ${r.dropped ? "opacity-50" : ""}`} title={title}>
+      {(races.length ? races : [null]).map((x, i) => (
+        <span key={i} className={`inline-flex min-w-7 items-center justify-center rounded px-1 py-0.5 text-xs font-bold tabular ${cellTone(x)} ${r.dropped ? "line-through" : ""}`}>
+          {place(x)}
+          {x?.fastestLap && <span className="text-fuchsia-400">•</span>}
+          {i === 0 && r.pole && <span className="ml-0.5 text-[9px] text-sky-300">P</span>}
+        </span>
+      ))}
     </span>
   );
 }
@@ -44,7 +50,8 @@ export default function Drivers() {
   if (error) return <ErrorBox error={error} />;
   const rounds = data.rounds.filter((r) => r.done);
   const prog = data.progression;
-  const anySprint = rounds.some((r) => r.hasSprint);
+  const multi = rounds.some((r) => r.raceCount > 1);
+  const teams = data.drivers.some((d) => d.team);
 
   return (
     <div>
@@ -82,9 +89,9 @@ export default function Drivers() {
               <tr>
                 <th className="w-12 pl-5">Pos</th>
                 <th>Driver</th>
-                <th className="hidden sm:table-cell">Team</th>
+                {teams && <th className="hidden sm:table-cell">Team</th>}
                 {rounds.map((r) => (
-                  <th key={r.id} className="hidden text-center lg:table-cell" title={`${r.name} (${r.track})`}>
+                  <th key={r.id} className="hidden text-center lg:table-cell" title={`${r.name}${r.track ? ` (${r.track})` : ""}`}>
                     R{r.round}
                   </th>
                 ))}
@@ -107,9 +114,11 @@ export default function Drivers() {
                       )}
                     </span>
                   </td>
-                  <td className="hidden sm:table-cell">
-                    <TeamName team={d.team} />
-                  </td>
+                  {teams && (
+                    <td className="hidden sm:table-cell">
+                      <TeamName team={d.team} />
+                    </td>
+                  )}
                   {rounds.map((r) => (
                     <td key={r.id} className="hidden px-1 text-center lg:table-cell">
                       <RoundCell r={d.rounds[r.id]} />
@@ -139,7 +148,7 @@ export default function Drivers() {
           <span>
             <span className="text-sky-300">P</span> pole
           </span>
-          {anySprint && <span>S sprint result</span>}
+          {multi && <span>one cell per race of a round</span>}
           {data.dropWorst > 0 && (
             <span>
               <span className="line-through">struck out</span>: dropped (worst {data.dropWorst} {data.dropWorst === 1 ? "round" : "rounds"} per driver)

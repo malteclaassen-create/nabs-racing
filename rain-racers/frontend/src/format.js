@@ -44,6 +44,22 @@ export function hexToRgb(hex) {
   return m ? `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}` : null;
 }
 
+// Black or white text on a colour, whichever reads.
+export function inkOn(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return "#000";
+  const [r, g, b] = rgb.split(" ").map(Number);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 150 ? "#000" : "#fff";
+}
+
+// "Wed 28 Oct", "20:15" and "CET" of a start, in the visitor's own time zone.
+export function dayShort(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+export function clock(iso) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
 export function fileSize(bytes) {
   if (!bytes) return "";
   if (bytes > 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;

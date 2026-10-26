@@ -3,48 +3,96 @@ import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { lapTime, raceTime, dateTime } from "../format.js";
 import { useScope } from "./scope.jsx";
-import { useAdminList, useAction, Message, Section, Field, confirmDelete, toLocalInput } from "./common.jsx";
+import { useAdminList, useAction, Message, Section, Field, PictureField, confirmDelete, toLocalInput } from "./common.jsx";
 
 const STATUSES = ["FIN", "DNF", "DSQ", "DNS"];
-const SESSION_LABEL = { FEATURE: "Feature race", SPRINT: "Sprint", QUALIFY: "Qualifying" };
+// "R1" -> "Race 1", "QUALIFY" -> "Qualifying"
+const sessionLabel = (s, race) => (s === "QUALIFY" ? "Qualifying" : race?.raceCount > 1 ? `Race ${s.slice(1)}` : "Race");
 
-function RaceForm({ initial, onSubmit, submitLabel, busy, onCancel }) {
+// The day's sessions: label, start and length, one row each.
+function TimetableEditor({ rows, onChange, startsAt }) {
+  const set = (i, patch) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="space-y-2">
+      {rows.map((r, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2">
+          <input className="input w-32" placeholder="Qualifying" value={r.label} onChange={(e) => set(i, { label: e.target.value })} />
+          <input className="input w-52" type="datetime-local" value={r.at} onChange={(e) => set(i, { at: e.target.value })} />
+          <input className="input w-28" placeholder="15 min" value={r.length} onChange={(e) => set(i, { length: e.target.value })} />
+          <button type="button" className="text-muted hover:text-red-300" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label="Remove">
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn-ghost py-1.5"
+        onClick={() => onChange([...rows, { label: rows.length ? "" : "Qualifying", at: rows.at(-1)?.at || startsAt || "", length: "" }])}
+      >
+        + Session
+      </button>
+    </div>
+  );
+}
+
+function RaceForm({ initial, onSubmit, submitLabel, busy, onCancel, children }) {
   const [f, setF] = useState(initial);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   return (
     <form
-      className="grid gap-3 sm:grid-cols-[70px_2fr_1.5fr_1.6fr_80px]"
+      className="grid gap-3 sm:grid-cols-6"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ ...f, startsAt: f.startsAt ? new Date(f.startsAt).toISOString() : null });
+        const iso = (v) => (v ? new Date(v).toISOString() : null);
+        onSubmit({ ...f, startsAt: iso(f.startsAt), timetable: f.timetable.map((t) => ({ ...t, at: iso(t.at) })) });
       }}
     >
       <Field label="Round">
         <input className="input" inputMode="numeric" value={f.round} onChange={set("round")} />
       </Field>
-      <Field label="Name">
+      <Field label="Name" className="sm:col-span-3">
         <input className="input" placeholder="Frikandelle Frenzy" value={f.name} onChange={set("name")} />
       </Field>
-      <Field label="Track">
+      <Field label="Start of race 1 (your time)" className="sm:col-span-2">
+        <input className="input" type="datetime-local" value={f.startsAt} onChange={set("startsAt")} />
+      </Field>
+      <Field label="Track" className="sm:col-span-2">
         <input className="input" placeholder="Tucuru Motorplex" value={f.track} onChange={set("track")} />
       </Field>
-      <Field label="Start (your local time)">
-        <input className="input" type="datetime-local" value={f.startsAt} onChange={set("startsAt")} />
+      <label className="flex items-center gap-2 self-end pb-2 text-sm">
+        <input type="checkbox" checked={!!f.mysteryTrack} onChange={set("mysteryTrack")} />
+        Mystery track
+      </label>
+      <Field label="Car" className="sm:col-span-2">
+        <input className="input" placeholder="Mazda RX-8 Cup" value={f.car} onChange={set("car")} />
+      </Field>
+      <Field label="Races">
+        <select className="input" value={f.raceCount} onChange={set("raceCount")}>
+          {[1, 2, 3, 4].map((n) => (
+            <option key={n} value={n}>
+              {n} {n === 1 ? "race" : "races"}
+            </option>
+          ))}
+        </select>
       </Field>
       <Field label="Points ×">
         <input className="input" type="number" min="0" step="0.5" value={f.pointsMultiplier} onChange={set("pointsMultiplier")} />
       </Field>
-      <label className="flex items-center gap-2 self-end pb-2 text-sm sm:col-span-2">
-        <input type="checkbox" checked={!!f.hasSprint} onChange={set("hasSprint")} />
-        Sprint + feature race this round
-      </label>
-      <Field label="This round's own points (empty = the season's)" className="sm:col-span-3">
-        <input className="input font-mono" placeholder="e.g. 50, 36, 30, 24, 20" value={f.pointsTable} onChange={set("pointsTable")} />
+      <Field label="This round's own points for every race (empty = the season's)" className="sm:col-span-3">
+        <input className="input font-mono" placeholder="e.g. 75, 60, 53, 48" value={f.pointsTable} onChange={set("pointsTable")} />
       </Field>
-      <Field label="Notes (shown on the race page)" className="sm:col-span-4">
-        <textarea className="input min-h-[42px]" rows={1} value={f.notes} onChange={set("notes")} />
+      <Field label="Recording (YouTube link)" className="sm:col-span-3">
+        <input className="input" placeholder="https://www.youtube.com/watch?v=..." value={f.videoUrl} onChange={set("videoUrl")} />
       </Field>
-      <div className="flex items-end gap-2">
+      <div className="sm:col-span-6">
+        <span className="label">Timetable of the day (optional)</span>
+        <TimetableEditor rows={f.timetable} onChange={(timetable) => setF({ ...f, timetable })} startsAt={f.startsAt} />
+      </div>
+      <Field label="Notes (shown on the race page)" className="sm:col-span-6">
+        <textarea className="input min-h-[42px]" rows={2} value={f.notes} onChange={set("notes")} />
+      </Field>
+      {children && <div className="sm:col-span-6">{children}</div>}
+      <div className="flex items-end gap-2 sm:col-span-6">
         <button className="btn-accent whitespace-nowrap" disabled={busy || !f.name.trim() || !f.startsAt}>
           {submitLabel}
         </button>
@@ -57,6 +105,8 @@ function RaceForm({ initial, onSubmit, submitLabel, busy, onCancel }) {
     </form>
   );
 }
+
+const EMPTY_RACE = { name: "", track: "", mysteryTrack: false, car: "", startsAt: "", raceCount: 1, pointsMultiplier: 1, pointsTable: "", videoUrl: "", timetable: [], notes: "" };
 
 const moveIn = (list, i, dir) => {
   const next = [...list];
@@ -99,14 +149,14 @@ function Importer({ race, session, drivers, teams, onDone }) {
     const p = await run(() => api.post(`/admin/races/${race.id}/import/preview`, { file: json, session }));
     if (p) {
       setPreview(p);
-      if (p.type !== wantType) setMessage({ ok: false, text: `Careful: this is a ${p.type} file, and you are importing the ${SESSION_LABEL[session].toLowerCase()}.` });
+      if (p.type !== wantType) setMessage({ ok: false, text: `Careful: this is a ${p.type} file, and you are importing the ${sessionLabel(session, race).toLowerCase()}.` });
     }
   }
 
   const update = (i, patch) => setPreview({ ...preview, rows: preview.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
 
   async function save() {
-    if (preview.replaces && !window.confirm(`The ${SESSION_LABEL[session].toLowerCase()} already has ${preview.replaces} rows. Replace them?`)) return;
+    if (preview.replaces && !window.confirm(`The ${sessionLabel(session, race).toLowerCase()} already has ${preview.replaces} rows. Replace them?`)) return;
     const ok = await run(() => api.post(`/admin/races/${race.id}/import`, { session, rows: preview.rows }), "Saved.");
     if (ok) {
       setPreview(null);
@@ -294,7 +344,7 @@ function SessionEditor({ race, session, teams, onChange }) {
   const { busy, message, run } = useAction();
   const done = () => reload().then(onChange);
 
-  if (!data?.length) return <p className="text-sm text-muted">Nothing saved for the {SESSION_LABEL[session].toLowerCase()} yet.</p>;
+  if (!data?.length) return <p className="text-sm text-muted">Nothing saved for the {sessionLabel(session, race).toLowerCase()} yet.</p>;
 
   if (session === "QUALIFY") {
     return (
@@ -308,7 +358,7 @@ function SessionEditor({ race, session, teams, onChange }) {
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted">The qualifying decides the pole and fills the feature race's grid where it has none of its own.</p>
+        <p className="text-xs text-muted">The qualifying decides the pole, pays the season's qualifying points (if it has any) and fills race 1's grid where it has none of its own.</p>
         <button className="btn-danger" onClick={() => confirmDelete("the qualifying of this round") && run(() => api.del(`/admin/races/${race.id}/results?session=QUALIFY`)).then(done)}>
           Delete qualifying
         </button>
@@ -403,9 +453,9 @@ function SessionEditor({ race, session, teams, onChange }) {
       <div className="flex items-center gap-3">
         <button
           className="btn-danger"
-          onClick={() => confirmDelete(`the ${SESSION_LABEL[session].toLowerCase()} result of "${race.name}"`) && run(() => api.del(`/admin/races/${race.id}/results?session=${session}`)).then(done)}
+          onClick={() => confirmDelete(`the ${sessionLabel(session, race).toLowerCase()} result of "${race.name}"`) && run(() => api.del(`/admin/races/${race.id}/results?session=${session}`)).then(done)}
         >
-          Delete {SESSION_LABEL[session].toLowerCase()} result
+          Delete {sessionLabel(session, race).toLowerCase()} result
         </button>
         <Message message={message} />
       </div>
@@ -414,8 +464,8 @@ function SessionEditor({ race, session, teams, onChange }) {
 }
 
 function ResultsPanel({ race, drivers, teams, entries, onChange }) {
-  const sessions = ["FEATURE", ...(race.hasSprint ? ["SPRINT"] : []), "QUALIFY"];
-  const [session, setSession] = useState("FEATURE");
+  const sessions = ["QUALIFY", ...Array.from({ length: race.raceCount }, (_, i) => `R${i + 1}`)];
+  const [session, setSession] = useState("R1");
   const count = (s) => race.counts[s] || 0;
   return (
     <div className="mt-4 space-y-4 rounded-xl bg-bg p-4">
@@ -426,7 +476,7 @@ function ResultsPanel({ race, drivers, teams, entries, onChange }) {
             onClick={() => setSession(s)}
             className={`rounded-full px-3 py-1 text-xs font-black uppercase italic ${session === s ? "bg-accent text-accent-ink" : "border border-line text-muted"}`}
           >
-            {SESSION_LABEL[s]} {count(s) ? `· ${count(s)}` : ""}
+            {sessionLabel(s, race)} {count(s) ? `· ${count(s)}` : ""}
           </button>
         ))}
       </div>
@@ -443,20 +493,26 @@ function ResultsPanel({ race, drivers, teams, entries, onChange }) {
 function RaceItem({ race, drivers, teams, entries, reload }) {
   const [mode, setMode] = useState(null); // null | "edit" | "results"
   const { busy, message, run } = useAction();
-  const raced = race.counts.FEATURE + race.counts.SPRINT > 0;
+  const raceKeys = Array.from({ length: race.raceCount }, (_, i) => `R${i + 1}`);
+  const raced = raceKeys.some((k) => race.counts[k] > 0);
 
   return (
     <li className="py-4">
       {mode === "edit" ? (
         <RaceForm
           initial={{
+            ...EMPTY_RACE,
             round: race.round,
             name: race.name,
             track: race.track,
+            mysteryTrack: race.mysteryTrack,
+            car: race.car ?? "",
             startsAt: toLocalInput(race.startsAt),
+            raceCount: race.raceCount,
             pointsMultiplier: race.pointsMultiplier,
-            hasSprint: race.hasSprint,
             pointsTable: race.pointsTable,
+            videoUrl: race.videoUrl ?? "",
+            timetable: race.timetable.map((t) => ({ label: t.label, at: toLocalInput(t.at), length: t.length ?? "" })),
             notes: race.notes ?? "",
           }}
           busy={busy}
@@ -468,24 +524,39 @@ function RaceItem({ race, drivers, teams, entries, reload }) {
               reload();
             }
           }}
-        />
+        >
+          <PictureField
+            label="Poster of the round"
+            url={race.imageUrl}
+            endpoint={`/admin/races/${race.id}/image`}
+            onChange={reload}
+            hint="Shown on the calendar, the home page and the race page. Without one, the recording's thumbnail or the season's banner is used."
+          />
+        </RaceForm>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="w-10 font-black text-muted">R{race.round}</span>
+          {race.imageUrl ? (
+            <img src={race.imageUrl} alt="" className="h-10 w-16 rounded object-cover" />
+          ) : (
+            <span className="w-16 text-center font-black text-muted">R{race.round}</span>
+          )}
           <div className="min-w-0">
             <Link to={`/races/${race.id}`} className="font-semibold hover:opacity-70">
-              {race.name}
+              R{race.round} · {race.name}
             </Link>
             <div className="text-xs text-muted">
-              {race.track} · {dateTime(race.startsAt)}
-              {race.hasSprint && " · sprint"}
+              {race.track || "no track yet"}
+              {race.mysteryTrack && " (mystery)"} · {dateTime(race.startsAt)}
+              {race.raceCount > 1 && ` · ${race.raceCount} races`}
+              {race.car && ` · ${race.car}`}
               {race.pointsMultiplier !== 1 && ` · ×${race.pointsMultiplier} points`}
               {race.pointsTable && " · own points"}
+              {race.videoUrl && " · recording"}
             </div>
           </div>
           <span className={`text-xs font-bold ${raced ? "text-emerald-400" : "text-muted"}`}>
             {raced
-              ? [race.counts.FEATURE && `race ${race.counts.FEATURE}`, race.counts.SPRINT && `sprint ${race.counts.SPRINT}`, race.counts.QUALIFY && `quali ${race.counts.QUALIFY}`].filter(Boolean).join(" · ")
+              ? [...raceKeys.map((k) => race.counts[k] && `${sessionLabel(k, race).toLowerCase()} ${race.counts[k]}`), race.counts.QUALIFY && `quali ${race.counts.QUALIFY}`].filter(Boolean).join(" · ")
               : `${race.counts.signups} sign-ups`}
           </span>
           <div className="ml-auto flex gap-2">
@@ -541,7 +612,7 @@ export default function RacesAdmin() {
       <Section title="New race">
         <RaceForm
           key={`${formKey}-${races?.length ?? 0}-${seasonId}`}
-          initial={{ round: (races?.length ?? 0) + 1, name: "", track: "", startsAt: "", pointsMultiplier: 1, hasSprint: false, pointsTable: "", notes: "" }}
+          initial={{ ...EMPTY_RACE, round: (races?.length ?? 0) + 1 }}
           busy={busy}
           submitLabel="Add race"
           onSubmit={async (f) => {

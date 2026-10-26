@@ -13,13 +13,13 @@ export const DEFAULTS = {
   // Race Info page. Plain text; lines starting with "# " are headings,
   // "- " are list items.
   rules: "# Rules\n- Be respectful on and off track.\n- Join the Discord for briefings and stewarding.",
-  // Points for P1, P2, ... Anything past the end of the list scores nothing.
-  pointsTable: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
-  // The same for a sprint race. A season can set its own tables, a round
-  // its own feature table.
-  sprintPointsTable: [8, 7, 6, 5, 4, 3, 2, 1],
-  // Extra point for the fastest lap, only for a finisher inside the top N.
-  fastestLapPoints: 1,
+  // Points for P1, P2, ... of a race (the league's usual table, down to
+  // P30). Anything past the end of the list scores nothing. A season can set
+  // its own tables, a round its own.
+  pointsTable: [50, 40, 35, 32, 30, 28, 26, 24, 22, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 5, 5, 5, 5, 5],
+  // Extra points for the fastest lap of a race, only for a finisher inside
+  // the top N. 0 = none.
+  fastestLapPoints: 0,
   fastestLapTopN: 10,
   // Share of the winner's laps a driver needs to be classified at the import.
   // Below it they are marked DNF (the admin can still change it).
@@ -41,7 +41,6 @@ const PUBLIC_KEYS = [
   "youtubeUrl",
   "rules",
   "pointsTable",
-  "sprintPointsTable",
   "fastestLapPoints",
   "fastestLapTopN",
   "dnfScores",
@@ -110,7 +109,6 @@ export function cleanSettings(input) {
         out[key] = value ? str(value, 300) : null;
         break;
       case "pointsTable":
-      case "sprintPointsTable":
         out[key] = parsePointsList(value);
         break;
       case "fastestLapPoints":

@@ -88,7 +88,6 @@ function StatTiles({ detail }) {
     ["Places gained", s.placesGained > 0 ? `+${s.placesGained}` : s.placesGained],
     ["DNFs", s.dnfs],
   ];
-  if (s.sprintWins || s.sprintPodiums) tiles.push(["Sprint wins", s.sprintWins], ["Sprint podiums", s.sprintPodiums]);
   return (
     <dl className="mt-6 grid grid-cols-2 gap-2 pl-2 sm:grid-cols-4 lg:grid-cols-6">
       {tiles.map(([label, value], i) => (
@@ -101,26 +100,33 @@ function StatTiles({ detail }) {
   );
 }
 
-// Finishing positions round by round (top = P1), with the grid and the
-// sprint behind them.
+// Finishing positions round by round (top = P1): one line per race of the
+// rounds, with the grid behind them.
+const RACE_COLORS = ["rgb(var(--accent))", "#f97316", "#a855f7", "#22c55e"];
 function FormChart({ form }) {
   const labels = form.map((f) => `R${f.round}`);
   const pos = (r) => (r && r.status === "FIN" ? r.position : null);
+  const most = Math.max(1, ...form.map((f) => f.races.length));
   const lines = [
-    { id: "race", label: "Race", color: "rgb(var(--accent))", values: form.map((f) => pos(f.finish)) },
+    ...Array.from({ length: most }, (_, i) => ({
+      id: `race${i + 1}`,
+      label: most > 1 ? `Race ${i + 1}` : "Race",
+      color: RACE_COLORS[i % RACE_COLORS.length],
+      dashed: i > 0,
+      values: form.map((f) => pos(f.races[i])),
+    })),
     ...(form.some((f) => f.grid != null) ? [{ id: "grid", label: "Grid", color: "#94a3b8", dashed: true, values: form.map((f) => f.grid) }] : []),
-    ...(form.some((f) => f.sprint) ? [{ id: "sprint", label: "Sprint", color: "#f97316", dashed: true, values: form.map((f) => pos(f.sprint)) }] : []),
   ];
   return (
     <section className="card rise p-6">
       <h2 className="h2 mb-4">Season form</h2>
-      <LineChart labels={labels} lines={lines} invert height={220} valueLabel={(v) => `P${v}`} initialVisible={3} />
+      <LineChart labels={labels} lines={lines} invert height={220} valueLabel={(v) => `P${v}`} initialVisible={lines.length} />
     </section>
   );
 }
 
 function RaceTable({ detail }) {
-  const anySprint = detail.form.some((f) => f.sprint);
+  const most = Math.max(1, ...detail.form.map((f) => f.races.length));
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -130,8 +136,9 @@ function RaceTable({ detail }) {
             <th className="pl-5 sm:pl-3">Race</th>
             <th className="hidden text-center sm:table-cell">Quali</th>
             <th className="hidden text-center sm:table-cell">Grid</th>
-            <th>Finish</th>
-            {anySprint && <th>Sprint</th>}
+            {Array.from({ length: most }, (_, i) => (
+              <th key={i}>{most > 1 ? `R${i + 1}` : "Finish"}</th>
+            ))}
             <th className="pr-5 text-right">Points</th>
           </tr>
         </thead>
@@ -141,15 +148,17 @@ function RaceTable({ detail }) {
               <td className="hidden pl-5 text-muted sm:table-cell">R{f.round}</td>
               <td className="pl-5 sm:pl-3">
                 <Link to={`/races/${f.raceId}`} className="font-semibold hover:opacity-70">
-                  {f.track || f.name}
+                  {f.name}
                 </Link>
                 {f.pole && <span className="ml-2 text-[10px] font-black text-sky-300">POLE</span>}
                 {f.fastestLap && <span className="ml-2 text-[10px] font-black text-fuchsia-400">FL</span>}
+                {f.track && <div className="text-xs text-muted">{f.track}</div>}
               </td>
               <td className="hidden text-center tabular text-muted sm:table-cell">{f.quali ? `P${f.quali}` : "·"}</td>
               <td className="hidden text-center tabular text-muted sm:table-cell">{f.grid ?? "·"}</td>
-              <td>{f.finish ? <Position value={f.finish.position} status={f.finish.status} /> : <span className="text-muted">·</span>}</td>
-              {anySprint && <td>{f.sprint ? <Position value={f.sprint.position} status={f.sprint.status} /> : <span className="text-muted">·</span>}</td>}
+              {Array.from({ length: most }, (_, i) => (
+                <td key={i}>{f.races[i] ? <Position value={f.races[i].position} status={f.races[i].status} /> : <span className="text-muted">·</span>}</td>
+              ))}
               <td className="pr-5 text-right font-black tabular">{points(f.points)}</td>
             </tr>
           ))}

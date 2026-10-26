@@ -1,13 +1,21 @@
 # Rain Racers
 
 The website of the Rain Racers sim racing league (Assetto Corsa). The league
-runs several series side by side (RX8 Cup, DTM 2002, ...), and each has its
-own teams, seasons, calendar and standings:
+runs several series side by side (Formula International Series, Sahara
+Saturdays, ...), and each has its own seasons, calendar and standings (and
+teams, if it has any):
 
-- **Standings** for drivers and teams, with round-by-round results, points
-  charts, sprint results, poles, fastest laps and dropped rounds
-- **Calendar and results**: feature race, sprint and qualifying per round,
-  with grid, places gained and steward penalties
+- **The league's history**: every series and season since 2025 with its
+  calendar, tracks, cars, posters and stream recordings, loaded on the first
+  start (see [The history](#the-history))
+- **Standings** for drivers (and teams), with round-by-round results, points
+  charts, poles, fastest laps and dropped rounds
+- **Calendar and results** with the league's posters: rounds of one to four
+  races, qualifying, the day's timetable, the car, mystery tracks, grid,
+  places gained, steward penalties and the recording to watch
+- **Points rules** per season: tables by the number of races in a round (or
+  one per race, e.g. sprint and feature), back-to-front scoring, qualifying
+  points, dropped rounds, a round's own table (a finale)
 - **Driver profiles**: season stats, form chart, head-to-head against any
   other driver, and a career across every series
 - **Transfers**: each driver's team round by round, and the moves
@@ -24,7 +32,8 @@ own teams, seasons, calendar and standings:
 
 ```
 rain-racers/
-├── backend/    API, database (prisma/), live timing relay (src/live/), tests (test/)
+├── backend/    API, database (prisma/), live timing relay (src/live/), tests (test/),
+│               the league's history and posters (seed/)
 ├── frontend/   the website
 └── brand/      the league's logo and graphics, with where they come from
 ```
@@ -53,22 +62,31 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
 ### First steps in the admin
 
 1. **Settings:** league name, logo, Discord invite, YouTube channel, the
-   default points tables (race and sprint), the Race Info text.
+   default points table, the Race Info text, and **Load the Rain Racers
+   history** for a database that already had data.
 2. **Series & seasons:** create a series (e.g. "RX8 Cup", with its colour and
-   schedule); it starts with its first season. The bar at the top of the
-   admin picks the series and season the other tabs work on. Per season:
-   its own points tables, how many worst rounds each driver drops, manual
-   points (a pole award, a deduction) and a champion named by hand.
-3. **Teams:** the teams of the series, with their colours.
+   schedule); it starts with its first season. A series that no longer runs
+   is **archived**: off the menu, still in the history. The bar at the top of
+   the admin picks the series and season the other tabs work on. Per season:
+   its words and **banner**, how races score (from the tables, or back to
+   front: the last classified driver gets 1 point, the one ahead 2, ...), the
+   table for a single race and for rounds of 2, 3 or 4 races (one for every
+   race, or one per race), qualifying points, how many worst rounds each
+   driver drops, manual points (a pole award, a deduction) and a champion
+   named by hand.
+3. **Teams** (only if the series has teams): the teams with their colours.
+   A series without teams hides the team pages and columns.
 4. **Entry list & transfers:** who drives in the season, for which team and
    with which number. A team change during the season is a **move** from a
    round on: a round already raced moves its results and team points to the
    new team, a round ahead applies itself when its result is saved.
-5. **Races & results:** add the rounds. Tick "Sprint + feature race" for a
-   round with two races, and give a round its own points table if it needs
-   one (a double-points finale).
-6. After a race: **Results**, pick the session (feature race, sprint or
-   qualifying) and **Import** the result file from the server's `results`
+5. **Races & results:** add the rounds: name, track (or a **mystery track**,
+   hidden on the site until the round has results), car, how many races,
+   the recording (a YouTube link), the day's timetable, and after saving the
+   round's **poster** (Edit). A round can have its own points table (a
+   finale) or a points multiplier.
+6. After a race: **Results**, pick the session (qualifying, race 1, race 2,
+   ...) and **Import** the result file from the server's `results`
    folder (`*_RACE.json`, `*_QUALIFY.json`). The preview shows which driver
    each line is booked on (by Steam id, else by name) and the status (FIN /
    DNF / DSQ / DNS); fix what is wrong, then save. Unknown drivers are created
@@ -82,7 +100,25 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
 
 Points are never stored: the standings are worked out from the results with
 the points tables, so a change to a table applies to the whole season at
-once. The qualifying decides the pole and fills the feature race's grid.
+once. The qualifying decides the pole, pays the qualifying points and fills
+race 1's grid.
+
+### The history
+
+`backend/seed/rain-racers-history.json` holds the league's series and
+seasons as they stand on [Grid Finder](https://www.gridfinder.com/c/rain-racers-2)
+and the [YouTube channel](https://www.youtube.com/@rainracers): Formula
+International Series (seasons 1 and 2), Sahara Saturdays, RX8 Cup, DTM 2002,
+Japanese Summer, GT4 World Series, Vacation Tour, Fictional F3, Ultimate
+Touring Challenge and Protosprint, with every round's date, track, car, the
+recording and, where the league made one, the poster (`backend/seed/images/`).
+The current seasons carry their points rules and timetables from Grid Finder.
+
+An empty database loads it on its first start (set `SEED_HISTORY=off` to
+start empty instead). A database with data gets it from **Settings → Load
+the Rain Racers history**, which leaves alone every series that is already
+there. The results are not in it: Grid Finder does not show them publicly, so
+they are imported per round like any other.
 
 ### Tests
 

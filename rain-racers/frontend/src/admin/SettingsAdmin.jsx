@@ -8,7 +8,7 @@ export default function SettingsAdmin() {
   const [f, setF] = useState(null);
   const { busy, message, run } = useAction();
   useEffect(() => {
-    api.get("/admin/settings").then((s) => setF({ ...s, pointsTable: s.pointsTable.join(", "), sprintPointsTable: s.sprintPointsTable.join(", ") }));
+    api.get("/admin/settings").then((s) => setF({ ...s, pointsTable: s.pointsTable.join(", ") }));
   }, []);
   if (!f) return null;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
@@ -17,7 +17,7 @@ export default function SettingsAdmin() {
     e.preventDefault();
     const saved = await run(() => api.put("/admin/settings", f), "Settings saved.");
     if (saved) {
-      setF({ ...saved, pointsTable: saved.pointsTable.join(", "), sprintPointsTable: saved.sprintPointsTable.join(", ") });
+      setF({ ...saved, pointsTable: saved.pointsTable.join(", ") });
       reloadSite();
     }
   }
@@ -91,10 +91,7 @@ export default function SettingsAdmin() {
           <Field label="Points for P1, P2, P3, …">
             <input className="input font-mono" value={f.pointsTable} onChange={set("pointsTable")} />
           </Field>
-          <Field label="Sprint points for P1, P2, P3, …">
-            <input className="input font-mono" value={f.sprintPointsTable} onChange={set("sprintPointsTable")} />
-          </Field>
-          <Field label="Fastest lap points (feature race)">
+          <Field label="Fastest lap points (each race; 0 = none)">
             <input className="input" type="number" min="0" step="0.5" value={f.fastestLapPoints} onChange={set("fastestLapPoints")} />
           </Field>
           <Field label="…only for finishers in the top">
@@ -110,6 +107,8 @@ export default function SettingsAdmin() {
         </div>
         <p className="mt-3 text-xs text-muted">Changes apply to every race at once: the standings are always worked out from the results.</p>
       </Section>
+
+      <HistorySection onLoaded={reloadSite} />
 
       <Section title="Live timing (default server)">
         <p className="mb-4 text-sm text-muted">
@@ -140,5 +139,36 @@ export default function SettingsAdmin() {
         <Message message={message} />
       </div>
     </form>
+  );
+}
+
+// The league's series, seasons and calendars from Grid Finder and YouTube.
+// An empty database gets them on its first start; this adds what is missing.
+function HistorySection({ onLoaded }) {
+  const { busy, message, run } = useAction();
+  return (
+    <Section title="League history">
+      <p className="mb-4 text-sm text-muted">
+        Every Rain Racers series and season with its calendar, tracks, cars, posters and stream recordings (FIS, Sahara Saturdays, RX8 Cup, DTM 2002, Japanese Summer, GT4 World Series, Vacation Tour, Fictional F3,
+        Ultimate Touring Challenge, Protosprint). Series that already exist here are left alone. Results are not public on Grid Finder: import them per race.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy}
+          onClick={async () => {
+            const out = await run(() => api.post("/admin/history"));
+            if (out) {
+              onLoaded();
+              run(async () => out, out.added.length ? `Added: ${out.added.join(", ")}.` : "Everything was there already.");
+            }
+          }}
+        >
+          Load the Rain Racers history
+        </button>
+        <Message message={message} />
+      </div>
+    </Section>
   );
 }

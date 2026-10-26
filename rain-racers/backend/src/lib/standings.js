@@ -1,4 +1,4 @@
-import { racePoints, sessionOf, poleDriverId } from "./points.js";
+import { racePoints, sessionOf, poleDriverId, raceCountOf, raceNumber } from "./points.js";
 
 // Driver and team standings of a season, worked out from the stored results
 // every time (see points.js for why nothing is stored).
@@ -8,9 +8,9 @@ import { racePoints, sessionOf, poleDriverId } from "./points.js";
 //   season        for its points tables, dropWorst and champion
 //   manualPoints  [{ driverId, points, note }]
 //
-// A round scores feature + sprint. With dropWorst N, each driver's N lowest
+// A round scores all its races plus the qualifying points. With dropWorst N, each driver's N lowest
 // round scores (a round not raced counts 0) are left out of the total and
-// marked `dropped`. Ties are split by countback of feature finishes: more
+// marked `dropped`. Ties are split by countback of the race finishes: more
 // wins, then more second places, and so on. A champion named by hand goes
 // to the top.
 export function buildStandings(races, settings, { season = null, manualPoints = [] } = {}) {
@@ -42,8 +42,10 @@ export function buildStandings(races, settings, { season = null, manualPoints = 
   };
 
   for (const race of done) {
-    const { points, fastest } = racePoints(race, season, settings);
+    const { points, fastest, quali } = racePoints(race, season, settings);
     const pole = poleDriverId(race);
+    const count = raceCountOf(race);
+    const roundOf = (d) => (d.rounds[race.id] ??= { points: 0, pole: pole === d.id, races: Array(count).fill(null) });
     for (const r of race.results) {
       const p = points.get(r.id) || 0;
       const s = sessionOf(r);
@@ -51,19 +53,29 @@ export function buildStandings(races, settings, { season = null, manualPoints = 
       d.raw += p;
       // the team of the latest round they raced decides the table's team
       if (r.team) d.team = { id: r.team.id, name: r.team.name, color: r.team.color ?? null };
-      const round = (d.rounds[race.id] ??= { points: 0, pole: pole === r.driverId });
+      const round = roundOf(d);
       round.points += p;
-      round[s === "SPRINT" ? "sprint" : "feature"] = { position: r.position, status: r.status, points: p, fastestLap: r.id === fastest[s] };
-      if (s === "FEATURE") {
-        round.position = r.position;
-        round.status = r.status;
-        round.fastestLap = r.id === fastest.FEATURE;
-        if (r.status === "FIN") d.finishes.push(r.position);
-      }
+      round.races[raceNumber(s) - 1] = { position: r.position, status: r.status, points: p, fastestLap: r.id === fastest[s] };
+      if (r.status === "FIN") d.finishes.push(r.position);
       if (r.teamId) {
         const t = teamEntry(r);
         t.raw += p;
-        if (s === "FEATURE" && r.status === "FIN") t.finishes.push(r.position);
+        if (r.status === "FIN") t.finishes.push(r.position);
+        (t.rounds[race.id] ??= { points: 0 }).points += p;
+      }
+    }
+    // qualifying points go to the driver, and to the team of their race
+    for (const [driverId, p] of quali) {
+      const r = race.results.find((x) => x.driverId === driverId);
+      if (!r) continue;
+      const d = driverEntry(r);
+      d.raw += p;
+      const round = roundOf(d);
+      round.points += p;
+      round.qualiPoints = p;
+      if (r.teamId) {
+        const t = teamEntry(r);
+        t.raw += p;
         (t.rounds[race.id] ??= { points: 0 }).points += p;
       }
     }
@@ -110,7 +122,15 @@ export function buildStandings(races, settings, { season = null, manualPoints = 
 
   const teamRows = rank([...teams.values()]);
   return {
-    rounds: ordered.map((r) => ({ id: r.id, round: r.round, name: r.name, track: r.track, done: !!r.results?.length, hasSprint: !!r.hasSprint })),
+    rounds: ordered.map((r) => ({
+      id: r.id,
+      round: r.round,
+      name: r.name,
+      // a mystery track stays hidden until the round is raced
+      track: r.mysteryTrack && !r.results?.length ? null : r.track,
+      done: !!r.results?.length,
+      raceCount: raceCountOf(r),
+    })),
     drivers: driverRows,
     teams: teamRows,
     progression: progression(done, driverRows, teamRows),

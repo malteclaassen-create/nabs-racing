@@ -13,6 +13,7 @@ import RacePage from "./pages/RacePage.jsx";
 import Transfers from "./pages/Transfers.jsx";
 import Live from "./pages/Live.jsx";
 import Info from "./pages/Info.jsx";
+import History from "./pages/History.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { useRainTransition, RainOverlay } from "./components/RainTransition.jsx";
 import DiscordButton from "./components/DiscordButton.jsx";
@@ -29,9 +30,9 @@ function useSeriesLinks() {
   if (!series) return [];
   return [
     { to: seriesPath("/drivers"), label: "Standings" },
-    { to: seriesPath("/teams"), label: "Teams" },
+    ...(series.hasTeams ? [{ to: seriesPath("/teams"), label: "Teams" }] : []),
     { to: seriesPath("/races"), label: "Races" },
-    { to: seriesPath("/transfers"), label: "Transfers" },
+    ...(series.hasTeams ? [{ to: seriesPath("/transfers"), label: "Transfers" }] : []),
   ];
 }
 
@@ -79,6 +80,8 @@ function SeriesSwitcher({ inline = false }) {
     return () => document.removeEventListener("pointerdown", close);
   }, []);
   if (!series) return null;
+  // the running series, and an archived one while it is being looked at
+  const shown = seriesList.filter((s) => !s.archived || s.slug === series.slug);
   const sub = matchPath("/series/:slug/:page/*", location.pathname)?.params.page;
   const go = (slug) => {
     setOpen(false);
@@ -89,7 +92,7 @@ function SeriesSwitcher({ inline = false }) {
   if (inline) {
     return (
       <div className="flex flex-wrap gap-2 px-3 py-2">
-        {seriesList.map((s) => (
+        {shown.map((s) => (
           <button key={s.slug} onClick={() => go(s.slug)} className={`btn border py-1.5 ${s.slug === series.slug ? "border-ink" : "border-line text-muted"}`}>
             {dot(s)}
             {s.name}
@@ -98,7 +101,7 @@ function SeriesSwitcher({ inline = false }) {
       </div>
     );
   }
-  if (seriesList.length < 2) {
+  if (shown.length < 2) {
     return (
       <NavLink to={`/series/${series.slug}`} end className={linkClass}>
         <span className="inline-flex items-center gap-2">
@@ -111,20 +114,20 @@ function SeriesSwitcher({ inline = false }) {
   return (
     <div className="relative" ref={ref}>
       <button
-        className="inline-flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm font-black uppercase italic hover:border-ink"
+        className="inline-flex max-w-[16rem] items-center gap-2 whitespace-nowrap rounded-full border border-line px-3 py-1.5 text-sm font-black uppercase italic hover:border-ink"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
         {dot(series)}
-        {series.name}
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <span className="truncate">{series.name}</span>
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
       {open && (
         <ul className="absolute left-0 top-full z-40 mt-2 min-w-[220px] overflow-hidden rounded-xl border border-line bg-card py-1 shadow-2xl" role="listbox">
-          {seriesList.map((s) => (
+          {shown.map((s) => (
             <li key={s.slug}>
               <button
                 onClick={() => go(s.slug)}
@@ -134,10 +137,15 @@ function SeriesSwitcher({ inline = false }) {
               >
                 {dot(s)}
                 <span className="flex-1">{s.name}</span>
-                {s.schedule && <span className="text-xs text-muted">{s.schedule}</span>}
+                {s.archived ? <span className="text-xs text-muted">archived</span> : s.schedule && <span className="text-xs text-muted">{s.schedule}</span>}
               </button>
             </li>
           ))}
+          <li className="mt-1 border-t border-line">
+            <Link to="/history" onClick={() => setOpen(false)} className="block px-4 py-2.5 text-sm text-muted hover:bg-white/5 hover:text-ink">
+              Past series &amp; seasons →
+            </Link>
+          </li>
         </ul>
       )}
     </div>
@@ -152,7 +160,7 @@ function NavBar() {
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
-  const tail = [...(settings?.liveEnabled ? [{ to: "/live", label: "Live" }] : []), { to: "/info", label: "Race Info" }];
+  const tail = [...(settings?.liveEnabled ? [{ to: "/live", label: "Live" }] : []), { to: "/history", label: "History" }, { to: "/info", label: "Race Info" }];
   // a touch more weight once the page scrolls under the bar
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -302,6 +310,7 @@ function Shell() {
               <Route path="/races/:id" element={<RacePage />} />
               <Route path="/live" element={<Live />} />
               <Route path="/info" element={<Info />} />
+              <Route path="/history" element={<History />} />
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

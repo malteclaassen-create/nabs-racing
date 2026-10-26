@@ -24,6 +24,11 @@ model Series {
   color       String? // hex like "#e10600"; null = the league colour
   description String?
   schedule    String? // "Sundays 19:00 CET"
+  // Banner picture ("/api/uploads/images/..."); null = the current season's.
+  imageUrl    String?
+  // A series that no longer runs: off the menu and the home page, still in
+  // the history with all its seasons.
+  archived    Boolean  @default(false)
   order       Int      @default(0)
   // AC Server Manager live socket of this series' server (null = the
   // league-wide one from the settings, if any).
@@ -39,11 +44,23 @@ model Season {
   seriesId          Int
   series            Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   name              String
+  description       String?
+  // Banner picture of the season ("/api/uploads/images/...").
+  imageUrl          String?
   // The season the series shows by default. One per series.
   isCurrent         Boolean        @default(false)
-  // Points for P1, P2, ... as JSON; null = the league's default table.
+  // TABLE = points from the tables below; REVERSE = back to front: the last
+  // classified driver of a race gets 1, the one ahead 2, and so on.
+  pointsMode        String         @default("TABLE")
+  // Points for P1, P2, ... of a race in a round with one race, as JSON;
+  // null = the league's default table.
   pointsTable       String?
-  sprintPointsTable String?
+  // Rounds with more races, as JSON keyed by the number of races: one table
+  // for all of them, or one per race, e.g. {"2": [[8,7,6], [25,18,15]]} for
+  // a sprint and a feature race. A missing one falls back to pointsTable.
+  raceTables        String?
+  // Points for the qualifying positions (JSON); null = none.
+  qualiPointsTable  String?
   // The worst N round scores of each driver do not count.
   dropWorst         Int            @default(0)
   // Champion named by hand (a title decided by the league's own rule).
@@ -129,7 +146,7 @@ model User {
   createdAt DateTime @default(now())
 }
 
-// A round: one race day, with a feature race and maybe a sprint.
+// A round: one race day with one or more races (results R1, R2, ...).
 model Race {
   id               Int           @id @default(autoincrement())
   seasonId         Int
@@ -137,12 +154,23 @@ model Race {
   round            Int
   name             String
   track            String
+  // A mystery track stays hidden on the public pages until the round has
+  // results (or the admin unticks it).
+  mysteryTrack     Boolean       @default(false)
+  car              String?
   startsAt         DateTime
   notes            String?
-  hasSprint        Boolean       @default(false)
+  raceCount        Int           @default(1)
+  // Picture of the round (track, car, poster) and the recording of it.
+  imageUrl         String?
+  videoUrl         String?
+  // The day's sessions as JSON: [{ "label": "Qualifying", "at": ISO time,
+  // "length": "15 min" }, ...].
+  timetable        String?
   // 2 = double points (e.g. a season finale).
   pointsMultiplier Float         @default(1)
-  // This round's own feature points table as JSON; null = the season's.
+  // This round's own points table for all its races as JSON; null = the
+  // season's.
   pointsTable      String?
   importedAt       DateTime?
   results          Result[]
@@ -154,7 +182,7 @@ model Result {
   id           Int     @id @default(autoincrement())
   raceId       Int
   race         Race    @relation(fields: [raceId], references: [id], onDelete: Cascade)
-  session      String  @default("FEATURE") // FEATURE | SPRINT
+  session      String  @default("R1") // R1, R2, ... = race 1, 2, ... of the round
   driverId     Int
   driver       Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
   // The team the driver raced for in this round (from the entry list and

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { buildStandings } from "../src/lib/standings.js";
-import { orderWithPenalties, tablesFor, poleDriverId } from "../src/lib/points.js";
+import { orderWithPenalties, tableFor, poleDriverId, racePoints } from "../src/lib/points.js";
 import { driverSeasonStats, headToHead, teamAt, attendance } from "../src/lib/stats.js";
-import { DEFAULTS } from "../src/lib/settings.js";
+import { DEFAULTS as LEAGUE } from "../src/lib/settings.js";
 
+const DEFAULTS = { ...LEAGUE, pointsTable: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1] };
 const S = { ...DEFAULTS, fastestLapPoints: 0 };
 const teamA = { id: 1, name: "Thunder", color: "#f00" };
 const teamB = { id: 2, name: "Cloud", color: "#00f" };
@@ -20,7 +21,7 @@ const res = (d, position, extra = {}) => ({
   team: d.team,
   position,
   status: "FIN",
-  session: "FEATURE",
+  session: "R1",
   bestLapMs: 90000 + position,
   pointsAdjust: 0,
   laps: 10,
@@ -29,20 +30,57 @@ const res = (d, position, extra = {}) => ({
 const race = (id, round, results, extra = {}) => ({ id, round, name: `R${round}`, track: `T${round}`, pointsMultiplier: 1, results, qualifying: [], ...extra });
 
 describe("points rules", () => {
-  it("adds the sprint to the round with its own table", () => {
-    const r1 = race(1, 1, [res(ann, 1), res(bob, 2), res(bob, 1, { session: "SPRINT" }), res(ann, 2, { session: "SPRINT" })], { hasSprint: true });
-    const s = buildStandings([r1], S);
+  it("adds every race of a round, each with its own table", () => {
+    // a sprint (race 1) and a feature race (race 2)
+    const season = { raceTables: JSON.stringify({ 2: [[8, 7, 6, 5, 4, 3, 2, 1], null] }) };
+    const r1 = race(1, 1, [res(bob, 1), res(ann, 2), res(ann, 1, { session: "R2" }), res(bob, 2, { session: "R2" })], { raceCount: 2 });
+    const s = buildStandings([r1], S, { season });
     expect(s.drivers.map((d) => [d.name, d.points])).toEqual([
       ["Ann", 32],
       ["Bob", 26],
     ]);
-    expect(s.drivers[1].rounds[1]).toMatchObject({ points: 26, position: 2, sprint: { position: 1, points: 8 } });
+    expect(s.drivers[1].rounds[1]).toMatchObject({ points: 26, races: [{ position: 1, points: 8 }, { position: 2, points: 18 }] });
+    expect(s.rounds[0].raceCount).toBe(2);
   });
 
-  it("uses a round's own table, then the season's, then the league's", () => {
-    expect(tablesFor({ pointsTable: "[50,40]" }, { pointsTable: "[10,5]" }, S).FEATURE).toEqual([50, 40]);
-    expect(tablesFor({}, { pointsTable: "[10,5]", sprintPointsTable: "[3,2,1]" }, S)).toEqual({ FEATURE: [10, 5], SPRINT: [3, 2, 1] });
-    expect(tablesFor({}, null, S).FEATURE).toEqual(DEFAULTS.pointsTable);
+  it("uses a round's own table, then the season's for that many races, then the season's, then the league's", () => {
+    const season = { pointsTable: "[10,5]", raceTables: JSON.stringify({ 2: [35, 29], 3: [null, null, [9, 8]] }) };
+    expect(tableFor({ pointsTable: "[50,40]", raceCount: 2 }, season, S, 1)).toEqual([50, 40]);
+    expect(tableFor({ raceCount: 2 }, season, S, 2)).toEqual([35, 29]);
+    expect(tableFor({ raceCount: 3 }, season, S, 3)).toEqual([9, 8]);
+    expect(tableFor({ raceCount: 3 }, season, S, 1)).toEqual([10, 5]);
+    expect(tableFor({}, season, S)).toEqual([10, 5]);
+    expect(tableFor({}, null, S)).toEqual(DEFAULTS.pointsTable);
+  });
+
+  it("scores back to front: the last classified driver gets 1", () => {
+    const r1 = race(1, 1, [res(ann, 1), res(bob, 2), res(cat, 3), res({ id: 4, name: "Dee" }, 4, { status: "DNF" })]);
+    const s = buildStandings([r1], S, { season: { pointsMode: "REVERSE" } });
+    expect(s.drivers.map((d) => [d.name, d.points])).toEqual([
+      ["Ann", 3],
+      ["Bob", 2],
+      ["Cat", 1],
+      ["Dee", 0],
+    ]);
+  });
+
+  it("pays qualifying points once the round is raced", () => {
+    const season = { qualiPointsTable: "[10,8]" };
+    const quali = [{ driverId: 2, position: 1 }, { driverId: 1, position: 2 }];
+    const r1 = race(1, 1, [res(ann, 1), res(bob, 2)], { qualifying: quali });
+    expect(racePoints(race(2, 2, [], { qualifying: quali }), season, S).quali.size).toBe(0);
+    const s = buildStandings([r1], S, { season });
+    expect(s.drivers.map((d) => [d.name, d.points])).toEqual([
+      ["Ann", 33],
+      ["Bob", 28],
+    ]);
+    expect(s.drivers[1].rounds[1]).toMatchObject({ qualiPoints: 10, points: 28 });
+    expect(s.teams[0].points).toBe(61);
+  });
+
+  it("keeps a mystery track hidden until the round is raced", () => {
+    const s = buildStandings([race(1, 1, [res(ann, 1)], { mysteryTrack: true }), race(2, 2, [], { mysteryTrack: true })], S);
+    expect(s.rounds.map((r) => r.track)).toEqual(["T1", null]);
   });
 
   it("drops each driver's worst rounds, a round not raced counting as 0", () => {
@@ -93,7 +131,7 @@ describe("driver stats", () => {
   it("counts wins, poles, places gained and the form", () => {
     const { stats, form } = driverSeasonStats(1, races, S, null);
     expect(stats).toMatchObject({ starts: 2, wins: 1, podiums: 1, poles: 1, dnfs: 1, bestFinish: 1, placesGained: 2 });
-    expect(form.map((f) => f.finish.position)).toEqual([1, 2]);
+    expect(form.map((f) => f.races[0].position)).toEqual([1, 2]);
     expect(poleDriverId(races[0])).toBe(2);
   });
 
