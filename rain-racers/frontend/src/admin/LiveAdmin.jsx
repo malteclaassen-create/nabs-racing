@@ -22,8 +22,8 @@ export default function LiveAdmin() {
     <div className="space-y-6">
       <Section title="Servers by series">
         <p className="mb-4 text-sm text-muted">
-          The live socket of each series&apos; AC Server Manager, usually <code className="text-ink">wss://&lt;server&gt;/api/race-control</code>. Empty: the series follows the default server
-          below. Archived series are not on the Live page.
+          The AC Server Manager each series races on: paste its address (<code className="text-ink">rain.emperorservers.com</code>) or its live timing page, and it is saved as the live
+          socket (<code className="text-ink">wss://…/api/race-control</code>). Empty: the series follows the default server below. Archived series are not on the Live page.
         </p>
         <datalist id="live-servers">
           {known.map((u) => (
@@ -46,11 +46,20 @@ function SeriesServer({ series, fallback, onSaved }) {
   const [origin, setOrigin] = useState(series.liveOrigin || "");
   const [more, setMore] = useState(!!series.liveOrigin);
   const { busy, message, run } = useAction();
-  const changed = url !== (series.liveWsUrl || "") || origin !== (series.liveOrigin || "");
+  const [savedUrl, setSavedUrl] = useState(series.liveWsUrl || "");
+  const [savedOrigin, setSavedOrigin] = useState(series.liveOrigin || "");
+  const changed = url !== savedUrl || origin !== savedOrigin;
   async function save(e) {
     e.preventDefault();
     const saved = await run(() => api.put(`/admin/series/${series.id}`, { liveWsUrl: url, liveOrigin: origin }), "Saved.");
-    if (saved) onSaved();
+    if (saved) {
+      // what was kept: a pasted page address comes back as the live socket
+      setUrl(saved.liveWsUrl || "");
+      setOrigin(saved.liveOrigin || "");
+      setSavedUrl(saved.liveWsUrl || "");
+      setSavedOrigin(saved.liveOrigin || "");
+      onSaved();
+    }
   }
   return (
     <li className="py-4 first:pt-0 last:pb-0">

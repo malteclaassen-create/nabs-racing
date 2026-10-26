@@ -79,6 +79,23 @@ export function parsePointsList(value) {
     .slice(0, 60);
 }
 
+// The live socket of an AC Server Manager from whatever was pasted: the
+// socket itself (wss://host/api/race-control), the server manager's live
+// timing page (https://host/live-timing) or just its address (host). Empty
+// for anything else.
+export function liveSocketUrl(value) {
+  const v = String(value ?? "").trim();
+  if (!v) return "";
+  if (/^wss?:\/\//i.test(v)) return v.slice(0, 300);
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    if (!u.hostname.includes(".") && u.hostname !== "localhost") return "";
+    return `${u.protocol === "http:" ? "ws" : "wss"}://${u.host}/api/race-control`;
+  } catch {
+    return "";
+  }
+}
+
 // Checks and normalises what the admin sends. Unknown keys are dropped.
 export function cleanSettings(input) {
   const out = {};
@@ -97,7 +114,7 @@ export function cleanSettings(input) {
         out[key] = /^https:\/\//.test(str(value)) ? str(value) : "";
         break;
       case "liveWsUrl":
-        out[key] = /^wss?:\/\//.test(str(value)) ? str(value, 300) : "";
+        out[key] = liveSocketUrl(value);
         break;
       case "rules":
         out[key] = String(value ?? "").slice(0, 50000);

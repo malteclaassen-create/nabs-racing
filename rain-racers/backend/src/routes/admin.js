@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import prisma from "../db.js";
 import { requireAdmin } from "../auth.js";
-import { getSettings, saveSettings, parsePointsList } from "../lib/settings.js";
+import { getSettings, saveSettings, parsePointsList, liveSocketUrl } from "../lib/settings.js";
 import { parseAcResult } from "../lib/acResult.js";
 import { orderWithPenalties, MAX_RACES } from "../lib/points.js";
 import { attendance, teamAt } from "../lib/stats.js";
@@ -109,7 +109,12 @@ const fail = (status, message) => Object.assign(new Error(message), { status });
 
 router.get("/admin/settings", wrap(async (_req, res) => res.json(await getSettings())));
 
+// A live server address that is not one is said so, instead of saved empty.
+const badLiveUrl = (v) => v != null && String(v).trim() !== "" && !liveSocketUrl(v);
+const BAD_LIVE_URL = "That is not a server address. Paste the server manager's address, e.g. rain.emperorservers.com.";
+
 router.put("/admin/settings", wrap(async (req, res) => {
+  if (badLiveUrl(req.body?.liveWsUrl)) return res.status(400).json({ error: BAD_LIVE_URL });
   const before = await getSettings();
   const after = await saveSettings(req.body);
   if (before.liveWsUrl !== after.liveWsUrl || before.liveOrigin !== after.liveOrigin) restartLive();
@@ -191,7 +196,7 @@ function seriesData(body) {
   if (body.schedule !== undefined) data.schedule = optText(body.schedule, 80);
   if (body.order != null) data.order = optInt(body.order) ?? 0;
   if (body.archived !== undefined) data.archived = !!body.archived;
-  if (body.liveWsUrl !== undefined) data.liveWsUrl = /^wss?:\/\//.test(text(body.liveWsUrl)) ? text(body.liveWsUrl, 300) : null;
+  if (body.liveWsUrl !== undefined) data.liveWsUrl = liveSocketUrl(body.liveWsUrl) || null;
   if (body.liveOrigin !== undefined) data.liveOrigin = optText(body.liveOrigin, 200);
   return data;
 }
@@ -220,6 +225,7 @@ router.post("/admin/series", wrap(async (req, res) => {
 }));
 
 router.put("/admin/series/:id", wrap(async (req, res) => {
+  if (badLiveUrl(req.body?.liveWsUrl)) return res.status(400).json({ error: BAD_LIVE_URL });
   const data = seriesData(req.body || {});
   if (data.name === "") return res.status(400).json({ error: "A series needs a name." });
   if (data.slug === "") return res.status(400).json({ error: "The address name needs letters or digits." });
@@ -230,8 +236,8 @@ router.put("/admin/series/:id", wrap(async (req, res) => {
 
 // Tries a live server address before it is saved.
 router.post("/admin/live/test", wrap(async (req, res) => {
-  const url = text(req.body?.url, 300);
-  if (!/^wss?:\/\//.test(url)) return res.status(400).json({ error: "The address starts with wss:// (or ws://)." });
+  const url = liveSocketUrl(req.body?.url);
+  if (!url) return res.status(400).json({ error: BAD_LIVE_URL });
   res.json(await probeServer(url, optText(req.body?.origin, 200)));
 }));
 

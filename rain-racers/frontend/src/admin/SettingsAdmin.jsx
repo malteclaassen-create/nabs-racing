@@ -123,7 +123,7 @@ export default function SettingsAdmin({ part = "settings" }) {
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Live socket address">
-              <input className="input font-mono text-xs" placeholder="wss://…/api/race-control" value={f.liveWsUrl} onChange={set("liveWsUrl")} />
+              <input className="input font-mono text-xs" placeholder="rain.emperorservers.com" value={f.liveWsUrl} onChange={set("liveWsUrl")} />
             </Field>
             <Field label="Origin (optional, else taken from the address)">
               <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin} onChange={set("liveOrigin")} />

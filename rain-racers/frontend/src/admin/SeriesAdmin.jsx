@@ -53,7 +53,7 @@ function SeriesForm({ initial, onSubmit, submitLabel, busy, onCancel, isNew, chi
         </label>
       )}
       <Field label="Live socket of this series' server (optional)" className="sm:col-span-2">
-        <input className="input font-mono text-xs" placeholder="wss://…/api/race-control" value={f.liveWsUrl ?? ""} onChange={set("liveWsUrl")} />
+        <input className="input font-mono text-xs" placeholder="rain.emperorservers.com" value={f.liveWsUrl ?? ""} onChange={set("liveWsUrl")} />
       </Field>
       <Field label="Origin (optional)">
         <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin ?? ""} onChange={set("liveOrigin")} />
