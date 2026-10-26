@@ -77,7 +77,7 @@ function ResultTable({ rows, showGrid }) {
               <td className="pr-5 text-right font-black tabular">
                 {points(r.points)}
                 {r.pointsAdjust !== 0 && (
-                  <span className="ml-1 text-xs font-normal text-red-300" title="Penalty or bonus points">
+                  <span className={`ml-1 text-xs font-normal ${r.pointsAdjust > 0 ? "text-emerald-400" : "text-red-300"}`} title="Bonus or penalty points">
                     ({r.pointsAdjust > 0 ? "+" : ""}
                     {r.pointsAdjust})
                   </span>
@@ -227,7 +227,7 @@ export default function RacePage() {
       </Link>
 
       <section className="card overflow-hidden">
-        <div className="grid lg:grid-cols-[1.15fr_1fr]">
+        <div className="grid lg:grid-cols-[1.15fr_1fr] [&>*]:min-w-0">
           <div className="relative">
             {/* a round that is over shows its recording right here */}
             {race.videoUrl && race.past ? (
@@ -245,7 +245,7 @@ export default function RacePage() {
                   {race.season.name} · Round {race.round}
                 </span>
               </div>
-              <h1 className="h1 flex items-start gap-4">
+              <h1 className="h1 flex items-start gap-4 [overflow-wrap:anywhere]">
                 <span className="logo-in round-block mt-1 h-12 w-12 shrink-0 text-3xl" style={{ background: color, color: inkOn(color) }}>
                   {race.round}
                 </span>

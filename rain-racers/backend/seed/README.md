@@ -18,8 +18,18 @@ Where it comes from (collected on 26 October 2026):
   ones in the titles and on the thumbnails. Rounds without a recording are
   only in when a poster names them (DTM 2002 round 9, Lausitzring).
 
-Not in it: results (Grid Finder does not show them publicly) and the
-broadcasts the channel did for other communities. The RX8 Cup's first three
+`rain-racers-results.json` holds the results of the Grid Finder seasons
+(collected on 26 October 2026 from Grid Finder's standings data, with the
+owner's go-ahead): per round the qualifying order with lap times and every
+race's order, status, laps and race time, by the driver name Grid Finder
+shows (one name per person: a few drivers are on Grid Finder twice, with the
+same name). Nothing else about the drivers is kept. Drivers who set no
+qualifying time are left out of the qualifying (Grid Finder gives them no
+points). `pointsAdjust` is what Grid Finder paid on top of the points table:
+the fastest-lap point in FIS 2 and one stewards' deduction of 10.
+
+Not in it: results of the seasons before Grid Finder (not public anywhere)
+and the broadcasts the channel did for other communities. The RX8 Cup's first three
 rounds have Grid Finder placeholder times; they are set to the usual Sunday
 evening the streams show.
 

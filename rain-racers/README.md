@@ -72,8 +72,9 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
    front: the last classified driver gets 1 point, the one ahead 2, ...), the
    table for a single race and for rounds of 2, 3 or 4 races (one for every
    race, or one per race), qualifying points, how many worst rounds each
-   driver drops, manual points (a pole award, a deduction) and a champion
-   named by hand.
+   driver drops (as on Grid Finder: only rounds they raced, and only towards
+   the end of the season), manual points (a pole award, a deduction) and a
+   champion named by hand.
 3. **Teams** (only if the series has teams): the teams with their colours.
    A series without teams hides the team pages and columns.
 4. **Entry list & transfers:** who drives in the season, for which team and
@@ -117,8 +118,11 @@ The current seasons carry their points rules and timetables from Grid Finder.
 An empty database loads it on its first start (set `SEED_HISTORY=off` to
 start empty instead). A database with data gets it from **Settings → Load
 the Rain Racers history**, which leaves alone every series that is already
-there. The results are not in it: Grid Finder does not show them publicly, so
-they are imported per round like any other.
+there. `backend/seed/rain-racers-results.json` holds the results Grid Finder
+has (FIS 2 rounds 1 to 4, Sahara Saturdays rounds 1 to 4, the whole RX8
+Cup): they go into the rounds that have none yet, also once into a database
+that got the history before them. The older seasons have no results on
+record; they are imported per round like any other.
 
 ### Tests
 

@@ -64,10 +64,12 @@ export function buildStandings(races, settings, { season = null, manualPoints = 
         (t.rounds[race.id] ??= { points: 0 }).points += p;
       }
     }
-    // qualifying points go to the driver, and to the team of their race
+    // qualifying points go to the driver, and to the team of their race; a
+    // driver who only qualified still scores them (and the round counts as
+    // one they took part in)
     for (const [driverId, p] of quali) {
-      const r = race.results.find((x) => x.driverId === driverId);
-      if (!r) continue;
+      const q = (race.qualifying || []).find((x) => x.driverId === driverId);
+      const r = race.results.find((x) => x.driverId === driverId) || { driverId, driver: q?.driver, teamId: null, team: null };
       const d = driverEntry(r);
       d.raw += p;
       const round = roundOf(d);
@@ -89,12 +91,14 @@ export function buildStandings(races, settings, { season = null, manualPoints = 
     list.push(m);
     manualByDriver.set(m.driverId, list);
   }
+  const dropsNow = Math.max(0, Math.min(drop, done.length - (ordered.length - drop)));
   for (const d of drivers.values()) {
     let dropped = 0;
-    if (drop > 0 && done.length > drop) {
-      const scores = done.map((race) => ({ id: race.id, points: d.rounds[race.id]?.points ?? 0, round: race.round }));
+    const raced = done.filter((race) => d.rounds[race.id]);
+    if (dropsNow > 0 && raced.length > dropsNow) {
+      const scores = raced.map((race) => ({ id: race.id, points: d.rounds[race.id].points, round: race.round }));
       scores.sort((a, b) => a.points - b.points || a.round - b.round);
-      for (const s of scores.slice(0, drop)) {
+      for (const s of scores.slice(0, dropsNow)) {
         dropped += s.points;
         if (d.rounds[s.id]) d.rounds[s.id].dropped = true;
       }

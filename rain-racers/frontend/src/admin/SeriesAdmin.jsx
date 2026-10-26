@@ -361,7 +361,7 @@ function Rules() {
         <Field label="Qualifying points for P1, P2, … (empty = none)">
           <input className="input font-mono" placeholder="10, 8, 7, 6, 5, 4, 3, 2, 1, 1" value={f.qualiPointsTable} onChange={set("qualiPointsTable")} />
         </Field>
-        <Field label="Drop each driver's worst rounds">
+        <Field label="Drop each driver's worst rounds (raced ones, as the season ends)">
           <input className="input" type="number" min="0" max="20" value={f.dropWorst} onChange={set("dropWorst")} />
         </Field>
         <Field label="Champion named by hand (empty = whoever leads on points)">

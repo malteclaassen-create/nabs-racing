@@ -76,6 +76,9 @@ describe("points rules", () => {
     ]);
     expect(s.drivers[1].rounds[1]).toMatchObject({ qualiPoints: 10, points: 28 });
     expect(s.teams[0].points).toBe(61);
+    // a driver who only qualified still scores the qualifying points
+    const onlyQuali = buildStandings([race(2, 1, [res(ann, 1)], { qualifying: [{ driverId: 3, driver: cat, position: 1 }] })], S, { season });
+    expect(onlyQuali.drivers.find((d) => d.name === "Cat")).toMatchObject({ points: 10 });
   });
 
   it("keeps a mystery track hidden until the round is raced", () => {
@@ -83,15 +86,21 @@ describe("points rules", () => {
     expect(s.rounds.map((r) => r.track)).toEqual(["T1", null]);
   });
 
-  it("drops each driver's worst rounds, a round not raced counting as 0", () => {
+  it("drops each driver's worst raced rounds once the season nears its end", () => {
     const races = [race(1, 1, [res(ann, 1), res(bob, 2)]), race(2, 2, [res(bob, 1)]), race(3, 3, [res(ann, 2), res(bob, 3)])];
     const s = buildStandings(races, S, { season: { dropWorst: 1 } });
     const a = s.drivers.find((d) => d.name === "Ann");
     const b = s.drivers.find((d) => d.name === "Bob");
-    expect(a.points).toBe(43); // 25 + 18, the missing round 2 dropped
+    expect(a.points).toBe(25); // 25 + 18, the 18 of round 3 dropped (round 2 not raced, so not droppable)
     expect(b.points).toBe(43); // 18 + 25, the 15 of round 3 dropped
     expect(b.rounds[3].dropped).toBe(true);
-    expect(a.rounds[1].dropped).toBeUndefined();
+    expect(a.rounds[3].dropped).toBe(true);
+    // a driver who raced no more rounds than may be dropped keeps them all
+    const one = buildStandings([race(1, 1, [res(ann, 1), res(bob, 2)]), race(2, 2, [res(bob, 1)])], S, { season: { dropWorst: 1 } });
+    expect(one.drivers.find((d) => d.name === "Ann").points).toBe(25);
+    // early in the season nothing is dropped yet: 2 of 4 rounds raced, 1 to drop
+    const early = buildStandings([...races.slice(0, 2), race(4, 4, []), race(5, 5, [])], S, { season: { dropWorst: 1 } });
+    expect(early.drivers.find((d) => d.name === "Bob").points).toBe(43);
   });
 
   it("adds manual points and puts a champion named by hand on top", () => {
