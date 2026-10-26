@@ -1,21 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarDays,
-  Car,
-  Check,
-  Clock,
-  Flag as FlagIcon,
-  Layers,
-  MessageCircleQuestion,
-  Minus,
-  Plus,
-  Trophy,
-  User,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Minus, Plus } from "lucide-react";
+import { CalendarCheck as CalendarDays, Car, Clock, Flag as FlagIcon, Layers, MessageCircleQuestion, Trophy, User, Users } from "../components/icons/filled.jsx";
 import { api } from "../api/client.js";
 import { answerWords } from "../utils/signupAnswers.mjs";
 import { useApi } from "../hooks/useApi.js";

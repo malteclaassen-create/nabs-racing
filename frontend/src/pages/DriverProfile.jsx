@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CalendarX, ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
+import { ArrowLeftRight, Bolt, CalendarX, Crown, Flag as FlagGlyph, FlagCheckered, Gauge, Grid, Layers, Medal, Podium, Timer, Trend, TrendingUp, TriangleAlert, Trophy, XCircle } from "../components/icons/filled.jsx";
 import { useParams, Link, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -40,35 +41,31 @@ const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 // to "classic" to restore it.
 const LAYOUT = "card";
 
-// --- tiny inline icons (stroke = currentColor) ---------------------------
+// --- the stat tiles' symbols (components/icons/filled.jsx) ----------------
 const I = {
-  trophy: "M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3",
-  podium: "M4 21V11h5v10M9 21V5h6v16M15 21V9h5v12",
-  flagChk: "M5 21V4M5 4h14l-3 4 3 4H5",
-  chart: "M4 19h16M7 15l3-4 3 3 4-6",
-  flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
-  trend: "M3 17l6-6 4 4 7-7M14 8h6v6",
-  swap: "M4 8h13l-3-3M20 16H7l3 3",
-  lead: "M5 20h14M6 20V9l3 2 3-6 3 6 3-2v11",
-  gauge: "M12 13l3.5-3.5M6.5 19a8 8 0 1111 0",
-  alert: "M10.3 4.3l-7.4 12.8A1.5 1.5 0 004.2 19.4h15.6a1.5 1.5 0 001.3-2.3L13.7 4.3a1.5 1.5 0 00-2.6 0zM12 9v4M12 16.5h.01",
-  spark: "M13 2L4.5 13H11l-1 9 8.5-11H12l1-9z",
-  medal: "M12 14a5 5 0 100-10 5 5 0 000 10zM8.5 12.5L7 21l5-2.2L17 21l-1.5-8.5",
-  stack: "M12 3l9 5-9 5-9-5 9-5zM3 13.5l9 5 9-5",
-  cross: "M12 21a9 9 0 100-18 9 9 0 000 18zM9 9l6 6M15 9l-6 6",
-  grid: "M4 4h16v16H4zM4 12h16M12 4v16",
-  stopwatch: "M12 13V9M9 2h6M19 6l-1.5 1.5M12 21a8 8 0 100-16 8 8 0 000 16z",
+  trophy: Trophy,
+  podium: Podium,
+  flagChk: FlagCheckered,
+  chart: TrendingUp,
+  flag: FlagGlyph,
+  trend: Trend,
+  swap: ArrowLeftRight,
+  lead: Crown,
+  gauge: Gauge,
+  alert: TriangleAlert,
+  spark: Bolt,
+  medal: Medal,
+  stack: Layers,
+  cross: XCircle,
+  grid: Grid,
+  stopwatch: Timer,
 };
 
 // Lap-time formatter for the fastest-lap tile (1:43.250).
 const fmtLapMs = fmtLap;
 function Icon({ name, className = "" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d={I[name]} />
-    </svg>
-  );
+  const Glyph = I[name];
+  return Glyph ? <Glyph className={className} /> : null;
 }
 
 // --- colour helpers -------------------------------------------------------

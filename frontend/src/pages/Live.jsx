@@ -13,7 +13,7 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
-import { Activity, ShieldAlert } from "lucide-react";
+import { Activity, ShieldAlert } from "../components/icons/filled.jsx";
 import {
   useRaceControlAccess,
   useRaceControl,

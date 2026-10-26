@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Newspaper } from "lucide-react";
+import { Newspaper } from "./icons/filled.jsx";
 import { fmtStamp } from "../utils/format.js";
 import { NewsCover } from "../pages/News.jsx";
 

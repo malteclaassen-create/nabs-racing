@@ -8,11 +8,8 @@ import { matchPages } from "./searchPages.mjs";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useAuth } from "../hooks/useAuth.js";
 import { useTokenBalance } from "../hooks/useTokenBalance.js";
-import {
-  Home, Trophy, Users, Flag as FlagMark, CalendarDays, Activity, Crown, ArrowLeftRight, BookOpen,
-  Gauge, IdCard, Smartphone, ShieldCheck, User, History, Medal, TrendingUp, Coins, SlidersHorizontal,
-  MessageSquare, TriangleAlert, CircleHelp, ArrowRight,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { House as Home, Trophy, Users, FlagCheckered as FlagMark, CalendarCheck as CalendarDays, Activity, Crown, ArrowLeftRight, BookOpen, Gauge, IdCard, Smartphone, ShieldCheck, User, History, Medal, TrendingUp, Coins, SlidersHorizontal, MessageSquare, TriangleAlert, CircleHelp } from "./icons/filled.jsx";
 
 // The catalogue's icon names, drawn the same size and weight as each other.
 const PAGE_ICONS = {
