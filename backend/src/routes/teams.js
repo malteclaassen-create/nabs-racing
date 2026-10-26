@@ -8,6 +8,7 @@ import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
+import { getTeamAllTime } from "../services/teamAllTimeService.js";
 import { readTransfers, byDriver, nextRoundNumber } from "../services/driverTransfers.js";
 
 const router = Router();
@@ -217,6 +218,26 @@ router.get("/:id/history", async (req, res, next) => {
       .map((r) => ({ position: r.position, seasonNumber: r.seasonNumber, tier: r.tier }));
 
     res.json({ name: team.name, seasons: rows, badges });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/teams/:id/drivers -> the team's all-time drivers: everyone who raced
+// for it in any visible season of its series, with the points, wins, podiums
+// and starts they scored for it (services/teamAllTimeService.js). Its own
+// endpoint rather than part of /history: it walks every season's driver
+// standings, so it is cached and the team page asks for it last.
+router.get("/:id/drivers", async (req, res, next) => {
+  try {
+    const team = await prisma.team.findUnique({ where: { id: req.params.id }, include: { season: true } });
+    if (!team) return res.status(404).json({ error: "Team not found" });
+    const admin = isAdminRequest(req);
+    const seasons = await prisma.season.findMany({
+      where: { seriesId: team.season?.seriesId ?? null, ...(admin ? {} : { isPublic: true }) },
+      orderBy: { number: "asc" },
+    });
+    res.json(await getTeamAllTime(prisma, team, seasons, { includePrivate: admin }));
   } catch (e) {
     next(e);
   }

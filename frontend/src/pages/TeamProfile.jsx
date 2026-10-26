@@ -11,6 +11,7 @@ import { ErrorBox, PageHeaderSkeleton, Skeleton, MEDAL, MEDAL_TEXT, DriverAvatar
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import TeamMarginChart from "../components/TeamMarginChart.jsx";
+import TeamAllTimeDrivers from "../components/TeamAllTimeDrivers.jsx";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { NO_VALUE } from "../utils/format.js";
@@ -563,6 +564,8 @@ export default function TeamProfile() {
       )}
 
       <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} color={color} />
+
+      <TeamAllTimeDrivers teamId={team.id} teamName={team.name} color={color} dark={dark} />
 
       <div>
         <Link to="/constructors" className="inline-flex items-center gap-1.5 text-sm font-semibold text-link transition hover:underline">
