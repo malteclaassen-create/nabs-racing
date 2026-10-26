@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
-import { Hourglass, Fingerprint, Copy, Check, Undo2, Link2 } from "lucide-react";
+import { Fingerprint, Copy, Check, Undo2, Link2 } from "lucide-react";
+import { Hourglass } from "./icons/filled.jsx";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeatMarket from "./SeatMarket.jsx";

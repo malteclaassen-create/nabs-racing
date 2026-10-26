@@ -7,6 +7,7 @@ import { useVisiblePoll } from "../hooks/useVisiblePoll.js";
 import { useTour } from "./Tour.jsx";
 import { motionOff } from "../hooks/motion.js";
 import { GearIcon } from "./SettingsPanel.jsx";
+import { ArrowLeftRight, Bell, Camera, ChatBubble, Clock, FlagCheckered, Inbox, Medal, Megaphone, Newspaper, RatingCard, UserPlus } from "./icons/filled.jsx";
 
 // The bell in the nav bar. Logged-in members see league notifications
 // (results, race day, downloads, driver market); the unread count polls once
@@ -25,110 +26,28 @@ import { GearIcon } from "./SettingsPanel.jsx";
 // the movement is what gets noticed. It stops the moment the panel opens,
 // because by then it has done its job and would just be fidgeting.
 function BellIcon({ ringing = false }) {
-  return (
-    <svg viewBox="0 0 24 24" className={`h-[18px] w-[18px] ${ringing ? "bell-ring" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  );
+  return <Bell className={`h-[18px] w-[18px] ${ringing ? "bell-ring" : ""}`} />;
 }
 
-// One small line-style icon per notification type (RESULTS/REMINDER/DOWNLOAD/
-// MARKET, see backend lib/notifications.js). Falls back to the bell.
+// One small filled symbol per notification type (RESULTS/REMINDER/DOWNLOAD/
+// MARKET/..., see backend lib/notifications.js). Falls back to the bell.
+const TYPE_ICONS = {
+  RESULTS: FlagCheckered,
+  REMINDER: Clock,
+  DOWNLOAD: Inbox,
+  NEWS: Newspaper, // an article went out, or a draft waits on the desk
+  PHOTOS: Camera, // a round's gallery went up
+  MARKET: ArrowLeftRight,
+  ANNOUNCE: Megaphone, // feature announcements and the ones an admin writes
+  CARD: RatingCard,
+  FEEDBACK: ChatBubble, // a bug report / idea landed (admins only)
+  ADMIN: UserPlus, // a login waiting to be given a driver
+  AWARD: Medal, // achievement unlocks (Cockpit)
+};
 function TypeIcon({ type }) {
-  const common = {
-    viewBox: "0 0 24 24",
-    className: "h-4 w-4",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "2",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    "aria-hidden": true,
-  };
-  switch (type) {
-    case "RESULTS": // chequered flag
-      return (
-        <svg {...common}>
-          <path d="M4 21V4" />
-          <path d="M4 4c3-1.5 6 1.5 9 0s7-1.5 7 0v9c-3 1.5-6-1.5-9 0s-7 1.5-7 0" />
-        </svg>
-      );
-    case "REMINDER": // clock
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v5l3 2" />
-        </svg>
-      );
-    case "DOWNLOAD": // arrow into tray
-      return (
-        <svg {...common}>
-          <path d="M12 3v12M7 10l5 5 5-5" />
-          <path d="M4 17v3h16v-3" />
-        </svg>
-      );
-    case "NEWS": // newspaper — an article went out, or a draft waits on the desk
-      return (
-        <svg {...common}>
-          <path d="M4 5h13v14H6a2 2 0 01-2-2V5z" />
-          <path d="M17 9h3v8a2 2 0 01-2 2" />
-          <path d="M7 9h7M7 12h7M7 15h4" />
-        </svg>
-      );
-    case "PHOTOS": // camera — a round's gallery went up
-      return (
-        <svg {...common}>
-          <path d="M3 8a2 2 0 012-2h2.5l1.2-2h6.6L16.5 6H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-          <circle cx="12" cy="12.5" r="3.5" />
-        </svg>
-      );
-    case "MARKET": // swap arrows
-      return (
-        <svg {...common}>
-          <path d="M16 3l4 4-4 4M20 7H7" />
-          <path d="M8 21l-4-4 4-4M4 17h13" />
-        </svg>
-      );
-    case "NEWS": // megaphone — feature announcements
-    case "ANNOUNCE": // ...and the ones an admin writes (Notifications tab)
-      return (
-        <svg {...common}>
-          <path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z" />
-          <path d="M14 8a4 4 0 010 8M17 5a8 8 0 010 14" />
-        </svg>
-      );
-    case "CARD": // rating card with a star
-      return (
-        <svg {...common}>
-          <rect x="4" y="3" width="16" height="18" rx="2" />
-          <path d="M12 7.5l1.3 2.6 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" />
-        </svg>
-      );
-    case "FEEDBACK": // speech bubble — a bug report / idea landed (admins only)
-      return (
-        <svg {...common}>
-          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
-      );
-    case "ADMIN": // person with a plus — a login waiting to be given a driver
-      return (
-        <svg {...common}>
-          <path d="M15 20v-1.5a4 4 0 00-4-4H6a4 4 0 00-4 4V20" />
-          <circle cx="8.5" cy="7" r="3.5" />
-          <path d="M18 8v6M21 11h-6" />
-        </svg>
-      );
-    case "AWARD": // laurel medal — achievement unlocks (Cockpit)
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="9" r="5" />
-          <path d="M9.5 13.5L8 21l4-2 4 2-1.5-7.5" />
-        </svg>
-      );
-    default:
-      return <BellIcon />;
-  }
+  const Icon = TYPE_ICONS[type];
+  if (!Icon) return <BellIcon />;
+  return <Icon className="h-4 w-4" />;
 }
 
 // "5m ago" / "3h ago" / "2d ago" — enough precision for a bell menu.

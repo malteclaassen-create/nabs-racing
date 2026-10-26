@@ -1,19 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Activity,
-  ChevronDown,
-  History,
-  MessageSquare,
-  Shield,
-  ShieldAlert,
-  SlidersHorizontal,
-  Smartphone,
-  TrendingUp,
-  Trophy,
-  TriangleAlert,
-  User,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { Activity, History, MessageSquare, Shield, ShieldAlert, SlidersHorizontal, Smartphone, TrendingUp, Trophy, TriangleAlert, User } from "./icons/filled.jsx";
 import { Modal } from "./overlay.jsx";
 import AttentionDot from "./AttentionDot.jsx";
 import TokenIcon from "./TokenIcon.jsx";

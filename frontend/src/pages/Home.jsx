@@ -28,21 +28,22 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
+import { CalendarCheck, FlagCheckered, Podium as PodiumIcon, Shield, Trend, Trophy, Users } from "../components/icons/filled.jsx";
 import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
 
-// Line-icon paths (stroke = currentColor) for the "by the numbers" tiles.
+// The "by the numbers" tiles' symbols (components/icons/filled.jsx).
 const TILE_ICONS = {
-  podium: "M4 21V11h5v10M9 21V5h6v16M15 21V9h5v12",
-  trophy: "M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3",
-  flag: "M5 21V4M5 4c3-1.5 6 1.5 9 0s4-1 4-1v9s-1 .5-4 1-6-1.5-9 0",
-  trend: "M3 17l6-6 4 4 7-7M14 8h6v6",
-  shield: "M12 3l7 3v5c0 4.6-3.1 7.3-7 9-3.9-1.7-7-4.4-7-9V6z",
-  users: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M22 21v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8",
-  calendar: "M4 6a2 2 0 012-2h12a2 2 0 012 2v13a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM4 9h16M8 3v4M16 3v4",
+  podium: PodiumIcon,
+  trophy: Trophy,
+  flag: FlagCheckered,
+  trend: Trend,
+  shield: Shield,
+  users: Users,
+  calendar: CalendarCheck,
 };
 
 // The championship battle while the title is still open: everyone who can
@@ -1875,7 +1876,7 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
   const valueCls = compact
     ? "relative mt-3.5 truncate font-display text-2xl font-black uppercase leading-tight tracking-tight text-dark"
     : "relative mt-3.5 font-display text-4xl font-black leading-none tabular-nums text-dark";
-  const iconPath = icon ? TILE_ICONS[icon] : null;
+  const TileIcon = icon ? TILE_ICONS[icon] : null;
   const body = (
     <>
       {/* Bottom-right flourish — the single element that makes every tile read as
@@ -1890,33 +1891,22 @@ function NumberTile({ label, value, sub, to, index = 0, prefix = "", compact = f
         >
           {mark}
         </div>
-      ) : iconPath ? (
-        <svg
-          viewBox="0 0 24 24"
-          aria-hidden="true"
+      ) : TileIcon ? (
+        <TileIcon
           className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 opacity-[0.07] transition-transform duration-base group-hover:scale-110 dark:opacity-[0.06]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
           style={{ color: accent }}
-        >
-          <path d={iconPath} />
-        </svg>
+        />
       ) : null}
       {/* The label row is held to the icon's height, and a long label takes
           two tight lines inside it: a label that wrapped used to push its
           number 16px below the number in the tile beside it. */}
       <div className="relative flex h-8 items-center gap-2.5">
-        {iconPath ? (
+        {TileIcon ? (
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
             style={{ backgroundColor: `${accent}1f`, color: accent }}
           >
-            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d={iconPath} />
-            </svg>
+            <TileIcon className="h-[18px] w-[18px]" />
           </span>
         ) : null}
         <span className="min-w-0 font-mono text-[11px] font-bold uppercase leading-tight tracking-widest text-light">{label}</span>
