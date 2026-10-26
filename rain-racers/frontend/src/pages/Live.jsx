@@ -114,50 +114,66 @@ function colorOf(id) {
 
 // The track from above, as the server manager draws it, with every car on
 // it: a dot in the driver's colour with their place. Pointing at a driver in
-// the table (or at a dot) names them. The board comes twice a second; the
-// dots glide between.
-function TrackMap({ map, rows, hover, setHover }) {
+// the table (or at a dot) names them; clicking one zooms in on their car and
+// follows it round, until clicked again. The board comes twice a second; the
+// dots (and the zoomed map) glide between.
+const ZOOM = 3;
+
+function TrackMap({ map, rows, hover, setHover, focus, setFocus, mapRef }) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
-  const at = (p) => ({
-    left: `${(((p.x + map.offsetX) / map.scale + map.padding) / map.width) * 100}%`,
-    top: `${(((p.z + map.offsetZ) / map.scale + map.padding) / map.height) * 100}%`,
-  });
+  const fx = (p) => ((p.x + map.offsetX) / map.scale + map.padding) / map.width;
+  const fz = (p) => ((p.z + map.offsetZ) / map.scale + map.padding) / map.height;
   const cars = rows.filter((r) => r.pos);
+  const followed = cars.find((r) => r.id === focus);
+  const zoom = followed ? ZOOM : 1;
+  // the followed car in the middle: scaled from the top left corner, then
+  // moved by a share of the map's own size
+  const view = followed ? `translate(${(0.5 - fx(followed.pos) * zoom) * 100}%, ${(0.5 - fz(followed.pos) * zoom) * 100}%) scale(${zoom})` : "none";
   return (
-    <section className="card relative flex items-center justify-center p-4 sm:p-6">
-      <div className="relative w-full" style={{ aspectRatio: `${map.width} / ${map.height}`, maxHeight: "70vh", maxWidth: `calc(70vh * ${map.width / map.height})` }}>
-        <img src={map.url} alt="" className="absolute inset-0 h-full w-full select-none object-contain opacity-90" onError={() => setFailed(true)} draggable="false" />
-        {cars
-          .slice()
-          .reverse()
-          .map((r) => {
-            const on = hover === r.id;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onMouseEnter={() => setHover(r.id)}
-                onMouseLeave={() => setHover(null)}
-                onClick={() => setHover(on ? null : r.id)}
-                className="absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-500 ease-linear"
-                style={{ ...at(r.pos), zIndex: on ? 30 : 20 - Math.min(r.position, 19) }}
-                aria-label={`${r.position}. ${r.name}`}
-              >
-                <span
-                  className={`flex items-center justify-center rounded-full font-black text-black shadow-[0_0_0_2px_rgba(0,0,0,0.85)] transition-all ${on ? "h-8 w-8 text-sm" : "h-6 w-6 text-[11px]"} ${r.inPits ? "opacity-50" : ""}`}
-                  style={{ background: colorOf(r.id) }}
+    <section ref={mapRef} className="card relative flex scroll-mt-20 items-center justify-center p-4 sm:p-6">
+      <div className="relative w-full overflow-hidden" style={{ aspectRatio: `${map.width} / ${map.height}`, maxHeight: "70vh", maxWidth: `calc(70vh * ${map.width / map.height})` }}>
+        <div className="absolute inset-0 origin-top-left transition-transform duration-500 ease-linear" style={{ transform: view }}>
+          <img src={map.url} alt="" className="absolute inset-0 h-full w-full select-none object-contain opacity-90" onError={() => setFailed(true)} draggable="false" />
+          {cars
+            .slice()
+            .reverse()
+            .map((r) => {
+              const on = hover === r.id || focus === r.id;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onMouseEnter={() => setHover(r.id)}
+                  onMouseLeave={() => setHover(null)}
+                  onClick={() => setFocus(focus === r.id ? null : r.id)}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-500 ease-linear"
+                  style={{ left: `${fx(r.pos) * 100}%`, top: `${fz(r.pos) * 100}%`, zIndex: on ? 30 : 20 - Math.min(r.position, 19) }}
+                  aria-label={`${r.position}. ${r.name}`}
                 >
-                  {r.position}
-                </span>
-                {on && (
-                  <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 text-xs font-bold text-white">
-                    {r.name}
+                  {/* the dots keep their size when the map is zoomed */}
+                  <span className="relative block transition-transform duration-500" style={{ transform: `scale(${1 / zoom})` }}>
+                    <span
+                      className={`flex items-center justify-center rounded-full font-black text-black shadow-[0_0_0_2px_rgba(0,0,0,0.85)] transition-all ${on ? "h-8 w-8 text-sm" : "h-6 w-6 text-[11px]"} ${r.inPits ? "opacity-50" : ""}`}
+                      style={{ background: colorOf(r.id) }}
+                    >
+                      {r.position}
+                    </span>
+                    {on && (
+                      <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 text-xs font-bold text-white">
+                        {r.name}
+                      </span>
+                    )}
                   </span>
-                )}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+        </div>
+        {followed && (
+          <button type="button" onClick={() => setFocus(null)} className="btn absolute right-2 top-2 z-10 border border-line bg-bg/85 py-1 text-xs">
+            Whole track
+          </button>
+        )}
       </div>
     </section>
   );
@@ -171,6 +187,16 @@ export default function Live() {
   const { board, online } = useLiveBoard(!!settings.liveEnabled, slug);
   const links = useApi(settings.liveEnabled && slug ? `/live/links?series=${slug}` : null).data;
   const [hover, setHover] = useState(null);
+  const [focus, setFocus] = useState(null);
+  const mapRef = useRef(null);
+  // a name clicked in the table: zoom in on that car (and on a phone, where
+  // the map is above the table, bring the map into view)
+  const follow = (id) => {
+    const next = focus === id ? null : id;
+    setFocus(next);
+    const box = mapRef.current?.getBoundingClientRect();
+    if (next && box && (box.top < 64 || box.bottom > window.innerHeight)) mapRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   if (!settings.liveEnabled) return <Empty>{seriesList.some((s) => !s.archived) ? "Live timing is not set up yet." : "No series is running right now."}</Empty>;
 
@@ -229,14 +255,13 @@ export default function Live() {
             )}
           </div>
 
-          {board.rows.length === 0 ? (
-            <>
-              {session.map && <TrackMap map={session.map} rows={[]} hover={hover} setHover={setHover} />}
-              <Empty>Nobody is on the server.</Empty>
-            </>
-          ) : (
-            <div className={session.map ? "grid items-start gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}>
-              {session.map && <TrackMap map={session.map} rows={board.rows} hover={hover} setHover={setHover} />}
+          {/* the same two columns with or without anybody on the server, so the
+              map keeps its size */}
+          <div className={session.map ? "grid items-start gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}>
+            {session.map && <TrackMap map={session.map} rows={board.rows} hover={hover} setHover={setHover} focus={focus} setFocus={setFocus} mapRef={mapRef} />}
+            {board.rows.length === 0 ? (
+              <div className="card px-6 py-12 text-center text-muted">Nobody is on the server.</div>
+            ) : (
               <div className="card overflow-x-auto">
                 <table className="table">
                   <thead>
@@ -254,7 +279,7 @@ export default function Live() {
                     {board.rows.map((r) => (
                       <tr
                         key={r.id}
-                        className={`${r.online ? "" : "opacity-50"} ${hover === r.id ? "bg-white/[0.06]" : ""}`}
+                        className={`${r.online ? "" : "opacity-50"} ${hover === r.id || focus === r.id ? "bg-white/[0.06]" : ""}`}
                         onMouseEnter={() => setHover(r.id)}
                         onMouseLeave={() => setHover(null)}
                       >
@@ -263,7 +288,13 @@ export default function Live() {
                           <span className="inline-flex items-center gap-2">
                             {r.pos && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorOf(r.id) }} />}
                             {r.number && <span className="hidden font-mono text-xs text-muted sm:inline">#{r.number}</span>}
-                            <span className="font-semibold">{r.name}</span>
+                            {r.pos && session.map ? (
+                              <button type="button" onClick={() => follow(r.id)} className={`text-left font-semibold hover:underline ${focus === r.id ? "underline" : ""}`} title="Follow on the map">
+                                {r.name}
+                              </button>
+                            ) : (
+                              <span className="font-semibold">{r.name}</span>
+                            )}
                             {r.inPits && <span className="rounded bg-amber-400 px-1.5 text-[10px] font-black text-bg">PIT</span>}
                             {!r.online && <span className="hidden text-[10px] font-bold uppercase text-muted sm:inline">left</span>}
                           </span>
@@ -284,8 +315,8 @@ export default function Live() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </div>

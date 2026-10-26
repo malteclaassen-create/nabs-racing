@@ -64,6 +64,8 @@ function snapshot() {
     EventType: 200,
     Message: {
       SessionInfo: { Type: RACE ? 3 : 1, Name: RACE ? "Race" : "Practice", Track: "spa", TrackConfig: "", Laps: RACE ? 20 : 0, Time: RACE ? 0 : 60, ElapsedMilliseconds: Date.now() - started, AmbientTemp: 14, RoadTemp: 17, CurrentSessionIndex: 0 },
+      // the map: a 1680 x 1530 picture, one pixel to the metre
+      TrackMapData: { width: 1680, height: 1530, scale_factor: 1, offset_x: 0, offset_y: 0, padding: 0 },
       ConnectedDrivers: { Drivers: drivers },
       DisconnectedDrivers: { Drivers: {} },
     },
@@ -76,6 +78,9 @@ wss.on("connection", (ws, req) => {
   ws.send(JSON.stringify(snapshot()));
 });
 
+// where on the map a car is: round an oval
+const at = (spline) => ({ X: 840 + 600 * Math.cos(spline * 2 * Math.PI), Y: 0, Z: 765 + 550 * Math.sin(spline * 2 * Math.PI) });
+
 let last = Date.now();
 setInterval(() => {
   const now = Date.now();
@@ -83,7 +88,7 @@ setInterval(() => {
   last = now;
   const order = [...cars].sort((a, b) => b.laps + b.spline - (a.laps + a.spline));
   for (const c of cars) {
-    const msg = JSON.stringify({ EventType: 53, Message: { CarID: c.id, NormalisedSplinePos: c.spline, RacePosition: order.indexOf(c) + 1, IsInPits: c.pits } });
+    const msg = JSON.stringify({ EventType: 53, Message: { CarID: c.id, NormalisedSplinePos: c.spline, RacePosition: order.indexOf(c) + 1, IsInPits: c.pits, Pos: at(c.spline) } });
     for (const ws of wss.clients) ws.send(msg);
   }
 }, 100);

@@ -83,10 +83,8 @@ export function useRainTransition(location) {
     );
   }, [location]); // when the address changes; `display` is read, not watched
 
-  // While the streaks come in, the page's own moving backgrounds pause (they
-  // would be redrawn under the cover for nothing). On the way out the new
-  // page is already moving as it comes into view, not only once the last
-  // streak has gone.
+  // While the streaks come in, the header's blur is not worked out again for
+  // every frame. The page's own background rain keeps falling throughout.
   useEffect(() => {
     document.documentElement.classList.toggle("wiping", phase === "in");
   }, [phase]);

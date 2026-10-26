@@ -334,12 +334,7 @@ html {
   width: 100%;
   height: 100%;
 }
-/* the page's drifting streaks hold still under the cover */
-.wiping .streaks-near,
-.wiping .streaks-far {
-  animation-play-state: paused;
-}
-/* and the header's blur is not worked out again for every frame */
+/* while the streaks come in, the header's blur is not worked out again for every frame */
 .wiping header {
   backdrop-filter: none;
 }

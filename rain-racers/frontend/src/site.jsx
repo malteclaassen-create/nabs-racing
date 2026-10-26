@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { api } from "./api.js";
 import { hexToRgb } from "./format.js";
@@ -50,10 +50,24 @@ export function SiteProvider({ children, location: shown = null }) {
     return running.find((s) => s.slug === readLast()) || running[0] || null;
   }, [seriesList, routeSlug]);
 
-  // A link may name the season (?season=<id>, e.g. from the history).
+  // A link may name the season (?season=<id>, e.g. from the history). The
+  // season picked stays while moving between a series' own pages; coming to
+  // the series from elsewhere (the home page, the history) without a season
+  // in the link opens its current one again.
   const urlSeason = Number(new URLSearchParams(location.search).get("season")) || null;
+  const lastSlug = useRef(null);
   useEffect(() => {
-    if (routeSlug && urlSeason) setSeasonBySeries((m) => ({ ...m, [routeSlug]: urlSeason }));
+    const arrived = routeSlug && routeSlug !== lastSlug.current;
+    lastSlug.current = routeSlug;
+    if (!routeSlug) return;
+    if (urlSeason) setSeasonBySeries((m) => ({ ...m, [routeSlug]: urlSeason }));
+    else if (arrived)
+      setSeasonBySeries((m) => {
+        if (!(routeSlug in m)) return m;
+        const rest = { ...m };
+        delete rest[routeSlug];
+        return rest;
+      });
   }, [routeSlug, urlSeason]);
 
   useEffect(() => {
