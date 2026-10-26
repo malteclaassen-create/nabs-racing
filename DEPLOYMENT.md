@@ -64,6 +64,11 @@ CORS_ORIGIN="https://nabs.example.com"
 DISCORD_CLIENT_ID="<your client id>"
 DISCORD_CLIENT_SECRET="<your client secret>"
 DISCORD_REDIRECT_URI="https://nabs.example.com/auth/discord/callback"
+
+# Optional: GIF search in the comments under news articles. Without it,
+# members can still paste a Tenor or GIPHY link. Free key from
+# https://developers.giphy.com (Tenor's API closed on 30 June 2026).
+# GIPHY_API_KEY="<your giphy key>"
 ```
 
 **Database** - two options:

@@ -1013,3 +1013,22 @@ model NewsArticle {
 
   @@index([status, publishedAt])
 }
+
+// Comments under news articles (lib/newsComments.js). Raw-SQL managed like
+// NewsArticle (lib/ensureSchema.js + migration news_comments); this model only
+// mirrors it.
+model NewsComment {
+  id         String   @id
+  articleId  String
+  discordId  String
+  authorName String
+  avatarUrl  String?
+  driverId   String?
+  body       String   @default("")
+  gifUrl     String?
+  gifWidth   Int?
+  gifHeight  Int?
+  createdAt  DateTime @default(now())
+
+  @@index([articleId, createdAt])
+}
