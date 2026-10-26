@@ -298,6 +298,60 @@ export async function seasonIsPublic(prisma, seasonId) {
   }
 }
 
+// Filling in a PAST season is archive work, not news: an admin typing Season
+// 3's results in round by round rang "Round 1 results are in" at everyone, for
+// a race driven years ago. A round is archive work when its season is older
+// than the one its series is running, or when it was raced more than
+// FRESH_DAYS ago (the same line the news desk's automatic race report draws,
+// lib/newsRaceReport.js). A late import of last week's round still rings.
+const FRESH_DAYS = 14;
+export function isArchiveRound(race, seasonNumber, activeNumber, now = Date.now()) {
+  if (seasonNumber != null && activeNumber != null && seasonNumber < activeNumber) return true;
+  if (race?.date && now - new Date(race.date).getTime() > FRESH_DAYS * 86_400_000) return true;
+  return false;
+}
+
+// The bells archive work already rang before the rule above existed: every
+// "results are in" / "photos are up" whose round belongs to a season older than
+// the one its series is running goes again. Runs on every boot (index.js) —
+// cheap, and a no-op once they are gone. Their dedupe keys go with them, which
+// is safe: notifyResultsSaved / notifyRacePhotosAdded skip those rounds now.
+// Returns how many entries were removed.
+export async function retractArchiveRoundBells(prisma) {
+  try {
+    return await prisma.$executeRawUnsafe(
+      `DELETE FROM "Notification"
+        WHERE ("dedupeKey" LIKE 'results:%' OR "dedupeKey" LIKE 'race-photos:%')
+          AND substr("dedupeKey", instr("dedupeKey", ':') + 1) IN (
+            SELECT r."id" FROM "Race" r JOIN "Season" s ON s."id" = r."seasonId"
+             WHERE s."number" < (SELECT MAX(a."number") FROM "Season" a
+                                  WHERE a."isActive" = 1 AND a."seriesId" IS s."seriesId"))`
+    );
+  } catch {
+    return 0;
+  }
+}
+
+async function archiveRound(prisma, race) {
+  let seasonNumber = null;
+  let activeNumber = null;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT s."number" AS n,
+              (SELECT MAX(a."number") FROM "Season" a WHERE a."isActive" = 1 AND a."seriesId" IS s."seriesId") AS active
+         FROM "Season" s WHERE s."id" = ?`,
+      race.seasonId
+    );
+    if (rows[0]) {
+      seasonNumber = rows[0].n != null ? Number(rows[0].n) : null;
+      activeNumber = rows[0].active != null ? Number(rows[0].active) : null;
+    }
+  } catch {
+    /* unreadable: fall back on the race date alone */
+  }
+  return isArchiveRound(race, seasonNumber, activeNumber);
+}
+
 const roundName = (race) => (race?.number ? `Round ${race.number}` : race?.track || "the race");
 
 // Deep link to ONE race on the calendar: series prefix, the season (the bell
@@ -341,6 +395,7 @@ export async function notifyResultsSaved(prisma, race) {
     if (!race?.id) return;
     if (!(await readNotifySettings(prisma)).results) return;
     if (!(await seasonIsPublic(prisma, race.seasonId))) return;
+    if (await archiveRound(prisma, race)) return;
     const { type, label } = await raceLabel(prisma, race);
     await dbCreateNotification(prisma, {
       type: "RESULTS",
@@ -365,6 +420,7 @@ export async function notifyRacePhotosAdded(prisma, race, count) {
     if (!race?.id || !count) return;
     if (!(await readNotifySettings(prisma)).photos) return;
     if (!(await seasonIsPublic(prisma, race.seasonId))) return;
+    if (await archiveRound(prisma, race)) return;
     const { label } = await raceLabel(prisma, race);
     await dbCreateNotification(prisma, {
       type: "PHOTOS",

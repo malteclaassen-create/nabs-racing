@@ -71,7 +71,7 @@ import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
 import { refreshArchiveIndex, migrateArchiveLayout } from "./lib/resultsArchive.js";
 import { TRACK_EDITOR_ENABLED } from "./lib/features.js";
-import { backfillCardIntro, announceFeatures, ensureRaceReminders } from "./lib/notifications.js";
+import { backfillCardIntro, announceFeatures, ensureRaceReminders, retractArchiveRoundBells } from "./lib/notifications.js";
 import { recomputeStintsOnce } from "./lib/stintRecompute.js";
 import { syncAllRostersToTransfers } from "./services/driverTransfers.js";
 import { moveLentServerLapsOnce } from "./lib/practiceTokens.js";
@@ -114,6 +114,8 @@ ensureAppSchema(prisma)
   .then(() => dropPreStartPayoutsOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
+  // Bells rung by filling in a past season's results go again (lib/notifications.js).
+  .then(() => retractArchiveRoundBells(prisma))
   .catch((e) => console.error("schema upkeep:", e));
 
 const app = express();
