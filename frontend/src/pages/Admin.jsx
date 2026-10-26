@@ -6834,6 +6834,52 @@ function TeamImport({ seasonId, onImported, onError }) {
 // seasons and drivers by name, forgiving capitals, spaces and punctuation; a
 // team that raced under another name (a sponsor, a rebrand) needs a link to be
 // counted as one team. Saved for the whole league (lib/teamLineage.js).
+// A name box with the series' team names in a menu under it. A <datalist> was
+// the first go, but on an iPhone that is one guess above the keyboard, not a
+// list to pick from. Typing still works for a name no season has.
+function TeamNamePicker({ names, value, onChange, placeholder, label }) {
+  const [open, setOpen] = useState(false);
+  const q = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const hits = names.filter((n) => n.toLowerCase().replace(/[^a-z0-9]/g, "").includes(q)).slice(0, 30);
+  const show = open && hits.length > 0 && !(hits.length === 1 && hits[0] === value);
+  return (
+    <div className="relative">
+      <input
+        className="input"
+        placeholder={placeholder}
+        aria-label={label}
+        role="combobox"
+        aria-expanded={show}
+        aria-autocomplete="list"
+        autoComplete="off"
+        value={value}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+      />
+      {show && (
+        <ul role="listbox" className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card shadow-xl shadow-ink/10">
+          {hits.map((n) => (
+            <li key={n} role="option" aria-selected={n === value}>
+              <button
+                type="button"
+                // Keeps the focus in the box, so its blur does not close the
+                // menu before the tap lands.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { onChange(n); setOpen(false); }}
+                className="block w-full px-3 py-2.5 text-left text-sm font-semibold text-dark transition hover:bg-surface2"
+              >
+                {n}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function TeamLinks({ onSaved, onError }) {
   const { data, reload } = useApi(useCallback(() => api.teamLinks(), []));
   const [from, setFrom] = useState("");
@@ -6880,13 +6926,10 @@ function TeamLinks({ onSaved, onError }) {
           add({ from, to });
         }}
       >
-        <datalist id="team-link-names">
-          {(data?.names || []).map((n) => <option key={n} value={n} />)}
-        </datalist>
-        <input className="input" list="team-link-names" placeholder="Other name, e.g. Volvo Racing" aria-label="Other name"
-          value={from} onChange={(e) => setFrom(e.target.value)} />
-        <input className="input" list="team-link-names" placeholder="Is the same team as, e.g. Volvo" aria-label="Is the same team as"
-          value={to} onChange={(e) => setTo(e.target.value)} />
+        <TeamNamePicker names={data?.names || []} placeholder="Other name, e.g. Volvo Racing" label="Other name"
+          value={from} onChange={setFrom} />
+        <TeamNamePicker names={data?.names || []} placeholder="Is the same team as, e.g. Volvo" label="Is the same team as"
+          value={to} onChange={setTo} />
         <button className="btn-primary w-full" disabled={busy || !from.trim() || !to.trim()}>
           {busy ? "Saving…" : "Link as one team"}
         </button>

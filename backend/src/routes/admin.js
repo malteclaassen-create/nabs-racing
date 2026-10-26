@@ -6176,6 +6176,7 @@ router.put("/team-links", async (req, res, next) => {
     if (out.error) return res.status(400).json({ error: out.error });
     const links = await writeTeamLinks(prisma, out.links);
     invalidateTeamAllTimeCache();
+    invalidateRecordsCache();
     res.json({ links });
   } catch (e) {
     next(e);
