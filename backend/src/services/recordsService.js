@@ -17,7 +17,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
 import { classificationsOf, finishesOf, startsOf } from "../lib/standingsRow.js";
-import { teamLineageKey } from "../lib/teamLineage.js";
+import { teamLineageKey, readTeamLinkMap } from "../lib/teamLineage.js";
 
 // Heavy (walks every season), so one result is kept warm per series for a few
 // minutes. Results imports simply age out within CACHE_MS.
@@ -375,7 +375,8 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     })
   ).filter((t) => t.tier > 0);
   const seasonNumberById = new Map(seasons.map((s) => [s.id, s.number]));
-  const teamKeyById = new Map(teamRows.map((t) => [t.id, teamLineageKey(t.name)]));
+  const links = await readTeamLinkMap(prisma);
+  const teamKeyById = new Map(teamRows.map((t) => [t.id, teamLineageKey(t.name, links)]));
   const keyOf = (teamId) => (teamId ? teamKeyById.get(teamId) ?? null : null);
   const teamCareers = new Map(); // lineage key -> aggregate
   const teamBucketFor = (key) => {

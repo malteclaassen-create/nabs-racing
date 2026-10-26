@@ -130,6 +130,8 @@ export function suggestTeamLinks(names, links = DEFAULT_MAP) {
     for (const [kb, b] of unique) {
       if (ka.length <= kb.length) continue;
       if (!ka.startsWith(kb) && !ka.endsWith(kb)) continue;
+      // Already linked to some team: "BMW Sauber" is Sauber, not BMW.
+      if (links.has(ka)) continue;
       if (teamLineageKey(a, links) === teamLineageKey(b, links)) continue;
       out.push({ from: a, to: b });
     }

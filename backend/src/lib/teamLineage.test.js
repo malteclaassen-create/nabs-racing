@@ -73,5 +73,7 @@ describe("admin team links", () => {
     expect(suggestTeamLinks(["Volvo Racing", "Volvo", "Ferrari", "Porsche Martini", "Porsche"])).toEqual([
       { from: "Volvo Racing", to: "Volvo" },
     ]);
+    // BMW Sauber is linked to Sauber, so it is no candidate for BMW.
+    expect(suggestTeamLinks(["BMW Sauber", "BMW", "Sauber"])).toEqual([]);
   });
 });
