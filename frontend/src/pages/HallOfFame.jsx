@@ -12,7 +12,8 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 
 // ---------------------------------------------------------------------------
 // /records — the Hall of Fame: the champions gallery (drivers ⇄ teams), the
-// single records, and ONE big all-time top list with a category picker.
+// single records, and ONE big all-time top list (drivers ⇄ teams) with a
+// category picker.
 // Categories come data-driven from the backend's lists array, so new ones
 // (poles once quali data lands, new telemetry) appear in the picker by themselves.
 // ---------------------------------------------------------------------------
@@ -401,43 +402,67 @@ function RankingPicker({ lists, value, onChange }) {
 }
 
 // Dark in both themes, like the other heroes (bg-ink). Each bar is measured
-// against the leader and painted in the driver's latest team colour, so the
-// gaps between the names read at a glance. Nine-plus categories (and more as
-// the data grows) sit behind one dropdown instead of a wall of buttons. The
-// `dark` class hands the inside the dark-theme tokens (eyebrow tone, the
-// dropdown's open list) on a light page too.
-function TopListPanel({ lists, activeKey, onChange, seasons }) {
-  const list = lists.find((l) => l.key === activeKey) || lists[0];
+// against the leader and painted in the driver's latest team colour (or the
+// team's own), so the gaps between the names read at a glance. Nine-plus
+// categories (and more as the data grows) sit behind one dropdown instead of a
+// wall of buttons; a switch beside it turns the whole list from drivers to
+// teams. The picked category carries over where the other side has it too
+// (wins stay wins). The `dark` class hands the inside the dark-theme tokens
+// (eyebrow tone, the dropdown's open list) on a light page too.
+function TopListPanel({ lists, teamLists, activeKey, onChange, seasons }) {
+  const [mode, setMode] = useState(lists.length ? "drivers" : "teams");
+  const teams = mode === "teams";
+  const shown = teams ? teamLists : lists;
+  const list = shown.find((l) => l.key === activeKey) || shown[0];
   const max = list.rows[0]?.value || 1;
-  // The rows fade over when the category changes; the panel itself (and the
-  // dropdown with the focus in it) stays put.
-  const swap = useSwapClass(list.key);
+  // The rows fade over when the category or the side changes; the panel itself
+  // (and the control with the focus in it) stays put.
+  const swap = useSwapClass(`${mode}|${list.key}`);
 
   return (
     <section className="dark reveal rounded-3xl bg-ink p-5 text-white shadow-lift sm:p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-eyebrow">
-            Careers · all-time top 10
+            {teams ? "Teams" : "Careers"} · all-time top 10
           </div>
           <h2 className="mt-1 font-display text-3xl font-black uppercase tracking-tight sm:text-4xl">{listName(list)}</h2>
           {list.note && <p className="mt-1 font-mono text-[11px] text-white/50">{list.note}</p>}
         </div>
-        <RankingPicker lists={lists} value={list.key} onChange={onChange} />
+        <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
+          {lists.length > 0 && teamLists.length > 0 && (
+            <SlidingTabs
+              items={[
+                { key: "drivers", label: "Drivers" },
+                { key: "teams", label: "Teams" },
+              ]}
+              value={mode}
+              onChange={setMode}
+              wrapClassName="inline-flex rounded-xl bg-white/10 p-1 ring-1 ring-white/15"
+              btnClassName="px-3.5 py-1.5 text-sm font-semibold"
+              pillClassName="rounded-lg bg-brand shadow"
+              activeClassName="text-onbrand"
+              idleClassName="text-white/60 hover:text-white"
+            />
+          )}
+          <RankingPicker lists={shown} value={list.key} onChange={onChange} />
+        </div>
       </div>
 
-      <div key={list.key} className={swap}>
+      <div key={`${mode}|${list.key}`} className={swap}>
         <div className="cascade space-y-2.5">
           {list.rows.map((r, i) => {
             const rank = i + 1;
             const pct = Math.max(3, Math.round((r.value / max) * 100));
-            const color = r.team?.color || "#94a3b8";
+            const color = (teams ? r.color : r.team?.color) || "#94a3b8";
+            const season = r.seasonNumber != null ? `?season=${r.seasonNumber}` : "";
             return (
               <Link
-                key={r.driverId}
-                to={`/drivers/${r.driverId}${r.seasonNumber != null ? `?season=${r.seasonNumber}` : ""}`}
+                key={teams ? r.teamId : r.driverId}
+                to={teams ? `/teams/${r.teamId}${season}` : `/drivers/${r.driverId}${season}`}
                 style={{ "--i": Math.min(i, 16) }}
-                className="group grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 rounded-lg sm:grid-cols-[2rem_9rem_minmax(0,1fr)]"
+                // A team name sits beside its logo, so its column is wider.
+                className={`group grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 rounded-lg ${teams ? "sm:grid-cols-[2rem_11rem_minmax(0,1fr)]" : "sm:grid-cols-[2rem_9rem_minmax(0,1fr)]"}`}
               >
                 <span
                   className={`font-display text-base font-black tabular-nums ${rank === 1 ? "" : "text-white/50"}`}
@@ -446,10 +471,11 @@ function TopListPanel({ lists, activeKey, onChange, seasons }) {
                   {rank}
                 </span>
                 <span className="flex min-w-0 items-center gap-2">
+                  {teams && <TeamLogo id={r.teamId} name={r.name} color={r.color} logoUrl={r.logoUrl} size={18} />}
                   <span className="truncate font-display text-sm font-black uppercase tracking-tight text-white transition group-hover:text-eyebrow">
                     {r.name}
                   </span>
-                  <Flag code={countryFor(r.driverId, r.country)} w={16} h={11} />
+                  {!teams && <Flag code={countryFor(r.driverId, r.country)} w={16} h={11} />}
                 </span>
                 {/* The bar keeps room for the logo and the number even when the
                     value is tiny next to the leader's. */}
@@ -465,7 +491,7 @@ function TopListPanel({ lists, activeKey, onChange, seasons }) {
                       <CountUp end={r.value} />
                     </span>
                   </span>
-                  {r.team && (
+                  {!teams && r.team && (
                     <span className="absolute inset-y-0 left-2 flex items-center">
                       <TeamLogo id={r.team.id} name={r.team.name} color={r.team.color} logoUrl={r.team.logoUrl} size={16} />
                     </span>
@@ -478,7 +504,7 @@ function TopListPanel({ lists, activeKey, onChange, seasons }) {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/10 pt-4 font-mono text-[10px] uppercase tracking-wider text-white/50">
-        <span>Bar colour = latest team</span>
+        <span>{teams ? "Bar colour = team colour · one line per team across renames" : "Bar colour = latest team"}</span>
         {seasons > 0 && <span>{seasons === 1 ? "1 season" : `${seasons} seasons`} counted</span>}
       </div>
     </section>
@@ -517,7 +543,7 @@ export default function HallOfFame() {
         <ErrorBox message={error} onRetry={reload} />
       </div>
     );
-  if (!data || (!data.lists.length && !data.champions.length))
+  if (!data || (!data.lists.length && !data.teamLists?.length && !data.champions.length))
     return (
       <div>
         <PageHeader eyebrow="All-time" title="Hall of Fame" />
@@ -525,7 +551,8 @@ export default function HallOfFame() {
       </div>
     );
 
-  const activeListKey = data.lists.some((l) => l.key === listKey) ? listKey : data.lists[0]?.key;
+  // A server from before the team lists simply has none: no switch then.
+  const teamLists = data.teamLists || [];
 
   return (
     <div className="content-in space-y-6 sm:space-y-14">
@@ -573,8 +600,14 @@ export default function HallOfFame() {
       )}
 
       {/* ONE all-time top list, the category picked in its own dropdown */}
-      {data.lists.length > 0 && (
-        <TopListPanel lists={data.lists} activeKey={activeListKey} onChange={setListKey} seasons={data.seasons} />
+      {(data.lists.length > 0 || teamLists.length > 0) && (
+        <TopListPanel
+          lists={data.lists}
+          teamLists={teamLists}
+          activeKey={listKey}
+          onChange={setListKey}
+          seasons={data.seasons}
+        />
       )}
 
       {/* the wall: names bought with server tokens, oldest first */}

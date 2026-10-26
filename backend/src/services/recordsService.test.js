@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { seasonPointsBeforeDrop, raceWinnerSequence, longestStreak } from "./recordsService.js";
+import {
+  seasonPointsBeforeDrop,
+  raceWinnerSequence,
+  longestStreak,
+  constructorPointsBeforeDrop,
+  addSeasonToTeamCareers,
+} from "./recordsService.js";
 
 // The all-time "Most points ever" list is the season totals with the drop rule
 // undone again. These pin down what "undone" means for the shapes a standings
@@ -105,5 +111,58 @@ describe("longestStreak", () => {
   it("is null when nobody ever won", () => {
     expect(longestStreak([null, null])).toBeNull();
     expect(longestStreak([])).toBeNull();
+  });
+});
+
+// The team side of the Hall of Fame's top list.
+describe("constructorPointsBeforeDrop", () => {
+  it("adds every dropped round back onto the table's total", () => {
+    expect(constructorPointsBeforeDrop({ total: 120, droppedPerRace: { 3: 8, 7: 4 } })).toBe(132);
+  });
+
+  it("leaves a table without drops alone", () => {
+    expect(constructorPointsBeforeDrop({ total: 90, droppedPerRace: {} })).toBe(90);
+    expect(constructorPointsBeforeDrop({ total: 90 })).toBe(90);
+  });
+});
+
+describe("addSeasonToTeamCareers", () => {
+  const fin = (position) => ({ status: "FINISHED", position });
+  const run = (rows, stamps = new Map(), constructors = new Set(["ferrari", "mclaren"])) => {
+    const buckets = new Map();
+    addSeasonToTeamCareers({
+      rows,
+      teamOf: (d, n, sprint) => stamps.get(`${d}|${n}|${sprint ? 1 : 0}`) ?? null,
+      keyOf: (id) => (constructors.has(id) ? id : null),
+      bucketFor: (key) => {
+        if (!buckets.has(key)) buckets.set(key, { wins: 0, podiums: 0, starts: 0 });
+        return buckets.get(key);
+      },
+    });
+    return Object.fromEntries(buckets);
+  };
+
+  it("counts every classification for the driver's season team", () => {
+    const rows = [
+      { driverId: "duck", team: { id: "ferrari" }, perRace: { 1: fin(1), 2: { ...fin(4), sprint: fin(2) }, 3: { status: "DNF", position: null } } },
+      { driverId: "goose", team: { id: "ferrari" }, perRace: { 1: fin(3), 2: { status: "DNS", position: null } } },
+    ];
+    expect(run(rows)).toEqual({ ferrari: { wins: 1, podiums: 3, starts: 5 } });
+  });
+
+  it("credits a reserve's drive to the team it was stamped for, and nobody when it was for the reserve pool", () => {
+    const rows = [
+      { driverId: "swan", team: { id: "reserve" }, perRace: { 1: fin(1), 2: fin(2) } },
+      { driverId: "heron", team: { id: "ferrari" }, perRace: { 1: fin(2), 2: { ...fin(5), sprint: fin(1) } } },
+    ];
+    const stamps = new Map([
+      ["swan|1|0", "mclaren"],
+      // Moved mid-weekend: the sprint was still for McLaren.
+      ["heron|2|1", "mclaren"],
+    ]);
+    expect(run(rows, stamps)).toEqual({
+      mclaren: { wins: 2, podiums: 2, starts: 2 },
+      ferrari: { wins: 0, podiums: 1, starts: 2 },
+    });
   });
 });
