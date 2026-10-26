@@ -117,23 +117,34 @@ body {
   inset: -160px;
   background-repeat: repeat;
   will-change: transform;
+  backface-visibility: hidden;
 }
 .streaks-near {
   background-size: 160px 160px;
-  animation: streaks-near 16s linear infinite;
+  animation: streaks-near 12s linear infinite;
 }
 .streaks-far {
   background-size: 96px 96px;
-  animation: streaks-far 7s linear infinite;
+  animation: streaks-far 6s linear infinite;
 }
+/* The slow drift moves a fraction of a pixel per frame. A plain translation
+   is put down on whole pixels, so the streaks would step a pixel every few
+   frames and look choppy; the hair of a rotation makes the browser draw the
+   in-between positions, and the drift runs smooth. */
 @keyframes streaks-near {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0.01deg);
+  }
   to {
-    transform: translate3d(-160px, 160px, 0);
+    transform: translate3d(-160px, 160px, 0) rotate(0.01deg);
   }
 }
 @keyframes streaks-far {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0.01deg);
+  }
   to {
-    transform: translate3d(-96px, 96px, 0);
+    transform: translate3d(-96px, 96px, 0) rotate(0.01deg);
   }
 }
 
