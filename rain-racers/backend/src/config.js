@@ -10,13 +10,16 @@ export const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 export const JWT_SECRET = process.env.JWT_SECRET || "";
-if (!JWT_SECRET || JWT_SECRET === "change-me" || (IS_PROD && JWT_SECRET.length < 32)) {
+// "<...>" is a placeholder copied from the README, never a real secret.
+const isPlaceholder = (v) => /[<>]/.test(v);
+if (!JWT_SECRET || JWT_SECRET === "change-me" || isPlaceholder(JWT_SECRET) || (IS_PROD && JWT_SECRET.length < 32)) {
   // Every login cookie is signed with this. A guessable one hands out admin.
-  console.error("JWT_SECRET is missing or too short. Set a long random value (40+ characters).");
+  console.error("JWT_SECRET is missing, still a placeholder or too short. Set a long random value (40+ letters and digits).");
   process.exit(1);
 }
 
-export const ADMIN_PIN = process.env.ADMIN_PIN || "";
+// A placeholder PIN counts as none: the admin login then says so.
+export const ADMIN_PIN = isPlaceholder(process.env.ADMIN_PIN || "") ? "" : process.env.ADMIN_PIN || "";
 export const ADMIN_DISCORD_IDS = (process.env.ADMIN_DISCORD_IDS || "")
   .split(",")
   .map((s) => s.trim())
