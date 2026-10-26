@@ -19,9 +19,18 @@
 // Teams are matched across seasons by NAME within the series, exactly like
 // GET /teams/:id/history (lib/teamLineage.js: spelling forgiven, renames
 // joined up by the admin's team links): ids are per season and there is no link table.
+//
+// The points are what each season paid, and the league changed its table over
+// the years (S1 paid 10-8-6…, S2–S5 25-18-15…, today 35-30-25…), so an early
+// driver's haul cannot stand next to a recent one's. `score` puts every drive
+// on ONE scale: each classified finish, feature or sprint, priced by today's
+// table (the newest season's), with no fastest-lap bonus, no round-specific
+// table and no drops. That is the figure the page ranks by first.
 // ---------------------------------------------------------------------------
 import { getDriverStandings, scoringRaces } from "./standingsService.js";
 import { seasonPointsBeforeDrop } from "./recordsService.js";
+import { parsePointsTable } from "./seasonService.js";
+import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { sameTeamBySeason, teamLineageKey, readTeamLinkMap } from "../lib/teamLineage.js";
 
@@ -47,18 +56,24 @@ function partsOf(cell) {
 // Fold one season of driver standings into the per-person totals for the team
 // `teamId` (that season's row of the team). `teamOf(driverId, round, sprint)`
 // is the team stamped on that drive, or null when the result carries none.
-// `personOf(driverId)` maps a season row to its person. Mutates `totals`
+// `personOf(driverId)` maps a season row to its person. `scale` is the one
+// points table every finish is priced by for `score`. Mutates `totals`
 // (Map personId -> aggregate) and returns it. Pure otherwise, exported for the
 // test.
-export function addSeasonToTeamTotals(totals, { seasonNumber, rows, teamId, teamOf, personOf = (id) => id }) {
+export function addSeasonToTeamTotals(
+  totals,
+  { seasonNumber, rows, teamId, teamOf, personOf = (id) => id, scale = DEFAULT_POINTS_TABLE }
+) {
   for (const row of rows || []) {
     const ownTeam = row.team?.id ?? null;
     const cells = Object.entries(row.perRace || {});
-    let points = 0, starts = 0, wins = 0, podiums = 0, drives = 0, elsewhere = 0;
+    let points = 0, score = 0, starts = 0, wins = 0, podiums = 0, drives = 0, elsewhere = 0;
 
     if (cells.length === 0) {
       // An archived season kept as official totals only: the season team is
-      // the only evidence of who the points were scored for.
+      // the only evidence of who the points were scored for. With no finishes
+      // on record there is nothing to price on the common scale, so it adds
+      // no score.
       if (ownTeam !== teamId || !(row.total > 0)) continue;
       points = row.total;
       drives = 1;
@@ -76,6 +91,7 @@ export function addSeasonToTeamTotals(totals, { seasonNumber, rows, teamId, team
           points += part.points;
           if (part.status && part.status !== "DNS") starts++;
           if (part.status === "FINISHED" && part.position != null) {
+            score += getPointsForPosition(part.position, scale);
             if (part.position === 1) wins++;
             if (part.position <= 3) podiums++;
           }
@@ -90,10 +106,11 @@ export function addSeasonToTeamTotals(totals, { seasonNumber, rows, teamId, team
     const person = personOf(row.driverId);
     let t = totals.get(person);
     if (!t) {
-      t = { points: 0, starts: 0, wins: 0, podiums: 0, seasons: new Set(), newestSeason: -1, identity: null };
+      t = { points: 0, score: 0, starts: 0, wins: 0, podiums: 0, seasons: new Set(), newestSeason: -1, identity: null };
       totals.set(person, t);
     }
     t.points += points;
+    t.score += score;
     t.starts += starts;
     t.wins += wins;
     t.podiums += podiums;
@@ -113,8 +130,8 @@ export function addSeasonToTeamTotals(totals, { seasonNumber, rows, teamId, team
   return totals;
 }
 
-// The totals as the list the page shows: biggest points haul first, then wins,
-// podiums, starts. Nobody who never started or scored for the team is listed.
+// The totals as the list the page shows: biggest score first, then wins,
+// podiums, points, starts. Nobody who never started or scored for the team is listed.
 export function teamTotalsList(totals) {
   return [...totals.values()]
     .filter((t) => t.identity && (t.starts > 0 || t.points > 0))
@@ -123,18 +140,24 @@ export function teamTotalsList(totals) {
       seasonNumber: t.newestSeason,
       seasons: [...t.seasons].sort((a, b) => a - b),
       points: t.points,
+      score: t.score,
       starts: t.starts,
       wins: t.wins,
       podiums: t.podiums,
     }))
     .sort(
       (a, b) =>
-        b.points - a.points || b.wins - a.wins || b.podiums - a.podiums || b.starts - a.starts || a.name.localeCompare(b.name)
+        b.score - a.score ||
+        b.wins - a.wins ||
+        b.podiums - a.podiums ||
+        b.points - a.points ||
+        b.starts - a.starts ||
+        a.name.localeCompare(b.name)
     );
 }
 
 // `team` is any season's row of the team (with its season); `seasons` the
-// visible seasons of its series. Returns { name, seasons, drivers }.
+// visible seasons of its series. Returns { name, seasons, scale, drivers }.
 export async function getTeamAllTime(prisma, team, seasons, { includePrivate = false } = {}) {
   const links = await readTeamLinkMap(prisma);
   const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name, links)}|${includePrivate ? 1 : 0}`;
@@ -160,6 +183,8 @@ async function computeTeamAllTime(prisma, team, seasons, links) {
   const teamBySeason = new Map([...siblings].map(([seasonId, t]) => [seasonId, t.id]));
   const { byDriver } = await getPersonGroups(prisma);
   const personOf = (driverId) => byDriver.get(driverId) || driverId;
+  // Today's table: the newest season's own, else the league default.
+  const scale = parsePointsTable(seasons[seasons.length - 1]?.pointsTable) || DEFAULT_POINTS_TABLE;
 
   const totals = new Map();
   for (const season of seasons) {
@@ -187,8 +212,9 @@ async function computeTeamAllTime(prisma, team, seasons, links) {
       teamId,
       teamOf: (driverId, num, sprint) => stamped.get(`${driverId}|${num}|${sprint ? 1 : 0}`) ?? null,
       personOf,
+      scale,
     });
   }
 
-  return { name: team.name, seasons: teamBySeason.size, drivers: teamTotalsList(totals) };
+  return { name: team.name, seasons: teamBySeason.size, scale, drivers: teamTotalsList(totals) };
 }
