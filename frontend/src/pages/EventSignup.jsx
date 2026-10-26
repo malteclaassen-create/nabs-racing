@@ -15,7 +15,7 @@ import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime } from "../utils/raceTime.js";
 import { fmtRaceDate } from "../utils/format.js";
 import { currentSignupRace } from "../utils/signupQueue.js";
-import { Download } from "lucide-react";
+import { Download } from "../components/icons/filled.jsx";
 import { defaultLiveriesFor, carStoreUrl } from "../data/defaultLiveries.js";
 import { announceRsvpChanged } from "../hooks/useMyEventEntry.js";
 import { EventCarFields, takenNumbers, draftFrom, draftProblem, draftBody, holdsCar } from "../components/EventCar.jsx";

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { CalendarDays } from "lucide-react";
+import { CalendarCheck as CalendarDays } from "./icons/filled.jsx";
 import { CardBar, MEDAL, StatusPill } from "./ui.jsx";
 import Flag from "./Flag.jsx";
 import CircuitMap from "./CircuitMap.jsx";

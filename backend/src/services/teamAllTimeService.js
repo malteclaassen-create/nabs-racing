@@ -18,7 +18,7 @@
 //
 // Teams are matched across seasons by NAME within the series, exactly like
 // GET /teams/:id/history (lib/teamLineage.js: spelling forgiven, renames
-// joined up): ids are per season and there is no link table.
+// joined up by the admin's team links): ids are per season and there is no link table.
 //
 // The points are what each season paid, and the league changed its table over
 // the years (S1 paid 10-8-6…, S2–S5 25-18-15…, today 35-30-25…), so an early
@@ -32,7 +32,7 @@ import { seasonPointsBeforeDrop } from "./recordsService.js";
 import { parsePointsTable } from "./seasonService.js";
 import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 import { getPersonGroups } from "../lib/persons.js";
-import { sameTeamBySeason, teamLineageKey } from "../lib/teamLineage.js";
+import { sameTeamBySeason, teamLineageKey, readTeamLinkMap } from "../lib/teamLineage.js";
 
 // Walks every season of the series, so one answer is kept for a few minutes
 // per team name, the way the Hall of Fame keeps its own. A results import
@@ -159,10 +159,11 @@ export function teamTotalsList(totals) {
 // `team` is any season's row of the team (with its season); `seasons` the
 // visible seasons of its series. Returns { name, seasons, scale, drivers }.
 export async function getTeamAllTime(prisma, team, seasons, { includePrivate = false } = {}) {
-  const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name)}|${includePrivate ? 1 : 0}`;
+  const links = await readTeamLinkMap(prisma);
+  const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name, links)}|${includePrivate ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
-  const promise = computeTeamAllTime(prisma, team, seasons);
+  const promise = computeTeamAllTime(prisma, team, seasons, links);
   cache.set(key, { at: Date.now(), promise });
   promise.catch(() => {
     if (cache.get(key)?.promise === promise) cache.delete(key);
@@ -170,13 +171,14 @@ export async function getTeamAllTime(prisma, team, seasons, { includePrivate = f
   return promise;
 }
 
-async function computeTeamAllTime(prisma, team, seasons) {
+async function computeTeamAllTime(prisma, team, seasons, links) {
   const siblings = sameTeamBySeason(
     await prisma.team.findMany({
       where: { seasonId: { in: seasons.map((s) => s.id) } },
       select: { id: true, seasonId: true, name: true },
     }),
-    team.name
+    team.name,
+    links
   );
   const teamBySeason = new Map([...siblings].map(([seasonId, t]) => [seasonId, t.id]));
   const { byDriver } = await getPersonGroups(prisma);

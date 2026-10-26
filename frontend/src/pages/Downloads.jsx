@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import {
-  ChevronDown, ChevronRight, CircleHelp, Download, ExternalLink, FileCheck, Film, Flag,
-  Folder, Info, Lock, Package, Search, TriangleAlert,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { CircleHelp, Download, FileCheck, Film, Flag, Folder, Info, Lock, Package, Search, TriangleAlert } from "../components/icons/filled.jsx";
 import { api, withApiBase } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";

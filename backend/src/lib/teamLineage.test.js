@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { teamLineageKey, sameTeamBySeason } from "./teamLineage.js";
+import { teamLineageKey, sameTeamBySeason, linkMap, cleanTeamLinks, suggestTeamLinks } from "./teamLineage.js";
 
 describe("teamLineageKey", () => {
   it("ignores case, spaces and punctuation", () => {
@@ -38,5 +38,40 @@ describe("sameTeamBySeason", () => {
   it("prefers the exact spelling when a season has two rows of the team", () => {
     const m = sameTeamBySeason([...teams, { id: "s5_mclaren2", seasonId: "s5", name: "Mclaren" }], "Mclaren");
     expect(m.get("s5").id).toBe("s5_mclaren2");
+  });
+});
+
+describe("admin team links", () => {
+  const links = linkMap([
+    { from: "Volvo Racing", to: "Volvo" },
+    { from: "Volvo Cyan Racing", to: "Volvo Racing" },
+  ]);
+
+  it("joins up a linked name, and follows chains", () => {
+    expect(teamLineageKey("Volvo Racing", links)).toBe(teamLineageKey("Volvo", links));
+    expect(teamLineageKey("volvo cyan-racing", links)).toBe(teamLineageKey("Volvo", links));
+  });
+
+  it("only the saved links count once there are any", () => {
+    expect(teamLineageKey("Porsche Martini", links)).not.toBe(teamLineageKey("Porsche", links));
+  });
+
+  it("refuses a loop, an empty name and a link to itself", () => {
+    expect(cleanTeamLinks([{ from: "A Team", to: "B Team" }, { from: "B Team", to: "A Team" }]).error).toMatch(/circle/);
+    expect(cleanTeamLinks([{ from: "A", to: "B" }, { from: "B", to: "C" }, { from: "C", to: "A" }]).error).toMatch(/circle/);
+    expect(cleanTeamLinks([{ from: "Volvo", to: " " }]).error).toBeTruthy();
+    expect(cleanTeamLinks([{ from: "Red Bull", to: "Redbull" }]).error).toBeTruthy();
+  });
+
+  it("keeps one link per name, the last one", () => {
+    expect(cleanTeamLinks([{ from: "Volvo Racing", to: "Volvo" }, { from: " volvo racing", to: "Polestar" }]).links).toEqual([
+      { from: "volvo racing", to: "Polestar" },
+    ]);
+  });
+
+  it("suggests names that look like the same team, not ones already joined", () => {
+    expect(suggestTeamLinks(["Volvo Racing", "Volvo", "Ferrari", "Porsche Martini", "Porsche"])).toEqual([
+      { from: "Volvo Racing", to: "Volvo" },
+    ]);
   });
 });

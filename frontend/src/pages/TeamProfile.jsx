@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Trophy } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { FlagCheckered, Hash, Podium, TrendingUp, Trophy } from "../components/icons/filled.jsx";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useSeasonParam } from "../hooks/useSeasonParam.js";
@@ -24,21 +25,11 @@ const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
 // string the admin typed, not only six-digit hex).
 const tint = (color, pct) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 
-// --- tiny inline icons (stroke = currentColor) ---------------------------
-const I = {
-  trophy: "M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4zM7 5H4v2a3 3 0 003 3M17 5h3v2a3 3 0 01-3 3",
-  podium: "M4 21V11h5v10M9 21V5h6v16M15 21V9h5v12",
-  flagChk: "M5 21V4M5 4h14l-3 4 3 4H5",
-  chart: "M4 19h16M7 15l3-4 3 3 4-6",
-  hash: "M4 9h16M4 15h16M10 3 8 21M16 3l-2 18",
-};
+// --- the stat tiles' symbols (components/icons/filled.jsx) ----------------
+const I = { trophy: Trophy, podium: Podium, flagChk: FlagCheckered, chart: TrendingUp, hash: Hash };
 function Icon({ name, className = "" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d={I[name]} />
-    </svg>
-  );
+  const Glyph = I[name];
+  return Glyph ? <Glyph className={className} /> : null;
 }
 
 function Stat({ icon, label, value, sub, accent, index = 0 }) {

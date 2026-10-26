@@ -9,7 +9,7 @@ import { getT1ConstructorStandings, getT2ConstructorStandings } from "../service
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
-import { sameTeamBySeason } from "../lib/teamLineage.js";
+import { sameTeamBySeason, readTeamLinkMap } from "../lib/teamLineage.js";
 import { readTransfers, byDriver, nextRoundNumber } from "../services/driverTransfers.js";
 
 const router = Router();
@@ -177,7 +177,8 @@ router.get("/:id/history", async (req, res, next) => {
     });
     const bySeason = sameTeamBySeason(
       await prisma.team.findMany({ where: { seasonId: { in: seasons.map((s) => s.id) } } }),
-      team.name
+      team.name,
+      await readTeamLinkMap(prisma)
     );
 
     // "Is this season's table final?" — see the note on `concluded` below.

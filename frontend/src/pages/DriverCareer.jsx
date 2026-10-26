@@ -23,10 +23,8 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { fmtLap, fmtStamp, NO_VALUE } from "../utils/format.js";
-import {
-  Trophy, Medal, Flag as FlagIcon, Gauge, Timer, Activity, ArrowLeftRight, Crown,
-  ListOrdered, ChevronDown, Star, TrendingUp, ShieldAlert, Route as RouteIcon,
-} from "lucide-react";
+import { ListOrdered, ChevronDown } from "lucide-react";
+import { Trophy, Medal, FlagCheckered as FlagIcon, Gauge, Timer, Activity, ArrowLeftRight, Crown, Star, TrendingUp, ShieldAlert, Route as RouteIcon } from "../components/icons/filled.jsx";
 
 const pos = (n) => (n == null ? NO_VALUE : `P${n}`);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
