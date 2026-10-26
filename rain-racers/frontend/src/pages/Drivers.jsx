@@ -32,10 +32,10 @@ function RoundCell({ r }) {
   return (
     <span className={`inline-flex gap-0.5 ${r.dropped ? "opacity-50" : ""}`} title={title}>
       {(races.length ? races : [null]).map((x, i) => (
-        <span key={i} className={`inline-flex min-w-7 items-center justify-center rounded px-1 py-0.5 text-xs font-bold tabular ${cellTone(x)} ${r.dropped ? "line-through" : ""}`}>
+        <span key={i} className={`inline-flex min-w-7 items-center justify-center rounded px-1 py-0.5 text-xs font-bold tabular lg:min-w-9 lg:py-1 lg:text-sm ${cellTone(x)} ${r.dropped ? "line-through" : ""}`}>
           {place(x)}
           {x?.fastestLap && <span className="text-fuchsia-400">•</span>}
-          {i === 0 && r.pole && <span className="ml-0.5 text-[9px] text-sky-300">P</span>}
+          {i === 0 && r.pole && <span className="ml-0.5 text-[9px] text-sky-300 lg:text-[11px]">P</span>}
         </span>
       ))}
     </span>
@@ -107,7 +107,7 @@ export default function Drivers() {
             <tbody>
               {data.drivers.map((d) => (
                 <tr key={d.id} {...rise(d.position, 35)}>
-                  <td className="pl-5 font-black tabular">{d.position}</td>
+                  <td className="pl-5 font-black tabular lg:text-lg">{d.position}</td>
                   <td>
                     <span className="inline-flex items-center gap-2">
                       <DriverName driver={d} />
@@ -130,7 +130,7 @@ export default function Drivers() {
                   ))}
                   <td className="hidden text-center tabular sm:table-cell">{d.wins}</td>
                   <td className="hidden text-center tabular sm:table-cell">{d.podiums}</td>
-                  <td className="pr-5 text-right text-base font-black tabular">
+                  <td className="pr-5 text-right text-base font-black tabular lg:text-xl">
                     {points(d.points)}
                     {d.manual !== 0 && (
                       <span className="ml-1 align-super text-[10px] font-bold text-sky-300" title={`Manual points: ${points(d.manual)}${d.manualNotes.length ? ` (${d.manualNotes.join(", ")})` : ""}`}>
@@ -145,7 +145,7 @@ export default function Drivers() {
         </div>
       )}
       {data.drivers.length > 0 && view === "table" && (
-        <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+        <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted lg:text-sm">
           <span>
             <span className="text-fuchsia-400">•</span> fastest lap
           </span>

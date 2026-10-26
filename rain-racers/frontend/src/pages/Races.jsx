@@ -60,11 +60,17 @@ export default function Races() {
                     <RoundFacts race={race} className="mt-2" />
                     <div className="mt-auto pt-4 text-sm">
                       {race.done ? (
-                        <ol className="flex flex-wrap gap-x-4 gap-y-1">
+                        <ol className="flex flex-wrap gap-x-4 gap-y-1.5">
                           {race.podium.map((r) => (
-                            <li key={r.driver.id} className="flex items-center gap-1.5">
-                              <span className="font-black text-muted">{r.position}</span>
-                              <TeamDot team={r.team} />
+                            <li key={r.driver.id} className="flex items-center gap-2">
+                              {/* the winner in the series colour, second and third framed */}
+                              <span
+                                className="round-block h-6 w-6 text-xs"
+                                style={r.position === 1 ? { background: color, color: inkOn(color) } : { boxShadow: "inset 0 0 0 1.5px rgb(var(--line))" }}
+                              >
+                                {r.position}
+                              </span>
+                              {r.team && <TeamDot team={r.team} />}
                               <span className="font-semibold">{r.driver.name}</span>
                             </li>
                           ))}

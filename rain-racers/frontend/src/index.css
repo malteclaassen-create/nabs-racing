@@ -63,14 +63,15 @@ body {
   .label {
     @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-muted;
   }
+  /* a size up on a big screen, where the tables are read from further away */
   .table {
-    @apply w-full text-left text-sm;
+    @apply w-full text-left text-sm lg:text-base;
   }
   .table th {
-    @apply whitespace-nowrap px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted;
+    @apply whitespace-nowrap px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted lg:py-3 lg:text-xs;
   }
   .table td {
-    @apply whitespace-nowrap px-3 py-2.5;
+    @apply whitespace-nowrap px-3 py-2.5 lg:py-3;
   }
   .table tbody tr {
     @apply border-t border-line/70 transition-colors;

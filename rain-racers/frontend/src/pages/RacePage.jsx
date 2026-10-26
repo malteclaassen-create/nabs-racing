@@ -72,8 +72,8 @@ function ResultTable({ rows, showGrid }) {
                 </td>
               )}
               <td className="hidden text-right tabular sm:table-cell">{r.laps}</td>
-              <td className="text-right font-mono text-xs tabular">{gapCell(r, winner)}</td>
-              <td className={`hidden text-right font-mono text-xs tabular sm:table-cell ${r.fastestLap ? "font-bold text-fuchsia-400" : ""}`}>{lapTime(r.bestLapMs)}</td>
+              <td className="text-right font-mono text-xs tabular lg:text-sm">{gapCell(r, winner)}</td>
+              <td className={`hidden text-right font-mono text-xs tabular lg:text-sm sm:table-cell ${r.fastestLap ? "font-bold text-fuchsia-400" : ""}`}>{lapTime(r.bestLapMs)}</td>
               <td className="pr-5 text-right font-black tabular">
                 {points(r.points)}
                 {r.pointsAdjust !== 0 && (
@@ -122,8 +122,8 @@ function QualiTable({ rows }) {
                   <TeamName team={q.team} />
                 </td>
               )}
-              <td className="text-right font-mono text-xs tabular">{lapTime(q.bestLapMs)}</td>
-              <td className={`text-right font-mono text-xs tabular text-muted ${withPoints ? "" : "pr-5"}`}>{q.gapMs ? gapText(q.gapMs) : ""}</td>
+              <td className="text-right font-mono text-xs tabular lg:text-sm">{lapTime(q.bestLapMs)}</td>
+              <td className={`text-right font-mono text-xs tabular lg:text-sm text-muted ${withPoints ? "" : "pr-5"}`}>{q.gapMs ? gapText(q.gapMs) : ""}</td>
               {withPoints && <td className="pr-5 text-right font-black tabular">{q.points ? points(q.points) : ""}</td>}
             </tr>
           ))}

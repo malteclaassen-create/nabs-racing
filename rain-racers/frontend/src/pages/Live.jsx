@@ -181,8 +181,8 @@ export default function Live() {
                     <th className="hidden sm:table-cell">Car</th>
                     <th className="text-right">Laps</th>
                     <th className="text-right">Gap</th>
-                    <th className="text-right">Best</th>
-                    <th className="pr-5 text-right">Last</th>
+                    <th className="pr-5 text-right sm:pr-3">Best</th>
+                    <th className="hidden pr-5 text-right sm:table-cell">Last</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -199,15 +199,15 @@ export default function Live() {
                       </td>
                       <td className="hidden text-muted sm:table-cell">{r.car}</td>
                       <td className="text-right tabular">{r.laps}</td>
-                      <td className="text-right font-mono text-xs tabular">
+                      <td className="text-right font-mono text-xs tabular lg:text-sm">
                         {r.gap?.laps ? `+${r.gap.laps} L` : r.gap?.ms != null ? `${isRace ? "≈" : ""}${gapText(r.gap.ms)}` : ""}
                       </td>
                       <td
-                        className={`text-right font-mono text-xs tabular ${r.bestLapMs && r.bestLapMs === board.fastestLapMs ? "font-bold text-fuchsia-400" : ""}`}
+                        className={`pr-5 text-right font-mono text-xs tabular sm:pr-3 lg:text-sm ${r.bestLapMs && r.bestLapMs === board.fastestLapMs ? "font-bold text-fuchsia-400" : ""}`}
                       >
                         {lapTime(r.bestLapMs)}
                       </td>
-                      <td className="pr-5 text-right font-mono text-xs tabular text-muted">{lapTime(r.lastLapMs)}</td>
+                      <td className="hidden pr-5 text-right font-mono text-xs tabular text-muted sm:table-cell lg:text-sm">{lapTime(r.lastLapMs)}</td>
                     </tr>
                   ))}
                 </tbody>
