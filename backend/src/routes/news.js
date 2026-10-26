@@ -6,6 +6,13 @@
 //   GET  /api/news/article/:slug          one published article (+ its round, read next)
 //   GET  /api/news/desk/access            { canWrite, admin } for the caller
 //
+// Comments (lib/newsComments.js). Reading is public, writing takes a member:
+//   GET    /api/news/comments/:articleId?before=   newest first, { comments, more, count, gifSearch }
+//   POST   /api/news/comments/:articleId           { body, gif: { url, width, height } }
+//   DELETE /api/news/comments/:articleId/:id       the writer, or the news desk
+//   GET    /api/news/gifs?q=                       GIPHY search (trending without q), members
+//   POST   /api/news/gifs/resolve                  { link } -> { gif } for a pasted Tenor/GIPHY link
+//
 // The desk (admins and news writers, middleware requireNewsDesk):
 //   GET    /api/news/desk                 every article, drafts first
 //   GET    /api/news/desk/:id             one article, draft or not
@@ -28,7 +35,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import prisma from "../lib/prisma.js";
-import { requireNewsDesk, newsDeskFor } from "../middleware/auth.js";
+import { requireNewsDesk, newsDeskFor, optionalUser, requireUser } from "../middleware/auth.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
 import { sniffImageType, checkImageUpload } from "../lib/imageIntegrity.js";
@@ -52,6 +59,21 @@ import {
   readNewsWriters,
   writeNewsWriters,
 } from "../lib/news.js";
+import {
+  isCommentId,
+  readGifLink,
+  resolveTenorPage,
+  gifSearchEnabled,
+  searchGifs,
+  sanitizeCommentInput,
+  commentRateCheck,
+  shapeComment,
+  listComments,
+  countComments,
+  findComment,
+  createComment,
+  deleteComment,
+} from "../lib/newsComments.js";
 import {
   AUTO_REPORT_MODES,
   autoReportMode,
@@ -130,6 +152,104 @@ router.get("/article/:slug", async (req, res, next) => {
 router.get("/desk/access", async (req, res) => {
   const { desk } = await newsDeskFor(req).catch(() => ({}));
   res.json({ canWrite: !!desk, admin: !!desk?.admin });
+});
+
+// --- comments ----------------------------------------------------------------
+
+// A published article by id, or null: drafts take no comments and show none.
+async function publishedArticle(id) {
+  if (!isArticleId(id)) return null;
+  const row = await findArticle(prisma, { id });
+  return row?.status === "PUBLISHED" ? row : null;
+}
+
+// Who is reading, for `mine` and `canDelete`. Only asks about the desk when
+// the request carries a token at all.
+async function commentViewer(req) {
+  const hasToken = (req.headers.authorization || "").startsWith("Bearer ");
+  const { desk } = hasToken ? await newsDeskFor(req).catch(() => ({})) : {};
+  return { discordId: req.user?.discordId ? String(req.user.discordId) : null, moderator: !!desk };
+}
+
+router.get("/comments/:articleId", optionalUser, async (req, res, next) => {
+  try {
+    const article = await publishedArticle(req.params.articleId);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    const viewer = await commentViewer(req);
+    const { rows, more } = await listComments(prisma, article.id, { before: req.query.before });
+    res.json({
+      comments: rows.map((r) => shapeComment(r, viewer)),
+      more,
+      count: await countComments(prisma, article.id),
+      gifSearch: gifSearchEnabled(),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/comments/:articleId", requireUser, async (req, res, next) => {
+  try {
+    const article = await publishedArticle(req.params.articleId);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    const { comment, error } = sanitizeCommentInput(req.body);
+    if (error) return res.status(400).json({ error });
+    const discordId = String(req.user.discordId || "");
+    if (!discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    const slow = commentRateCheck(discordId);
+    if (slow) return res.status(429).json({ error: slow });
+    const row = await createComment(prisma, article.id, comment, {
+      discordId,
+      name: req.user.driverName || req.user.discordName || "Member",
+      avatarUrl: req.user.avatarUrl || null,
+      driverId: req.user.driverId || null,
+    });
+    res.json({ comment: shapeComment(row, { discordId, moderator: false }) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The writer of a comment, or the news desk. The desk check comes first so an
+// admin signed in with the PIN (no member token) can tidy up too.
+router.delete("/comments/:articleId/:id", optionalUser, async (req, res, next) => {
+  try {
+    if (!isCommentId(req.params.id)) return res.status(404).json({ error: "Comment not found" });
+    const row = await findComment(prisma, req.params.id);
+    if (!row || row.articleId !== req.params.articleId) return res.status(404).json({ error: "Comment not found" });
+    const viewer = await commentViewer(req);
+    if (!viewer.moderator) {
+      if (!viewer.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+      if (viewer.discordId !== row.discordId) return res.status(403).json({ error: "That is somebody else's comment" });
+    }
+    await deleteComment(prisma, row.id);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Members only: the search spends the league's GIPHY quota.
+router.get("/gifs", requireUser, async (req, res, next) => {
+  try {
+    if (!gifSearchEnabled()) return res.json({ gifs: [], enabled: false });
+    res.json({ gifs: await searchGifs(req.query.q), enabled: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/gifs/resolve", requireUser, async (req, res, next) => {
+  try {
+    const read = readGifLink(req.body?.link);
+    if (read.error) return res.status(400).json({ error: read.error });
+    if (read.gif) return res.json({ gif: read.gif });
+    const gif = await resolveTenorPage(read.tenorPage);
+    if (!gif) return res.status(400).json({ error: "Tenor didn't hand over that GIF. Try copying the GIF's own address" });
+    res.json({ gif });
+  } catch (e) {
+    next(e);
+  }
 });
 
 // --- the desk ----------------------------------------------------------------

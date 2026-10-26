@@ -203,6 +203,7 @@ export function shapeArticle(row, { withBody = true } = {}) {
     raceId: row.raceId || null,
     authorName: row.authorName || null,
     readingMinutes: readingMinutes(row.body),
+    ...(row.commentCount != null ? { commentCount: Number(row.commentCount) } : {}),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     publishedAt: iso(row.publishedAt),
@@ -210,6 +211,8 @@ export function shapeArticle(row, { withBody = true } = {}) {
 }
 
 const LIST_COLUMNS = `"id","slug","title","summary","body","category","coverUrl","status","source","raceId","authorName","createdAt","updatedAt","publishedAt"`;
+// How many comments an article has (lib/newsComments.js), for the cards.
+const COMMENT_COUNT = `(SELECT COUNT(*) FROM "NewsComment" c WHERE c."articleId" = "NewsArticle"."id") AS "commentCount"`;
 
 // Published articles, newest first. `category` narrows, `q` searches title and
 // summary, `limit` caps (max 60), `before` pages by publishedAt.
@@ -235,7 +238,7 @@ export async function listPublished(prisma, { category = null, q = "", limit = 2
   }
   const n = Math.min(60, Math.max(1, Number(limit) || 24));
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT ${LIST_COLUMNS} FROM "NewsArticle" WHERE ${where.join(" AND ")} ORDER BY "publishedAt" DESC LIMIT ${n + 1}`,
+    `SELECT ${LIST_COLUMNS}, ${COMMENT_COUNT} FROM "NewsArticle" WHERE ${where.join(" AND ")} ORDER BY "publishedAt" DESC LIMIT ${n + 1}`,
     ...args
   );
   return {
@@ -383,5 +386,6 @@ export async function updateArticle(prisma, existing, fields) {
 }
 
 export async function deleteArticle(prisma, id) {
+  await prisma.$executeRawUnsafe(`DELETE FROM "NewsComment" WHERE "articleId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "NewsArticle" WHERE "id" = ?`, id);
 }

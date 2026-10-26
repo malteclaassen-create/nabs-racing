@@ -1051,9 +1051,10 @@ export const api = {
   // The news (backend routes/news.js). Reading is public; the desk takes an
   // admin OR a member an admin named a news writer, so it rides on whichever
   // token is there (the PIN, else the Discord session) and the server decides.
-  news: ({ category = "", q = "", before = "" } = {}) => {
+  news: ({ category = "", q = "", before = "", limit = 0 } = {}) => {
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
+    if (limit) qs.set("limit", String(limit));
     if (q) qs.set("q", q);
     if (before) qs.set("before", before);
     const s = qs.toString();
@@ -1081,6 +1082,23 @@ export const api = {
   newsDeskSettings: () => request("/news/desk/settings", { auth: true }),
   saveNewsDeskSettings: (settings) => request("/news/desk/settings", { method: "PUT", body: settings, auth: true }),
   newsDeskMembers: (q) => request(`/news/desk/members?q=${encodeURIComponent(q)}`, { auth: true }),
+  // Comments under an article. Read with the member's own token when there is
+  // one (it says which comments are theirs), else the PIN token (so an admin
+  // signed in that way can still tidy up); posting always takes a member.
+  newsComments: (articleId, before = "") =>
+    request(
+      `/news/comments/${encodeURIComponent(articleId)}${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+      localStorage.getItem(USER_TOKEN_KEY) ? { userAuth: true } : { auth: true }
+    ),
+  postNewsComment: (articleId, comment) =>
+    request(`/news/comments/${encodeURIComponent(articleId)}`, { method: "POST", body: comment, userAuth: true }),
+  deleteNewsComment: (articleId, id) =>
+    request(
+      `/news/comments/${encodeURIComponent(articleId)}/${encodeURIComponent(id)}`,
+      localStorage.getItem(USER_TOKEN_KEY) ? { method: "DELETE", userAuth: true } : { method: "DELETE", auth: true }
+    ),
+  searchGifs: (q = "") => request(`/news/gifs${q ? `?q=${encodeURIComponent(q)}` : ""}`, { userAuth: true }),
+  resolveGifLink: (link) => request("/news/gifs/resolve", { method: "POST", body: { link }, userAuth: true }),
   // The newcomer names who brought them in: a code, or the member's name.
   nameInviter: (name) => request("/tokens/invited-by", { method: "POST", body: { name }, userAuth: true }),
   // `text` is only read for the flair you write yourself (choice "custom").

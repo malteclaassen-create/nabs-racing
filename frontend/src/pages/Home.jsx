@@ -14,7 +14,9 @@ import Podium from "../components/Podium.jsx";
 import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
-import NextRaceCard, { circuitMark } from "../components/NextRaceCard.jsx";
+import { circuitMark } from "../components/NextRaceCard.jsx";
+import NextRaceBar from "../components/NextRaceBar.jsx";
+import HomeNews, { ColumnHeader } from "../components/HomeNews.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
@@ -551,6 +553,8 @@ export default function Home() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
+  // The newest articles, for the news column beside the latest result.
+  const news = useApi(useCallback(() => api.news({ limit: 5 }), []));
   const [latest, setLatest] = useState(null);
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);
@@ -845,7 +849,7 @@ export default function Home() {
   const podiumStrip = (block, { animKey = "race", first = true, delay = 0, stagger = 0.14 } = {}) =>
     block.podium.length > 0 && (
       <div key={animKey} className={first ? "mt-8 max-w-4xl" : "mt-3 max-w-4xl"}>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className={`grid gap-2 sm:grid-cols-3 ${newsSplit ? "lg:grid-cols-1" : ""}`}>
                 {block.podium.map((p, i) => (
 
                   <Link
@@ -942,6 +946,14 @@ export default function Home() {
   const openHeroRace = heroRaces.find((r) => r.key === openRaceTab) || heroRaces[0] || null;
 
   const showComingSoonHero = isUpcomingSeason || awaitingOpener;
+  // A running season leads with the news and the latest result side by side,
+  // under the next-race bar (the layout of the F1 site's front page). Every
+  // other hero (season complete, archive, coming soon) keeps the full width,
+  // and the news runs across the page under it instead. While the news is
+  // still loading the column holds its place; with no news at all the result
+  // takes the whole width.
+  const runningHero = !seasonOver && !isPast && !showComingSoonHero;
+  const newsSplit = runningHero && !news.error && (news.loading || (news.data?.articles?.length || 0) > 0);
   // The running season's own opener panel (right half of that hero): the same
   // card the off-season teaser uses, fed from the season itself — the teaser
   // endpoint only ever announces a season AHEAD of the active one, so it goes
@@ -1077,6 +1089,10 @@ export default function Home() {
             </span>
           )}
         </div>
+        {/* The next round, as one strip across the page (it used to be a card
+            in the hero's right half). Only beside a running season's result:
+            the coming-soon heroes are a countdown to the opener already. */}
+        {runningHero && nextRace && <NextRaceBar race={nextRace} />}
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
@@ -1085,12 +1101,22 @@ export default function Home() {
       {/* The hero follows the site theme: dark mode keeps the classic dark
           card, light mode gets a proper WHITE version — white scrims over the
           photo and ink text (the inner elements carry light+dark variants). */}
+      <div
+        className={
+          newsSplit ? "grid items-stretch gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-8" : undefined
+        }
+      >
+      {newsSplit && <HomeNews news={news} layout="panel" />}
+      <div className={newsSplit ? "flex flex-col" : undefined}>
+      {newsSplit && <ColumnHeader title="Latest result" to="/races" cta="All rounds" />}
       <section
         ref={film.ref}
         // An attribute, not a class: useScrollReveal adds `is-visible` to this
         // element by hand, and a className React rewrites would drop it.
         data-film={film.showing ? "on" : undefined}
-        className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
+        className={`reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10 ${
+          newsSplit ? "flex flex-1 flex-col" : ""
+        }`}
       >
         <img
           ref={heroImgRef}
@@ -1131,7 +1157,11 @@ export default function Home() {
           }}
         />
 
-        <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
+        <div
+          className={`hero-hud relative flex min-h-[460px] flex-col gap-8 ${
+            newsSplit ? "flex-1 p-6 sm:p-10 lg:p-8 xl:p-10" : "p-7 sm:p-12 lg:flex-row lg:gap-10"
+          }`}
+        >
           {seasonOver || isPast ? (
             /* SEASON COMPLETE — one hero for every finished season, live finale
                and archive alike: the "<season> complete" line over the final
@@ -1277,7 +1307,12 @@ export default function Home() {
                 stops it shrinking on a narrow one or growing past the old size
                 on a wide one. break-words stays as the last resort for a name
                 nobody has raced yet. */}
-            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
+            <h1
+              className={`hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white ${
+                newsSplit ? "sm:text-6xl lg:text-5xl xl:text-6xl" : "sm:text-7xl"
+              }`}
+              style={{ animationDelay: "0.12s" }}
+            >
               {lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
@@ -1342,7 +1377,7 @@ export default function Home() {
               // 60px cards, measured) so the buttons below do not jump down
               // when it lands.
               <div className="mt-8 max-w-4xl" aria-hidden="true">
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className={`grid gap-2 sm:grid-cols-3 ${newsSplit ? "lg:grid-cols-1" : ""}`}>
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
@@ -1423,16 +1458,17 @@ export default function Home() {
             </div>
           </div>
 
-          {/* RIGHT — next race panel */}
-          {nextRace && (
-            <div className="flex shrink-0 flex-col justify-end lg:w-72">
-              <NextRaceCard race={nextRace} className="hero-anim" style={{ animationDelay: "0.22s" }} />
-            </div>
-          )}
           </>
           )}
         </div>
       </section>
+      </div>
+      </div>
+
+      {/* ===================== LATEST NEWS (other heroes) ===================== */}
+      {/* A running season has the news beside its result; the full-width heroes
+          get it as a row under them. Archive seasons stay about the archive. */}
+      {!newsSplit && !isPast && <HomeNews news={news} layout="row" />}
 
       {/* ===================== TITLE FIGHT (running seasons) ================= */}
       {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a

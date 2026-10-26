@@ -4,11 +4,13 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Spinner } from "../components/ui.jsx";
 import NewsBody from "../components/NewsBody.jsx";
+import NewsComments from "../components/NewsComments.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtDateLong, fmtStamp } from "../utils/format.js";
 import { CategoryChip, NewsCover, useNewsDeskAccess } from "./News.jsx";
 
-// /news/:slug — one published article, and three more to read next.
+// /news/:slug — one published article, what members said about it, and three
+// more to read next.
 export default function NewsArticle() {
   const { slug } = useParams();
   const access = useNewsDeskAccess();
@@ -70,6 +72,8 @@ export default function NewsArticle() {
       <div className="mt-6">
         <NewsBody text={article.body} />
       </div>
+
+      <NewsComments articleId={article.id} />
 
       {data.more?.length > 0 && (
         <section className="mt-12 border-t border-border pt-6">

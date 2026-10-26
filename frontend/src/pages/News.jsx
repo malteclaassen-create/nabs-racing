@@ -68,6 +68,18 @@ export function useNewsDeskAccess() {
   return access;
 }
 
+// A speech bubble and how many comments an article has.
+export function CommentCount({ count, className = "" }) {
+  return (
+    <span className={`inline-flex items-center gap-1 font-mono text-[11px] text-light ${className}`} title={`${count} comment${count === 1 ? "" : "s"}`}>
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 5h16v11H9l-5 4z" />
+      </svg>
+      {count}
+    </span>
+  );
+}
+
 function ArticleCard({ article, i }) {
   return (
     <Link
@@ -85,7 +97,12 @@ function ArticleCard({ article, i }) {
         </div>
         <h2 className="mt-1.5 font-display text-lg font-extrabold leading-tight tracking-tight text-dark">{article.title}</h2>
         {article.summary && <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-light">{article.summary}</p>}
-        {article.authorName && <div className="mt-auto pt-3 text-xs font-semibold text-medium">{article.authorName}</div>}
+        {(article.authorName || article.commentCount > 0) && (
+          <div className="mt-auto flex items-center gap-3 pt-3 text-xs font-semibold text-medium">
+            {article.authorName && <span>{article.authorName}</span>}
+            {article.commentCount > 0 && <CommentCount count={article.commentCount} className="ml-auto" />}
+          </div>
+        )}
       </div>
     </Link>
   );
