@@ -69,7 +69,7 @@ export default function SeriesHome() {
             </div>
           </div>
           {banner && (
-            <div className="logo-in overflow-hidden rounded-2xl border border-line shadow-2xl">
+            <div {...rise(2, 80)} className="rise overflow-hidden rounded-2xl border border-line shadow-2xl">
               <Img sources={bannerSources} className="aspect-video w-full object-cover" />
             </div>
           )}
