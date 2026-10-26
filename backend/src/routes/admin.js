@@ -57,6 +57,7 @@ import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.j
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
 import { invalidateCareerCache } from "../services/careerService.js";
+import { invalidateTeamAllTimeCache } from "../services/teamAllTimeService.js";
 import { invalidateTrackStrengthCache } from "../services/trackStrengthService.js";
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
@@ -2944,6 +2945,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateTeamAllTimeCache();
     invalidateTrackStrengthCache();
     invalidateRatingHistoryCache();
     invalidateCardRatingCache();
@@ -5687,6 +5689,7 @@ router.put("/seasons/:id/manual-points", async (req, res, next) => {
     // The Hall of Fame caches its walk over every season for a few minutes.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateTeamAllTimeCache();
     invalidateTrackStrengthCache();
     res.json({ saved: parsed.length });
   } catch (e) {

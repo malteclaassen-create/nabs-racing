@@ -647,6 +647,9 @@ export const api = {
   // Every season this team has raced and where it finished, for the team page's
   // career table and its constructor seals.
   teamHistory: (id) => request(`/teams/${id}/history`, { auth: true }),
+  // Everyone who ever raced for the team, with the points, wins, podiums and
+  // starts they scored for it across every season (team page, all-time drivers).
+  teamDrivers: (id) => request(`/teams/${id}/drivers`, { auth: true }),
   // Tiny "is anything happening" poll for the nav bar's live dot. Deliberately
   // not the timing board, which is the whole grid.
   liveStatus: () => request(`/live/status${seriesQ()}`),

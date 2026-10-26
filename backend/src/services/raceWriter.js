@@ -8,6 +8,7 @@ import { readTransfers, byDriver, teamForRound, syncRosterToTransfers } from "./
 import { getSeasonScoring } from "./seasonService.js";
 import { invalidateRecordsCache } from "./recordsService.js";
 import { invalidateCareerCache } from "./careerService.js";
+import { invalidateTeamAllTimeCache } from "./teamAllTimeService.js";
 import { invalidateTrackStrengthCache } from "./trackStrengthService.js";
 import { invalidateRatingHistoryCache } from "./ratingHistoryService.js";
 import { invalidateCardRatingCache } from "./cardRatingService.js";
@@ -272,6 +273,7 @@ export async function saveRaceResults(prisma, raceId, results) {
   // page reflects the round immediately instead of after the cache TTL.
   invalidateRecordsCache();
   invalidateCareerCache();
+  invalidateTeamAllTimeCache();
   invalidateTrackStrengthCache();
   // New results also reshape the round-by-round rating curves — and the last
   // round of a season turns that season into the next one's card values.
