@@ -40,7 +40,9 @@ function board() {
     status,
     liveByCar,
     progress,
-    connected: upstream?.readyState === WebSocket.OPEN,
+    // live once the first snapshot is in: the server manager sends one as
+    // soon as we connect, so an open socket without one is still starting
+    connected: upstream?.readyState === WebSocket.OPEN && status !== null,
     snapshotAt,
   });
 }
@@ -111,7 +113,8 @@ async function connectUpstream() {
   socket.on("open", () => {
     reconnectDelay = 2000;
     console.log("live: connected to", liveWsUrl);
-    broadcast(true);
+    // no broadcast yet: until the first snapshot there is nothing to show,
+    // and an empty board would read as "no session running"
   });
   socket.on("message", (buf) => {
     let msg;
@@ -120,7 +123,10 @@ async function connectUpstream() {
     } catch {
       return;
     }
-    if (msg.EventType === 200) onSnapshot(msg.Message);
+    if (msg.EventType === 200) {
+      onSnapshot(msg.Message);
+      broadcast(); // show a new snapshot at once, not on the next tick
+    }
     else if (msg.EventType === 53) onCarUpdate(msg.Message);
   });
   socket.on("error", (err) => console.warn("live: upstream error:", err.message));

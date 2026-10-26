@@ -96,7 +96,9 @@ export default function Live() {
       </PageHeader>
 
       {!session ? (
-        <Empty>{online ? "No session is running on the server right now." : "Connecting to the live timing…"}</Empty>
+        <Empty>
+          {!online ? "Connecting to the live timing…" : board?.connected ? "No session is running on the server right now." : "Connecting to the race server…"}
+        </Empty>
       ) : (
         <>
           <div className="card mb-4 flex flex-wrap gap-x-6 gap-y-2 px-5 py-3 text-sm">
