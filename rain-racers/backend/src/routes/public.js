@@ -499,11 +499,13 @@ router.get("/history", async (_req, res) => {
     if (!races.length) continue;
     const done = races.filter((r) => r._count.results > 0);
     let champion = null;
+    let top = [];
     const finished = races.every((r) => r._count.results > 0 || isOver(r));
-    if (done.length && (season.championId || finished)) {
+    // the top three of the table: the final one, or the one so far
+    if (done.length) {
       const standings = await seasonStandings(season, await seasonRaces(season.id));
-      const top = standings.drivers[0];
-      if (top) champion = { ...driverOut(top), points: top.points, team: top.team };
+      top = standings.drivers.slice(0, 3).map((d) => ({ ...driverOut(d), points: d.points, team: d.team }));
+      if (top[0] && (season.championId || finished)) champion = top[0];
     }
     // the season's banner, else the first round's poster, else a recording
     const poster = races.find((r) => r.imageUrl)?.imageUrl;
@@ -518,6 +520,7 @@ router.get("/history", async (_req, res) => {
       roundsWithResults: done.length,
       running: !finished,
       champion,
+      top,
     });
   }
   out.sort((a, b) => new Date(b.from) - new Date(a.from));

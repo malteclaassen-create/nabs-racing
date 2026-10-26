@@ -2,11 +2,11 @@ import { Link } from "react-router-dom";
 import { useApi } from "../site.jsx";
 import { Loading, ErrorBox, Empty, PageHeader, TeamDot, rise } from "../components/ui.jsx";
 import { Img, PosterPanel, thumbnails } from "../components/Picture.jsx";
-import { inkOn, monthYear } from "../format.js";
+import { inkOn, monthYear, points } from "../format.js";
 
 // Every season the league has run, newest first and grouped by year: the
 // banner (or a round's poster or recording), when it ran, how many rounds
-// and who won it.
+// and the top three of its table (so far, for one still running).
 export default function History() {
   const { data, error, loading } = useApi("/history");
   if (loading && !data) return <Loading />;
@@ -76,12 +76,29 @@ function SeasonCard({ s }) {
           {s.roundsWithResults > 0 && s.roundsWithResults < s.rounds ? ` · ${s.roundsWithResults} with results` : ""}
         </div>
         <div className="mt-auto pt-4">
-          {s.champion ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted">{s.running ? "Leader" : s.rounds === 1 ? "Winner" : "Champion"}</span>
-              <TeamDot team={s.champion.team} />
-              <span className="truncate font-bold">{s.champion.name}</span>
-            </div>
+          {s.top.length > 0 ? (
+            <>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+                {s.running ? `Standings after ${s.roundsWithResults} of ${s.rounds}` : s.rounds === 1 ? "Result" : "Final standings"}
+              </div>
+              <ol className="space-y-1.5 text-sm">
+                {s.top.map((d, i) => (
+                  <li key={d.id} className="flex items-center gap-2.5">
+                    {/* the winner in the series colour, second and third framed */}
+                    <span
+                      className="round-block h-6 w-6 shrink-0 text-xs"
+                      style={i === 0 ? { background: color, color: inkOn(color) } : { boxShadow: "inset 0 0 0 1.5px rgb(var(--line))" }}
+                    >
+                      {i + 1}
+                    </span>
+                    {d.team && <TeamDot team={d.team} />}
+                    <span className={`min-w-0 truncate ${i === 0 ? "font-bold" : "font-semibold"}`}>{d.name}</span>
+                    {i === 0 && s.champion && s.rounds > 1 && <span className="text-[10px] font-black uppercase text-amber-300">Champion</span>}
+                    <span className="ml-auto shrink-0 tabular text-muted">{points(d.points)} pts</span>
+                  </li>
+                ))}
+              </ol>
+            </>
           ) : (
             <div className="text-xs text-muted">{s.running ? "Under way" : "No results on record"}</div>
           )}
