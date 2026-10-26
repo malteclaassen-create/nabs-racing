@@ -38,7 +38,7 @@ export default function Teams() {
                 {t.drivers.length === 0 && <li className="text-sm text-muted">No drivers</li>}
                 {t.drivers.map((d) => (
                   <li key={d.id}>
-                    <Link to={`/drivers/${d.id}`} className="inline-flex items-center gap-2 text-sm hover:text-accent">
+                    <Link to={`/drivers/${d.id}`} className="inline-flex items-center gap-2 text-sm hover:opacity-70">
                       {d.number != null && <span className="font-mono text-xs text-muted">#{d.number}</span>}
                       <span className="font-semibold">{d.name}</span>
                       {d.country && <span>{flag(d.country)}</span>}

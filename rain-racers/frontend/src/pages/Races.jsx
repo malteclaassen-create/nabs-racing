@@ -27,14 +27,18 @@ export default function Races() {
                 className={`card flex flex-col gap-4 p-5 transition hover:border-accent/50 sm:flex-row sm:items-center ${race.id === nextId ? "border-accent/60" : ""}`}
               >
                 <div className="flex items-center gap-4 sm:w-1/2">
-                  <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-bg">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">Rd</span>
-                    <span className="text-xl font-black leading-none">{race.round}</span>
+                  {/* the round's number in a block, as on the league's calendar graphics */}
+                  <div
+                    className={`round-block h-14 w-14 text-3xl ${
+                      race.id === nextId ? "bg-accent text-accent-ink" : race.done ? "bg-white/10 text-muted" : "border border-line text-ink"
+                    }`}
+                  >
+                    {race.round}
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="h2 truncate">{race.name}</span>
-                      {race.id === nextId && <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-black uppercase text-bg">Next</span>}
+                      <span className="display truncate text-2xl">{race.track || race.name}</span>
+                      {race.id === nextId && <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-black uppercase italic text-accent-ink">Next</span>}
                       {race.pointsMultiplier !== 1 && (
                         <span className="rounded border border-amber-400/50 px-1.5 py-0.5 text-[10px] font-black uppercase text-amber-300">
                           ×{race.pointsMultiplier} points
@@ -42,7 +46,8 @@ export default function Races() {
                       )}
                     </div>
                     <div className="text-sm text-muted">
-                      {race.track} · {dateTime(race.startsAt)}
+                      {race.track && race.name !== race.track ? `${race.name} · ` : ""}
+                      {dateTime(race.startsAt)}
                     </div>
                   </div>
                 </div>

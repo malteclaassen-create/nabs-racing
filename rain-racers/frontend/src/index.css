@@ -2,13 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Black and white like the Rain Racers logo; the accent is the league colour
+   from the admin (white by default) and --accent-ink the text that reads on it. */
 :root {
-  --accent: 56 189 248; /* replaced by the league colour from the admin */
-  --bg: 8 13 24;
-  --card: 15 23 38;
-  --line: 32 44 66;
-  --ink: 236 242 250;
-  --muted: 138 153 178;
+  --accent: 255 255 255;
+  --accent-ink: 0 0 0;
+  --bg: 0 0 0;
+  --card: 13 13 15;
+  --line: 40 40 46;
+  --ink: 255 255 255;
+  --muted: 150 150 160;
   color-scheme: dark;
 }
 
@@ -30,28 +33,32 @@ body {
     @apply rounded-2xl border border-line bg-card;
   }
   .eyebrow {
-    @apply text-[11px] font-bold uppercase tracking-[0.22em] text-accent;
+    @apply text-[11px] font-bold uppercase tracking-[0.22em] text-muted;
+  }
+  /* The heavy, leaning capitals of the league's race graphics. */
+  .display {
+    @apply font-black uppercase italic leading-[0.9] tracking-tight;
   }
   .h1 {
-    @apply text-3xl font-black uppercase italic tracking-tight sm:text-4xl;
+    @apply display text-4xl sm:text-5xl;
   }
   .h2 {
-    @apply text-lg font-black uppercase italic tracking-tight;
+    @apply display text-lg;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-accent {
-    @apply btn bg-accent text-bg hover:brightness-110;
+    @apply btn bg-accent text-accent-ink hover:brightness-90;
   }
   .btn-ghost {
-    @apply btn border border-line text-ink hover:border-accent/60 hover:text-accent;
+    @apply btn border border-line text-ink hover:border-ink;
   }
   .btn-danger {
     @apply btn border border-red-500/40 text-red-300 hover:bg-red-500/10;
   }
   .input {
-    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-accent;
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink outline-none placeholder:text-muted/60 focus:border-ink;
   }
   .label {
     @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-muted;
@@ -71,45 +78,50 @@ body {
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* A round's number in a solid block, as on the league's calendar graphics. */
+  .round-block {
+    @apply flex shrink-0 items-center justify-center rounded-md font-black italic leading-none tabular;
+  }
 }
 
-/* Falling rain behind the home page's header. Two layers of thin streaks at
-   different speeds; off for anyone who asked their system for less motion. */
-.rain {
+/* The coloured panel with a slanted edge from the series graphics
+   (RX8 Cup: red, blue, yellow fields cut diagonally against the picture). */
+.slant {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 2.5rem) 100%, 0 100%);
+}
+@media (max-width: 639px) {
+  .slant {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 1.25rem), 0 100%);
+  }
+}
+
+/* The logo's rain: rounded streaks at 45 degrees, drifting slowly down and
+   to the left behind the home page's header. Off for anyone who asked their
+   system for less motion. */
+.streaks {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent);
-  mask-image: linear-gradient(to bottom, black 40%, transparent);
 }
-.rain::before,
-.rain::after {
-  content: "";
+.streaks svg {
   position: absolute;
-  inset: -100% 0 0 0;
-  background-image: repeating-linear-gradient(
-    100deg,
-    transparent 0 22px,
-    rgb(var(--accent) / 0.16) 22px 23px,
-    transparent 23px 61px
-  );
-  background-size: 140px 90px;
-  animation: rain-fall 0.9s linear infinite;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+  animation: streaks-fall 14s linear infinite;
 }
-.rain::after {
-  background-size: 90px 60px;
-  opacity: 0.6;
-  animation-duration: 1.4s;
-}
-@keyframes rain-fall {
+@keyframes streaks-fall {
+  from {
+    transform: translate(0, 0);
+  }
   to {
-    transform: translateY(50%);
+    /* one tile of the pattern along the streaks' slant: seamless loop */
+    transform: translate(-155.56px, 155.56px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rain::before,
-  .rain::after {
+  .streaks svg {
     animation: none;
   }
 }

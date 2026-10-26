@@ -48,7 +48,10 @@ export default function SettingsAdmin() {
           <Field label="Discord invite link">
             <input className="input" placeholder="https://discord.gg/…" value={f.discordInvite} onChange={set("discordInvite")} />
           </Field>
-          <Field label="League colour">
+          <Field label="YouTube channel">
+            <input className="input" placeholder="https://www.youtube.com/@…" value={f.youtubeUrl} onChange={set("youtubeUrl")} />
+          </Field>
+          <Field label="League colour (white like the logo, or a series colour)">
             <div className="flex items-center gap-3">
               <input type="color" className="h-9 w-11 cursor-pointer rounded border border-line bg-bg" value={f.accentColor} onChange={set("accentColor")} />
               <input className="input w-32 font-mono" value={f.accentColor} onChange={set("accentColor")} />
@@ -56,7 +59,10 @@ export default function SettingsAdmin() {
           </Field>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-4">
-          {f.logoUrl ? <img src={f.logoUrl} alt="Logo" className="h-12 w-auto rounded" /> : <span className="text-sm text-muted">No logo uploaded (the raindrop is used).</span>}
+          {f.logoUrl ? <img src={f.logoUrl} alt="Logo" className="h-12 w-auto rounded" /> : <span className="flex items-center gap-3 text-sm text-muted">
+              <img src="/brand/logo-256.png" alt="" className="h-12 w-12 rounded-full ring-1 ring-white/25" />
+              No logo uploaded: the Rain Racers logo is used.
+            </span>}
           <label className="btn-ghost cursor-pointer">
             Upload logo
             <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />

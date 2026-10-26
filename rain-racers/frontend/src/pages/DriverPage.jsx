@@ -21,7 +21,7 @@ export default function DriverPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/drivers" className="text-sm text-muted hover:text-accent">
+      <Link to="/drivers" className="text-sm text-muted hover:opacity-70">
         ← Standings
       </Link>
       <section className="card relative overflow-hidden p-6 sm:p-8">
@@ -70,7 +70,7 @@ export default function DriverPage() {
                 <tr key={r.id}>
                   <td className="pl-5 text-muted">R{r.race.round}</td>
                   <td>
-                    <Link to={`/races/${r.race.id}`} className="font-semibold hover:text-accent">
+                    <Link to={`/races/${r.race.id}`} className="font-semibold hover:opacity-70">
                       {r.race.name}
                     </Link>
                   </td>

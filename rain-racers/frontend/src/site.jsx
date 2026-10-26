@@ -25,7 +25,12 @@ export function SiteProvider({ children }) {
 
   useEffect(() => {
     const rgb = hexToRgb(settings?.accentColor);
-    if (rgb) document.documentElement.style.setProperty("--accent", rgb);
+    if (!rgb) return;
+    const root = document.documentElement.style;
+    root.setProperty("--accent", rgb);
+    // black text on a light league colour, white on a dark one
+    const [r, g, b] = rgb.split(" ").map(Number);
+    root.setProperty("--accent-ink", 0.2126 * r + 0.7152 * g + 0.0722 * b > 150 ? "0 0 0" : "255 255 255");
   }, [settings?.accentColor]);
 
   return (

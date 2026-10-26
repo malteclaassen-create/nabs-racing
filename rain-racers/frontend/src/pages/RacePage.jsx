@@ -27,13 +27,16 @@ export default function RacePage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link to="/races" className="text-sm text-muted hover:text-accent">
+        <Link to="/races" className="text-sm text-muted hover:opacity-70">
           ← Calendar
         </Link>
         <div className="eyebrow mb-1 mt-4">
           {race.season.name} · Round {race.round}
         </div>
-        <h1 className="h1">{race.name}</h1>
+        <h1 className="h1 flex items-center gap-4">
+          <span className="round-block h-12 w-12 bg-accent text-3xl text-accent-ink sm:h-14 sm:w-14 sm:text-4xl">{race.round}</span>
+          {race.name}
+        </h1>
         <div className="mt-1 text-muted">
           {race.track} · {dateTime(race.startsAt)}
           {race.pointsMultiplier !== 1 && <span className="ml-2 font-bold text-amber-300">×{race.pointsMultiplier} points</span>}

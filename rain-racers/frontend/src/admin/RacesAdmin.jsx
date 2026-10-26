@@ -307,7 +307,7 @@ function RaceItem({ race, drivers, teams, reload }) {
         <div className="flex flex-wrap items-center gap-3">
           <span className="w-10 font-black text-muted">R{race.round}</span>
           <div className="min-w-0">
-            <Link to={`/races/${race.id}`} className="font-semibold hover:text-accent">
+            <Link to={`/races/${race.id}`} className="font-semibold hover:opacity-70">
               {race.name}
             </Link>
             <div className="text-xs text-muted">

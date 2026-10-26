@@ -3,10 +3,13 @@ import prisma from "../db.js";
 // Every setting the admin can change, with the value used until they do.
 export const DEFAULTS = {
   leagueName: "Rain Racers",
-  tagline: "Sim racing league on Assetto Corsa",
-  accentColor: "#38bdf8",
+  // The league's own words (YouTube channel, Discord server description).
+  tagline: "Series where all kinds of racing are welcome. Interesting series, close racing and waffling from our commentators.",
+  // White, like the logo. Text on it turns black or white on its own.
+  accentColor: "#ffffff",
   logoUrl: null,
-  discordInvite: "",
+  discordInvite: "https://discord.gg/jSNmpV72xF",
+  youtubeUrl: "https://www.youtube.com/@rainracers",
   // Race Info page. Plain text; lines starting with "# " are headings,
   // "- " are list items.
   rules: "# Rules\n- Be respectful on and off track.\n- Join the Discord for briefings and stewarding.",
@@ -32,6 +35,7 @@ const PUBLIC_KEYS = [
   "accentColor",
   "logoUrl",
   "discordInvite",
+  "youtubeUrl",
   "rules",
   "pointsTable",
   "fastestLapPoints",
@@ -76,6 +80,7 @@ export function cleanSettings(input) {
         out[key] = str(value);
         break;
       case "discordInvite":
+      case "youtubeUrl":
         out[key] = /^https:\/\//.test(str(value)) ? str(value) : "";
         break;
       case "liveWsUrl":

@@ -2,7 +2,7 @@ import { useEffect, useState, lazy, Suspense } from "react";
 import { Routes, Route, NavLink, Link, useLocation } from "react-router-dom";
 import { SiteProvider, useSite } from "./site.jsx";
 import { api } from "./api.js";
-import { Logo, Loading } from "./components/ui.jsx";
+import { Logo, Loading, SocialIcon } from "./components/ui.jsx";
 import Home from "./pages/Home.jsx";
 import Drivers from "./pages/Drivers.jsx";
 import DriverPage from "./pages/DriverPage.jsx";
@@ -69,14 +69,14 @@ function NavBar() {
   }, [location.pathname]);
 
   const linkClass = ({ isActive }) =>
-    `rounded-lg px-3 py-2 text-sm font-bold uppercase tracking-wide transition ${isActive ? "text-accent" : "text-muted hover:text-ink"}`;
+    `rounded-full px-3 py-1.5 text-sm font-black uppercase italic tracking-wide transition ${isActive ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
       <div className="page flex h-16 items-center gap-4">
         <Link to="/" className="flex items-center gap-3">
-          <Logo size={34} />
-          <span className="text-lg font-black uppercase italic tracking-tight">{settings?.leagueName ?? ""}</span>
+          <Logo size={40} />
+          <span className="display text-xl">{settings?.leagueName ?? ""}</span>
         </Link>
         <nav className="ml-4 hidden items-center gap-1 md:flex">
           {links.map((l) => (
@@ -123,15 +123,22 @@ function Footer() {
     <footer className="mt-16 border-t border-line">
       <div className="page flex flex-col gap-3 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <Logo size={26} />
+          <Logo size={28} />
           <span>
             © {new Date().getFullYear()} {settings?.leagueName}
           </span>
         </div>
         <div className="flex items-center gap-4">
           {settings?.discordInvite && (
-            <a href={settings.discordInvite} target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+            <a href={settings.discordInvite} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
+              <SocialIcon name="discord" />
               Discord
+            </a>
+          )}
+          {settings?.youtubeUrl && (
+            <a href={settings.youtubeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 hover:text-ink">
+              <SocialIcon name="youtube" />
+              YouTube
             </a>
           )}
           <Link to="/admin" className="hover:text-ink">

@@ -39,8 +39,10 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
 
 ### First steps in the admin
 
-1. **Settings:** league name, colour, logo, Discord invite, points table,
-   the Race Info text.
+1. **Settings:** league name, colour, logo, Discord invite, YouTube channel,
+   points table, the Race Info text. Out of the box the site carries the Rain
+   Racers logo, black and white look, Discord invite and YouTube channel
+   (see `brand/README.md` for where they come from).
 2. **Seasons:** create the first season.
 3. **Teams:** create the teams with their colours.
 4. **Races & results:** add the races of the season.
