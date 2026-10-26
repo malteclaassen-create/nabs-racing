@@ -9,6 +9,7 @@ import { getT1ConstructorStandings, getT2ConstructorStandings } from "../service
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
+import { sameTeamBySeason } from "../lib/teamLineage.js";
 import { readTransfers, byDriver, nextRoundNumber } from "../services/driverTransfers.js";
 
 const router = Router();
@@ -160,8 +161,9 @@ router.get("/history", async (req, res, next) => {
 // Teams are matched across seasons by NAME within the same series. There is no
 // link table for them the way PersonLink joins driver rows, and the ids are
 // per-season and inconsistent ("ferrari", "s6_ferrari"), so the name is the only
-// thing that actually travels. Season numbers only compare within one series, so
-// the search never leaves it.
+// thing that actually travels — forgiving about spelling and with renamed teams
+// joined up (lib/teamLineage.js). Season numbers only compare within one
+// series, so the search never leaves it.
 router.get("/:id/history", async (req, res, next) => {
   try {
     const team = await prisma.team.findUnique({ where: { id: req.params.id }, include: { season: true } });
@@ -173,10 +175,10 @@ router.get("/:id/history", async (req, res, next) => {
       where: { seriesId, ...(admin ? {} : { isPublic: true }) },
       orderBy: { number: "desc" },
     });
-    const siblings = await prisma.team.findMany({
-      where: { name: team.name, seasonId: { in: seasons.map((s) => s.id) } },
-    });
-    const bySeason = new Map(siblings.map((t) => [t.seasonId, t]));
+    const bySeason = sameTeamBySeason(
+      await prisma.team.findMany({ where: { seasonId: { in: seasons.map((s) => s.id) } } }),
+      team.name
+    );
 
     // "Is this season's table final?" — see the note on `concluded` below.
     const active = seasons.find((s) => s.isActive) || null;
@@ -189,7 +191,7 @@ router.get("/:id/history", async (req, res, next) => {
       if (!t) continue;
       // Reserve rows (tier 0) have no constructors' table of their own.
       if (t.tier !== 1 && t.tier !== 2) {
-        rows.push({ seasonId: season.id, seasonNumber: season.number, seasonName: season.name, teamId: t.id, tier: t.tier, position: null, points: null, of: null });
+        rows.push({ seasonId: season.id, seasonNumber: season.number, seasonName: season.name, teamId: t.id, name: t.name, tier: t.tier, position: null, points: null, of: null });
         continue;
       }
       const table = await (t.tier === 1 ? getT1ConstructorStandings : getT2ConstructorStandings)(prisma, season.id);
@@ -199,6 +201,8 @@ router.get("/:id/history", async (req, res, next) => {
         seasonNumber: season.number,
         seasonName: season.name,
         teamId: t.id,
+        // The name it raced under that season (a renamed team keeps its rows).
+        name: t.name,
         tier: t.tier,
         position: row?.position ?? null,
         points: row?.total ?? null,
