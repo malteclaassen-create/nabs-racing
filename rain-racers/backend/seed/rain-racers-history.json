@@ -11,7 +11,108 @@
    "seasons": [
     {
      "name": "Season 1",
-     "description": "Formula 4 gather in Italy to start of our wonderful season taking us through every major region of the world. Starting in Europe and ending in the wonderful North Africa.\nChampion: Mekambe, his second drivers' title. Teams: United Slavic Force powered by ESR, back to back.",
+     "description": "Formula 4 gather in Italy to start of our wonderful season taking us through every major region of the world. Starting in Europe and ending in the wonderful North Africa.\nChampion: Mekambe, his second drivers' title. Teams: United Slavic Force powered by ESR, back to back.\nResults from the league's race server. The points use Season 2's tables; Season 1's own rules are not on record, so the totals can differ from the ones of the time.",
+     "pointsTable": [
+      50,
+      40,
+      35,
+      32,
+      30,
+      28,
+      26,
+      24,
+      22,
+      20,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      7,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+     ],
+     "raceTables": {
+      "2": [
+       35,
+       29,
+       24,
+       21,
+       19,
+       17,
+       15,
+       13,
+       12,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "3": [
+       20,
+       17,
+       15,
+       13,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "qualiPointsTable": [
+      2
+     ],
      "rounds": [
       {
        "round": 1,
@@ -1351,7 +1452,8 @@
        "car": "DTM 2002",
        "raceCount": 1
       }
-     ]
+     ],
+     "description": "Results from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time."
     }
    ]
   },
@@ -1393,7 +1495,7 @@
     {
      "name": "2025",
      "isCurrent": true,
-     "description": "The underrated GT4's are going to be raced to their fullest in their series. Going to many amazing locations we are starting with Nurburgring and finishing at the legendary Willow Springs.",
+     "description": "The underrated GT4's are going to be raced to their fullest in their series. Going to many amazing locations we are starting with Nurburgring and finishing at the legendary Willow Springs.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
      "rounds": [
       {
        "round": 1,

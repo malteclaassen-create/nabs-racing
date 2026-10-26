@@ -129,11 +129,12 @@ start empty instead). A database with data gets it from **Settings → Load
 the Rain Racers history**, which leaves alone every series that is already
 there. `backend/seed/rain-racers-results.json` holds the results: from Grid
 Finder (FIS 2 rounds 1 to 4, Sahara Saturdays rounds 1 to 4, the whole RX8
-Cup) and from the league's race server (Protosprint, Ultimate Touring
-Challenge, Fictional F3, Vacation Tour, Miata Madness). They go into the
-rounds that have none yet, also once into a database that got an older
-version of the history. FIS 1, DTM 2002, GT4 World Series and Japanese Summer
-have no results on record; they are imported per round like any other.
+Cup) and from the league's two race servers: sahara.emperorservers.com
+(Protosprint, Ultimate Touring Challenge, Fictional F3, Vacation Tour, Miata
+Madness) and rain.emperorservers.com (FIS 1, DTM 2002, GT4 World Series).
+They go into the rounds that have none yet, also once into a database that
+got an older version of the history. Japanese Summer has no results on
+either server; it is imported like any other round.
 
 ### Tests
 

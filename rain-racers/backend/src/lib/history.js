@@ -6,8 +6,8 @@ import { UPLOAD_DIR } from "../config.js";
 
 // The league's past and present series, seasons and calendars, as collected
 // from Grid Finder and the YouTube channel (seed/rain-racers-history.json,
-// with the posters in seed/images), and the results Grid Finder has
-// (seed/rain-racers-results.json). Loaded into an empty database on the
+// with the posters in seed/images), and the results from Grid Finder and the
+// league's two race servers (seed/rain-racers-results.json). Loaded into an empty database on the
 // first start, or from the admin's settings into one that already has data:
 // a series whose address name is taken is left alone, and results only go
 // into rounds that have none yet, so loading twice adds nothing twice.
@@ -92,8 +92,7 @@ export async function loadHistory(client = prisma) {
   return { added, skipped, results };
 }
 
-// The results from Grid Finder, into the rounds of the seeded seasons that
-// have none yet. Drivers are found by name (or created) and put on the
+// The results, into the rounds of the seeded seasons that have none yet. Drivers are found by name (or created) and put on the
 // season's entry list. Returns how many rounds got results.
 export async function loadResults(client = prisma) {
   const { series } = readSeed("rain-racers-results.json");
@@ -111,11 +110,13 @@ export async function loadResults(client = prisma) {
     for (const [seasonName, rounds] of Object.entries(seasons)) {
       const season = await client.season.findFirst({ where: { seriesId: seriesRow.id, name: seasonName } });
       if (!season) continue;
-      // the season's qualifying points, unless the admin has set some
+      // the season's points rules from the seed, where the admin has set none
       const seed = history.find((x) => x.slug === slug)?.seasons.find((x) => x.name === seasonName);
-      if (!season.qualiPointsTable && seed?.qualiPointsTable) {
-        await client.season.update({ where: { id: season.id }, data: { qualiPointsTable: json(seed.qualiPointsTable) } });
-      }
+      const rules = {};
+      if (!season.qualiPointsTable && seed?.qualiPointsTable) rules.qualiPointsTable = json(seed.qualiPointsTable);
+      if (!season.pointsTable && seed?.pointsTable) rules.pointsTable = json(seed.pointsTable);
+      if (!season.raceTables && seed?.raceTables) rules.raceTables = json(seed.raceTables);
+      if (Object.keys(rules).length) await client.season.update({ where: { id: season.id }, data: rules });
       for (const [roundNo, result] of Object.entries(rounds)) {
         const race = await client.race.findFirst({
           where: { seasonId: season.id, round: Number(roundNo) },
@@ -174,7 +175,7 @@ export async function loadResults(client = prisma) {
 // in the settings table by the seed's version, so results deleted on purpose
 // in the admin do not come back).
 const SEED_VERSION_KEY = "historyResultsLoaded";
-const SEED_VERSION = "2";
+const SEED_VERSION = "3";
 export async function loadHistoryIfEmpty() {
   if (process.env.SEED_HISTORY === "off") return;
   const stored = await prisma.setting.findUnique({ where: { key: SEED_VERSION_KEY } });

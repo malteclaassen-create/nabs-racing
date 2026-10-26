@@ -160,8 +160,8 @@ function HistorySection({ onLoaded }) {
     <Section title="League history">
       <p className="mb-4 text-sm text-muted">
         Every Rain Racers series and season with its calendar, tracks, cars, posters and stream recordings (FIS, Sahara Saturdays, RX8 Cup, DTM 2002, Japanese Summer, GT4 World Series, Vacation Tour, Fictional F3,
-        Ultimate Touring Challenge, Protosprint), and the results Grid Finder has (FIS 2, Sahara Saturdays, RX8 Cup). Series that already exist here are left alone,
-        and results only go into rounds that have none yet. Older seasons have no results on record: import them per race.
+        Ultimate Touring Challenge, Protosprint), and their results from Grid Finder and the league's two race servers. Series that already exist here are left alone,
+        and results only go into rounds that have none yet.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <button
