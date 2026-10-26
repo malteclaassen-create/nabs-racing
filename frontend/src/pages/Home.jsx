@@ -17,6 +17,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitMark } from "../components/NextRaceCard.jsx";
 import NextRaceBar from "../components/NextRaceBar.jsx";
 import HomeNews, { ColumnHeader } from "../components/HomeNews.jsx";
+import LatestResultCard from "../components/LatestResultCard.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
@@ -849,7 +850,7 @@ export default function Home() {
   const podiumStrip = (block, { animKey = "race", first = true, delay = 0, stagger = 0.14 } = {}) =>
     block.podium.length > 0 && (
       <div key={animKey} className={first ? "mt-8 max-w-4xl" : "mt-3 max-w-4xl"}>
-        <div className={`grid gap-2 sm:grid-cols-3 ${newsSplit ? "lg:grid-cols-1" : ""}`}>
+        <div className="grid gap-2 sm:grid-cols-3">
                 {block.podium.map((p, i) => (
 
                   <Link
@@ -1109,14 +1110,26 @@ export default function Home() {
       {newsSplit && <HomeNews news={news} layout="panel" />}
       <div className={newsSplit ? "flex flex-col" : undefined}>
       {newsSplit && <ColumnHeader title="Latest result" to="/races" cta="All rounds" />}
+      {newsSplit ? (
+        <LatestResultCard
+          race={lastRace}
+          circuit={lastCircuit}
+          feature={latest}
+          sprint={lastRace?.sprintRaceId ? latestSprint : null}
+          photo={heroFor(season, heroRace)}
+          photoFallback={heroFor(season)}
+          onPhotoError={heroOnError}
+          reportTo={
+            isLoggedIn && REPORTS_OPEN_TO_MEMBERS && reportsWindowOpen(reportableRace?.date) ? reportsPath({ nw: true }) : null
+          }
+        />
+      ) : (
       <section
         ref={film.ref}
         // An attribute, not a class: useScrollReveal adds `is-visible` to this
         // element by hand, and a className React rewrites would drop it.
         data-film={film.showing ? "on" : undefined}
-        className={`reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10 ${
-          newsSplit ? "flex flex-1 flex-col" : ""
-        }`}
+        className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
       >
         <img
           ref={heroImgRef}
@@ -1157,11 +1170,7 @@ export default function Home() {
           }}
         />
 
-        <div
-          className={`hero-hud relative flex min-h-[460px] flex-col gap-8 ${
-            newsSplit ? "flex-1 p-6 sm:p-10 lg:p-8 xl:p-10" : "p-7 sm:p-12 lg:flex-row lg:gap-10"
-          }`}
-        >
+        <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
             /* SEASON COMPLETE — one hero for every finished season, live finale
                and archive alike: the "<season> complete" line over the final
@@ -1307,12 +1316,7 @@ export default function Home() {
                 stops it shrinking on a narrow one or growing past the old size
                 on a wide one. break-words stays as the last resort for a name
                 nobody has raced yet. */}
-            <h1
-              className={`hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white ${
-                newsSplit ? "sm:text-6xl lg:text-5xl xl:text-6xl" : "sm:text-7xl"
-              }`}
-              style={{ animationDelay: "0.12s" }}
-            >
+            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
               {lastRace?.track || "Season opener"}
             </h1>
             <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
@@ -1377,7 +1381,7 @@ export default function Home() {
               // 60px cards, measured) so the buttons below do not jump down
               // when it lands.
               <div className="mt-8 max-w-4xl" aria-hidden="true">
-                <div className={`grid gap-2 sm:grid-cols-3 ${newsSplit ? "lg:grid-cols-1" : ""}`}>
+                <div className="grid gap-2 sm:grid-cols-3">
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
@@ -1462,6 +1466,7 @@ export default function Home() {
           )}
         </div>
       </section>
+      )}
       </div>
       </div>
 
