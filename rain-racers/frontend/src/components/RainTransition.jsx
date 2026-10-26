@@ -83,10 +83,12 @@ export function useRainTransition(location) {
     );
   }, [location]); // when the address changes; `display` is read, not watched
 
-  // While the streaks run, the page's own moving backgrounds pause (they
-  // would be redrawn under the cover for nothing).
+  // While the streaks come in, the page's own moving backgrounds pause (they
+  // would be redrawn under the cover for nothing). On the way out the new
+  // page is already moving as it comes into view, not only once the last
+  // streak has gone.
   useEffect(() => {
-    document.documentElement.classList.toggle("wiping", phase !== "idle");
+    document.documentElement.classList.toggle("wiping", phase === "in");
   }, [phase]);
 
   useEffect(
