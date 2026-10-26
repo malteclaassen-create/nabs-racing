@@ -27,7 +27,7 @@ function Gained({ value }) {
   return <span className={value > 0 ? "text-emerald-400" : "text-red-300"}>{value > 0 ? `▲${value}` : `▼${-value}`}</span>;
 }
 
-function ResultTable({ rows, showGrid }) {
+function ResultTable({ rows, showGrid, seasonId }) {
   const winner = rows[0];
   const teams = rows.some((r) => r.team);
   return (
@@ -53,7 +53,7 @@ function ResultTable({ rows, showGrid }) {
                 <Position value={r.position} status={r.status} />
               </td>
               <td>
-                <DriverName driver={r.driver} />
+                <DriverName driver={r.driver} season={seasonId} />
                 {r.penaltyMs > 0 && (
                   <span className="mt-1 block w-fit rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-300 sm:ml-2 sm:mt-0 sm:inline" title={r.penaltyNote || "Time penalty"}>
                     +{r.penaltyMs / 1000}s{r.penaltyNote ? ` · ${r.penaltyNote}` : ""}
@@ -91,7 +91,7 @@ function ResultTable({ rows, showGrid }) {
   );
 }
 
-function QualiTable({ rows }) {
+function QualiTable({ rows, seasonId }) {
   const withPoints = rows.some((q) => q.points);
   const teams = rows.some((q) => q.team);
   return (
@@ -114,7 +114,7 @@ function QualiTable({ rows }) {
                 <Position value={q.position} />
               </td>
               <td>
-                <DriverName driver={q.driver} />
+                <DriverName driver={q.driver} season={seasonId} />
                 {q.position === 1 && <span className="ml-2 rounded bg-sky-400/15 px-1.5 py-0.5 text-[10px] font-black text-sky-300">POLE</span>}
               </td>
               {teams && (
@@ -179,7 +179,7 @@ function DayTable({ race }) {
             <tr key={e.driver.id} {...rise(i, 30)}>
               <td className="pl-5 font-black tabular text-muted">{i + 1}</td>
               <td>
-                <DriverName driver={e.driver} />
+                <DriverName driver={e.driver} season={race.season.id} />
               </td>
               {teams && (
                 <td className="hidden md:table-cell">
@@ -292,8 +292,8 @@ export default function RacePage() {
       )}
 
       {active === "DAY" && <DayTable race={race} />}
-      {active && /^R\d$/.test(active) && <ResultTable key={active} rows={race.sessions[active]} showGrid={race.sessions[active].some((r) => r.grid != null)} />}
-      {active === "QUALIFY" && <QualiTable rows={race.qualifying} />}
+      {active && /^R\d$/.test(active) && <ResultTable key={active} rows={race.sessions[active]} showGrid={race.sessions[active].some((r) => r.grid != null)} seasonId={race.season.id} />}
+      {active === "QUALIFY" && <QualiTable rows={race.qualifying} seasonId={race.season.id} />}
       {active === "ENTRY" && <SignupList signups={race.signups} />}
     </div>
   );

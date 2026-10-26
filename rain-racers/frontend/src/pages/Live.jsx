@@ -179,7 +179,7 @@ export default function Live() {
                     <th className="w-12 pl-5">Pos</th>
                     <th>Driver</th>
                     <th className="hidden sm:table-cell">Car</th>
-                    <th className="text-right">Laps</th>
+                    <th className="hidden text-right sm:table-cell">Laps</th>
                     <th className="text-right">Gap</th>
                     <th className="pr-5 text-right sm:pr-3">Best</th>
                     <th className="hidden pr-5 text-right sm:table-cell">Last</th>
@@ -198,7 +198,7 @@ export default function Live() {
                         </span>
                       </td>
                       <td className="hidden text-muted sm:table-cell">{r.car}</td>
-                      <td className="text-right tabular">{r.laps}</td>
+                      <td className="hidden text-right tabular sm:table-cell">{r.laps}</td>
                       <td className="text-right font-mono text-xs tabular lg:text-sm">
                         {r.gap?.laps ? `+${r.gap.laps} L` : r.gap?.ms != null ? `${isRace ? "≈" : ""}${gapText(r.gap.ms)}` : ""}
                       </td>

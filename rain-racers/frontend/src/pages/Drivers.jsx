@@ -110,7 +110,7 @@ export default function Drivers() {
                   <td className="pl-5 font-black tabular lg:text-lg">{d.position}</td>
                   <td>
                     <span className="inline-flex items-center gap-2">
-                      <DriverName driver={d} />
+                      <DriverName driver={d} season={data.season?.id} />
                       {d.champion && (
                         <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black uppercase text-black" title={d.championNote || "Champion"}>
                           Champion

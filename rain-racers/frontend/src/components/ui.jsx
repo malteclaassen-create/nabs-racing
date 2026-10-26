@@ -95,7 +95,9 @@ export function TeamDot({ team, className = "" }) {
   );
 }
 
-export function DriverName({ driver, link = true }) {
+// A driver's name, linked to their page; `season` opens it on that season
+// (the one the link was found in).
+export function DriverName({ driver, link = true, season = null }) {
   const body = (
     <span className="inline-flex items-center gap-2">
       {driver.number != null && <span className="w-7 text-right font-mono text-xs text-muted">#{driver.number}</span>}
@@ -104,7 +106,7 @@ export function DriverName({ driver, link = true }) {
     </span>
   );
   return link ? (
-    <Link to={`/drivers/${driver.id}`} className="hover:opacity-70">
+    <Link to={`/drivers/${driver.id}${season ? `?season=${season}` : ""}`} className="hover:opacity-70">
       {body}
     </Link>
   ) : (

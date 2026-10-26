@@ -320,7 +320,7 @@ router.put("/races/:id/signup", requireUser, async (req, res) => {
 router.get("/drivers/:id", async (req, res) => {
   const driver = await prisma.driver.findUnique({
     where: { id: Number(req.params.id) || 0 },
-    include: { entries: { include: { season: { include: { series: true } }, team: true } } },
+    include: { entries: { include: { season: { include: { series: true } }, team: true } }, user: { select: { avatar: true } } },
   });
   if (!driver) return res.status(404).json({ error: "Driver not found." });
   const settings = await getSettings();
@@ -331,39 +331,57 @@ router.get("/drivers/:id", async (req, res) => {
     distinct: ["seasonId"],
   });
   const seasonIds = [...new Set([...driver.entries.map((e) => e.seasonId), ...resultSeasons.map((r) => r.seasonId)])];
-  const seasons = await prisma.season.findMany({ where: { id: { in: seasonIds } }, include: { series: true }, orderBy: { id: "desc" } });
+  const seasons = await prisma.season.findMany({ where: { id: { in: seasonIds } }, include: { series: true } });
+
+  // newest first, by when the season raced (not by when it went into the
+  // database: the history came in in one go)
+  const loaded = await Promise.all(
+    seasons.map(async (season) => {
+      const races = await seasonRaces(season.id);
+      const last = Math.max(0, ...races.map((r) => new Date(r.startsAt).getTime()));
+      return { season, races, last };
+    }),
+  );
+  loaded.sort((a, b) => b.last - a.last);
 
   const career = [];
-  for (const season of seasons) {
-    const races = await seasonRaces(season.id);
+  const bySeason = new Map();
+  for (const { season, races } of loaded) {
     const standings = await seasonStandings(season, races);
     const row = standings.drivers.find((d) => d.id === driver.id);
-    const { stats } = driverSeasonStats(driver.id, races, settings, season);
+    const { stats, form } = driverSeasonStats(driver.id, races, settings, season);
+    bySeason.set(season.id, { standings, row, stats, form });
+    const finished = !season.isCurrent || races.every((r) => r.results.length > 0);
     career.push({
       season: seasonOut(season),
+      // a picture for the season: its banner, else a round's poster or recording
+      imageUrl: season.imageUrl || season.series.imageUrl || races.find((r) => r.imageUrl)?.imageUrl || null,
+      videoUrl: races.find((r) => r.videoUrl)?.videoUrl || null,
       position: row?.position ?? null,
       points: row?.points ?? 0,
-      champion: !!row?.champion && row.position === 1,
+      // the title: named by hand, else first in a season that is over
+      champion: row?.position === 1 && (!!row.champion || finished),
       team: row?.team ?? teamOut(driver.entries.find((e) => e.seasonId === season.id)?.team),
       starts: stats.starts,
       wins: stats.wins,
       podiums: stats.podiums,
       poles: stats.poles,
+      rounds: races.length,
+      finished,
     });
   }
 
+  // the season asked for (the one the visitor came from), else the latest
   const wanted = Number(req.query.season) || null;
-  const season = seasons.find((s) => s.id === wanted) || seasons[0] || null;
+  const pick = loaded.find((x) => x.season.id === wanted) || loaded[0] || null;
   let detail = null;
-  if (season) {
-    const races = await seasonRaces(season.id);
-    const standings = await seasonStandings(season, races);
-    const { stats, form } = driverSeasonStats(driver.id, races, settings, season);
+  if (pick) {
+    const { season } = pick;
+    const { standings, row, stats, form } = bySeason.get(season.id);
     const entry = driver.entries.find((e) => e.seasonId === season.id);
-    const row = standings.drivers.find((d) => d.id === driver.id);
     detail = {
       season: seasonOut(season),
-      standing: row ? { position: row.position, points: row.points, champion: !!row.champion } : null,
+      standing: row ? { position: row.position, points: row.points, champion: !!row.champion, of: standings.drivers.length } : null,
       team: row?.team ?? teamOut(entry?.team),
       number: entry?.number ?? driver.number,
       stats,
@@ -371,7 +389,7 @@ router.get("/drivers/:id", async (req, res) => {
       rivals: standings.drivers.filter((d) => d.id !== driver.id).map((d) => ({ id: d.id, name: d.name })),
     };
   }
-  res.json({ driver: driverOut(driver), career, detail });
+  res.json({ driver: { ...driverOut(driver), avatar: driver.user?.avatar ?? null }, career, detail });
 });
 
 router.get("/drivers/:id/h2h", async (req, res) => {
