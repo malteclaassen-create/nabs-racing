@@ -332,7 +332,7 @@ function ManualEntry({ race, session, entries, onDone }) {
         </button>
       </div>
       <Message message={message} />
-      {entries.length === 0 && <p className="text-xs text-amber-300">The season's entry list is empty: add drivers under Entry list &amp; transfers first.</p>}
+      {entries.length === 0 && <p className="text-xs text-amber-300">The season's entry list is empty: add drivers under Entry list first.</p>}
     </div>
   );
 }

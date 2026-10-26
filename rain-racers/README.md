@@ -61,9 +61,18 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
 
 ### First steps in the admin
 
+The admin (the league office) has at the top the
+series and season the scoped tabs work on, a search for what you want to do
+("import results", "penalty", "new season") and a **To do** card with rounds
+that are over but have no results, and Discord accounts without a driver.
+The tabs come in four groups (Race weekend, League, Community, Site &
+system), across the top or, with **Sidebar**, down the left side; on a phone
+they fold into one line.
+
 1. **Settings:** league name, logo, Discord invite, YouTube channel, the
-   default points table, the Race Info text, and **Load the Rain Racers
-   history** for a database that already had data.
+   default points table, and **Load the Rain Racers history** for a database
+   that already had data. The Race Info text and the live timing server have
+   tabs of their own.
 2. **Series & seasons:** create a series (e.g. "RX8 Cup", with its colour and
    schedule); it starts with its first season. A series that no longer runs
    is **archived**: off the menu, still in the history. The bar at the top of
@@ -77,7 +86,7 @@ Open <http://localhost:5173/admin> and sign in with the `ADMIN_PIN` from
    champion named by hand.
 3. **Teams** (only if the series has teams): the teams with their colours.
    A series without teams hides the team pages and columns.
-4. **Entry list & transfers:** who drives in the season, for which team and
+4. **Entry list:** who drives in the season, for which team and
    with which number. A team change during the season is a **move** from a
    round on: a round already raced moves its results and team points to the
    new team, a round ahead applies itself when its result is saved.
@@ -136,7 +145,7 @@ cd backend && npm test
 
 The live page follows an **AC Server Manager** (for example the ones from
 Emperor Servers). Each series can have its own server (**Series & seasons →
-Edit → Live socket**); **Settings → Live timing** is the default for the
+Edit → Live socket**); **Live timing** (Community) is the default for the
 series without one. Enter the server manager's live socket, usually
 
 ```

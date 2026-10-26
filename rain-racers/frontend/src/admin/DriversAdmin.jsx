@@ -3,7 +3,7 @@ import { api } from "../api.js";
 import { useAdminList, useAction, Message, Section, Field, confirmDelete } from "./common.jsx";
 
 // Every driver of the league, across all series. Teams and numbers per season
-// live on the entry lists (Entry list & transfers).
+// live on the entry lists (Entry list).
 const blank = { name: "", number: "", country: "", steamGuid: "" };
 
 function DriverForm({ initial, onSubmit, submitLabel, busy, onCancel }) {

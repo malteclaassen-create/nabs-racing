@@ -3,7 +3,9 @@ import { api } from "../api.js";
 import { useSite } from "../site.jsx";
 import { useAction, Message, Section, Field } from "./common.jsx";
 
-export default function SettingsAdmin() {
+// One form for the league's settings, shown in three tabs: `part` is
+// "settings" (league, default points, history), "live" or "raceinfo".
+export default function SettingsAdmin({ part = "settings" }) {
   const { reload: reloadSite } = useSite();
   const [f, setF] = useState(null);
   const { busy, message, run } = useAction();
@@ -37,104 +39,112 @@ export default function SettingsAdmin() {
 
   return (
     <form onSubmit={save} className="space-y-6">
-      <Section title="League">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="League name">
-            <input className="input" value={f.leagueName} onChange={set("leagueName")} />
-          </Field>
-          <Field label="Tagline">
-            <input className="input" value={f.tagline} onChange={set("tagline")} />
-          </Field>
-          <Field label="Discord invite link">
-            <input className="input" placeholder="https://discord.gg/…" value={f.discordInvite} onChange={set("discordInvite")} />
-          </Field>
-          <Field label="YouTube channel">
-            <input className="input" placeholder="https://www.youtube.com/@…" value={f.youtubeUrl} onChange={set("youtubeUrl")} />
-          </Field>
-          <Field label="League colour (white like the logo, or a series colour)">
-            <div className="flex items-center gap-3">
-              <input type="color" className="h-9 w-11 cursor-pointer rounded border border-line bg-bg" value={f.accentColor} onChange={set("accentColor")} />
-              <input className="input w-32 font-mono" value={f.accentColor} onChange={set("accentColor")} />
+      {part === "settings" && (
+        <>
+          <Section title="League">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="League name">
+                <input className="input" value={f.leagueName} onChange={set("leagueName")} />
+              </Field>
+              <Field label="Tagline">
+                <input className="input" value={f.tagline} onChange={set("tagline")} />
+              </Field>
+              <Field label="Discord invite link">
+                <input className="input" placeholder="https://discord.gg/…" value={f.discordInvite} onChange={set("discordInvite")} />
+              </Field>
+              <Field label="YouTube channel">
+                <input className="input" placeholder="https://www.youtube.com/@…" value={f.youtubeUrl} onChange={set("youtubeUrl")} />
+              </Field>
+              <Field label="League colour (white like the logo, or a series colour)">
+                <div className="flex items-center gap-3">
+                  <input type="color" className="h-9 w-11 cursor-pointer rounded border border-line bg-bg" value={f.accentColor} onChange={set("accentColor")} />
+                  <input className="input w-32 font-mono" value={f.accentColor} onChange={set("accentColor")} />
+                </div>
+              </Field>
             </div>
-          </Field>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center gap-4">
-          {f.logoUrl ? <img src={f.logoUrl} alt="Logo" className="h-12 w-auto rounded" /> : <span className="flex items-center gap-3 text-sm text-muted">
-              <img src="/brand/logo-256.png" alt="" className="h-12 w-12 rounded-full ring-1 ring-white/25" />
-              No logo uploaded: the Rain Racers logo is used.
-            </span>}
-          <label className="btn-ghost cursor-pointer">
-            Upload logo
-            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
-          </label>
-          {f.logoUrl && (
-            <button
-              type="button"
-              className="btn-danger"
-              onClick={async () => {
-                const saved = await run(() => api.del("/admin/logo"), "Logo removed.");
-                if (saved) {
-                  setF({ ...f, logoUrl: null });
-                  reloadSite();
-                }
-              }}
-            >
-              Remove logo
-            </button>
-          )}
-        </div>
-      </Section>
+            <div className="mt-5 flex flex-wrap items-center gap-4">
+              {f.logoUrl ? <img src={f.logoUrl} alt="Logo" className="h-12 w-auto rounded" /> : <span className="flex items-center gap-3 text-sm text-muted">
+                  <img src="/brand/logo-256.png" alt="" className="h-12 w-12 rounded-full ring-1 ring-white/25" />
+                  No logo uploaded: the Rain Racers logo is used.
+                </span>}
+              <label className="btn-ghost cursor-pointer">
+                Upload logo
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadLogo} />
+              </label>
+              {f.logoUrl && (
+                <button
+                  type="button"
+                  className="btn-danger"
+                  onClick={async () => {
+                    const saved = await run(() => api.del("/admin/logo"), "Logo removed.");
+                    if (saved) {
+                      setF({ ...f, logoUrl: null });
+                      reloadSite();
+                    }
+                  }}
+                >
+                  Remove logo
+                </button>
+              )}
+            </div>
+          </Section>
 
-      <Section title="Default points">
-        <p className="mb-4 text-sm text-muted">Every season uses these unless it sets its own (Series &amp; seasons), and a round can have its own table too.</p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Points for P1, P2, P3, …">
-            <input className="input font-mono" value={f.pointsTable} onChange={set("pointsTable")} />
-          </Field>
-          <Field label="Fastest lap points (each race; 0 = none)">
-            <input className="input" type="number" min="0" step="0.5" value={f.fastestLapPoints} onChange={set("fastestLapPoints")} />
-          </Field>
-          <Field label="…only for finishers in the top">
-            <input className="input" type="number" min="0" value={f.fastestLapTopN} onChange={set("fastestLapTopN")} />
-          </Field>
-          <Field label="Classified with at least this share of the winner's laps (import)">
-            <input className="input" type="number" min="0" max="1" step="0.05" value={f.classifiedLapShare} onChange={set("classifiedLapShare")} />
-          </Field>
-          <label className="flex items-center gap-2 self-end pb-2 text-sm">
-            <input type="checkbox" checked={!!f.dnfScores} onChange={set("dnfScores")} />
-            A DNF still scores the points of its position
-          </label>
-        </div>
-        <p className="mt-3 text-xs text-muted">Changes apply to every race at once: the standings are always worked out from the results.</p>
-      </Section>
+          <Section title="Default points">
+            <p className="mb-4 text-sm text-muted">Every season uses these unless it sets its own (Series &amp; seasons), and a round can have its own table too.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Points for P1, P2, P3, …">
+                <input className="input font-mono" value={f.pointsTable} onChange={set("pointsTable")} />
+              </Field>
+              <Field label="Fastest lap points (each race; 0 = none)">
+                <input className="input" type="number" min="0" step="0.5" value={f.fastestLapPoints} onChange={set("fastestLapPoints")} />
+              </Field>
+              <Field label="…only for finishers in the top">
+                <input className="input" type="number" min="0" value={f.fastestLapTopN} onChange={set("fastestLapTopN")} />
+              </Field>
+              <Field label="Classified with at least this share of the winner's laps (import)">
+                <input className="input" type="number" min="0" max="1" step="0.05" value={f.classifiedLapShare} onChange={set("classifiedLapShare")} />
+              </Field>
+              <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                <input type="checkbox" checked={!!f.dnfScores} onChange={set("dnfScores")} />
+                A DNF still scores the points of its position
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-muted">Changes apply to every race at once: the standings are always worked out from the results.</p>
+          </Section>
 
-      <HistorySection onLoaded={reloadSite} />
+          <HistorySection onLoaded={reloadSite} />
+        </>
+      )}
 
-      <Section title="Live timing (default server)">
-        <p className="mb-4 text-sm text-muted">
-          Used by every series that has no server of its own (set one per series under Series &amp; seasons).{" "}
-          The live socket of your AC Server Manager, usually <code className="text-ink">wss://&lt;your-server&gt;/api/race-control</code>. Leave it empty to hide the Live page.
-        </p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Live socket address">
-            <input className="input font-mono text-xs" placeholder="wss://…/api/race-control" value={f.liveWsUrl} onChange={set("liveWsUrl")} />
-          </Field>
-          <Field label="Origin (optional, else taken from the address)">
-            <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin} onChange={set("liveOrigin")} />
-          </Field>
-        </div>
-      </Section>
+      {part === "live" && (
+        <Section title="Live timing (default server)">
+          <p className="mb-4 text-sm text-muted">
+            Used by every series that has no server of its own (set one per series under Series &amp; seasons).{" "}
+            The live socket of your AC Server Manager, usually <code className="text-ink">wss://&lt;your-server&gt;/api/race-control</code>. Leave it empty to hide the Live page.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Live socket address">
+              <input className="input font-mono text-xs" placeholder="wss://…/api/race-control" value={f.liveWsUrl} onChange={set("liveWsUrl")} />
+            </Field>
+            <Field label="Origin (optional, else taken from the address)">
+              <input className="input font-mono text-xs" placeholder="https://…" value={f.liveOrigin} onChange={set("liveOrigin")} />
+            </Field>
+          </div>
+        </Section>
+      )}
 
-      <Section title="Race Info text">
-        <p className="mb-3 text-sm text-muted">
-          <code className="text-ink"># </code> heading, <code className="text-ink">## </code> subheading, <code className="text-ink">- </code> list item, an empty line starts a new paragraph.
-        </p>
-        <textarea className="input min-h-[280px] font-mono text-xs leading-relaxed" value={f.rules} onChange={set("rules")} />
-      </Section>
+      {part === "raceinfo" && (
+        <Section title="Race Info text">
+          <p className="mb-3 text-sm text-muted">
+            <code className="text-ink"># </code> heading, <code className="text-ink">## </code> subheading, <code className="text-ink">- </code> list item, an empty line starts a new paragraph.
+          </p>
+          <textarea className="input min-h-[280px] font-mono text-xs leading-relaxed" value={f.rules} onChange={set("rules")} />
+        </Section>
+      )}
 
       <div className="sticky bottom-4 flex items-center gap-4">
         <button className="btn-accent shadow-lg" disabled={busy}>
-          Save settings
+          {part === "raceinfo" ? "Save Race Info" : part === "live" ? "Save live timing" : "Save settings"}
         </button>
         <Message message={message} />
       </div>

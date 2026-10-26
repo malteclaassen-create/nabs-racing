@@ -470,6 +470,42 @@ router.delete("/admin/drivers/:id", wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---- To do --------------------------------------------------------------------
+
+// What is waiting on the admins, for the card at the top of the admin: rounds
+// of a running season that are over (3 hours after the start) and have no
+// results yet, and Discord accounts not linked to a driver.
+router.get("/admin/todo", wrap(async (_req, res) => {
+  const [overdue, unlinked] = await Promise.all([
+    prisma.race.findMany({
+      where: {
+        startsAt: { lt: new Date(Date.now() - 3 * 3600 * 1000) },
+        results: { none: {} },
+        qualifying: { none: {} },
+        season: { isCurrent: true, series: { archived: false } },
+      },
+      orderBy: { startsAt: "asc" },
+      include: { season: { select: { id: true, name: true, seriesId: true, series: { select: { name: true, color: true } } } } },
+    }),
+    prisma.user.count({ where: { driver: { is: null } } }),
+  ]);
+  res.json({
+    overdue: overdue.map((r) => ({
+      id: r.id,
+      round: r.round,
+      name: r.name,
+      track: r.mysteryTrack && !r.track ? null : r.track,
+      startsAt: r.startsAt,
+      seriesId: r.season.seriesId,
+      seasonId: r.season.id,
+      series: r.season.series.name,
+      color: r.season.series.color,
+      season: r.season.name,
+    })),
+    unlinked,
+  });
+}));
+
 // ---- Members (Discord accounts) ---------------------------------------------
 
 router.get("/admin/users", wrap(async (_req, res) => {
