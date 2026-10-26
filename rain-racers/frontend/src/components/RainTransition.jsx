@@ -17,8 +17,11 @@ import { useSite } from "../site.jsx";
 // changed ?season=) swap at once, and so does everything for anyone who
 // asked their system for less motion.
 
-const IN_MS = 520; // until the screen is covered
-const OUT_MS = 600; // until the last drop has run off
+// The drops fall slower than the cover comes: they start nearly together
+// (60 ms apart at most), so a calmer fall still covers the screen in about
+// the same time.
+const IN_MS = 560; // until the screen is covered
+const OUT_MS = 660; // until the last drop has run off
 const INTRO_HOLD = 650; // the opening: how long the logo shows before the rain clears
 // How long after the page swap its own entrance animations wait, so they play
 // as the streaks clear instead of under them.
@@ -143,7 +146,7 @@ function pickShade(shades) {
 // How long a drop takes to cross the screen. Every drop falls at this one
 // speed from the moment it comes in until it has run off: no slowing down
 // while the screen is covered, no start from standing on the way out.
-const CROSS_MS = 340;
+const CROSS_MS = 460;
 
 // Where every drop goes, for a screen of W x H. Drawn in a frame turned 45
 // degrees around the middle, where "down" runs to the bottom left; `h` is
@@ -171,7 +174,7 @@ function makeScene(W, H) {
       drops.push({ y, len, shade: pickShade(palette.shades) });
       y += len + rnd(5, 11);
     }
-    lanes.push({ x, w: w + 1, drops, period: y, inD: rnd(0, 140), outD: rnd(0, 140) });
+    lanes.push({ x, w: w + 1, drops, period: y, inD: rnd(0, 60), outD: rnd(0, 60) });
     x += w;
   }
   // the spray: small drops falling fast, ahead on the way in, behind on the way out

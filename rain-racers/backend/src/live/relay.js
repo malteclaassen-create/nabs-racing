@@ -16,7 +16,8 @@ import { buildBoard, createProgress } from "./board.js";
 // while somebody is watching: the first viewer opens it, and it closes a
 // minute after the last one has left.
 
-const BOARD_EVERY_MS = 1000;
+// twice a second, so the cars on the map move along smoothly
+const BOARD_EVERY_MS = 500;
 const IDLE_CLOSE_MS = 60 * 1000;
 
 // The running series with a live server: [{ slug, name, url, origin }]. An
@@ -36,6 +37,16 @@ export async function liveSeries() {
     }))
     .filter((s) => s.url);
 }
+
+// https://<host> of a live socket address
+const siteOf = (socketUrl) => {
+  try {
+    const u = new URL(socketUrl);
+    return `${u.protocol === "ws:" ? "http" : "https"}://${u.host}`;
+  } catch {
+    return "";
+  }
+};
 
 const originOf = (url, origin) => {
   if (origin) return origin;
@@ -98,8 +109,8 @@ function createRelay(url, origin) {
   let lastBoardJson = "";
   let sessionKey = "";
 
-  const board = () =>
-    buildBoard({
+  const board = () => {
+    const b = buildBoard({
       status,
       liveByCar,
       progress,
@@ -108,6 +119,10 @@ function createRelay(url, origin) {
       connected: upstream?.readyState === WebSocket.OPEN && status !== null,
       snapshotAt,
     });
+    // the map's picture comes straight from the server manager
+    if (b.session?.map) b.session.map.url = siteOf(url) + b.session.map.path;
+    return b;
+  };
 
   function broadcast(force = false) {
     const json = JSON.stringify({ type: "board", board: board() });

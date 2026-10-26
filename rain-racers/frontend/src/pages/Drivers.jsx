@@ -84,6 +84,8 @@ export default function Drivers() {
             labels={prog.rounds.map((r) => `R${r.round}`)}
             lines={prog.drivers.map((d) => ({ id: d.id, label: d.name, color: d.color, values: d.values }))}
             initialVisible={10}
+            // tall enough on a wide screen to tell the lines apart
+            height={(w) => Math.round(Math.min(620, Math.max(320, w * 0.42)))}
           />
         </section>
       ) : (

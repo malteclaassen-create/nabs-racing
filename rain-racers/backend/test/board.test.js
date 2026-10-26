@@ -64,3 +64,19 @@ describe("buildBoard", () => {
     expect(p.of("x")).toBeCloseTo(4.02);
   });
 });
+
+describe("live board map", () => {
+  it("places the track's map and every car on it", async () => {
+    const { buildBoard } = await import("../src/live/board.js");
+    const status = {
+      SessionInfo: { Track: "phakisa_circuit", TrackConfig: "", Type: 1, Name: "Practice" },
+      TrackInfo: { name: "Phakisa Freeway" },
+      TrackMapData: { width: 1680, height: 1530, scale_factor: 0.6087, offset_x: 502.1, offset_y: 380.6, padding: 40 },
+      ConnectedDrivers: { Drivers: { 7656119: { CarInfo: { CarID: 8, DriverName: "Endriu" }, Cars: {} } } },
+    };
+    const board = buildBoard({ status, liveByCar: new Map([[8, { Pos: { X: -472.66, Y: 5, Z: -77.97 } }]]) });
+    expect(board.session.track).toBe("Phakisa Freeway");
+    expect(board.session.map).toMatchObject({ path: "/content/tracks/phakisa_circuit/map.png", width: 1680, scale: 0.6087, offsetZ: 380.6, padding: 40 });
+    expect(board.rows[0].pos).toEqual({ x: -472.7, z: -78 });
+  });
+});

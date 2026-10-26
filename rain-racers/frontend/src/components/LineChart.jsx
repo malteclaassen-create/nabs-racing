@@ -40,7 +40,8 @@ export default function LineChart({ labels, lines, invert = false, height = 260,
   const lo = invert ? 1 : Math.min(0, ...values);
   const hi = Math.max(invert ? 2 : 1, ...values);
 
-  const H = height;
+  // a fixed height, or one that follows the width (`height(width)`)
+  const H = typeof height === "function" ? height(W) : height;
   const pad = { l: 36, r: 12, t: 12, b: 26 };
   const x = (i) => pad.l + (labels.length <= 1 ? (W - pad.l - pad.r) / 2 : (i * (W - pad.l - pad.r)) / (labels.length - 1));
   const y = (v) => {

@@ -59,6 +59,24 @@ export function createProgress() {
   };
 }
 
+// The track's map as the server manager draws it: its picture
+// (content/tracks/<track>/<layout>/map.png on the server manager) and how a
+// car's position in metres lands on it. A position (x, z) is at
+//   ((x + offsetX) / scale + padding, (z + offsetZ) / scale + padding)
+// pixels of a picture `width` by `height`.
+function mapOf(si, tmd) {
+  if (!si.Track || !tmd || !(Number(tmd.scale_factor) > 0) || !(Number(tmd.width) > 0)) return null;
+  return {
+    path: `/content/tracks/${encodeURIComponent(si.Track)}${si.TrackConfig ? `/${encodeURIComponent(si.TrackConfig)}` : ""}/map.png`,
+    width: Number(tmd.width),
+    height: Number(tmd.height),
+    scale: Number(tmd.scale_factor),
+    offsetX: Number(tmd.offset_x) || 0,
+    offsetZ: Number(tmd.offset_y) || 0,
+    padding: Number(tmd.padding) || 0,
+  };
+}
+
 export function buildBoard({ status, liveByCar = new Map(), progress, connected, snapshotAt }) {
   if (!status) return { connected: !!connected, session: null, rows: [] };
   const si = status.SessionInfo || {};
@@ -84,6 +102,8 @@ export function buildBoard({ status, liveByCar = new Map(), progress, connected,
       bestSectors: splitTimes(car?.BestLapSplits),
       racePosition: Number(live.RacePosition ?? d.RacePosition) || null,
       progress: progress ? progress.of(guid) : 0,
+      // where the car is, in the track's metres, for the map
+      pos: online && live.Pos && Number.isFinite(live.Pos.X) ? { x: Math.round(live.Pos.X * 10) / 10, z: Math.round(live.Pos.Z * 10) / 10 } : null,
     });
   };
   for (const [guid, d] of Object.entries(status.ConnectedDrivers?.Drivers || {})) add(guid, d, true);
@@ -125,7 +145,8 @@ export function buildBoard({ status, liveByCar = new Map(), progress, connected,
     session: {
       name: si.Name || SESSION_TYPES[type] || "Session",
       type: SESSION_TYPES[type] || "Session",
-      track: [si.Track, si.TrackConfig].filter(Boolean).join(" "),
+      track: status.TrackInfo?.name || [si.Track, si.TrackConfig].filter(Boolean).join(" "),
+      map: mapOf(si, status.TrackMapData),
       laps: Number(si.Laps) || 0,
       durationMin: Number(si.Time) || 0,
       elapsedMs: Number(si.ElapsedMilliseconds) || 0,
