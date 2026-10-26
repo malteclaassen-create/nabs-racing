@@ -81,6 +81,7 @@ export async function loadHistory(client = prisma) {
             videoUrl: r.videoUrl ?? null,
             timetable: r.timetable?.length ? json(r.timetable) : null,
             pointsTable: json(r.pointsTable),
+            pointsMultiplier: r.pointsMultiplier ?? 1,
           },
         });
       }

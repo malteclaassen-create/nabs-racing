@@ -15,7 +15,9 @@ Where it comes from (collected on 26 October 2026):
   2002, Japanese Summer, GT4 World Series, Vacation Tour, Fictional F3,
   Ultimate Touring Challenge, Protosprint). A round's date is the series'
   race evening before the recording went up; names, tracks and cars are the
-  ones in the titles and on the thumbnails. Rounds without a recording are
+  ones in the titles, the thumbnails and the video descriptions (which also
+  name FIS 1's champion and the Ultimate Touring Challenge's double-points
+  finale). Rounds without a recording are
   only in when a poster names them (DTM 2002 round 9, Lausitzring).
 
 `rain-racers-results.json` holds the results of the Grid Finder seasons

@@ -11,7 +11,7 @@
    "seasons": [
     {
      "name": "Season 1",
-     "description": "Formula 4 gather in Italy to start of our wonderful season taking us through every major region of the world. Starting in Europe and ending in the wonderful North Africa.",
+     "description": "Formula 4 gather in Italy to start of our wonderful season taking us through every major region of the world. Starting in Europe and ending in the wonderful North Africa.\nChampion: Mekambe, his second drivers' title. Teams: United Slavic Force powered by ESR, back to back.",
      "rounds": [
       {
        "round": 1,
@@ -70,16 +70,16 @@
       {
        "round": 7,
        "name": "Code 120",
-       "track": "",
+       "track": "Codegua",
        "startsAt": "2026-02-25T19:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=YZoziLRMViM",
        "car": "Formula 4",
-       "raceCount": 1
+       "raceCount": 3
       },
       {
        "round": 8,
        "name": "Tianyi Wisdom Storm",
-       "track": "",
+       "track": "Ningbo International Speedpark",
        "startsAt": "2026-03-11T19:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=N9_tpcx1K_A",
        "car": "Formula 4",
@@ -88,7 +88,7 @@
       {
        "round": 9,
        "name": "Grand Finale at Domina",
-       "track": "",
+       "track": "Domina Coral Bay",
        "startsAt": "2026-03-18T19:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=JHsJcdBIfZ0",
        "car": "Formula 4",
@@ -1560,16 +1560,16 @@
       {
        "round": 1,
        "name": "DTM",
-       "track": "",
+       "track": "Bikernieki (Big Ring)",
        "startsAt": "2025-03-28T19:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=CtH-IuS4VMo",
-       "car": "DTM",
+       "car": "Alfa Romeo 155 TI V6",
        "raceCount": 1
       },
       {
        "round": 2,
        "name": "Super GT500",
-       "track": "",
+       "track": "Suzuka",
        "startsAt": "2025-04-04T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=SDPyAsMGeto",
        "car": "Super GT500",
@@ -1578,7 +1578,7 @@
       {
        "round": 3,
        "name": "NASCAR",
-       "track": "",
+       "track": "Circuit of the Americas",
        "car": "NASCAR",
        "startsAt": "2025-04-11T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=beHVen8AwhA",
@@ -1587,7 +1587,7 @@
       {
        "round": 4,
        "name": "BTCC",
-       "track": "",
+       "track": "Donington Park",
        "startsAt": "2025-04-18T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=a0IOjd3j2bM",
        "car": "BTCC",
@@ -1596,16 +1596,16 @@
       {
        "round": 5,
        "name": "Classic Porsche",
-       "track": "",
+       "track": "Zandvoort (1973)",
        "startsAt": "2025-04-25T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=a6JMoDmRRDI",
-       "car": "Classic Porsche",
+       "car": "Porsche 911 RS 2.7",
        "raceCount": 1
       },
       {
        "round": 6,
        "name": "Aussie Racing Cars",
-       "track": "",
+       "track": "Bathurst",
        "startsAt": "2025-05-02T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=jjEwlzDzJuA",
        "car": "Aussie Racing Cars",
@@ -1614,10 +1614,11 @@
       {
        "round": 7,
        "name": "TCR Finale",
-       "track": "",
+       "track": "Ningbo International Circuit",
        "startsAt": "2025-05-09T18:00:00.000Z",
        "videoUrl": "https://www.youtube.com/watch?v=RvCPz3w5Vmc",
        "car": "TCR",
+       "pointsMultiplier": 2,
        "raceCount": 1
       }
      ]
