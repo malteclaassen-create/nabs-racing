@@ -563,7 +563,7 @@ export default function TeamProfile() {
         <TeamMarginChart team={team} standings={tierRows} completed={completedNumbers} />
       )}
 
-      <TeamHistory teamId={team.id} currentSeasonId={team.seasonId} color={color} />
+      <TeamHistory teamId={team.id} teamName={team.name} currentSeasonId={team.seasonId} color={color} />
 
       <TeamAllTimeDrivers teamId={team.id} teamName={team.name} color={color} dark={dark} />
 
@@ -585,7 +585,7 @@ export default function TeamProfile() {
 // about. Rows link to the same team in that season, so the archive is one click
 // deep rather than a season-switcher hunt. The bar shows how high up its table
 // the team finished (P1 = full), so a P3 of 12 and a P3 of 5 do not look alike.
-function TeamHistory({ teamId, currentSeasonId, color }) {
+function TeamHistory({ teamId, teamName, currentSeasonId, color }) {
   const { data } = useApi(useCallback(() => api.teamHistory(teamId), [teamId]));
   const rows = data?.seasons || [];
   // One season on its own is just the page you are already looking at.
@@ -629,6 +629,8 @@ function TeamHistory({ teamId, currentSeasonId, color }) {
               <span className="font-mono text-xs font-bold uppercase text-light">S{r.seasonNumber}</span>
               <span className="min-w-0 truncate text-sm text-medium">
                 {r.tier === 0 ? "Reserve" : `Tier ${r.tier}`}
+                {/* Raced under another name that season (lib/teamLineage.js). */}
+                {r.name && r.name !== teamName && <span className="text-light"> · as {r.name}</span>}
                 {here && <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-light">this page</span>}
                 {promoted && (
                   <span className="ml-2 rounded bg-ok/10 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-ok">Promoted</span>

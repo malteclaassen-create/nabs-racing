@@ -17,11 +17,13 @@
 // neither.
 //
 // Teams are matched across seasons by NAME within the series, exactly like
-// GET /teams/:id/history: ids are per season and there is no link table.
+// GET /teams/:id/history (lib/teamLineage.js: spelling forgiven, renames
+// joined up): ids are per season and there is no link table.
 // ---------------------------------------------------------------------------
 import { getDriverStandings, scoringRaces } from "./standingsService.js";
 import { seasonPointsBeforeDrop } from "./recordsService.js";
 import { getPersonGroups } from "../lib/persons.js";
+import { sameTeamBySeason, teamLineageKey } from "../lib/teamLineage.js";
 
 // Walks every season of the series, so one answer is kept for a few minutes
 // per team name, the way the Hall of Fame keeps its own. A results import
@@ -134,7 +136,7 @@ export function teamTotalsList(totals) {
 // `team` is any season's row of the team (with its season); `seasons` the
 // visible seasons of its series. Returns { name, seasons, drivers }.
 export async function getTeamAllTime(prisma, team, seasons, { includePrivate = false } = {}) {
-  const key = `${team.season?.seriesId ?? ""}|${team.name}|${includePrivate ? 1 : 0}`;
+  const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name)}|${includePrivate ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
   const promise = computeTeamAllTime(prisma, team, seasons);
@@ -146,11 +148,14 @@ export async function getTeamAllTime(prisma, team, seasons, { includePrivate = f
 }
 
 async function computeTeamAllTime(prisma, team, seasons) {
-  const siblings = await prisma.team.findMany({
-    where: { name: team.name, seasonId: { in: seasons.map((s) => s.id) } },
-    select: { id: true, seasonId: true },
-  });
-  const teamBySeason = new Map(siblings.map((t) => [t.seasonId, t.id]));
+  const siblings = sameTeamBySeason(
+    await prisma.team.findMany({
+      where: { seasonId: { in: seasons.map((s) => s.id) } },
+      select: { id: true, seasonId: true, name: true },
+    }),
+    team.name
+  );
+  const teamBySeason = new Map([...siblings].map(([seasonId, t]) => [seasonId, t.id]));
   const { byDriver } = await getPersonGroups(prisma);
   const personOf = (driverId) => byDriver.get(driverId) || driverId;
 
