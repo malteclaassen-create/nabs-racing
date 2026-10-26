@@ -7,6 +7,7 @@ import { driverSeasonStats, headToHead, teamAt } from "../lib/stats.js";
 import { resolveSeason, seasonRaces, seasonStandings, resultInclude } from "../lib/seasonData.js";
 import { requireUser } from "../auth.js";
 import { liveSeries } from "../live/relay.js";
+import { serverLinks } from "../live/links.js";
 
 const router = Router();
 
@@ -115,6 +116,13 @@ router.get("/health", (_req, res) => res.json({ ok: true }));
 
 router.get("/settings", async (_req, res) => {
   res.json({ ...(await publicSettings()), liveEnabled: (await liveSeries()).length > 0 });
+});
+
+// The live timing page and the join link of a series' race server.
+router.get("/live/links", async (req, res) => {
+  const live = await liveSeries();
+  const s = live.find((l) => l.slug === req.query.series) || live[0];
+  res.json((s && (await serverLinks(s.url))) || { liveTiming: null, join: null });
 });
 
 // Every series, the archived ones too (the menu leaves those out; their

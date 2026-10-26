@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSite } from "../site.jsx";
+import { useSite, useApi } from "../site.jsx";
 import { Empty, PageHeader } from "../components/ui.jsx";
 import { lapTime, gapText } from "../format.js";
 
@@ -76,12 +76,35 @@ function SessionClock({ session }) {
   );
 }
 
+// The race server's own pages: joining it in Content Manager (the server
+// manager's green Join button) and its full live timing, with the track map
+// and every lap.
+function ServerLinks({ links }) {
+  if (!links?.join && !links?.liveTiming) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {links.join && (
+        <a href={links.join} target="_blank" rel="noopener noreferrer" className="btn bg-emerald-500 py-1.5 text-black hover:bg-emerald-400" title="Opens Content Manager and joins the server">
+          Join server
+        </a>
+      )}
+      {links.liveTiming && (
+        <a href={links.liveTiming} target="_blank" rel="noopener noreferrer" className="btn border border-line py-1.5 hover:border-ink">
+          Full live timing ↗
+        </a>
+      )}
+      {links.join && <span className="text-xs text-muted">Join opens Content Manager on your computer.</span>}
+    </div>
+  );
+}
+
 export default function Live() {
   const { settings, seriesList, series } = useSite();
   const live = seriesList.filter((s) => s.live);
   const [picked, setPicked] = useState(null);
   const slug = picked || (live.some((s) => s.slug === series?.slug) ? series.slug : live[0]?.slug) || null;
   const { board, online } = useLiveBoard(!!settings.liveEnabled, slug);
+  const links = useApi(settings.liveEnabled && slug ? `/live/links?series=${slug}` : null).data;
 
   if (!settings.liveEnabled) return <Empty>Live timing is not set up yet.</Empty>;
 
@@ -112,6 +135,8 @@ export default function Live() {
           ))}
         </div>
       )}
+
+      <ServerLinks links={links} />
 
       {!session ? (
         <Empty>

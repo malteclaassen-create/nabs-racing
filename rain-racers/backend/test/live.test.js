@@ -16,3 +16,12 @@ describe("live server address", () => {
     expect(cleanSettings({ liveWsUrl: "https://rain.emperorservers.com/live-timing" }).liveWsUrl).toBe("wss://rain.emperorservers.com/api/race-control");
   });
 });
+
+describe("join link", async () => {
+  const { joinLinkIn } = await import("../src/live/links.js");
+  it("is read off the server manager's live timing page", () => {
+    const html = `<a id="cm-join-link" href="https://acstuff.ru/s/q:race/online/join?httpPort=9619&amp;ip=145.239.9.197" target="_blank">Join</a>`;
+    expect(joinLinkIn(html)).toBe("https://acstuff.ru/s/q:race/online/join?httpPort=9619&ip=145.239.9.197");
+    expect(joinLinkIn("<p>server offline</p>")).toBe(null);
+  });
+});
