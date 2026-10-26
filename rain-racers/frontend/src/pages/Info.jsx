@@ -1,5 +1,5 @@
 import { useSite, useApi } from "../site.jsx";
-import { PageHeader, Empty } from "../components/ui.jsx";
+import { PageHeader, Empty, rise } from "../components/ui.jsx";
 import { fileSize } from "../format.js";
 
 // The rules text from the admin. Deliberately tiny "markdown": "# " heading,
@@ -51,7 +51,7 @@ export default function Info() {
     <div>
       <PageHeader eyebrow={settings.leagueName} title="Race Info" />
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <section className="card p-6 sm:p-8">
+        <section className="card rise p-6 sm:p-8">
           {settings.rules?.trim() ? <Rules text={settings.rules} /> : <p className="text-muted">No rules written yet.</p>}
         </section>
         <section>
@@ -60,13 +60,13 @@ export default function Info() {
             <Empty>Nothing to download yet.</Empty>
           ) : (
             <ul className="space-y-3">
-              {downloads.map((d) => (
-                <li key={d.id}>
+              {downloads.map((d, i) => (
+                <li key={d.id} {...rise(i + 1, 70)}>
                   <a
                     href={d.url}
                     target={d.isFile ? undefined : "_blank"}
                     rel="noopener noreferrer"
-                    className="card flex items-center gap-4 p-4 transition hover:border-accent/50"
+                    className="card lift flex items-center gap-4 p-4"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
                       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamDot } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamDot, rise } from "../components/ui.jsx";
 import { dateTime } from "../format.js";
 
 export default function Races() {
@@ -19,16 +19,16 @@ export default function Races() {
         <Empty>No races on the calendar yet.</Empty>
       ) : (
         <ol className="space-y-3">
-          {data.races.map((race) => (
-            <li key={race.id}>
+          {data.races.map((race, i) => (
+            <li key={race.id} {...rise(i, 55)}>
               <Link
                 to={`/races/${race.id}`}
-                className={`card flex flex-col gap-4 p-5 transition hover:border-accent/50 sm:flex-row sm:items-center ${race.id === nextId ? "border-accent/60" : ""}`}
+                className={`card lift group flex flex-col gap-4 p-5 sm:flex-row sm:items-center ${race.id === nextId ? "border-accent/60" : ""}`}
               >
                 <div className="flex items-center gap-4 sm:w-1/2">
                   {/* the round's number in a block, as on the league's calendar graphics */}
                   <div
-                    className={`round-block h-14 w-14 text-3xl ${
+                    className={`round-block h-14 w-14 text-3xl transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-105 ${
                       race.id === nextId ? "bg-accent text-accent-ink" : race.done ? "bg-white/10 text-muted" : "border border-line text-ink"
                     }`}
                   >

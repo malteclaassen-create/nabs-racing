@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, DriverName, TeamName } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, DriverName, TeamName, CountUp, rise } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { points } from "../format.js";
 
@@ -66,7 +66,7 @@ export default function Drivers() {
       {data.drivers.length === 0 ? (
         <Empty>No results yet. The standings appear after the first race.</Empty>
       ) : view === "chart" ? (
-        <section className="card p-6">
+        <section className="card rise p-6">
           <h2 className="h2 mb-4">Points after each round</h2>
           <LineChart
             key={data.season?.id}
@@ -76,7 +76,7 @@ export default function Drivers() {
           />
         </section>
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="card rise overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
@@ -95,7 +95,7 @@ export default function Drivers() {
             </thead>
             <tbody>
               {data.drivers.map((d) => (
-                <tr key={d.id}>
+                <tr key={d.id} {...rise(d.position, 35)}>
                   <td className="pl-5 font-black tabular">{d.position}</td>
                   <td>
                     <span className="inline-flex items-center gap-2">
@@ -118,7 +118,7 @@ export default function Drivers() {
                   <td className="hidden text-center tabular sm:table-cell">{d.wins}</td>
                   <td className="hidden text-center tabular sm:table-cell">{d.podiums}</td>
                   <td className="pr-5 text-right text-base font-black tabular">
-                    {points(d.points)}
+                    <CountUp value={d.points} format={points} />
                     {d.manual !== 0 && (
                       <span className="ml-1 align-super text-[10px] font-bold text-sky-300" title={`Manual points: ${points(d.manual)}${d.manualNotes.length ? ` (${d.manualNotes.join(", ")})` : ""}`}>
                         M

@@ -17,8 +17,13 @@ export default function Countdown({ to }) {
   return (
     <div className="flex gap-2" aria-label="Time until the start">
       {parts.map(([n, label]) => (
-        <div key={label} className="min-w-[64px] rounded-xl border border-line bg-bg px-3 py-2 text-center">
-          <div className="text-2xl font-black tabular">{String(n).padStart(2, "0")}</div>
+        <div key={label} className="min-w-[64px] rounded-xl border border-line bg-bg px-3 py-2 text-center transition-colors hover:border-ink/30">
+          {/* keyed on the value, so a digit that changes drops in */}
+          <div className="overflow-hidden text-2xl font-black italic tabular">
+            <span key={n} className="tick">
+              {String(n).padStart(2, "0")}
+            </span>
+          </div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</div>
         </div>
       ))}

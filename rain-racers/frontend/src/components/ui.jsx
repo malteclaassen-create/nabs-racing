@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useSite } from "../site.jsx";
 import { flag } from "../format.js";
@@ -17,23 +18,93 @@ export function Logo({ size = 36 }) {
 }
 
 // The logo's rounded rain streaks at 45 degrees as a drifting background.
-export function Streaks({ opacity = 0.07 }) {
+//
+// One square tile, drawn so that it repeats without a seam: every streak runs
+// along a 45-degree line through the tile, and each one is drawn nine times
+// (shifted by a tile in every direction) so the parts that leave one edge come
+// back in at the opposite one. Two layers of it, a near one and a smaller,
+// fainter, faster far one, slide down along the streaks by exactly one tile,
+// so the loop never jumps.
+const TILE = 160;
+const PILLS = [
+  [40, 40, 90],
+  [120, 120, 60],
+  [80, 80, 120],
+  [0, 0, 40],
+];
+function streakTile(color) {
+  const shapes = [];
+  for (const [cx, cy, len] of PILLS) {
+    for (const dx of [-TILE, 0, TILE]) {
+      for (const dy of [-TILE, 0, TILE]) {
+        const x = cx + dx;
+        const y = cy + dy;
+        shapes.push(`<rect x="${x - len / 2}" y="${y - 11}" width="${len}" height="22" rx="11" transform="rotate(-45 ${x} ${y})"/>`);
+      }
+    }
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TILE}" height="${TILE}" viewBox="0 0 ${TILE} ${TILE}"><g fill="${color}">${shapes.join("")}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+const TILES = { white: streakTile("#ffffff"), black: streakTile("#000000") };
+
+export function Streaks({ opacity = 0.07, tone = "white", className = "" }) {
+  const image = TILES[tone] || TILES.white;
   return (
-    <div className="streaks" aria-hidden="true">
-      <svg>
-        <defs>
-          <pattern id="rr-streaks" width="220" height="88" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-            <rect x="0" y="6" width="128" height="30" rx="15" fill="white" />
-            <rect x="148" y="6" width="58" height="30" rx="15" fill="white" />
-            <rect x="78" y="50" width="56" height="30" rx="15" fill="white" />
-            {/* one streak across the tile's edge: drawn on both sides so it joins up */}
-            <rect x="152" y="50" width="126" height="30" rx="15" fill="white" />
-            <rect x="-68" y="50" width="126" height="30" rx="15" fill="white" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#rr-streaks)" opacity={opacity} />
-      </svg>
+    <div className={`streaks ${className}`} aria-hidden="true">
+      <div className="streaks-far" style={{ backgroundImage: image, opacity: opacity * 0.55 }} />
+      <div className="streaks-near" style={{ backgroundImage: image, opacity }} />
     </div>
+  );
+}
+
+// A number that counts up to its value when it first shows (straight to the
+// value for anyone who asked their system for less motion).
+export function CountUp({ value, format = (v) => v, duration = 900 }) {
+  const target = Number(value) || 0;
+  const [shown, setShown] = useState(() => (prefersLessMotion() ? target : 0));
+  useEffect(() => {
+    if (prefersLessMotion()) return setShown(target);
+    let frame;
+    const start = performance.now();
+    const from = 0;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      setShown(from + (target - from) * eased);
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+  const rounded = Number.isInteger(target) ? Math.round(shown) : Math.round(shown * 10) / 10;
+  return <>{format(rounded)}</>;
+}
+
+export function prefersLessMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+// Staggered entrance: the n-th item rises in a little after the one before.
+export const rise = (i = 0, step = 60) => ({ className: "rise", style: { "--d": `${Math.min(i, 14) * step}ms` } });
+
+// A big headline in leaning capitals, one word per line, each sliding
+// up out of its own mask.
+export function HeroTitle({ text, className = "text-6xl sm:text-8xl" }) {
+  return (
+    <h1 className={`display max-w-[10ch] ${className}`} aria-label={text}>
+      {String(text || "")
+        .split(/\s+/)
+        .map((word, i) => (
+          <span key={i} className="title-line" aria-hidden="true">
+            <span style={{ "--d": `${120 + i * 110}ms` }}>{word}</span>
+          </span>
+        ))}
+    </h1>
   );
 }
 
@@ -84,8 +155,12 @@ export function PageHeader({ eyebrow, title, children }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        {eyebrow && <div className="eyebrow mb-1">{eyebrow}</div>}
-        <h1 className="h1">{title}</h1>
+        {eyebrow && <div className="eyebrow rise mb-1">{eyebrow}</div>}
+        <h1 className="h1">
+          <span className="title-line">
+            <span style={{ "--d": "60ms" }}>{title}</span>
+          </span>
+        </h1>
       </div>
       {children}
     </div>
@@ -122,8 +197,8 @@ export function SeriesBadge({ series, className = "" }) {
 export function Loading() {
   return (
     <div className="space-y-3" aria-busy="true">
-      <div className="h-8 w-48 animate-pulse rounded-lg bg-card" />
-      <div className="h-64 animate-pulse rounded-2xl bg-card" />
+      <div className="shimmer h-8 w-48 rounded-lg" />
+      <div className="shimmer h-64 rounded-2xl" />
     </div>
   );
 }

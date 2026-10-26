@@ -46,7 +46,7 @@ body {
     @apply display text-lg;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-accent {
     @apply btn bg-accent text-accent-ink hover:brightness-90;
@@ -73,7 +73,10 @@ body {
     @apply whitespace-nowrap px-3 py-2.5;
   }
   .table tbody tr {
-    @apply border-t border-line/70;
+    @apply border-t border-line/70 transition-colors;
+  }
+  .table tbody tr:hover {
+    @apply bg-white/[0.025];
   }
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -95,33 +98,252 @@ body {
   }
 }
 
-/* The logo's rain: rounded streaks at 45 degrees, drifting slowly down and
-   to the left behind the home page's header. Off for anyone who asked their
-   system for less motion. */
+/* The logo's rain: two layers of rounded 45-degree streaks (see Streaks in
+   components/ui.jsx), each sliding down along the streaks by exactly one of
+   its tiles per loop, so the motion never jumps. Faded out towards the
+   bottom-left so the text in front stays easy to read. */
 .streaks {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  -webkit-mask-image: radial-gradient(120% 90% at 80% 10%, black 35%, transparent 85%);
+  mask-image: radial-gradient(120% 90% at 80% 10%, black 35%, transparent 85%);
 }
-.streaks svg {
+.streaks-near,
+.streaks-far {
   position: absolute;
-  inset: -20%;
-  width: 140%;
-  height: 140%;
-  animation: streaks-fall 14s linear infinite;
+  inset: -160px;
+  background-repeat: repeat;
+  will-change: transform;
 }
-@keyframes streaks-fall {
+.streaks-near {
+  background-size: 160px 160px;
+  animation: streaks-near 16s linear infinite;
+}
+.streaks-far {
+  background-size: 96px 96px;
+  animation: streaks-far 7s linear infinite;
+}
+@keyframes streaks-near {
+  to {
+    transform: translate3d(-160px, 160px, 0);
+  }
+}
+@keyframes streaks-far {
+  to {
+    transform: translate3d(-96px, 96px, 0);
+  }
+}
+
+/* ---- Motion -------------------------------------------------------------- */
+
+/* Rise in: pages, cards and table rows; --d staggers them. */
+@keyframes rise {
   from {
-    transform: translate(0, 0);
+    opacity: 0;
+    transform: translateY(14px);
   }
   to {
-    /* one tile of the pattern along the streaks' slant: seamless loop */
-    transform: translate(-155.56px, 155.56px);
+    opacity: 1;
+    transform: none;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .streaks svg {
-    animation: none;
+.rise {
+  /* backwards, not both: once in place it lets go of the transform, so a
+     hover lift on the same element still works */
+  animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  animation-delay: var(--d, 0ms);
+}
+.page-in {
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+/* Headline lines slide up out of a mask, leaning like the logo's streaks. */
+.title-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+  margin-bottom: -0.06em;
+}
+.title-line > span {
+  display: inline-block;
+  animation: title-in 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes title-in {
+  from {
+    transform: translateY(105%) skewX(-10deg);
   }
+  to {
+    transform: none;
+  }
+}
+
+/* The logo rolls in once, then floats. */
+.logo-in {
+  animation: logo-in 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both;
+}
+@keyframes logo-in {
+  from {
+    opacity: 0;
+    transform: rotate(-120deg) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.float {
+  animation: float 7s ease-in-out 1.3s infinite;
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.glow {
+  filter: drop-shadow(0 0 40px rgb(var(--accent) / 0.18));
+}
+
+/* Chart lines draw themselves (with pathLength="1" on the line). */
+.draw {
+  stroke-dasharray: 1;
+  animation: draw 1.3s cubic-bezier(0.3, 0.6, 0.2, 1) both;
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.fade-in {
+  animation: fade-in 0.9s ease-out 0.4s both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Podium steps and progress bars grow into place. */
+.grow-up {
+  transform-origin: bottom;
+  animation: grow-up 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: var(--d, 0ms);
+}
+@keyframes grow-up {
+  from {
+    transform: scaleY(0);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s backwards;
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* A countdown digit that changed drops in. */
+.tick {
+  display: inline-block;
+  animation: tick 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tick {
+  from {
+    opacity: 0;
+    transform: translateY(-45%);
+  }
+}
+
+/* Cards that lead somewhere lift a little under the pointer. */
+.lift {
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s, box-shadow 0.25s;
+}
+.lift:hover {
+  transform: translateY(-3px);
+  border-color: rgb(var(--ink) / 0.3);
+  box-shadow: 0 18px 40px -20px rgb(0 0 0 / 0.9);
+}
+.lift:active {
+  transform: translateY(-1px) scale(0.995);
+}
+
+/* Loading placeholders. */
+.shimmer {
+  background: linear-gradient(100deg, rgb(var(--card)) 30%, rgb(var(--line) / 0.7) 50%, rgb(var(--card)) 70%);
+  background-size: 300% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* The live dot. */
+.live-dot {
+  position: relative;
+}
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ping {
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ---- Small things -------------------------------------------------------- */
+
+html {
+  scroll-behavior: smooth;
+}
+::selection {
+  background: rgb(var(--accent) / 0.85);
+  color: rgb(var(--accent-ink));
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+* {
+  scrollbar-color: rgb(var(--line)) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Streaks on a colour panel: the whole panel, no fade. */
+.streaks-full {
+  -webkit-mask-image: none;
+  mask-image: none;
 }

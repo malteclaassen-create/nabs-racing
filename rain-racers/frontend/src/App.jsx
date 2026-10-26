@@ -152,12 +152,26 @@ function NavBar() {
     setOpen(false);
   }, [location.pathname]);
   const tail = [...(settings?.liveEnabled ? [{ to: "/live", label: "Live" }] : []), { to: "/info", label: "Race Info" }];
+  // a touch more weight once the page scrolls under the bar
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
+    <header
+      className={`sticky top-0 z-30 border-b backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-300 ${
+        scrolled ? "border-line bg-bg/90 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.9)]" : "border-transparent bg-bg/60"
+      }`}
+    >
       <div className="page flex h-16 items-center gap-3">
-        <Link to="/" className="flex shrink-0 items-center gap-3">
-          <Logo size={40} />
+        <Link to="/" className="group flex shrink-0 items-center gap-3">
+          <span className="transition-transform duration-500 group-hover:rotate-[-20deg]">
+            <Logo size={40} />
+          </span>
           <span className="display text-xl">{settings?.leagueName ?? ""}</span>
         </Link>
         <nav className="ml-3 hidden items-center gap-1 lg:flex">
@@ -184,7 +198,7 @@ function NavBar() {
         </button>
       </div>
       {open && (
-        <div className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line lg:hidden">
+        <div className="rise max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-line lg:hidden">
           <nav className="page flex flex-col py-2">
             <NavLink to="/" end className={linkClass}>
               Home
@@ -273,6 +287,9 @@ function Shell() {
           <Loading />
         ) : (
           <Suspense fallback={<Loading />}>
+            {/* keyed on the address, so every page rises in (the admin's tabs
+                stay one page, so the series picked there is kept) */}
+            <div key={location.pathname.startsWith("/admin") ? "admin" : location.pathname} className="page-in">
             <Routes>
               <Route path="/" element={<Overview />} />
               <Route path="/series/:slug" element={<SeriesHome />} />
@@ -290,6 +307,7 @@ function Shell() {
               <Route path="/admin/*" element={<Admin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </div>
           </Suspense>
         )}
       </main>

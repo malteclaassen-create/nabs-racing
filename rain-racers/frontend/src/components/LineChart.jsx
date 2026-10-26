@@ -117,9 +117,15 @@ export default function LineChart({ labels, lines, invert = false, height = 260,
                     strokeLinejoin="round"
                     strokeLinecap="round"
                     strokeDasharray={l.dashed ? "6 5" : undefined}
+                    // solid lines draw themselves in, dashed ones fade in
+                    pathLength={l.dashed ? undefined : 1}
+                    className={l.dashed ? "fade-in" : "draw"}
                   />
                 ))}
-                {pts.map((p, i) => p && <circle key={i} cx={p[0]} cy={p[1]} r={hover === i ? 4.5 : 2.5} style={{ fill: l.color }} />)}
+                {pts.map(
+                  (p, i) =>
+                    p && <circle key={i} cx={p[0]} cy={p[1]} r={hover === i ? 4.5 : 2.5} className="fade-in" style={{ fill: l.color, transition: "r 0.15s" }} />,
+                )}
               </g>
             );
           })}

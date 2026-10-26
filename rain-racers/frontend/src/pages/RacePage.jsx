@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, DriverName, TeamName, Position, TeamDot, SeriesBadge } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, DriverName, TeamName, Position, TeamDot, SeriesBadge, rise } from "../components/ui.jsx";
 import Signup from "../components/Signup.jsx";
 import Countdown from "../components/Countdown.jsx";
 import { dateTime, lapTime, raceTime, points, gapText } from "../format.js";
@@ -45,8 +45,8 @@ function ResultTable({ rows, showGrid }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className={r.status !== "FIN" ? "text-muted" : ""}>
+          {rows.map((r, i) => (
+            <tr key={r.id} style={rise(i, 35).style} className={`rise ${r.status !== "FIN" ? "text-muted" : ""}`}>
               <td className="pl-5">
                 <Position value={r.position} status={r.status} />
               </td>
@@ -101,8 +101,8 @@ function QualiTable({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((q) => (
-            <tr key={q.driver.id}>
+          {rows.map((q, i) => (
+            <tr key={q.driver.id} {...rise(i, 35)}>
               <td className="pl-5">
                 <Position value={q.position} />
               </td>
@@ -153,12 +153,14 @@ export default function RacePage() {
         </div>
         <h1 className="h1 flex items-center gap-4">
           <span
-            className="round-block h-12 w-12 bg-accent text-3xl text-accent-ink sm:h-14 sm:w-14 sm:text-4xl"
+            className="logo-in round-block h-12 w-12 bg-accent text-3xl text-accent-ink sm:h-14 sm:w-14 sm:text-4xl"
             style={race.season.series.color ? { background: race.season.series.color, color: inkOn(race.season.series.color) } : undefined}
           >
             {race.round}
           </span>
-          {race.name}
+          <span className="title-line">
+            <span style={{ "--d": "120ms" }}>{race.name}</span>
+          </span>
         </h1>
         <div className="mt-2 text-muted">
           {race.track} · {dateTime(race.startsAt)}
@@ -170,7 +172,7 @@ export default function RacePage() {
       </div>
 
       {!done && (
-        <section className="card flex flex-wrap items-center justify-between gap-5 p-6">
+        <section className="card rise flex flex-wrap items-center justify-between gap-5 p-6">
           <div>
             <div className="eyebrow mb-2">Starts in</div>
             <Countdown to={race.startsAt} />
@@ -193,8 +195,8 @@ export default function RacePage() {
         </div>
       )}
 
-      {active === "FEATURE" && <ResultTable rows={race.sessions.FEATURE} showGrid={race.sessions.FEATURE.some((r) => r.grid != null)} />}
-      {active === "SPRINT" && <ResultTable rows={race.sessions.SPRINT} showGrid={race.sessions.SPRINT.some((r) => r.grid != null)} />}
+      {active === "FEATURE" && <ResultTable key="f" rows={race.sessions.FEATURE} showGrid={race.sessions.FEATURE.some((r) => r.grid != null)} />}
+      {active === "SPRINT" && <ResultTable key="s" rows={race.sessions.SPRINT} showGrid={race.sessions.SPRINT.some((r) => r.grid != null)} />}
       {active === "QUALIFY" && <QualiTable rows={race.qualifying} />}
       {active === "ENTRY" && <SignupList signups={race.signups} />}
     </div>

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName, CountUp, rise } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { flag, points } from "../format.js";
 
@@ -24,7 +24,7 @@ export default function Teams() {
       ) : (
         <>
           {ranked.length > 0 && (
-            <div className="card overflow-x-auto">
+            <div className="card rise overflow-x-auto">
               <table className="table">
                 <thead>
                   <tr>
@@ -41,7 +41,7 @@ export default function Teams() {
                 </thead>
                 <tbody>
                   {ranked.map((t) => (
-                    <tr key={t.id}>
+                    <tr key={t.id} {...rise(t.standing.position, 50)}>
                       <td className="pl-5 font-black tabular">{t.standing.position}</td>
                       <td>
                         <TeamName team={t} />
@@ -52,7 +52,9 @@ export default function Teams() {
                         </td>
                       ))}
                       <td className="text-center tabular">{t.standing.wins}</td>
-                      <td className="pr-5 text-right text-base font-black tabular">{points(t.standing.points)}</td>
+                      <td className="pr-5 text-right text-base font-black tabular">
+                        <CountUp value={t.standing.points} format={points} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -61,7 +63,7 @@ export default function Teams() {
           )}
 
           {prog.rounds.length > 1 && (
-            <section className="card p-6">
+            <section {...rise(2, 90)} className="card rise p-6">
               <h2 className="h2 mb-4">Points after each round</h2>
               <LineChart
                 key={data.season?.id}
@@ -75,8 +77,8 @@ export default function Teams() {
           <section>
             <h2 className="h2 mb-4 text-xl">Line-ups</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {data.teams.map((t) => (
-                <article key={t.id} className="card relative overflow-hidden p-5">
+              {data.teams.map((t, i) => (
+                <article key={t.id} {...rise(i + 3, 70)} className="card lift rise relative overflow-hidden p-5">
                   <div className="absolute inset-y-0 left-0 w-1.5" style={{ background: t.color || "rgb(var(--line))" }} />
                   <div className="flex items-start justify-between gap-4 pl-2">
                     <div>

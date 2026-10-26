@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, Position, TeamName, SeriesBadge } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, Position, TeamName, SeriesBadge, CountUp, rise } from "../components/ui.jsx";
 import LineChart from "../components/LineChart.jsx";
 import { flag, points } from "../format.js";
 
@@ -29,7 +29,9 @@ export default function DriverPage() {
             )}
             <h1 className="h1 flex flex-wrap items-center gap-3">
               {detail?.number != null && <span className="text-muted">#{detail.number}</span>}
-              {driver.name}
+              <span className="title-line">
+                <span style={{ "--d": "80ms" }}>{driver.name}</span>
+              </span>
               {driver.country && <span className="text-3xl not-italic">{flag(driver.country)}</span>}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -74,12 +76,12 @@ function StatTiles({ detail }) {
   const s = detail.stats;
   const tiles = [
     ["Position", detail.standing ? `P${detail.standing.position}` : "—"],
-    ["Points", detail.standing ? points(detail.standing.points) : "0"],
-    ["Wins", s.wins],
-    ["Podiums", s.podiums],
-    ["Poles", s.poles],
-    ["Fastest laps", s.fastestLaps],
-    ["Starts", s.starts],
+    ["Points", detail.standing ? <CountUp value={detail.standing.points} format={points} /> : "0"],
+    ["Wins", <CountUp value={s.wins} />],
+    ["Podiums", <CountUp value={s.podiums} />],
+    ["Poles", <CountUp value={s.poles} />],
+    ["Fastest laps", <CountUp value={s.fastestLaps} />],
+    ["Starts", <CountUp value={s.starts} />],
     ["Best finish", s.bestFinish ? `P${s.bestFinish}` : "—"],
     ["Avg finish", s.avgFinish ?? "—"],
     ["Avg grid", s.avgGrid ?? "—"],
@@ -89,8 +91,8 @@ function StatTiles({ detail }) {
   if (s.sprintWins || s.sprintPodiums) tiles.push(["Sprint wins", s.sprintWins], ["Sprint podiums", s.sprintPodiums]);
   return (
     <dl className="mt-6 grid grid-cols-2 gap-2 pl-2 sm:grid-cols-4 lg:grid-cols-6">
-      {tiles.map(([label, value]) => (
-        <div key={label} className="rounded-xl bg-bg px-4 py-3">
+      {tiles.map(([label, value], i) => (
+        <div key={label} {...rise(i, 40)} className="rise rounded-xl border border-transparent bg-bg px-4 py-3 transition-colors hover:border-line">
           <dt className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</dt>
           <dd className="text-2xl font-black italic tabular">{value}</dd>
         </div>
@@ -110,7 +112,7 @@ function FormChart({ form }) {
     ...(form.some((f) => f.sprint) ? [{ id: "sprint", label: "Sprint", color: "#f97316", dashed: true, values: form.map((f) => pos(f.sprint)) }] : []),
   ];
   return (
-    <section className="card p-6">
+    <section className="card rise p-6">
       <h2 className="h2 mb-4">Season form</h2>
       <LineChart labels={labels} lines={lines} invert height={220} valueLabel={(v) => `P${v}`} initialVisible={3} />
     </section>
@@ -169,9 +171,9 @@ function HeadToHead({ driver, detail }) {
           <span className="text-xs font-bold uppercase tracking-widest text-muted">{label}</span>
           <b className="tabular">{b}</b>
         </div>
-        <div className="flex h-2.5 overflow-hidden rounded-full bg-line">
-          <div className="h-full bg-accent" style={{ width: `${(a / total) * 100}%` }} />
-          <div className="h-full bg-white/30" style={{ width: `${(b / total) * 100}%` }} />
+        <div className="grow-x flex h-2.5 overflow-hidden rounded-full bg-line">
+          <div className="h-full bg-accent transition-[width] duration-700 ease-out" style={{ width: `${(a / total) * 100}%` }} />
+          <div className="h-full bg-white/30 transition-[width] duration-700 ease-out" style={{ width: `${(b / total) * 100}%` }} />
         </div>
       </div>
     );

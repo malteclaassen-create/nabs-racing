@@ -1,9 +1,15 @@
 import { Link } from "react-router-dom";
 import { useApi } from "../site.jsx";
-import { DriverName, TeamName, TeamDot } from "./ui.jsx";
+import { DriverName, TeamName, TeamDot, Streaks, CountUp, rise } from "./ui.jsx";
 import Countdown from "./Countdown.jsx";
 import Signup from "./Signup.jsx";
 import { dateTime, dateLong, points, hexToRgb } from "../format.js";
+
+// The accent colour as it is set on the page right now, as a hex value.
+function accentHex() {
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().split(/\s+/).map(Number);
+  return v.length === 3 ? `#${v.map((n) => n.toString(16).padStart(2, "0")).join("")}` : "#ffffff";
+}
 
 // Black or white text on a colour, whichever reads.
 export function inkOn(hex) {
@@ -19,7 +25,7 @@ export function NextRace({ race, color = null, label = "Next race" }) {
   const detail = useApi(race ? `/races/${race.id}` : null);
   if (!race) {
     return (
-      <section className="card p-6">
+      <section className="card h-full p-6">
         <div className="eyebrow mb-2">{label}</div>
         <p className="text-muted">No race on the calendar yet.</p>
       </section>
@@ -27,12 +33,14 @@ export function NextRace({ race, color = null, label = "Next race" }) {
   }
   const start = new Date(race.startsAt);
   return (
-    <section className="card overflow-hidden">
+    <section className="card h-full overflow-hidden">
       <Link
         to={`/races/${race.id}`}
-        className="slant block bg-accent px-6 pb-9 pt-6 text-accent-ink sm:pr-14"
+        className="slant group relative block overflow-hidden bg-accent px-6 pb-9 pt-6 text-accent-ink sm:pr-14"
         style={color ? { background: color, color: inkOn(color) } : undefined}
       >
+        <Streaks tone={inkOn(color || accentHex()) === "#000" ? "black" : "white"} opacity={0.09} className="streaks-full" />
+        <div className="relative transition-transform duration-300 group-hover:translate-x-1">
         <div className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">
           {label} · Round {race.round}
           {race.hasSprint && " · Sprint + Feature"}
@@ -44,6 +52,7 @@ export function NextRace({ race, color = null, label = "Next race" }) {
         </div>
         <div className="mt-1 text-sm opacity-70">
           {race.track} · {dateTime(race.startsAt)}
+        </div>
         </div>
       </Link>
       <div className="space-y-5 p-6">
@@ -61,7 +70,7 @@ export function NextRace({ race, color = null, label = "Next race" }) {
 
 export function LastRace({ race }) {
   return (
-    <section className="card p-6">
+    <section className="card h-full p-6">
       <div className="eyebrow mb-2">Last result</div>
       {!race ? (
         <p className="text-muted">No results yet.</p>
@@ -88,7 +97,10 @@ export function LastRace({ race }) {
                     <TeamDot team={r.team} />
                     {r.team?.name ?? "—"}
                   </div>
-                  <div className={`${height} ${tone} flex items-start justify-center rounded-t-lg pt-2 text-2xl font-black text-bg`}>
+                  <div
+                    className={`${height} ${tone} grow-up flex items-start justify-center rounded-t-lg pt-2 text-2xl font-black italic text-black`}
+                    style={{ "--d": `${200 + [1, 0, 2].indexOf(i) * 150}ms` }}
+                  >
                     {i + 1}
                   </div>
                 </li>
@@ -103,7 +115,7 @@ export function LastRace({ race }) {
 
 export function TopDrivers({ rows, more }) {
   return (
-    <section className="card overflow-hidden">
+    <section className="card h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5">
         <h2 className="h2">Drivers</h2>
         <Link to={more} className="text-sm text-muted hover:opacity-70">
@@ -116,13 +128,15 @@ export function TopDrivers({ rows, more }) {
         <table className="table mt-3">
           <tbody>
             {rows.map((d) => (
-              <tr key={d.id}>
+              <tr key={d.id} {...rise(d.position, 50)}>
                 <td className="w-10 pl-6 font-black tabular text-muted">{d.position}</td>
                 <td>
                   <DriverName driver={d} />
                   <div className="text-xs text-muted">{d.team?.name ?? ""}</div>
                 </td>
-                <td className="pr-6 text-right text-lg font-black tabular">{points(d.points)}</td>
+                <td className="pr-6 text-right text-lg font-black tabular">
+                  <CountUp value={d.points} format={points} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -134,7 +148,7 @@ export function TopDrivers({ rows, more }) {
 
 export function TopTeams({ rows, more }) {
   return (
-    <section className="card overflow-hidden">
+    <section className="card h-full overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5">
         <h2 className="h2">Teams</h2>
         <Link to={more} className="text-sm text-muted hover:opacity-70">
@@ -147,12 +161,14 @@ export function TopTeams({ rows, more }) {
         <table className="table mt-3">
           <tbody>
             {rows.map((t) => (
-              <tr key={t.id}>
+              <tr key={t.id} {...rise(t.position, 50)}>
                 <td className="w-10 pl-6 font-black tabular text-muted">{t.position}</td>
                 <td>
                   <TeamName team={t} />
                 </td>
-                <td className="pr-6 text-right text-lg font-black tabular">{points(t.points)}</td>
+                <td className="pr-6 text-right text-lg font-black tabular">
+                  <CountUp value={t.points} format={points} />
+                </td>
               </tr>
             ))}
           </tbody>

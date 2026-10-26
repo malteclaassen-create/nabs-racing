@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Logo, Streaks, SocialButtons, SeriesBadge, TeamDot, Empty } from "../components/ui.jsx";
+import { Loading, ErrorBox, Logo, Streaks, SocialButtons, SeriesBadge, TeamDot, Empty, rise, HeroTitle } from "../components/ui.jsx";
 import { NextRace, inkOn } from "../components/RaceCards.jsx";
 import { dateTime, dateLong, points } from "../format.js";
 
@@ -19,12 +19,16 @@ export default function Overview() {
         <Streaks />
         <div className="relative grid items-center gap-10 px-6 py-12 sm:px-10 sm:py-16 lg:grid-cols-[1.5fr_1fr]">
           <div>
-            <div className="eyebrow mb-4">
-              {data.series.length} series · Assetto Corsa
+            <div className="eyebrow rise mb-4">
+              {data.series.length > 0 ? `${data.series.length} series · ` : ""}Assetto Corsa league
             </div>
-            <h1 className="display max-w-[10ch] text-6xl sm:text-8xl">{settings.leagueName}</h1>
-            {settings.tagline && <p className="mt-6 max-w-xl text-lg text-muted">{settings.tagline}</p>}
-            <div className="mt-8 flex flex-wrap gap-3">
+            <HeroTitle text={settings.leagueName} />
+            {settings.tagline && (
+              <p {...rise(4, 90)} className="rise mt-6 max-w-xl text-lg text-muted">
+                {settings.tagline}
+              </p>
+            )}
+            <div {...rise(5, 90)} className="rise mt-8 flex flex-wrap gap-3">
               {data.series[0] && (
                 <Link to={`/series/${data.series[0].series.slug}/drivers`} className="btn-accent">
                   Standings
@@ -34,19 +38,27 @@ export default function Overview() {
             </div>
           </div>
           <div className="hidden justify-center lg:flex">
-            <Logo size={300} />
+            <div className="logo-in">
+              <div className="float glow">
+                <Logo size={300} />
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {data.series.length === 0 ? (
-        <Empty>No series yet. Create the first one in the admin under Series &amp; seasons.</Empty>
+        <div className="rise">
+          <Empty>No series yet. Create the first one in the admin under Series &amp; seasons.</Empty>
+        </div>
       ) : (
         <section>
-          <h2 className="h2 mb-4 text-2xl">Series</h2>
+          <h2 className="h2 rise mb-4 text-2xl">Series</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            {data.series.map((c) => (
-              <SeriesCard key={c.series.id} card={c} />
+            {data.series.map((c, i) => (
+              <div key={c.series.id} {...rise(i + 1, 90)}>
+                <SeriesCard card={c} />
+              </div>
             ))}
           </div>
         </section>
@@ -54,8 +66,12 @@ export default function Overview() {
 
       {first && (
         <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-          <NextRace race={first} color={first.series.color} label={first.series.name} />
-          <Upcoming races={data.upcoming.slice(1)} />
+          <div {...rise(2, 90)}>
+            <NextRace race={first} color={first.series.color} label={first.series.name} />
+          </div>
+          <div {...rise(3, 90)}>
+            <Upcoming races={data.upcoming.slice(1)} />
+          </div>
         </div>
       )}
 
@@ -63,8 +79,8 @@ export default function Overview() {
         <section>
           <h2 className="h2 mb-4 text-2xl">Latest results</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {data.latest.map((r) => (
-              <Link key={r.id} to={`/races/${r.id}`} className="card block p-5 transition hover:border-ink/40">
+            {data.latest.map((r, i) => (
+              <Link key={r.id} to={`/races/${r.id}`} {...rise(i, 80)} className="card lift rise block p-5">
                 <SeriesBadge series={r.series} />
                 <div className="display mt-3 text-xl">{r.track || r.name}</div>
                 <div className="text-xs text-muted">
@@ -92,11 +108,14 @@ function SeriesCard({ card }) {
   const { series, season, leader, nextRace, roundsDone, roundsTotal } = card;
   const color = series.color || "#ffffff";
   return (
-    <Link to={`/series/${series.slug}`} className="card group relative block overflow-hidden transition hover:border-ink/40">
-      <div className="slant px-6 pb-7 pt-5" style={{ background: color, color: inkOn(color) }}>
+    <Link to={`/series/${series.slug}`} className="card lift group relative block h-full overflow-hidden">
+      <div className="slant relative overflow-hidden px-6 pb-7 pt-5" style={{ background: color, color: inkOn(color) }}>
+        <Streaks tone={inkOn(color) === "#000" ? "black" : "white"} opacity={0.1} className="streaks-full" />
+        <div className="relative">
         <div className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">{season?.name ?? "No season yet"}</div>
         <div className="display mt-1 text-3xl">{series.name}</div>
         {series.schedule && <div className="display mt-2 text-sm opacity-80">{series.schedule}</div>}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4 p-6 text-sm">
         <div>
@@ -132,7 +151,7 @@ function SeriesCard({ card }) {
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-line">
-              <div className="h-full rounded-full" style={{ width: `${(roundsDone / roundsTotal) * 100}%`, background: color }} />
+              <div className="grow-x h-full rounded-full" style={{ width: `${(roundsDone / roundsTotal) * 100}%`, background: color }} />
             </div>
           </div>
         )}
@@ -143,16 +162,19 @@ function SeriesCard({ card }) {
 
 function Upcoming({ races }) {
   return (
-    <section className="card p-6">
+    <section className="card h-full p-6">
       <div className="eyebrow mb-3">Coming up</div>
       {races.length === 0 ? (
         <p className="text-sm text-muted">Nothing else on the calendar yet.</p>
       ) : (
         <ul className="divide-y divide-line">
-          {races.map((r) => (
-            <li key={r.id}>
-              <Link to={`/races/${r.id}`} className="flex items-center gap-4 py-3 hover:opacity-80">
-                <span className="round-block h-10 w-10 text-xl" style={{ background: r.series.color || "#fff", color: inkOn(r.series.color || "#fff") }}>
+          {races.map((r, i) => (
+            <li key={r.id} {...rise(i + 3)}>
+              <Link to={`/races/${r.id}`} className="group flex items-center gap-4 py-3">
+                <span
+                  className="round-block h-10 w-10 text-xl transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110"
+                  style={{ background: r.series.color || "#fff", color: inkOn(r.series.color || "#fff") }}
+                >
                   {r.round}
                 </span>
                 <span className="min-w-0 flex-1">

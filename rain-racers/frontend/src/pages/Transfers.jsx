@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useSite, useApi } from "../site.jsx";
-import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName } from "../components/ui.jsx";
+import { Loading, ErrorBox, Empty, PageHeader, SeasonPicker, TeamName, rise } from "../components/ui.jsx";
 
 // The transfer market: every driver's team round by round, and the moves of
 // the season, the ones still ahead marked as booked.
@@ -22,8 +22,8 @@ export default function Transfers() {
           <Empty>No team changes this season.</Empty>
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
-            {data.moves.map((m) => (
-              <li key={m.id} className="card flex flex-wrap items-center gap-3 p-4">
+            {data.moves.map((m, i) => (
+              <li key={m.id} {...rise(i, 60)} className="card rise flex flex-wrap items-center gap-3 p-4">
                 <span className="round-block h-10 w-10 bg-white/10 text-lg">R{m.fromRound}</span>
                 <div className="min-w-0 flex-1">
                   <Link to={`/drivers/${m.driver.id}?season=${data.season.id}`} className="font-bold hover:opacity-70">
@@ -60,8 +60,8 @@ export default function Transfers() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row) => (
-                  <tr key={row.driver.id}>
+                {data.rows.map((row, i) => (
+                  <tr key={row.driver.id} {...rise(i, 35)}>
                     <td className="pl-5 font-semibold">
                       <Link to={`/drivers/${row.driver.id}?season=${data.season.id}`} className="hover:opacity-70">
                         {row.driver.name}
