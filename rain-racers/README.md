@@ -176,17 +176,20 @@ The backend serves the built website, the API and the uploads as one service.
    European league): the storage is created there.
 4. Add a **Volume** with the mount path `/data`, otherwise the database and
    uploads are lost on every deploy.
-5. **Variables:**
+5. **Variables** (your own values, without any `< >` around them):
 
    ```ini
    DATA_DIR=/data
    DATABASE_URL=file:/data/rain-racers.db
-   JWT_SECRET=<40+ random letters and digits>
-   ADMIN_PIN=<a PIN only the admins know>
+   JWT_SECRET=k7Qw2xR9mP4vL8nT3bZ6hY1cF5jD0sG2aE9uW4iO   # 40+ random letters and digits, make your own
+   ADMIN_PIN=4817                                        # a PIN only the admins know
    DISCORD_CLIENT_ID=...
    DISCORD_CLIENT_SECRET=...
-   DISCORD_REDIRECT_URI=https://<your-site>/api/auth/discord/callback
+   DISCORD_REDIRECT_URI=https://rain-racers.up.railway.app/api/auth/discord/callback
    ```
+
+   A value still in `< >` counts as not set: the server will not start
+   without a real `JWT_SECRET`, and the admin login says so for `ADMIN_PIN`.
 
 6. **Settings → Networking → Generate Domain** (or add your own domain).
 

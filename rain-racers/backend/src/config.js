@@ -20,6 +20,8 @@ if (!JWT_SECRET || JWT_SECRET === "change-me" || isPlaceholder(JWT_SECRET) || (I
 
 // A placeholder PIN counts as none: the admin login then says so.
 export const ADMIN_PIN = isPlaceholder(process.env.ADMIN_PIN || "") ? "" : process.env.ADMIN_PIN || "";
+// so the login can say why it refuses ("<1234>" instead of "1234")
+export const ADMIN_PIN_IS_PLACEHOLDER = isPlaceholder(process.env.ADMIN_PIN || "");
 export const ADMIN_DISCORD_IDS = (process.env.ADMIN_DISCORD_IDS || "")
   .split(",")
   .map((s) => s.trim())

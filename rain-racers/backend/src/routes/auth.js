@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import prisma from "../db.js";
-import { ADMIN_PIN, DISCORD, DISCORD_ENABLED, IS_PROD } from "../config.js";
+import { ADMIN_PIN, ADMIN_PIN_IS_PLACEHOLDER, DISCORD, DISCORD_ENABLED, IS_PROD } from "../config.js";
 import { readCookies, signIn, signInAdmin, signOut } from "../auth.js";
 
 const router = Router();
@@ -29,7 +29,12 @@ router.post("/auth/admin", (req, res) => {
     const entry = f && now - f.first < WINDOW_MS ? f : { first: now, count: 0 };
     entry.count++;
     failures.set(ip, entry);
-    return res.status(401).json({ error: ADMIN_PIN ? "Wrong PIN." : "No ADMIN_PIN is set on the server." });
+    const error = ADMIN_PIN
+      ? "Wrong PIN."
+      : ADMIN_PIN_IS_PLACEHOLDER
+        ? "ADMIN_PIN on the server still has the < > of the example around it. Set it to the PIN alone, e.g. 1234."
+        : "No ADMIN_PIN is set on the server.";
+    return res.status(401).json({ error });
   }
   failures.delete(ip);
   signInAdmin(res);
