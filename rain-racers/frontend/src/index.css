@@ -349,11 +349,8 @@ html {
   mask-image: none;
 }
 
-/* ---- Page change: the logo's streaks rain across the screen ------------- */
-/* (components/RainTransition.jsx). A square well bigger than the screen's
-   diagonal, turned 45 degrees, holds one bar per row. Out of the way the bars
-   wait past the top-right corner; "in" brings them to cover the screen,
-   "out" carries them on past the bottom-left one. */
+/* ---- Page change: a downpour of the logo's streaks ----------------------- */
+/* (components/RainTransition.jsx draws the drops on the canvas). */
 .wipe {
   position: fixed;
   inset: 0;
@@ -369,25 +366,11 @@ html {
 .wipe[data-phase="idle"] {
   visibility: hidden;
 }
-.wipe-rot {
+.wipe-canvas {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 160vmax;
-  height: 160vmax;
-  display: flex;
-  flex-direction: column;
-  transform: translate(-50%, -50%) rotate(-45deg);
-}
-.wipe-bar {
-  flex: 1;
-  border-radius: 9999px;
-  transform: translate3d(115%, 0, 0);
-  backface-visibility: hidden;
-}
-/* a layer per bar only while they move */
-.wipe:not([data-phase="idle"]) .wipe-bar {
-  will-change: transform;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 /* the page's drifting streaks hold still under the cover */
 .wiping .streaks-near,
@@ -397,43 +380,6 @@ html {
 /* and the header's blur is not worked out again for every frame */
 .wiping header {
   backdrop-filter: none;
-}
-.wipe-accent {
-  background: rgb(var(--accent));
-}
-.wipe-ink {
-  background: rgb(var(--ink));
-}
-.wipe-bg {
-  flex: 2;
-  background: rgb(var(--bg));
-  /* black bars overlap a little, so no hairline of the page shows between */
-  margin: -1px 0;
-}
-.wipe[data-phase="in"] .wipe-bar {
-  animation: wipe-in 0.4s cubic-bezier(0.65, 0, 0.35, 1) var(--d, 0ms) both;
-}
-.wipe[data-phase="out"] .wipe-bar {
-  animation: wipe-out 0.5s cubic-bezier(0.65, 0, 0.35, 1) var(--d, 0ms) both;
-}
-.wipe[data-phase="intro"] .wipe-bar {
-  animation: wipe-out 0.6s cubic-bezier(0.65, 0, 0.35, 1) calc(var(--d, 0ms) + 650ms) both;
-}
-@keyframes wipe-in {
-  from {
-    transform: translate3d(115%, 0, 0);
-  }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
-}
-@keyframes wipe-out {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(-115%, 0, 0);
-  }
 }
 .wipe-logo {
   position: absolute;
