@@ -42,7 +42,7 @@ function Lead({ article }) {
 
 function Headline({ article }) {
   return (
-    <Link to={`/news/${article.slug}`} className="group flex items-start gap-3 py-3">
+    <Link to={`/news/${article.slug}`} className="group flex items-center gap-3 px-4 py-3 transition hover:bg-surface2">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 font-mono text-[10px] text-light">
           <span className="font-bold uppercase tracking-wider text-eyebrow">{article.categoryLabel}</span>
@@ -135,8 +135,11 @@ export default function HomeNews({ news, layout = "panel", className = "" }) {
     <section className={`flex flex-col ${className}`}>
       <Header />
       <Lead article={lead} />
+      {/* The headlines under the lead story sit in a box of their own, so
+          they read as a list and not as something that came loose from the
+          picture (on a phone the result card follows right after them). */}
       {rest.length > 0 && (
-        <div className="mt-1 divide-y divide-border">
+        <div className="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card shadow-card">
           {rest.slice(0, 3).map((a) => (
             <Headline key={a.id} article={a} />
           ))}
