@@ -228,8 +228,9 @@ router.get("/:id/history", async (req, res, next) => {
 });
 
 // GET /api/teams/:id/drivers -> the team's all-time drivers: everyone who raced
-// for it in any visible season of its series, with the points, wins, podiums
-// and starts they scored for it (services/teamAllTimeService.js). Its own
+// for it in any visible season of its series, with the points, common-scale
+// score, wins, podiums and starts they scored for it
+// (services/teamAllTimeService.js). Its own
 // endpoint rather than part of /history: it walks every season's driver
 // standings, so it is cached and the team page asks for it last.
 router.get("/:id/drivers", async (req, res, next) => {

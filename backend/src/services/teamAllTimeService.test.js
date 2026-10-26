@@ -67,9 +67,30 @@ describe("addSeasonToTeamTotals", () => {
     expect(list).toEqual([]);
   });
 
-  it("ranks by points, then wins", () => {
-    const rows = [row("a", "t", { 1: fin(2, 18), 2: fin(2, 18) }), row("b", "t", { 1: fin(2, 18), 2: fin(6, 8), 3: fin(11, 0) }), row("c", "t", { 1: fin(1, 26) })];
-    const list = teamTotalsList(addSeasonToTeamTotals(new Map(), { seasonNumber: 1, rows, teamId: "t", teamOf: noStamps }));
-    expect(list.map((d) => d.driverId)).toEqual(["a", "c", "b"]);
+  it("scores every finish, sprint included, on one table whatever the season paid", () => {
+    // Old season paying 10-8-6…: the points stay as paid, the score is today's.
+    const old = [row("duck", "t", { 1: fin(1, 10), 2: { ...fin(2, 8 + 6), sprint: fin(3, 6) }, 3: { status: "DNF", position: null, points: 0 } })];
+    const list = teamTotalsList(addSeasonToTeamTotals(new Map(), { seasonNumber: 1, rows: old, teamId: "t", teamOf: noStamps }));
+    expect(list[0]).toMatchObject({ points: 24, score: 35 + 30 + 25 });
+    // A season's own scale can be passed in; P beyond the table scores 0.
+    const deep = [row("goose", "t", { 1: fin(2, 18), 2: fin(4, 12) })];
+    const [g] = teamTotalsList(addSeasonToTeamTotals(new Map(), { seasonNumber: 2, rows: deep, teamId: "t", teamOf: noStamps, scale: [3, 2, 1] }));
+    expect(g.score).toBe(2);
+  });
+
+  it("ranks by score, then wins, so an early season's lower points table is no handicap", () => {
+    const totals = new Map();
+    // S1 paid 10-8-6: three wins, 30 points.
+    addSeasonToTeamTotals(totals, { seasonNumber: 1, rows: [row("early", "t1", { 1: fin(1, 10), 2: fin(1, 10), 3: fin(1, 10) })], teamId: "t1", teamOf: noStamps });
+    // S7 pays 35-30-25: three runner-ups, 90 points.
+    addSeasonToTeamTotals(totals, { seasonNumber: 7, rows: [row("late", "t7", { 1: fin(2, 30), 2: fin(2, 30), 3: fin(2, 30) })], teamId: "t7", teamOf: noStamps });
+    // Same score as "late", with a win: the wins decide.
+    addSeasonToTeamTotals(totals, { seasonNumber: 7, rows: [row("winner", "t7", { 1: fin(1, 35), 2: fin(3, 25), 3: fin(2, 30) })], teamId: "t7", teamOf: noStamps });
+    const list = teamTotalsList(totals);
+    expect(list.map((d) => [d.driverId, d.score, d.points])).toEqual([
+      ["early", 105, 30],
+      ["winner", 90, 90],
+      ["late", 90, 90],
+    ]);
   });
 });

@@ -11,21 +11,28 @@ import { countryFor } from "../data/driverCountries.js";
 // brought in FOR THIS TEAM over every season (backend teamAllTimeService.js:
 // reserve drives and mid-season moves land with the team they were driven for,
 // points before any drop rule, sprints counted, one line per person). Sorts by
-// points, wins, podiums or starts; the top ten show, the rest behind a button.
+// score, points, wins, podiums or starts; the top ten show, the rest behind a
+// button.
+//
+// Score comes first: the points tables changed over the seasons, so the points
+// as paid favour whoever raced under the bigger one. Score prices every finish
+// by today's table instead, so a S1 win is worth what a win is worth now.
 
 const SORTS = [
-  { key: "points", label: "Points", unit: "pts", order: ["points", "wins", "podiums", "starts"] },
-  { key: "wins", label: "Wins", unit: "wins", order: ["wins", "podiums", "points", "starts"] },
-  { key: "podiums", label: "Podiums", unit: "podiums", order: ["podiums", "wins", "points", "starts"] },
-  { key: "starts", label: "Starts", unit: "starts", order: ["starts", "points", "wins", "podiums"] },
+  { key: "score", label: "Score", unit: "score", title: "Every finish on today's points table", order: ["score", "wins", "podiums", "starts"] },
+  { key: "points", label: "Points", unit: "pts", title: "Points as each season paid them", order: ["points", "wins", "podiums", "starts"] },
+  { key: "wins", label: "Wins", unit: "wins", order: ["wins", "podiums", "score", "starts"] },
+  { key: "podiums", label: "Podiums", unit: "podiums", order: ["podiums", "wins", "score", "starts"] },
+  { key: "starts", label: "Starts", unit: "starts", order: ["starts", "score", "wins", "podiums"] },
 ];
 const COLS = [
   { key: "starts", label: "Starts" },
   { key: "wins", label: "Wins" },
   { key: "podiums", label: "Podiums" },
   { key: "points", label: "Points" },
+  { key: "score", label: "Score" },
 ];
-const ONE = { points: "point", wins: "win", podiums: "podium", starts: "start" };
+const ONE = { score: "score", points: "point", wins: "win", podiums: "podium", starts: "start" };
 const TOP = 10;
 
 // [3,4,5,7] -> "S3–S5, S7"
@@ -42,7 +49,7 @@ function seasonRanges(nums) {
 
 export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
   const { data } = useApi(useCallback(() => api.teamDrivers(teamId), [teamId]));
-  const [sortKey, setSortKey] = useState("points");
+  const [sortKey, setSortKey] = useState("score");
   const [all, setAll] = useState(false);
   const drivers = data?.drivers || [];
   // A team in its first season: the line-up above already is the whole story.
@@ -50,7 +57,7 @@ export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
 
   const sort = SORTS.find((s) => s.key === sortKey) || SORTS[0];
   const rows = [...drivers]
-    .filter((d) => sort.key === "points" || sort.key === "starts" || d[sort.key] > 0)
+    .filter((d) => sort.key === "score" || sort.key === "points" || sort.key === "starts" || d[sort.key] > 0)
     .sort((a, b) => {
       for (const k of sort.order) if (b[k] !== a[k]) return b[k] - a[k];
       return a.name.localeCompare(b.name);
@@ -59,6 +66,8 @@ export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
   const max = rows[0]?.[sort.key] || 1;
   const accent = readableAccent(color, { dark });
   const totalWins = drivers.reduce((s, d) => s + d.wins, 0);
+  // "35-30-25…": the head of the table the score is priced by.
+  const scale = (data.scale || []).slice(0, 3).join("-");
 
   return (
     <section className="reveal space-y-3">
@@ -67,11 +76,15 @@ export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
           <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">All-time drivers</h2>
           <p className="mt-0.5 font-mono text-[11px] text-light">
             {drivers.length} {drivers.length === 1 ? "driver" : "drivers"} over {data.seasons} seasons · {totalWins}{" "}
-            {totalWins === 1 ? "win" : "wins"} · points before drops, sprints included
+            {totalWins === 1 ? "win" : "wins"} · sprints included
+          </p>
+          <p className="mt-0.5 font-mono text-[11px] text-light">
+            Score: every finish on today&rsquo;s table{scale ? ` (${scale}…)` : ""}, so all seasons count the same · Points: as
+            each season paid them, before drops
           </p>
         </div>
         <SlidingTabs
-          items={SORTS.map((s) => ({ key: s.key, label: s.label, title: `Most ${s.label.toLowerCase()} for ${teamName}` }))}
+          items={SORTS.map((s) => ({ key: s.key, label: s.label, title: s.title || `Most ${s.label.toLowerCase()} for ${teamName}` }))}
           value={sort.key}
           onChange={(k) => {
             setSortKey(k);
@@ -83,7 +96,7 @@ export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
 
       <div className="card overflow-hidden">
         {/* Column heads, wide screens only (phones show the picked figure). */}
-        <div className="hidden grid-cols-[2rem_minmax(0,1fr)_repeat(4,4.5rem)] items-center gap-3 border-b border-border px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
+        <div className="hidden grid-cols-[2rem_minmax(0,1fr)_repeat(5,4rem)] items-center gap-3 border-b border-border px-5 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light sm:grid">
           <span>#</span>
           <span>Driver</span>
           {COLS.map((c) => (
@@ -103,7 +116,7 @@ export default function TeamAllTimeDrivers({ teamId, teamName, color, dark }) {
                 <li key={d.driverId}>
                   <Link
                     to={`/drivers/${d.driverId}${d.seasonNumber != null ? `?season=${d.seasonNumber}` : ""}`}
-                    className="group grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:grid-cols-[2rem_minmax(0,1fr)_repeat(4,4.5rem)] sm:px-5"
+                    className="group grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition hover:bg-surface2 sm:grid-cols-[2rem_minmax(0,1fr)_repeat(5,4rem)] sm:px-5"
                   >
                     <span
                       className={`font-display text-base font-black tabular-nums ${rank <= 3 ? "" : "text-faint"}`}
