@@ -360,6 +360,7 @@ html {
   z-index: 60;
   overflow: hidden;
   pointer-events: none;
+  contain: strict;
 }
 .wipe[data-phase="in"],
 .wipe[data-phase="intro"] {
@@ -381,8 +382,21 @@ html {
 .wipe-bar {
   flex: 1;
   border-radius: 9999px;
-  transform: translateX(115%);
+  transform: translate3d(115%, 0, 0);
+  backface-visibility: hidden;
+}
+/* a layer per bar only while they move */
+.wipe:not([data-phase="idle"]) .wipe-bar {
   will-change: transform;
+}
+/* the page's drifting streaks hold still under the cover */
+.wiping .streaks-near,
+.wiping .streaks-far {
+  animation-play-state: paused;
+}
+/* and the header's blur is not worked out again for every frame */
+.wiping header {
+  backdrop-filter: none;
 }
 .wipe-accent {
   background: rgb(var(--accent));
@@ -391,7 +405,7 @@ html {
   background: rgb(var(--ink));
 }
 .wipe-bg {
-  flex: 1.8;
+  flex: 2;
   background: rgb(var(--bg));
   /* black bars overlap a little, so no hairline of the page shows between */
   margin: -1px 0;
@@ -407,18 +421,18 @@ html {
 }
 @keyframes wipe-in {
   from {
-    transform: translateX(115%);
+    transform: translate3d(115%, 0, 0);
   }
   to {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 @keyframes wipe-out {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-115%);
+    transform: translate3d(-115%, 0, 0);
   }
 }
 .wipe-logo {

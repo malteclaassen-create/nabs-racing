@@ -19,12 +19,11 @@ const IN_MS = 580; // longest bar in, stagger included
 const OUT_MS = 700; // longest bar out, stagger included
 // Which colour each row gets: thin streaks in the accent (white, or the
 // series colour) and in white, between wider black bars like the page.
-const TONES = [
-  "bg", "accent", "bg", "bg", "ink", "bg", "accent", "bg", "bg", "ink", "bg", "bg",
-  "accent", "bg", "ink", "bg", "bg", "accent", "bg", "bg", "ink", "bg", "accent", "bg",
-];
+// Few bars on purpose: each is a layer of its own, and phones redraw fewer
+// layers more smoothly.
+const TONES = ["bg", "accent", "bg", "ink", "bg", "accent", "bg", "bg", "ink", "bg", "accent", "bg", "ink", "bg", "accent", "bg"];
 // Scatter in when each bar starts, so the front is ragged like rain.
-const DELAYS = [40, 150, 10, 90, 160, 30, 120, 0, 70, 140, 20, 100, 60, 130, 5, 110, 50, 155, 25, 85, 145, 15, 95, 65];
+const DELAYS = [40, 150, 10, 90, 160, 30, 120, 0, 70, 140, 20, 100, 60, 130, 5, 110];
 // How long after the page swap its own entrance animations wait, so they play
 // as the streaks clear instead of under them.
 const ENTER_AFTER_INTRO = "720ms";
@@ -38,6 +37,7 @@ export function useRainTransition(location) {
   const [phase, setPhase] = useState(() => (prefersLessMotion() ? "idle" : "intro"));
   const [enter, setEnter] = useState(() => (prefersLessMotion() ? "0ms" : ENTER_AFTER_INTRO));
   const timers = useRef([]);
+  const frame = useRef(0);
   const enterTimer = useRef(null);
   // the entrance delay goes back to nothing once the page is in, so things
   // shown later (a table after its data arrives) do not wait for no reason
@@ -59,6 +59,7 @@ export function useRainTransition(location) {
   useEffect(() => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
+    cancelAnimationFrame(frame.current);
     if (pageKey(location) === pageKey(display) || prefersLessMotion()) {
       setDisplay(location);
       if (pageKey(location) !== pageKey(display)) window.scrollTo({ top: 0, behavior: "instant" });
@@ -70,16 +71,30 @@ export function useRainTransition(location) {
         setDisplay(location);
         window.scrollTo({ top: 0, behavior: "instant" });
         delayEnter(ENTER_AFTER_SWAP, 2000);
-        setPhase("out");
+        // the streaks clear once the new page is drawn underneath (two
+        // frames: React's render, then the browser's paint), so building
+        // the page does not stall the way out
+        frame.current = requestAnimationFrame(() => {
+          frame.current = requestAnimationFrame(() => {
+            setPhase("out");
+            timers.current.push(setTimeout(() => setPhase("idle"), OUT_MS));
+          });
+        });
       }, IN_MS + 40),
-      setTimeout(() => setPhase("idle"), IN_MS + 40 + OUT_MS),
     );
   }, [location]); // when the address changes; `display` is read, not watched
+
+  // While the streaks run, the page's own moving backgrounds pause (they
+  // would be redrawn under the cover for nothing).
+  useEffect(() => {
+    document.documentElement.classList.toggle("wiping", phase !== "idle");
+  }, [phase]);
 
   useEffect(
     () => () => {
       timers.current.forEach(clearTimeout);
       clearTimeout(enterTimer.current);
+      cancelAnimationFrame(frame.current);
     },
     [],
   );

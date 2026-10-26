@@ -172,8 +172,8 @@ function NavBar() {
 
   return (
     <header
-      className={`sticky top-0 z-30 border-b backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-300 ${
-        scrolled ? "border-line bg-bg/90 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.9)]" : "border-transparent bg-bg/60"
+      className={`sticky top-0 z-30 border-b md:backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-300 ${
+        scrolled ? "border-line bg-bg/95 md:bg-bg/90 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.9)]" : "border-transparent bg-bg/85 md:bg-bg/60"
       }`}
     >
       <div className="page flex h-16 items-center gap-3">
@@ -276,11 +276,10 @@ function ToSeries({ sub }) {
   return <Navigate to={series ? `/series/${series.slug}${sub}` : "/"} replace />;
 }
 
-function Shell() {
+function Shell({ transition }) {
   const { settings } = useSite();
-  const location = useLocation();
   // the page shown follows the address once the streaks cover the screen
-  const { display, displayKey, phase, enter } = useRainTransition(location);
+  const { display, displayKey, phase, enter } = transition;
   useEffect(() => {
     if (settings?.leagueName) document.title = settings.leagueName;
   }, [settings?.leagueName]);
@@ -325,9 +324,12 @@ function Shell() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const transition = useRainTransition(location);
+  // the site's data follows the page on screen, not the address
   return (
-    <SiteProvider>
-      <Shell />
+    <SiteProvider location={transition.display}>
+      <Shell transition={transition} />
     </SiteProvider>
   );
 }

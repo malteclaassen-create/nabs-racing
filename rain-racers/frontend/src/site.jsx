@@ -6,6 +6,10 @@ import { hexToRgb } from "./format.js";
 // What every page needs: the league's settings, who is signed in, the series
 // with their seasons, which series is being looked at (from the address, else
 // the last one looked at) and which season of it.
+//
+// `location` is the address of the page on screen. During a page change that
+// is still the old one until the rain streaks cover the screen, so the old
+// page does not flash up with the new series' data and colour first.
 const SiteContext = createContext(null);
 const LAST_SERIES = "rr.series";
 
@@ -17,12 +21,13 @@ const readLast = () => {
   }
 };
 
-export function SiteProvider({ children }) {
+export function SiteProvider({ children, location: shown = null }) {
   const [settings, setSettings] = useState(null);
   const [me, setMe] = useState({ user: null, isAdmin: false, discordEnabled: false });
   const [seriesList, setSeriesList] = useState([]);
   const [seasonBySeries, setSeasonBySeries] = useState({}); // slug -> season id
-  const location = useLocation();
+  const live = useLocation();
+  const location = shown || live;
 
   const reload = useCallback(async () => {
     const [s, m, list] = await Promise.all([api.get("/settings"), api.get("/me"), api.get("/series")]);

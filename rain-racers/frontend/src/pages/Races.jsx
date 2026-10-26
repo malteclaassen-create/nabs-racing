@@ -94,6 +94,6 @@ function Chip({ children, tone, color }) {
       {children}
     </span>
   ) : (
-    <span className="rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-black uppercase italic text-white backdrop-blur">{children}</span>
+    <span className="rounded-full bg-black/80 px-2.5 py-1 text-[10px] font-black uppercase italic text-white">{children}</span>
   );
 }

@@ -91,7 +91,7 @@ export function RoundPicture({ race, extra = [], color, label, bare = false, cla
 // The round button on a video thumbnail.
 export function PlayBadge({ className = "h-14 w-14" }) {
   return (
-    <span className={`flex items-center justify-center rounded-full bg-black/70 text-white ring-1 ring-white/30 backdrop-blur transition-transform duration-300 group-hover:scale-110 ${className}`}>
+    <span className={`flex items-center justify-center rounded-full bg-black/75 text-white ring-1 ring-white/30 transition-transform duration-300 group-hover:scale-110 ${className}`}>
       <svg viewBox="0 0 24 24" className="ml-0.5 h-1/2 w-1/2" fill="currentColor" aria-hidden="true">
         <path d="M8 5.5v13l11-6.5z" />
       </svg>
