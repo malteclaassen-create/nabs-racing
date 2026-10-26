@@ -25,6 +25,8 @@ const parseList = (json) => {
 // A round counts as over three hours after its start, results or not.
 const OVER_AFTER_MS = 3 * 60 * 60 * 1000;
 const isOver = (race) => new Date(race.startsAt).getTime() < Date.now() - OVER_AFTER_MS;
+// Rounds raced so far: with results, or over (results may come later).
+const roundsRaced = (races) => races.filter((r) => r.results.length || isOver(r)).length;
 
 // Where and with what a round is raced. A mystery track stays hidden until
 // the round has results (its picture is the admin's choice: a teaser).
@@ -157,7 +159,7 @@ router.get("/overview", async (_req, res) => {
     cards.push({
       series: { ...seriesOut(s), imageUrl: s.imageUrl || season?.imageUrl || null, description: s.description },
       season: season ? { id: season.id, name: season.name } : null,
-      roundsDone: races.filter((r) => r.results.length).length,
+      roundsDone: roundsRaced(races),
       roundsTotal: races.length,
       leader: standings.drivers[0] ? { ...driverOut(standings.drivers[0]), points: standings.drivers[0].points, team: standings.drivers[0].team } : null,
       nextRace: next ? raceSummary(next, season, settings) : null,
@@ -206,7 +208,7 @@ router.get("/home", async (req, res) => {
     drivers: publicStandings(standings).drivers.slice(0, 5),
     teams: publicStandings(standings).teams.slice(0, 5),
     progression: { ...standings.progression, drivers: standings.progression.drivers.slice(0, 6), teams: standings.progression.teams.slice(0, 6) },
-    roundsDone: races.filter((r) => r.results.length).length,
+    roundsDone: roundsRaced(races),
     roundsTotal: races.length,
   });
 });
