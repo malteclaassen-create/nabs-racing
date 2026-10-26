@@ -1453,6 +1453,9 @@ export const api = {
   importTeam: (fromTeamId, seasonId) =>
     request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
+  // "Volvo Racing is the same team as Volvo" (lib/teamLineage.js).
+  teamLinks: () => request(`/admin/team-links${seriesQ()}`, { auth: true }),
+  saveTeamLinks: (links) => request("/admin/team-links", { method: "PUT", body: { links }, auth: true }),
   // `force` confirms the one thing the server won't remove behind your back:
   // the team's driver-market seat offers.
   deleteTeam: (id, force = false) =>
