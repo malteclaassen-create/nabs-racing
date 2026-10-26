@@ -10,17 +10,16 @@ import { fmtDateLong, isLapTime } from "../utils/format.js";
 //
 // The round's photo as a narrow strip with the track written up it, and the
 // top ten beside it: every driver with their picture and team logo, how many
-// places they made up or lost from the grid, and what the round paid them in
-// a pill of their team's colour. The rows share the card's height, so the
-// card is as tall as the news column without a gap under P10. On a phone the
-// strip stands down and the track moves into the line above the table.
+// places they made up or lost from the grid, and what the round paid them.
+// The rows share the card's height, so the card is as tall as the news column
+// without a gap under P10. On a phone the strip stands down and the track
+// moves into the line above the table.
 //
 // A sprint weekend gets a switcher between its two races, feature first, the
 // one the championship is decided on.
 // ---------------------------------------------------------------------------
 
 const MEDAL = MEDAL_TEXT;
-const tint = (color, pct) => `color-mix(in srgb, ${color || "#888"} ${pct}%, transparent)`;
 
 // A results payload's classified top ten, in finishing order. A DSQ/DNF row
 // keeps the raw place it crossed the line in and must not stand in the table.
@@ -90,12 +89,7 @@ function Row({ r, i, result }) {
         </span>
         <Gained value={r.gained} />
         {result.scores && (
-          <span
-            className="min-w-[2.75rem] rounded-full px-2.5 py-1 text-center font-display text-sm font-black tabular-nums text-dark"
-            style={{ backgroundColor: tint(r.team.color, 22) }}
-          >
-            {r.points ?? 0}
-          </span>
+          <span className="min-w-[2rem] text-right font-display text-base font-black tabular-nums text-dark">{r.points ?? 0}</span>
         )}
       </Link>
     </li>
