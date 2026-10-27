@@ -167,10 +167,12 @@ function LeadStory({ article, className = "" }) {
 
 // The news column. The lead picture takes whatever height the result card
 // beside it leaves over, so the two columns always end on the same line; on
-// a phone it keeps a fixed 4:3.
+// a phone it keeps a fixed 4:3. The lead is the article the news desk chose
+// as the main story, else the newest; the headlines are the rest, newest first.
 function NewsColumn({ news }) {
   const articles = news?.data?.articles || [];
-  const [lead, ...rest] = articles;
+  const lead = news?.data?.lead || articles[0] || null;
+  const rest = articles.filter((a) => a.id !== lead?.id);
   if (news?.loading) {
     return (
       <section className="flex flex-col" aria-busy="true">

@@ -1052,10 +1052,12 @@ export const api = {
   // The news (backend routes/news.js). Reading is public; the desk takes an
   // admin OR a member an admin named a news writer, so it rides on whichever
   // token is there (the PIN, else the Discord session) and the server decides.
-  news: ({ category = "", q = "", before = "", limit = 0 } = {}) => {
+  // `lead` also asks for the article the desk put at the top of the home page.
+  news: ({ category = "", q = "", before = "", limit = 0, lead = false } = {}) => {
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
     if (limit) qs.set("limit", String(limit));
+    if (lead) qs.set("lead", "1");
     if (q) qs.set("q", q);
     if (before) qs.set("before", before);
     const s = qs.toString();
@@ -1068,6 +1070,8 @@ export const api = {
   createNewsArticle: (article) => request("/news/desk", { method: "POST", body: article, auth: true }),
   updateNewsArticle: (id, article) =>
     request(`/news/desk/${encodeURIComponent(id)}`, { method: "PUT", body: article, auth: true }),
+  // The main story on the home page: an article id, or null for the newest.
+  setNewsHomeLead: (id) => request("/news/desk/home-lead", { method: "PUT", body: { id }, auth: true }),
   deleteNewsArticle: (id) => request(`/news/desk/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
   uploadNewsCover: async (file) => {
     const fd = new FormData();

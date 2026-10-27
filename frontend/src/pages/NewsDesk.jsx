@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { Pin } from "lucide-react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { ErrorBox, Notice, Spinner, CardHead, EmptyState } from "../components/ui.jsx";
@@ -208,10 +209,35 @@ function DeskList() {
   useSpecificTitle("News desk · NABS Racing League");
   const access = useNewsDeskAccess();
   const { data, error, reload } = useApi(useCallback(() => api.newsDesk(), []));
+  // The main story on the home page. Held here as well as in `data`, so the
+  // button answers at once; the server's answer then settles it.
+  const [leadId, setLeadId] = useState(undefined);
+  const [leadBusy, setLeadBusy] = useState(false);
+  const [leadError, setLeadError] = useState("");
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!data) return <Spinner />;
   const articles = data.articles || [];
+  const homeLeadId = leadId === undefined ? data.homeLeadId || null : leadId;
+  // Pointing at an article that is no longer live counts as none chosen,
+  // the same rule the home page follows.
+  const leadArticle = articles.find((a) => a.id === homeLeadId && a.status === "PUBLISHED") || null;
+
+  const chooseLead = async (id) => {
+    const before = homeLeadId;
+    setLeadId(id);
+    setLeadBusy(true);
+    setLeadError("");
+    try {
+      const out = await api.setNewsHomeLead(id);
+      setLeadId(out.homeLeadId ?? null);
+    } catch (e) {
+      setLeadId(before);
+      setLeadError(e.message || "That did not work. Try again.");
+    } finally {
+      setLeadBusy(false);
+    }
+  };
 
   return (
     <div className="content-in space-y-5">
@@ -229,14 +255,39 @@ function DeskList() {
 
       <RaceReportStarter />
 
+      {/* What leads the home page's news column right now, and how to change it. */}
+      {articles.some((a) => a.status === "PUBLISHED") && (
+        <div className="card flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
+          <Pin className="h-4 w-4 shrink-0 text-light" strokeWidth={2.2} />
+          <div className="min-w-0 flex-1 text-sm">
+            <div className="font-bold text-dark">Main story on the home page</div>
+            <div className="text-light">
+              {leadArticle ? (
+                <>
+                  <span className="font-semibold text-dark">{leadArticle.title}</span> leads until you take it off or choose another.
+                </>
+              ) : (
+                "None chosen, so the newest article leads. Press Main story on any live article to put it on top."
+              )}
+            </div>
+            {leadError && <div className="mt-1 text-bad">{leadError}</div>}
+          </div>
+          {leadArticle && (
+            <button type="button" className="btn-secondary" disabled={leadBusy} onClick={() => chooseLead(null)}>
+              Back to newest
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         {!articles.length ? (
           <EmptyState title="Nothing written yet" hint="Start one above, or wait for the next round's automatic draft." className="p-6" />
         ) : (
           <ul className="divide-y divide-border">
             {articles.map((a) => (
-              <li key={a.id}>
-                <Link to={`/news/desk/${a.id}`} className="flex items-center gap-4 p-3 hover:bg-surface2/60">
+              <li key={a.id} className="flex items-center hover:bg-surface2/60">
+                <Link to={`/news/desk/${a.id}`} className="flex min-w-0 flex-1 items-center gap-4 p-3">
                   <div className="h-14 w-24 shrink-0 overflow-hidden rounded-md bg-surface2">
                     <NewsCover article={a} />
                   </div>
@@ -259,6 +310,24 @@ function DeskList() {
                     </div>
                   </div>
                 </Link>
+                {/* Only a live article can lead the home page. */}
+                {a.status === "PUBLISHED" && (
+                  <button
+                    type="button"
+                    disabled={leadBusy}
+                    onClick={() => chooseLead(leadArticle?.id === a.id ? null : a.id)}
+                    title={leadArticle?.id === a.id ? "Take it off the top of the home page" : "Put it at the top of the home page"}
+                    aria-pressed={leadArticle?.id === a.id}
+                    className={`mr-3 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition disabled:opacity-60 ${
+                      leadArticle?.id === a.id
+                        ? "bg-brand text-onbrand"
+                        : "border border-border text-light hover:border-brand/50 hover:text-dark"
+                    }`}
+                  >
+                    <Pin className={`h-3.5 w-3.5 ${leadArticle?.id === a.id ? "fill-current" : ""}`} strokeWidth={2.2} />
+                    <span className="hidden sm:inline">Main story</span>
+                  </button>
+                )}
               </li>
             ))}
           </ul>

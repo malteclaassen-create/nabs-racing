@@ -38,6 +38,7 @@ export const NEWS_LIMITS = { title: 120, summary: 280, body: 30000, coverUrl: 40
 export const NEWS_STATUSES = ["DRAFT", "PUBLISHED"];
 
 const WRITERS_KEY = "news_writer_ids";
+const HOME_LEAD_KEY = "news_home_lead_id";
 const DISCORD_ID_RE = /^\d{5,25}$/;
 const ARTICLE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 // Control characters bar the line breaks a body needs, and the zero-width and
@@ -255,6 +256,42 @@ export async function listAll(prisma) {
      LIMIT 300`
   );
   return rows.map((r) => shapeArticle(r, { withBody: false }));
+}
+
+// --- the main story on the home page -----------------------------------------
+// The desk can put one article at the top of the home page's news column.
+// Unset, or pointing at an article that is gone or back to a draft, the
+// newest one leads as before.
+
+export async function readHomeLeadId(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: HOME_LEAD_KEY } });
+    return row?.value && isArticleId(row.value) ? row.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeHomeLeadId(prisma, id) {
+  if (!id) {
+    await prisma.setting.deleteMany({ where: { key: HOME_LEAD_KEY } });
+    return null;
+  }
+  const value = String(id);
+  await prisma.setting.upsert({ where: { key: HOME_LEAD_KEY }, create: { key: HOME_LEAD_KEY, value }, update: { value } });
+  return value;
+}
+
+// The chosen article as the cards want it, or null when none is chosen or it
+// is not live.
+export async function homeLeadArticle(prisma) {
+  const id = await readHomeLeadId(prisma);
+  if (!id) return null;
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT ${LIST_COLUMNS}, ${COMMENT_COUNT} FROM "NewsArticle" WHERE "id" = ? AND "status" = 'PUBLISHED' LIMIT 1`,
+    id
+  );
+  return rows[0] ? shapeArticle(rows[0], { withBody: false }) : null;
 }
 
 export async function findArticle(prisma, { id = null, slug = null }) {

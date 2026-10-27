@@ -549,8 +549,9 @@ export default function Home() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const races = useApi(useCallback(() => api.races(), []));
   const events = useApi(useCallback(() => api.events(), []));
-  // The newest articles, for the news column beside the latest result.
-  const news = useApi(useCallback(() => api.news({ limit: 5 }), []));
+  // The newest articles, for the news column beside the latest result, and
+  // the one the desk chose to lead it (if any).
+  const news = useApi(useCallback(() => api.news({ limit: 5, lead: true }), []));
   const [latest, setLatest] = useState(null);
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);

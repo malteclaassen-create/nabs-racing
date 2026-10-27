@@ -3,6 +3,7 @@
 //
 // Public:
 //   GET  /api/news?category=&q=&before=   published articles, newest first
+//        &lead=1                          also `lead`, the article the desk put on the home page (or null)
 //   GET  /api/news/article/:slug          one published article (+ its round, read next)
 //   GET  /api/news/desk/access            { canWrite, admin } for the caller
 //
@@ -22,7 +23,8 @@
 //   POST   /api/news/gifs/resolve                  { link } -> { gif } for a pasted Tenor/GIPHY link
 //
 // The desk (admins and news writers, middleware requireNewsDesk):
-//   GET    /api/news/desk                 every article, drafts first
+//   GET    /api/news/desk                 every article, drafts first, + homeLeadId
+//   PUT    /api/news/desk/home-lead       { id } puts a live article at the top of the home page, null takes it off
 //   GET    /api/news/desk/:id             one article, draft or not
 //   POST   /api/news/desk                 write one
 //   PUT    /api/news/desk/:id             change one (publish = status PUBLISHED)
@@ -66,6 +68,9 @@ import {
   articlesForRaces,
   readNewsWriters,
   writeNewsWriters,
+  readHomeLeadId,
+  writeHomeLeadId,
+  homeLeadArticle,
 } from "../lib/news.js";
 import {
   isCommentId,
@@ -148,7 +153,8 @@ router.get("/", async (req, res, next) => {
       before: req.query.before,
       limit: req.query.limit,
     });
-    res.json({ ...out, categories: NEWS_CATEGORIES });
+    const lead = req.query.lead ? { lead: await homeLeadArticle(prisma) } : {};
+    res.json({ ...out, ...lead, categories: NEWS_CATEGORIES });
   } catch (e) {
     next(e);
   }
@@ -349,7 +355,23 @@ function requireDeskAdmin(req, res, next) {
 
 router.get("/desk", async (_req, res, next) => {
   try {
-    res.json({ articles: await listAll(prisma), categories: NEWS_CATEGORIES });
+    res.json({ articles: await listAll(prisma), homeLeadId: await readHomeLeadId(prisma), categories: NEWS_CATEGORIES });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The main story on the home page. Anybody on the desk may choose it, the
+// same people who may publish; only a live article can lead.
+router.put("/desk/home-lead", async (req, res, next) => {
+  try {
+    const id = req.body?.id ?? null;
+    if (id == null) return res.json({ homeLeadId: await writeHomeLeadId(prisma, null) });
+    if (!isArticleId(id)) return res.status(404).json({ error: "Article not found" });
+    const row = await findArticle(prisma, { id });
+    if (!row) return res.status(404).json({ error: "Article not found" });
+    if (row.status !== "PUBLISHED") return res.status(400).json({ error: "Only a published article can lead the home page" });
+    res.json({ homeLeadId: await writeHomeLeadId(prisma, row.id) });
   } catch (e) {
     next(e);
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slugify, sanitizeArticleInput, checkCoverUrl, readingMinutes } from "./news.js";
+import { slugify, sanitizeArticleInput, checkCoverUrl, readingMinutes, readHomeLeadId, writeHomeLeadId, homeLeadArticle } from "./news.js";
 import { composeRaceReport } from "./newsRaceReport.js";
 
 describe("slugify", () => {
@@ -134,5 +134,44 @@ describe("composeRaceReport", () => {
       standingsBefore: [{ driverId: "a", name: "Munti", total: 90 }],
     });
     expect(a.body).toContain("new championship leader: Dieguiosk takes over from Munti");
+  });
+});
+
+describe("home lead", () => {
+  // Just enough of prisma for the setting row and the one article query.
+  function fakePrisma(articles = []) {
+    const settings = new Map();
+    return {
+      settings,
+      setting: {
+        findUnique: async ({ where }) => (settings.has(where.key) ? { key: where.key, value: settings.get(where.key) } : null),
+        upsert: async ({ where, create }) => settings.set(where.key, create.value),
+        deleteMany: async ({ where }) => settings.delete(where.key),
+      },
+      $queryRawUnsafe: async (_sql, id) => articles.filter((a) => a.id === id && a.status === "PUBLISHED"),
+    };
+  }
+  const live = { id: "art_live_0001", slug: "big-news", title: "Big news", category: "RACES", status: "PUBLISHED", body: "" };
+  const draft = { ...live, id: "art_draft_001", status: "DRAFT" };
+
+  it("is empty until the desk picks one", async () => {
+    const prisma = fakePrisma([live]);
+    expect(await readHomeLeadId(prisma)).toBe(null);
+    expect(await homeLeadArticle(prisma)).toBe(null);
+  });
+
+  it("answers the chosen live article, and nothing once it is taken off", async () => {
+    const prisma = fakePrisma([live]);
+    await writeHomeLeadId(prisma, live.id);
+    expect(await readHomeLeadId(prisma)).toBe(live.id);
+    expect((await homeLeadArticle(prisma)).slug).toBe("big-news");
+    await writeHomeLeadId(prisma, null);
+    expect(await homeLeadArticle(prisma)).toBe(null);
+  });
+
+  it("lets the newest lead again when the chosen one is back to a draft", async () => {
+    const prisma = fakePrisma([draft]);
+    await writeHomeLeadId(prisma, draft.id);
+    expect(await homeLeadArticle(prisma)).toBe(null);
   });
 });
