@@ -6497,6 +6497,8 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
       ? { ...current, mapImages: { ...current.mapImages, [series.slug]: mapImageUrl }, mapImageSizes }
       : { ...current, mapImageUrl, mapImageSizes };
     const saved = await writeTrackInfo(prisma, key, updated);
+    // The track strengths on the profiles show the picture too.
+    invalidateTrackStrengthCache();
     res.json({ ok: true, mapImageUrl, series: series?.slug || null, content: saved });
   } catch (e) {
     next(e);
@@ -7213,6 +7215,8 @@ router.delete("/tracks/:key/map", async (req, res, next) => {
       updated = { ...current, mapImageUrl: null };
     }
     const saved = await writeTrackInfo(prisma, key, updated);
+    // The track strengths on the profiles show the picture too.
+    invalidateTrackStrengthCache();
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);

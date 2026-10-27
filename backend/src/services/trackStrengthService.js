@@ -23,7 +23,7 @@
 // race at all; DNF/DSQ rows have no finish, but still carry a best lap.
 // ---------------------------------------------------------------------------
 import { TRACK_TYPES, effectiveTypes } from "../lib/trackProfile.js";
-import { readTrackInfo } from "../lib/trackInfo.js";
+import { readTrackInfo, mapImageFor } from "../lib/trackInfo.js";
 import { groupKeyFor, trackKeyFor } from "../lib/trackKeys.js";
 import { applyPenalties } from "./pointsCalculator.js";
 import { getPrivateSeasonIds } from "./seasonService.js";
@@ -90,8 +90,9 @@ function bucket(entries) {
 
 // Everything the page draws, out of the scored races. `entries` are
 // { trackKey, trackName, value, position, gapPct } (from raceEntry plus the
-// circuit); `typesByTrack` maps a circuit key to its type keys. Pure.
-export function summariseStrengths(entries, typesByTrack) {
+// circuit); `typesByTrack` maps a circuit key to its type keys, `imageByTrack`
+// to the picture an admin uploaded for it (Admin > Tracks), if any. Pure.
+export function summariseStrengths(entries, typesByTrack, imageByTrack = new Map()) {
   const byTrack = new Map();
   for (const e of entries) {
     if (!byTrack.has(e.trackKey)) byTrack.set(e.trackKey, { names: [], list: [] });
@@ -104,6 +105,7 @@ export function summariseStrengths(entries, typesByTrack) {
       key,
       name: prettiestName(t.names) || key,
       types: typesByTrack.get(key) || [],
+      image: imageByTrack.get(key) || null,
       ...bucket(t.list),
     }))
     .sort((a, b) => b.score - a.score || b.races - a.races || a.name.localeCompare(b.name));
@@ -214,13 +216,17 @@ async function compute(prisma, rowId, scope, includePrivate) {
   }
 
   const typesByTrack = new Map();
+  const imageByTrack = new Map();
   for (const k of new Set(entries.map((e) => e.trackKey))) {
     const info = await readTrackInfo(prisma, k);
     typesByTrack.set(k, effectiveTypes(info, trackKeyFor(k) ? k : null).types);
+    // A profile spans every series, so the shared picture, else any series' own.
+    const image = mapImageFor(info, null) || Object.values(info?.mapImages || {})[0] || null;
+    if (image) imageByTrack.set(k, image);
   }
   return {
     scope,
-    ...summariseStrengths(entries, typesByTrack),
+    ...summariseStrengths(entries, typesByTrack, imageByTrack),
     seasons: [...seasons].sort((a, b) => a - b),
   };
 }
