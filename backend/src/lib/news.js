@@ -386,6 +386,8 @@ export async function updateArticle(prisma, existing, fields) {
 }
 
 export async function deleteArticle(prisma, id) {
+  await prisma.$executeRawUnsafe(`DELETE FROM "NewsReaction" WHERE "articleId" = ?`, id);
+  await prisma.$executeRawUnsafe(`DELETE FROM "NewsView" WHERE "articleId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "NewsComment" WHERE "articleId" = ?`, id);
   await prisma.$executeRawUnsafe(`DELETE FROM "NewsArticle" WHERE "id" = ?`, id);
 }

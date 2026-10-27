@@ -1098,6 +1098,15 @@ export const api = {
       `/news/comments/${encodeURIComponent(articleId)}/${encodeURIComponent(id)}`,
       localStorage.getItem(USER_TOKEN_KEY) ? { method: "DELETE", userAuth: true } : { method: "DELETE", auth: true }
     ),
+  // A reaction on the article or one of its comments, on or off again.
+  reactNews: (articleId, target, id, emoji) =>
+    request(`/news/reactions/${encodeURIComponent(articleId)}`, {
+      method: "POST",
+      body: { target, id, emoji },
+      userAuth: true,
+    }),
+  // One more view of the article, signed in or not; answers { views }.
+  viewNewsArticle: (articleId) => request(`/news/article/${encodeURIComponent(articleId)}/view`, { method: "POST" }),
   searchGifs: (q = "") => request(`/news/gifs${q ? `?q=${encodeURIComponent(q)}` : ""}`, { userAuth: true }),
   resolveGifLink: (link) => request("/news/gifs/resolve", { method: "POST", body: { link }, userAuth: true }),
   // The newcomer names who brought them in: a code, or the member's name.

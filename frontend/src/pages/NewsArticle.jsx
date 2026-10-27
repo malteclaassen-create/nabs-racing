@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -16,6 +16,23 @@ export default function NewsArticle() {
   const access = useNewsDeskAccess();
   const { data, error, reload } = useApi(useCallback(() => api.newsArticle(slug), [slug]));
   const article = data?.article;
+  // Every opening counts, signed in or not; the answer is the total, this one
+  // included.
+  const [views, setViews] = useState(null);
+  const articleId = article?.id;
+  useEffect(() => {
+    if (!articleId) return undefined;
+    let alive = true;
+    setViews(null);
+    api
+      .viewNewsArticle(articleId)
+      .then((d) => alive && setViews(d.views))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [articleId]);
+  const viewCount = views ?? article?.views ?? 0;
   useSpecificTitle(article ? `${article.title} · NABS News` : "News · NABS Racing League");
 
   if (error) {
@@ -52,6 +69,11 @@ export default function NewsArticle() {
         {article.authorName && <span className="font-semibold text-medium">{article.authorName}</span>}
         <time dateTime={article.publishedAt}>{fmtDateLong(article.publishedAt)}</time>
         <span>· {article.readingMinutes} min read</span>
+        {viewCount > 0 && (
+          <span>
+            · {viewCount.toLocaleString("en-US")} {viewCount === 1 ? "view" : "views"}
+          </span>
+        )}
         {data.race && (
           <Link
             to={`${data.race.seriesSlug ? `/s/${data.race.seriesSlug}` : ""}/results?race=${encodeURIComponent(data.race.id)}`}

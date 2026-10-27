@@ -1035,3 +1035,25 @@ model NewsComment {
   @@index([articleId, createdAt])
   @@index([parentId])
 }
+
+// Emoji reactions on a news article or one of its comments (lib/newsReactions.js),
+// one row per target, member and emoji. Raw-SQL managed; this model only mirrors it.
+model NewsReaction {
+  id         String   @id
+  articleId  String
+  targetType String
+  targetId   String
+  discordId  String
+  emoji      String
+  createdAt  DateTime @default(now())
+
+  @@unique([targetType, targetId, discordId, emoji], map: "NewsReaction_target_member_emoji_key")
+  @@index([articleId])
+}
+
+// How often a news article has been opened (lib/newsReactions.js). Raw-SQL
+// managed; this model only mirrors it.
+model NewsView {
+  articleId String @id
+  views     Int    @default(0)
+}
