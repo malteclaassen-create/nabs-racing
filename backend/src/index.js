@@ -80,6 +80,7 @@ import { ensureTuning } from "./lib/tokenTuning.js";
 import { UPLOADS_DIR } from "./lib/dataDirs.js";
 import { avatarThumbRoute } from "./lib/avatarThumbs.js";
 import { contentEtag } from "./lib/contentEtag.js";
+import { syncChangelogToDiscord, CHANGELOG_POLL_MS } from "./lib/changelogDiscord.js";
 
 // Schema upkeep that runs outside `prisma migrate` (raw SQL — see the comment
 // in lib/downloads.js). Idempotent, so it's safe on every boot. Chained so the
@@ -854,3 +855,12 @@ const REMINDER_TICK_MS = 5 * 60 * 1000;
 setInterval(() => {
   ensureRaceReminders(prisma).catch((e) => console.error("[reminders]", e?.message || e));
 }, REMINDER_TICK_MS).unref();
+
+// New changelog entries to their Discord channel, when one is set up
+// (lib/changelogDiscord.js). A first look a minute after start, then every 15.
+const syncChangelog = () =>
+  syncChangelogToDiscord(prisma)
+    .then((r) => r?.posted && console.log(`[changelog] posted ${r.posted} update(s) to Discord`))
+    .catch((e) => console.error("[changelog→discord]", e?.message || e));
+setTimeout(syncChangelog, 60_000).unref();
+setInterval(syncChangelog, CHANGELOG_POLL_MS).unref();

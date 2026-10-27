@@ -1264,6 +1264,10 @@ export const api = {
   getWebhook: () => request("/admin/discord/webhook", { auth: true }),
   setWebhook: (url) => request("/admin/discord/webhook", { method: "PUT", body: { url }, auth: true }),
   testWebhook: () => request("/admin/discord/test", { method: "POST", auth: true }),
+  // The channel every new changelog entry is posted to by itself.
+  getChangelogWebhook: () => request("/admin/discord/changelog-webhook", { auth: true }),
+  setChangelogWebhook: (url) => request("/admin/discord/changelog-webhook", { method: "PUT", body: { url }, auth: true }),
+  testChangelogWebhook: () => request("/admin/discord/changelog-test", { method: "POST", auth: true }),
   // results-channel webhook + the generated Discord results post (admin)
   getResultsWebhook: () => request("/admin/discord/results-webhook", { auth: true }),
   setResultsWebhook: (url) => request("/admin/discord/results-webhook", { method: "PUT", body: { url }, auth: true }),
