@@ -1,96 +1,22 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowRight, CircleCheck, Flag as FlagIcon, Trophy } from "lucide-react";
+import { ArrowRight, Flag as FlagIcon } from "lucide-react";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
 import { DriverAvatar, MEDAL_TEXT, RollingNumber } from "./ui.jsx";
 import { CategoryChip, CommentCount, NewsCover } from "../pages/News.jsx";
 import { ColumnHeader, Headline } from "./HomeNews.jsx";
-import { topTen, Gained } from "./LatestResultCard.jsx";
 import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
-import { fmtDuration } from "../utils/raceDuration.js";
-import { fmtDateLong, fmtStamp, NO_VALUE } from "../utils/format.js";
+import { fmtDateLong, fmtStamp, isLapTime, NO_VALUE } from "../utils/format.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
-import { isDevHost } from "../preview.js";
 
 // ---------------------------------------------------------------------------
 // The top of the member home while a season runs: one strip with the season
 // and the next race (countdown, sign-up), then the latest news and the latest
 // result side by side, the same width and the same height.
-//
-// Preview only: the result card comes in a few versions, switched with the
-// bar at the bottom of the screen on a local dev server (or ?result=<key>).
 // ---------------------------------------------------------------------------
-
-export const RESULT_STYLES = [
-  { key: "plain", label: "Jetzt" },
-  { key: "label", label: "A  Etikett im Foto" },
-  { key: "title", label: "B  Überschrift" },
-  { key: "finish", label: "C  Ziellinie + Sieger" },
-];
-const STORE = "nabs_home_result";
-
-function useResultStyle() {
-  const [value, setValue] = useState(() => {
-    if (typeof window === "undefined") return "plain";
-    const q = new URLSearchParams(window.location.search).get("result");
-    if (q && RESULT_STYLES.some((v) => v.key === q)) {
-      try {
-        localStorage.setItem(STORE, q);
-      } catch {
-        /* ignore */
-      }
-      return q;
-    }
-    try {
-      const saved = localStorage.getItem(STORE);
-      return RESULT_STYLES.some((v) => v.key === saved) ? saved : "plain";
-    } catch {
-      return "plain";
-    }
-  });
-  const choose = (k) => {
-    try {
-      localStorage.setItem(STORE, k);
-    } catch {
-      /* ignore */
-    }
-    setValue(k);
-  };
-  return [value, choose];
-}
-
-function StylePicker({ value, onChange }) {
-  const show = isDevHost() || new URLSearchParams(window.location.search).has("result");
-  if (!show) return null;
-  // On body: the page wrapper animates with a transform, which would pin a
-  // fixed bar to the page instead of the screen.
-  return createPortal(
-    <div className="fixed inset-x-0 bottom-4 z-[60] flex justify-center px-3">
-      <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/15 bg-black/85 p-1 shadow-2xl backdrop-blur-md">
-        <span className="hidden whitespace-nowrap px-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white/50 sm:inline">
-          Ergebnis-Karte
-        </span>
-        {RESULT_STYLES.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            onClick={() => onChange(v.key)}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition ${
-              value === v.key ? "bg-brand text-onbrand" : "text-white/75 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 // --------------------------------------------------------------- pieces ---
 
@@ -271,13 +197,33 @@ function NewsColumn({ news }) {
 
 // -------------------------------------------------------------- result ---
 
-// The winner's classified race time and laps led, from the same payload the
-// top ten comes from. A time penalty is part of the classified time.
-function winnerLine(payload) {
-  const w = (payload?.results || []).find((r) => r.status === "FINISHED" && r.position === 1);
-  if (!w) return null;
-  const time = w.totalTimeMs > 0 ? fmtDuration(w.totalTimeMs + (w.penaltySeconds || 0) * 1000) : null;
-  return { time, lapsLed: w.lapsLed || 0, laps: w.laps || null };
+const MEDAL = MEDAL_TEXT;
+
+// A results payload's classified top ten, in finishing order. A DSQ/DNF row
+// keeps the raw place it crossed the line in and must not stand in the list.
+// The fastest lap is the admin-recorded one when there is one, else the
+// quickest stored lap, the same rule the results table applies.
+function topTen(payload) {
+  const race = payload?.race || null;
+  const all = payload?.results || [];
+  const rows = all
+    .filter((r) => r.position != null && (!r.status || r.status === "FINISHED"))
+    .sort((a, b) => a.position - b.position)
+    .slice(0, 10)
+    .map((r) => ({
+      ...r,
+      team: (r.isSub && r.subForTeam) || r.effectiveTeam || r.team || {},
+      gained: r.grid != null ? r.grid - r.position : null,
+    }));
+  const laps = all.filter((r) => isLapTime(r.bestLapMs));
+  const fastestMs = laps.length ? Math.min(...laps.map((r) => r.bestLapMs)) : null;
+  const fastestId = race?.fastestLapDriverId || laps.find((r) => r.bestLapMs === fastestMs)?.driverId || null;
+  return {
+    race,
+    rows,
+    fastestId,
+    scores: race?.scores ?? (race?.type || "CHAMPIONSHIP") === "CHAMPIONSHIP",
+  };
 }
 
 // How long ago the round was run, while that still reads as news.
@@ -292,19 +238,18 @@ function agoLabel(date) {
   return days < 14 ? `${days} days ago` : null;
 }
 
+// A sprint weekend gets a switcher between its two races, feature first, the
+// one the championship is decided on.
 function useResult(d) {
   const [tab, setTab] = useState("feature");
   const tabs = [
-    { key: "feature", label: "Feature", payload: d.feature },
-    d.sprint && { key: "sprint", label: "Sprint", payload: d.sprint },
-  ]
-    .filter(Boolean)
-    .map((t) => ({ ...t, result: topTen(t.payload), winner: winnerLine(t.payload) }))
-    .filter((t) => t.result.rows.length > 0);
+    { key: "feature", label: "Feature", result: topTen(d.feature) },
+    d.sprint && { key: "sprint", label: "Sprint", result: topTen(d.sprint) },
+  ].filter((t) => t && t.result.rows.length > 0);
   const open = tabs.find((t) => t.key === tab) || tabs[0] || null;
   const result = open?.result || null;
   const resultsTo = result?.race?.id ? `/races?race=${result.race.id}` : d.lastRace?.id ? `/races?race=${d.lastRace.id}` : "/races";
-  return { tabs, open, setTab, result, winner: open?.winner || null, resultsTo };
+  return { tabs, open, setTab, result, resultsTo };
 }
 
 function RaceTabs({ r }) {
@@ -329,39 +274,61 @@ function RaceTabs({ r }) {
   );
 }
 
-function Avatar({ r, size = 34, logo = 16 }) {
+function Gained({ value }) {
+  if (value == null) return <span className="w-8" />;
+  const title = value === 0 ? "Finished where they started" : `${Math.abs(value)} place${Math.abs(value) === 1 ? "" : "s"} ${value > 0 ? "gained" : "lost"} from the grid`;
   return (
-    <span className="relative shrink-0">
-      <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={r.team.color} size={size} />
-      <TeamLogo
-        id={r.team.id}
-        name={r.team.name}
-        color={r.team.color}
-        logoUrl={r.team.logoUrl}
-        size={logo}
-        className="absolute -bottom-1 -right-1.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"
-      />
+    <span title={title} className={`w-8 text-right font-mono text-[11px] font-bold ${value > 0 ? "text-ok" : value < 0 ? "text-bad" : "text-faint"}`}>
+      {value > 0 ? `▲${value}` : value < 0 ? `▼${-value}` : "–"}
     </span>
   );
 }
 
-function FastestLap({ result, r }) {
-  if (result.fastestId !== r.driverId) return null;
+// One line of the top ten: the podium a size up, its places in medal colour.
+function ResultRow({ r, i, result }) {
+  const big = i < 3;
   return (
-    <span title="Fastest lap" className="rounded bg-fl/15 px-1.5 py-px font-mono text-[9px] font-bold text-fl">
-      FL
-    </span>
-  );
-}
-
-function ResultPending({ d, rows = 6 }) {
-  if (d.feature) return <p className="py-10 text-center text-sm text-light">The classification is on its way.</p>;
-  return (
-    <div className="flex flex-col gap-2 py-2" aria-hidden="true">
-      {Array.from({ length: rows }).map((_, i) => (
-        <span key={i} className="skeleton h-9 w-full rounded-lg" />
-      ))}
-    </div>
+    <li className="flex">
+      <Link
+        to={`/drivers/${r.driverId}`}
+        className={`group -mx-2 flex flex-1 items-center gap-3 rounded-lg px-2 transition hover:bg-surface2 ${big ? "py-2.5" : "py-1.5"}`}
+      >
+        <span
+          className={`w-6 shrink-0 text-center font-display font-black tabular-nums ${big ? "text-lg" : "text-sm text-light"}`}
+          style={big ? { color: MEDAL[i] } : undefined}
+        >
+          {r.position}
+        </span>
+        <span className="relative shrink-0">
+          <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={r.team.color} size={big ? 36 : 28} />
+          <TeamLogo
+            id={r.team.id}
+            name={r.team.name}
+            color={r.team.color}
+            logoUrl={r.team.logoUrl}
+            size={big ? 16 : 13}
+            className="absolute -bottom-1 -right-1.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]"
+          />
+        </span>
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="flex items-center gap-2">
+            <span className={`truncate font-bold text-dark group-hover:text-brand ${big ? "text-[15px]" : "text-sm"}`}>{r.name}</span>
+            {result.fastestId === r.driverId && (
+              <span title="Fastest lap" className="rounded bg-fl/15 px-1.5 py-px font-mono text-[9px] font-bold text-fl">
+                FL
+              </span>
+            )}
+          </span>
+          <span className="block truncate text-[11px] text-light">{r.team.name}</span>
+        </span>
+        <Gained value={r.gained} />
+        {result.scores && (
+          <span className={`min-w-[1.75rem] text-right font-display font-black tabular-nums text-dark ${big ? "text-base" : "text-sm"}`}>
+            {r.points ?? 0}
+          </span>
+        )}
+      </Link>
+    </li>
   );
 }
 
@@ -380,6 +347,7 @@ function ResultButtons({ r, d }) {
       >
         Standings
       </Link>
+      {/* Stewarding, for members, only while the report window is open. */}
       {d.reportTo && (
         <Link
           to={d.reportTo}
@@ -393,87 +361,14 @@ function ResultButtons({ r, d }) {
   );
 }
 
-// One line of the top ten. The podium lines are a size up, their place in
-// medal colour. `winner` turns P1 into the line that says who won: a gold
-// wash, the trophy, and the race time where the team name was.
-function ResultRow({ r, i, result, winner = null }) {
-  const big = i < 3;
-  return (
-    <li className="flex">
-      <Link
-        to={`/drivers/${r.driverId}`}
-        className={`group -mx-2 flex flex-1 items-center gap-3 rounded-lg px-2 transition hover:bg-surface2 ${big ? "py-2.5" : "py-1.5"}`}
-        style={
-          winner
-            ? { background: "linear-gradient(90deg, color-mix(in srgb, var(--medal-1) 22%, transparent), transparent 75%)" }
-            : undefined
-        }
-      >
-        <span
-          className={`w-6 shrink-0 text-center font-display font-black tabular-nums ${big ? "text-lg" : "text-sm text-light"}`}
-          style={big ? { color: MEDAL_TEXT[i] } : undefined}
-        >
-          {r.position}
-        </span>
-        <Avatar r={r} size={big ? 36 : 28} logo={big ? 16 : 13} />
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="flex items-center gap-2">
-            <span className={`truncate font-bold text-dark group-hover:text-brand ${big ? "text-[15px]" : "text-sm"}`}>{r.name}</span>
-            <FastestLap result={result} r={r} />
-          </span>
-          {winner ? (
-            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] font-bold" style={{ color: MEDAL_TEXT[0] }}>
-              <Trophy className="h-3 w-3 shrink-0" strokeWidth={2.5} />
-              <span className="truncate">
-                Winner{winner.time ? ` · ${winner.time}` : ""}
-              </span>
-            </span>
-          ) : (
-            <span className="block truncate text-[11px] text-light">{r.team.name}</span>
-          )}
-        </span>
-        <Gained value={r.gained} />
-        {result.scores && (
-          <span className={`min-w-[1.75rem] text-right font-display font-black tabular-nums text-dark ${big ? "text-base" : "text-sm"}`}>
-            {r.points ?? 0}
-          </span>
-        )}
-      </Link>
-    </li>
-  );
-}
-
-function ResultList({ r, highlightWinner = false }) {
-  const rows = r.result?.rows || [];
-  return (
-    <ol className="divide-y divide-border/60">
-      {rows.map((row, i) => (
-        <ResultRow key={row.driverId} r={row} i={i} result={r.result} winner={highlightWinner && i === 0 ? r.winner || {} : null} />
-      ))}
-    </ol>
-  );
-}
-
-// A narrow chequered band, the finish line, between the photo and the list.
-const CHEQUER = {
-  backgroundImage: "repeating-conic-gradient(#fff 0 25%, #111 0 50%)",
-  backgroundSize: "10px 10px",
-};
-
 // The latest result: the round's photo as a strip with the track written up
-// it, the top ten beside it. On a phone the strip stands down and the track
-// moves into the line above the list.
-//
-// Preview: `style` tries three ways of saying louder that this is the race
-// just run ("label", "title", "finish"); "plain" is the card as it stood.
-function ResultCard({ d, style }) {
+// it, and beside it a "Race result" heading over the top ten, so nobody has to
+// work out which race the list belongs to. On a phone the strip stands down
+// and the track moves into the line above the heading.
+function ResultCard({ d }) {
   const r = useResult(d);
   const c = d.lastCircuit;
   const ago = agoLabel(d.lastRace?.date);
-  const label = style === "label";
-  const title = style === "title";
-  const finish = style === "finish";
-
   return (
     <section className="flex min-w-0 flex-col">
       <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
@@ -483,87 +378,52 @@ function ResultCard({ d, style }) {
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/85" />
           <div className="absolute inset-x-4 top-4 flex items-center justify-between gap-2">
             {c && <Flag code={c.country} title={c.countryName} w={28} h={20} />}
-            {label ? (
-              <span className="rounded-md bg-brand px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-onbrand shadow">
-                Result
-              </span>
-            ) : (
-              <span className="rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm">
-                R{pad2(d.lastRace?.number ?? 0)}
-              </span>
-            )}
+            <span className="rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm">
+              R{pad2(d.lastRace?.number ?? 0)}
+            </span>
           </div>
-          <div className="absolute inset-x-0 bottom-5 flex items-end justify-center gap-2">
-            {label && (
-              <span className="block rotate-180 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-white/65 [writing-mode:vertical-rl]">
-                Last race · Round {d.lastRace?.number ?? NO_VALUE}
-              </span>
-            )}
+          <div className="absolute inset-x-0 bottom-5 flex justify-center">
             <span className="block rotate-180 whitespace-nowrap font-display text-6xl font-black uppercase leading-none tracking-tight text-white [writing-mode:vertical-rl]">
               {d.lastRace?.track}
             </span>
           </div>
         </div>
-        {finish && <div className="hidden w-2.5 shrink-0 opacity-90 sm:block" style={CHEQUER} aria-hidden="true" />}
 
         <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
-          {/* on a phone, with the strip gone, the finish line runs across the top */}
-          {finish && <div className="-mx-5 -mt-5 mb-1 h-2.5 sm:hidden" style={CHEQUER} aria-hidden="true" />}
-          {title ? (
-            <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-light">
-                  {c && (
-                    <span className="sm:hidden">
-                      <Flag code={c.country} title={c.countryName} w={22} h={16} />
-                    </span>
-                  )}
-                  <span className="truncate">
-                    <span className="sm:hidden">{d.lastRace?.track} · </span>Round {d.lastRace?.number ?? NO_VALUE}
-                    {ago ? ` · ${ago}` : ""}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2.5">
-                  <span className="font-display text-2xl font-black uppercase leading-none tracking-tight text-dark">Race result</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-ok/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-ok">
-                    <CircleCheck className="h-3 w-3" strokeWidth={2.5} />
-                    Final
-                  </span>
-                </div>
-              </div>
-              <RaceTabs r={r} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-eyebrow">
+          <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-light">
                 {c && (
                   <span className="sm:hidden">
                     <Flag code={c.country} title={c.countryName} w={22} h={16} />
                   </span>
                 )}
-                {label && (
-                  <span className="rounded bg-brand px-1.5 py-px text-[9px] tracking-[0.14em] text-onbrand sm:hidden">Result</span>
-                )}
-                <span className="truncate sm:hidden">{d.lastRace?.track} ·</span>
-                {finish ? (
-                  <span className="flex items-center gap-1.5">
-                    <FlagIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
-                    Finished
-                  </span>
-                ) : (
-                  <span>Round {d.lastRace?.number ?? NO_VALUE}</span>
-                )}
-                {d.lastRace?.date && (
-                  <span className="hidden truncate text-light sm:inline">
-                    {finish ? (ago || fmtDateLong(d.lastRace.date)) : fmtDateLong(d.lastRace.date)}
-                    {label && ago ? ` · ${ago}` : ""}
-                  </span>
-                )}
+                <span className="truncate">
+                  <span className="sm:hidden">{d.lastRace?.track} · </span>
+                  Round {d.lastRace?.number ?? NO_VALUE}
+                  {ago ? ` · ${ago}` : d.lastRace?.date ? ` · ${fmtDateLong(d.lastRace.date)}` : ""}
+                </span>
               </div>
-              <RaceTabs r={r} />
+              <div className="mt-1 font-display text-2xl font-black uppercase leading-none tracking-tight text-dark">Race result</div>
+            </div>
+            <RaceTabs r={r} />
+          </div>
+          {r.result ? (
+            <ol className="divide-y divide-border/60">
+              {r.result.rows.map((row, i) => (
+                <ResultRow key={row.driverId} r={row} i={i} result={r.result} />
+              ))}
+            </ol>
+          ) : d.feature ? (
+            <p className="py-10 text-center text-sm text-light">The classification is on its way.</p>
+          ) : (
+            // Still loading: hold the rows' place so the buttons do not jump.
+            <div className="flex flex-col gap-2 py-2" aria-hidden="true">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <span key={i} className="skeleton h-9 w-full rounded-lg" />
+              ))}
             </div>
           )}
-          {r.result ? <ResultList r={r} highlightWinner={finish} /> : <ResultPending d={d} />}
           <div className="mt-auto pt-1">
             <ResultButtons r={r} d={d} />
           </div>
@@ -576,15 +436,13 @@ function ResultCard({ d, style }) {
 // -------------------------------------------------------------- export ---
 
 export default function HomeTop({ data }) {
-  const [style, setStyle] = useResultStyle();
   const hasNews = data.news?.loading || (data.news?.data?.articles?.length || 0) > 0;
   return (
     <div className="-mt-2 space-y-8">
-      <StylePicker value={style} onChange={setStyle} />
       <TopStrip d={data} />
       <div className={`grid grid-cols-1 items-stretch gap-6 lg:gap-8 ${hasNews ? "lg:grid-cols-2" : ""}`}>
         {hasNews && <NewsColumn news={data.news} />}
-        <ResultCard d={data} style={style} />
+        <ResultCard d={data} />
       </div>
     </div>
   );

@@ -6,8 +6,8 @@ import { finishesOf, startsOf } from "../utils/standingsRow.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath, reportsWindowOpen } from "../reportsAccess.js";
 import { useSeason } from "../context/SeasonContext.jsx";
-import { Skeleton, TableSkeleton, CountUp, Rank, MEDAL_TEXT, DriverAvatar, ErrorBox } from "../components/ui.jsx";
-import { useParallax, useMagnetic } from "../hooks/motion.js";
+import { Skeleton, TableSkeleton, CountUp, Rank, DriverAvatar, ErrorBox } from "../components/ui.jsx";
+import { useParallax } from "../hooks/motion.js";
 import Flag from "../components/Flag.jsx";
 import PointsChart from "../components/PointsChart.jsx";
 import Podium from "../components/Podium.jsx";
@@ -15,10 +15,8 @@ import RaceCountdown from "../components/RaceCountdown.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitMark } from "../components/NextRaceCard.jsx";
-import NextRaceBar from "../components/NextRaceBar.jsx";
-import HomeNews, { ColumnHeader } from "../components/HomeNews.jsx";
+import HomeNews from "../components/HomeNews.jsx";
 import HomeTop from "../components/HomeTop.jsx";
-import LatestResultCard from "../components/LatestResultCard.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
@@ -33,11 +31,10 @@ import SeasonPicker from "../components/SeasonPicker.jsx";
 import { useSocial } from "../components/SocialLinks.jsx";
 import SocialFeed from "../components/SocialFeed.jsx";
 import { CalendarCheck, FlagCheckered, Podium as PodiumIcon, Shield, Trend, Trophy, Users } from "../components/icons/filled.jsx";
-import { fmtRaceDate, fmtDateLong, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
+import { fmtRaceDate, fmtWeekday, isLapTime, NO_VALUE} from "../utils/format.js";
 import { nextUpcomingRace } from "../utils/raceFormat.js";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const MEDAL = MEDAL_TEXT; // theme-aware gold/silver/bronze (text + accent bars)
 
 // The "by the numbers" tiles' symbols (components/icons/filled.jsx).
 const TILE_ICONS = {
@@ -173,10 +170,6 @@ function TitleFight({ standings, raceNumbers, dropWorst, completedNumbers, total
       </div>
     </section>
   );
-}
-
-function fmtFull(d) {
-  return d ? fmtDateLong(d) : "Date TBA";
 }
 
 function pad2(n) {
@@ -562,9 +555,8 @@ export default function Home() {
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);
 
-  // Hero motion: the photo drifts slowly on scroll; the primary CTA is magnetic.
+  // Hero motion: the photo drifts slowly on scroll.
   const heroImgRef = useParallax(0.08);
-  const ctaRef = useMagnetic({ strength: 0.25 });
   // The series' promo film takes the card over while the page is left alone,
   // the text and buttons (the HUD) fading out for it; any movement brings
   // them straight back.
@@ -690,14 +682,6 @@ export default function Home() {
       alive = false;
     };
   }, [lastRace?.sprintRaceId]);
-  // Which race of a sprint weekend the hero has open. Feature first, because
-  // that is the one the championship is decided on. `heroTabbed` remembers
-  // whether the driver has pressed the switcher yet: the first paint keeps the
-  // hero's staggered entrance, a switch after that snaps in without making
-  // somebody wait half a second for a result they just asked for.
-  const [openRaceTab, setOpenRaceTab] = useState("feature");
-  const [heroTabbed, setHeroTabbed] = useState(false);
-
   // End-of-season honours — for the live finale AND archived seasons (the API
   // reads the selected season; awards without data simply stay away, so old
   // seasons show whatever can still be computed).
@@ -800,13 +784,8 @@ export default function Home() {
       ].filter(Boolean);
     return { podium, scores, honoursFor };
   };
-  const latestRace = latest?.race || null;
   const feature = podiumBlock(latest);
   const podium = feature.podium;
-  // The sprint's podium, only on a weekend that ran one and once its result
-  // is in. It goes UNDER the feature's in the hero: the league runs the
-  // feature first and the sprint after it.
-  const sprint = lastRace?.sprintRaceId && latestSprint ? podiumBlock(latestSprint) : null;
   const roundNo = lastRace?.number ?? completedRaces.length;
   const lastCircuit = flagFor(lastRace?.track, lastRace?.country);
   const completedNumbers = completedRaces.map((r) => r.number).sort((a, b) => a - b);
@@ -844,119 +823,12 @@ export default function Home() {
   // one that is open, so the evening's two results never read as one podium
   // with the wrong names on it.
   //
-  // The card is the one the site has always had — big rank, name over team, one
-  // line — with what the round paid out added on the right: the points, and the
-  // honours won that day (FL, DOTD) next to them. Those were phone-only before,
-  // where the card has the page to itself. They fit here because the block is
-  // narrow: the number with a small PTS under it, not beside it.
-  const podiumStrip = (block, { animKey = "race", first = true, delay = 0, stagger = 0.14 } = {}) =>
-    block.podium.length > 0 && (
-      <div key={animKey} className={first ? "mt-8 max-w-4xl" : "mt-3 max-w-4xl"}>
-        <div className="grid gap-2 sm:grid-cols-3">
-                {block.podium.map((p, i) => (
-
-                  <Link
-                    key={p.driverId}
-                    to={`/drivers/${p.driverId}`}
-                    // Each card rises on its own beat (P1 first), instead of the
-                    // whole strip fading in as one block.
-                    style={{ animationDelay: `${delay + i * stagger}s` }}
-                    className="hero-anim shine group relative flex items-center gap-3 overflow-hidden rounded-xl border border-black/10 bg-white/70 px-4 py-2.5 backdrop-blur-md transition hover:-translate-y-0.5 hover:border-brand/50 hover:bg-white/90 dark:border-white/10 dark:bg-white/[0.07] dark:hover:bg-white/[0.12]"
-                  >
-                    <span
-                      className="absolute left-0 top-0 h-full w-1"
-                      style={{ backgroundColor: MEDAL[i] }}
-                    />
-                    {/* faint medal tint bleeding in from the rank bar */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0"
-                      style={{ background: `linear-gradient(90deg, ${MEDAL[i]}26, transparent 55%)` }}
-                    />
-                    <span
-                      className="relative font-display text-2xl font-black tabular-nums"
-                      style={{ color: MEDAL[i] }}
-                    >
-                      P{p.position}
-                    </span>
-                    <span className="relative min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-base font-bold leading-tight text-ink transition group-hover:text-brand dark:text-white">
-                        <span className="truncate">{p.name}</span>
-                        <Flag code={countryFor(p.driverId, p.country)} w={16} h={12} />
-                      </span>
-                      {p.isSub && p.subForTeam ? (
-                        <TeamLogo
-                          id={p.subForTeam.id}
-                          name={`${p.subForTeam.name} (sub)`}
-                          color={p.subForTeam.color}
-                          logoUrl={p.subForTeam.logoUrl}
-                          size={16}
-                          showName
-                          className="mt-0.5"
-                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                        />
-                      ) : (
-                        <TeamLogo
-                          id={p.team.id}
-                          name={p.team.name}
-                          color={p.team.color}
-                          logoUrl={p.team.logoUrl}
-                          size={16}
-                          showName
-                          className="mt-0.5"
-                          nameClassName="truncate text-[13px] leading-tight text-ink/55 dark:text-white/60"
-                        />
-                      )}
-                    </span>
-                    {/* What the round paid the driver, on the right: the honours
-                        first (they are the rarer thing), then the points. */}
-                    <span className="relative ml-auto flex shrink-0 items-center gap-1.5 pl-1">
-                      {block.honoursFor(p).map((h) => (
-                        <span
-                          key={h.key}
-                          title={h.title}
-                          className={`rounded-full px-1 py-px font-mono text-[9px] font-bold uppercase leading-[1.5] ${h.cls}`}
-                        >
-                          {h.label}
-                        </span>
-                      ))}
-                      {block.scores && p.points != null && (
-                        <span className="text-right leading-none">
-                          <span className="block font-display text-lg font-black leading-none tabular-nums text-ink dark:text-white">
-                            {p.points}
-                          </span>
-                          <span className="mt-0.5 block font-mono text-[8px] font-bold uppercase tracking-widest text-ink/45 dark:text-white/50">
-                            pts
-                          </span>
-                        </span>
-                      )}
-                    </span>
-                  </Link>
-                ))}
-        </div>
-      </div>
-    );
-
-  // The two races of a sprint weekend, for the hero's switcher. Each tab
-  // carries its own winner, so both names are readable without pressing
-  // anything and the switch is only for the rest of the podium.
-  const heroRaces = sprint
-    ? [
-        { key: "feature", label: "Feature", block: feature },
-        { key: "sprint", label: "Sprint", block: sprint },
-      ].filter((r) => r.block.podium.length > 0)
-    : [];
-  const openHeroRace = heroRaces.find((r) => r.key === openRaceTab) || heroRaces[0] || null;
-
   const showComingSoonHero = isUpcomingSeason || awaitingOpener;
-  // A running season leads with the news and the latest result side by side,
-  // under the next-race bar (the layout of the F1 site's front page). Every
-  // other hero (season complete, archive, coming soon) keeps the full width,
-  // and the news runs across the page under it instead. While the news is
-  // still loading the column holds its place; with no news at all the result
-  // takes the whole width.
+  // A running season leads with one strip (season, next race) and the news
+  // and the latest result side by side under it (HomeTop). Every other hero
+  // (season complete, archive, coming soon) keeps the full width, and the news
+  // runs across the page under it instead.
   const runningHero = !seasonOver && !isPast && !showComingSoonHero;
-  const newsSplit = runningHero && !news.error && (news.loading || (news.data?.articles?.length || 0) > 0);
   // The running season's own opener panel (right half of that hero): the same
   // card the off-season teaser uses, fed from the season itself — the teaser
   // endpoint only ever announces a season AHEAD of the active one, so it goes
@@ -1115,10 +987,6 @@ export default function Home() {
             </span>
           )}
         </div>
-        {/* The next round, as one strip across the page (it used to be a card
-            in the hero's right half). Only beside a running season's result:
-            the coming-soon heroes are a countdown to the opener already. */}
-        {runningHero && nextRace && <NextRaceBar race={nextRace} />}
       </div>
 
       {/* ===================== LEAD FEATURE ===================== */}
@@ -1127,28 +995,6 @@ export default function Home() {
       {/* The hero follows the site theme: dark mode keeps the classic dark
           card, light mode gets a proper WHITE version — white scrims over the
           photo and ink text (the inner elements carry light+dark variants). */}
-      <div
-        className={
-          newsSplit ? "grid items-stretch gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-8" : undefined
-        }
-      >
-      {newsSplit && <HomeNews news={news} layout="panel" />}
-      <div className={newsSplit ? "flex flex-col" : undefined}>
-      {newsSplit && <ColumnHeader title="Latest result" to="/races" cta="All rounds" />}
-      {newsSplit ? (
-        <LatestResultCard
-          race={lastRace}
-          circuit={lastCircuit}
-          feature={latest}
-          sprint={lastRace?.sprintRaceId ? latestSprint : null}
-          photo={heroFor(season, heroRace)}
-          photoFallback={heroFor(season)}
-          onPhotoError={heroOnError}
-          reportTo={
-            isLoggedIn && REPORTS_OPEN_TO_MEMBERS && reportsWindowOpen(reportableRace?.date) ? reportsPath({ nw: true }) : null
-          }
-        />
-      ) : (
       <section
         ref={film.ref}
         // An attribute, not a class: useScrollReveal adds `is-visible` to this
@@ -1318,188 +1164,15 @@ export default function Home() {
                 <CarReveal season={season} />
               )}
             </div>
-          ) : (
-          <>
-          {/* LEFT — the latest race. Before the opener the hero is the
-              coming-soon variant above, so this side always has a result. */}
-          <div className="flex flex-1 flex-col justify-end">
-            {/* nowrap + a notch smaller on phones: at 13px with the wide
-                tracking "Latest Race" and "Round 6" each broke onto two lines. */}
-            <div className="hero-anim flex items-center gap-2.5 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-eyebrow sm:gap-3 sm:text-[13px] sm:tracking-[0.2em]" style={{ animationDelay: "0.05s" }}>
-              {lastCircuit && <Flag code={lastCircuit.country} title={lastCircuit.countryName} w={26} h={19} />}
-              <span>Latest Race</span>
-              <span className="h-px w-6 shrink bg-accent/50 sm:w-10" />
-              <span className="text-ink/55 dark:text-white/70">Round {roundNo}</span>
-            </div>
-
-            {/* The size follows the width on phones instead of sitting at a
-                fixed 48px. At 48px a ten-letter circuit needs 359px and the
-                column is 324px wide on a 412px phone, so `break-words` did what
-                it is there to do and split the word: HOCKENHEI / M. The longest
-                single word in the calendar is "Silverstone"; 9.5vw keeps that
-                whole down to a 360px screen, with room to spare, and the clamp
-                stops it shrinking on a narrow one or growing past the old size
-                on a wide one. break-words stays as the last resort for a name
-                nobody has raced yet. */}
-            <h1 className="hero-anim mt-4 max-w-3xl break-words font-display text-[clamp(1.75rem,9.5vw,3rem)] font-black uppercase leading-[0.92] tracking-tight text-ink dark:text-white sm:text-7xl" style={{ animationDelay: "0.12s" }}>
-              {lastRace?.track || "Season opener"}
-            </h1>
-            <p className="hero-anim mt-3 font-mono text-[13px] uppercase tracking-wider text-ink/70 dark:text-white/65" style={{ animationDelay: "0.2s" }}>
-              {`${lastCircuit?.circuit && lastCircuit.circuit.toLowerCase() !== lastRace?.track?.toLowerCase() ? `${lastCircuit.circuit} · ` : ""}${fmtFull(lastRace?.date)}`}
-            </p>
-
-            {/* podium strip — the latest race's top 3. A sprint weekend puts a
-                switcher over it (feature open first, the sprint one press
-                away) instead of stacking both podiums: six cards under one
-                another pushed the buttons off a phone screen and read as one
-                long list, and the labels over them were the only thing saying
-                which race was which. Each tab now names its own winner, so
-                both results are readable without pressing anything. */}
-            {openHeroRace ? (
-              <>
-                <div className="hero-anim mt-7" style={{ animationDelay: "0.22s" }}>
-                  <SlidingTabs
-                    wrapClassName="inline-flex rounded-lg border border-black/10 bg-white/70 p-0.5 backdrop-blur-md dark:border-white/10 dark:bg-white/[0.07]"
-                    btnClassName="px-3 py-1.5 text-left"
-                    pillClassName="rounded-md bg-brand shadow"
-                    activeClassName="text-onbrand"
-                    idleClassName="text-ink/60 hover:text-ink dark:text-white/60 dark:hover:text-white"
-                    items={heroRaces.map((r) => ({
-                      key: r.key,
-                      title: `${r.label} result`,
-                      // Race and winner on ONE line: two lines made the switcher
-                      // taller than the cards under it, which looked top-heavy.
-                      label: (
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em]">
-                            {r.label}
-                          </span>
-                          {/* the winner, so the closed tab still says something */}
-                          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-bold">
-                            <span
-                              className="h-1.5 w-1.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: MEDAL[0] }}
-                            />
-                            <span className="max-w-[7.5rem] truncate">{r.block.podium[0].name}</span>
-                          </span>
-                        </span>
-                      ),
-                    }))}
-                    value={openHeroRace.key}
-                    onChange={(k) => {
-                      setOpenRaceTab(k);
-                      setHeroTabbed(true);
-                    }}
-                  />
-                </div>
-                {podiumStrip(openHeroRace.block, {
-                  animKey: openHeroRace.key,
-                  first: false,
-                  // First paint keeps the hero's staggered entrance; a switch
-                  // afterwards answers straight away.
-                  delay: heroTabbed ? 0 : 0.26,
-                  stagger: heroTabbed ? 0.05 : 0.14,
-                })}
-              </>
-            ) : lastRace && !latest ? (
-              // The result is still on its way: hold the podium's place (three
-              // 60px cards, measured) so the buttons below do not jump down
-              // when it lands.
-              <div className="mt-8 max-w-4xl" aria-hidden="true">
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="flex h-[60px] items-center gap-3 rounded-xl border border-black/10 bg-white/40 px-4 dark:border-white/10 dark:bg-white/[0.04]"
-                    >
-                      <span className="skeleton h-6 w-8 rounded" />
-                      <span className="flex-1 space-y-1.5">
-                        <span className="skeleton block h-3.5 w-28 max-w-full rounded" />
-                        <span className="skeleton block h-3 w-20 max-w-full rounded" />
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              podiumStrip({ ...feature, podium: heroPodium }, { delay: 0.26 })
-            )}
-
-            <div className="hero-anim mt-9 flex flex-wrap gap-3" style={{ animationDelay: "0.36s" }}>
-              {/* The two of them share the first line on a phone (flex-1, and
-                  a tighter inline padding so both fit even on a 360px screen);
-                  from sm up they go back to their natural widths and the row
-                  is untouched. Left to themselves they wrapped one per line on
-                  narrow phones, which turned three buttons into three ragged
-                  rows. */}
-              {/* The round the hero card just showed, by id — NOT a bare
-                  /races. Left to itself the explorer opens on a fresh result
-                  once and on the round AHEAD every time after that, so the
-                  second visitor to press this button under a podium headed
-                  "Watkins Glen" landed on the next race's countdown instead of
-                  the result they had just read. The button promises the
-                  results of the race above it, so it names it. */}
-              <Link
-                ref={ctaRef}
-                to={latestRace ? `/races?race=${latestRace.id}` : "/races"}
-                className="shine group inline-flex flex-auto items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-brand px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105 sm:flex-none sm:justify-start sm:px-6"
-              >
-                Full Results
-                <span className="transition group-hover:translate-x-0.5">→</span>
-              </Link>
-              <Link
-                to="/drivers"
-                className="inline-flex flex-auto items-center justify-center whitespace-nowrap rounded-lg border border-ink/15 bg-ink/[0.03] px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15 sm:flex-none sm:justify-start sm:px-6"
-              >
-                Standings
-              </Link>
-              {/* Stewarding, for members only. It sits in the hero because it
-                  has to be FOUND on a race night by somebody who has never
-                  looked for it before, and because the corner button it
-                  replaces was invisible on a phone — which is what the whole
-                  grid is on at nine on a Friday. Quieter than the two beside
-                  it: reporting an incident is not what the league wants people
-                  doing, only what it wants possible. */}
-              {isLoggedIn && REPORTS_OPEN_TO_MEMBERS && reportsWindowOpen(reportableRace?.date) && (
-                <Link
-                  to={reportsPath({ nw: true })}
-                  // On a phone the two buttons above fill the first line and
-                  // this one wrapped to a second, half-empty and ragged, as if
-                  // it had fallen off the row. Given a line of its own it takes
-                  // the whole width and centres itself: a deliberate third
-                  // action under the two, not a leftover.
-                  //
-                  // Red, and the only red on the page. It is not competing with
-                  // the two buttons beside it for the same kind of attention —
-                  // those are where the season lives, this is the one to reach
-                  // for when something went wrong, and a driver who has never
-                  // needed it should be able to find it without reading. It can
-                  // afford to shout now that it only appears on the nights it
-                  // is for.
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-500/15 px-6 py-3 text-sm font-bold uppercase tracking-wide text-red-700 backdrop-blur-sm transition hover:border-red-500/60 hover:bg-red-500/25 dark:border-red-400/40 dark:bg-red-500/20 dark:text-red-200 dark:hover:bg-red-500/30 sm:w-auto sm:justify-start"
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 21V4M5 4h11l-1.6 3.5L16 11H5" />
-                  </svg>
-                  Report an incident
-                </Link>
-              )}
-            </div>
-          </div>
-
-          </>
-          )}
+          ) : null}
         </div>
       </section>
-      )}
-      </div>
-      </div>
       </>)}
 
       {/* ===================== LATEST NEWS (other heroes) ===================== */}
       {/* A running season has the news beside its result; the full-width heroes
           get it as a row under them. Archive seasons stay about the archive. */}
-      {!newsSplit && !isPast && <HomeNews news={news} layout="row" />}
+      {!runningHero && !isPast && <HomeNews news={news} />}
 
       {/* ===================== TITLE FIGHT (running seasons) ================= */}
       {/* Dev-only preview (?demo=1, like the live demo): shows the widget on a
