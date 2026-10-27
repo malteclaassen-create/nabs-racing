@@ -44,6 +44,23 @@ function fmtSize(bytes) {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+// What became of "Tell members" on an upload (backend notifyRacePhotosAdded),
+// in words: the bell rang, or why it did not.
+const NOT_NOTIFIED = {
+  silent: "Members were not told (Tell members was off).",
+  "no-results":
+    "Members were not told: this round has no results yet, and the gallery shows under them. Upload again once the results are in, or tell them yourself.",
+  off: "Members were not told: photo notifications are switched off under Notifications.",
+  private: "Members were not told: this season is not public.",
+  archive: "Members were not told: this round belongs to a season that has finished.",
+  already: "Members were told about this round's photos already, so no second notification went out.",
+  error: "The notification could not be sent. Try uploading again.",
+};
+function notifiedLine(n) {
+  if (n?.sent) return "Members were told: a notification is in everyone's bell.";
+  return NOT_NOTIFIED[n?.reason] || NOT_NOTIFIED.error;
+}
+
 export default function AdminRacePhotos() {
   const { data: races, reload: reloadRaces } = useApi(useCallback(() => api.races(), []));
   // Opens on the round the other race-weekend tabs were last on, or else the
@@ -117,6 +134,7 @@ export default function AdminRacePhotos() {
       const parts = [`${d.added} photo${d.added === 1 ? "" : "s"} added.`];
       if (d.rejected?.length) parts.push(`Not an image we can show: ${d.rejected.join(", ")}.`);
       if (d.skipped?.length) parts.push(`Over the limit of ${MAX_PHOTOS}, left out: ${d.skipped.join(", ")}.`);
+      if (d.notified) parts.push(notifiedLine(d.notified));
       setMsg(parts.join(" "));
       reloadRaces();
     } catch (err) {

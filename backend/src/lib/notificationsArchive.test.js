@@ -23,4 +23,9 @@ describe("isArchiveRound", () => {
     expect(isArchiveRound({ date: days(1) }, 9, 8, now)).toBe(false);
     expect(isArchiveRound({ date: days(1) }, null, null, now)).toBe(false);
   });
+
+  it("lets an admin's own 'Tell members' through for an older round of the running season, never a past season's", () => {
+    expect(isArchiveRound({ date: days(45) }, 8, 8, now, { ignoreAge: true })).toBe(false);
+    expect(isArchiveRound({ date: days(45) }, 7, 8, now, { ignoreAge: true })).toBe(true);
+  });
 });

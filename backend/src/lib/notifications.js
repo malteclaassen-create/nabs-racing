@@ -305,9 +305,12 @@ export async function seasonIsPublic(prisma, seasonId) {
 // FRESH_DAYS ago (the same line the news desk's automatic race report draws,
 // lib/newsRaceReport.js). A late import of last week's round still rings.
 const FRESH_DAYS = 14;
-export function isArchiveRound(race, seasonNumber, activeNumber, now = Date.now()) {
+// `ignoreAge` drops the FRESH_DAYS half: an admin who ticks "Tell members"
+// on a round's photos has said it is news, however old the round is; only a
+// round of a season gone by stays quiet.
+export function isArchiveRound(race, seasonNumber, activeNumber, now = Date.now(), { ignoreAge = false } = {}) {
   if (seasonNumber != null && activeNumber != null && seasonNumber < activeNumber) return true;
-  if (race?.date && now - new Date(race.date).getTime() > FRESH_DAYS * 86_400_000) return true;
+  if (!ignoreAge && race?.date && now - new Date(race.date).getTime() > FRESH_DAYS * 86_400_000) return true;
   return false;
 }
 
@@ -332,7 +335,7 @@ export async function retractArchiveRoundBells(prisma) {
   }
 }
 
-async function archiveRound(prisma, race) {
+async function archiveRound(prisma, race, opts = {}) {
   let seasonNumber = null;
   let activeNumber = null;
   try {
@@ -349,7 +352,7 @@ async function archiveRound(prisma, race) {
   } catch {
     /* unreadable: fall back on the race date alone */
   }
-  return isArchiveRound(race, seasonNumber, activeNumber);
+  return isArchiveRound(race, seasonNumber, activeNumber, Date.now(), opts);
 }
 
 const roundName = (race) => (race?.number ? `Round ${race.number}` : race?.track || "the race");
@@ -415,22 +418,34 @@ export async function notifyResultsSaved(prisma, race) {
 // The first photos of a round's gallery. Deduped per RACE, on purpose: the
 // admin uploads in batches while sorting the night's screenshots, and one
 // "photos are up" is an invitation — five would be spam.
+//
+// It is only called when the admin left "Tell members" ticked, so a round of
+// the running season rings however long ago it was raced (the 14-day archive
+// rule is for the bells nobody asked for). Answers what happened, so the admin
+// page can say it: { sent: true }, or { sent: false, reason } with reason one
+// of "off" (switched off under Notifications), "private" (the season is not
+// public), "archive" (a season gone by), "already" (this round's photos rang
+// before) or "error".
 export async function notifyRacePhotosAdded(prisma, race, count) {
   try {
-    if (!race?.id || !count) return;
-    if (!(await readNotifySettings(prisma)).photos) return;
-    if (!(await seasonIsPublic(prisma, race.seasonId))) return;
-    if (await archiveRound(prisma, race)) return;
+    if (!race?.id || !count) return { sent: false, reason: "error" };
+    if (!(await readNotifySettings(prisma)).photos) return { sent: false, reason: "off" };
+    if (!(await seasonIsPublic(prisma, race.seasonId))) return { sent: false, reason: "private" };
+    if (await archiveRound(prisma, race, { ignoreAge: true })) return { sent: false, reason: "archive" };
+    const dedupeKey = `race-photos:${race.id}`;
+    if (await prisma.notification.findFirst({ where: { dedupeKey }, select: { id: true } }))
+      return { sent: false, reason: "already" };
     const { label } = await raceLabel(prisma, race);
     await dbCreateNotification(prisma, {
       type: "PHOTOS",
       title: `Photos from ${label} are up`,
       body: `The gallery from ${race.track} is live. See the night as it happened.`,
       link: await racePageLink(prisma, race),
-      dedupeKey: `race-photos:${race.id}`,
+      dedupeKey,
     });
+    return { sent: true };
   } catch {
-    /* best-effort */
+    return { sent: false, reason: "error" };
   }
 }
 
