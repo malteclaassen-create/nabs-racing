@@ -6742,12 +6742,20 @@ router.post("/races/:id/photos", upload.array("files", MAX_PHOTOS), async (req, 
     // news, and without this every old round the admin works through would
     // ring the whole grid's bell. Nothing is recorded either, so the round can
     // still announce itself later if it ever earns it.
+    //
+    // The answer says what became of it (`notified`), so the admin is never
+    // left guessing whether the bell rang: { sent } or { sent: false, reason }.
     const silent = req.query.silent === "1";
-    if (race.isCompleted && !silent) notifyRacePhotosAdded(prisma, race, added.length);
+    const notified = silent
+      ? { sent: false, reason: "silent" }
+      : !race.isCompleted
+        ? { sent: false, reason: "no-results" }
+        : await notifyRacePhotosAdded(prisma, race, added.length);
     res.json({
       ok: true,
       photos: withAdminPhotoInfo(saved),
       added: added.length,
+      notified,
       // Named so the admin UI can say exactly what didn't make it.
       rejected,
       skipped,
