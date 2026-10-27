@@ -16,6 +16,7 @@ import MembersAdmin from "./MembersAdmin.jsx";
 import DownloadsAdmin from "./DownloadsAdmin.jsx";
 import SettingsAdmin from "./SettingsAdmin.jsx";
 import LiveAdmin from "./LiveAdmin.jsx";
+import VotesAdmin from "./VotesAdmin.jsx";
 
 // The admin ("League office"). From the top:
 //
@@ -23,14 +24,16 @@ import LiveAdmin from "./LiveAdmin.jsx";
 //    season the scoped tabs work on, where the menu sits, and the way out;
 //  * a search over what can be done, for whoever does not know which tab
 //    holds it;
-//  * what is waiting (rounds over without results, Discord accounts without
-//    a driver), each a click away from where it is dealt with;
+//  * what is waiting (rounds over without results, combo votes closed without
+//    a combo picked, Discord accounts without a driver), each a click away
+//    from where it is dealt with;
 //  * the menu (four groups, across the top or down the left side) and the
 //    tab's panel.
 
 const PAGES = {
   races: RacesAdmin,
   attendance: AttendanceAdmin,
+  votes: VotesAdmin,
   series: SeriesAdmin,
   entries: EntriesAdmin,
   teams: TeamsAdmin,
@@ -176,8 +179,8 @@ function AdminSearch({ onGo }) {
 // What is waiting on the admins. Gone when nothing is.
 function TodoCard({ todo, onRound, onGo }) {
   if (!todo) return null;
-  const { overdue, unlinked } = todo;
-  if (!overdue.length && !unlinked) return null;
+  const { overdue, unlinked, votes = [] } = todo;
+  if (!overdue.length && !unlinked && !votes.length) return null;
   return (
     <section className="mb-6 rounded-2xl border border-line bg-card p-4 sm:p-5">
       <h2 className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted">
@@ -198,6 +201,20 @@ function TodoCard({ todo, onRound, onGo }) {
             </span>
             <button type="button" className="btn-ghost py-1.5" onClick={() => onRound(r)}>
               Add results
+            </button>
+          </li>
+        ))}
+        {votes.map((v) => (
+          <li key={`vote-${v.id}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5">
+            <span className="min-w-0">
+              <span className="block font-bold text-ink">
+                <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: v.color || "rgb(var(--ink))" }} aria-hidden="true" />
+                {v.series} · R{v.round} {v.name}
+              </span>
+              <span className="block text-sm text-muted">Combo vote closed · {dateTime(v.startsAt)} · no combo picked yet</span>
+            </span>
+            <button type="button" className="btn-ghost py-1.5" onClick={() => onRound(v, "votes")}>
+              Pick the combo
             </button>
           </li>
         ))}
@@ -238,7 +255,7 @@ function Office() {
       .catch(() => setTodo(null));
   }, []);
   useEffect(loadTodo, [loadTodo, tab]);
-  const badges = { races: todo?.overdue.length || 0, members: todo?.unlinked || 0 };
+  const badges = { races: todo?.overdue.length || 0, votes: todo?.votes?.length || 0, members: todo?.unlinked || 0 };
 
   const go = (id) => navigate(`/admin/${id}`);
   const signOut = async () => {
@@ -274,10 +291,10 @@ function Office() {
       <TodoCard
         todo={todo}
         onGo={go}
-        onRound={(r) => {
+        onRound={(r, tab = "races") => {
           setSeriesId(r.seriesId);
           setSeasonId(r.seasonId);
-          go("races");
+          go(tab);
         }}
       />
 

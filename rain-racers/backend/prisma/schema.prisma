@@ -143,6 +143,7 @@ model User {
   avatar    String?
   driver    Driver?
   signups   Signup[]
+  votes     PollVote[]
   createdAt DateTime @default(now())
 }
 
@@ -176,6 +177,7 @@ model Race {
   results          Result[]
   qualifying       QualiResult[]
   signups          Signup[]
+  poll             Poll?
 }
 
 model Result {
@@ -239,6 +241,47 @@ model Signup {
   updatedAt DateTime @updatedAt
 
   @@unique([raceId, userId])
+}
+
+// A combo vote for a round nobody knows yet (Sahara Saturdays: the league
+// puts up a few car and track combos, the members pick one, and the winner
+// is raced in the round).
+model Poll {
+  id              Int          @id @default(autoincrement())
+  raceId          Int          @unique
+  race            Race         @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  closesAt        DateTime
+  // The combo the round is raced with, once the admin has picked it (the
+  // winner, or one of a tie).
+  appliedOptionId Int?
+  createdAt       DateTime     @default(now())
+  options         PollOption[]
+  votes           PollVote[]
+}
+
+model PollOption {
+  id     Int        @id @default(autoincrement())
+  pollId Int
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  car    String
+  track  String
+  note   String?
+  order  Int        @default(0)
+  votes  PollVote[]
+}
+
+// One member's pick in a vote; they can change it while the vote is open.
+model PollVote {
+  id        Int        @id @default(autoincrement())
+  pollId    Int
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  optionId  Int
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime   @updatedAt
+
+  @@unique([pollId, userId])
 }
 
 model Download {

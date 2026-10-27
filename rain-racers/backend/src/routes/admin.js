@@ -13,6 +13,7 @@ import { teamsAtRound, recomputeResultTeams, seasonRaces } from "../lib/seasonDa
 import { UPLOAD_DIR } from "../config.js";
 import { restartLive, probeServer } from "../live/relay.js";
 import { loadHistory } from "../lib/history.js";
+import { pollOut, comboName, POLL_INCLUDE, MIN_OPTIONS, MAX_OPTIONS } from "../lib/polls.js";
 
 const router = Router();
 router.use("/admin", requireAdmin);
@@ -489,7 +490,7 @@ router.delete("/admin/drivers/:id", wrap(async (req, res) => {
 // of a running season that are over (3 hours after the start) and have no
 // results yet, and Discord accounts not linked to a driver.
 router.get("/admin/todo", wrap(async (_req, res) => {
-  const [overdue, unlinked] = await Promise.all([
+  const [overdue, unlinked, closedVotes] = await Promise.all([
     prisma.race.findMany({
       where: {
         startsAt: { lt: new Date(Date.now() - 3 * 3600 * 1000) },
@@ -501,6 +502,12 @@ router.get("/admin/todo", wrap(async (_req, res) => {
       include: { season: { select: { id: true, name: true, seriesId: true, series: { select: { name: true, color: true } } } } },
     }),
     prisma.user.count({ where: { driver: { is: null } } }),
+    // combo votes that have closed without a combo picked for their round
+    prisma.poll.findMany({
+      where: { closesAt: { lt: new Date() }, appliedOptionId: null, race: { results: { none: {} } } },
+      include: { race: { include: { season: { select: { id: true, seriesId: true, series: { select: { name: true, color: true } } } } } } },
+      orderBy: { closesAt: "asc" },
+    }),
   ]);
   res.json({
     overdue: overdue.map((r) => ({
@@ -516,6 +523,16 @@ router.get("/admin/todo", wrap(async (_req, res) => {
       season: r.season.name,
     })),
     unlinked,
+    votes: closedVotes.map((p) => ({
+      id: p.id,
+      round: p.race.round,
+      name: p.race.name,
+      startsAt: p.race.startsAt,
+      seriesId: p.race.season.seriesId,
+      seasonId: p.race.season.id,
+      series: p.race.season.series.name,
+      color: p.race.season.series.color,
+    })),
   });
 }));
 
@@ -801,6 +818,121 @@ router.delete("/admin/races/:id/results", wrap(async (req, res) => {
 router.delete("/admin/signups/:raceId/:userId", wrap(async (req, res) => {
   await prisma.signup.deleteMany({ where: { raceId: id(req.params.raceId), userId: id(req.params.userId) } });
   res.json({ ok: true });
+}));
+
+// ---- Combo votes ------------------------------------------------------------
+
+// The combos as typed in: [{ id?, car, track, note }], empty rows left out.
+const comboRows = (v) =>
+  (Array.isArray(v) ? v : [])
+    .map((o) => ({ id: optInt(o?.id), car: text(o?.car, 120), track: text(o?.track, 120), note: optText(o?.note, 200) }))
+    .filter((o) => o.car || o.track)
+    .slice(0, MAX_OPTIONS);
+const TOO_FEW = `A vote needs at least ${MIN_OPTIONS} combos.`;
+const closingTime = (v) => {
+  const d = new Date(v);
+  return v && !Number.isNaN(d.getTime()) ? d : null;
+};
+
+// A new round a week after the season's last one, with its day's sessions
+// and number of races, for the combo that wins the vote.
+async function roundAfterLast(seasonId) {
+  const last = await prisma.race.findFirst({ where: { seasonId }, orderBy: [{ round: "desc" }, { startsAt: "desc" }] });
+  if (!last) throw fail(400, "Add the season's first round under Races & results first.");
+  const WEEK = 7 * 24 * 3600 * 1000;
+  const later = (iso) => new Date(new Date(iso).getTime() + WEEK).toISOString();
+  const timetable = JSON.parse(last.timetable || "[]").map((t) => ({ ...t, at: t.at ? later(t.at) : null }));
+  return prisma.race.create({
+    data: {
+      seasonId,
+      round: last.round + 1,
+      name: `Round ${last.round + 1}`,
+      track: "",
+      mysteryTrack: true,
+      startsAt: new Date(last.startsAt.getTime() + WEEK),
+      raceCount: last.raceCount,
+      timetable: timetable.length ? JSON.stringify(timetable) : null,
+    },
+  });
+}
+
+router.get("/admin/polls", wrap(async (req, res) => {
+  const polls = await prisma.poll.findMany({ where: { race: { seasonId: id(req.query.season) } }, include: POLL_INCLUDE });
+  res.json(polls.sort((a, b) => b.race.round - a.race.round).map((p) => pollOut(p)));
+}));
+
+// A vote for a round of the season (raceId), or for a new round a week
+// after the last one (raceId "new").
+router.post("/admin/polls", wrap(async (req, res) => {
+  const b = req.body || {};
+  const options = comboRows(b.options);
+  const closesAt = closingTime(b.closesAt);
+  if (options.length < MIN_OPTIONS) return res.status(400).json({ error: TOO_FEW });
+  if (!closesAt) return res.status(400).json({ error: "When does the vote close?" });
+  let race;
+  if (b.raceId === "new") race = await roundAfterLast(id(b.seasonId));
+  else {
+    race = await prisma.race.findUnique({ where: { id: id(b.raceId) }, include: { poll: true } });
+    if (!race) return res.status(404).json({ error: "Round not found." });
+    if (race.poll) return res.status(409).json({ error: `Round ${race.round} already has a vote.` });
+  }
+  const poll = await prisma.poll.create({
+    data: { raceId: race.id, closesAt, options: { create: options.map(({ id: _id, ...o }, order) => ({ ...o, order })) } },
+    include: POLL_INCLUDE,
+  });
+  res.json(pollOut(poll));
+}));
+
+// The closing time and the combos: rows with an id are kept (and their
+// votes), rows without one are new, and the ones left out go with their votes.
+router.put("/admin/polls/:id", wrap(async (req, res) => {
+  const b = req.body || {};
+  const poll = await prisma.poll.findUnique({ where: { id: id(req.params.id) }, include: { options: true } });
+  if (!poll) return res.status(404).json({ error: "Vote not found." });
+  const data = {};
+  if (b.closesAt !== undefined) {
+    data.closesAt = closingTime(b.closesAt);
+    if (!data.closesAt) return res.status(400).json({ error: "When does the vote close?" });
+  }
+  await prisma.$transaction(async (tx) => {
+    if (b.options !== undefined) {
+      const rows = comboRows(b.options);
+      if (rows.length < MIN_OPTIONS) throw fail(400, TOO_FEW);
+      const known = new Set(poll.options.map((o) => o.id));
+      const kept = rows.filter((o) => known.has(o.id)).map((o) => o.id);
+      await tx.pollOption.deleteMany({ where: { pollId: poll.id, id: { notIn: kept } } });
+      if (poll.appliedOptionId && !kept.includes(poll.appliedOptionId)) data.appliedOptionId = null;
+      for (const [order, { id: optionId, ...o }] of rows.entries()) {
+        if (known.has(optionId)) await tx.pollOption.update({ where: { id: optionId }, data: { ...o, order } });
+        else await tx.pollOption.create({ data: { ...o, order, pollId: poll.id } });
+      }
+    }
+    await tx.poll.update({ where: { id: poll.id }, data });
+  });
+  res.json(pollOut(await prisma.poll.findUnique({ where: { id: poll.id }, include: POLL_INCLUDE })));
+}));
+
+router.delete("/admin/polls/:id", wrap(async (req, res) => {
+  await prisma.poll.delete({ where: { id: id(req.params.id) } });
+  res.json({ ok: true });
+}));
+
+// Races a combo: the round gets its car, track and name and is no longer a
+// mystery, and the vote closes. Another combo can still be picked after.
+router.post("/admin/polls/:id/apply", wrap(async (req, res) => {
+  const poll = await prisma.poll.findUnique({ where: { id: id(req.params.id) }, include: { options: true, race: true } });
+  if (!poll) return res.status(404).json({ error: "Vote not found." });
+  const option = poll.options.find((o) => o.id === id(req.body?.optionId));
+  if (!option) return res.status(400).json({ error: "Pick one of the vote's combos." });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.race.update({
+      where: { id: poll.raceId },
+      data: { car: option.car || poll.race.car, track: option.track || poll.race.track, name: comboName(option), mysteryTrack: false },
+    }),
+    prisma.poll.update({ where: { id: poll.id }, data: { appliedOptionId: option.id, closesAt: poll.closesAt > now ? now : poll.closesAt } }),
+  ]);
+  res.json(pollOut(await prisma.poll.findUnique({ where: { id: poll.id }, include: POLL_INCLUDE })));
 }));
 
 // ---- Downloads --------------------------------------------------------------

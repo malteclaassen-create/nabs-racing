@@ -20,6 +20,9 @@ teams, if it has any):
   other driver, and a career across every series
 - **Transfers**: each driver's team round by round, and the moves
 - **Sign-ups** for the next races with Discord
+- **Combo votes**: the league puts up a few car and track combos for a
+  round nobody knows yet (Sahara Saturdays), the members vote, and the
+  winner is raced
 - **Live timing** from each series' race server
 - **Race Info** with the rules and downloads
 - **Admin area**: import the server's result files (or type a result in),
@@ -107,6 +110,15 @@ they fold into one line.
    takes off points; the arrows change the order by hand.
 8. **Attendance:** every driver against every round: raced, what they
    answered in the sign-up, and who said yes and did not start (CSV export).
+9. **Combo votes** (a calendar nobody knows, like Sahara Saturdays): pick
+   the round (one already on the calendar, or a new one a week after the
+   last), when voting closes, and the combos (car, track, a note). The vote
+   shows on the series page and the round's page; members signed in with
+   Discord have one vote each and can change it until it closes. Who voted
+   for what stays private, only the counts show. Once it has closed (the
+   **To do** card says so), **Race this** on the winner (or one of a tie)
+   gives the round that car and track, names it "car at track" and takes
+   away the mystery track.
 
 Points are never stored: the standings are worked out from the results with
 the points tables, so a change to a table applies to the whole season at

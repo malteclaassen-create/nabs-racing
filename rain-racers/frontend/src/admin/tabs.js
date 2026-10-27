@@ -13,6 +13,7 @@ export const TAB_GROUPS = [
     tabs: [
       { id: "races", label: "Races & results", scoped: true },
       { id: "attendance", label: "Attendance", scoped: true },
+      { id: "votes", label: "Combo votes", scoped: true },
     ],
   },
   {
@@ -53,6 +54,8 @@ export const JOBS = [
   { tab: "races", title: "Round poster, recording and timetable", words: "poster picture image video youtube recording stream timetable practice qualifying" },
   { tab: "races", title: "A round's own points (finale, double points)", words: "finale double points multiplier round table" },
   { tab: "attendance", title: "Who turned up and who said yes", words: "attendance signups sign-ups no show csv export present" },
+  { tab: "votes", title: "Combo vote: members pick the next car and track", words: "vote voting poll combo combos car track next round week sahara pick choose members" },
+  { tab: "votes", title: "Race the winning combo", words: "vote winner result combo apply round car track tie closed" },
   { tab: "series", title: "New series or season", words: "series season new create start add" },
   { tab: "series", title: "Points rules of a season", words: "points table reverse back to front qualifying points drop worst rounds sprint feature races" },
   { tab: "series", title: "Champion, manual points", words: "champion manual points pole award deduction" },
