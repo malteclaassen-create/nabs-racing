@@ -144,6 +144,18 @@ describe("GIPHY search", () => {
     expect(asked).toContain("q=Verstappen+crash");
   });
 
+  it("searches GIPHY's stickers when asked for them, cached apart from the GIFs", async () => {
+    const asked = [];
+    const fetchImpl = async (url) => {
+      asked.push(url);
+      return { ok: true, json: async () => ({ data: [result] }) };
+    };
+    await searchGifs("checkered flag", { fetchImpl, now: 5000 });
+    await searchGifs("checkered flag", { fetchImpl, now: 5000, kind: "stickers" });
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toContain("/v1/stickers/search?");
+  });
+
   it("finds nothing without a key", async () => {
     delete process.env.GIPHY_API_KEY;
     expect(await searchGifs("f1", { fetchImpl: async () => ({ ok: true, json: async () => ({ data: [result] }) }) })).toEqual(

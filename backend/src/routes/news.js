@@ -13,11 +13,12 @@
 //   DELETE /api/news/comments/:articleId/:id       the writer, or the news desk (a thread goes with its replies)
 //
 // Reactions and views (lib/newsReactions.js):
-//   POST   /api/news/reactions/:articleId          { target: "article"|"comment", id, emoji } toggles, members
+//   POST   /api/news/reactions/:articleId          { target: "article"|"comment", id, emoji } toggles, members (any emoji)
 //   POST   /api/news/article/:id/view              one more view, signed in or not, answers { views }
 // The comments answer carries the reactions: `articleReactions`, each
-// comment's `reactions`, and `reactionSet`, the emoji on offer.
-//   GET    /api/news/gifs?q=                       GIPHY search (trending without q), members
+// comment's `reactions` (each emoji with its count, `mine` and the `names` of
+// who put it there), and `reactionSet`, the picker's quick row.
+//   GET    /api/news/gifs?q=&kind=                 GIPHY search (trending without q), kind=stickers for stickers, members
 //   POST   /api/news/gifs/resolve                  { link } -> { gif } for a pasted Tenor/GIPHY link
 //
 // The desk (admins and news writers, middleware requireNewsDesk):
@@ -293,7 +294,9 @@ router.post("/reactions/:articleId", requireUser, async (req, res, next) => {
     if (!discordId) return res.status(401).json({ error: "Sign in with Discord first" });
     const slow = reactionRateCheck(discordId);
     if (slow) return res.status(429).json({ error: slow });
-    await toggleReaction(prisma, { articleId: article.id, ...r, discordId });
+    const name = req.user.driverName || req.user.discordName || "Member";
+    const done = await toggleReaction(prisma, { articleId: article.id, ...r, discordId, name });
+    if (done.error) return res.status(409).json({ error: done.error });
     res.json({ reactions: await targetReactions(prisma, r, discordId) });
   } catch (e) {
     next(e);
@@ -316,7 +319,7 @@ router.post("/article/:id/view", async (req, res, next) => {
 router.get("/gifs", requireUser, async (req, res, next) => {
   try {
     if (!gifSearchEnabled()) return res.json({ gifs: [], enabled: false });
-    res.json({ gifs: await searchGifs(req.query.q), enabled: true });
+    res.json({ gifs: await searchGifs(req.query.q, { kind: req.query.kind === "stickers" ? "stickers" : "gifs" }), enabled: true });
   } catch (e) {
     next(e);
   }

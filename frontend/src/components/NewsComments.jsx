@@ -46,9 +46,10 @@ function GifImage({ gif, maxW, maxH, className = "" }) {
 }
 
 // The GIF panel under the comment box: GIPHY's search (trending until
-// something is typed) when it is set up, and a box for a Tenor or GIPHY link
-// either way.
+// something is typed) when it is set up, for GIFs or for stickers, and a box
+// for a Tenor or GIPHY link (a sticker's link too) either way.
 function GifPicker({ searchEnabled, onPick, onClose }) {
+  const [kind, setKind] = useState("gifs");
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
   const [gifs, setGifs] = useState(null);
@@ -67,13 +68,13 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
     let alive = true;
     setGifs(null);
     api
-      .searchGifs(term)
+      .searchGifs(term, kind)
       .then((d) => alive && setGifs(d?.gifs || []))
       .catch(() => alive && setGifs([]));
     return () => {
       alive = false;
     };
-  }, [term, searchEnabled]);
+  }, [term, kind, searchEnabled]);
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -97,7 +98,29 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
   return (
     <div className="mt-3 rounded-xl border border-border bg-surface2/50 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Add a GIF</span>
+        {searchEnabled ? (
+          <div className="flex gap-1" role="tablist" aria-label="GIFs or stickers">
+            {[
+              ["gifs", "GIFs"],
+              ["stickers", "Stickers"],
+            ].map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={kind === k}
+                onClick={() => setKind(k)}
+                className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest transition ${
+                  kind === k ? "bg-brand text-onbrand" : "text-eyebrow hover:text-dark"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow">Add a GIF or sticker</span>
+        )}
         <button type="button" onClick={onClose} className="text-xs font-semibold text-light hover:text-dark">
           Close
         </button>
@@ -110,8 +133,8 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search GIPHY…"
-            aria-label="Search GIFs"
+            placeholder={kind === "stickers" ? "Search GIPHY stickers…" : "Search GIPHY…"}
+            aria-label={kind === "stickers" ? "Search stickers" : "Search GIFs"}
             className="input mt-2 w-full py-1.5 text-sm"
           />
           <div className="mt-2 grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto sm:grid-cols-4">
@@ -132,7 +155,7 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
                   alt={g.title || "GIF"}
                   loading="lazy"
                   referrerPolicy="no-referrer"
-                  className="aspect-video h-full w-full object-cover"
+                  className={`aspect-video h-full w-full ${kind === "stickers" ? "object-contain" : "object-cover"}`}
                 />
               </button>
             ))}

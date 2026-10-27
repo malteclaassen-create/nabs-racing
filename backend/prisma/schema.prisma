@@ -1045,6 +1045,7 @@ model NewsReaction {
   targetId   String
   discordId  String
   emoji      String
+  authorName String?
   createdAt  DateTime @default(now())
 
   @@unique([targetType, targetId, discordId, emoji], map: "NewsReaction_target_member_emoji_key")
