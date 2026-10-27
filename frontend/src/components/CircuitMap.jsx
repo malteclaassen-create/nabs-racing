@@ -1,7 +1,9 @@
 import { circuitFor } from "../data/circuits.js";
+import { uploadedOutlineFor, useTrackOutlines } from "../data/trackOutlines.js";
 
-// Real circuit outline (projected OSM geometry). Renders nothing for unknown
-// tracks. Each circuit carries its own tight viewBox (`box`), so aspect ratio
+// Real circuit outline (projected OSM geometry). A circuit without one draws
+// the outline an admin uploaded for it (data/trackOutlines.js) instead, and
+// renders nothing when there is none either. Each circuit carries its own tight viewBox (`box`), so aspect ratio
 // is preserved — size it with the className (e.g. h-12 w-20) and it fits inside.
 //
 // `animate`: trace the outline once from the start line all the way around
@@ -27,8 +29,12 @@ export default function CircuitMap({
   rotate = 0,
   align = "xMidYMid",
 }) {
+  useTrackOutlines();
   const c = circuitFor(track);
-  if (!c) return null;
+  if (!c) {
+    const url = uploadedOutlineFor(track);
+    return url ? <UploadedOutline url={url} className={className} style={style} stroke={stroke} rotate={rotate} align={align} /> : null;
+  }
 
   let viewBox = c.box || "0 0 100 100";
   let transform;
@@ -83,5 +89,34 @@ export default function CircuitMap({
         )}
       </g>
     </svg>
+  );
+}
+
+// SVG preserveAspectRatio alignment -> CSS position keywords.
+const AXIS = { Min: ["left", "top"], Mid: ["center", "center"], Max: ["right", "bottom"] };
+function maskPosition(align) {
+  const m = /^x(Min|Mid|Max)Y(Min|Mid|Max)$/.exec(align) || [null, "Mid", "Mid"];
+  return `${AXIS[m[1]][0]} ${AXIS[m[2]][1]}`;
+}
+
+// An uploaded outline. The picture is used as a mask and painted in the
+// outline's own colour, so it sits on a card like the built-in ones do: white
+// on the dark theme, ink on the light one, whatever colour it was drawn in.
+// No lap animation: there is no path to trace.
+function UploadedOutline({ url, className, style, stroke, rotate, align }) {
+  const deg = ((Number(rotate) || 0) % 360 + 360) % 360;
+  const mask = `url("${url}") ${maskPosition(align)} / contain no-repeat`;
+  return (
+    <div
+      aria-hidden="true"
+      className={className}
+      style={{
+        ...style,
+        backgroundColor: stroke,
+        WebkitMask: mask,
+        mask,
+        ...(deg ? { transform: `rotate(${deg}deg)` } : {}),
+      }}
+    />
   );
 }
