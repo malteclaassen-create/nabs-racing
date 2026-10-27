@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// League-wide settings (name, colours, default points tables, ...), one row
+// per key, the value as JSON. See src/lib/settings.js for the keys and their
+// defaults.
+model Setting {
+  key   String @id
+  value String
+}
+
+// One championship the league runs, e.g. "RX8 Cup" or "DTM 2002". Several
+// run side by side, each with its own teams, seasons and calendar.
+model Series {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  color       String? // hex like "#e10600"; null = the league colour
+  description String?
+  schedule    String? // "Sundays 19:00 CET"
+  // Banner picture ("/api/uploads/images/..."); null = the current season's.
+  imageUrl    String?
+  // A series that no longer runs: off the menu and the home page, still in
+  // the history with all its seasons.
+  archived    Boolean  @default(false)
+  order       Int      @default(0)
+  // AC Server Manager live socket of this series' server (null = the
+  // league-wide one from the settings, if any).
+  liveWsUrl   String?
+  liveOrigin  String?
+  seasons     Season[]
+  teams       Team[]
+  createdAt   DateTime @default(now())
+}
+
+model Season {
+  id                Int            @id @default(autoincrement())
+  seriesId          Int
+  series            Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  // Banner picture of the season ("/api/uploads/images/...").
+  imageUrl          String?
+  // The season the series shows by default. One per series.
+  isCurrent         Boolean        @default(false)
+  // TABLE = points from the tables below; REVERSE = back to front: the last
+  // classified driver of a race gets 1, the one ahead 2, and so on.
+  pointsMode        String         @default("TABLE")
+  // Points for P1, P2, ... of a race in a round with one race, as JSON;
+  // null = the league's default table.
+  pointsTable       String?
+  // Rounds with more races, as JSON keyed by the number of races: one table
+  // for all of them, or one per race, e.g. {"2": [[8,7,6], [25,18,15]]} for
+  // a sprint and a feature race. A missing one falls back to pointsTable.
+  raceTables        String?
+  // Points for the qualifying positions (JSON); null = none.
+  qualiPointsTable  String?
+  // The worst N round scores of each driver do not count.
+  dropWorst         Int            @default(0)
+  // Champion named by hand (a title decided by the league's own rule).
+  championId        Int?
+  championNote      String?
+  createdAt         DateTime       @default(now())
+  races             Race[]
+  entries           Entry[]
+  transfers         Transfer[]
+  manualPoints      ManualPoints[]
+}
+
+model Team {
+  id        Int        @id @default(autoincrement())
+  seriesId  Int
+  series    Series     @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  name      String
+  color     String? // hex like "#38bdf8"
+  // Archived teams keep their results but are no longer offered in the admin.
+  archived  Boolean    @default(false)
+  entries   Entry[]
+  transfers Transfer[]
+  results   Result[]
+
+  @@unique([seriesId, name])
+}
+
+// A person behind the wheel, across all series and seasons.
+model Driver {
+  id           Int            @id @default(autoincrement())
+  name         String
+  number       Int?
+  country      String? // ISO code, e.g. "DE"
+  // The id Assetto Corsa writes into the result files (the SteamID64).
+  // Never sent by the public API.
+  steamGuid    String?        @unique
+  userId       Int?           @unique
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entries      Entry[]
+  transfers    Transfer[]
+  results      Result[]
+  qualifying   QualiResult[]
+  manualPoints ManualPoints[]
+  createdAt    DateTime       @default(now())
+}
+
+// A driver on a season's entry list, with the team they start it for.
+model Entry {
+  id       Int    @id @default(autoincrement())
+  seasonId Int
+  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  driverId Int
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  teamId   Int?
+  team     Team?  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  number   Int?
+
+  @@unique([seasonId, driverId])
+}
+
+// A team change that applies from a round on (fromRound = the round's
+// number). teamId null = the driver leaves to no team.
+model Transfer {
+  id        Int      @id @default(autoincrement())
+  seasonId  Int
+  season    Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  driverId  Int
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  fromRound Int
+  createdAt DateTime @default(now())
+}
+
+// Someone who signed in with Discord.
+model User {
+  id        Int      @id @default(autoincrement())
+  discordId String   @unique
+  name      String
+  avatar    String?
+  driver    Driver?
+  signups   Signup[]
+  votes     PollVote[]
+  createdAt DateTime @default(now())
+}
+
+// A round: one race day with one or more races (results R1, R2, ...).
+model Race {
+  id               Int           @id @default(autoincrement())
+  seasonId         Int
+  season           Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round            Int
+  name             String
+  track            String
+  // A mystery track stays hidden on the public pages until the round has
+  // results (or the admin unticks it).
+  mysteryTrack     Boolean       @default(false)
+  car              String?
+  startsAt         DateTime
+  notes            String?
+  raceCount        Int           @default(1)
+  // Picture of the round (track, car, poster) and the recording of it.
+  imageUrl         String?
+  videoUrl         String?
+  // The day's sessions as JSON: [{ "label": "Qualifying", "at": ISO time,
+  // "length": "15 min" }, ...].
+  timetable        String?
+  // 2 = double points (e.g. a season finale).
+  pointsMultiplier Float         @default(1)
+  // This round's own points table for all its races as JSON; null = the
+  // season's.
+  pointsTable      String?
+  importedAt       DateTime?
+  results          Result[]
+  qualifying       QualiResult[]
+  signups          Signup[]
+  poll             Poll?
+}
+
+model Result {
+  id           Int     @id @default(autoincrement())
+  raceId       Int
+  race         Race    @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  session      String  @default("R1") // R1, R2, ... = race 1, 2, ... of the round
+  driverId     Int
+  driver       Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  // The team the driver raced for in this round (from the entry list and
+  // the transfers; kept when they move later).
+  teamId       Int?
+  team         Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  position     Int
+  grid         Int?
+  status       String  @default("FIN") // FIN | DNF | DSQ | DNS
+  laps         Int     @default(0)
+  totalTimeMs  Int?
+  bestLapMs    Int?
+  carModel     String?
+  // Steward time penalty, added to the race time (and the order).
+  penaltyMs    Int     @default(0)
+  penaltyNote  String?
+  // Manual bonus or penalty on top of the points from the table (e.g. -5).
+  pointsAdjust Float   @default(0)
+
+  @@unique([raceId, session, driverId])
+}
+
+model QualiResult {
+  id        Int    @id @default(autoincrement())
+  raceId    Int
+  race      Race   @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  driverId  Int
+  driver    Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  position  Int
+  bestLapMs Int?
+
+  @@unique([raceId, driverId])
+}
+
+// Points the results cannot show (a pole award, a stewards' deduction, a
+// total taken over from an old sheet). Driver standings only.
+model ManualPoints {
+  id       Int     @id @default(autoincrement())
+  seasonId Int
+  season   Season  @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  driverId Int
+  driver   Driver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  points   Float
+  note     String?
+}
+
+model Signup {
+  id        Int      @id @default(autoincrement())
+  raceId    Int
+  race      Race     @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String // in | maybe | out
+  updatedAt DateTime @updatedAt
+
+  @@unique([raceId, userId])
+}
+
+// A combo vote for a round nobody knows yet (Sahara Saturdays: the league
+// puts up a few car and track combos, the members pick one, and the winner
+// is raced in the round).
+model Poll {
+  id              Int          @id @default(autoincrement())
+  raceId          Int          @unique
+  race            Race         @relation(fields: [raceId], references: [id], onDelete: Cascade)
+  closesAt        DateTime
+  // The combo the round is raced with, once the admin has picked it (the
+  // winner, or one of a tie).
+  appliedOptionId Int?
+  createdAt       DateTime     @default(now())
+  options         PollOption[]
+  votes           PollVote[]
+}
+
+model PollOption {
+  id     Int        @id @default(autoincrement())
+  pollId Int
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  car    String
+  track  String
+  note   String?
+  order  Int        @default(0)
+  votes  PollVote[]
+}
+
+// One member's pick in a vote; they can change it while the vote is open.
+model PollVote {
+  id        Int        @id @default(autoincrement())
+  pollId    Int
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  optionId  Int
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime   @updatedAt
+
+  @@unique([pollId, userId])
+}
+
+model Download {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  // An external link (most car and track packs are too big to host here)
+  // or a file uploaded through the admin ("/api/uploads/files/<name>").
+  url         String
+  fileName    String? // set for uploaded files, so deleting one removes the file
+  sizeBytes   Int?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}

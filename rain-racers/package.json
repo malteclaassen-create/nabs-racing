@@ -1,0 +1,13 @@
+{
+  "name": "rain-racers",
+  "private": true,
+  "description": "Rain Racers league website - the backend serves the built frontend, the API and the uploads",
+  "scripts": {
+    "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
+    "start": "npm --prefix backend run start:prod",
+    "test": "npm --prefix backend test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

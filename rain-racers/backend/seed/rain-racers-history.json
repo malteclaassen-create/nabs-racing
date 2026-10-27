@@ -1,0 +1,1832 @@
+{
+ "note": "Rain Racers history: calendars from Grid Finder (gridfinder.com/c/rain-racers-2) and the YouTube streams (youtube.com/@rainracers). Results are not public there; import them in the admin.",
+ "series": [
+  {
+   "slug": "fis",
+   "name": "Formula International Series",
+   "color": "#e3061b",
+   "schedule": "Wednesdays 20:00 CET",
+   "liveWsUrl": "wss://rain.emperorservers.com/api/race-control",
+   "description": "Formula 4 around the world, every Wednesday.",
+   "order": 0,
+   "seasons": [
+    {
+     "name": "Season 1",
+     "description": "Formula 4 gather in Italy to start of our wonderful season taking us through every major region of the world. Starting in Europe and ending in the wonderful North Africa.\nChampion: Mekambe, his second drivers' title. Teams: United Slavic Force powered by ESR, back to back.\nResults from the league's race server. The points use Season 2's tables; Season 1's own rules are not on record, so the totals can differ from the ones of the time.",
+     "pointsTable": [
+      50,
+      40,
+      35,
+      32,
+      30,
+      28,
+      26,
+      24,
+      22,
+      20,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      7,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+     ],
+     "raceTables": {
+      "2": [
+       35,
+       29,
+       24,
+       21,
+       19,
+       17,
+       15,
+       13,
+       12,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "3": [
+       20,
+       17,
+       15,
+       13,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "qualiPointsTable": [
+      2
+     ],
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Premio Piccolo di Mugello",
+       "track": "Mugello",
+       "startsAt": "2026-01-14T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=XyngBafReqA",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 2,
+       "name": "125 Miles of Road America",
+       "track": "Road America",
+       "startsAt": "2026-01-21T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=fVeTjYA45Ck",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 3,
+       "name": "Double Spin Down at Kyalami",
+       "track": "Kyalami",
+       "startsAt": "2026-01-28T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=icyja5fsMnI",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 4,
+       "name": "Interlagos",
+       "track": "Interlagos",
+       "startsAt": "2026-02-04T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=2TLF0crIGk4",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 5,
+       "name": "Taupo International",
+       "track": "Taupo",
+       "startsAt": "2026-02-11T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=xZ80oaXuXL0",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 6,
+       "name": "Yalla Fy Dubai",
+       "track": "Dubai Autodrome",
+       "startsAt": "2026-02-18T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=USsdJs5eq3U",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 7,
+       "name": "Code 120",
+       "track": "Codegua",
+       "startsAt": "2026-02-25T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=YZoziLRMViM",
+       "car": "Formula 4",
+       "raceCount": 3
+      },
+      {
+       "round": 8,
+       "name": "Tianyi Wisdom Storm",
+       "track": "Ningbo International Speedpark",
+       "startsAt": "2026-03-11T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=N9_tpcx1K_A",
+       "car": "Formula 4",
+       "raceCount": 1
+      },
+      {
+       "round": 9,
+       "name": "Grand Finale at Domina",
+       "track": "Domina Coral Bay",
+       "startsAt": "2026-03-18T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=JHsJcdBIfZ0",
+       "car": "Formula 4",
+       "notes": "Grand Finale.",
+       "raceCount": 1
+      }
+     ]
+    },
+    {
+     "name": "Season 2",
+     "isCurrent": true,
+     "image": "fis-2.jpg",
+     "description": "Welcome to the second season of FIS hosted by Rain Racers.\nRacing on Wednesday 20:00 CEST/CET\nTaking us around the world in the roaring F4 with an added KERS mod and new tyres ranging from C1 to C5.\nWe will visit Latin America, Oceania, South Causcasus, British Columbia, Africa, Central Europe, Southeast Asia, Central Valley and Scandinavia.\nFour different types of racing and fierce competition are what awaits you in this spectacular competition\nAttendance is in our discord in Pre Race Info, that you can see only once you registered for the series and you are in our discord",
+     "pointsTable": [
+      50,
+      40,
+      35,
+      32,
+      30,
+      28,
+      26,
+      24,
+      22,
+      20,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      7,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+     ],
+     "raceTables": {
+      "2": [
+       35,
+       29,
+       24,
+       21,
+       19,
+       17,
+       15,
+       13,
+       12,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ],
+      "3": [
+       20,
+       17,
+       15,
+       13,
+       11,
+       10,
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       3,
+       2,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1
+      ]
+     },
+     "qualiPointsTable": [
+      2
+     ],
+     "dropWorst": 3,
+     "rounds": [
+      {
+       "round": 1,
+       "name": "El Premio Azteco",
+       "track": "Autodromo Hermanos Rodriguez",
+       "mysteryTrack": false,
+       "startsAt": "2026-09-30T18:15:00.000Z",
+       "raceCount": 1,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-09-30T16:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-09-30T18:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race",
+         "at": "2026-09-30T18:15:00.000Z",
+         "length": "41 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "videoUrl": "https://www.youtube.com/watch?v=iz2C4eJMU48"
+      },
+      {
+       "round": 2,
+       "name": "The Ups and Downs of Racing",
+       "track": "Hampton Downs",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-07T18:15:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-07T16:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-07T18:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-10-07T18:15:00.000Z",
+         "length": "19 laps"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-10-07T19:00:00.000Z",
+         "length": "19 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "videoUrl": "https://www.youtube.com/watch?v=vJhVPAuZceo"
+      },
+      {
+       "round": 3,
+       "name": "Azichin İrsi",
+       "track": "Baku Street Circuit",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-14T18:15:00.000Z",
+       "raceCount": 1,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-14T16:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-14T18:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race",
+         "at": "2026-10-14T18:15:00.000Z",
+         "length": "24 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "videoUrl": "https://www.youtube.com/watch?v=ZXKlUxZmD5I"
+      },
+      {
+       "round": 4,
+       "name": "Terminal (Velo)City",
+       "track": "Vancouver",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-21T18:10:00.000Z",
+       "raceCount": 3,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-21T16:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-21T18:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-10-21T18:10:00.000Z",
+         "length": "11 laps"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-10-21T18:45:00.000Z",
+         "length": "11 laps"
+        },
+        {
+         "label": "Race 3",
+         "at": "2026-10-21T19:15:00.000Z",
+         "length": "11 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "videoUrl": "https://www.youtube.com/watch?v=cEyjnCZ12PY"
+      },
+      {
+       "round": 5,
+       "name": "The Pink Slip Stint",
+       "track": "Phakisa Freeway",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-28T19:15:00.000Z",
+       "raceCount": 1,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-28T17:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-28T19:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race",
+         "at": "2026-10-28T19:15:00.000Z",
+         "length": "35 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "image": "fis-2-r5.jpg"
+      },
+      {
+       "round": 6,
+       "name": "Hněv Panny Marie",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-11-04T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-04T17:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-04T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-04T19:10:00.000Z",
+         "length": "17 laps"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-04T20:00:00.000Z",
+         "length": "17 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "image": "fis-2-r6.jpg"
+      },
+      {
+       "round": 7,
+       "name": "Hadiah Kesungguhan",
+       "track": "Sepang",
+       "mysteryTrack": false,
+       "startsAt": "2026-11-11T19:15:00.000Z",
+       "raceCount": 1,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-11T17:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-11T19:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race",
+         "at": "2026-11-11T19:15:00.000Z",
+         "length": "27 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)"
+      },
+      {
+       "round": 8,
+       "name": "Bear Flag 125",
+       "track": "Sonoma",
+       "mysteryTrack": false,
+       "startsAt": "2026-11-18T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-18T17:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-18T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-18T19:10:00.000Z",
+         "length": "18 laps"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-18T20:00:00.000Z",
+         "length": "18 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)"
+      },
+      {
+       "round": 9,
+       "name": "Suuri Finaali",
+       "track": "Helsinki Street Circuit",
+       "mysteryTrack": false,
+       "startsAt": "2026-11-25T19:15:00.000Z",
+       "raceCount": 1,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-25T17:00:00.000Z",
+         "length": "2 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-25T19:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race",
+         "at": "2026-11-25T19:15:00.000Z",
+         "length": "38 laps"
+        }
+       ],
+       "car": "Formula 4 (KERS)",
+       "pointsTable": [
+        75,
+        60,
+        53,
+        48,
+        45,
+        42,
+        39,
+        36,
+        33,
+        30,
+        29,
+        27,
+        26,
+        24,
+        23,
+        21,
+        20,
+        18,
+        17,
+        15,
+        14,
+        12,
+        11,
+        9,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "sahara-saturdays",
+   "name": "Sahara Saturdays",
+   "color": "#ff6100",
+   "schedule": "Saturdays 20:00 CET",
+   "liveWsUrl": "wss://sahara.emperorservers.com/api/race-control",
+   "description": "A new car and a new track every week, legends and meme cars alike.",
+   "order": 1,
+   "seasons": [
+    {
+     "name": "Season 1",
+     "isCurrent": true,
+     "image": "sahara.jpg",
+     "description": "To accompany our Wednesday series, Sahara Saturdays will be a laid back format where we see new cars and tracks every week, highlighting both legendary and meme cars that wouldn't work for larger seasons.\nPoints will be awarded from back to front, with last place receiving 1 point, second to last 2 point etc. until first place.\nThis series is also more open for suggestions. Any driver with a fun idea car share it in our Discord and could see their suggestion come back in the next season.",
+     "pointsMode": "REVERSE",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Twing.O.A.T. at Bikernieki",
+       "track": "Bikernieki",
+       "mysteryTrack": false,
+       "startsAt": "2026-09-19T15:15:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Qualifying",
+         "at": "2026-09-19T15:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-09-19T15:15:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-09-19T15:35:00.000Z",
+         "length": "20 min"
+        }
+       ],
+       "car": "Renault Twingo",
+       "image": "sahara-r1.jpg"
+      },
+      {
+       "round": 2,
+       "name": "F2004 at Magny-Cours",
+       "track": "Magny-Cours",
+       "mysteryTrack": false,
+       "startsAt": "2026-09-26T15:15:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Qualifying",
+         "at": "2026-09-26T15:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-09-26T15:15:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-09-26T15:35:00.000Z",
+         "length": "20 min"
+        }
+       ],
+       "car": "Ferrari F2004",
+       "image": "sahara-r2.jpg"
+      },
+      {
+       "round": 3,
+       "name": "NASCAR at Daytona",
+       "track": "Daytona",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-03T15:15:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Qualifying",
+         "at": "2026-10-03T15:00:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-10-03T15:15:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-10-03T15:35:00.000Z",
+         "length": "20 min"
+        }
+       ],
+       "car": "NASCAR Cup",
+       "image": "sahara-r3.jpg"
+      },
+      {
+       "round": 4,
+       "name": "NASCAR at Charlotte",
+       "track": "Charlotte Motor Speedway (Roval)",
+       "mysteryTrack": false,
+       "startsAt": "2026-10-24T18:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-24T17:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-24T18:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-10-24T18:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-10-24T18:30:00.000Z",
+         "length": "20 min"
+        }
+       ],
+       "car": "NASCAR Cup",
+       "image": "sahara-r4.jpg"
+      },
+      {
+       "round": 5,
+       "name": "Week 44",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-10-31T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-10-31T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-10-31T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-10-31T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-10-31T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 6,
+       "name": "Week 45",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-11-07T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-07T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-07T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-07T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-07T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 7,
+       "name": "Week 46",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-11-14T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-14T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-14T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-14T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-14T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 8,
+       "name": "Week 47",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-11-21T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-21T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-21T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-21T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-21T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 9,
+       "name": "Week 48",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-11-28T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-11-28T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-11-28T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-11-28T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-11-28T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 10,
+       "name": "Week 49",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-12-05T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-12-05T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-12-05T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-12-05T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-12-05T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 11,
+       "name": "Week 50",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-12-12T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-12-12T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-12-12T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-12-12T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-12-12T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 12,
+       "name": "Week 51",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-12-19T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-12-19T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-12-19T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-12-19T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-12-19T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      },
+      {
+       "round": 13,
+       "name": "Week 52",
+       "track": "",
+       "mysteryTrack": true,
+       "startsAt": "2026-12-26T19:10:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-12-26T18:00:00.000Z",
+         "length": "60 min"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-12-26T19:00:00.000Z",
+         "length": "10 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-12-26T19:10:00.000Z",
+         "length": "20 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-12-26T19:30:00.000Z",
+         "length": "20 min"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "rx8-cup",
+   "name": "RX8 Cup",
+   "color": "#d6001c",
+   "schedule": "Sundays 19:00 CET",
+   "archived": true,
+   "description": "The rotary on short and wacky circuits. Sunday nights.",
+   "order": 2,
+   "seasons": [
+    {
+     "name": "2026",
+     "isCurrent": true,
+     "image": "rx8.jpg",
+     "description": "The Rotary is BACK!!!!\nThe original league formed in the mid of 2017, races these absolute beasts of cars, that are popular in the land down under. The 251 bhp, that this car produces, are coming loose on the international stage visiting Okayama, Adeilaide, Tucuru, Calder Park Oval or even Laguna Seca. It's a series that racing purist will love as the car has nearly no setup options so the best driver wins everything",
+     "pointsTable": [
+      50,
+      40,
+      35,
+      32,
+      30,
+      28,
+      26,
+      24,
+      22,
+      20,
+      19,
+      18,
+      17,
+      16,
+      15,
+      14,
+      13,
+      12,
+      11,
+      10,
+      9,
+      8,
+      7,
+      6
+     ],
+     "qualiPointsTable": [
+      10,
+      8,
+      7,
+      6,
+      5,
+      4,
+      3,
+      2,
+      1,
+      1
+     ],
+     "dropWorst": 3,
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Sprint for the Frosty Chop",
+       "track": "Symmons Plains",
+       "mysteryTrack": false,
+       "startsAt": "2026-04-12T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-04-12T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-04-12T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-04-12T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-04-12T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=JqD8q4TAZIM"
+      },
+      {
+       "round": 2,
+       "name": "Soggy Waffle Driveby",
+       "track": "Zolder",
+       "mysteryTrack": false,
+       "startsAt": "2026-04-19T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-04-19T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-04-19T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-04-19T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-04-19T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=Qa9gvN_jpE4"
+      },
+      {
+       "round": 3,
+       "name": "Sun's out, Pierogis out!",
+       "track": "Tór Poznań",
+       "mysteryTrack": false,
+       "startsAt": "2026-04-26T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-04-26T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-04-26T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-04-26T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-04-26T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=CAsHsI0elsw"
+      },
+      {
+       "round": 4,
+       "name": "Double Dipping the Nachos",
+       "track": "Laguna Seca",
+       "mysteryTrack": false,
+       "startsAt": "2026-05-04T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-05-04T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-05-04T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-05-04T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-05-04T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=RME22YcP5XU",
+       "image": "rx8-r4.jpg"
+      },
+      {
+       "round": 5,
+       "name": "Uey for some Macca's",
+       "track": "Calder Park Oval",
+       "mysteryTrack": false,
+       "startsAt": "2026-05-10T18:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-05-10T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-05-10T18:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-05-10T18:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-05-10T18:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=E-GWjc2LgdE",
+       "image": "rx8-r5.jpg"
+      },
+      {
+       "round": 6,
+       "name": "Sushi Gohōbi",
+       "track": "Okayama",
+       "mysteryTrack": false,
+       "startsAt": "2026-05-17T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-05-17T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-05-17T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-05-17T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-05-17T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=Om7CigE32yA"
+      },
+      {
+       "round": 7,
+       "name": "Kiljun Tarjoama Palkinto",
+       "track": "Ahvenisto",
+       "mysteryTrack": false,
+       "startsAt": "2026-05-25T18:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-05-25T17:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-05-25T18:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-05-25T18:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-05-25T18:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=1mVatg7rFsQ",
+       "image": "rx8-r7.jpg"
+      },
+      {
+       "round": 8,
+       "name": "Frikandelle Frenzy",
+       "track": "Tucuru Motorplex",
+       "mysteryTrack": false,
+       "startsAt": "2026-05-31T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-05-31T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-05-31T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-05-31T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-05-31T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=_pVBUJzzoOM"
+      },
+      {
+       "round": 9,
+       "name": "Barbeque Party!!!!",
+       "track": "Adelaide Street Circuit",
+       "mysteryTrack": false,
+       "startsAt": "2026-06-07T17:07:00.000Z",
+       "raceCount": 2,
+       "timetable": [
+        {
+         "label": "Practice",
+         "at": "2026-06-07T16:00:00.000Z",
+         "length": "1 h"
+        },
+        {
+         "label": "Qualifying",
+         "at": "2026-06-07T17:00:00.000Z",
+         "length": "7 min"
+        },
+        {
+         "label": "Race 1",
+         "at": "2026-06-07T17:07:00.000Z",
+         "length": "15 min"
+        },
+        {
+         "label": "Race 2",
+         "at": "2026-06-07T17:22:00.000Z",
+         "length": "15 min"
+        }
+       ],
+       "car": "Mazda RX-8 Cup",
+       "videoUrl": "https://www.youtube.com/watch?v=v6MwXREomsg",
+       "notes": "Season finale."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "dtm-2002",
+   "name": "DTM 2002",
+   "color": "#9aa3ad",
+   "schedule": "Wednesdays 20:00 CEST",
+   "archived": true,
+   "description": "The 2002 DTM cars in Germany and beyond.",
+   "order": 3,
+   "seasons": [
+    {
+     "name": "2026",
+     "isCurrent": true,
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Bayerischer Kleinpreis",
+       "track": "Norisring",
+       "startsAt": "2026-04-15T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=2IXTjavaQlg",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 2,
+       "name": "Monsoon Shouhin",
+       "track": "Suzuka",
+       "startsAt": "2026-04-22T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=d-F1a2F88xA",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 3,
+       "name": "Nischel-Preis",
+       "track": "Sachsenring",
+       "startsAt": "2026-04-29T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=bKVnxzJ2fI4",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 4,
+       "name": "De Blik Op Het Verleden Prijs",
+       "track": "TT Assen",
+       "startsAt": "2026-05-06T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=STnInJs7byI",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 5,
+       "name": "Yoka-Yoka Kappu",
+       "track": "Autopolis",
+       "startsAt": "2026-05-13T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=sN8S5muJ0hA",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 6,
+       "name": "Schwarzwaldpreis",
+       "track": "Hockenheim",
+       "startsAt": "2026-05-20T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=5I3MVNe_A0M",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 7,
+       "name": "Preis der Sieben Berge",
+       "track": "Oschersleben",
+       "startsAt": "2026-05-27T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=rMHuVxav99w",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 8,
+       "name": "Eifel Ringmeister Preis",
+       "track": "Nürburgring",
+       "startsAt": "2026-06-03T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=XIArOhyo_6I",
+       "car": "DTM 2002",
+       "raceCount": 1
+      },
+      {
+       "round": 9,
+       "name": "Lausitzring",
+       "track": "Lausitzring",
+       "startsAt": "2026-06-10T18:00:00.000Z",
+       "car": "DTM 2002",
+       "raceCount": 1
+      }
+     ],
+     "description": "Results from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time."
+    }
+   ]
+  },
+  {
+   "slug": "japanese-summer",
+   "name": "Japanese Summer",
+   "color": "#f43f5e",
+   "schedule": null,
+   "archived": true,
+   "description": "A summer tournament with a €100 prize pool.",
+   "order": 4,
+   "seasons": [
+    {
+     "name": "2026",
+     "isCurrent": true,
+     "description": "Registration 22 to 28 June, the event from 29 June to 6 September, with a €100 prize pool. Finals on Mt. Akina.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "3rd Place Match and Grand Final",
+       "track": "Mt. Akina",
+       "startsAt": "2026-08-31T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=S64mn8soFXo",
+       "raceCount": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "gt4-world-series",
+   "name": "GT4 World Series",
+   "color": "#22c55e",
+   "schedule": null,
+   "archived": true,
+   "description": "The underrated GT4 cars raced to their fullest.",
+   "order": 5,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "description": "The underrated GT4's are going to be raced to their fullest in their series. Going to many amazing locations we are starting with Nurburgring and finishing at the legendary Willow Springs.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Nürburgring GP",
+       "track": "Nürburgring GP",
+       "startsAt": "2025-11-22T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=sgbabS8hKys",
+       "car": "GT4",
+       "raceCount": 1
+      },
+      {
+       "round": 2,
+       "name": "Potrero de los Funes",
+       "track": "Potrero de los Funes",
+       "startsAt": "2025-11-29T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=ZX5oQpLvpeU",
+       "car": "GT4",
+       "raceCount": 1
+      },
+      {
+       "round": 3,
+       "name": "Zandvoort",
+       "track": "Zandvoort",
+       "startsAt": "2025-12-06T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=E51RBbEX5Hw",
+       "car": "GT4",
+       "raceCount": 1
+      },
+      {
+       "round": 4,
+       "name": "Singapore",
+       "track": "Singapore",
+       "startsAt": "2025-12-13T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=-rnV549ngjc",
+       "car": "GT4",
+       "raceCount": 1
+      },
+      {
+       "round": 5,
+       "name": "Barber Motorsports Park",
+       "track": "Barber Motorsports Park",
+       "startsAt": "2025-12-20T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=Uuw_lYvfF-A",
+       "car": "GT4",
+       "raceCount": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "vacation-tour",
+   "name": "Vacation Tour",
+   "color": "#14b8a6",
+   "schedule": "Fridays 20:00 CEST",
+   "archived": true,
+   "description": "Five races around the globe, each car on a visit to a country that loves it.",
+   "order": 6,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "description": "A 5 race series travelling around the globe with different cars and tracks. As the name suggests the cars represent countries that love to visit the countries where the track is located. Starting off in Croatia with a Czech car and finishing in America with the Brazilian Stock Car.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Octavia Cup at Grobnik",
+       "track": "Grobnik",
+       "startsAt": "2025-09-02T18:29:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=8-FQ3aIrFBc",
+       "car": "Škoda Octavia Cup",
+       "raceCount": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "fictional-f3",
+   "name": "Fictional F3",
+   "color": "#a855f7",
+   "schedule": "Fridays 20:00 CEST",
+   "archived": true,
+   "description": "Fictional street tracks, huge corners and elevation in open-wheel cars.",
+   "order": 7,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "description": "Welcome to the Fictional F3. Street tracks, huge corners, large elevation is all that awaits us in this 7 round championship. Open wheel cars are what we are using and the grid is super competitive. Cash prize pool and glory is all to win.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Dragon Trail Seaside",
+       "track": "Dragon Trail Seaside",
+       "startsAt": "2025-05-23T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=vVD4ZI7aTx0",
+       "car": "Formula 3",
+       "raceCount": 2
+      },
+      {
+       "round": 2,
+       "name": "Circuit d'Ajaccio",
+       "track": "Circuit d'Ajaccio",
+       "startsAt": "2025-05-30T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=wlPurST6Wp0",
+       "car": "Formula 3",
+       "raceCount": 2
+      },
+      {
+       "round": 3,
+       "name": "Pinwheel Grand Prix",
+       "track": "Pinwheel Grand Prix",
+       "startsAt": "2025-06-06T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=UqF5gIVW4_w",
+       "car": "Formula 3",
+       "raceCount": 2
+      },
+      {
+       "round": 4,
+       "name": "Prague Grand Prix",
+       "track": "Prague Grand Prix",
+       "startsAt": "2025-06-13T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=iltw8GXZQW8",
+       "car": "Formula 3",
+       "raceCount": 2
+      },
+      {
+       "round": 5,
+       "name": "Circuit de Palmadera",
+       "track": "Circuit de Palmadera",
+       "startsAt": "2025-06-20T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=Pkbn4IDHAF4",
+       "car": "Formula 3",
+       "raceCount": 2
+      },
+      {
+       "round": 6,
+       "name": "Pinewood GP",
+       "track": "Pinewood GP",
+       "startsAt": "2025-06-27T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=1lFOWDhV1og",
+       "car": "Formula 3",
+       "raceCount": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "ultimate-touring-challenge",
+   "name": "Ultimate Touring Challenge",
+   "color": "#3b82f6",
+   "schedule": "Fridays 20:00 CEST",
+   "archived": true,
+   "description": "The best of touring cars from all over the world in one series.",
+   "order": 8,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "description": "The best of touring cars all over the world in one series: a different class every round.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "DTM",
+       "track": "Bikernieki (Big Ring)",
+       "startsAt": "2025-03-28T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=CtH-IuS4VMo",
+       "car": "Alfa Romeo 155 TI V6",
+       "raceCount": 2
+      },
+      {
+       "round": 2,
+       "name": "Super GT500",
+       "track": "Suzuka",
+       "startsAt": "2025-04-04T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=SDPyAsMGeto",
+       "car": "Super GT500",
+       "raceCount": 2
+      },
+      {
+       "round": 3,
+       "name": "NASCAR",
+       "track": "Circuit of the Americas",
+       "car": "NASCAR",
+       "startsAt": "2025-04-11T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=beHVen8AwhA",
+       "raceCount": 2
+      },
+      {
+       "round": 4,
+       "name": "BTCC",
+       "track": "Donington Park",
+       "startsAt": "2025-04-18T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=a0IOjd3j2bM",
+       "car": "BTCC",
+       "raceCount": 2
+      },
+      {
+       "round": 5,
+       "name": "Classic Porsche",
+       "track": "Zandvoort (1973)",
+       "startsAt": "2025-04-25T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=a6JMoDmRRDI",
+       "car": "Porsche 911 RS 2.7",
+       "raceCount": 2
+      },
+      {
+       "round": 6,
+       "name": "Aussie Racing Cars",
+       "track": "Bathurst",
+       "startsAt": "2025-05-02T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=jjEwlzDzJuA",
+       "car": "Aussie Racing Cars",
+       "raceCount": 2
+      },
+      {
+       "round": 7,
+       "name": "TCR Finale",
+       "track": "Ningbo International Circuit",
+       "startsAt": "2025-05-09T18:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=RvCPz3w5Vmc",
+       "car": "TCR",
+       "raceCount": 2,
+       "pointsMultiplier": 2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "protosprint",
+   "name": "Protosprint",
+   "color": "#06b6d4",
+   "schedule": "Fridays 20:00 CET",
+   "archived": true,
+   "description": "LMP3 on German tracks and around the world.",
+   "order": 9,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "description": "LMP3 around German and other tracks around the world.\nResults from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time.",
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Oschersleben",
+       "track": "Oschersleben",
+       "startsAt": "2025-01-17T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=VkoyvDWkTE8",
+       "car": "LMP3",
+       "raceCount": 1
+      },
+      {
+       "round": 2,
+       "name": "Hockenheimring",
+       "track": "Hockenheimring",
+       "startsAt": "2025-01-24T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=698DnlTARMk",
+       "car": "LMP3",
+       "raceCount": 1
+      },
+      {
+       "round": 3,
+       "name": "Sachsenring",
+       "track": "Sachsenring",
+       "startsAt": "2025-01-31T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=Ev5WNAwTNrw",
+       "car": "LMP3",
+       "raceCount": 1
+      },
+      {
+       "round": 4,
+       "name": "Buddh International Circuit",
+       "track": "Buddh International Circuit",
+       "startsAt": "2025-02-21T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=c5nm2oE9jXg",
+       "car": "LMP3",
+       "raceCount": 1
+      },
+      {
+       "round": 5,
+       "name": "Circuit de la Sarthe",
+       "track": "Circuit de la Sarthe",
+       "startsAt": "2025-02-28T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=8S81stoJuSY",
+       "car": "LMP3",
+       "raceCount": 1
+      },
+      {
+       "round": 6,
+       "name": "Sepang",
+       "track": "Sepang",
+       "startsAt": "2025-03-07T19:00:00.000Z",
+       "videoUrl": "https://www.youtube.com/watch?v=f-suBuZLGiM",
+       "car": "LMP3",
+       "raceCount": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "slug": "miata-madness",
+   "name": "Miata Madness",
+   "color": "#ec4899",
+   "schedule": null,
+   "archived": true,
+   "description": "One evening of Mazda Miatas on two tracks.",
+   "order": 10,
+   "seasons": [
+    {
+     "name": "2025",
+     "isCurrent": true,
+     "rounds": [
+      {
+       "round": 1,
+       "name": "Miata Madness",
+       "track": "Charlotte Motor Speedway (oval) and Oulton Park",
+       "car": "Mazda MX-5 Miata",
+       "startsAt": "2025-05-16T18:37:00.000Z",
+       "raceCount": 2,
+       "notes": "Race 1 on the Charlotte oval, race 2 at Oulton Park."
+      }
+     ],
+     "description": "Results from the league's race server. The points use today's table; the season's own points rules are not on record, so the totals can differ from the ones of the time."
+    }
+   ]
+  }
+ ]
+}
