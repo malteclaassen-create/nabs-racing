@@ -148,8 +148,10 @@ async function load() {
 let cache = null; // { at, data }
 let pending = null;
 
-export async function getChangelogFeed({ now = Date.now() } = {}) {
-  if (cache && now - cache.at < TTL_MS) return cache.data;
+// `maxAgeMs` asks for a fresher answer than the page needs: the Discord post
+// of a new entry (changelogDiscord.js) checks every 15 minutes.
+export async function getChangelogFeed({ now = Date.now(), maxAgeMs = TTL_MS } = {}) {
+  if (cache && now - cache.at < Math.min(TTL_MS, maxAgeMs)) return cache.data;
   if (!pending) {
     pending = load()
       .then((data) => {

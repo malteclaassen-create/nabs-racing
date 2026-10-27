@@ -112,6 +112,94 @@ export function EventsWebhookCard() {
   );
 }
 
+// The channel the site's changelog goes to: every new entry on /changelog is
+// posted there by itself (backend lib/changelogDiscord.js), so members who
+// never open the site still hear what is new on it.
+function ChangelogWebhookCard() {
+  const ask = useAsk();
+  const { data: hook, reload } = useApi(useCallback(() => api.getChangelogWebhook(), []));
+  const [url, setUrl] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function run(fn, done) {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg(done);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function save(e) {
+    e.preventDefault();
+    run(async () => {
+      await api.setChangelogWebhook(url);
+      setUrl("");
+      reload();
+    }, "Saved. From now on every new update on the changelog is posted there.");
+  }
+
+  async function remove() {
+    const ok = await ask({
+      title: "Stop posting the changelog?",
+      body: "New updates are no longer posted to Discord until a webhook is saved again.",
+      danger: true,
+      confirmLabel: "Remove webhook",
+    });
+    if (!ok) return;
+    run(async () => {
+      await api.setChangelogWebhook("");
+      reload();
+    }, "Webhook removed.");
+  }
+
+  return (
+    <form onSubmit={save} className="card space-y-4 p-5">
+      <CardHead eyebrow="Website updates" title="Changelog webhook" />
+      <p className="text-sm text-light">
+        Every new update on the changelog is posted to this channel by itself, within about 15 minutes of going live:
+        its title, what is new, better or fixed, and a link to the page. What was there before you connect is not
+        posted. Make a webhook in the channel (Edit Channel → Integrations → Webhooks) and paste its URL here.
+      </p>
+      <div className="rounded-lg bg-surface2 p-3 text-sm">
+        Status: <Status on={hook?.configured} onText={`connected (${hook?.preview})`} offText="not connected" />
+      </div>
+      <input
+        aria-label="Changelog webhook URL"
+        className="input"
+        placeholder="https://discord.com/api/webhooks/…"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary" disabled={busy || !url.trim()}>Save</button>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busy || !hook?.configured}
+          onClick={() => run(() => api.testChangelogWebhook(), "The latest update was posted. Check the channel!")}
+        >
+          Post the latest update
+        </button>
+        {hook?.configured && (
+          <button type="button" className="btn-secondary" disabled={busy} onClick={remove}>
+            Remove
+          </button>
+        )}
+      </div>
+      {error && <Notice kind="error">{error}</Notice>}
+      {msg && <Notice kind="success">{msg}</Notice>}
+    </form>
+  );
+}
+
 // One line for a connection that is edited elsewhere: its state, and the way
 // to the place it is edited.
 function ElsewhereRow({ title, text, status, action, onAction }) {
@@ -135,6 +223,7 @@ export default function AdminDiscordConnections({ onJump }) {
   return (
     <div className="grid items-start gap-6 lg:grid-cols-2">
       <EventsWebhookCard />
+      <ChangelogWebhookCard />
       <div className="card space-y-3 p-5">
         <CardHead eyebrow="Also connected" title="Results and the bot" />
         <ElsewhereRow

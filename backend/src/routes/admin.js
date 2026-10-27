@@ -18,6 +18,8 @@ import { getDriverRatings, RATING_DEFAULTS } from "../services/driverRatingsServ
 // market routes so an admin override and a driver's own pick write the same row.
 import { setSeatRsvp, readAnnounce, ANNOUNCE_KEY } from "./market.js";
 import { getWebhookUrl, setWebhookUrl, getResultsRoleId, getResultsWebhookUrl, setResultsRoleId, setResultsWebhookUrl, postToResultsChannel, announce, syncRaceToDiscord } from "../services/discordService.js";
+import { getChangelogWebhook, setChangelogWebhook, isDiscordWebhook, postChangelogEntry } from "../lib/changelogDiscord.js";
+import { getChangelogFeed } from "../lib/changelogFeed.js";
 import { buildResultsPost, buildStandingsPost, buildConstructorsPost } from "../services/resultsPostService.js";
 import { resolveSeasonId, resolveSeason, invalidatePrivateSeasonCache, parseFastestLapPoints } from "../services/seasonService.js";
 import { checkSeasonIntegrity } from "../services/integrityService.js";
@@ -4520,6 +4522,49 @@ router.post("/discord/test", async (req, res, next) => {
     const result = await announce(prisma, "✅ NABS Racing website is connected to this channel.");
     if (result.skipped) return res.status(400).json({ error: "No webhook configured" });
     if (!result.ok) return res.status(502).json({ error: result.reason || "Discord rejected the message" });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// The channel the site's changelog is posted to, every new entry by itself
+// (lib/changelogDiscord.js). GET answers whether one is set, masked.
+router.get("/discord/changelog-webhook", async (req, res, next) => {
+  try {
+    const url = await getChangelogWebhook(prisma);
+    res.json({ configured: !!url, preview: url ? url.replace(/\/[^/]+$/, "/•••") : null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/discord/changelog-webhook  { url }   ("" clears it)
+router.put("/discord/changelog-webhook", async (req, res, next) => {
+  try {
+    const url = String(req.body?.url || "").trim();
+    if (url && !isDiscordWebhook(url)) return res.status(400).json({ error: "Not a valid Discord webhook URL" });
+    await setChangelogWebhook(prisma, url);
+    res.json({ ok: true, configured: !!url });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/discord/changelog-test -> the newest changelog entry, posted
+// now, so the admin sees what the channel will get.
+router.post("/discord/changelog-test", async (req, res, next) => {
+  try {
+    const url = await getChangelogWebhook(prisma);
+    if (!url) return res.status(400).json({ error: "No webhook configured" });
+    const { entries } = await getChangelogFeed();
+    const newest = entries?.[0];
+    if (!newest) return res.status(400).json({ error: "The changelog has no update to show yet. Try again in a while" });
+    try {
+      await postChangelogEntry(url, newest);
+    } catch (e) {
+      return res.status(502).json({ error: e.message || "Discord rejected the message" });
+    }
     res.json({ ok: true });
   } catch (e) {
     next(e);
