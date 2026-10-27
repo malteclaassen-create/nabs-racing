@@ -40,16 +40,31 @@ describe("isDiscordWebhook", () => {
 });
 
 describe("changelogMessage", () => {
-  it("is a card with the title, a line per change and the way to the page, pinging nobody", () => {
-    const m = changelogMessage(entry(1, "Reactions"), "https://nabsracing.com");
+  it("reads like a post somebody wrote: a heading, bullet points by kind, the link small and without a preview", () => {
+    const e = entry(1, "Reactions");
+    e.items.push({ tag: "better", text: "Long-press a reaction to see who reacted" });
+    const m = changelogMessage(e, "https://nabsracing.com");
+    expect(m.embeds).toBeUndefined();
     expect(m.allowed_mentions).toEqual({ parse: [] });
-    const e = m.embeds[0];
-    expect(e.title).toBe("📣 Reactions");
-    expect(e.url).toBe("https://nabsracing.com/changelog");
-    expect(e.description).toContain("🆕 **New** · React to news with any emoji");
-    expect(e.description).toContain("🔧 **Fixed**");
-    expect(e.description).not.toMatch(/@everyone/);
-    expect(e.footer.text).toBe("Update #701 · nabsracing.com");
+    expect(m.content).toBe(
+      [
+        "## Website update: Reactions",
+        "**New**",
+        "- React to news with any emoji",
+        "**Changed**",
+        "- Long-press a reaction to see who reacted",
+        "**Fixed**",
+        "- Ping @\u200beveryone no more",
+        "-# Full changelog: <https://nabsracing.com/changelog>",
+      ].join("\n")
+    );
+  });
+
+  it("stays under Discord's 2000 characters", () => {
+    const long = { ...entry(2), items: Array.from({ length: 10 }, () => ({ tag: "new", text: "x".repeat(300) })) };
+    const m = changelogMessage(long, "https://nabsracing.com");
+    expect(m.content.length).toBeLessThanOrEqual(2000);
+    expect(m.content).toMatch(/-# Full changelog: <https:\/\/nabsracing\.com\/changelog>$/);
   });
 });
 
@@ -67,7 +82,7 @@ describe("syncChangelogToDiscord", () => {
     const feed = async () => ({ entries });
     const sent = [];
     const fetchImpl = async (url, init) => {
-      sent.push(JSON.parse(init.body).embeds[0].title);
+      sent.push(JSON.parse(init.body).content.split("\n")[0]);
       return { ok: true };
     };
 
@@ -78,7 +93,7 @@ describe("syncChangelogToDiscord", () => {
 
     entries = [entry(4), entry(3), entry(2), entry(1)];
     expect(await syncChangelogToDiscord(prisma, { feed, fetchImpl })).toEqual({ posted: 2 });
-    expect(sent).toEqual(["📣 Update 3", "📣 Update 4"]);
+    expect(sent).toEqual(["## Website update: Update 3", "## Website update: Update 4"]);
     expect(await syncChangelogToDiscord(prisma, { feed, fetchImpl })).toEqual({ posted: 0 });
   });
 

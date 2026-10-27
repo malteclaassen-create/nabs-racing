@@ -3,8 +3,9 @@
 //
 // The changelog's newer half comes from merged pull requests (changelogFeed.js).
 // When a webhook for it is saved (admin System → Discord), every entry that
-// appears there after that is posted to that channel once, as a card with the
-// update's title, its lines (New / Better / Fixed) and a link to /changelog.
+// appears there after that is posted to that channel once, as a plain message
+// with the update's title, its changes as bullet points and a link to
+// /changelog (changelogMessage).
 // Some members never open the site; this is how they hear what is new on it.
 //
 // What has been posted is kept in one Setting blob (`ids`, the last 100). The
@@ -23,8 +24,7 @@ const KEEP_IDS = 100;
 export const CHANGELOG_POLL_MS = 15 * 60 * 1000;
 
 const ORIGIN = String(process.env.PUBLIC_ORIGIN || "https://nabsracing.com").replace(/\/$/, "");
-const TAG_LINE = { new: "🆕 **New**", better: "✨ **Better**", fixed: "🔧 **Fixed**" };
-const PINK = 0xf472b6;
+const TAG_OF = { new: "new", better: "better", fixed: "fixed" };
 
 export function isDiscordWebhook(url) {
   return /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\/\d+\/[\w-]+$/.test(String(url || "").trim());
@@ -62,25 +62,29 @@ async function writeState(prisma, state) {
   await writeSetting(prisma, STATE_KEY, JSON.stringify({ baselined: !!state.baselined, ids: state.ids.slice(-KEEP_IDS) }));
 }
 
-// One changelog entry as a webhook message: an embed with the update's title,
-// a line per change, and the way to the page. Pure.
+// One changelog entry as a webhook message, written the way somebody would
+// post it in Discord by hand: a heading, the changes as plain bullet points
+// under New / Changed / Fixed, and the link small underneath. No card, no
+// emoji labels; the link sits in <> so Discord shows no preview box for it.
+// Discord's 2000-character cap is kept. Pure.
+const GROUPS = [
+  ["new", "New"],
+  ["better", "Changed"],
+  ["fixed", "Fixed"],
+];
+
 export function changelogMessage(entry, origin = ORIGIN) {
-  const defuse = (s) => String(s || "").replace(/@(everyone|here)/gi, "@​$1");
-  const lines = (entry.items || []).map((it) => `${TAG_LINE[it.tag] || TAG_LINE.better} · ${defuse(it.text)}`);
-  return {
-    username: "NABS Racing",
-    allowed_mentions: { parse: [] },
-    embeds: [
-      {
-        title: `📣 ${defuse(entry.title) || "Website update"}`.slice(0, 256),
-        url: `${origin}/changelog`,
-        description: `${lines.join("\n")}\n\n[See everything that changed →](${origin}/changelog)`.slice(0, 4000),
-        color: PINK,
-        footer: { text: entry.commits ? `Update #${entry.commits} · nabsracing.com` : "nabsracing.com" },
-        ...(entry.date ? { timestamp: `${entry.date}T12:00:00.000Z` } : {}),
-      },
-    ],
-  };
+  const defuse = (s) => String(s || "").replace(/@(everyone|here)/gi, "@\u200b$1");
+  const lines = [`## Website update${entry.title ? `: ${defuse(entry.title)}` : ""}`];
+  for (const [tag, label] of GROUPS) {
+    const items = (entry.items || []).filter((it) => (TAG_OF[it.tag] || "better") === tag);
+    if (!items.length) continue;
+    lines.push(`**${label}**`, ...items.map((it) => `- ${defuse(it.text)}`));
+  }
+  const link = `-# Full changelog: <${origin}/changelog>`;
+  let content = lines.join("\n");
+  if (content.length + link.length + 1 > 2000) content = `${content.slice(0, 2000 - link.length - 3)}…`;
+  return { username: "NABS Racing", allowed_mentions: { parse: [] }, content: `${content}\n${link}` };
 }
 
 export async function postChangelogEntry(url, entry, { fetchImpl = fetch } = {}) {
