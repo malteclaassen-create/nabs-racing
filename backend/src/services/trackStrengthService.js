@@ -90,8 +90,9 @@ function bucket(entries) {
 
 // Everything the page draws, out of the scored races. `entries` are
 // { trackKey, trackName, value, position, gapPct } (from raceEntry plus the
-// circuit); `typesByTrack` maps a circuit key to its type keys. Pure.
-export function summariseStrengths(entries, typesByTrack) {
+// circuit); `typesByTrack` maps a circuit key to its type keys, `imageByTrack`
+// to the track photo an admin uploaded for it (Admin > Tracks), if any. Pure.
+export function summariseStrengths(entries, typesByTrack, imageByTrack = new Map()) {
   const byTrack = new Map();
   for (const e of entries) {
     if (!byTrack.has(e.trackKey)) byTrack.set(e.trackKey, { names: [], list: [] });
@@ -104,6 +105,7 @@ export function summariseStrengths(entries, typesByTrack) {
       key,
       name: prettiestName(t.names) || key,
       types: typesByTrack.get(key) || [],
+      image: imageByTrack.get(key) || null,
       ...bucket(t.list),
     }))
     .sort((a, b) => b.score - a.score || b.races - a.races || a.name.localeCompare(b.name));
@@ -214,13 +216,16 @@ async function compute(prisma, rowId, scope, includePrivate) {
   }
 
   const typesByTrack = new Map();
+  const imageByTrack = new Map();
   for (const k of new Set(entries.map((e) => e.trackKey))) {
     const info = await readTrackInfo(prisma, k);
     typesByTrack.set(k, effectiveTypes(info, trackKeyFor(k) ? k : null).types);
+    // The track photo, not the map: the map has its own place on the race pages.
+    if (info?.photoUrl) imageByTrack.set(k, info.photoUrl);
   }
   return {
     scope,
-    ...summariseStrengths(entries, typesByTrack),
+    ...summariseStrengths(entries, typesByTrack, imageByTrack),
     seasons: [...seasons].sort((a, b) => a - b),
   };
 }

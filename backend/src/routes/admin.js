@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, statfsSync } from "fs";
+import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, statfsSync, rmSync } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { PROMO_TMP_PREFIX, sweepStalePromoUploads } from "../lib/promoUploads.js";
 import { fileURLToPath } from "url";
@@ -62,7 +62,7 @@ import { invalidateTrackStrengthCache } from "../services/trackStrengthService.j
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTeamLinks, writeTeamLinks, cleanTeamLinks, suggestTeamLinks, linkMap } from "../lib/teamLineage.js";
-import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf } from "../lib/trackInfo.js";
+import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf, shrinkTrackPhoto } from "../lib/trackInfo.js";
 import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
@@ -493,7 +493,7 @@ router.get("/storage", async (_req, res, next) => {
       ["teams", "Team logos"],
       ["seasons", "Season images"],
       ["series", "Series logos & promo films"],
-      ["tracks", "Track maps"],
+      ["tracks", "Track maps & photos"],
       ["social", "Social covers"],
       ["cards", "Card photos"],
     ];
@@ -6456,6 +6456,8 @@ router.put("/tracks/:key/info", async (req, res, next) => {
     if (content.mapImages === undefined) merged.mapImages = stored.mapImages;
     if (content.types === undefined) merged.types = stored.types;
     if (content.corners === undefined) merged.corners = stored.corners;
+    // The track photo has its own upload below and is never typed in here.
+    if (content.photoUrl === undefined) merged.photoUrl = stored.photoUrl;
     const saved = await writeTrackInfo(prisma, key, merged);
     // A circuit's types are what the track strengths group by.
     invalidateTrackStrengthCache();
@@ -6498,6 +6500,51 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
       : { ...current, mapImageUrl, mapImageSizes };
     const saved = await writeTrackInfo(prisma, key, updated);
     res.json({ ok: true, mapImageUrl, series: series?.slug || null, content: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/tracks/:key/photo (multipart "file") -> the circuit's track
+// photo for the profiles' Tracks list, a picture of its own beside the map.
+// Shrunk to a small WebP before it is written, one file per circuit.
+router.post("/tracks/:key/photo", upload.single("file"), async (req, res, next) => {
+  try {
+    const key = safeTrackKey(req.params.key);
+    if (!key) return res.status(400).json({ error: "Invalid track key" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!["image/png", "image/jpeg", "image/webp"].includes(req.file.mimetype))
+      return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    let photo;
+    try {
+      photo = await shrinkTrackPhoto(req.file.buffer);
+    } catch {
+      return res.status(400).json({ error: "That picture didn't open. Try another one" });
+    }
+    mkdirSync(TRACKS_DIR, { recursive: true });
+    const filename = `${key}__photo.webp`;
+    const dest = safeUploadPath(TRACKS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Invalid track key" });
+    writeFileSync(dest, photo.buffer);
+    const photoUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
+    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), photoUrl });
+    invalidateTrackStrengthCache();
+    res.json({ ok: true, photoUrl, content: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/tracks/:key/photo -> remove the track photo, file and all.
+router.delete("/tracks/:key/photo", async (req, res, next) => {
+  try {
+    const key = safeTrackKey(req.params.key);
+    if (!key) return res.status(400).json({ error: "Invalid track key" });
+    const dest = safeUploadPath(TRACKS_DIR, `${key}__photo.webp`);
+    if (dest) rmSync(dest, { force: true });
+    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), photoUrl: null });
+    invalidateTrackStrengthCache();
+    res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);
   }
