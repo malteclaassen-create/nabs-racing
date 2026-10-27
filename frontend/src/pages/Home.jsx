@@ -17,6 +17,7 @@ import CircuitMap from "../components/CircuitMap.jsx";
 import { circuitMark } from "../components/NextRaceCard.jsx";
 import NextRaceBar from "../components/NextRaceBar.jsx";
 import HomeNews, { ColumnHeader } from "../components/HomeNews.jsx";
+import HomeTopVariant, { HomeTopPicker, useHomeTopVariant } from "../components/HomeTopVariants.jsx";
 import LatestResultCard from "../components/LatestResultCard.jsx";
 import { circuitFor, flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
@@ -558,6 +559,8 @@ export default function Home() {
   // The newest articles, for the news column beside the latest result.
   const news = useApi(useCallback(() => api.news({ limit: 5 }), []));
   const [latest, setLatest] = useState(null);
+  // Preview only: which layout the top of the page tries on (HomeTopVariants).
+  const [topVariant, setTopVariant] = useHomeTopVariant();
   // Personal widgets: rank within the whole field vs. within the driver's tier.
   const [tierView, setTierView] = useState(false);
 
@@ -1070,8 +1073,33 @@ export default function Home() {
     }
   }
 
+  const tryTop = runningHero && topVariant && topVariant !== "now";
+
   return (
     <div className="content-in space-y-10 sm:space-y-16">
+      {runningHero && <HomeTopPicker value={topVariant} onChange={setTopVariant} />}
+      {tryTop && (
+        <HomeTopVariant
+          variant={topVariant}
+          data={{
+            season,
+            roundNo,
+            totalRounds,
+            nextRace,
+            lastRace,
+            lastCircuit,
+            feature: latest,
+            sprint: lastRace?.sprintRaceId ? latestSprint : null,
+            news,
+            photo: heroFor(season, heroRace),
+            photoFallback: heroFor(season),
+            onPhotoError: heroOnError,
+            reportTo:
+              isLoggedIn && REPORTS_OPEN_TO_MEMBERS && reportsWindowOpen(reportableRace?.date) ? reportsPath({ nw: true }) : null,
+          }}
+        />
+      )}
+      {!tryTop && (<>
       {/* ===================== SEASON TICKER ===================== */}
       <div className="-mt-2 space-y-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light">
@@ -1470,6 +1498,7 @@ export default function Home() {
       )}
       </div>
       </div>
+      </>)}
 
       {/* ===================== LATEST NEWS (other heroes) ===================== */}
       {/* A running season has the news beside its result; the full-width heroes

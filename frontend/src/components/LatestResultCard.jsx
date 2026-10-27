@@ -25,7 +25,7 @@ const MEDAL = MEDAL_TEXT;
 // keeps the raw place it crossed the line in and must not stand in the table.
 // The fastest lap is the admin-recorded one when there is one, else the
 // quickest stored lap, the same rule the results table applies.
-function topTen(payload) {
+export function topTen(payload) {
   const race = payload?.race || null;
   const all = payload?.results || [];
   const rows = all
@@ -48,7 +48,7 @@ function topTen(payload) {
   };
 }
 
-function Gained({ value }) {
+export function Gained({ value }) {
   if (value == null) return <span className="w-8" />;
   const title = value === 0 ? "Finished where they started" : `${Math.abs(value)} place${Math.abs(value) === 1 ? "" : "s"} ${value > 0 ? "gained" : "lost"} from the grid`;
   return (

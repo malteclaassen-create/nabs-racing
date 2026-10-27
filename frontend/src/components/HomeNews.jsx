@@ -40,7 +40,7 @@ function Lead({ article }) {
   );
 }
 
-function Headline({ article }) {
+export function Headline({ article }) {
   return (
     <Link to={`/news/${article.slug}`} className="group flex items-center gap-3 px-4 py-3 transition hover:bg-surface2">
       <div className="min-w-0 flex-1">
@@ -60,7 +60,7 @@ function Headline({ article }) {
   );
 }
 
-function Card({ article }) {
+export function Card({ article }) {
   return (
     <Link to={`/news/${article.slug}`} className="card group flex flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-brand/50">
       <div className="relative aspect-[16/9] overflow-hidden bg-surface2">
