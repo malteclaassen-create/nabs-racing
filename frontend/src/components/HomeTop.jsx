@@ -68,10 +68,11 @@ function InlineCountdown({ race }) {
   if (over) return <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">Race run · results soon</span>;
   if (!kickoff) return <span className="font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-light">Time TBA</span>;
   return (
-    <div className="flex items-baseline gap-2 tabular-nums" role="timer" aria-label="Time to the start">
+    <div className="flex min-w-0 items-baseline gap-1 tabular-nums min-[380px]:gap-1.5 sm:gap-2" role="timer" aria-label="Time to the start">
       {units.map((u) => (
-        <span key={u.suffix} className="font-mono leading-none">
-          <RollingNumber value={u.value} digits={2} className="font-display text-2xl font-black text-dark" />
+        // The tiniest phones leave the seconds out to keep room for Sign up.
+        <span key={u.suffix} className={`whitespace-nowrap font-mono leading-none ${u.suffix === "S" ? "hidden min-[350px]:inline" : ""}`}>
+          <RollingNumber value={u.value} digits={2} className="font-display text-lg font-black text-dark min-[350px]:text-xl min-[380px]:text-[22px] sm:text-2xl" />
           <span className="ml-0.5 text-[10px] font-bold text-light">{u.suffix}</span>
         </span>
       ))}
@@ -85,21 +86,27 @@ function SignUp({ race }) {
   return (
     <Link
       to={`/attendance?race=${race.id}`}
-      className="shine group inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:brightness-105"
+      className="shine group inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3.5 py-2.5 text-xs font-bold uppercase tracking-wide text-ink transition hover:brightness-105 sm:px-4"
     >
       Sign up
-      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" strokeWidth={2.5} />
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 transition group-hover:translate-x-0.5" strokeWidth={2.5} />
     </Link>
   );
 }
 
-// The season and the next race in one strip.
+// The season and the next race in one strip. On a phone it stacks in three
+// rows: the season, then the race with its date on a line of its own, then
+// the countdown and the sign-up in a well of their own.
 function TopStrip({ d }) {
   const race = d.nextRace;
   const c = race ? flagFor(race.track, race.country) : null;
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-border bg-card px-5 py-4 shadow-card">
-      <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light lg:w-auto">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-border bg-card px-4 py-4 shadow-card sm:px-5">
+      <div
+        className={`flex w-full flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-light lg:w-auto ${
+          race ? "border-b border-border pb-4 sm:border-0 sm:pb-0" : ""
+        }`}
+      >
         <SeasonPicker finished={false} />
         {d.season?.game && (
           <>
@@ -108,7 +115,8 @@ function TopStrip({ d }) {
           </>
         )}
         <span className="hidden h-3 w-px bg-border sm:inline-block" />
-        <span className="text-medium">
+        {/* On a phone the round count rides in the next-race line instead. */}
+        <span className={`text-medium ${race ? "hidden sm:inline" : ""}`}>
           Round {pad2(d.roundNo)} <span className="text-faint">/ {d.totalRounds || NO_VALUE}</span>
         </span>
       </div>
@@ -119,14 +127,22 @@ function TopStrip({ d }) {
             {c && <Flag code={c.country} title={c.countryName} w={28} h={20} />}
             <span className="min-w-0">
               <span className="block truncate font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-eyebrow">
-                Next race · {roundLabel(race)} · {dayLabel(race.date)} · {fmtRaceTime(race.date)}
+                Next race · {roundLabel(race)}
+                {race.number != null && <span className="sm:hidden"> / {d.totalRounds || NO_VALUE}</span>}
+                <span className="hidden lg:inline">
+                  {" "}
+                  · {dayLabel(race.date)} · {fmtRaceTime(race.date)}
+                </span>
               </span>
               <span className="block truncate font-display text-xl font-black uppercase leading-tight tracking-tight text-dark group-hover:text-brand">
                 {race.track}
               </span>
+              <span className="mt-0.5 block font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-light lg:hidden">
+                {dayLabel(race.date)} · {fmtRaceTime(race.date)}
+              </span>
             </span>
           </Link>
-          <div className="flex w-full items-center justify-between gap-5 sm:w-auto">
+          <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-surface2 py-2.5 pl-3.5 pr-2.5 sm:w-auto sm:gap-5 sm:bg-transparent sm:p-0">
             <InlineCountdown race={race} />
             <SignUp race={race} />
           </div>
