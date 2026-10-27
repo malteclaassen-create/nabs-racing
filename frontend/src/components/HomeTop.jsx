@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowRight, Flag as FlagIcon, Timer, TrendingUp, Gauge } from "lucide-react";
+import { ArrowRight, CircleCheck, Flag as FlagIcon, Trophy } from "lucide-react";
 import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import SeasonPicker from "./SeasonPicker.jsx";
@@ -10,10 +10,9 @@ import { CategoryChip, CommentCount, NewsCover } from "../pages/News.jsx";
 import { ColumnHeader, Headline } from "./HomeNews.jsx";
 import { topTen, Gained } from "./LatestResultCard.jsx";
 import { flagFor } from "../data/circuits.js";
-import { tyreCompound } from "../data/liveTiming.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
-import { fmtDuration, fmtGap } from "../utils/raceDuration.js";
-import { fmtDateLong, fmtLap, fmtStamp, NO_VALUE } from "../utils/format.js";
+import { fmtDuration } from "../utils/raceDuration.js";
+import { fmtDateLong, fmtStamp, NO_VALUE } from "../utils/format.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import { isDevHost } from "../preview.js";
 
@@ -22,22 +21,21 @@ import { isDevHost } from "../preview.js";
 // and the next race (countdown, sign-up), then the latest news and the latest
 // result side by side, the same width and the same height.
 //
-// Preview only: the result card comes in a few styles, switched with the bar
-// at the bottom of the screen on a local dev server (or ?result=<key>).
+// Preview only: the result card comes in a few versions, switched with the
+// bar at the bottom of the screen on a local dev server (or ?result=<key>).
 // ---------------------------------------------------------------------------
 
 export const RESULT_STYLES = [
-  { key: "liste", label: "1  Liste" },
-  { key: "streifen", label: "2  Foto-Streifen" },
-  { key: "zeiten", label: "3  Zeiten" },
-  { key: "team", label: "4  Teamfarben" },
-  { key: "foto", label: "5  Foto-Kopf" },
+  { key: "plain", label: "Jetzt" },
+  { key: "label", label: "A  Etikett im Foto" },
+  { key: "title", label: "B  Überschrift" },
+  { key: "finish", label: "C  Ziellinie + Sieger" },
 ];
 const STORE = "nabs_home_result";
 
 function useResultStyle() {
   const [value, setValue] = useState(() => {
-    if (typeof window === "undefined") return "liste";
+    if (typeof window === "undefined") return "plain";
     const q = new URLSearchParams(window.location.search).get("result");
     if (q && RESULT_STYLES.some((v) => v.key === q)) {
       try {
@@ -49,9 +47,9 @@ function useResultStyle() {
     }
     try {
       const saved = localStorage.getItem(STORE);
-      return RESULT_STYLES.some((v) => v.key === saved) ? saved : "liste";
+      return RESULT_STYLES.some((v) => v.key === saved) ? saved : "plain";
     } catch {
-      return "liste";
+      return "plain";
     }
   });
   const choose = (k) => {
@@ -273,40 +271,25 @@ function NewsColumn({ news }) {
 
 // -------------------------------------------------------------- result ---
 
-// Gaps, tyres and the round's little stories, from the same payload the top
-// ten comes from. A time penalty is part of the classified time.
-function raceExtras(payload) {
-  const all = payload?.results || [];
-  const fin = all
-    .filter((r) => r.status === "FINISHED" && r.position != null)
-    .sort((a, b) => a.position - b.position);
-  const winner = fin[0] || null;
-  const timeOf = (r) => (r.totalTimeMs > 0 ? r.totalTimeMs + (r.penaltySeconds || 0) * 1000 : null);
-  const gaps = {};
-  for (const r of fin) {
-    if (r === winner) gaps[r.driverId] = fmtDuration(timeOf(r)) || null;
-    else if (winner?.laps != null && r.laps != null && r.laps < winner.laps) {
-      const n = winner.laps - r.laps;
-      gaps[r.driverId] = `+${n} lap${n === 1 ? "" : "s"}`;
-    } else if (timeOf(r) && timeOf(winner)) gaps[r.driverId] = fmtGap(timeOf(r) - timeOf(winner)) || null;
-  }
-  const stints = Object.fromEntries(all.map((r) => [r.driverId, r.stints || []]));
-  const laps = all.filter((r) => fmtLap(r.bestLapMs));
-  const fastestId =
-    payload?.race?.fastestLapDriverId || (laps.length ? laps.reduce((a, b) => (b.bestLapMs < a.bestLapMs ? b : a)).driverId : null);
-  const fastest = all.find((r) => r.driverId === fastestId) || null;
-  const gainer = fin.filter((r) => r.grid != null).reduce((a, b) => (!a || b.grid - b.position > a.grid - a.position ? b : a), null);
-  const leader = all.reduce((a, b) => (!a || (b.lapsLed || 0) > (a.lapsLed || 0) ? b : a), null);
-  return {
-    gaps,
-    stints,
-    laps: winner?.laps ?? null,
-    facts: [
-      fastest && fmtLap(fastest.bestLapMs) && { key: "fl", icon: Timer, label: "Fastest lap", name: fastest.name, value: fmtLap(fastest.bestLapMs) },
-      gainer && gainer.grid - gainer.position > 0 && { key: "gain", icon: TrendingUp, label: "Most gained", name: gainer.name, value: `▲${gainer.grid - gainer.position}` },
-      leader && leader.lapsLed > 0 && { key: "led", icon: Gauge, label: "Most laps led", name: leader.name, value: `${leader.lapsLed}` },
-    ].filter(Boolean),
-  };
+// The winner's classified race time and laps led, from the same payload the
+// top ten comes from. A time penalty is part of the classified time.
+function winnerLine(payload) {
+  const w = (payload?.results || []).find((r) => r.status === "FINISHED" && r.position === 1);
+  if (!w) return null;
+  const time = w.totalTimeMs > 0 ? fmtDuration(w.totalTimeMs + (w.penaltySeconds || 0) * 1000) : null;
+  return { time, lapsLed: w.lapsLed || 0, laps: w.laps || null };
+}
+
+// How long ago the round was run, while that still reads as news.
+function agoLabel(date) {
+  const k = raceKickoff(date);
+  if (!k) return null;
+  const day = (t) => new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime();
+  const days = Math.round((day(new Date()) - day(k)) / 86400000);
+  if (days < 0) return null;
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return days < 14 ? `${days} days ago` : null;
 }
 
 function useResult(d) {
@@ -316,22 +299,18 @@ function useResult(d) {
     d.sprint && { key: "sprint", label: "Sprint", payload: d.sprint },
   ]
     .filter(Boolean)
-    .map((t) => ({ ...t, result: topTen(t.payload), extras: raceExtras(t.payload) }))
+    .map((t) => ({ ...t, result: topTen(t.payload), winner: winnerLine(t.payload) }))
     .filter((t) => t.result.rows.length > 0);
   const open = tabs.find((t) => t.key === tab) || tabs[0] || null;
   const result = open?.result || null;
   const resultsTo = result?.race?.id ? `/races?race=${result.race.id}` : d.lastRace?.id ? `/races?race=${d.lastRace.id}` : "/races";
-  return { tabs, open, setTab, result, extras: open?.extras || null, resultsTo };
+  return { tabs, open, setTab, result, winner: open?.winner || null, resultsTo };
 }
 
-function RaceTabs({ r, onPhoto = false }) {
+function RaceTabs({ r }) {
   if (r.tabs.length < 2) return null;
   return (
-    <div
-      className={`inline-flex shrink-0 rounded-lg border p-0.5 ${onPhoto ? "border-white/20 bg-black/40 backdrop-blur-md" : "border-border bg-surface2"}`}
-      role="tablist"
-      aria-label="Race"
-    >
+    <div className="inline-flex shrink-0 rounded-lg border border-border bg-surface2 p-0.5" role="tablist" aria-label="Race">
       {r.tabs.map((t) => (
         <button
           key={t.key}
@@ -340,7 +319,7 @@ function RaceTabs({ r, onPhoto = false }) {
           aria-selected={r.open?.key === t.key}
           onClick={() => r.setTab(t.key)}
           className={`rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] transition ${
-            r.open?.key === t.key ? "bg-brand text-onbrand" : onPhoto ? "text-white/70 hover:text-white" : "text-light hover:text-dark"
+            r.open?.key === t.key ? "bg-brand text-onbrand" : "text-light hover:text-dark"
           }`}
         >
           {t.label}
@@ -350,15 +329,10 @@ function RaceTabs({ r, onPhoto = false }) {
   );
 }
 
-function Avatar({ r, size = 34, logo = 16, ring = false }) {
+function Avatar({ r, size = 34, logo = 16 }) {
   return (
     <span className="relative shrink-0">
-      <span
-        className={ring ? "block rounded-full p-[3px]" : "block"}
-        style={ring ? { background: `linear-gradient(135deg, ${r.team.color || "#888"}, transparent 80%)` } : undefined}
-      >
-        <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={r.team.color} size={size} />
-      </span>
+      <DriverAvatar name={r.name} photoUrl={r.photoUrl} color={r.team.color} size={size} />
       <TeamLogo
         id={r.team.id}
         name={r.team.name}
@@ -377,41 +351,6 @@ function FastestLap({ result, r }) {
     <span title="Fastest lap" className="rounded bg-fl/15 px-1.5 py-px font-mono text-[9px] font-bold text-fl">
       FL
     </span>
-  );
-}
-
-// The tyres a driver ran, one small disc per stint.
-function Stints({ stints }) {
-  if (!stints?.length) return null;
-  return (
-    <span className="flex items-center gap-0.5" title={stints.map((s) => `${tyreCompound(s.tyre).name} ${s.laps} laps`).join(" · ")}>
-      {stints.map((s, i) => {
-        const t = tyreCompound(s.tyre);
-        return (
-          <span
-            key={i}
-            className="flex h-4 w-4 items-center justify-center rounded-full border-2 font-mono text-[7px] font-black text-dark ring-1 ring-black/15 dark:ring-0"
-            style={{ borderColor: t.color }}
-          >
-            {t.label}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-function RoundTitle({ d }) {
-  const c = d.lastCircuit;
-  return (
-    <div className="min-w-0">
-      <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-eyebrow">Round {d.lastRace?.number ?? NO_VALUE}</div>
-      <div className="mt-1.5 flex min-w-0 items-center gap-2.5">
-        {c && <Flag code={c.country} title={c.countryName} w={24} h={17} />}
-        <span className="truncate font-display text-xl font-black uppercase leading-none tracking-tight text-dark sm:text-2xl">{d.lastRace?.track}</span>
-      </div>
-      {d.lastRace?.date && <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-light">{fmtDateLong(d.lastRace.date)}</div>}
-    </div>
   );
 }
 
@@ -455,63 +394,45 @@ function ResultButtons({ r, d }) {
 }
 
 // One line of the top ten. The podium lines are a size up, their place in
-// medal colour. `style` adds what that card style shows: the timing columns
-// ("zeiten") or the team's colour behind the line ("team").
-function ResultRow({ r, i, result, extras, style }) {
-  const podium = i < 3;
-  const timing = style === "zeiten";
-  const team = style === "team";
-  const big = podium && !timing;
-  const color = r.team.color || "#888888";
+// medal colour. `winner` turns P1 into the line that says who won: a gold
+// wash, the trophy, and the race time where the team name was.
+function ResultRow({ r, i, result, winner = null }) {
+  const big = i < 3;
   return (
     <li className="flex">
       <Link
         to={`/drivers/${r.driverId}`}
-        className={`group flex flex-1 items-center gap-3 rounded-lg px-2 transition ${team ? "" : "-mx-2 hover:bg-surface2"} ${
-          big ? "py-2.5" : "py-1.5"
-        }`}
-        style={team ? { background: `linear-gradient(90deg, ${color}33 0%, ${color}0f 40%, transparent 75%)` } : undefined}
+        className={`group -mx-2 flex flex-1 items-center gap-3 rounded-lg px-2 transition hover:bg-surface2 ${big ? "py-2.5" : "py-1.5"}`}
+        style={
+          winner
+            ? { background: "linear-gradient(90deg, color-mix(in srgb, var(--medal-1) 22%, transparent), transparent 75%)" }
+            : undefined
+        }
       >
-        {timing ? (
-          <span
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-display text-xs font-black ${podium ? "text-ink" : "bg-surface2 text-medium"}`}
-            style={podium ? { backgroundColor: MEDAL_TEXT[i] } : undefined}
-          >
-            {r.position}
-          </span>
-        ) : (
-          <span
-            className={`w-6 shrink-0 text-center font-display font-black tabular-nums ${big ? "text-lg" : "text-sm text-light"}`}
-            style={big ? { color: MEDAL_TEXT[i] } : undefined}
-          >
-            {r.position}
-          </span>
-        )}
+        <span
+          className={`w-6 shrink-0 text-center font-display font-black tabular-nums ${big ? "text-lg" : "text-sm text-light"}`}
+          style={big ? { color: MEDAL_TEXT[i] } : undefined}
+        >
+          {r.position}
+        </span>
         <Avatar r={r} size={big ? 36 : 28} logo={big ? 16 : 13} />
         <span className="min-w-0 flex-1 leading-tight">
           <span className="flex items-center gap-2">
             <span className={`truncate font-bold text-dark group-hover:text-brand ${big ? "text-[15px]" : "text-sm"}`}>{r.name}</span>
             <FastestLap result={result} r={r} />
           </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-light">
-            {team && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />}
-            <span className="truncate">{r.team.name}</span>
-          </span>
+          {winner ? (
+            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] font-bold" style={{ color: MEDAL_TEXT[0] }}>
+              <Trophy className="h-3 w-3 shrink-0" strokeWidth={2.5} />
+              <span className="truncate">
+                Winner{winner.time ? ` · ${winner.time}` : ""}
+              </span>
+            </span>
+          ) : (
+            <span className="block truncate text-[11px] text-light">{r.team.name}</span>
+          )}
         </span>
-        {timing && (
-          <span className="hidden sm:block">
-            <Stints stints={extras?.stints[r.driverId]} />
-          </span>
-        )}
-        {timing && (
-          <span className={`w-16 text-right font-mono text-[11px] tabular-nums sm:w-[4.5rem] ${i === 0 ? "font-bold text-dark" : "text-medium"}`}>
-            {extras?.gaps[r.driverId] || ""}
-          </span>
-        )}
-        {/* With the gap column on, a phone has no room for the grid change too. */}
-        <span className={timing ? "hidden sm:contents" : "contents"}>
-          <Gained value={r.gained} />
-        </span>
+        <Gained value={r.gained} />
         {result.scores && (
           <span className={`min-w-[1.75rem] text-right font-display font-black tabular-nums text-dark ${big ? "text-base" : "text-sm"}`}>
             {r.points ?? 0}
@@ -522,120 +443,97 @@ function ResultRow({ r, i, result, extras, style }) {
   );
 }
 
-// The column labels of a results sheet, over the timing style's list.
-function TimingHead() {
-  return (
-    <div className="flex items-center gap-3 border-b border-border pb-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-faint">
-      <span className="w-6 text-center">Pos</span>
-      <span className="flex-1 pl-10">Driver</span>
-      <span className="hidden sm:block">Tyres</span>
-      <span className="w-16 text-right sm:w-[4.5rem]">Gap</span>
-      <span className="hidden w-8 text-right sm:block">Grid</span>
-      <span className="min-w-[1.75rem] text-right">Pts</span>
-    </div>
-  );
-}
-
-// P1 to P10, top to bottom.
-function ResultList({ r, style }) {
+function ResultList({ r, highlightWinner = false }) {
   const rows = r.result?.rows || [];
   return (
-    <div>
-      {style === "zeiten" && <TimingHead />}
-      <ol className={style === "team" ? "space-y-1" : "divide-y divide-border/60"}>
-        {rows.map((row, i) => (
-          <ResultRow key={row.driverId} r={row} i={i} result={r.result} extras={r.extras} style={style} />
-        ))}
-      </ol>
-    </div>
-  );
-}
-
-// The round's stories in one line: fastest lap, most places gained, most laps led.
-function FactsLine({ r }) {
-  const facts = r.extras?.facts || [];
-  if (!facts.length) return null;
-  return (
-    <div className="grid grid-cols-1 divide-y divide-border rounded-xl border border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-      {facts.map((f) => (
-        <div key={f.key} className="flex min-w-0 items-center gap-2.5 px-3 py-2">
-          <f.icon className="h-4 w-4 shrink-0 text-light" strokeWidth={2} />
-          <span className="min-w-0 leading-tight">
-            <span className="block font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-faint">{f.label}</span>
-            <span className="flex items-baseline gap-1.5">
-              <span className="truncate text-[13px] font-bold text-dark">{f.name}</span>
-              <span className="shrink-0 font-mono text-[11px] text-medium">{f.value}</span>
-            </span>
-          </span>
-        </div>
+    <ol className="divide-y divide-border/60">
+      {rows.map((row, i) => (
+        <ResultRow key={row.driverId} r={row} i={i} result={r.result} winner={highlightWinner && i === 0 ? r.winner || {} : null} />
       ))}
-    </div>
+    </ol>
   );
 }
 
-// The card's head. The photo style puts the round's picture behind it.
-function CardHead({ d, r, photo = false }) {
-  if (!photo) {
-    return (
-      <div className="flex items-start justify-between gap-3">
-        <RoundTitle d={d} />
-        <RaceTabs r={r} />
-      </div>
-    );
-  }
+// A narrow chequered band, the finish line, between the photo and the list.
+const CHEQUER = {
+  backgroundImage: "repeating-conic-gradient(#fff 0 25%, #111 0 50%)",
+  backgroundSize: "10px 10px",
+};
+
+// The latest result: the round's photo as a strip with the track written up
+// it, the top ten beside it. On a phone the strip stands down and the track
+// moves into the line above the list.
+//
+// Preview: `style` tries three ways of saying louder that this is the race
+// just run ("label", "title", "finish"); "plain" is the card as it stood.
+function ResultCard({ d, style }) {
+  const r = useResult(d);
   const c = d.lastCircuit;
+  const ago = agoLabel(d.lastRace?.date);
+  const label = style === "label";
+  const title = style === "title";
+  const finish = style === "finish";
+
   return (
-    <div className="relative -mx-5 -mt-5 overflow-hidden rounded-t-2xl">
-      <img src={d.photo} alt="" data-hero-fallback={d.photoFallback} onError={d.onPhotoError} className="absolute inset-0 h-full w-full object-cover" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/10" />
-      <div className="relative flex min-h-[9.5rem] items-end justify-between gap-3 p-5">
-        <div className="min-w-0">
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">
-            Round {d.lastRace?.number ?? NO_VALUE}
-            {d.lastRace?.date && <span className="text-white/50"> · {fmtDateLong(d.lastRace.date)}</span>}
-          </div>
-          <div className="mt-1.5 flex min-w-0 items-center gap-2.5">
+    <section className="flex min-w-0 flex-col">
+      <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
+      <div className="relative flex flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+        <div className="relative hidden w-[30%] shrink-0 overflow-hidden sm:block">
+          <img src={d.photo} alt="" data-hero-fallback={d.photoFallback} onError={d.onPhotoError} className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/85" />
+          <div className="absolute inset-x-4 top-4 flex items-center justify-between gap-2">
             {c && <Flag code={c.country} title={c.countryName} w={28} h={20} />}
-            <span className="truncate font-display text-3xl font-black uppercase leading-none tracking-tight text-white sm:text-4xl">
+            {label ? (
+              <span className="rounded-md bg-brand px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-onbrand shadow">
+                Result
+              </span>
+            ) : (
+              <span className="rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm">
+                R{pad2(d.lastRace?.number ?? 0)}
+              </span>
+            )}
+          </div>
+          <div className="absolute inset-x-0 bottom-5 flex items-end justify-center gap-2">
+            {label && (
+              <span className="block rotate-180 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-white/65 [writing-mode:vertical-rl]">
+                Last race · Round {d.lastRace?.number ?? NO_VALUE}
+              </span>
+            )}
+            <span className="block rotate-180 whitespace-nowrap font-display text-6xl font-black uppercase leading-none tracking-tight text-white [writing-mode:vertical-rl]">
               {d.lastRace?.track}
             </span>
           </div>
         </div>
-        <RaceTabs r={r} onPhoto />
-      </div>
-    </div>
-  );
-}
+        {finish && <div className="hidden w-2.5 shrink-0 opacity-90 sm:block" style={CHEQUER} aria-hidden="true" />}
 
-function ResultCard({ d, style }) {
-  const r = useResult(d);
-  const list = r.result ? <ResultList r={r} style={style} /> : <ResultPending d={d} />;
-
-  // 2 — the live card's own build, refined: the round's photo as a strip with
-  // the track written up it, the list beside it. On a phone the strip stands
-  // down and the track moves into the line above the list.
-  if (style === "streifen") {
-    const c = d.lastCircuit;
-    return (
-      <section className="flex min-w-0 flex-col">
-        <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
-        <div className="relative flex flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
-          <div className="relative hidden w-[30%] shrink-0 overflow-hidden sm:block">
-            <img src={d.photo} alt="" data-hero-fallback={d.photoFallback} onError={d.onPhotoError} className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/85" />
-            <div className="absolute inset-x-4 top-4 flex items-center justify-between gap-2">
-              {c && <Flag code={c.country} title={c.countryName} w={28} h={20} />}
-              <span className="rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm">
-                R{pad2(d.lastRace?.number ?? 0)}
-              </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
+          {/* on a phone, with the strip gone, the finish line runs across the top */}
+          {finish && <div className="-mx-5 -mt-5 mb-1 h-2.5 sm:hidden" style={CHEQUER} aria-hidden="true" />}
+          {title ? (
+            <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-light">
+                  {c && (
+                    <span className="sm:hidden">
+                      <Flag code={c.country} title={c.countryName} w={22} h={16} />
+                    </span>
+                  )}
+                  <span className="truncate">
+                    <span className="sm:hidden">{d.lastRace?.track} · </span>Round {d.lastRace?.number ?? NO_VALUE}
+                    {ago ? ` · ${ago}` : ""}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2.5">
+                  <span className="font-display text-2xl font-black uppercase leading-none tracking-tight text-dark">Race result</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-ok/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-ok">
+                    <CircleCheck className="h-3 w-3" strokeWidth={2.5} />
+                    Final
+                  </span>
+                </div>
+              </div>
+              <RaceTabs r={r} />
             </div>
-            <div className="absolute inset-x-0 bottom-5 flex justify-center">
-              <span className="block rotate-180 whitespace-nowrap font-display text-6xl font-black uppercase leading-none tracking-tight text-white [writing-mode:vertical-rl]">
-                {d.lastRace?.track}
-              </span>
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
+          ) : (
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-eyebrow">
                 {c && (
@@ -643,32 +541,32 @@ function ResultCard({ d, style }) {
                     <Flag code={c.country} title={c.countryName} w={22} h={16} />
                   </span>
                 )}
+                {label && (
+                  <span className="rounded bg-brand px-1.5 py-px text-[9px] tracking-[0.14em] text-onbrand sm:hidden">Result</span>
+                )}
                 <span className="truncate sm:hidden">{d.lastRace?.track} ·</span>
-                <span>Round {d.lastRace?.number ?? NO_VALUE}</span>
-                {d.lastRace?.date && <span className="hidden truncate text-light sm:inline">{fmtDateLong(d.lastRace.date)}</span>}
+                {finish ? (
+                  <span className="flex items-center gap-1.5">
+                    <FlagIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    Finished
+                  </span>
+                ) : (
+                  <span>Round {d.lastRace?.number ?? NO_VALUE}</span>
+                )}
+                {d.lastRace?.date && (
+                  <span className="hidden truncate text-light sm:inline">
+                    {finish ? (ago || fmtDateLong(d.lastRace.date)) : fmtDateLong(d.lastRace.date)}
+                    {label && ago ? ` · ${ago}` : ""}
+                  </span>
+                )}
               </div>
               <RaceTabs r={r} />
             </div>
-            {list}
-            <div className="mt-auto pt-1">
-              <ResultButtons r={r} d={d} />
-            </div>
+          )}
+          {r.result ? <ResultList r={r} highlightWinner={finish} /> : <ResultPending d={d} />}
+          <div className="mt-auto pt-1">
+            <ResultButtons r={r} d={d} />
           </div>
-        </div>
-      </section>
-    );
-  }
-
-  const photo = style === "foto";
-  return (
-    <section className="flex min-w-0 flex-col">
-      <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
-      <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-card">
-        <CardHead d={d} r={r} photo={photo} />
-        {photo && r.result && <FactsLine r={r} />}
-        {list}
-        <div className="mt-auto pt-1">
-          <ResultButtons r={r} d={d} />
         </div>
       </div>
     </section>
