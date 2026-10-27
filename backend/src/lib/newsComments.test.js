@@ -7,6 +7,8 @@ import {
   shapeGiphyResult,
   searchGifs,
   shapeComment,
+  replyPlacement,
+  threadComments,
   commentRateCheck,
 } from "./newsComments.js";
 
@@ -191,6 +193,33 @@ describe("shapeComment", () => {
     expect(shapeComment(row, { discordId: "222222", moderator: true })).toMatchObject({ mine: false, canDelete: true });
     expect(shapeComment(row, { discordId: "222222" })).toMatchObject({ mine: false, canDelete: false });
     expect(shapeComment(row, null)).toMatchObject({ mine: false, canDelete: false, gif: null });
+  });
+});
+
+describe("replies", () => {
+  const top = { id: "top11111", discordId: "1", authorName: "Steve", createdAt: "2026-10-27T01:00:00.000Z" };
+  const reply = {
+    id: "rep11111",
+    discordId: "2",
+    authorName: "Tyler27",
+    parentId: "top11111",
+    createdAt: "2026-10-27T01:05:00.000Z",
+  };
+
+  it("answers to a comment open a thread under it; answers to a reply join that thread and name whom they answer", () => {
+    expect(replyPlacement(null)).toBe(null);
+    expect(replyPlacement(top)).toEqual({ parentId: "top11111", replyToName: null });
+    expect(replyPlacement(reply)).toEqual({ parentId: "top11111", replyToName: "Tyler27" });
+  });
+
+  it("hangs each reply under its thread, oldest first", () => {
+    const later = { ...reply, id: "rep22222", discordId: "1", replyToName: "Tyler27", createdAt: "2026-10-27T01:09:00.000Z" };
+    const other = { ...top, id: "top22222" };
+    const threads = threadComments([top, other], [later, reply], { discordId: "1" });
+    expect(threads.map((t) => t.id)).toEqual(["top11111", "top22222"]);
+    expect(threads[0].replies.map((r) => r.id)).toEqual(["rep11111", "rep22222"]);
+    expect(threads[0].replies[1]).toMatchObject({ parentId: "top11111", replyToName: "Tyler27", mine: true });
+    expect(threads[1].replies).toEqual([]);
   });
 });
 

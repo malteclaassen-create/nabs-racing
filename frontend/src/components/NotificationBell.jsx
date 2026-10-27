@@ -41,6 +41,7 @@ const TYPE_ICONS = {
   ANNOUNCE: Megaphone, // feature announcements and the ones an admin writes
   CARD: RatingCard,
   FEEDBACK: ChatBubble, // a bug report / idea landed (admins only)
+  REPLY: ChatBubble, // somebody answered your comment under a news article
   ADMIN: UserPlus, // a login waiting to be given a driver
   AWARD: Medal, // achievement unlocks (Cockpit)
 };

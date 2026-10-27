@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
@@ -11,10 +11,13 @@ import { commentAge, gifBox, looksLikeGifLink } from "./newsComments.mjs";
 // The comment section under an article (backend lib/newsComments.js).
 //
 // Anybody can read; a signed-in member can write some text, add a GIF, or
-// both. GIFs come from GIPHY's search in the picker (when the league has set
-// up a key) or from any Tenor or GIPHY link, pasted into the picker or straight
-// into the comment box, the way Discord hands one over. The writer of a
-// comment and the news desk can delete it.
+// both, and reply to a comment. Replies hang one level deep under the comment
+// that opened the thread; a reply to a reply joins that thread and says whom
+// it answers. GIFs come from GIPHY's search in the picker (when the league has
+// set up a key) or from any Tenor or GIPHY link, pasted into the picker or
+// straight into the comment box, the way Discord hands one over. Only the
+// GIF's address is kept, the picture itself loads from Tenor or GIPHY. The
+// writer of a comment and the news desk can delete it.
 // ---------------------------------------------------------------------------
 
 const MAX_BODY = 1000;
@@ -30,7 +33,12 @@ function GifImage({ gif, maxW, maxH, className = "" }) {
       referrerPolicy="no-referrer"
       width={box.width}
       height={box.height}
-      style={{ width: box.width, maxWidth: "100%", height: "auto", aspectRatio: `${box.width} / ${box.height}` }}
+      style={{
+        width: box.width,
+        maxWidth: "100%",
+        height: "auto",
+        aspectRatio: `${box.width} / ${box.height}`,
+      }}
       className={`block rounded-lg bg-surface2 object-cover ${className}`}
     />
   );
@@ -107,7 +115,9 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
           />
           <div className="mt-2 grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto sm:grid-cols-4">
             {gifs === null &&
-              Array.from({ length: 8 }).map((_, i) => <span key={i} className="skeleton block aspect-video rounded-md" />)}
+              Array.from({ length: 8 }).map((_, i) => (
+                <span key={i} className="skeleton block aspect-video rounded-md" />
+              ))}
             {gifs?.map((g) => (
               <button
                 key={g.id || g.url}
@@ -159,7 +169,9 @@ function GifPicker({ searchEnabled, onPick, onClose }) {
   );
 }
 
-function Composer({ articleId, searchEnabled, onPosted }) {
+// The box for a new comment, and, with `replyTo`, the smaller one that opens
+// under a thread to answer somebody.
+function Composer({ articleId, searchEnabled, onPosted, replyTo = null, onCancel = null }) {
   const { user } = useAuth();
   const [body, setBody] = useState("");
   const [gif, setGif] = useState(null);
@@ -167,6 +179,14 @@ function Composer({ articleId, searchEnabled, onPosted }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fetchingGif, setFetchingGif] = useState(false);
+  const boxRef = useRef(null);
+
+  // A reply box opens because somebody pressed Reply: straight into typing.
+  useEffect(() => {
+    if (!replyTo) return;
+    boxRef.current?.focus({ preventScroll: true });
+    boxRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [replyTo]);
 
   const canPost = !busy && (body.trim() || gif) && body.length <= MAX_BODY;
 
@@ -175,7 +195,11 @@ function Composer({ articleId, searchEnabled, onPosted }) {
     setBusy(true);
     setError("");
     try {
-      const d = await api.postNewsComment(articleId, { body, gif });
+      const d = await api.postNewsComment(articleId, {
+        body,
+        gif,
+        ...(replyTo ? { replyTo: replyTo.id } : {}),
+      });
       setBody("");
       setGif(null);
       setPicking(false);
@@ -208,9 +232,15 @@ function Composer({ articleId, searchEnabled, onPosted }) {
 
   return (
     <div className="flex gap-3">
-      <DriverAvatar name={user?.driverName || user?.discordName} photoUrl={user?.avatarUrl} size={36} className="mt-1" />
+      <DriverAvatar
+        name={user?.driverName || user?.discordName}
+        photoUrl={user?.avatarUrl}
+        size={replyTo ? 28 : 36}
+        className="mt-1"
+      />
       <div className="min-w-0 flex-1">
         <textarea
+          ref={boxRef}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onPaste={onPaste}
@@ -219,11 +249,12 @@ function Composer({ articleId, searchEnabled, onPosted }) {
               e.preventDefault();
               post();
             }
+            if (e.key === "Escape" && onCancel && !body.trim() && !gif) onCancel();
           }}
           rows={2}
           maxLength={MAX_BODY + 200}
-          placeholder="Say something about it…"
-          aria-label="Your comment"
+          placeholder={replyTo ? `Reply to ${replyTo.author?.name || "Member"}…` : "Say something about it…"}
+          aria-label={replyTo ? "Your reply" : "Your comment"}
           className="input w-full resize-y py-2 text-sm leading-relaxed"
         />
         {(gif || fetchingGif) && (
@@ -261,16 +292,34 @@ function Composer({ articleId, searchEnabled, onPosted }) {
             onClick={() => setPicking((p) => !p)}
             aria-expanded={picking}
             className={`rounded-md border px-2.5 py-1 font-mono text-[11px] font-black tracking-wider transition ${
-              picking ? "border-brand bg-brand text-onbrand" : "border-border bg-surface2/60 text-medium hover:border-brand/50"
+              picking
+                ? "border-brand bg-brand text-onbrand"
+                : "border-border bg-surface2/60 text-medium hover:border-brand/50"
             }`}
           >
             GIF
           </button>
-          <span className={`font-mono text-[10px] ${body.length > MAX_BODY ? "text-red-600 dark:text-red-400" : "text-faint"}`}>
+          <span
+            className={`font-mono text-[10px] ${body.length > MAX_BODY ? "text-red-600 dark:text-red-400" : "text-faint"}`}
+          >
             {body.length > MAX_BODY - 150 ? `${body.length}/${MAX_BODY}` : ""}
           </span>
-          <button type="button" onClick={post} disabled={!canPost} className="btn-primary ml-auto py-1.5 text-xs">
-            {busy ? "Posting…" : "Post"}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="ml-auto text-xs font-semibold text-light hover:text-dark"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={post}
+            disabled={!canPost}
+            className={`btn-primary py-1.5 text-xs ${onCancel ? "" : "ml-auto"}`}
+          >
+            {busy ? "Posting…" : replyTo ? "Reply" : "Post"}
           </button>
         </div>
         {error && <p className="mt-1.5 text-xs font-semibold text-red-600 dark:text-red-400">{error}</p>}
@@ -297,7 +346,7 @@ function SignInPrompt() {
   );
 }
 
-function Comment({ comment, onDelete }) {
+function Comment({ comment, onDelete, onReply, highlight, small = false, children = null }) {
   const name = comment.author?.name || "Member";
   const nameEl = comment.author?.driverId ? (
     <Link to={`/drivers/${comment.author.driverId}`} className="font-bold text-dark hover:underline">
@@ -307,28 +356,59 @@ function Comment({ comment, onDelete }) {
     <span className="font-bold text-dark">{name}</span>
   );
   return (
-    <li className="group flex gap-3 py-4">
-      <DriverAvatar name={name} photoUrl={comment.author?.avatarUrl} size={36} className="mt-0.5" />
+    <li
+      id={`comment-${comment.id}`}
+      className={`flex scroll-mt-24 gap-3 ${small ? "pt-3" : "py-4"} ${
+        highlight ? "-mx-2 rounded-lg bg-brand/10 px-2 transition-colors" : ""
+      }`}
+    >
+      <DriverAvatar name={name} photoUrl={comment.author?.avatarUrl} size={small ? 28 : 36} className="mt-0.5" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2 text-sm">
-          {nameEl}
-          <time dateTime={comment.createdAt} title={new Date(comment.createdAt).toLocaleString()} className="font-mono text-[11px] text-light">
-            {commentAge(comment.createdAt)}
-          </time>
-          {comment.canDelete && (
+        {/* Its own hover group, so the replies below don't all show Delete at once. */}
+        <div className="group/own">
+          <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            {nameEl}
+            {comment.replyToName && (
+              <span className="text-xs text-light">
+                <span aria-hidden="true">↪</span> {comment.replyToName}
+              </span>
+            )}
+            <time
+              dateTime={comment.createdAt}
+              title={new Date(comment.createdAt).toLocaleString()}
+              className="font-mono text-[11px] text-light"
+            >
+              {commentAge(comment.createdAt)}
+            </time>
+            {comment.canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(comment)}
+                className="ml-auto text-[11px] font-semibold text-faint opacity-100 transition hover:text-red-600 sm:opacity-0 sm:focus-visible:opacity-100 sm:group-hover/own:opacity-100"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+          {comment.body && (
+            <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-medium">
+              {comment.body}
+            </p>
+          )}
+          {comment.gif && (
+            <GifImage gif={comment.gif} maxW={small ? 240 : 320} maxH={small ? 180 : 240} className="mt-2" />
+          )}
+          {onReply && (
             <button
               type="button"
-              onClick={() => onDelete(comment)}
-              className="ml-auto text-[11px] font-semibold text-faint opacity-100 transition hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+              onClick={() => onReply(comment)}
+              className="mt-1.5 text-[11px] font-bold uppercase tracking-wide text-light transition hover:text-dark"
             >
-              Delete
+              Reply
             </button>
           )}
         </div>
-        {comment.body && (
-          <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-medium">{comment.body}</p>
-        )}
-        {comment.gif && <GifImage gif={comment.gif} maxW={320} maxH={240} className="mt-2" />}
+        {children}
       </div>
     </li>
   );
@@ -337,9 +417,13 @@ function Comment({ comment, onDelete }) {
 export default function NewsComments({ articleId }) {
   const { isLoggedIn } = useAuth();
   const ask = useAsk();
+  const { hash } = useLocation();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
+  // The comment the reply box is open for, and the thread it opens under.
+  const [replying, setReplying] = useState(null);
+  const [highlight, setHighlight] = useState("");
 
   const load = useCallback(() => {
     setError("");
@@ -352,8 +436,36 @@ export default function NewsComments({ articleId }) {
   // Again when somebody signs in or out: which comments are theirs changes.
   useEffect(() => {
     setData(null);
+    setReplying(null);
     load();
   }, [load, isLoggedIn]);
+
+  // A link to one comment (the bell's "replied to your comment" is one):
+  // once the comments are in, scroll to it and light it up for a moment.
+  const loaded = !!data;
+  useEffect(() => {
+    const id = hash.startsWith("#comment-") ? hash.slice(9) : "";
+    if (!loaded || !id) return undefined;
+    const el = document.getElementById(`comment-${id}`);
+    if (!el) return undefined;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    setHighlight(id);
+    const t = setTimeout(() => setHighlight(""), 2500);
+    return () => clearTimeout(t);
+  }, [hash, loaded]);
+
+  function startReply(comment, thread) {
+    setReplying({ comment, threadId: thread.id });
+  }
+
+  function addReply(threadId, reply) {
+    setReplying(null);
+    setData((cur) => ({
+      ...cur,
+      comments: cur.comments.map((c) => (c.id === threadId ? { ...c, replies: [...(c.replies || []), reply] } : c)),
+      count: (cur.count || 0) + 1,
+    }));
+  }
 
   async function loadMore() {
     const last = data?.comments?.[data.comments.length - 1];
@@ -361,7 +473,11 @@ export default function NewsComments({ articleId }) {
     setLoadingMore(true);
     try {
       const d = await api.newsComments(articleId, last.createdAt);
-      setData((cur) => ({ ...cur, comments: [...cur.comments, ...(d.comments || [])], more: d.more }));
+      setData((cur) => ({
+        ...cur,
+        comments: [...cur.comments, ...(d.comments || [])],
+        more: d.more,
+      }));
     } catch {
       /* the button stays, a second press tries again */
     } finally {
@@ -370,17 +486,44 @@ export default function NewsComments({ articleId }) {
   }
 
   async function remove(comment) {
-    if (!(await ask({ title: "Delete this comment?", body: "It is gone for everybody.", danger: true, confirmLabel: "Delete" })))
+    const replies = comment.parentId ? 0 : comment.replies?.length || 0;
+    const body = replies
+      ? `It is gone for everybody, and so ${replies === 1 ? "is the reply" : `are the ${replies} replies`} under it.`
+      : "It is gone for everybody.";
+    if (
+      !(await ask({
+        title: comment.parentId ? "Delete this reply?" : "Delete this comment?",
+        body,
+        danger: true,
+        confirmLabel: "Delete",
+      }))
+    )
       return;
     try {
-      await api.deleteNewsComment(articleId, comment.id);
+      const d = await api.deleteNewsComment(articleId, comment.id);
+      // A thread goes with its replies; a reply goes on its own.
+      const gone = d?.removed || 1 + (comment.parentId ? 0 : comment.replies?.length || 0);
+      if (replying && (replying.comment.id === comment.id || replying.threadId === comment.id)) setReplying(null);
       setData((cur) => ({
         ...cur,
-        comments: cur.comments.filter((c) => c.id !== comment.id),
-        count: Math.max(0, (cur.count || 1) - 1),
+        comments: comment.parentId
+          ? cur.comments.map((c) =>
+              c.id === comment.parentId
+                ? {
+                    ...c,
+                    replies: (c.replies || []).filter((r) => r.id !== comment.id),
+                  }
+                : c,
+            )
+          : cur.comments.filter((c) => c.id !== comment.id),
+        count: Math.max(0, (cur.count || 0) - gone),
       }));
     } catch (e) {
-      await ask({ title: "Not deleted", body: e.message || "Try again.", alert: true });
+      await ask({
+        title: "Not deleted",
+        body: e.message || "Try again.",
+        alert: true,
+      });
     }
   }
 
@@ -399,7 +542,11 @@ export default function NewsComments({ articleId }) {
             articleId={articleId}
             searchEnabled={!!data?.gifSearch}
             onPosted={(c) =>
-              setData((cur) => ({ ...(cur || {}), comments: [c, ...(cur?.comments || [])], count: (cur?.count || 0) + 1 }))
+              setData((cur) => ({
+                ...(cur || {}),
+                comments: [c, ...(cur?.comments || [])],
+                count: (cur?.count || 0) + 1,
+              }))
             }
           />
         ) : (
@@ -425,13 +572,44 @@ export default function NewsComments({ articleId }) {
           ))}
         </div>
       )}
-      {data && data.comments.length === 0 && (
-        <p className="mt-6 text-sm text-light">No comments yet. Be the first.</p>
-      )}
+      {data && data.comments.length === 0 && <p className="mt-6 text-sm text-light">No comments yet. Be the first.</p>}
       {data?.comments?.length > 0 && (
         <ul className="mt-2 divide-y divide-border">
           {data.comments.map((c) => (
-            <Comment key={c.id} comment={c} onDelete={remove} />
+            <Comment
+              key={c.id}
+              comment={c}
+              onDelete={remove}
+              onReply={isLoggedIn ? (target) => startReply(target, c) : null}
+              highlight={highlight === c.id}
+            >
+              {(c.replies?.length > 0 || replying?.threadId === c.id) && (
+                <ul className="mt-1 border-l-2 border-border pl-3 sm:pl-4">
+                  {c.replies?.map((r) => (
+                    <Comment
+                      key={r.id}
+                      comment={r}
+                      small
+                      onDelete={remove}
+                      onReply={isLoggedIn ? (target) => startReply(target, c) : null}
+                      highlight={highlight === r.id}
+                    />
+                  ))}
+                  {replying?.threadId === c.id && (
+                    <li className="pt-3">
+                      <Composer
+                        key={replying.comment.id}
+                        articleId={articleId}
+                        searchEnabled={!!data?.gifSearch}
+                        replyTo={replying.comment}
+                        onCancel={() => setReplying(null)}
+                        onPosted={(reply) => addReply(c.id, reply)}
+                      />
+                    </li>
+                  )}
+                </ul>
+              )}
+            </Comment>
           ))}
         </ul>
       )}
