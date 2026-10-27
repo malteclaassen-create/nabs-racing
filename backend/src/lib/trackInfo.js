@@ -16,12 +16,16 @@
 // the circuit on a transparent background, for a circuit the site has no
 // outline of its own for (frontend data/circuits.js). Wherever the site draws
 // outlines (the race calendar cards, the Tracks list on the profiles) it then
-// draws this one, in its own colours (components/CircuitMap.jsx). It is shrunk
-// on upload (shrinkTrackOutline), one file per circuit, so a new upload
-// replaces the old one on disk.
+// draws this one, in its own colours and at its own line weight
+// (components/CircuitMap.jsx). It is shrunk and cropped to the drawing on
+// upload (shrinkTrackOutline), which also measures how thick its line is
+// (`outlineLine`, in the stored picture's pixels, with its size in
+// `outlineSize`): the page thickens a thin line to the weight it draws its own
+// outlines at, so a downloaded drawing needs no editing first. One file per
+// circuit, so a new upload replaces the old one on disk.
 // ---------------------------------------------------------------------------
 import { join } from "path";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { sanitizeVideoList } from "./videoLinks.js";
 import { imageSize } from "./socialFeed.js";
 import { UPLOADS_DIR } from "./dataDirs.js";
@@ -42,7 +46,7 @@ const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 // `types` and `corners` are the circuit's kind and its corner names
 // (lib/trackProfile.js); both stay null until an admin sets them, which is
 // what lets the circuit's defaults apply.
-const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, outlineUrl: null, videos: [], types: null, corners: null });
+const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, outlineUrl: null, outlineLine: null, outlineSize: null, videos: [], types: null, corners: null });
 
 // A series slug as lib/series.js makes them: lowercase letters, digits and
 // hyphens. Anything else in the map is not a series and is dropped.
@@ -67,7 +71,16 @@ export function sanitizeTrackInfo(input) {
   }
   // `photoUrl` is what the first version of this upload was called.
   const outline = input?.outlineUrl ?? input?.photoUrl;
-  if (typeof outline === "string" && outline.trim()) out.outlineUrl = outline.trim().slice(0, 300);
+  if (typeof outline === "string" && outline.trim()) {
+    out.outlineUrl = outline.trim().slice(0, 300);
+    const line = Number(input.outlineLine);
+    const w = Number(input.outlineSize?.w);
+    const h = Number(input.outlineSize?.h);
+    if (line > 0 && line < 1000 && Number.isInteger(w) && Number.isInteger(h) && w > 0 && h > 0) {
+      out.outlineLine = Math.round(line * 100) / 100;
+      out.outlineSize = { w, h };
+    }
+  }
   // The pixel size of each uploaded picture, keyed by its path (the URL
   // without the cache-busting query), so the page can hold the picture's
   // height open before a byte of it has arrived (mapImageSizeFor).
@@ -188,10 +201,14 @@ export async function writeTrackInfo(prisma, key, value) {
 // down to a few KB on the server.
 export const TRACK_OUTLINE_MAX = 960;
 
-// An outline as it is stored: WebP, no side longer than TRACK_OUTLINE_MAX.
-// `transparent` says whether any of it is see-through: the site paints the
-// drawing's shape in its own colour, so a picture without a transparent
-// background would come out as a solid block. Throws when it does not decode.
+// An outline as it is stored: WebP, no side longer than TRACK_OUTLINE_MAX,
+// cropped to the drawing with a small margin, so it fills its box the way the
+// built-in outlines fill theirs. `line` is how thick its line is, in the
+// stored picture's pixels: twice the drawn area over its edge, which for a
+// line of width w and length L is 2·wL / 2L. `transparent` says whether the
+// background is see-through: the site paints the drawing's shape in its own
+// colour, so a picture without one would come out as a solid block. Throws
+// when the picture does not decode.
 export async function shrinkTrackOutline(buffer, max = TRACK_OUTLINE_MAX) {
   const { loadImage, createCanvas } = await import("@napi-rs/canvas");
   const img = await loadImage(buffer);
@@ -202,25 +219,98 @@ export async function shrinkTrackOutline(buffer, max = TRACK_OUTLINE_MAX) {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
   const px = ctx.getImageData(0, 0, w, h).data;
-  let clear = 0;
-  for (let i = 3; i < px.length; i += 4) if (px[i] < 128) clear += 1;
+  const ink = (x, y) => px[(y * w + x) * 4 + 3] >= 128;
+  let area = 0;
+  let edge = 0;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!ink(x, y)) continue;
+      area += 1;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1 || !ink(x - 1, y) || !ink(x + 1, y) || !ink(x, y - 1) || !ink(x, y + 1))
+        edge += 1;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
   // A few see-through pixels at a ragged edge are not a transparent background.
-  const transparent = clear > (w * h) / 20;
-  return { buffer: await canvas.encode("webp", 80), width: w, height: h, transparent };
+  const transparent = w * h - area > (w * h) / 20;
+  const line = edge ? Math.max(1, (2 * area) / edge) : 1;
+  if (!area) return { buffer: await canvas.encode("webp", 80), width: w, height: h, transparent, line };
+  // Room around the drawing for the thicker line the page may give it.
+  const pad = Math.ceil(Math.max(line, Math.max(x1 - x0, y1 - y0) * 0.03)) + 2;
+  const cx = Math.max(0, x0 - pad);
+  const cy = Math.max(0, y0 - pad);
+  const cw = Math.min(w, x1 + pad + 1) - cx;
+  const ch = Math.min(h, y1 + pad + 1) - cy;
+  const cropped = createCanvas(cw, ch);
+  cropped.getContext("2d").drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
+  return { buffer: await cropped.encode("webp", 80), width: cw, height: ch, transparent, line };
 }
 
-// Every uploaded outline, { <trackKey>: url }: the site loads this once and
-// draws these where it has no outline of its own.
+// What the page needs of an outline: where it is, its size and its line.
+const outlineShape = (info) =>
+  info.outlineLine ? { url: info.outlineUrl, line: info.outlineLine, w: info.outlineSize.w, h: info.outlineSize.h } : null;
+
+// An outline uploaded before its line was measured: measure and crop it now,
+// once, from the file on disk. null when the file is not there.
+async function upgradeOutline(prisma, key, info) {
+  const file = /^\/api\/uploads\/tracks\/([\w.-]+?)(?:\?|$)/.exec(info.outlineUrl || "")?.[1];
+  if (!file) return null;
+  try {
+    const out = await shrinkTrackOutline(readFileSync(join(UPLOADS_DIR, "tracks", file)));
+    const name = `${key}__outline.webp`;
+    writeFileSync(join(UPLOADS_DIR, "tracks", name), out.buffer);
+    const saved = await writeTrackInfo(prisma, key, {
+      ...info,
+      outlineUrl: `/api/uploads/tracks/${name}?v=${Date.now()}`,
+      outlineLine: out.line,
+      outlineSize: { w: out.width, h: out.height },
+    });
+    return outlineShape(saved);
+  } catch {
+    return null;
+  }
+}
+
+// Every uploaded outline, { <trackKey>: { url, line, w, h } }: the site loads
+// this once and draws these where it has no outline of its own. An outline
+// that cannot be measured (its file is gone) is left out.
+let upgrading = null;
 export async function readTrackOutlines(prisma) {
   const out = {};
+  const stale = [];
   const rows = await prisma.setting.findMany({ where: { key: { startsWith: KEY_PREFIX } } });
   for (const row of rows) {
     try {
-      const url = sanitizeTrackInfo(JSON.parse(row.value)).outlineUrl;
-      if (url) out[row.key.slice(KEY_PREFIX.length)] = url;
+      const info = sanitizeTrackInfo(JSON.parse(row.value));
+      if (!info.outlineUrl) continue;
+      const key = row.key.slice(KEY_PREFIX.length);
+      const shape = outlineShape(info);
+      if (shape) out[key] = shape;
+      else stale.push([key, info]);
     } catch {
       /* a broken row has no outline */
     }
+  }
+  if (stale.length) {
+    // One upgrade at a time, however many visitors ask at once.
+    upgrading ||= (async () => {
+      const done = {};
+      for (const [key, info] of stale) {
+        const shape = await upgradeOutline(prisma, key, info);
+        if (shape) done[key] = shape;
+      }
+      return done;
+    })().finally(() => {
+      upgrading = null;
+    });
+    Object.assign(out, await upgrading);
   }
   return out;
 }

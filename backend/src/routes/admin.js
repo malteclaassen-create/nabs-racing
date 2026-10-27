@@ -6457,7 +6457,11 @@ router.put("/tracks/:key/info", async (req, res, next) => {
     if (content.types === undefined) merged.types = stored.types;
     if (content.corners === undefined) merged.corners = stored.corners;
     // The outline has its own upload below and is never typed in here.
-    if (content.outlineUrl === undefined) merged.outlineUrl = stored.outlineUrl;
+    if (content.outlineUrl === undefined) {
+      merged.outlineUrl = stored.outlineUrl;
+      merged.outlineLine = stored.outlineLine;
+      merged.outlineSize = stored.outlineSize;
+    }
     const saved = await writeTrackInfo(prisma, key, merged);
     // A circuit's types are what the track strengths group by.
     invalidateTrackStrengthCache();
@@ -6533,8 +6537,13 @@ router.post("/tracks/:key/outline", upload.single("file"), async (req, res, next
     const legacy = safeUploadPath(TRACKS_DIR, `${key}__photo.webp`);
     if (legacy) rmSync(legacy, { force: true });
     const outlineUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
-    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), outlineUrl });
-    res.json({ ok: true, outlineUrl, content: saved });
+    const saved = await writeTrackInfo(prisma, key, {
+      ...(await readTrackInfo(prisma, key)),
+      outlineUrl,
+      outlineLine: outline.line,
+      outlineSize: { w: outline.width, h: outline.height },
+    });
+    res.json({ ok: true, outline: { url: outlineUrl, line: outline.line, w: outline.width, h: outline.height }, content: saved });
   } catch (e) {
     next(e);
   }
@@ -6549,7 +6558,12 @@ router.delete("/tracks/:key/outline", async (req, res, next) => {
       const dest = safeUploadPath(TRACKS_DIR, name);
       if (dest) rmSync(dest, { force: true });
     }
-    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), outlineUrl: null });
+    const saved = await writeTrackInfo(prisma, key, {
+      ...(await readTrackInfo(prisma, key)),
+      outlineUrl: null,
+      outlineLine: null,
+      outlineSize: null,
+    });
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);

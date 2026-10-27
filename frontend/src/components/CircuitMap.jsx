@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from "react";
 import { circuitFor } from "../data/circuits.js";
 import { uploadedOutlineFor, useTrackOutlines } from "../data/trackOutlines.js";
 
@@ -32,8 +33,18 @@ export default function CircuitMap({
   useTrackOutlines();
   const c = circuitFor(track);
   if (!c) {
-    const url = uploadedOutlineFor(track);
-    return url ? <UploadedOutline url={url} className={className} style={style} stroke={stroke} rotate={rotate} align={align} /> : null;
+    const outline = uploadedOutlineFor(track);
+    return outline ? (
+      <UploadedOutline
+        outline={outline}
+        className={className}
+        style={style}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+        rotate={rotate}
+        align={align}
+      />
+    ) : null;
   }
 
   let viewBox = c.box || "0 0 100 100";
@@ -92,31 +103,53 @@ export default function CircuitMap({
   );
 }
 
-// SVG preserveAspectRatio alignment -> CSS position keywords.
-const AXIS = { Min: ["left", "top"], Mid: ["center", "center"], Max: ["right", "bottom"] };
-function maskPosition(align) {
-  const m = /^x(Min|Mid|Max)Y(Min|Mid|Max)$/.exec(align) || [null, "Mid", "Mid"];
-  return `${AXIS[m[1]][0]} ${AXIS[m[2]][1]}`;
-}
+// An uploaded outline (data/trackOutlines.js). The picture is the mask of a
+// shape painted in the outline's own colour, so it sits on a card like the
+// built-in ones do: white on the dark theme, ink on the light one, whatever
+// colour it was drawn in. Its line is thickened to `strokeWidth` on screen,
+// the same weight the built-in outlines are drawn at here: a downloaded
+// drawing often has a hairline, which shrunk into a card all but vanished.
+// That needs the drawn size, so the box is measured; until it is, the line
+// shows as drawn. No lap animation: there is no path to trace.
+function UploadedOutline({ outline, className, style, stroke, strokeWidth, rotate, align }) {
+  const ref = useRef(null);
+  const id = useId().replace(/:/g, "");
+  const [box, setBox] = useState(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setBox((b) => (b && b.width === width && b.height === height ? b : { width, height }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-// An uploaded outline. The picture is used as a mask and painted in the
-// outline's own colour, so it sits on a card like the built-in ones do: white
-// on the dark theme, ink on the light one, whatever colour it was drawn in.
-// No lap animation: there is no path to trace.
-function UploadedOutline({ url, className, style, stroke, rotate, align }) {
+  const { url, w, h, line } = outline;
+  // Screen pixels per picture pixel, then how much to grow the line on each
+  // side (in picture pixels) to reach the weight on screen. Never thinner.
+  const scale = box ? Math.min(box.width / w, box.height / h) : 0;
+  const grow = scale > 0 ? Math.max(0, (Number(strokeWidth) / scale - line) / 2) : 0;
   const deg = ((Number(rotate) || 0) % 360 + 360) % 360;
-  const mask = `url("${url}") ${maskPosition(align)} / contain no-repeat`;
   return (
-    <div
-      aria-hidden="true"
+    <svg
+      ref={ref}
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio={`${align} meet`}
       className={className}
-      style={{
-        ...style,
-        backgroundColor: stroke,
-        WebkitMask: mask,
-        mask,
-        ...(deg ? { transform: `rotate(${deg}deg)` } : {}),
-      }}
-    />
+      style={{ ...style, ...(deg ? { transform: `rotate(${deg}deg)` } : {}) }}
+      aria-hidden="true"
+    >
+      <defs>
+        <filter id={`${id}-f`} x="-5%" y="-5%" width="110%" height="110%">
+          <feMorphology operator="dilate" radius={grow.toFixed(2)} />
+        </filter>
+        <mask id={`${id}-m`} maskUnits="userSpaceOnUse" x="0" y="0" width={w} height={h} style={{ maskType: "alpha" }}>
+          <image href={url} width={w} height={h} filter={grow > 0.05 ? `url(#${id}-f)` : undefined} />
+        </mask>
+      </defs>
+      <rect width={w} height={h} fill={stroke} mask={`url(#${id}-m)`} />
+    </svg>
   );
 }

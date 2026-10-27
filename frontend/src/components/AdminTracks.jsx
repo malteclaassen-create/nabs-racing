@@ -188,8 +188,8 @@ export default function AdminTracks() {
     setError(null);
     try {
       const d = await api.uploadTrackOutline(key, file);
-      setOutlineUrl(d.outlineUrl);
-      setTrackOutlines({ ...uploadedOutlines(), [key]: d.outlineUrl });
+      setOutlineUrl(d.outline.url);
+      setTrackOutlines({ ...uploadedOutlines(), [key]: d.outline });
       setMsg("Outline uploaded.");
     } catch (err) {
       setError(err.message);
