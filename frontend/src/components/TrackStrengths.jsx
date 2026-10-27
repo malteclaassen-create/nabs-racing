@@ -15,8 +15,8 @@ import { isIdleReserve } from "../utils/standingsRow.js";
 // goes best on, out of every race they drove (backend
 // services/trackStrengthService.js has the arithmetic). A radar of the six
 // circuit types, the same numbers as rows with the circuits behind each, and
-// every circuit on its own underneath. A circuit shows the picture an admin
-// uploaded for it (Admin > Tracks), else its drawn outline.
+// every circuit on its own underneath. A circuit shows the track photo an
+// admin uploaded for it (Admin > Tracks), else its drawn outline.
 //
 // 50 is the field's average by construction (each race is a rank inside its
 // own grid), so the dashed ring is "as good as the people around them", and
@@ -399,7 +399,7 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
                         <span className="font-mono text-xs font-bold tabular-nums text-light">{i + 1}</span>
                         <span className="flex h-7 items-center text-medium" aria-hidden="true">
                           {t.image ? (
-                            <img src={t.image} alt="" loading="lazy" decoding="async" className="h-7 w-full rounded-sm object-contain" />
+                            <img src={t.image} alt="" loading="lazy" decoding="async" className="h-7 w-full rounded-sm object-cover" />
                           ) : (
                             <CircuitMap track={key} strokeWidth={1.5} className="h-7 w-full" />
                           )}
@@ -441,7 +441,7 @@ export default function TrackStrengths({ driver, color, standings = [] }) {
                     <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: c }} aria-hidden="true" />
                     <div className="flex h-14 items-center justify-center">
                       {t.image ? (
-                        <img src={t.image} alt="" loading="lazy" decoding="async" className="h-14 w-full rounded object-contain" />
+                        <img src={t.image} alt="" loading="lazy" decoding="async" className="h-14 w-full rounded object-cover" />
                       ) : circuitFor(t.key) || circuitFor(t.name) ? (
                         <CircuitMap track={circuitFor(t.key) ? t.key : t.name} stroke={c} strokeWidth={2} className="h-14 w-full" />
                       ) : (

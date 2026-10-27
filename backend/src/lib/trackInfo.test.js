@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeTrackInfo, mapImageFor, mapImageSizeFor, imageKeyOf, imageSizeOf } from "./trackInfo.js";
+import { sanitizeTrackInfo, mapImageFor, mapImageSizeFor, imageKeyOf, imageSizeOf, shrinkTrackPhoto, TRACK_PHOTO_MAX } from "./trackInfo.js";
 
 // The track map comes in two layers: the shared image every series shows, and
 // one per series for a league that wants its own picture of the circuit.
@@ -20,7 +20,7 @@ describe("per-series track map images", () => {
   });
 
   it("an unsaved track has no images at all", () => {
-    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, videos: [], types: null, corners: null });
+    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, photoUrl: null, videos: [], types: null, corners: null });
   });
 
   it("a series sees its own image first, then the shared one, then nothing", () => {
@@ -68,5 +68,23 @@ describe("track map image sizes", () => {
     expect(imageSizeOf(Buffer.from('<svg width="300px" height="150"></svg>'))).toEqual({ w: 300, h: 150 });
     expect(imageSizeOf(Buffer.from("<svg></svg>"))).toBeNull();
     expect(imageSizeOf(Buffer.from("not an image at all, just text"))).toBeNull();
+  });
+});
+
+describe("the track photo", () => {
+  it("is kept apart from the map image", () => {
+    const info = sanitizeTrackInfo({ mapImageUrl: "/api/uploads/tracks/spa.png", photoUrl: " /api/uploads/tracks/spa__photo.webp?v=1 " });
+    expect(info.mapImageUrl).toBe("/api/uploads/tracks/spa.png");
+    expect(info.photoUrl).toBe("/api/uploads/tracks/spa__photo.webp?v=1");
+    expect(sanitizeTrackInfo({}).photoUrl).toBe(null);
+  });
+
+  it("is shrunk to a small WebP on upload", async () => {
+    const { createCanvas } = await import("@napi-rs/canvas");
+    const big = await createCanvas(3000, 2000).encode("png");
+    const out = await shrinkTrackPhoto(big);
+    expect([out.width, out.height]).toEqual([TRACK_PHOTO_MAX, 640]);
+    expect(out.buffer.subarray(8, 12).toString()).toBe("WEBP");
+    await expect(shrinkTrackPhoto(Buffer.from("not a picture"))).rejects.toThrow();
   });
 });

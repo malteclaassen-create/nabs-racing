@@ -1584,6 +1584,13 @@ export const api = {
   },
   clearTrackMap: (key, series = null) =>
     request(`/admin/tracks/${key}/map${series ? `?series=${encodeURIComponent(series)}` : ""}`, { method: "DELETE", auth: true }),
+  // The circuit's track photo (the profiles' Tracks list), apart from the map.
+  uploadTrackPhoto: (key, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/tracks/${key}/photo`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearTrackPhoto: (key) => request(`/admin/tracks/${key}/photo`, { method: "DELETE", auth: true }),
 
   // Incident reports. The member's own side: file one, read the threads you are
   // party to, write in them. Everything is scoped to the login server-side.

@@ -26,7 +26,9 @@ const toRows = (list) => (list || []).map((c) => ({ turn: c.turn ?? "", name: c.
 // layered on top of the computed track history shown on the upcoming-race panel
 // and the attendance page. The map image has two layers: the shared one every
 // series shows, and one per series for a league that wants its own picture of
-// the circuit on its own pages (backend lib/trackInfo.js).
+// the circuit on its own pages (backend lib/trackInfo.js). The track photo is a
+// second picture, apart from the map: it shows in the Tracks list on the
+// drivers' profiles, and the server shrinks it on upload.
 export default function AdminTracks() {
   const { data: races } = useApi(useCallback(() => api.races(), []));
   const { seriesList } = useSeries();
@@ -44,6 +46,7 @@ export default function AdminTracks() {
   // one), and which of the two an upload is for: "all" or a series slug.
   const [mapImages, setMapImages] = useState({});
   const [mapScope, setMapScope] = useState("all");
+  const [photoUrl, setPhotoUrl] = useState(null);
   const [country, setCountry] = useState(""); // effective flag code ("" = none)
   const [mapRotation, setMapRotation] = useState(0);
   // What kind of circuit it is (backend lib/trackProfile.js): the admin's
@@ -92,6 +95,7 @@ export default function AdminTracks() {
         setKeepVideos(d.videos || []);
         setMapImageUrl(d.mapImageUrl || null);
         setMapImages(d.mapImages || {});
+        setPhotoUrl(d.photoUrl || null);
         setMapRotation(d.mapRotation || 0);
         setTypes(Array.isArray(d.types) ? d.types : null);
         setTypeInfo({ defs: d.typeDefs || [], defaults: d.defaultTypes || [] });
@@ -170,6 +174,37 @@ export default function AdminTracks() {
     } finally {
       // Same file again (a re-export after a tweak) must fire the change event.
       input.value = "";
+      setBusy(false);
+    }
+  }
+
+  async function uploadPhoto(e) {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const d = await api.uploadTrackPhoto(key, file);
+      setPhotoUrl(d.photoUrl);
+      setMsg("Track photo uploaded.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      input.value = "";
+      setBusy(false);
+    }
+  }
+
+  async function clearPhoto() {
+    setBusy(true);
+    try {
+      await api.clearTrackPhoto(key);
+      setPhotoUrl(null);
+      setMsg("Track photo removed.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setBusy(false);
     }
   }
@@ -423,6 +458,22 @@ export default function AdminTracks() {
               <input aria-label="Custom map image" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={uploadMap} disabled={busy}
                 className="transition block min-w-[16rem] flex-1 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
             </div>
+          </div>
+
+          <div>
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Track photo</div>
+            <p className="mb-2 text-sm text-light">
+              A photo of the circuit for the Tracks list on the drivers' profiles. Separate from the map image above.
+              It is made smaller on upload, so any photo works.
+            </p>
+            {photoUrl && (
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <img src={photoUrl} alt="Track photo" className="h-24 rounded-lg border border-border object-cover" />
+                <button className="btn-secondary py-1.5 text-sm" onClick={clearPhoto} disabled={busy}>Remove photo</button>
+              </div>
+            )}
+            <input aria-label="Track photo" type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadPhoto} disabled={busy || loadedKey !== key}
+              className="transition block min-w-[16rem] text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
           </div>
 
           <button className="btn-primary" onClick={save} disabled={busy || loadedKey !== key}>
