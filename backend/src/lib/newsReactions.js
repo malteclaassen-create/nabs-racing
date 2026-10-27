@@ -141,17 +141,27 @@ export function summarise(rows, viewerId = null) {
   return { list, article: (id) => list(`article:${id}`), comment: (id) => list(`comment:${id}`) };
 }
 
+// The columns a summary needs. A reaction from before names were kept has no
+// `authorName`; it gets the member's name now, the way the site shows them
+// elsewhere: their driver's name, else their Discord display name, else
+// their Discord username.
+const ROW_SELECT = `SELECT r."targetType", r."targetId", r."discordId", r."emoji",
+    COALESCE(
+      r."authorName",
+      (SELECT d."name" FROM "Driver" d WHERE d."discordUserId" = r."discordId" LIMIT 1),
+      m."displayName",
+      m."username"
+    ) AS "authorName"
+  FROM "NewsReaction" r LEFT JOIN "MemberAccount" m ON m."discordId" = r."discordId"`;
+
 export async function articleReactionRows(prisma, articleId) {
-  return prisma.$queryRawUnsafe(
-    `SELECT "targetType","targetId","discordId","emoji","authorName" FROM "NewsReaction" WHERE "articleId" = ? ORDER BY "createdAt" ASC`,
-    articleId
-  );
+  return prisma.$queryRawUnsafe(`${ROW_SELECT} WHERE r."articleId" = ? ORDER BY r."createdAt" ASC`, articleId);
 }
 
 // The reactions on one target, for the answer to a toggle.
 export async function targetReactions(prisma, { targetType, targetId }, viewerId) {
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT "targetType","targetId","discordId","emoji","authorName" FROM "NewsReaction" WHERE "targetType" = ? AND "targetId" = ? ORDER BY "createdAt" ASC`,
+    `${ROW_SELECT} WHERE r."targetType" = ? AND r."targetId" = ? ORDER BY r."createdAt" ASC`,
     targetType,
     targetId
   );
