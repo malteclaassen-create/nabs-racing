@@ -4,6 +4,7 @@ import { useApi } from "../site.jsx";
 import { Loading, ErrorBox, Empty, DriverName, TeamName, Position, TeamDot, SeriesBadge, rise } from "../components/ui.jsx";
 import Signup from "../components/Signup.jsx";
 import Countdown from "../components/Countdown.jsx";
+import ComboVote from "../components/ComboVote.jsx";
 import { RoundFacts, Timetable } from "../components/RaceCards.jsx";
 import { RoundPicture, VideoEmbed } from "../components/Picture.jsx";
 import { dateLong, clock, lapTime, raceTime, points, gapText, inkOn } from "../format.js";
@@ -274,6 +275,8 @@ export default function RacePage() {
           </div>
         </div>
       </section>
+
+      {race.poll && !done && <ComboVote poll={race.poll} color={series.color} linkRound={false} onChange={reload} />}
 
       {race.past && !done && <Empty>No results on record for this round.</Empty>}
 

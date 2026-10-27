@@ -9,6 +9,7 @@ import { requireUser } from "../auth.js";
 import { liveSeries } from "../live/relay.js";
 import { serverLinks } from "../live/links.js";
 import { seasonNumbers } from "../lib/seasonNumbers.js";
+import { pollOut, POLL_INCLUDE } from "../lib/polls.js";
 
 const router = Router();
 
@@ -210,6 +211,10 @@ router.get("/home", async (req, res) => {
   // the latest round with results, else (a season without any on record)
   // the latest one that is over, for its recording
   const last = [...races].reverse().find((r) => r.results.length) || [...races].reverse().find(isOver);
+  // the combo votes for rounds still to come (open, or closed with their winner)
+  const polls = season
+    ? await prisma.poll.findMany({ where: { race: { seasonId: season.id, startsAt: { gt: new Date(now - OVER_AFTER_MS) } } }, include: POLL_INCLUDE })
+    : [];
   res.json({
     season: seasonOut(season),
     nextRace: next ? raceSummary(next, season, settings) : null,
@@ -221,6 +226,10 @@ router.get("/home", async (req, res) => {
     roundsTotal: races.length,
     // once nothing is left to race: the season in numbers
     numbers: next ? null : seasonNumbers(races, standings),
+    polls: polls
+      .filter((p) => !p.race._count.results)
+      .sort((a, b) => new Date(a.race.startsAt) - new Date(b.race.startsAt))
+      .map((p) => pollOut(p, { userId: req.user?.id })),
   });
 });
 
@@ -266,6 +275,7 @@ router.get("/races/:id", async (req, res) => {
     return teamById.get(teamAt({ entry, transfers: transfers.filter((t) => t.driverId === driverId) }, race.round)) || null;
   };
   const pole = poleDriverId(race);
+  const poll = await prisma.poll.findUnique({ where: { raceId: race.id }, include: POLL_INCLUDE });
   res.json({
     id: race.id,
     round: race.round,
@@ -297,6 +307,7 @@ router.get("/races/:id", async (req, res) => {
     })),
     mySignup: mine?.status ?? null,
     signupOpen: race.results.length === 0 && !isOver(race),
+    poll: poll ? pollOut(poll, { userId: req.user?.id }) : null,
   });
 });
 
@@ -316,6 +327,26 @@ router.put("/races/:id/signup", requireUser, async (req, res) => {
     update: { status },
   });
   res.json({ status });
+});
+
+// A member's pick in a combo vote; optionId null takes it back.
+router.put("/polls/:id/vote", requireUser, async (req, res) => {
+  const poll = await prisma.poll.findUnique({ where: { id: Number(req.params.id) || 0 }, include: POLL_INCLUDE });
+  if (!poll) return res.status(404).json({ error: "Vote not found." });
+  if (!pollOut(poll).open) return res.status(409).json({ error: "This vote is closed." });
+  const optionId = req.body?.optionId ?? null;
+  if (optionId === null) {
+    await prisma.pollVote.deleteMany({ where: { pollId: poll.id, userId: req.user.id } });
+  } else {
+    if (!poll.options.some((o) => o.id === optionId)) return res.status(400).json({ error: "Unknown combo." });
+    await prisma.pollVote.upsert({
+      where: { pollId_userId: { pollId: poll.id, userId: req.user.id } },
+      create: { pollId: poll.id, optionId, userId: req.user.id },
+      update: { optionId },
+    });
+  }
+  const after = await prisma.poll.findUnique({ where: { id: poll.id }, include: POLL_INCLUDE });
+  res.json(pollOut(after, { userId: req.user.id }));
 });
 
 // A driver's page: the seasons they raced in (any series), the numbers of

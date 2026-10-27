@@ -4,9 +4,10 @@ import { Loading, ErrorBox, SeasonPicker, Streaks, rise } from "../components/ui
 import { NextRace, LastRace, TopDrivers, TopTeams, SeasonNumbers } from "../components/RaceCards.jsx";
 import { Img, thumbnails } from "../components/Picture.jsx";
 import LineChart from "../components/LineChart.jsx";
+import ComboVote from "../components/ComboVote.jsx";
 
-// The home of one series: its next race, last result, the top of both tables
-// and how the title fight has gone so far.
+// The home of one series: its combo votes, next race, last result, the top of
+// both tables and how the title fight has gone so far.
 export default function SeriesHome() {
   const { series, scope, seriesPath } = useSite();
   const { data, error, loading } = useApi(series ? `/home${scope}` : null);
@@ -75,6 +76,12 @@ export default function SeriesHome() {
           )}
         </div>
       </section>
+
+      {data.polls?.map((poll) => (
+        <div key={poll.id} {...rise(1, 90)}>
+          <ComboVote poll={poll} color={series.color} />
+        </div>
+      ))}
 
       <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <div {...rise(1, 90)}>
