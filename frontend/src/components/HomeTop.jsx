@@ -27,8 +27,8 @@ import { isDevHost } from "../preview.js";
 // ---------------------------------------------------------------------------
 
 export const RESULT_STYLES = [
-  { key: "basis", label: "1  Basis" },
-  { key: "podest", label: "2  Podest" },
+  { key: "liste", label: "1  Liste" },
+  { key: "streifen", label: "2  Foto-Streifen" },
   { key: "zeiten", label: "3  Zeiten" },
   { key: "team", label: "4  Teamfarben" },
   { key: "foto", label: "5  Foto-Kopf" },
@@ -37,7 +37,7 @@ const STORE = "nabs_home_result";
 
 function useResultStyle() {
   const [value, setValue] = useState(() => {
-    if (typeof window === "undefined") return "basis";
+    if (typeof window === "undefined") return "liste";
     const q = new URLSearchParams(window.location.search).get("result");
     if (q && RESULT_STYLES.some((v) => v.key === q)) {
       try {
@@ -48,9 +48,10 @@ function useResultStyle() {
       return q;
     }
     try {
-      return localStorage.getItem(STORE) || "basis";
+      const saved = localStorage.getItem(STORE);
+      return RESULT_STYLES.some((v) => v.key === saved) ? saved : "liste";
     } catch {
-      return "basis";
+      return "liste";
     }
   });
   const choose = (k) => {
@@ -453,136 +454,80 @@ function ResultButtons({ r, d }) {
   );
 }
 
-// One row of P4 to P10. `gap` / `stints` add the timing columns.
-function ResultRow({ r, result, extras, gap = false, stints = false, team = false }) {
+// One line of the top ten. The podium lines are a size up, their place in
+// medal colour. `style` adds what that card style shows: the timing columns
+// ("zeiten") or the team's colour behind the line ("team").
+function ResultRow({ r, i, result, extras, style }) {
+  const podium = i < 3;
+  const timing = style === "zeiten";
+  const team = style === "team";
+  const big = podium && !timing;
+  const color = r.team.color || "#888888";
   return (
-    <li>
-      <Link to={`/drivers/${r.driverId}`} className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-surface2">
-        <span className="w-6 text-center font-display text-sm font-black tabular-nums text-light">{r.position}</span>
-        <Avatar r={r} size={26} logo={12} />
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-bold text-dark group-hover:text-brand">{r.name}</span>
-          <FastestLap result={result} r={r} />
-          {team && (
-            <span className="hidden min-w-0 items-center gap-1.5 truncate text-[11px] text-light sm:flex">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: r.team.color }} />
-              {r.team.name}
-            </span>
-          )}
+    <li className="flex">
+      <Link
+        to={`/drivers/${r.driverId}`}
+        className={`group flex flex-1 items-center gap-3 rounded-lg px-2 transition ${team ? "" : "-mx-2 hover:bg-surface2"} ${
+          big ? "py-2.5" : "py-1.5"
+        }`}
+        style={team ? { background: `linear-gradient(90deg, ${color}33 0%, ${color}0f 40%, transparent 75%)` } : undefined}
+      >
+        {timing ? (
+          <span
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md font-display text-xs font-black ${podium ? "text-ink" : "bg-surface2 text-medium"}`}
+            style={podium ? { backgroundColor: MEDAL_TEXT[i] } : undefined}
+          >
+            {r.position}
+          </span>
+        ) : (
+          <span
+            className={`w-6 shrink-0 text-center font-display font-black tabular-nums ${big ? "text-lg" : "text-sm text-light"}`}
+            style={big ? { color: MEDAL_TEXT[i] } : undefined}
+          >
+            {r.position}
+          </span>
+        )}
+        <Avatar r={r} size={big ? 36 : 28} logo={big ? 16 : 13} />
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="flex items-center gap-2">
+            <span className={`truncate font-bold text-dark group-hover:text-brand ${big ? "text-[15px]" : "text-sm"}`}>{r.name}</span>
+            <FastestLap result={result} r={r} />
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-light">
+            {team && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />}
+            <span className="truncate">{r.team.name}</span>
+          </span>
         </span>
-        {stints && (
+        {timing && (
           <span className="hidden sm:block">
             <Stints stints={extras?.stints[r.driverId]} />
           </span>
         )}
-        {gap && (
-          <span className="w-16 text-right font-mono text-[11px] tabular-nums sm:w-[4.5rem] text-medium">{extras?.gaps[r.driverId] || ""}</span>
+        {timing && (
+          <span className={`w-16 text-right font-mono text-[11px] tabular-nums sm:w-[4.5rem] ${i === 0 ? "font-bold text-dark" : "text-medium"}`}>
+            {extras?.gaps[r.driverId] || ""}
+          </span>
         )}
         {/* With the gap column on, a phone has no room for the grid change too. */}
-        <span className={gap ? "hidden sm:contents" : "contents"}>
+        <span className={timing ? "hidden sm:contents" : "contents"}>
           <Gained value={r.gained} />
         </span>
         {result.scores && (
-          <span className="min-w-[1.75rem] text-right font-display text-sm font-black tabular-nums text-dark">{r.points ?? 0}</span>
+          <span className={`min-w-[1.75rem] text-right font-display font-black tabular-nums text-dark ${big ? "text-base" : "text-sm"}`}>
+            {r.points ?? 0}
+          </span>
         )}
       </Link>
     </li>
   );
 }
 
-function ResultRows({ r, ...opts }) {
-  const rows = r.result?.rows?.slice(3, 10) || [];
-  if (!rows.length) return null;
-  return (
-    <ol className="divide-y divide-border/60">
-      {rows.map((row) => (
-        <ResultRow key={row.driverId} r={row} result={r.result} extras={r.extras} {...opts} />
-      ))}
-    </ol>
-  );
-}
-
-// 1 — Basis: three podium cards, then the rows.
-function PodiumCards({ r }) {
-  const rows = r.result.rows.slice(0, 3);
-  return (
-    <ol className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3">
-      {rows.map((row, i) => (
-        <li key={row.driverId}>
-          <Link
-            to={`/drivers/${row.driverId}`}
-            className="group flex h-full flex-col items-center gap-2 rounded-xl border border-border bg-surface2/60 px-2 py-3 text-center transition hover:border-brand/40 sm:px-3 sm:py-4"
-          >
-            <span className="font-display text-lg font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
-              P{row.position}
-            </span>
-            <Avatar r={row} size={i === 0 ? 52 : 44} logo={18} />
-            <span className="w-full min-w-0 leading-tight">
-              <span className="flex items-center justify-center gap-1.5">
-                <span className="truncate text-sm font-bold text-dark group-hover:text-brand">{row.name}</span>
-                <FastestLap result={r.result} r={row} />
-              </span>
-              <span className="block truncate text-[11px] text-light">{row.team.name}</span>
-            </span>
-            {r.result.scores && (
-              <span className="font-mono text-[11px] font-bold text-medium">
-                <span className="font-display text-base font-black text-dark">{row.points ?? 0}</span> pts
-              </span>
-            )}
-          </Link>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-// 2 — Podest: P2, P1, P3 on steps of their own height, the winner's race
-// time and the gaps on the steps.
-function PodiumSteps({ r }) {
-  const [p1, p2, p3] = r.result.rows;
-  const order = [
-    { row: p2, i: 1, step: "h-20 sm:h-24" },
-    { row: p1, i: 0, step: "h-28 sm:h-32" },
-    { row: p3, i: 2, step: "h-[4.25rem] sm:h-20" },
-  ].filter((o) => o.row);
-  return (
-    <ol className="grid min-w-0 grid-cols-3 items-end gap-2 sm:gap-3">
-      {order.map(({ row, i, step }) => (
-        <li key={row.driverId} className="min-w-0">
-          <Link to={`/drivers/${row.driverId}`} className="group flex flex-col items-center text-center">
-            <Avatar r={row} size={i === 0 ? 64 : 50} logo={i === 0 ? 22 : 18} ring />
-            <span className="mt-2 flex w-full min-w-0 items-center justify-center gap-1.5">
-              <span className="truncate text-sm font-bold text-dark group-hover:text-brand">{row.name}</span>
-              <FastestLap result={r.result} r={row} />
-            </span>
-            <span className="block w-full truncate text-[11px] text-light">{row.team.name}</span>
-            <span
-              className={`mt-2 flex w-full flex-col items-center justify-start gap-1 rounded-t-xl border border-b-0 border-border bg-gradient-to-b from-surface2 to-transparent pt-2 ${step}`}
-            >
-              <span className="font-display text-2xl font-black leading-none" style={{ color: MEDAL_TEXT[i] }}>
-                {row.position}
-              </span>
-              {r.result.scores && (
-                <span className="font-mono text-[11px] font-bold text-medium">
-                  <span className="font-display text-sm font-black text-dark">{row.points ?? 0}</span> pts
-                </span>
-              )}
-              <span className="font-mono text-[10px] tabular-nums text-light">{r.extras?.gaps[row.driverId] || ""}</span>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-// 3 — Zeiten: the podium as three wide timing rows, the column labels of a
-// results sheet, and the tyres and gaps on every line.
+// The column labels of a results sheet, over the timing style's list.
 function TimingHead() {
   return (
     <div className="flex items-center gap-3 border-b border-border pb-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-faint">
       <span className="w-6 text-center">Pos</span>
-      <span className="flex-1 pl-9">Driver</span>
+      <span className="flex-1 pl-10">Driver</span>
       <span className="hidden sm:block">Tyres</span>
       <span className="w-16 text-right sm:w-[4.5rem]">Gap</span>
       <span className="hidden w-8 text-right sm:block">Grid</span>
@@ -591,89 +536,18 @@ function TimingHead() {
   );
 }
 
-function PodiumTiming({ r }) {
+// P1 to P10, top to bottom.
+function ResultList({ r, style }) {
+  const rows = r.result?.rows || [];
   return (
-    <ol className="space-y-1.5">
-      {r.result.rows.slice(0, 3).map((row, i) => (
-        <li key={row.driverId}>
-          <Link
-            to={`/drivers/${row.driverId}`}
-            className="group flex items-center gap-3 rounded-xl border border-border bg-surface2/60 px-2 py-2.5 transition hover:border-brand/40"
-          >
-            <span
-              className="flex h-7 w-6 items-center justify-center rounded-md font-display text-sm font-black text-ink"
-              style={{ backgroundColor: MEDAL_TEXT[i] }}
-            >
-              {row.position}
-            </span>
-            <Avatar r={row} size={36} logo={16} />
-            <span className="min-w-0 flex-1 leading-tight">
-              <span className="flex items-center gap-2">
-                <span className="truncate text-[15px] font-bold text-dark group-hover:text-brand">{row.name}</span>
-                <FastestLap result={r.result} r={row} />
-              </span>
-              <span className="block truncate text-[11px] text-light">{row.team.name}</span>
-            </span>
-            <span className="hidden sm:block">
-              <Stints stints={r.extras?.stints[row.driverId]} />
-            </span>
-            <span className={`w-16 text-right font-mono text-[11px] tabular-nums sm:w-[4.5rem] ${i === 0 ? "font-bold text-dark" : "text-medium"}`}>
-              {r.extras?.gaps[row.driverId] || ""}
-            </span>
-            <span className="hidden sm:contents">
-              <Gained value={row.gained} />
-            </span>
-            {r.result.scores && (
-              <span className="min-w-[1.75rem] text-right font-display text-base font-black tabular-nums text-dark">{row.points ?? 0}</span>
-            )}
-          </Link>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-// 4 — Teamfarben: each podium card glows in its team's colour, the team's
-// logo large in the corner.
-function PodiumTeam({ r }) {
-  const rows = r.result.rows.slice(0, 3);
-  return (
-    <ol className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3">
-      {rows.map((row, i) => (
-        <li key={row.driverId}>
-          <Link
-            to={`/drivers/${row.driverId}`}
-            className="group relative flex h-full flex-col items-center gap-2 overflow-hidden rounded-xl border border-border px-2 py-3 text-center transition hover:-translate-y-0.5 sm:px-3 sm:py-4"
-            style={{ background: `linear-gradient(160deg, ${row.team.color || "#888"}38 0%, ${row.team.color || "#888"}0d 55%, transparent 100%)` }}
-          >
-            <span className="pointer-events-none absolute -bottom-4 -right-4 opacity-[0.12]" aria-hidden="true">
-              <TeamLogo id={row.team.id} name={row.team.name} color={row.team.color} logoUrl={row.team.logoUrl} size={96} />
-            </span>
-            <span className="relative font-display text-lg font-black leading-none tabular-nums" style={{ color: MEDAL_TEXT[i] }}>
-              P{row.position}
-            </span>
-            <span className="relative">
-              <Avatar r={row} size={i === 0 ? 56 : 46} logo={18} ring />
-            </span>
-            <span className="relative w-full min-w-0 leading-tight">
-              <span className="flex items-center justify-center gap-1.5">
-                <span className="truncate text-sm font-bold text-dark">{row.name}</span>
-                <FastestLap result={r.result} r={row} />
-              </span>
-              <span className="block truncate text-[11px] text-medium">{row.team.name}</span>
-            </span>
-            <span className="relative flex items-center gap-2 font-mono text-[11px] text-medium">
-              {r.result.scores && (
-                <span>
-                  <span className="font-display text-base font-black text-dark">{row.points ?? 0}</span> pts
-                </span>
-              )}
-              {r.extras?.gaps[row.driverId] && i > 0 && <span className="text-light">{r.extras.gaps[row.driverId]}</span>}
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ol>
+    <div>
+      {style === "zeiten" && <TimingHead />}
+      <ol className={style === "team" ? "space-y-1" : "divide-y divide-border/60"}>
+        {rows.map((row, i) => (
+          <ResultRow key={row.driverId} r={row} i={i} result={r.result} extras={r.extras} style={style} />
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -735,54 +609,64 @@ function CardHead({ d, r, photo = false }) {
 
 function ResultCard({ d, style }) {
   const r = useResult(d);
-  const photo = style === "foto";
-  let body = null;
-  if (r.result) {
-    if (style === "podest") {
-      body = (
-        <>
-          <PodiumSteps r={r} />
-          <ResultRows r={r} gap />
-        </>
-      );
-    } else if (style === "zeiten") {
-      body = (
-        <div className="space-y-2">
-          <TimingHead />
-          <PodiumTiming r={r} />
-          <ResultRows r={r} gap stints />
+  const list = r.result ? <ResultList r={r} style={style} /> : <ResultPending d={d} />;
+
+  // 2 — the live card's own build, refined: the round's photo as a strip with
+  // the track written up it, the list beside it. On a phone the strip stands
+  // down and the track moves into the line above the list.
+  if (style === "streifen") {
+    const c = d.lastCircuit;
+    return (
+      <section className="flex min-w-0 flex-col">
+        <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
+        <div className="relative flex flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+          <div className="relative hidden w-[30%] shrink-0 overflow-hidden sm:block">
+            <img src={d.photo} alt="" data-hero-fallback={d.photoFallback} onError={d.onPhotoError} className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/85" />
+            <div className="absolute inset-x-4 top-4 flex items-center justify-between gap-2">
+              {c && <Flag code={c.country} title={c.countryName} w={28} h={20} />}
+              <span className="rounded-md bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm">
+                R{pad2(d.lastRace?.number ?? 0)}
+              </span>
+            </div>
+            <div className="absolute inset-x-0 bottom-5 flex justify-center">
+              <span className="block rotate-180 whitespace-nowrap font-display text-6xl font-black uppercase leading-none tracking-tight text-white [writing-mode:vertical-rl]">
+                {d.lastRace?.track}
+              </span>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-3 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-eyebrow">
+                {c && (
+                  <span className="sm:hidden">
+                    <Flag code={c.country} title={c.countryName} w={22} h={16} />
+                  </span>
+                )}
+                <span className="truncate sm:hidden">{d.lastRace?.track} ·</span>
+                <span>Round {d.lastRace?.number ?? NO_VALUE}</span>
+                {d.lastRace?.date && <span className="hidden truncate text-light sm:inline">{fmtDateLong(d.lastRace.date)}</span>}
+              </div>
+              <RaceTabs r={r} />
+            </div>
+            {list}
+            <div className="mt-auto pt-1">
+              <ResultButtons r={r} d={d} />
+            </div>
+          </div>
         </div>
-      );
-    } else if (style === "team") {
-      body = (
-        <>
-          <PodiumTeam r={r} />
-          <ResultRows r={r} team />
-        </>
-      );
-    } else if (photo) {
-      body = (
-        <>
-          <PodiumCards r={r} />
-          <FactsLine r={r} />
-          <ResultRows r={r} />
-        </>
-      );
-    } else {
-      body = (
-        <>
-          <PodiumCards r={r} />
-          <ResultRows r={r} />
-        </>
-      );
-    }
+      </section>
+    );
   }
+
+  const photo = style === "foto";
   return (
     <section className="flex min-w-0 flex-col">
       <ColumnHeader title="Latest result" to="/races" cta="All rounds" />
       <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-card">
         <CardHead d={d} r={r} photo={photo} />
-        {body || <ResultPending d={d} />}
+        {photo && r.result && <FactsLine r={r} />}
+        {list}
         <div className="mt-auto pt-1">
           <ResultButtons r={r} d={d} />
         </div>
