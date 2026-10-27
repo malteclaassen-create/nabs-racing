@@ -1018,17 +1018,20 @@ model NewsArticle {
 // NewsArticle (lib/ensureSchema.js + migration news_comments); this model only
 // mirrors it.
 model NewsComment {
-  id         String   @id
-  articleId  String
-  discordId  String
-  authorName String
-  avatarUrl  String?
-  driverId   String?
-  body       String   @default("")
-  gifUrl     String?
-  gifWidth   Int?
-  gifHeight  Int?
-  createdAt  DateTime @default(now())
+  id          String   @id
+  articleId   String
+  discordId   String
+  authorName  String
+  avatarUrl   String?
+  driverId    String?
+  body        String   @default("")
+  gifUrl      String?
+  gifWidth    Int?
+  gifHeight   Int?
+  parentId    String?
+  replyToName String?
+  createdAt   DateTime @default(now())
 
   @@index([articleId, createdAt])
+  @@index([parentId])
 }

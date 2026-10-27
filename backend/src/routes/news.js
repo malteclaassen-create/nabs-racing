@@ -7,9 +7,10 @@
 //   GET  /api/news/desk/access            { canWrite, admin } for the caller
 //
 // Comments (lib/newsComments.js). Reading is public, writing takes a member:
-//   GET    /api/news/comments/:articleId?before=   newest first, { comments, more, count, gifSearch }
-//   POST   /api/news/comments/:articleId           { body, gif: { url, width, height } }
-//   DELETE /api/news/comments/:articleId/:id       the writer, or the news desk
+//   GET    /api/news/comments/:articleId?before=   newest threads first, each with its replies,
+//                                                  { comments, more, count, gifSearch }
+//   POST   /api/news/comments/:articleId           { body, gif: { url, width, height }, replyTo }
+//   DELETE /api/news/comments/:articleId/:id       the writer, or the news desk (a thread goes with its replies)
 //   GET    /api/news/gifs?q=                       GIPHY search (trending without q), members
 //   POST   /api/news/gifs/resolve                  { link } -> { gif } for a pasted Tenor/GIPHY link
 //
@@ -40,7 +41,7 @@ import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
 import { sniffImageType, checkImageUpload } from "../lib/imageIntegrity.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { seasonIsPublic } from "../lib/notifications.js";
+import { seasonIsPublic, dbCreateNotification } from "../lib/notifications.js";
 import { readParentIds } from "../lib/sprintRaces.js";
 import { readRaceTypes } from "../lib/raceTypes.js";
 import {
@@ -68,6 +69,8 @@ import {
   sanitizeCommentInput,
   commentRateCheck,
   shapeComment,
+  replyPlacement,
+  threadComments,
   listComments,
   countComments,
   findComment,
@@ -176,9 +179,9 @@ router.get("/comments/:articleId", optionalUser, async (req, res, next) => {
     const article = await publishedArticle(req.params.articleId);
     if (!article) return res.status(404).json({ error: "Article not found" });
     const viewer = await commentViewer(req);
-    const { rows, more } = await listComments(prisma, article.id, { before: req.query.before });
+    const { rows, replies, more } = await listComments(prisma, article.id, { before: req.query.before });
     res.json({
-      comments: rows.map((r) => shapeComment(r, viewer)),
+      comments: threadComments(rows, replies, viewer),
       more,
       count: await countComments(prisma, article.id),
       gifSearch: gifSearchEnabled(),
@@ -196,15 +199,35 @@ router.post("/comments/:articleId", requireUser, async (req, res, next) => {
     if (error) return res.status(400).json({ error });
     const discordId = String(req.user.discordId || "");
     if (!discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    // An answer: the comment it answers has to be under this same article.
+    let target = null;
+    if (req.body?.replyTo) {
+      target = isCommentId(req.body.replyTo) ? await findComment(prisma, req.body.replyTo) : null;
+      if (!target || target.articleId !== article.id)
+        return res.status(404).json({ error: "That comment is gone. Refresh to see the latest" });
+    }
     const slow = commentRateCheck(discordId);
     if (slow) return res.status(429).json({ error: slow });
-    const row = await createComment(prisma, article.id, comment, {
-      discordId,
-      name: req.user.driverName || req.user.discordName || "Member",
-      avatarUrl: req.user.avatarUrl || null,
-      driverId: req.user.driverId || null,
-    });
-    res.json({ comment: shapeComment(row, { discordId, moderator: false }) });
+    const name = req.user.driverName || req.user.discordName || "Member";
+    const row = await createComment(
+      prisma,
+      article.id,
+      comment,
+      { discordId, name, avatarUrl: req.user.avatarUrl || null, driverId: req.user.driverId || null },
+      replyPlacement(target)
+    );
+    // The member who was answered hears about it, unless they answered themselves.
+    if (target && target.discordId !== discordId) {
+      await dbCreateNotification(prisma, {
+        type: "REPLY",
+        title: `${name} replied to your comment`,
+        body: (comment.body || "sent a GIF").slice(0, 140),
+        link: `/news/${article.slug}#comment-${row.id}`,
+        recipientId: target.discordId,
+        dedupeKey: `news-reply:${row.id}`,
+      }).catch(() => {});
+    }
+    res.json({ comment: { ...shapeComment(row, { discordId, moderator: false }), replies: [] } });
   } catch (e) {
     next(e);
   }
@@ -222,8 +245,8 @@ router.delete("/comments/:articleId/:id", optionalUser, async (req, res, next) =
       if (!viewer.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
       if (viewer.discordId !== row.discordId) return res.status(403).json({ error: "That is somebody else's comment" });
     }
-    await deleteComment(prisma, row.id);
-    res.json({ ok: true });
+    const removed = await deleteComment(prisma, row.id);
+    res.json({ ok: true, removed });
   } catch (e) {
     next(e);
   }

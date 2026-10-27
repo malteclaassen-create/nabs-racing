@@ -2,8 +2,15 @@
 // Comments under a news article, and the GIFs that go in them.
 //
 // Any signed-in member can comment on a published article: some text, a GIF,
-// or both. The writer of a comment can delete it, and so can the news desk
-// (admins and news writers), which is all the moderation there is.
+// or both, and answer somebody else's comment. The writer of a comment can
+// delete it, and so can the news desk (admins and news writers), which is all
+// the moderation there is.
+//
+// Replies are one level deep, the way YouTube and Instagram do it: a reply
+// hangs under the comment that opened the thread ("parentId"), and an answer
+// to a reply joins the same thread and says who it answers ("replyToName").
+// Deleting the comment that opened a thread takes its replies with it. The
+// member who was answered hears about it in the bell.
 //
 // One row per comment in "NewsComment", raw-SQL managed like "NewsArticle"
 // (ensureNewsCommentTable, called from ensureAppSchema) and mirrored by a
@@ -15,7 +22,9 @@
 // A link from either site works, including the tenor.com/view/... link Discord
 // copies; that one is looked up on tenor.com for the GIF behind it. A GIF is
 // only ever stored as an address on Tenor's or GIPHY's own media servers, so a
-// comment cannot pull a picture from anywhere else into the page.
+// comment cannot pull a picture from anywhere else into the page, and a GIF
+// costs the league nothing but that one line of address: no file is copied to
+// the server, and the visitor's browser loads it straight from Tenor or GIPHY.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "node:crypto";
 
@@ -43,11 +52,19 @@ export async function ensureNewsCommentTable(prisma) {
     "gifUrl" TEXT,
     "gifWidth" INTEGER,
     "gifHeight" INTEGER,
+    "parentId" TEXT,
+    "replyToName" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  // A table from before replies: the two columns come in on their own.
+  const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("NewsComment")`);
+  for (const name of ["parentId", "replyToName"]) {
+    if (!cols.some((c) => c.name === name)) await prisma.$executeRawUnsafe(`ALTER TABLE "NewsComment" ADD COLUMN "${name}" TEXT`);
+  }
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "NewsComment_articleId_createdAt_idx" ON "NewsComment"("articleId", "createdAt")`
   );
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "NewsComment_parentId_idx" ON "NewsComment"("parentId")`);
 }
 
 // --- GIF addresses -----------------------------------------------------------
@@ -263,15 +280,43 @@ export function shapeComment(row, viewer = null) {
     body: row.body || "",
     gif: row.gifUrl ? { url: row.gifUrl, width: row.gifWidth ?? null, height: row.gifHeight ?? null } : null,
     author: { name: row.authorName, avatarUrl: row.avatarUrl || null, driverId: row.driverId || null },
+    parentId: row.parentId || null,
+    replyToName: row.replyToName || null,
     createdAt: iso(row.createdAt),
     mine,
     canDelete: mine || !!viewer?.moderator,
   };
 }
 
-// The newest comments of an article first; `before` pages back by time.
+// Where an answer to `target` goes: under the comment that opened its thread,
+// and, when `target` is itself a reply, naming whom it answers.
+export function replyPlacement(target) {
+  if (!target) return null;
+  if (target.parentId) return { parentId: target.parentId, replyToName: target.authorName || null };
+  return { parentId: target.id, replyToName: null };
+}
+
+// The page's comments as threads: each opening comment with its replies,
+// oldest reply first so a thread reads top to bottom.
+export function threadComments(top, replies, viewer = null) {
+  const byParent = new Map();
+  for (const r of replies) {
+    const list = byParent.get(r.parentId) || [];
+    list.push(r);
+    byParent.set(r.parentId, list);
+  }
+  return top.map((row) => ({
+    ...shapeComment(row, viewer),
+    replies: (byParent.get(row.id) || [])
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .map((r) => shapeComment(r, viewer)),
+  }));
+}
+
+// The newest threads of an article first; `before` pages back by time. Each
+// page brings the replies of its threads along.
 export async function listComments(prisma, articleId, { before = null, limit = COMMENT_LIMITS.perPage } = {}) {
-  const where = [`"articleId" = ?`];
+  const where = [`"articleId" = ?`, `"parentId" IS NULL`];
   const args = [articleId];
   if (before) {
     const t = new Date(before);
@@ -285,7 +330,14 @@ export async function listComments(prisma, articleId, { before = null, limit = C
     `SELECT * FROM "NewsComment" WHERE ${where.join(" AND ")} ORDER BY "createdAt" DESC LIMIT ${n + 1}`,
     ...args
   );
-  return { rows: rows.slice(0, n), more: rows.length > n };
+  const top = rows.slice(0, n);
+  const replies = top.length
+    ? await prisma.$queryRawUnsafe(
+        `SELECT * FROM "NewsComment" WHERE "parentId" IN (${top.map(() => "?").join(",")}) ORDER BY "createdAt" ASC`,
+        ...top.map((r) => r.id)
+      )
+    : [];
+  return { rows: top, replies, more: rows.length > n };
 }
 
 export async function countComments(prisma, articleId) {
@@ -298,12 +350,13 @@ export async function findComment(prisma, id) {
   return rows[0] || null;
 }
 
-// `comment` is sanitised; `author` is { discordId, name, avatarUrl, driverId }.
-export async function createComment(prisma, articleId, comment, author) {
+// `comment` is sanitised; `author` is { discordId, name, avatarUrl, driverId };
+// `placement` is replyPlacement's answer for a reply, null for a new thread.
+export async function createComment(prisma, articleId, comment, author, placement = null) {
   const id = randomUUID();
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "NewsComment" ("id","articleId","discordId","authorName","avatarUrl","driverId","body","gifUrl","gifWidth","gifHeight","createdAt")
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO "NewsComment" ("id","articleId","discordId","authorName","avatarUrl","driverId","body","gifUrl","gifWidth","gifHeight","parentId","replyToName","createdAt")
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     id,
     articleId,
     String(author.discordId),
@@ -314,11 +367,15 @@ export async function createComment(prisma, articleId, comment, author) {
     comment.gif?.url || null,
     comment.gif?.width ?? null,
     comment.gif?.height ?? null,
+    placement?.parentId || null,
+    placement?.replyToName ? String(placement.replyToName).slice(0, 80) : null,
     new Date().toISOString()
   );
   return findComment(prisma, id);
 }
 
+// A comment, and the replies under it when it opened a thread. Answers how
+// many went.
 export async function deleteComment(prisma, id) {
-  await prisma.$executeRawUnsafe(`DELETE FROM "NewsComment" WHERE "id" = ?`, id);
+  return Number(await prisma.$executeRawUnsafe(`DELETE FROM "NewsComment" WHERE "id" = ? OR "parentId" = ?`, id, id));
 }
