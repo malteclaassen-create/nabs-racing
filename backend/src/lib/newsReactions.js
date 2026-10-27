@@ -2,10 +2,13 @@
 // Emoji reactions on news articles and their comments, and how many people
 // have seen an article.
 //
-// Reactions: any signed-in member can put one or more of a small fixed set of
-// emoji on an article or a comment, and take them off again, the way Discord
-// does it. One row per (target, member, emoji) in "NewsReaction"; a target is
-// the article itself or one of its comments.
+// Reactions: any signed-in member can put any emoji on an article or a
+// comment, as many different ones as they like, and take them off again, the
+// way Discord does it. One row per (target, member, emoji) in "NewsReaction";
+// a target is the article itself or one of its comments. The member's name is
+// copied in, the way a comment keeps the name it was written under, so the
+// page can say who reacted. REACTIONS is the quick row the picker opens on;
+// the full set is every emoji there is (isEmoji).
 //
 // Views: one counter per article in "NewsView" that goes up every time the
 // article is opened, signed in or not, the same reader again included. Nothing
@@ -17,8 +20,13 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "node:crypto";
 
-// The emoji on offer, in the order the page shows them.
+// The quick row the picker opens on, in the order it shows them.
 export const REACTIONS = ["👍", "❤️", "😂", "🔥", "😮", "😢", "💀", "🏆"];
+// How many different emoji one target can carry, so a comment cannot be
+// buried under a wall of them.
+export const MAX_KINDS = 20;
+// How many names the page gets per emoji (and how many more there are).
+const NAMES_SHOWN = 50;
 const TARGETS = ["article", "comment"];
 const BOT_RE = /bot|crawler|spider|crawling|preview|fetch|monitor|curl|wget|python-requests|headless/i;
 
@@ -30,8 +38,13 @@ export async function ensureNewsReactionTables(prisma) {
     "targetId" TEXT NOT NULL,
     "discordId" TEXT NOT NULL,
     "emoji" TEXT NOT NULL,
+    "authorName" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  // A table from before names were kept: the column comes in on its own.
+  const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("NewsReaction")`);
+  if (!cols.some((c) => c.name === "authorName"))
+    await prisma.$executeRawUnsafe(`ALTER TABLE "NewsReaction" ADD COLUMN "authorName" TEXT`);
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "NewsReaction_target_member_emoji_key" ON "NewsReaction"("targetType", "targetId", "discordId", "emoji")`
   );
@@ -44,6 +57,23 @@ export async function ensureNewsReactionTables(prisma) {
 
 // --- reactions ----------------------------------------------------------------
 
+// Whether `s` is one emoji: a single character as the eye sees it (one
+// grapheme), made only of emoji parts, with at least one real emoji in it.
+// That takes skin tones, families and flags (several code points joined) and
+// refuses text, a row of emoji, and anything that only looks empty.
+const EMOJI_PARTS_RE = /^[\p{Extended_Pictographic}\p{Emoji_Component}\u200D\uFE0E\uFE0F\u20E3\u{E0020}-\u{E007F}]+$/u;
+const EMOJI_CORE_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}{2}|\u20E3/u;
+const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+export function isEmoji(s) {
+  const str = String(s ?? "");
+  if (!str || str.length > 32) return false;
+  if (!EMOJI_PARTS_RE.test(str) || !EMOJI_CORE_RE.test(str)) return false;
+  let n = 0;
+  for (const _ of graphemes.segment(str)) if (++n > 1) return false;
+  return n === 1;
+}
+
 // { target, id, emoji } as the page sends it, checked. Returns the clean
 // { targetType, targetId, emoji } or { error }.
 export function readReaction(input) {
@@ -51,13 +81,14 @@ export function readReaction(input) {
   const targetType = String(src.target ?? "");
   if (!TARGETS.includes(targetType)) return { error: "React to an article or a comment" };
   const emoji = String(src.emoji ?? "");
-  if (!REACTIONS.includes(emoji)) return { error: "That reaction isn't one of ours" };
+  if (!isEmoji(emoji)) return { error: "That isn't an emoji" };
   return { targetType, targetId: String(src.id ?? ""), emoji };
 }
 
 // Puts the reaction on, or takes it off when the member already has it there.
-// Answers whether it is on now.
-export async function toggleReaction(prisma, { articleId, targetType, targetId, discordId, emoji }) {
+// Answers { on }, or { error } when the target already carries MAX_KINDS
+// different emoji and this would be one more.
+export async function toggleReaction(prisma, { articleId, targetType, targetId, discordId, emoji, name = null }) {
   const gone = Number(
     await prisma.$executeRawUnsafe(
       `DELETE FROM "NewsReaction" WHERE "targetType" = ? AND "targetId" = ? AND "discordId" = ? AND "emoji" = ?`,
@@ -67,41 +98,52 @@ export async function toggleReaction(prisma, { articleId, targetType, targetId, 
       emoji
     )
   );
-  if (gone) return false;
+  if (gone) return { on: false };
+  const kinds = await prisma.$queryRawUnsafe(
+    `SELECT DISTINCT "emoji" FROM "NewsReaction" WHERE "targetType" = ? AND "targetId" = ?`,
+    targetType,
+    targetId
+  );
+  if (kinds.length >= MAX_KINDS && !kinds.some((k) => k.emoji === emoji))
+    return { error: "That one has all the different reactions it can take. Add to one that's there" };
   await prisma.$executeRawUnsafe(
-    `INSERT OR IGNORE INTO "NewsReaction" ("id","articleId","targetType","targetId","discordId","emoji","createdAt") VALUES (?,?,?,?,?,?,?)`,
+    `INSERT OR IGNORE INTO "NewsReaction" ("id","articleId","targetType","targetId","discordId","emoji","authorName","createdAt") VALUES (?,?,?,?,?,?,?,?)`,
     randomUUID(),
     articleId,
     targetType,
     targetId,
     discordId,
     emoji,
+    name ? String(name).slice(0, 80) : null,
     new Date().toISOString()
   );
-  return true;
+  return { on: true };
 }
 
 // Rows of one article as the page shows them: per target, each emoji with how
-// many put it there and whether the viewer did, in REACTIONS order. Pure.
+// many put it there, whether the viewer did, and who (`names`, first come
+// first, the viewer as "You"). The emoji stand in the order they first
+// arrived, the way Discord lines them up. `rows` come oldest first. Pure.
 export function summarise(rows, viewerId = null) {
   const byTarget = new Map();
   for (const r of rows) {
     const key = `${r.targetType}:${r.targetId}`;
     if (!byTarget.has(key)) byTarget.set(key, new Map());
     const m = byTarget.get(key);
-    const e = m.get(r.emoji) || { emoji: r.emoji, count: 0, mine: false };
+    const e = m.get(r.emoji) || { emoji: r.emoji, count: 0, mine: false, names: [] };
     e.count += 1;
-    if (viewerId && r.discordId === viewerId) e.mine = true;
+    const isViewer = !!viewerId && r.discordId === viewerId;
+    if (isViewer) e.mine = true;
+    if (e.names.length < NAMES_SHOWN) e.names.push(isViewer ? "You" : r.authorName || "A member");
     m.set(r.emoji, e);
   }
-  const list = (key) =>
-    [...(byTarget.get(key)?.values() || [])].sort((a, b) => REACTIONS.indexOf(a.emoji) - REACTIONS.indexOf(b.emoji));
+  const list = (key) => [...(byTarget.get(key)?.values() || [])];
   return { list, article: (id) => list(`article:${id}`), comment: (id) => list(`comment:${id}`) };
 }
 
 export async function articleReactionRows(prisma, articleId) {
   return prisma.$queryRawUnsafe(
-    `SELECT "targetType","targetId","discordId","emoji" FROM "NewsReaction" WHERE "articleId" = ?`,
+    `SELECT "targetType","targetId","discordId","emoji","authorName" FROM "NewsReaction" WHERE "articleId" = ? ORDER BY "createdAt" ASC`,
     articleId
   );
 }
@@ -109,7 +151,7 @@ export async function articleReactionRows(prisma, articleId) {
 // The reactions on one target, for the answer to a toggle.
 export async function targetReactions(prisma, { targetType, targetId }, viewerId) {
   const rows = await prisma.$queryRawUnsafe(
-    `SELECT "targetType","targetId","discordId","emoji" FROM "NewsReaction" WHERE "targetType" = ? AND "targetId" = ?`,
+    `SELECT "targetType","targetId","discordId","emoji","authorName" FROM "NewsReaction" WHERE "targetType" = ? AND "targetId" = ? ORDER BY "createdAt" ASC`,
     targetType,
     targetId
   );

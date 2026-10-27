@@ -200,18 +200,21 @@ export function shapeGiphyResult(g) {
 }
 
 // Search, or what is trending when `q` is empty. [] when GIPHY is not set up
-// or does not answer: the picker then simply shows nothing to pick.
-export async function searchGifs(q, { fetchImpl = fetch, now = Date.now() } = {}) {
+// or does not answer: the picker then simply shows nothing to pick. `kind`
+// "stickers" searches GIPHY's stickers instead (cut-out pictures on a
+// transparent background), which come from the same media servers.
+export async function searchGifs(q, { fetchImpl = fetch, now = Date.now(), kind = "gifs" } = {}) {
   const key = process.env.GIPHY_API_KEY;
   if (!key) return [];
+  const type = kind === "stickers" ? "stickers" : "gifs";
   const term = String(q ?? "").replace(CONTROL_RE, "").trim().slice(0, 50);
-  const cacheKey = term.toLowerCase();
+  const cacheKey = `${type}:${term.toLowerCase()}`;
   const hit = searchCache.get(cacheKey);
   if (hit && now - hit.at < SEARCH_TTL_MS) return hit.gifs;
 
   const params = new URLSearchParams({ api_key: key, limit: "24", rating: "pg-13", bundle: "messaging_non_clips" });
   if (term) params.set("q", term);
-  const endpoint = `https://api.giphy.com/v1/gifs/${term ? "search" : "trending"}?${params}`;
+  const endpoint = `https://api.giphy.com/v1/${type}/${term ? "search" : "trending"}?${params}`;
   let gifs = [];
   try {
     const res = await fetchImpl(endpoint, { signal: AbortSignal.timeout(6000) });

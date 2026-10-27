@@ -1107,7 +1107,14 @@ export const api = {
     }),
   // One more view of the article, signed in or not; answers { views }.
   viewNewsArticle: (articleId) => request(`/news/article/${encodeURIComponent(articleId)}/view`, { method: "POST" }),
-  searchGifs: (q = "") => request(`/news/gifs${q ? `?q=${encodeURIComponent(q)}` : ""}`, { userAuth: true }),
+  // `kind` "stickers" searches GIPHY's stickers instead of its GIFs.
+  searchGifs: (q = "", kind = "gifs") => {
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    if (kind === "stickers") qs.set("kind", "stickers");
+    const s = qs.toString();
+    return request(`/news/gifs${s ? `?${s}` : ""}`, { userAuth: true });
+  },
   resolveGifLink: (link) => request("/news/gifs/resolve", { method: "POST", body: { link }, userAuth: true }),
   // The newcomer names who brought them in: a code, or the member's name.
   nameInviter: (name) => request("/tokens/invited-by", { method: "POST", body: { name }, userAuth: true }),
