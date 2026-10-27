@@ -62,7 +62,7 @@ import { invalidateTrackStrengthCache } from "../services/trackStrengthService.j
 import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.js";
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTeamLinks, writeTeamLinks, cleanTeamLinks, suggestTeamLinks, linkMap } from "../lib/teamLineage.js";
-import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf, shrinkTrackPhoto } from "../lib/trackInfo.js";
+import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf, shrinkTrackOutline } from "../lib/trackInfo.js";
 import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
@@ -493,7 +493,7 @@ router.get("/storage", async (_req, res, next) => {
       ["teams", "Team logos"],
       ["seasons", "Season images"],
       ["series", "Series logos & promo films"],
-      ["tracks", "Track maps & photos"],
+      ["tracks", "Track maps & outlines"],
       ["social", "Social covers"],
       ["cards", "Card photos"],
     ];
@@ -6456,8 +6456,8 @@ router.put("/tracks/:key/info", async (req, res, next) => {
     if (content.mapImages === undefined) merged.mapImages = stored.mapImages;
     if (content.types === undefined) merged.types = stored.types;
     if (content.corners === undefined) merged.corners = stored.corners;
-    // The track photo has its own upload below and is never typed in here.
-    if (content.photoUrl === undefined) merged.photoUrl = stored.photoUrl;
+    // The outline has its own upload below and is never typed in here.
+    if (content.outlineUrl === undefined) merged.outlineUrl = stored.outlineUrl;
     const saved = await writeTrackInfo(prisma, key, merged);
     // A circuit's types are what the track strengths group by.
     invalidateTrackStrengthCache();
@@ -6505,45 +6505,51 @@ router.post("/tracks/:key/map", upload.single("file"), async (req, res, next) =>
   }
 });
 
-// POST /api/admin/tracks/:key/photo (multipart "file") -> the circuit's track
-// photo for the profiles' Tracks list, a picture of its own beside the map.
-// Shrunk to a small WebP before it is written, one file per circuit.
-router.post("/tracks/:key/photo", upload.single("file"), async (req, res, next) => {
+// POST /api/admin/tracks/:key/outline (multipart "file") -> the circuit's
+// outline, a line drawing on a transparent background for a circuit the site
+// has no outline of its own for (lib/trackInfo.js). Shrunk to a small WebP
+// before it is written, one file per circuit.
+router.post("/tracks/:key/outline", upload.single("file"), async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
     if (!key) return res.status(400).json({ error: "Invalid track key" });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    if (!["image/png", "image/jpeg", "image/webp"].includes(req.file.mimetype))
-      return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
-    let photo;
+    if (!["image/png", "image/webp"].includes(req.file.mimetype))
+      return res.status(400).json({ error: "Use a PNG or WEBP with a transparent background" });
+    let outline;
     try {
-      photo = await shrinkTrackPhoto(req.file.buffer);
+      outline = await shrinkTrackOutline(req.file.buffer);
     } catch {
       return res.status(400).json({ error: "That picture didn't open. Try another one" });
     }
+    if (!outline.transparent)
+      return res.status(400).json({ error: "The background has to be transparent: only the lines of the track, nothing behind them" });
     mkdirSync(TRACKS_DIR, { recursive: true });
-    const filename = `${key}__photo.webp`;
+    const filename = `${key}__outline.webp`;
     const dest = safeUploadPath(TRACKS_DIR, filename);
     if (!dest) return res.status(400).json({ error: "Invalid track key" });
-    writeFileSync(dest, photo.buffer);
-    const photoUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
-    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), photoUrl });
-    invalidateTrackStrengthCache();
-    res.json({ ok: true, photoUrl, content: saved });
+    writeFileSync(dest, outline.buffer);
+    // The first version of this upload was stored under another name.
+    const legacy = safeUploadPath(TRACKS_DIR, `${key}__photo.webp`);
+    if (legacy) rmSync(legacy, { force: true });
+    const outlineUrl = `/api/uploads/tracks/${filename}?v=${Date.now()}`;
+    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), outlineUrl });
+    res.json({ ok: true, outlineUrl, content: saved });
   } catch (e) {
     next(e);
   }
 });
 
-// DELETE /api/admin/tracks/:key/photo -> remove the track photo, file and all.
-router.delete("/tracks/:key/photo", async (req, res, next) => {
+// DELETE /api/admin/tracks/:key/outline -> remove the outline, file and all.
+router.delete("/tracks/:key/outline", async (req, res, next) => {
   try {
     const key = safeTrackKey(req.params.key);
     if (!key) return res.status(400).json({ error: "Invalid track key" });
-    const dest = safeUploadPath(TRACKS_DIR, `${key}__photo.webp`);
-    if (dest) rmSync(dest, { force: true });
-    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), photoUrl: null });
-    invalidateTrackStrengthCache();
+    for (const name of [`${key}__outline.webp`, `${key}__photo.webp`]) {
+      const dest = safeUploadPath(TRACKS_DIR, name);
+      if (dest) rmSync(dest, { force: true });
+    }
+    const saved = await writeTrackInfo(prisma, key, { ...(await readTrackInfo(prisma, key)), outlineUrl: null });
     res.json({ ok: true, content: saved });
   } catch (e) {
     next(e);

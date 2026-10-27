@@ -5,6 +5,7 @@ import { ErrorBox, Notice } from "./ui.jsx";
 import { trackKey, circuitFor } from "../data/circuits.js";
 import { COUNTRIES } from "../data/countries.js";
 import CircuitMap from "./CircuitMap.jsx";
+import { setTrackOutlines, uploadedOutlines } from "../data/trackOutlines.js";
 import Flag from "./Flag.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 
@@ -26,9 +27,10 @@ const toRows = (list) => (list || []).map((c) => ({ turn: c.turn ?? "", name: c.
 // layered on top of the computed track history shown on the upcoming-race panel
 // and the attendance page. The map image has two layers: the shared one every
 // series shows, and one per series for a league that wants its own picture of
-// the circuit on its own pages (backend lib/trackInfo.js). The track photo is a
-// second picture, apart from the map: it shows in the Tracks list on the
-// drivers' profiles, and the server shrinks it on upload.
+// the circuit on its own pages (backend lib/trackInfo.js). The outline is a
+// second picture, apart from the map, for a circuit the site has no outline of
+// its own for: the calendar cards and the profiles' Tracks list draw it in the
+// site's colours, and the server shrinks it on upload.
 export default function AdminTracks() {
   const { data: races } = useApi(useCallback(() => api.races(), []));
   const { seriesList } = useSeries();
@@ -46,7 +48,7 @@ export default function AdminTracks() {
   // one), and which of the two an upload is for: "all" or a series slug.
   const [mapImages, setMapImages] = useState({});
   const [mapScope, setMapScope] = useState("all");
-  const [photoUrl, setPhotoUrl] = useState(null);
+  const [outlineUrl, setOutlineUrl] = useState(null);
   const [country, setCountry] = useState(""); // effective flag code ("" = none)
   const [mapRotation, setMapRotation] = useState(0);
   // What kind of circuit it is (backend lib/trackProfile.js): the admin's
@@ -95,7 +97,7 @@ export default function AdminTracks() {
         setKeepVideos(d.videos || []);
         setMapImageUrl(d.mapImageUrl || null);
         setMapImages(d.mapImages || {});
-        setPhotoUrl(d.photoUrl || null);
+        setOutlineUrl(d.outlineUrl || null);
         setMapRotation(d.mapRotation || 0);
         setTypes(Array.isArray(d.types) ? d.types : null);
         setTypeInfo({ defs: d.typeDefs || [], defaults: d.defaultTypes || [] });
@@ -178,16 +180,17 @@ export default function AdminTracks() {
     }
   }
 
-  async function uploadPhoto(e) {
+  async function uploadOutline(e) {
     const input = e.target;
     const file = input.files?.[0];
     if (!file) return;
     setBusy(true);
     setError(null);
     try {
-      const d = await api.uploadTrackPhoto(key, file);
-      setPhotoUrl(d.photoUrl);
-      setMsg("Track photo uploaded.");
+      const d = await api.uploadTrackOutline(key, file);
+      setOutlineUrl(d.outlineUrl);
+      setTrackOutlines({ ...uploadedOutlines(), [key]: d.outlineUrl });
+      setMsg("Outline uploaded.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -196,12 +199,15 @@ export default function AdminTracks() {
     }
   }
 
-  async function clearPhoto() {
+  async function clearOutline() {
     setBusy(true);
     try {
-      await api.clearTrackPhoto(key);
-      setPhotoUrl(null);
-      setMsg("Track photo removed.");
+      await api.clearTrackOutline(key);
+      setOutlineUrl(null);
+      const rest = { ...uploadedOutlines() };
+      delete rest[key];
+      setTrackOutlines(rest);
+      setMsg("Outline removed.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -461,19 +467,31 @@ export default function AdminTracks() {
           </div>
 
           <div>
-            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Track photo</div>
-            <p className="mb-2 text-sm text-light">
-              A photo of the circuit for the Tracks list on the drivers' profiles. Separate from the map image above.
-              It is made smaller on upload, so any photo works.
-            </p>
-            {photoUrl && (
+            <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Outline</div>
+            {circuitFor(selected) ? (
+              <p className="mb-2 text-sm text-light">
+                This circuit already has an outline built in, the one on the calendar cards and the profiles. Nothing to
+                upload here.
+              </p>
+            ) : (
+              <p className="mb-2 text-sm text-light">
+                This circuit has no outline built in. Upload a drawing of the track, lines only on a transparent
+                background (PNG or WEBP), and it shows on the calendar cards and in the Tracks list on the drivers'
+                profiles, in the site's own colours. Separate from the map image above.
+              </p>
+            )}
+            {outlineUrl && (
               <div className="mb-3 flex flex-wrap items-center gap-3">
-                <img src={photoUrl} alt="Track photo" className="h-24 rounded-lg border border-border object-cover" />
-                <button className="btn-secondary py-1.5 text-sm" onClick={clearPhoto} disabled={busy}>Remove photo</button>
+                <div className="flex h-24 w-32 items-center justify-center rounded-lg border border-border bg-surface2/40 p-2 text-dark">
+                  <CircuitMap track={selected} className="h-full w-full" />
+                </div>
+                <button className="btn-secondary py-1.5 text-sm" onClick={clearOutline} disabled={busy}>Remove outline</button>
               </div>
             )}
-            <input aria-label="Track photo" type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadPhoto} disabled={busy || loadedKey !== key}
-              className="transition block min-w-[16rem] text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
+            {(!circuitFor(selected) || outlineUrl) && (
+              <input aria-label="Outline" type="file" accept="image/png,image/webp" onChange={uploadOutline} disabled={busy || loadedKey !== key}
+                className="transition block min-w-[16rem] text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:font-semibold file:text-onbrand hover:file:bg-primary-dark" />
+            )}
           </div>
 
           <button className="btn-primary" onClick={save} disabled={busy || loadedKey !== key}>

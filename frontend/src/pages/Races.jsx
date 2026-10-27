@@ -21,7 +21,8 @@ import { motionOff } from "../hooks/motion.js";
 import CalendarSubscribe from "../components/CalendarSubscribe.jsx";
 import CircuitMap from "../components/CircuitMap.jsx";
 import Flag from "../components/Flag.jsx";
-import { circuitFor, flagFor } from "../data/circuits.js";
+import { flagFor } from "../data/circuits.js";
+import { hasOutline, useTrackOutlines } from "../data/trackOutlines.js";
 import { useSpecificTitle, prettyTrack } from "../utils/pageTitle.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { signupRaceIds } from "../utils/signupQueue.js";
@@ -329,8 +330,10 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
   const se = kind === "SPECIAL";
   const training = kind === "TRAINING";
   const e = { number: r.number, track: r.track, date: r.date };
-  // Training sessions run on real circuits, so their outline still draws.
-  const circuit = se ? null : circuitFor(r.track);
+  // Training sessions run on real circuits, so their outline still draws. A
+  // circuit the site has no outline for draws the one an admin uploaded.
+  useTrackOutlines();
+  const circuit = !se && hasOutline(r.track);
   const flag = se ? null : flagFor(r.track, r.country);
   const done = !!r.isCompleted;
   // Trainings with imported results open like a round (not scored, but viewable).
@@ -386,7 +389,9 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
         </div>
       )}
 
-      {/* watermark: circuit outline, or a ghost "SE" for special events */}
+      {/* watermark: circuit outline, or a ghost "SE" / "TR" for a special event
+          or a training without one. A round on a circuit with no outline at
+          all shows its flag alone, not a borrowed "SE". */}
       {circuit ? (
         // The outline is drawn in the text's own colour rather than the card's
         // state colour: a green line at 18% over a flag was a suggestion of a
@@ -399,7 +404,7 @@ function RaceCard({ r, isNext, selected, onSelect, index = 0 }) {
         >
           <CircuitMap track={e.track} animate={isNext} className="h-full w-full opacity-40" strokeWidth={2.4} />
         </div>
-      ) : (
+      ) : (se || training) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className={`ghost-numeral select-none text-[7rem] leading-none ${training ? "text-sky-500/10" : "text-ok/10"}`}>
             {training ? "TR" : "SE"}

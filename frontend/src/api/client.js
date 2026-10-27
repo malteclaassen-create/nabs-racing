@@ -609,6 +609,7 @@ export const api = {
   // Admin-stored track flag countries ({ trackKey: "gb", ... }), loaded once at
   // app boot and layered over the static circuit table (circuits.js flagFor).
   trackCountries: () => request(`/tracks/countries`),
+  trackOutlines: () => request(`/tracks/outlines`),
   // A circuit's types and named corners, for any spelling of it (a calendar
   // name or an AC folder id off a telemetry lap). Backend lib/trackProfile.js.
   // The layout (AC's own id) decides whether default corner names apply.
@@ -1584,13 +1585,13 @@ export const api = {
   },
   clearTrackMap: (key, series = null) =>
     request(`/admin/tracks/${key}/map${series ? `?series=${encodeURIComponent(series)}` : ""}`, { method: "DELETE", auth: true }),
-  // The circuit's track photo (the profiles' Tracks list), apart from the map.
-  uploadTrackPhoto: (key, file) => {
+  // The circuit's own outline, for a circuit the site has none of its own for.
+  uploadTrackOutline: (key, file) => {
     const fd = new FormData();
     fd.append("file", file);
-    return request(`/admin/tracks/${key}/photo`, { method: "POST", body: fd, auth: true, form: true });
+    return request(`/admin/tracks/${key}/outline`, { method: "POST", body: fd, auth: true, form: true });
   },
-  clearTrackPhoto: (key) => request(`/admin/tracks/${key}/photo`, { method: "DELETE", auth: true }),
+  clearTrackOutline: (key) => request(`/admin/tracks/${key}/outline`, { method: "DELETE", auth: true }),
 
   // Incident reports. The member's own side: file one, read the threads you are
   // party to, write in them. Everything is scoped to the login server-side.

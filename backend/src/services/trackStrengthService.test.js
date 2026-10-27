@@ -60,14 +60,6 @@ describe("the summary the profile draws", () => {
     expect(out.overall).toBe(53);
   });
 
-  it("hands each circuit the picture an admin uploaded for it, if any", () => {
-    const out = summariseStrengths([e("Spa", 0.9, 2), e("Monaco", 0.2, 9)], types, new Map([["Spa", "/uploads/tracks/spa.webp"]]));
-    expect(out.tracks.map((t) => [t.key, t.image])).toEqual([
-      ["Spa", "/uploads/tracks/spa.webp"],
-      ["Monaco", null],
-    ]);
-  });
-
   it("names the strongest and weakest kind only when they really differ", () => {
     const clear = summariseStrengths([e("Spa", 0.9, 2), e("Spa", 0.7, 4), e("Monaco", 0.2, 9), e("Monaco", 0.3, 8)], types);
     expect(["highspeed", "flowing"]).toContain(clear.strongest);

@@ -12,10 +12,13 @@
 // URL identity and never changes (lib/series.js), which is what makes it a
 // safe key here.
 //
-// The track photo (`photoUrl`) is a second, separate picture: a photo of the
-// circuit for the Tracks list on a driver's profile, where the map would be a
-// smudge. It is shrunk on upload (shrinkTrackPhoto) and one file per circuit,
-// so a new photo replaces the old one on disk.
+// The outline (`outlineUrl`) is a second, separate picture: a line drawing of
+// the circuit on a transparent background, for a circuit the site has no
+// outline of its own for (frontend data/circuits.js). Wherever the site draws
+// outlines (the race calendar cards, the Tracks list on the profiles) it then
+// draws this one, in its own colours (components/CircuitMap.jsx). It is shrunk
+// on upload (shrinkTrackOutline), one file per circuit, so a new upload
+// replaces the old one on disk.
 // ---------------------------------------------------------------------------
 import { join } from "path";
 import { readFileSync } from "fs";
@@ -39,7 +42,7 @@ const cap = (s, n) => (typeof s === "string" ? s.slice(0, n) : "");
 // `types` and `corners` are the circuit's kind and its corner names
 // (lib/trackProfile.js); both stay null until an admin sets them, which is
 // what lets the circuit's defaults apply.
-const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, photoUrl: null, videos: [], types: null, corners: null });
+const empty = () => ({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, outlineUrl: null, videos: [], types: null, corners: null });
 
 // A series slug as lib/series.js makes them: lowercase letters, digits and
 // hyphens. Anything else in the map is not a series and is dropped.
@@ -62,9 +65,9 @@ export function sanitizeTrackInfo(input) {
       out.mapImages[slug] = url.trim().slice(0, 300);
     }
   }
-  if (input && typeof input.photoUrl === "string" && input.photoUrl.trim()) {
-    out.photoUrl = input.photoUrl.trim().slice(0, 300);
-  }
+  // `photoUrl` is what the first version of this upload was called.
+  const outline = input?.outlineUrl ?? input?.photoUrl;
+  if (typeof outline === "string" && outline.trim()) out.outlineUrl = outline.trim().slice(0, 300);
   // The pixel size of each uploaded picture, keyed by its path (the URL
   // without the cache-busting query), so the page can hold the picture's
   // height open before a byte of it has arrived (mapImageSizeFor).
@@ -180,20 +183,44 @@ export async function writeTrackInfo(prisma, key, value) {
   return clean;
 }
 
-// The longest side a track photo is kept at. The profile shows it as a small
-// tile, so this is already generous, and it keeps a phone photo of several
-// megabytes down to a few dozen kilobytes on the server.
-export const TRACK_PHOTO_MAX = 960;
+// The longest side an outline is kept at. A calendar card is the largest place
+// it shows, so this is generous, and it keeps an upload of several megabytes
+// down to a few KB on the server.
+export const TRACK_OUTLINE_MAX = 960;
 
-// A track photo as it is stored: WebP, no side longer than TRACK_PHOTO_MAX.
-// Throws when the picture does not decode.
-export async function shrinkTrackPhoto(buffer, max = TRACK_PHOTO_MAX) {
+// An outline as it is stored: WebP, no side longer than TRACK_OUTLINE_MAX.
+// `transparent` says whether any of it is see-through: the site paints the
+// drawing's shape in its own colour, so a picture without a transparent
+// background would come out as a solid block. Throws when it does not decode.
+export async function shrinkTrackOutline(buffer, max = TRACK_OUTLINE_MAX) {
   const { loadImage, createCanvas } = await import("@napi-rs/canvas");
   const img = await loadImage(buffer);
   const scale = Math.min(1, max / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
   const h = Math.max(1, Math.round(img.height * scale));
   const canvas = createCanvas(w, h);
-  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-  return { buffer: await canvas.encode("webp", 80), width: w, height: h };
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  const px = ctx.getImageData(0, 0, w, h).data;
+  let clear = 0;
+  for (let i = 3; i < px.length; i += 4) if (px[i] < 128) clear += 1;
+  // A few see-through pixels at a ragged edge are not a transparent background.
+  const transparent = clear > (w * h) / 20;
+  return { buffer: await canvas.encode("webp", 80), width: w, height: h, transparent };
+}
+
+// Every uploaded outline, { <trackKey>: url }: the site loads this once and
+// draws these where it has no outline of its own.
+export async function readTrackOutlines(prisma) {
+  const out = {};
+  const rows = await prisma.setting.findMany({ where: { key: { startsWith: KEY_PREFIX } } });
+  for (const row of rows) {
+    try {
+      const url = sanitizeTrackInfo(JSON.parse(row.value)).outlineUrl;
+      if (url) out[row.key.slice(KEY_PREFIX.length)] = url;
+    } catch {
+      /* a broken row has no outline */
+    }
+  }
+  return out;
 }

@@ -14,7 +14,7 @@ import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
 import { getPersonGroups, getNameOverrides, getLinkedDriverIds } from "../lib/persons.js";
 import { telemetryForRaces } from "../lib/telemetryRead.js";
-import { readTrackInfo, mapImageFor, ensureMapImageSize } from "../lib/trackInfo.js";
+import { readTrackInfo, mapImageFor, ensureMapImageSize, readTrackOutlines } from "../lib/trackInfo.js";
 import { readTrackCountries, staticCountryFor } from "../lib/raceCountries.js";
 import { readPoleHolders } from "../lib/raceHonours.js";
 import { TRACK_TYPES, effectiveTypes, effectiveCorners } from "../lib/trackProfile.js";
@@ -27,6 +27,17 @@ const router = Router();
 router.get("/countries", async (_req, res, next) => {
   try {
     res.json(await readTrackCountries(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/tracks/outlines -> { <trackKey>: url } — every uploaded outline
+// (Admin > Tracks), for the circuits the site has no outline of its own for.
+// Loaded once by the frontend, like the countries above.
+router.get("/outlines", async (_req, res, next) => {
+  try {
+    res.json(await readTrackOutlines(prisma));
   } catch (e) {
     next(e);
   }

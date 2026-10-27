@@ -5,6 +5,7 @@ import { useAnimatedDetails } from "./hooks/motion.js";
 import { api } from "./api/client.js";
 import { useShareVersion } from "./hooks/useShareVersion.js";
 import { setTrackCountryOverrides } from "./data/circuits.js";
+import { setTrackOutlines } from "./data/trackOutlines.js";
 import { SeasonProvider, useSeason } from "./context/SeasonContext.jsx";
 import { SeriesProvider, useSeries, useSeriesPath } from "./context/SeriesContext.jsx";
 import NavBar from "./components/NavBar.jsx";
@@ -571,6 +572,8 @@ export default function App() {
   // so edited (or circuit-less) tracks show the right flag site-wide.
   useEffect(() => {
     api.trackCountries().then(setTrackCountryOverrides).catch(() => {});
+    // ...and the outlines uploaded for circuits the site has none of its own for.
+    api.trackOutlines().then(setTrackOutlines).catch(() => {});
   }, []);
   return (
     <SeriesProvider>
