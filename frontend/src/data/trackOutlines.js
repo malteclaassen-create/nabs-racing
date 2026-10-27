@@ -4,7 +4,8 @@ import { circuitFor, trackKey } from "./circuits.js";
 // ---------------------------------------------------------------------------
 // Outlines an admin uploaded (Admin > Tracks > Outline) for the circuits the
 // site has no outline of its own for: a line drawing on a transparent
-// background, by track key (backend lib/trackInfo.js). App.jsx loads them once
+// background, by track key, as { url, line, w, h }: the picture, its size and
+// how thick its line is in its own pixels (backend lib/trackInfo.js). App.jsx loads them once
 // at boot (GET /api/tracks/outlines); CircuitMap draws one wherever it would
 // otherwise draw nothing. A store with subscribers rather than a plain map, so
 // a card that rendered before the answer arrived picks the outline up after.
@@ -23,12 +24,12 @@ function subscribe(fn) {
 }
 const snapshot = () => OUTLINES;
 
-// Every uploaded outline as loaded, { <trackKey>: url }.
+// Every uploaded outline as loaded, { <trackKey>: { url, line, w, h } }.
 export function uploadedOutlines() {
   return OUTLINES;
 }
 
-// The uploaded outline of a track, or null.
+// The uploaded outline of a track, { url, line, w, h }, or null.
 export function uploadedOutlineFor(track) {
   return (track && OUTLINES[trackKey(track)]) || null;
 }

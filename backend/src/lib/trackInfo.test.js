@@ -20,7 +20,7 @@ describe("per-series track map images", () => {
   });
 
   it("an unsaved track has no images at all", () => {
-    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, outlineUrl: null, videos: [], types: null, corners: null });
+    expect(sanitizeTrackInfo(null)).toEqual({ facts: [], mapImageUrl: null, mapImages: {}, mapImageSizes: {}, mapRotation: 0, outlineUrl: null, outlineLine: null, outlineSize: null, videos: [], types: null, corners: null });
   });
 
   it("a series sees its own image first, then the shared one, then nothing", () => {
@@ -72,6 +72,26 @@ describe("track map image sizes", () => {
 });
 
 describe("the uploaded outline", () => {
+  it("measures how thick its line is", async () => {
+    const { createCanvas } = await import("@napi-rs/canvas");
+    for (const width of [3, 8, 16]) {
+      const c = createCanvas(900, 600);
+      const g = c.getContext("2d");
+      g.lineWidth = width;
+      g.strokeRect(100, 100, 700, 400);
+      const { line } = await shrinkTrackOutline(await c.encode("png"));
+      expect(line).toBeGreaterThan(width * 0.75);
+      expect(line).toBeLessThan(width * 1.35);
+    }
+  });
+
+  it("keeps the measured line and size only together with the picture", () => {
+    const info = sanitizeTrackInfo({ outlineUrl: "/x.webp", outlineLine: 2.345, outlineSize: { w: 400, h: 300 } });
+    expect([info.outlineLine, info.outlineSize]).toEqual([2.35, { w: 400, h: 300 }]);
+    expect(sanitizeTrackInfo({ outlineLine: 3, outlineSize: { w: 4, h: 3 } }).outlineLine).toBe(null);
+    expect(sanitizeTrackInfo({ outlineUrl: "/x.webp", outlineLine: 3 }).outlineLine).toBe(null);
+  });
+
   it("is kept apart from the map image, and reads the first version's name too", () => {
     const info = sanitizeTrackInfo({ mapImageUrl: "/api/uploads/tracks/spa.png", outlineUrl: " /api/uploads/tracks/spa__outline.webp?v=1 " });
     expect(info.mapImageUrl).toBe("/api/uploads/tracks/spa.png");
@@ -89,7 +109,10 @@ describe("the uploaded outline", () => {
     g.lineWidth = 20;
     g.strokeRect(300, 300, 2400, 1400);
     const out = await shrinkTrackOutline(await drawing.encode("png"));
-    expect([out.width, out.height]).toEqual([TRACK_OUTLINE_MAX, 640]);
+    // Shrunk to 960 x 640, then cropped to the drawing (a 768 x 448 frame at
+    // that size) with a margin of 3% of its longest side plus two pixels.
+    expect(out.width).toBeLessThan(TRACK_OUTLINE_MAX);
+    expect([out.width, out.height]).toEqual([768 + 2 * 28 + 6, 448 + 2 * 28 + 6].map((n) => expect.closeTo(n, -1)));
     expect(out.buffer.subarray(8, 12).toString()).toBe("WEBP");
     expect(out.transparent).toBe(true);
 
