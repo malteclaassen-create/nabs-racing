@@ -11,6 +11,12 @@
 //                                                  { comments, more, count, gifSearch }
 //   POST   /api/news/comments/:articleId           { body, gif: { url, width, height }, replyTo }
 //   DELETE /api/news/comments/:articleId/:id       the writer, or the news desk (a thread goes with its replies)
+//
+// Reactions and views (lib/newsReactions.js):
+//   POST   /api/news/reactions/:articleId          { target: "article"|"comment", id, emoji } toggles, members
+//   POST   /api/news/article/:id/view              one more view, signed in or not, answers { views }
+// The comments answer carries the reactions: `articleReactions`, each
+// comment's `reactions`, and `reactionSet`, the emoji on offer.
 //   GET    /api/news/gifs?q=                       GIPHY search (trending without q), members
 //   POST   /api/news/gifs/resolve                  { link } -> { gif } for a pasted Tenor/GIPHY link
 //
@@ -78,6 +84,17 @@ import {
   deleteComment,
 } from "../lib/newsComments.js";
 import {
+  REACTIONS,
+  readReaction,
+  toggleReaction,
+  summarise,
+  articleReactionRows,
+  targetReactions,
+  reactionRateCheck,
+  recordView,
+  countViews,
+} from "../lib/newsReactions.js";
+import {
   AUTO_REPORT_MODES,
   autoReportMode,
   setAutoReportMode,
@@ -141,7 +158,7 @@ router.get("/article/:slug", async (req, res, next) => {
     const row = await findArticle(prisma, { slug: String(req.params.slug).slice(0, 120) });
     if (!row || row.status !== "PUBLISHED") return res.status(404).json({ error: "Article not found" });
     res.json({
-      article: shapeArticle(row),
+      article: { ...shapeArticle(row), views: await countViews(prisma, row.id) },
       race: await raceLink(row.raceId),
       more: await latestPublishedExcept(prisma, row.id, 3),
     });
@@ -180,8 +197,15 @@ router.get("/comments/:articleId", optionalUser, async (req, res, next) => {
     if (!article) return res.status(404).json({ error: "Article not found" });
     const viewer = await commentViewer(req);
     const { rows, replies, more } = await listComments(prisma, article.id, { before: req.query.before });
+    const reactions = summarise(await articleReactionRows(prisma, article.id), viewer.discordId);
+    const withReactions = (c) => ({ ...c, reactions: reactions.comment(c.id) });
     res.json({
-      comments: threadComments(rows, replies, viewer),
+      comments: threadComments(rows, replies, viewer).map((c) => ({
+        ...withReactions(c),
+        replies: c.replies.map(withReactions),
+      })),
+      articleReactions: reactions.article(article.id),
+      reactionSet: REACTIONS,
       more,
       count: await countComments(prisma, article.id),
       gifSearch: gifSearchEnabled(),
@@ -227,7 +251,7 @@ router.post("/comments/:articleId", requireUser, async (req, res, next) => {
         dedupeKey: `news-reply:${row.id}`,
       }).catch(() => {});
     }
-    res.json({ comment: { ...shapeComment(row, { discordId, moderator: false }), replies: [] } });
+    res.json({ comment: { ...shapeComment(row, { discordId, moderator: false }), replies: [], reactions: [] } });
   } catch (e) {
     next(e);
   }
@@ -247,6 +271,42 @@ router.delete("/comments/:articleId/:id", optionalUser, async (req, res, next) =
     }
     const removed = await deleteComment(prisma, row.id);
     res.json({ ok: true, removed });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// A reaction on the article or one of its comments, on or off again.
+router.post("/reactions/:articleId", requireUser, async (req, res, next) => {
+  try {
+    const article = await publishedArticle(req.params.articleId);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    const r = readReaction(req.body);
+    if (r.error) return res.status(400).json({ error: r.error });
+    if (r.targetType === "article") r.targetId = article.id;
+    else {
+      const comment = isCommentId(r.targetId) ? await findComment(prisma, r.targetId) : null;
+      if (!comment || comment.articleId !== article.id)
+        return res.status(404).json({ error: "That comment is gone. Refresh to see the latest" });
+    }
+    const discordId = String(req.user.discordId || "");
+    if (!discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    const slow = reactionRateCheck(discordId);
+    if (slow) return res.status(429).json({ error: slow });
+    await toggleReaction(prisma, { articleId: article.id, ...r, discordId });
+    res.json({ reactions: await targetReactions(prisma, r, discordId) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Every opening of an article counts, signed in or not, and the answer is the
+// total so far.
+router.post("/article/:id/view", async (req, res, next) => {
+  try {
+    const article = await publishedArticle(req.params.id);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    res.json({ views: await recordView(prisma, article.id, { userAgent: req.headers["user-agent"] }) });
   } catch (e) {
     next(e);
   }

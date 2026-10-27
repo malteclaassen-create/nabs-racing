@@ -5,13 +5,14 @@ import { useAuth } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useAsk } from "./overlay.jsx";
 import { DriverAvatar, ErrorBox } from "./ui.jsx";
+import NewsReactions from "./NewsReactions.jsx";
 import { commentAge, gifBox, looksLikeGifLink } from "./newsComments.mjs";
 
 // ---------------------------------------------------------------------------
 // The comment section under an article (backend lib/newsComments.js).
 //
 // Anybody can read; a signed-in member can write some text, add a GIF, or
-// both, and reply to a comment. Replies hang one level deep under the comment
+// both, react with an emoji to the article or a comment, and reply to a comment. Replies hang one level deep under the comment
 // that opened the thread; a reply to a reply joins that thread and says whom
 // it answers. GIFs come from GIPHY's search in the picker (when the league has
 // set up a key) or from any Tenor or GIPHY link, pasted into the picker or
@@ -346,7 +347,9 @@ function SignInPrompt() {
   );
 }
 
-function Comment({ comment, onDelete, onReply, highlight, small = false, children = null }) {
+// `react` is { set, can, toggle(comment, emoji) }: the emoji on offer, whether
+// the viewer may react, and what a press does.
+function Comment({ comment, onDelete, onReply, react, highlight, small = false, children = null }) {
   const name = comment.author?.name || "Member";
   const nameEl = comment.author?.driverId ? (
     <Link to={`/drivers/${comment.author.driverId}`} className="font-bold text-dark hover:underline">
@@ -398,15 +401,24 @@ function Comment({ comment, onDelete, onReply, highlight, small = false, childre
           {comment.gif && (
             <GifImage gif={comment.gif} maxW={small ? 240 : 320} maxH={small ? 180 : 240} className="mt-2" />
           )}
-          {onReply && (
-            <button
-              type="button"
-              onClick={() => onReply(comment)}
-              className="mt-1.5 text-[11px] font-bold uppercase tracking-wide text-light transition hover:text-dark"
-            >
-              Reply
-            </button>
-          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <NewsReactions
+              size="sm"
+              reactions={comment.reactions}
+              reactionSet={react.set}
+              canReact={react.can}
+              onToggle={(emoji) => react.toggle(comment, emoji)}
+            />
+            {onReply && (
+              <button
+                type="button"
+                onClick={() => onReply(comment)}
+                className="text-[11px] font-bold uppercase tracking-wide text-light transition hover:text-dark"
+              >
+                Reply
+              </button>
+            )}
+          </div>
         </div>
         {children}
       </div>
@@ -529,8 +541,37 @@ export default function NewsComments({ articleId }) {
 
   const count = data?.count ?? 0;
 
+  // A reaction on the article (comment null) or a comment, on or off. The
+  // answer is that target's reactions as they now stand.
+  async function toggleReaction(comment, emoji) {
+    try {
+      const d = await api.reactNews(articleId, comment ? "comment" : "article", comment?.id || articleId, emoji);
+      setData((cur) => {
+        if (!comment) return { ...cur, articleReactions: d.reactions };
+        const put = (c) => (c.id === comment.id ? { ...c, reactions: d.reactions } : c);
+        return {
+          ...cur,
+          comments: cur.comments.map((c) => ({ ...put(c), replies: (c.replies || []).map(put) })),
+        };
+      });
+    } catch (e) {
+      await ask({ title: "That didn't work", body: e.message || "Try again.", alert: true });
+    }
+  }
+  const react = { set: data?.reactionSet || [], can: isLoggedIn, toggle: toggleReaction };
+
   return (
     <section id="comments" className="mt-12 scroll-mt-24 border-t border-border pt-6">
+      {data && (isLoggedIn || data.articleReactions?.length > 0) && (
+        <div className="mb-8">
+          <NewsReactions
+            reactions={data.articleReactions}
+            reactionSet={react.set}
+            canReact={isLoggedIn}
+            onToggle={(emoji) => toggleReaction(null, emoji)}
+          />
+        </div>
+      )}
       <h2 className="flex items-baseline gap-2 font-display text-xl font-extrabold tracking-tight text-dark">
         Comments
         {count > 0 && <span className="font-mono text-sm font-bold text-light">{count}</span>}
@@ -581,6 +622,7 @@ export default function NewsComments({ articleId }) {
               comment={c}
               onDelete={remove}
               onReply={isLoggedIn ? (target) => startReply(target, c) : null}
+              react={react}
               highlight={highlight === c.id}
             >
               {(c.replies?.length > 0 || replying?.threadId === c.id) && (
@@ -592,6 +634,7 @@ export default function NewsComments({ articleId }) {
                       small
                       onDelete={remove}
                       onReply={isLoggedIn ? (target) => startReply(target, c) : null}
+                      react={react}
                       highlight={highlight === r.id}
                     />
                   ))}

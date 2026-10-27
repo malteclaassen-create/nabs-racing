@@ -374,8 +374,13 @@ export async function createComment(prisma, articleId, comment, author, placemen
   return findComment(prisma, id);
 }
 
-// A comment, and the replies under it when it opened a thread. Answers how
-// many went.
+// A comment, and the replies under it when it opened a thread, with their
+// reactions (lib/newsReactions.js). Answers how many comments went.
 export async function deleteComment(prisma, id) {
+  await prisma.$executeRawUnsafe(
+    `DELETE FROM "NewsReaction" WHERE "targetType" = 'comment' AND "targetId" IN (SELECT "id" FROM "NewsComment" WHERE "id" = ? OR "parentId" = ?)`,
+    id,
+    id
+  );
   return Number(await prisma.$executeRawUnsafe(`DELETE FROM "NewsComment" WHERE "id" = ? OR "parentId" = ?`, id, id));
 }

@@ -13,6 +13,7 @@ import { adoptBareIngestKey } from "./telemetryKeys.js";
 import { adoptRootLaps } from "./telemetryLaps.js";
 import { ensureNewsTable } from "./news.js";
 import { ensureNewsCommentTable } from "./newsComments.js";
+import { ensureNewsReactionTables } from "./newsReactions.js";
 
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
@@ -897,6 +898,8 @@ export async function ensureAppSchema(prisma) {
   await ensureNewsTable(prisma);
   // ...and the comments under them (lib/newsComments.js, migration news_comments).
   await ensureNewsCommentTable(prisma);
+  // ...the reactions on both, and who has seen an article (lib/newsReactions.js).
+  await ensureNewsReactionTables(prisma);
 
   await migrateLiveLinksToSeries(prisma);
   await resetReferralsOnce(prisma);
