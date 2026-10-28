@@ -1711,13 +1711,17 @@ async function namesFor(prisma, discordIds) {
 }
 
 // Who has earned the most, and who is most around on Discord. Spending is
-// left out on purpose: buying things should not push you down a list.
+// left out on purpose: buying things should not push you down a list. The
+// league office's own bookings count both ways though, because a deduction
+// there takes back tokens that were never really earned (the joke +100,000
+// and its reversal stayed on the board otherwise).
 export async function leaderboard(prisma, limit = 10, meId = null) {
   const earned = await prisma
     .$queryRawUnsafe(
       `SELECT "discordId", SUM("delta") AS "earned"
-         FROM "TokenLedger" WHERE "delta" > 0 AND "rule" <> 'refund'
-        GROUP BY "discordId" ORDER BY "earned" DESC, MIN("createdAt") ASC LIMIT ?`,
+         FROM "TokenLedger" WHERE ("delta" > 0 AND "rule" <> 'refund') OR "rule" = 'admin'
+        GROUP BY "discordId" HAVING SUM("delta") > 0
+        ORDER BY "earned" DESC, MIN("createdAt") ASC LIMIT ?`,
       limit
     )
     .catch(() => []);
