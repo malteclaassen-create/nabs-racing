@@ -268,11 +268,13 @@ function WidgetTile({ engine, pass, widget, family, size, zoom, lock }) {
       >
         <div ref={host} />
       </div>
+      {/* These two stand in for the widget itself, so they keep iOS's own 22px
+          widget corner (widgetRenderer.css), not the site's tighter scale. */}
       {status === "busy" && !drawn && (
-        <div className="absolute inset-0 animate-pulse rounded-3xl bg-surface2" aria-hidden="true" />
+        <div className="absolute inset-0 animate-pulse rounded-[22px] bg-surface2" aria-hidden="true" />
       )}
       {status === "error" && (
-        <div className="absolute inset-0 flex flex-col justify-center gap-1 overflow-hidden rounded-3xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">
+        <div className="absolute inset-0 flex flex-col justify-center gap-1 overflow-hidden rounded-[22px] border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">
           <b>Could not draw this one</b>
           <span className="line-clamp-3 break-words">{error}</span>
         </div>
