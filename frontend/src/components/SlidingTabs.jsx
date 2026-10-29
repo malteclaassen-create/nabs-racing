@@ -104,9 +104,11 @@ export default function SlidingTabs({
 }
 
 // NavBar variant: measures the element marked `.is-active` inside `ref` and
-// returns the pill box, re-measured on `deps` change and on resize. The caller
-// renders the pill itself (its look differs from the segmented controls).
-export function useSlidingHighlight(ref, deps) {
+// returns its box, re-measured on `deps` change and on resize. The caller
+// renders the highlight itself (its look differs from the segmented controls).
+// `trimX` leaves the item's side padding out of the box, so it is as wide as
+// the label: the desktop nav underlines the words, not the hit area.
+export function useSlidingHighlight(ref, deps, { trimX = false } = {}) {
   const [pill, setPill] = useState(null);
   useLayoutEffect(() => {
     const wrap = ref.current;
@@ -121,7 +123,15 @@ export function useSlidingHighlight(ref, deps) {
       // wrapper (the Standings flyout does), which would skew offset* values.
       const wr = wrap.getBoundingClientRect();
       const er = el.getBoundingClientRect();
-      const next = { left: er.left - wr.left, top: er.top - wr.top, width: er.width, height: er.height };
+      const cs = trimX ? getComputedStyle(el) : null;
+      const padL = cs ? parseFloat(cs.paddingLeft) || 0 : 0;
+      const padR = cs ? parseFloat(cs.paddingRight) || 0 : 0;
+      const next = {
+        left: er.left - wr.left + padL,
+        top: er.top - wr.top,
+        width: Math.max(0, er.width - padL - padR),
+        height: er.height,
+      };
       // Same box, same object: this runs on every resize of <body> (each list
       // or picture that lands while a page loads), and a fresh object each
       // time re-rendered the whole NavBar for nothing — the hidden desktop

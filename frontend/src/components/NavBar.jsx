@@ -360,12 +360,14 @@ export function eventNavLinks(p, race, phase, signedUp = false) {
   return [home, entry, ready, { ...live, disabled: true, hint: day }];
 }
 
-// Desktop variant: the active page's highlight is ONE pill that GLIDES between
-// the items (see the sliding span in the desktop nav), so the item itself only
-// switches its text colour and carries the `is-active` marker the pill follows.
+// Desktop variant: the active page is marked by ONE pink line under its label
+// that GLIDES between the items (NavGlideLine), so the item itself only
+// switches its text colour and carries the `is-active` marker the line follows.
+// No box behind any item, hovered or not: the line is the only mark, the way a
+// broadcast site's menu does it.
 const desktopLinkClass = ({ isActive }) =>
   `relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition xl:px-3 xl:text-sm ${
-    isActive ? "is-active text-dark" : "text-medium hover:bg-surface2"
+    isActive ? "is-active text-dark" : "text-medium hover:text-dark"
   }`;
 
 // The pages under "Standings", in menu order, for the desktop flyout and the
@@ -812,7 +814,7 @@ function StandingsNav({ seriesPath }) {
         aria-expanded={open}
         data-tour="nav-standings"
         className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-2 text-[13px] font-semibold transition xl:px-3 xl:text-sm ${
-          active ? "is-active text-dark" : "text-medium hover:bg-surface2"
+          active ? "is-active text-dark" : "text-medium hover:text-dark"
         }`}
       >
         Standings
@@ -890,13 +892,23 @@ function StandingsNav({ seriesPath }) {
   );
 }
 
-// The desktop nav's active-page pill. It glides by transform alone: moving AND
-// resizing are a translate plus a scale from the old box to the new one, which
-// the browser runs off the main thread. Animating `width` instead needed the
-// page to lay out every frame, and a page that is busy building itself (Races,
-// with its result table) froze the size: the pill slid over at the old width
-// and only snapped small at the end.
-function NavGlidePill({ box }) {
+// The active page's line under the desktop nav, in px. It sits on the item's
+// bottom edge, inside its padding, a few px under the label.
+const NAV_LINE = 3;
+
+// The desktop nav's active-page mark: a solid line in NABS pink under the
+// label, as wide as the words (the box comes in with the side padding trimmed
+// off). It used to be a tinted box with a ring round the whole item. The colour
+// is `accent`, not `brand`: the same pink on the dark theme, and a deeper one
+// on the light theme, where the pale brand pink all but vanishes as a 3px line
+// on a pale bar. A series with a colour of its own gets its own line.
+//
+// It glides by transform alone: moving AND resizing are a translate plus a
+// scale from the old box to the new one, which the browser runs off the main
+// thread. Animating `width` instead needed the page to lay out every frame, and
+// a page that is busy building itself (Races, with its result table) froze the
+// size: the mark slid over at the old width and only snapped small at the end.
+function NavGlideLine({ box }) {
   const ref = useRef(null);
   const last = useRef(null);
   useLayoutEffect(() => {
@@ -905,25 +917,25 @@ function NavGlidePill({ box }) {
     const prev = last.current;
     last.current = box;
     el.style.width = `${box.width}px`;
-    el.style.height = `${box.height}px`;
-    const to = `translate(${box.left}px, ${box.top}px)`;
-    if (!prev || !box.width || !box.height) {
+    const at = (b) => `translate(${b.left}px, ${b.top + b.height - NAV_LINE}px)`;
+    if (!prev || !box.width) {
       el.style.transition = "none";
-      el.style.transform = to;
+      el.style.transform = at(box);
       return;
     }
-    // Start where it was, at its old size (the new box scaled), then let go.
+    // Start where it was, at its old width (the new line scaled), then let go.
     el.style.transition = "none";
-    el.style.transform = `translate(${prev.left}px, ${prev.top}px) scale(${prev.width / box.width}, ${prev.height / box.height})`;
+    el.style.transform = `${at(prev)} scale(${prev.width / box.width}, 1)`;
     void el.offsetWidth;
     el.style.transition = "";
-    el.style.transform = to;
+    el.style.transform = at(box);
   }, [box]);
   return (
     <span
       ref={ref}
       aria-hidden
-      className="nav-glide absolute left-0 top-0 will-change-transform rounded-lg bg-brand/20 ring-1 ring-inset ring-brand/50"
+      style={{ height: NAV_LINE }}
+      className="nav-glide pointer-events-none absolute left-0 top-0 will-change-transform rounded-full bg-accent"
     />
   );
 }
@@ -1076,9 +1088,10 @@ export default function NavBar() {
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
   // edge with the "Live" nav item.
   const liveRef = useRef(null);
-  // The gliding active-page pill of the desktop nav (follows `.is-active`).
+  // The gliding active-page line of the desktop nav (follows `.is-active`),
+  // measured without the items' side padding so it is as wide as the label.
   const desktopNavRef = useRef(null);
-  const navPill = useSlidingHighlight(desktopNavRef, [location.pathname]);
+  const navLine = useSlidingHighlight(desktopNavRef, [location.pathname], { trimX: true });
 
   // Close the mobile menu whenever the route changes — animated, like a tap on
   // the burger. `open` is read from the render where the path changed, which is
@@ -1219,11 +1232,11 @@ export default function NavBar() {
           )}
         </div>
 
-        {/* Desktop nav — the active page's pill highlight GLIDES between the
-            items instead of jumping (one absolutely-positioned pill follows
-            whichever item carries `.is-active`). */}
+        {/* Desktop nav — the pink line under the active page GLIDES between
+            the items instead of jumping (one absolutely-positioned line
+            follows whichever item carries `.is-active`). */}
         <div ref={desktopNavRef} className="relative hidden shrink-0 items-center gap-0.5 lg:flex xl:gap-1">
-          {navPill && <NavGlidePill box={navPill} />}
+          {navLine && <NavGlideLine box={navLine} />}
           {links.map((l) =>
             l.standings ? (
               <StandingsNav key="standings" seriesPath={seriesPath} />

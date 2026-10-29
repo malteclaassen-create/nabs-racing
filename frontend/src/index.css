@@ -2156,8 +2156,8 @@ html.update-reveal.update-reveal-go body::after {
   transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1), width 440ms cubic-bezier(0.34, 1.36, 0.5, 1),
     height 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
 }
-/* The desktop nav's pill: same spring, transform only (NavGlidePill moves and
-   resizes it with a translate and a scale from its top-left corner). */
+/* The desktop nav's active-page line: same spring, transform only (NavGlideLine
+   moves and resizes it with a translate and a scale from its left end). */
 .nav-glide {
   transform-origin: 0 0;
   transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
