@@ -18,7 +18,7 @@
   --profile-surface: radial-gradient(ellipse at 0 0, #58457477, transparent 40%), radial-gradient(ellipse at 100% 28%, #28737855, transparent 50%), #0d121d;
   border-color: #8889bb;
 }
-.profile-appearance[data-theme="spectrum"] .card { background: linear-gradient(130deg, #283042, #151e2d 70%); border-radius: 18px; }
+.profile-appearance[data-theme="spectrum"] .card { background: linear-gradient(130deg, #283042, #151e2d 70%); border-radius: var(--r-3xl); }
 .profile-appearance[data-theme="carbon"], :root[data-profile-theme="carbon"] {
   --c-card: #1b1d20; --c-surface2: #121416; --c-border: #43474b; --c-link: 205 215 224;
   --profile-surface: repeating-linear-gradient(125deg, #101213 0 2px, #191c1e 2px 4px);
@@ -58,7 +58,7 @@
 .profile-appearance[data-stats="metal"] .profile-stats { border-radius: 3px; border: 1px solid #a6b2c1; }
 .profile-appearance[data-stats="metal"] .profile-stats > div { --c-text: #152435; --c-text3: #405369; --c-border: #939fab; background: repeating-linear-gradient(0deg,#d2d9df 0 1px,#c5cdd6 1px 3px); box-shadow: inset 0 1px #fff9; }
 
-.profile-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 208px; margin-bottom: 24px; display: flex; align-items: flex-end; padding: 28px; background: #172334; color: #fff; border-radius: 10px; }
+.profile-banner { position: relative; isolation: isolate; overflow: hidden; min-height: 208px; margin-bottom: 24px; display: flex; align-items: flex-end; padding: 28px; background: #172334; color: #fff; border-radius: var(--r-xl); }
 .profile-banner-identity { position: relative; z-index: 1; display: flex; align-items: center; gap: 20px; min-width: 0; }
 .profile-banner-identity > div { min-width: 0; }
 .profile-banner-identity strong { display: block; font-size: clamp(20px, 3vw, 34px); font-weight: 900; line-height: 1.1; overflow-wrap: anywhere; letter-spacing: -.04em; text-shadow: 0 2px 15px #0008; }
@@ -140,11 +140,11 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 104 211 167; --c-bad: 252 142 148; --c-warn: 240 205 125;
   --profile-surface: color-mix(in srgb, var(--profile-team) 10%, #0b0e14);
 }
-.profile-appearance[data-theme="team"] .card { border-radius: 12px; border-top: 2px solid var(--profile-team); }
+.profile-appearance[data-theme="team"] .card { border-radius: var(--r-xl); border-top: 2px solid var(--profile-team); }
 .profile-appearance[data-theme="graphite"] .card { border-radius: 4px; }
-.profile-appearance[data-theme="forest"] .card { border-radius: 10px; border-top: 2px solid #82936a; }
-.profile-appearance[data-theme="midnight"] .card { border-radius: 12px; }
-.profile-appearance[data-theme="porcelain"] .card { border-radius: 6px; box-shadow: 0 2px 3px #32271408; }
+.profile-appearance[data-theme="forest"] .card { border-radius: var(--r-xl); border-top: 2px solid #82936a; }
+.profile-appearance[data-theme="midnight"] .card { border-radius: var(--r-xl); }
+.profile-appearance[data-theme="porcelain"] .card { border-radius: var(--r-xl); box-shadow: 0 2px 3px #32271408; }
 
 .profile-banner[data-finish="chevron"] { background: repeating-linear-gradient(125deg,#1c2633 0 65px,#667587 65px 80px,#1c2633 80px 145px); border-radius: 0; }
 .profile-banner[data-finish="mesh"] { background: radial-gradient(circle,#11151a 2px,transparent 3px) 0 0 / 9px 9px,linear-gradient(130deg,#77828c,#252e37); }
@@ -155,7 +155,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
 .profile-appearance[data-stats="team"] .profile-stats { border: 0; border-radius: 4px; gap: 1px; background: var(--c-border); }
 .profile-appearance[data-stats="team"] .profile-stats > div { border: 0; border-top: 2px solid var(--profile-team); background: var(--c-card); }
 .profile-appearance[data-stats="boxed"] .profile-stats { border: 0; background: transparent; gap: 10px; border-radius: 0; }
-.profile-appearance[data-stats="boxed"] .profile-stats > div { border: 1px solid var(--c-border); background: var(--c-surface2); border-radius: 6px; }
+.profile-appearance[data-stats="boxed"] .profile-stats > div { border: 1px solid var(--c-border); background: var(--c-surface2); border-radius: var(--r-lg); }
 
 /* Additional full-profile palettes. */
 .profile-appearance[data-theme="oxblood"], :root[data-profile-theme="oxblood"] {
@@ -165,7 +165,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 104 211 167; --c-bad: 252 142 148; --c-warn: 240 205 125;
   --medal-1: #eab308; --medal-2: #94a3b8; --medal-3: #f09b72; --c-shadow: 0 2px 8px #0000000b;
 }
-.profile-appearance[data-theme="oxblood"] .card { border-radius: 6px; }
+.profile-appearance[data-theme="oxblood"] .card { border-radius: var(--r-xl); }
 .profile-appearance[data-theme="aubergine"], :root[data-profile-theme="aubergine"] {
   color-scheme: dark; --c-bg: #18121f; --c-card: #281f33; --c-surface2: #201829; --c-border: #584668;
   --c-text: #f3edf8; --c-text2: #d5c6e1; --c-text3: #bba7ce; --c-faint: #ae9abb;
@@ -173,7 +173,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 104 211 167; --c-bad: 252 142 148; --c-warn: 240 205 125;
   --medal-1: #eab308; --medal-2: #94a3b8; --medal-3: #f09b72; --c-shadow: 0 2px 8px #0000000b;
 }
-.profile-appearance[data-theme="aubergine"] .card { border-radius: 14px; }
+.profile-appearance[data-theme="aubergine"] .card { border-radius: var(--r-2xl); }
 .profile-appearance[data-theme="petrol"], :root[data-profile-theme="petrol"] {
   color-scheme: dark; --c-bg: #0c1b20; --c-card: #142b31; --c-surface2: #102228; --c-border: #355d66;
   --c-text: #e9f5f4; --c-text2: #bcd6d8; --c-text3: #94b8bd; --c-faint: #89aaaf;
@@ -221,7 +221,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 24 113 75; --c-bad: 181 38 44; --c-warn: 133 88 17;
   --medal-1: #98600c; --medal-2: #526071; --medal-3: #ad491c; --c-shadow: 0 2px 8px #0000000b;
 }
-.profile-appearance[data-theme="sage"] .card { border-radius: 10px; }
+.profile-appearance[data-theme="sage"] .card { border-radius: var(--r-xl); }
 .profile-appearance[data-theme="sand"], :root[data-profile-theme="sand"] {
   color-scheme: light; --c-bg: #e9dfc9; --c-card: #fcf6e8; --c-surface2: #f1e7d1; --c-border: #c9b994;
   --c-text: #392f20; --c-text2: #5c4f38; --c-text3: #786646; --c-faint: #827052;
@@ -237,7 +237,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 24 113 75; --c-bad: 181 38 44; --c-warn: 133 88 17;
   --medal-1: #98600c; --medal-2: #526071; --medal-3: #ad491c; --c-shadow: 0 2px 8px #0000000b;
 }
-.profile-appearance[data-theme="ice"] .card { border-radius: 8px; }
+.profile-appearance[data-theme="ice"] .card { border-radius: var(--r-xl); }
 .profile-appearance[data-theme="lavender"], :root[data-profile-theme="lavender"] {
   color-scheme: light; --c-bg: #e9e3f0; --c-card: #fbf8ff; --c-surface2: #f0eaf6; --c-border: #c8b9d7;
   --c-text: #362842; --c-text2: #584668; --c-text3: #715d82; --c-faint: #7b6989;
@@ -245,7 +245,7 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
   --c-ok: 24 113 75; --c-bad: 181 38 44; --c-warn: 133 88 17;
   --medal-1: #98600c; --medal-2: #526071; --medal-3: #ad491c; --c-shadow: 0 2px 8px #0000000b;
 }
-.profile-appearance[data-theme="lavender"] .card { border-radius: 12px; }
+.profile-appearance[data-theme="lavender"] .card { border-radius: var(--r-xl); }
 .profile-appearance[data-theme="clay"], :root[data-profile-theme="clay"] {
   color-scheme: light; --c-bg: #eddfd8; --c-card: #fff8f3; --c-surface2: #f3e7df; --c-border: #ceb5a7;
   --c-text: #402c25; --c-text2: #664c3f; --c-text3: #7d6456; --c-faint: #887163;
@@ -282,10 +282,12 @@ body:has(> .profile-page-effect[data-opaque-panels="true"]) > #root { position: 
 .profile-appearance[data-stats="rail"] .profile-stats > div { margin: 0; border: 0; border-left: 3px solid rgb(var(--c-accent)); background: var(--c-surface2); }
 @media (max-width: 639px) { .profile-appearance[data-stats="ledger"] .profile-stats { grid-template-columns: minmax(0,1fr); } }
 
-/* Personal controls change the real profile without changing its team identity. */
+/* Personal controls change the real profile without changing its team identity.
+   Panel corners stay on the site's scale: Soft one step under a plain card
+   (--r-xl), so it still differs from "Theme default", Rounded the largest step. */
 .profile-appearance[data-panel-shape="square"] .card { border-radius: 0; }
-.profile-appearance[data-panel-shape="soft"] .card { border-radius: 8px; }
-.profile-appearance[data-panel-shape="round"] .card { border-radius: 20px; }
+.profile-appearance[data-panel-shape="soft"] .card { border-radius: var(--r-lg); }
+.profile-appearance[data-panel-shape="round"] .card { border-radius: var(--r-3xl); }
 .profile-appearance[data-density="compact"] .profile-driver-header { padding: 16px; }
 .profile-appearance[data-density="compact"] .profile-driver-header > .relative.grid { gap: 16px; }
 .profile-appearance[data-density="compact"] .profile-stats > div { padding-block: 10px; }

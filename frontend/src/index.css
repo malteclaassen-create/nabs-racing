@@ -1124,7 +1124,7 @@ html.update-reveal.update-reveal-go body::after {
    here. */
 .tour-spot {
   pointer-events: none;
-  border-radius: 12px;
+  border-radius: var(--r-xl);
   box-shadow: 0 0 0 3px rgb(var(--c-brand) / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
   transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
@@ -3345,7 +3345,7 @@ html.update-reveal.update-reveal-go body::after {
 .stint-card__share { transform-origin: 0 50%; }
 /* the highlight behind the stint the pointer is on, gliding row to row */
 .stint-card__glow {
-  position: absolute; left: 0; right: 0; top: 0; border-radius: 0.5rem;
+  position: absolute; left: 0; right: 0; top: 0; border-radius: var(--r-lg);
   background: var(--c-surface2);
   transition: transform var(--t-base) var(--e-out), opacity var(--t-quick) var(--e-soft);
 }
