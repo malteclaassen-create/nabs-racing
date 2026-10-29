@@ -61,6 +61,18 @@ export default {
         display: ["Archivo", "Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
+      // The corner scale, read from the --r-* tokens in index.css so the site's
+      // corners are tuned in one place. Same names as Tailwind's, tighter
+      // values (see the comment there). none and full stay Tailwind's.
+      borderRadius: {
+        sm: "var(--r-sm)",
+        DEFAULT: "var(--r)",
+        md: "var(--r-md)",
+        lg: "var(--r-lg)",
+        xl: "var(--r-xl)",
+        "2xl": "var(--r-2xl)",
+        "3xl": "var(--r-3xl)",
+      },
       boxShadow: {
         // Was a fixed light-mode shadow, which is why ~60 places reached past it
         // for Tailwind's shadow-lg/xl/2xl instead — all of them equally invisible

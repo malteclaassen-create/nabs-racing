@@ -230,7 +230,7 @@ function NextRaceTile({ race, signUpTo, className = "", style }) {
   const mark = race.track ? circuitMark(race.track, { area: 9000, maxW: 170, maxH: 110 }) : null;
   const cd = useCountdown(race.date);
   return (
-    <div className={`relative overflow-hidden rounded-[1.5rem] bg-ink p-5 text-white shadow-card ${className}`} style={style}>
+    <div className={`relative overflow-hidden rounded-3xl bg-ink p-5 text-white shadow-card ${className}`} style={style}>
       {mark && (
         <div className="pointer-events-none absolute -right-3 -top-1 text-white opacity-[0.15]" style={mark.style} aria-hidden="true">
           <CircuitMap track={race.track} rotate={mark.rotate} className="h-full w-full" stroke="currentColor" strokeWidth={2} />
@@ -315,7 +315,7 @@ function SeasonFilmstrip({ seasons, activeNumber, hasNextRace }) {
   const ordered = [...seasons].sort((a, b) => b.number - a.number);
 
   return (
-    <section className="reveal overflow-hidden rounded-[1.75rem] bg-ink py-10 text-white shadow-lift sm:py-12">
+    <section className="reveal overflow-hidden rounded-3xl bg-ink py-10 text-white shadow-lift sm:py-12">
       <div className="flex flex-col gap-3 px-6 sm:flex-row sm:items-end sm:justify-between sm:px-10">
         <div>
           <div className="font-mono text-[12px] font-bold uppercase tracking-[0.22em] text-brand">Since day one</div>
@@ -620,7 +620,7 @@ export default function Welcome() {
   if (loading)
     return (
       <div className="space-y-6 sm:space-y-12">
-        <Skeleton className="h-[520px] w-full rounded-[1.75rem]" />
+        <Skeleton className="h-[520px] w-full rounded-3xl" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
         </div>
@@ -786,7 +786,7 @@ export default function Welcome() {
           full width and the two small figures share a row. */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-12 lg:gap-4">
         <div
-          className={`hero-anim col-span-2 flex flex-col justify-between gap-8 rounded-[1.5rem] bg-card p-6 shadow-card sm:p-10 lg:col-span-7 ${
+          className={`hero-anim col-span-2 flex flex-col justify-between gap-8 rounded-3xl bg-card p-6 shadow-card sm:p-10 lg:col-span-7 ${
             nextRace || leader ? "lg:row-span-2" : ""
           }`}
           style={{ animationDelay: "0.05s" }}
@@ -842,7 +842,7 @@ export default function Welcome() {
         <div
           ref={film.ref}
           data-film={film.showing ? "on" : undefined}
-          className={`hero-anim relative col-span-2 h-48 overflow-hidden rounded-[1.5rem] bg-ink shadow-card sm:h-64 lg:col-span-5 ${
+          className={`hero-anim relative col-span-2 h-48 overflow-hidden rounded-3xl bg-ink shadow-card sm:h-64 lg:col-span-5 ${
             nextRace || leader ? "" : "lg:h-auto"
           }`}
           style={{ animationDelay: "0.12s" }}
@@ -883,7 +883,7 @@ export default function Welcome() {
         {leader && (
           <Link
             to={seriesPath(`/drivers/${leader.driverId}`)}
-            className={`hero-anim flex flex-col justify-between rounded-[1.5rem] bg-card p-5 shadow-card transition hover:shadow-lift ${
+            className={`hero-anim flex flex-col justify-between rounded-3xl bg-card p-5 shadow-card transition hover:shadow-lift ${
               gridTile ? "col-span-1" : "col-span-2"
             } ${nextRace ? "lg:col-span-2" : "lg:col-span-5"}`}
             style={{ animationDelay: "0.26s" }}
@@ -909,7 +909,7 @@ export default function Welcome() {
             leader would otherwise sit alone in half a row. */}
         {gridTile && (
           <div
-            className={`hero-anim flex flex-col justify-between rounded-[1.5rem] bg-brand p-5 text-onbrand lg:hidden ${
+            className={`hero-anim flex flex-col justify-between rounded-3xl bg-brand p-5 text-onbrand lg:hidden ${
               leader ? "col-span-1" : "col-span-2"
             }`}
             style={{ animationDelay: "0.3s" }}

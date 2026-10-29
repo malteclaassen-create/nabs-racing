@@ -277,7 +277,7 @@ export function StandingsPreviewPanel({ preview, view, page }) {
   }
 
   return (
-    <div className="flex h-full flex-col rounded-[18px] bg-surface2 p-4">
+    <div className="flex h-full flex-col rounded-2xl bg-surface2 p-4">
       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-light">
         {view === "records" ? (page?.data?.seasons ? `${page.data.seasons} seasons` : "All time") : ownPage ? seasonLabelOf(preview.season) || "This season" : caption(preview)}
       </div>

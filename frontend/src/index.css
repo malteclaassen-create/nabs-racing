@@ -214,6 +214,22 @@ html.dark[data-design="paddock"]:not([data-profile-theme]:not([data-profile-them
   --z-scrim: 60; /* the dimmed backdrop of any overlay */
   --z-overlay: 61; /* the panel that backdrop belongs to */
   --z-tour: 70; /* the guided tour points AT overlays, so it sits over them */
+
+  /* Corner radii. Every rounded-sm … rounded-3xl in the JSX reads these
+     (tailwind.config.js points the scale here), so the whole site's corners
+     are set in this one place. They used to be Tailwind's own 2/4/6/8/12/16/24px,
+     soft and app-like; a broadcast site (F1's own) runs much tighter corners,
+     and the league wanted that crisper look. Roughly half of what they were,
+     each step still a little rounder than the one below, so a tile sitting in
+     a card still reads as inside it. rounded-full (avatars, dots, pills) and
+     rounded-none are untouched. */
+  --r-sm: 2px; /* hairline bits: bars, ticks, tiny chips */
+  --r: 3px; /* plain `rounded`: small chips and badges */
+  --r-md: 4px; /* inputs and small tiles */
+  --r-lg: 5px; /* buttons, menu rows, thumbnails */
+  --r-xl: 6px; /* cards (.card) and panels */
+  --r-2xl: 8px; /* big cards, menu rows in the glass menus */
+  --r-3xl: 10px; /* the largest surfaces: heroes, glass menus, the phone sheet */
 }
 
 /* Room the phone tab bar takes at the bottom edge (BottomNav in NavBar.jsx):
@@ -1108,7 +1124,7 @@ html.update-reveal.update-reveal-go body::after {
    here. */
 .tour-spot {
   pointer-events: none;
-  border-radius: 12px;
+  border-radius: var(--r-xl);
   box-shadow: 0 0 0 3px rgb(var(--c-brand) / 0.95), 0 0 0 9999px rgb(2 6 23 / 0.55);
   transition: left var(--t-base) var(--e-soft), top var(--t-base) var(--e-soft), width var(--t-base) var(--e-soft), height var(--t-base) var(--e-soft), opacity var(--t-base) var(--e-soft);
   animation: tour-pulse 1.6s ease-in-out infinite;
@@ -2150,14 +2166,14 @@ html.update-reveal.update-reveal-go body::after {
 }
 .bell-badge-out { animation: bell-badge-out 220ms ease-in both; }
 
-/* Sliding highlights (segmented tabs, the desktop nav's pill) travel on the
+/* Sliding highlights (segmented tabs, the desktop nav's line) travel on the
    tab bar's spring instead of a plain ease: a little past the target and back. */
 .spring-glide {
   transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1), width 440ms cubic-bezier(0.34, 1.36, 0.5, 1),
     height 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
 }
-/* The desktop nav's pill: same spring, transform only (NavGlidePill moves and
-   resizes it with a translate and a scale from its top-left corner). */
+/* The desktop nav's active-page line: same spring, transform only (NavGlideLine
+   moves and resizes it with a translate and a scale from its left end). */
 .nav-glide {
   transform-origin: 0 0;
   transition: transform 440ms cubic-bezier(0.34, 1.36, 0.5, 1);
@@ -3329,7 +3345,7 @@ html.update-reveal.update-reveal-go body::after {
 .stint-card__share { transform-origin: 0 50%; }
 /* the highlight behind the stint the pointer is on, gliding row to row */
 .stint-card__glow {
-  position: absolute; left: 0; right: 0; top: 0; border-radius: 0.5rem;
+  position: absolute; left: 0; right: 0; top: 0; border-radius: var(--r-lg);
   background: var(--c-surface2);
   transition: transform var(--t-base) var(--e-out), opacity var(--t-quick) var(--e-soft);
 }

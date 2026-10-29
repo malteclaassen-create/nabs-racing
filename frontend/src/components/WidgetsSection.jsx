@@ -268,6 +268,8 @@ function WidgetTile({ engine, pass, widget, family, size, zoom, lock }) {
       >
         <div ref={host} />
       </div>
+      {/* These two stand in for the widget itself, so they keep iOS's own 22px
+          widget corner (widgetRenderer.css), not the site's tighter scale. */}
       {status === "busy" && !drawn && (
         <div className="absolute inset-0 animate-pulse rounded-[22px] bg-surface2" aria-hidden="true" />
       )}

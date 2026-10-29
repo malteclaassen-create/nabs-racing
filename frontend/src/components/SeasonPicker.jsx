@@ -124,7 +124,7 @@ export default function SeasonPicker({ compact = false, onPick, finished = false
       {/* Menu */}
       <div
         role="menu"
-        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2.5 w-64 origin-top-left rounded-[22px] p-1.5 normal-case tracking-normal ${open ? "is-open" : ""}`}
+        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2.5 w-64 origin-top-left rounded-3xl p-1.5 normal-case tracking-normal ${open ? "is-open" : ""}`}
       >
         {/* py-px: the highlighted entry's ring is drawn outside its box, and a
             scrollable list clips at its own edge — without this the ring's top
