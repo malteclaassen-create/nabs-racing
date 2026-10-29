@@ -226,7 +226,7 @@ export default function SeriesSwitcher({ mobile = false, onPick }) {
       {/* Menu — rendered from the /series list, so it scales to any number. */}
       <div
         role="menu"
-        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-72 origin-top-left rounded-[22px] p-1.5 ${open ? "is-open" : ""}`}
+        className={`liquid-glass glass-dense glass-menu absolute left-0 top-full z-dropdown mt-2 w-72 origin-top-left rounded-3xl p-1.5 ${open ? "is-open" : ""}`}
       >
         {/* py-px so the highlighted entry's ring isn't shaved off at the
             list's own clipping edge (see SeasonPicker for the same fix). */}

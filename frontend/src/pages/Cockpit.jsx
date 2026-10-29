@@ -119,7 +119,7 @@ function Hero() {
   const color = d?.driver?.team?.color || "#e11d48";
   const ch = d?.championship;
   return (
-    <section className="dark relative mb-10 overflow-hidden rounded-[1.75rem] bg-ink text-white shadow-xl shadow-ink/20 ring-1 ring-white/10">
+    <section className="dark relative mb-10 overflow-hidden rounded-3xl bg-ink text-white shadow-xl shadow-ink/20 ring-1 ring-white/10">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full opacity-25 blur-3xl" style={{ backgroundColor: color }} />
         <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${color}, transparent 70%)` }} />

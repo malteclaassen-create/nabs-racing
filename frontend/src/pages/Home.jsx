@@ -713,7 +713,7 @@ export default function Home() {
   if (drivers.loading || t1.loading || t2.loading || races.loading || (seasonOver && teaser.loading))
     return (
       <div className="space-y-6 sm:space-y-12">
-        <Skeleton className="h-[460px] w-full rounded-[1.75rem]" />
+        <Skeleton className="h-[460px] w-full rounded-3xl" />
         <div className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-28 w-full rounded-xl" />
@@ -1001,7 +1001,7 @@ export default function Home() {
         // An attribute, not a class: useScrollReveal adds `is-visible` to this
         // element by hand, and a className React rewrites would drop it.
         data-film={film.showing ? "on" : undefined}
-        className="reveal relative overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
+        className="reveal relative overflow-hidden rounded-3xl bg-white shadow-xl shadow-ink/20 ring-1 ring-black/10 dark:bg-ink dark:ring-white/10"
       >
         <img
           ref={heroImgRef}

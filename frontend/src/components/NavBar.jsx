@@ -833,7 +833,7 @@ function StandingsNav({ seriesPath }) {
       >
         <div
           data-tour="nav-standings-menu"
-          className={`liquid-glass glass-dense glass-menu standings-menu rounded-[22px] p-1.5 ${open ? "is-open" : ""} ${view ? "has-preview" : ""}`}
+          className={`liquid-glass glass-dense glass-menu standings-menu rounded-3xl p-1.5 ${open ? "is-open" : ""} ${view ? "has-preview" : ""}`}
           // Springs out of the button even when the card has been pulled left.
           style={{
             width: view ? STANDINGS_MENU_W : STANDINGS_ROWS_W + 12,
@@ -1278,7 +1278,7 @@ export default function NavBar() {
                     reader can ACT on, and it is gone the moment they have. The
                     glow is opacity only — the sliding highlight measures these
                     items with getBoundingClientRect, so anything that moves or
-                    scales here would drag the pill around with it. */}
+                    scales here would drag the line around with it. */}
                 {l.label === "Attendance" && seats.show && (
                   <span className="glow-pulse ml-1.5 font-mono text-[11px] font-bold tabular-nums text-brand">
                     {seats.openCount}
@@ -1350,7 +1350,7 @@ export default function NavBar() {
             ref={sheetRef}
             onAnimationEnd={(e) => closing && e.target === e.currentTarget && finishClose()}
             onClick={closeOnLinkHere}
-            className={`nav-drop nav-sheet fixed inset-x-0 bottom-0 z-30 max-h-[calc(100dvh-88px)] overflow-y-auto overscroll-contain rounded-t-[28px] bg-card shadow-lift ${closing ? "is-closing pointer-events-none" : ""}`}
+            className={`nav-drop nav-sheet fixed inset-x-0 bottom-0 z-30 max-h-[calc(100dvh-88px)] overflow-y-auto overscroll-contain rounded-t-3xl bg-card shadow-lift ${closing ? "is-closing pointer-events-none" : ""}`}
           >
             <div className="container-page flex flex-col pb-[calc(0.75rem+var(--bnav))]">
               {/* The grip and the title stay put while the sheet scrolls, and

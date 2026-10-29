@@ -133,7 +133,7 @@ function Menu({ icon, label, hint, highlight, title, children, footer }) {
       <div className={`absolute right-0 top-full z-dropdown pt-2 ${open ? "" : "pointer-events-none"}`}>
         <div
           role="menu"
-          className={`liquid-glass glass-dense glass-menu w-64 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-[22px] ${open ? "is-open" : ""}`}
+          className={`liquid-glass glass-dense glass-menu w-64 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-3xl ${open ? "is-open" : ""}`}
         >
           <div className="max-h-[min(26rem,65vh)] overflow-y-auto py-1">{children}</div>
           {footer && <div className="space-y-2 border-t border-border px-4 py-3">{footer}</div>}
