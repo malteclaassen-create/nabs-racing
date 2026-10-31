@@ -49,6 +49,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
   const [problem, setProblem] = useState(null);
   const [remembered, setRemembered] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const [camera, setCamera] = useState("orbit");
   const [target, setTarget] = useState("A");
   const [follow, setFollow] = useState(true);
@@ -81,7 +82,9 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
     setProblem(null);
   }, [key]);
 
-  async function load(reader, fromZip = false) {
+  // `from` is "zip", "dir" (the track's own folder) or nothing (the AC folder).
+  async function load(reader, from) {
+    const fromZip = from === "zip";
     if (!reader || !viewer || loading.current) return;
     loading.current = true;
     setStatus("loading");
@@ -103,7 +106,7 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
       setProblem(e instanceof TrackNotFoundError
         ? fromZip
           ? `That ZIP has no ${track} track in it. Pick the mod for this track.`
-          : canPickFolder()
+          : canPickFolder() && from !== "dir"
             ? `That folder has no content/tracks/${track}. Pick your assettocorsa folder, and check the track is installed.`
             : `That is not the ${track} folder. Pick assettocorsa/content/tracks/${track}.`
         : `The track could not be read: ${e?.message || e}`);
@@ -116,7 +119,12 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
     try {
       await load(await pickAcFolder());
     } catch (e) {
-      if (e?.name !== "AbortError") setProblem("The folder could not be opened.");
+      // Chrome and Opera refuse any folder under C:\Program Files, which is
+      // where Steam goes by default, and to the page that looks the same as
+      // the driver closing the dialog. So every cancel points at the way
+      // round: Choose track folder.
+      if (e?.name === "AbortError") setBlocked(true);
+      else setProblem("The folder could not be opened.");
     }
   };
   // The folder from last time, still allowed: load the track straight away
@@ -147,19 +155,19 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
       setProblem(e?.message || "That file could not be opened.");
       return;
     }
-    await load(reader, true);
+    await load(reader, "zip");
   };
   const onZip = (e) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // the same file again is a new pick
     openZip(file);
   };
-  // Browsers without the folder dialog: the track's own folder through a
-  // plain file input (readerFromFileList).
+  // The track's own folder through a plain file input (readerFromFileList):
+  // works in every desktop browser and wherever Steam is installed.
   const onDir = async (e) => {
     const reader = readerFromFileList(e.target.files);
     e.target.value = "";
-    if (reader) await load(reader);
+    if (reader) await load(reader, "dir");
   };
   const onDrop = async (e) => {
     e.preventDefault();
@@ -286,37 +294,41 @@ export default function TelemetryTrack3D({ track, layout, trackName, backdrop, l
                 </p>
               ) : (
                 <ol className="grid grid-cols-1 gap-1.5 text-[11px] leading-snug text-medium sm:grid-cols-3 sm:gap-2">
-                  {canPickFolder() ? <>
-                    <Step n={1}>Press Choose AC folder</Step>
-                    <Step n={2}>Open <span className="font-mono text-dark">steamapps/ common/ assettocorsa</span></Step>
-                    <Step n={3}>Allow it. Next time it loads by itself</Step>
-                  </> : <>
-                    <Step n={1}>Press Choose track folder</Step>
-                    <Step n={2}>Open <span className="font-mono text-dark">assettocorsa/ content/ tracks/ {track}</span></Step>
-                    <Step n={3}>Confirm. The browser says upload, but nothing leaves your computer</Step>
-                  </>}
+                  <Step n={1}>Press Choose track folder</Step>
+                  <Step n={2}>Open <span className="font-mono text-dark">assettocorsa/ content/ tracks/ {track}</span></Step>
+                  <Step n={3}>Confirm. The browser says upload, but nothing leaves your computer</Step>
                 </ol>
               )}
+              {/* The track folder comes first in every browser. The folder
+                  dialog behind "Whole AC folder" is nicer (it is remembered),
+                  but Chrome and Opera refuse anything under Program Files,
+                  where Steam sits by default; the plain file input is not
+                  covered by that. */}
               <div className="flex flex-col gap-2 sm:flex-row">
                 {remembered && (
                   <button type="button" className="btn-primary h-10 flex-1 gap-2 py-0 text-sm" onClick={reopen}>
                     <FolderOpen className="h-4 w-4" aria-hidden="true" />Load {trackName}
                   </button>
                 )}
-                {!canPickFolder() && (
-                  <button type="button" className="btn-primary h-10 flex-1 gap-2 py-0 text-sm" onClick={() => dirInput.current?.click()}>
-                    <FolderOpen className="h-4 w-4" aria-hidden="true" />Choose track folder
-                  </button>
-                )}
+                <button type="button" className={`${remembered ? "btn-secondary h-10 text-xs sm:flex-none sm:px-3" : "btn-primary h-10 flex-1 text-sm"} gap-2 py-0`} onClick={() => dirInput.current?.click()}>
+                  <FolderOpen className="h-4 w-4" aria-hidden="true" />Choose track folder
+                </button>
                 {canPickFolder() && (
-                  <button type="button" className={`${remembered ? "btn-secondary h-10 text-xs sm:flex-none sm:px-3" : "btn-primary h-10 flex-1 text-sm"} gap-2 py-0`} onClick={pick}>
-                    <FolderOpen className="h-4 w-4" aria-hidden="true" />{remembered ? "Other folder" : "Choose AC folder"}
+                  <button type="button" className="btn-secondary h-10 gap-2 py-0 text-xs sm:flex-none sm:px-3" onClick={pick}
+                    title="The whole assettocorsa folder, remembered for next time. Only works when Steam is not in Program Files.">
+                    {remembered ? "Other AC folder" : "Whole AC folder"}
                   </button>
                 )}
               </div>
+              {blocked && canPickFolder() && (
+                <p className="rounded-lg bg-warn/10 px-3 py-2 text-[11px] leading-snug text-medium">
+                  <span className="font-semibold text-dark">Browser said the folder holds system files?</span> Your Steam is in Program Files,
+                  and the browser keeps that folder dialog out of it. Use Choose track folder instead.
+                </p>
+              )}
               {problem && <p role="alert" className="rounded-lg bg-bad/10 px-3 py-2 text-xs text-bad">{problem}</p>}
               <p className="text-center text-[11px] text-light">
-                {canPickFolder() ? "Read on your computer, nothing is uploaded." : "Or drag the assettocorsa folder onto the map."}{" "}
+                Read on your computer, nothing is uploaded. Or drag the assettocorsa folder onto the map.{" "}
                 <button type="button" className="font-semibold text-link underline-offset-2 hover:underline" onClick={openZipPicker}>
                   Track not installed? Open its ZIP
                 </button>

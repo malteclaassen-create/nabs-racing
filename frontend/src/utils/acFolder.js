@@ -182,7 +182,8 @@ async function entryReader(rootEntry) {
 
 // --- 3. A folder from <input webkitdirectory> -------------------------------
 // For browsers with neither of the above behind a button (Brave, Firefox,
-// Safari). The input hands over every file under the folder, which is why it
+// Safari), and for Chrome and Opera when Steam is in Program Files, which
+// showDirectoryPicker refuses to open. The input hands over every file under the folder, which is why it
 // is only ever pointed at the track's own folder, never the whole install.
 // Paths come as "<picked folder>/<rest>"; the picked folder is the reader's
 // name, which is how acTrackScene recognises a track folder.

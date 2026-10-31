@@ -316,6 +316,12 @@ export default function ContentCheck() {
                 {busy ? "Checking…" : "In Chrome or Edge there's a button here instead of drag and drop."}
               </p>
             )}
+            {canPickFolder() && (
+              <p className="max-w-md text-[11px] text-light">
+                Browser says the folder holds system files? It refuses anything in Program Files. Drag the
+                assettocorsa folder from Explorer onto this box instead.
+              </p>
+            )}
             {folderName && !busy && <p className="text-xs text-faint">Read: {folderName}</p>}
           </div>
 
