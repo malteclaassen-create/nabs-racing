@@ -34,6 +34,7 @@ import * as pitRecorder from "./pitRecorder.js";
 import * as liveIncidents from "./liveIncidents.js";
 import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
+import { createPitLossLearner } from "../lib/pitLoss.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
 import { noteBoard, sectorLinesFor } from "../lib/sectorLines.js";
@@ -633,6 +634,10 @@ function createRelay(server) {
   // km/h through the last corners at Most.
   const pitFilter = createPitFilter();
 
+  // What a stop costs here, learned from this race's own stops (lib/pitLoss.js)
+  // for the live map's pit window. Cleared with the crossings it reads.
+  const pitLoss = createPitLossLearner();
+
   // Who is on an OUT LAP, and the state needed to know when it ends.
   //
   //   lap     the lap counter when they left the pit lane
@@ -944,6 +949,7 @@ function createRelay(server) {
       lastRacePosByGuid.clear();
       raceRosterByGuid.clear();
       crossingsByGuid.clear();
+      pitLoss.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -1461,6 +1467,10 @@ function createRelay(server) {
     const lapCount = car?.NumLaps ?? d.TotalNumLaps ?? 0;
     const spline = live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0;
     const outLap = trackOutLap(guid, { inPits, lapCount, spline, onTrack });
+    if (status?.SessionInfo?.Type === 3) {
+      pitLoss.note(guid, { inPits, lapCount, onTrack });
+      pitLoss.evaluate(guid, crossingsByGuid.get(guid), { inPits });
+    }
 
     return {
       // The real GUID stays server-side (it keys the stint and race-position
@@ -2105,6 +2115,9 @@ function createRelay(server) {
         // null at a circuit nobody has recorded a matching lap on yet: the map
         // then draws the track in one colour rather than guessing thirds.
         sectorLines: sectorLinesFor(trackKeyOf(si.Track || "", si.TrackConfig || "")),
+        // What a pit stop has cost in this race so far, { ms, stops }, for the
+        // map's pit window. Null outside a race and before the first stop.
+        pitLoss: isRace ? pitLoss.result() : null,
       },
       entries,
       updatedAt: Date.now(),
@@ -2194,6 +2207,7 @@ function createRelay(server) {
       raceRosterByGuid.clear();
       lastRacePosByGuid.clear();
       crossingsByGuid.clear();
+      pitLoss.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -2708,6 +2722,8 @@ function getDemoBoard(kind = "race") {
       // The demo's own cuts, so the map's sector colours line up with the
       // sector times the board builds.
       sectorLines: [DEMO_CUT[0] * 100, (DEMO_CUT[0] + DEMO_CUT[1]) * 100],
+      // A learned stop cost, so the map's pit window shows its "learned" state.
+      pitLoss: practice ? null : { ms: 21500, stops: 3 },
     },
     entries,
     updatedAt: Date.now(),

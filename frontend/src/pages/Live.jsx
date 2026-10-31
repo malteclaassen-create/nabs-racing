@@ -2055,6 +2055,14 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
   const mapCarCount = cars.filter((e) => !e.isSafetyCar).length;
+  // Same object while the learned stop cost stays put, so the map is not told
+  // something new on every board tick.
+  const learnedMs = session.pitLoss?.ms ?? null;
+  const learnedStops = session.pitLoss?.stops ?? 0;
+  const pitWindow = useMemo(
+    () => ({ learned: learnedMs != null ? { ms: learnedMs, stops: learnedStops } : null }),
+    [learnedMs, learnedStops]
+  );
   // With a stream configured, map and player SHARE this card and a switch picks
   // between them, rather than stacking two tall windows down a narrow column.
   // No stream link, no switch — the card is the map, exactly as before.
@@ -2115,6 +2123,9 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               onCarTelemetry={onCarTelemetry}
               server={server}
               sectorLines={session.sectorLines}
+              // Races only: where a stop now would put the followed car, or
+              // the viewer's own. Practice has nobody to rejoin among.
+              pitWindow={session.type === "Race" && !session.finished ? pitWindow : null}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* How to use the map, and what a faded car means while one is in. */}
