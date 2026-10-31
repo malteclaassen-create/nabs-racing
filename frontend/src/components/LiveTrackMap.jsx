@@ -1037,12 +1037,17 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   useEffect(() => {
     if (focusGuid && !focusedCar) setFocusGuid(null);
   }, [focusGuid, focusedCar]);
+  // In a race (pit window on) the cockpit panel stays away: speed and revs
+  // are not what anybody watches the map for then, the pit window is.
+  const cockpit = !pitWindow;
   // Tell the backend which car this viewer follows, so its cockpit numbers
   // arrive on the fast-lane instead of the 700ms tick. Cleared on unmount.
+  // Nothing to stream for with the cockpit panel away.
+  const streamGuid = cockpit ? focusGuid : null;
   useEffect(() => {
-    follow?.(focusGuid);
+    follow?.(streamGuid);
     return () => follow?.(null);
-  }, [focusGuid, follow]);
+  }, [streamGuid, follow]);
 
   const real = map && map.width && map.height && map.scaleFactor;
   // Kept as the same array while the two numbers stay put, so the outline is
@@ -1140,7 +1145,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
         <>
           {/* Floats over the map from sm up; a phone gets it under the map
               (below), where it does not cover the cars it is about. */}
-          {hud("absolute bottom-3 left-3 z-10 hidden max-w-[calc(100%-4.5rem)] sm:flex")}
+          {cockpit && hud("absolute bottom-3 left-3 z-10 hidden max-w-[calc(100%-4.5rem)] sm:flex")}
           {/* zoom controls — how close the follow-camera sits */}
           <div className="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             <button type="button" className={`${zoomBtn} border-b border-border`} onClick={() => zoomStep(1)} title="Zoom in" aria-label="Zoom in">
@@ -1153,7 +1158,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
         </>
       )}
       </div>
-      {focusedCar && hud("mt-2 flex shrink-0 sm:hidden")}
+      {focusedCar && cockpit && hud("mt-2 flex shrink-0 sm:hidden")}
       {pit.subject && (
         <PitWindowPanel
           className="mt-2 shrink-0"
