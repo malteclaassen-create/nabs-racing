@@ -62,6 +62,7 @@ import {
   pageShareText,
 } from "./lib/pageMeta.js";
 import { shareImageFor } from "./lib/sharePictures.js";
+import { newsPreview, applyNewsPreview } from "./lib/newsMeta.js";
 import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { androidRelease } from "./lib/androidRelease.js";
@@ -705,6 +706,13 @@ if (existsSync(join(DIST_DIR, "index.html"))) {
       // And the admin's own wording for it (Site texts -> Link previews),
       // in the og:/twitter: tags only, never the page title.
       html = applyShareText(html, await pageShareText(prisma, req.path));
+    } catch {
+      /* same rule */
+    }
+    // A news article: its headline, summary and cover picture, so a pasted
+    // article link unfurls as the article rather than as the site.
+    try {
+      html = applyNewsPreview(html, await newsPreview(prisma, req.path, publicOrigin(req)));
     } catch {
       /* same rule */
     }
