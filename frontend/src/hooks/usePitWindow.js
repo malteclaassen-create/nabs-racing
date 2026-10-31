@@ -48,32 +48,61 @@ function readSaved(track) {
   }
 }
 
-// The stop cost the pit window uses: the viewer's own number for this
-// circuit when they set one, else what the race has taught the board so far,
-// else a plain default. Remembered per circuit in this browser.
+// Automatic or the viewer's own number: one choice for every circuit.
+const MODE_KEY = "nabs_pit_loss_mode";
+function readMode() {
+  try {
+    return localStorage.getItem(MODE_KEY) === "own" ? "own" : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+// The stop cost the pit window uses. Two modes, the viewer's choice:
+//   auto  what the race has taught the board so far, else a plain default
+//   own   the viewer's own number, kept per circuit in this browser (a stop
+//         at Monaco and one at Monza are different things)
+// Switching to "own" on a circuit with no number yet starts from whatever
+// auto was showing, so the ring does not jump.
 export function usePitLoss(track, learned) {
+  const [mode, setModeState] = useState(readMode);
   const [saved, setSaved] = useState(() => readSaved(track));
   useEffect(() => setSaved(readSaved(track)), [track]);
+  const learnedMs = learned?.ms > 0 ? learned.ms : null;
+  const autoMs = learnedMs ?? DEFAULT_LOSS_MS;
   const set = useCallback(
     (ms) => {
-      const v = ms == null ? null : Math.min(MAX_LOSS_MS, Math.max(MIN_LOSS_MS, Math.round(ms / 100) * 100));
+      const v = Math.min(MAX_LOSS_MS, Math.max(MIN_LOSS_MS, Math.round(ms / 100) * 100));
       setSaved(v);
       try {
-        if (v == null) localStorage.removeItem(keyFor(track));
-        else localStorage.setItem(keyFor(track), String(v));
+        localStorage.setItem(keyFor(track), String(v));
       } catch {
         /* private window: the number holds for this visit */
       }
     },
     [track]
   );
-  const learnedMs = learned?.ms > 0 ? learned.ms : null;
-  const source = saved != null ? "yours" : learnedMs != null ? "learned" : "default";
-  const ms = saved ?? learnedMs ?? DEFAULT_LOSS_MS;
-  return { ms, source, learnedMs, learnedStops: learned?.stops || 0, set };
+  const setMode = useCallback(
+    (next) => {
+      setModeState(next);
+      try {
+        if (next === "own") localStorage.setItem(MODE_KEY, "own");
+        else localStorage.removeItem(MODE_KEY);
+      } catch {
+        /* fine for this visit */
+      }
+      if (next === "own" && saved == null) set(autoMs);
+    },
+    [saved, autoMs, set]
+  );
+  const own = mode === "own";
+  const ms = own ? saved ?? autoMs : autoMs;
+  const source = own ? "yours" : learnedMs != null ? "learned" : "default";
+  return { ms, mode, setMode, source, learnedMs, learnedStops: learned?.stops || 0, set };
 }
 
-// Shown or put away, per browser.
+// The panel under the map open or folded to one line, per browser. Folded
+// only hides the details: the ring stays on the map either way.
 const OFF_KEY = "nabs_pit_window_off";
 export function usePitWindowShown() {
   const [off, setOff] = useState(() => {

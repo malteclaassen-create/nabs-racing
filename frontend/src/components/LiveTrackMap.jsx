@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { CircleDashed, Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { createProgressTracker, computePitWindow, positionAtSpline, TRAFFIC_MS } from "../utils/pitWindow.mjs";
 import { useOwnLiveGuids, usePitLoss, usePitWindowShown } from "../hooks/usePitWindow.js";
@@ -132,7 +132,6 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
         (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
       const k = 1 / Math.sqrt(liveRef.current.zoomShown);
       let focusPos = null;
-      let ghostPos = null;
       for (const [guid, st] of states.current) {
         const reg = els.current.get(guid);
         const p = instant ? { x: st.next.x, y: st.next.y } : interpNow(st, now);
@@ -144,21 +143,15 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo }) {
           }
         }
         if (guid === fg) focusPos = p;
-        if (guid === GHOST_ID) ghostPos = p;
       }
       const cam = camRef.current;
       if (cam && ci) {
         // Ease BOTH camera position and zoom from the currently displayed view.
         // Switching drivers or returning to overview can interrupt the flight.
-        let target = focusPos ? zTarget : 1;
-        // Following a car with its pit window ring out: frame the two
-        // together, or the ring sits off the edge of a close-up.
-        if (focusPos && ghostPos) {
-          const fitX = (ci.w * 0.55) / Math.max(1e-6, Math.abs(ghostPos.x - focusPos.x));
-          const fitY = (ci.h * 0.55) / Math.max(1e-6, Math.abs(ghostPos.y - focusPos.y));
-          target = Math.max(1, Math.min(target, fitX, fitY));
-          focusPos = { x: (focusPos.x + ghostPos.x) / 2, y: (focusPos.y + ghostPos.y) / 2 };
-        }
+        const target = focusPos ? zTarget : 1;
+        // A zoom of 1 is the whole circuit, wherever the followed car is (the
+        // pit window keeps the map there): no panning after it.
+        if (target <= 1) focusPos = null;
         const blend = instant ? 1 : 1 - Math.exp(-dt / 190);
         const z = liveRef.current.zoomShown + (target - liveRef.current.zoomShown) * blend;
         // Settle exactly on the target, so the marker scale above stops being
@@ -949,7 +942,11 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
 // Everything the pit window needs, worked out per board update: whose car it
 // is about, the progress history it reads (createProgressTracker), the stop
 // cost, and the answer. `ghost` is what the map draws, null for no ring.
-function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
+//
+// Whose car: the one being followed, else the last one picked (the ring stays
+// on it after the follow ends, so it does not blink away), else the viewer's
+// own.
+function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matchFn }) {
   const on = !!pitWindow;
   const ownGuids = useOwnLiveGuids(cars, on);
   const loss = usePitLoss(trackId, pitWindow?.learned);
@@ -958,8 +955,9 @@ function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
   if (!tracker.current) tracker.current = createProgressTracker();
   useEffect(() => tracker.current.clear(), [trackId]);
 
-  const own = on ? (cars || []).find((c) => ownGuids.includes(c.guid) && c.onTrack) : null;
-  const subject = on ? (focusGuid ? (cars || []).find((c) => c.guid === focusGuid) : own) || null : null;
+  const own = on ? (cars || []).find((c) => ownGuids.includes(c.guid) && c.onTrack) || null : null;
+  const find = (g) => (g ? (cars || []).find((c) => c.guid === g && c.onTrack) : null);
+  const subject = on ? find(focusGuid) || find(pickGuid) || own : null;
   // Fed on every board, whether or not anybody is looking at the panel: the
   // ring is only as good as the history behind it. `fed` is when new data
   // last arrived, and only moves then: a re-render with the same board must
@@ -974,8 +972,8 @@ function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
   }, [on, cars]);
   const win = useMemo(
     () =>
-      subject && shown ? computePitWindow({ cars, subjectGuid: subject.guid, lossMs: loss.ms, tracker: tracker.current, now: fed }) : null,
-    [subject, shown, cars, loss.ms, fed]
+      subject ? computePitWindow({ cars, subjectGuid: subject.guid, lossMs: loss.ms, tracker: tracker.current, now: fed }) : null,
+    [subject, cars, loss.ms, fed]
   );
   const ghost = useMemo(
     () =>
@@ -987,7 +985,7 @@ function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
   const nameOf = useCallback((n) => (matchFn ? matchFn(n.name)?.nabsName : null) || n.name, [matchFn]);
   const isOwn = !!subject && ownGuids.includes(subject.guid);
   const who = subject ? (isOwn ? "You" : nameOf(subject)) : "";
-  return { subject: subject?.onTrack ? subject : null, win, ghost, loss, shown, setShown, nameOf, who };
+  return { subject, win, ghost, loss, shown, setShown, nameOf, who, canShowMine: !!own && !isOwn };
 }
 
 // Picks the real map when calibration is present, else the stylised outline.
@@ -1002,14 +1000,26 @@ function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned.
 //
-// `pitWindow` ({ ownGuids, learned }, race only) turns on the pit window: a
-// dashed ring where the followed car (or, with nobody followed, the viewer's
-// own car) would rejoin after a stop, and a panel under the map to set what a
-// stop costs. Without it the map is exactly what it was.
+// `pitWindow` ({ learned }, race only) turns on the pit window: a dashed ring
+// where the picked car (or the viewer's own) would rejoin after a stop, and a
+// panel under the map to set what a stop costs. While it is on, clicking a car
+// picks it without zooming: the map stays on the whole circuit, so car and
+// ring are both in view. + still zooms in on purpose, and − back out to the
+// whole circuit. Without it the map is exactly what it was.
 export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, pitWindow = null }) {
   const [focusGuid, setFocusGuid] = useState(null);
-  const pit = usePitWindowState({ pitWindow, cars, focusGuid, trackId: trackId || track, matchFn });
+  const [pickGuid, setPickGuid] = useState(null);
+  useEffect(() => {
+    if (focusGuid) setPickGuid(focusGuid);
+  }, [focusGuid]);
+  const pit = usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId: trackId || track, matchFn });
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  // With the pit window on the map stays on the whole circuit until somebody
+  // asks for a close-up with +. A new pick starts on the whole circuit again.
+  const [closeUp, setCloseUp] = useState(false);
+  useEffect(() => setCloseUp(false), [focusGuid]);
+  const wholeMap = !!pitWindow && !closeUp;
+  const shownZoom = wholeMap ? 1 : zoom;
   const [mapMode, setMapMode] = useState("track");
   const [imageFailed, setImageFailed] = useState(false);
   const [aerialLoaded, setAerialLoaded] = useState(false);
@@ -1042,8 +1052,22 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   const focusColor = focusMatch?.teamColor || "#94a3b8";
   // The speed bar's full scale: the fastest anyone has gone this session.
   const vmax = Math.max(0, ...(cars || []).map((c) => Number(c.topSpeed) || 0));
-  const zoomStep = (dir) =>
+  const zoomStep = (dir) => {
+    if (pitWindow) {
+      if (wholeMap) {
+        if (dir > 0) {
+          setZoom(ZOOM_MIN);
+          setCloseUp(true);
+        }
+        return;
+      }
+      if (dir < 0 && zoom <= ZOOM_MIN * 1.01) {
+        setCloseUp(false);
+        return;
+      }
+    }
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, dir > 0 ? z * 1.4 : z / 1.4)));
+  };
   const zoomBtn = "grid h-8 w-8 place-items-center text-medium transition hover:bg-surface2 hover:text-dark";
   const hud = (cls) => (
     <FollowHud
@@ -1083,7 +1107,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           onAerialLoad={() => setAerialLoaded(true)}
           matchFn={matchFn}
           focusGuid={focusGuid}
-          zoom={zoom}
+          zoom={shownZoom}
           onFocus={setFocusGuid}
           server={server}
           className={className}
@@ -1100,7 +1124,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           cars={cars}
           matchFn={matchFn}
           focusGuid={focusGuid}
-          zoom={zoom}
+          zoom={shownZoom}
           onFocus={setFocusGuid}
           className={className}
           incidents={incidents}
@@ -1127,27 +1151,26 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
       )}
       </div>
       {focusedCar && hud("mt-2 flex shrink-0 sm:hidden")}
-      {pit.subject &&
-        (pit.shown ? (
-          <PitWindowPanel
-            className="mt-2 shrink-0"
-            win={pit.win}
-            who={pit.who}
-            loss={pit.loss}
-            nameOf={pit.nameOf}
-            trafficMs={TRAFFIC_MS}
-            onClose={() => pit.setShown(false)}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => pit.setShown(true)}
-            className="mt-2 inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-border px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:bg-surface2 hover:text-dark"
-          >
-            <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
-            Pit window
-          </button>
-        ))}
+      {pit.subject && (
+        <PitWindowPanel
+          className="mt-2 shrink-0"
+          open={pit.shown}
+          onToggle={() => pit.setShown(!pit.shown)}
+          win={pit.win}
+          who={pit.who}
+          loss={pit.loss}
+          nameOf={pit.nameOf}
+          trafficMs={TRAFFIC_MS}
+          onShowMine={
+            pit.canShowMine
+              ? () => {
+                  setFocusGuid(null);
+                  setPickGuid(null);
+                }
+              : null
+          }
+        />
+      )}
       {aerialAvailable && (
         <div className="shrink-0 px-1 pt-2 text-xs leading-relaxed text-light">
           <a href={aerialMap.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-dark">{aerialMap.source}</a>
