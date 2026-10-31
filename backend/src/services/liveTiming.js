@@ -2118,6 +2118,9 @@ function createRelay(server) {
         // What a pit stop has cost in this race so far, { ms, stops }, for the
         // map's pit window. Null outside a race and before the first stop.
         pitLoss: isRace ? pitLoss.result() : null,
+        // The leader has taken the flag: the race is decided and the cars
+        // still out are on their cool-down lap. The map's pit window goes away.
+        chequered: isRace && raceFlagAt != null,
       },
       entries,
       updatedAt: Date.now(),

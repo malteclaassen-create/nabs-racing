@@ -2118,9 +2118,10 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
               onCarTelemetry={onCarTelemetry}
               server={server}
               sectorLines={session.sectorLines}
-              // Races only: where a stop now would put the followed car, or
-              // the viewer's own. Practice has nobody to rejoin among.
-              pitWindow={session.type === "Race" && !session.finished ? pitWindow : null}
+              // Races only, and only until the flag: where a stop now would
+              // put the picked car, or the viewer's own. Practice has nobody
+              // to rejoin among, and after the flag nobody is stopping.
+              pitWindow={session.type === "Race" && !session.finished && !session.chequered ? pitWindow : null}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* How to use the map, and what a faded car means while one is in. */}
