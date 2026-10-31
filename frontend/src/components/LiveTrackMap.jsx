@@ -987,7 +987,7 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
   const nameOf = useCallback((n) => (matchFn ? matchFn(n.name)?.nabsName : null) || n.name, [matchFn]);
   const isOwn = !!subject && ownGuids.includes(subject.guid);
   const who = subject ? (isOwn ? "You" : nameOf(subject)) : "";
-  return { subject, win, ghost, loss, shown, setShown, nameOf, who, canShowMine: !!own && !isOwn };
+  return { subject, win, ghost, loss, shown, setShown, nameOf, who, canShowMine: !!own && !isOwn, driving: !!own };
 }
 
 // Picks the real map when calibration is present, else the stylised outline.
@@ -1037,9 +1037,10 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   useEffect(() => {
     if (focusGuid && !focusedCar) setFocusGuid(null);
   }, [focusGuid, focusedCar]);
-  // In a race (pit window on) the cockpit panel stays away: speed and revs
-  // are not what anybody watches the map for then, the pit window is.
-  const cockpit = !pitWindow;
+  // A viewer driving in this race has speed, gear and revs on their own
+  // screen already, so the cockpit panel stays away for them. Everybody
+  // watching rather than driving keeps it.
+  const cockpit = !(pitWindow && pit.driving);
   // Tell the backend which car this viewer follows, so its cockpit numbers
   // arrive on the fast-lane instead of the 700ms tick. Cleared on unmount.
   // Nothing to stream for with the cockpit panel away.
