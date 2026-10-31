@@ -105,3 +105,14 @@ test("a position on track borrowed from another car", () => {
   assert.deepEqual(positionAtSpline(t, 0.301), { x: 7, z: 9 });
   assert.equal(positionAtSpline(t, 0.5), null);
 });
+
+test("the same board fed twice is not news", () => {
+  const t = createProgressTracker();
+  const cars = [car("me", 2.5)];
+  assert.equal(t.update(cars, 0), true);
+  assert.equal(t.update(cars, 300), false);
+  assert.equal(t.samples("me").length, 1);
+  // A new board with the car where it was (sparse telemetry): no new sample.
+  assert.equal(t.update([car("me", 2.5)], 700), true);
+  assert.equal(t.samples("me").length, 1);
+});

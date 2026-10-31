@@ -961,11 +961,16 @@ function usePitWindowState({ pitWindow, cars, focusGuid, trackId, matchFn }) {
   const own = on ? (cars || []).find((c) => ownGuids.includes(c.guid) && c.onTrack) : null;
   const subject = on ? (focusGuid ? (cars || []).find((c) => c.guid === focusGuid) : own) || null : null;
   // Fed on every board, whether or not anybody is looking at the panel: the
-  // ring is only as good as the history behind it.
+  // ring is only as good as the history behind it. `fed` is when new data
+  // last arrived, and only moves then: a re-render with the same board must
+  // give the same ring, or the ring steps forward between real updates and
+  // the glide on the map turns into stop-and-go.
+  const fedAt = useRef(0);
   const fed = useMemo(() => {
     if (!on) return 0;
-    tracker.current.update(cars, Date.now());
-    return Date.now();
+    const now = Date.now();
+    if (tracker.current.update(cars, now)) fedAt.current = now;
+    return fedAt.current;
   }, [on, cars]);
   const win = useMemo(
     () =>

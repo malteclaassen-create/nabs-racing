@@ -28,11 +28,19 @@ const fold = (d) => ((((d + 0.5) % 1) + 1) % 1) - 0.5;
 export function createProgressTracker() {
   const cars = new Map(); // guid -> { prog, spline, samples: [{ t, prog, x, z }] }
 
+  // Returns whether anything new came in. The page re-renders far more often
+  // than the board changes, and the same entry fed twice must not be read as
+  // the car standing still for a while and then jumping: that put the pit
+  // window's ring on a stop-and-go of its own.
   function update(entries, now) {
     const seen = new Set();
+    let changed = false;
     for (const e of entries || []) {
       if (!e?.guid || !e.onTrack) continue;
       seen.add(e.guid);
+      const known = cars.get(e.guid);
+      if (known && known.entry === e) continue;
+      changed = true;
       const spline = frac(e.spline);
       const target = (e.lapCount || 0) + spline;
       let st = cars.get(e.guid);
@@ -51,13 +59,23 @@ export function createProgressTracker() {
         st = { samples: [] };
         cars.set(e.guid, st);
       }
+      st.entry = e;
       st.prog = prog;
       st.spline = spline;
+      // A new board does not always mean a new position: the race server's
+      // per-car telemetry is often sparser than the board. A repeat is not a
+      // sample, or the path turns into steps.
       const last = st.samples[st.samples.length - 1];
-      if (!last || now > last.t) st.samples.push({ t: now, prog, x: e.pos?.x ?? null, z: e.pos?.z ?? null });
-      while (st.samples.length && st.samples[0].t < now - HISTORY_MS) st.samples.shift();
+      if (!last || (now > last.t && prog !== last.prog)) st.samples.push({ t: now, prog, x: e.pos?.x ?? null, z: e.pos?.z ?? null });
+      while (st.samples.length > 1 && st.samples[0].t < now - HISTORY_MS) st.samples.shift();
     }
-    for (const g of [...cars.keys()]) if (!seen.has(g)) cars.delete(g);
+    for (const g of [...cars.keys()]) {
+      if (!seen.has(g)) {
+        cars.delete(g);
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   return {
