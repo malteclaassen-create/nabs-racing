@@ -66,7 +66,10 @@ export function plainText(body) {
     current.push(t.replace(/^>\s?/, "").replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, ""));
   }
   flush();
+  // A paragraph without a full stop of its own (a bold "WINNER: 13BOT" line
+  // used as a heading) gets one, so it does not run into the next sentence.
   return paras
+    .map((p) => (/[.!?:…"')]$/.test(p) ? p : `${p}.`))
     .join(" ")
     .replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")

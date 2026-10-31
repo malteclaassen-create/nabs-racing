@@ -53,7 +53,10 @@ describe("description", () => {
   });
   it("reads the article text as plain words", () => {
     const body = "## Heading\n\n![a picture](/api/uploads/x.jpg)\n\nThe **fastest** lap went to *Max*, see [the results](/s/f1/races).\n\n> A quote\n- a point";
-    expect(plainText(body)).toBe("The fastest lap went to Max, see the results. A quote a point");
+    expect(plainText(body)).toBe("The fastest lap went to Max, see the results. A quote a point.");
+  });
+  it("ends a heading-like bold line with a full stop", () => {
+    expect(plainText("**WINNER: 13BOT**\n\nNot just winning the race.")).toBe("WINNER: 13BOT. Not just winning the race.");
   });
   it("uses the summary, else the start of the text", () => {
     expect(articlePreview(row(), O).description).toBe("Who came away happy from the season finale, and who did not.");
