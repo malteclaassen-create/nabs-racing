@@ -42,13 +42,14 @@ import changelogRoutes from "./routes/changelog.js";
 import newsRoutes from "./routes/news.js";
 import tokensRoutes, { adminRouter as adminTokensRoutes } from "./routes/tokens.js";
 import adminRoutes from "./routes/admin.js";
-import { initLiveTiming, getBoard, getTrackMapPng, getTrackIds } from "./services/liveTiming.js";
+import { initLiveTiming, getBoard, getTrackMapPng, getTrackIds, publicDriverId } from "./services/liveTiming.js";
+import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
-import { isAdminRequest, resolveAdminContext } from "./middleware/auth.js";
+import { isAdminRequest, resolveAdminContext, optionalUser } from "./middleware/auth.js";
 import {
   buildPageMeta,
   applyPageMeta,
@@ -329,6 +330,21 @@ app.get("/api/live/track-line", async (req, res) => {
     res.json({ line });
   } catch {
     res.status(404).json({ error: "No track line" });
+  }
+});
+
+// Which cars on the live board are the signed-in member's own, as the
+// pseudonymous ids the board uses, so the map's pit window can open on their
+// car by itself. Only ever their own ids, and only to them: the real Steam
+// ids stay here. Signed out (or no Steam id on file) is an empty list, not a
+// 401, so a visitor's page never treats it as a dead session.
+app.get("/api/live/me", optionalUser, async (req, res) => {
+  try {
+    const ids = await ownSteamIds(prisma, req.user);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ guids: ids.map((id) => publicDriverId(id)) });
+  } catch {
+    res.json({ guids: [] });
   }
 });
 

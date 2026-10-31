@@ -14,6 +14,8 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
 import { Activity, ShieldAlert } from "../components/icons/filled.jsx";
+import PitStopSetting from "../components/PitStopSetting.jsx";
+import { usePitLoss } from "../hooks/usePitWindow.js";
 import {
   useRaceControlAccess,
   useRaceControl,
@@ -2102,7 +2104,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPositions, streamUrl, server, hotlap = null, hotlapTrack = null, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPositions, streamUrl, server, pitLoss = null, demo = false, hotlap = null, hotlapTrack = null, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -2110,6 +2112,10 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
   const mapCarCount = cars.filter((e) => !e.isSafetyCar).length;
+  // The demo race plays it as a driver would see it (no cockpit panel when a
+  // car is clicked), so the page can be shown off the way it looks on race
+  // night from the seat.
+  const pitWindow = useMemo(() => (pitLoss ? { loss: pitLoss, asDriver: demo } : null), [pitLoss, demo]);
   // With a stream configured, map and player SHARE this card and a switch picks
   // between them, rather than stacking two tall windows down a narrow column.
   // No stream link, no switch — the card is the map, exactly as before.
@@ -2187,6 +2193,10 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
               onFocusChange={pick?.setFocus}
               server={server}
               sectorLines={session.sectorLines}
+              // Races only, and only until the flag: where a stop now would
+              // put the picked car, or the viewer's own. Practice has nobody
+              // to rejoin among, and after the flag nobody is stopping.
+              pitWindow={session.type === "Race" && !session.finished && !session.chequered ? pitWindow : null}
               className={realMap ? "" : "mx-auto h-auto max-h-[440px] w-full text-medium"}
             />
             {/* How to use the map, and what a faded car means while one is in. */}
@@ -3132,7 +3142,7 @@ function TvPitLane({ entries, match, className = "" }) {
   );
 }
 
-function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, onPositions, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
+function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, onPositions, server, gap, connected, onExit, onSeen, rcAllowed = false, pitLoss = null, demo = false }) {
   const pick = useContext(MapPick);
   // The page underneath is still mounted, and without this it scrolls away
   // behind the board on any stray wheel event.
@@ -3280,6 +3290,10 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
       ? Math.min(session.raceLaps, session.raceLaps - session.lapsLeft + 1)
       : null;
   const cars = (entries || []).filter((e) => e.onTrack || e.inPits);
+  // The pit window, as on the page: races only, until the flag. In a race it
+  // takes the best sectors' place under the map; nobody chases a sector then.
+  const pitOn = !!pitLoss && session?.type === "Race" && !session?.finished && !session?.chequered;
+  const pitWindow = useMemo(() => (pitOn ? { loss: pitLoss, asDriver: demo } : null), [pitOn, pitLoss, demo]);
   // Either the race server's own overhead picture, or a stylised outline we
   // hold for that circuit. With neither, the map stands down and the order
   // takes the whole screen rather than sharing it with an empty rectangle.
@@ -3379,6 +3393,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
           )}
           <div className="flex items-center gap-2">
             {rcAllowed && <RaceControlToggle on={rcOn} onChange={setRc} className={btn} />}
+            {session && pitLoss && <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />}
             <button
               type="button"
               onClick={toggleFull}
@@ -3529,6 +3544,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
                   wrapClassName={mapFrame}
                   className={`${mapFit} text-medium`}
                   incidents={mapIncidents}
+                  pitWindow={pitWindow}
                 />
               </div>
             )}
@@ -3541,7 +3557,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
               />
             ) : (
               <>
-            <TvSectors entries={entries} match={match} />
+            {!pitOn && <TvSectors entries={entries} match={match} />}
             {/* A FIXED share of the column, not "as tall as it needs". Sized
                 to what it holds, it grew every time somebody pitted and took
                 the height out of the map above it — so the picture everyone is
@@ -3663,6 +3679,9 @@ export default function Live() {
   // held one): everything arriving, fresh, and our own socket up.
   const connected = feed?.connected && !feed?.stale && socketState === "open";
   const session = board?.session;
+  // What a pit stop costs, for the map's pit window. Decided up in the header
+  // (PitStopSetting) before the race, read by the map during it.
+  const pitLoss = usePitLoss(session?.track || session?.trackName, session?.type === "Race" ? session?.pitLoss : null);
 
   // Has the relay said anything at all yet? `feed` is null only until the first
   // frame lands and never goes back to null, so this is precisely "we have been
@@ -3975,6 +3994,8 @@ export default function Live() {
         gap={gap}
         connected={connected}
         onExit={exitTv}
+        pitLoss={pitLoss}
+        demo={!!board?.demo}
       />
       </MapPick.Provider>
     );
@@ -4027,6 +4048,10 @@ export default function Live() {
                   and leaves you to guess what. */}
               {!tvSeen && <span className="pill bg-brand/30 text-[9px] text-dark">New</span>}
             </button>
+            {/* What a pit stop costs, for the pit window on the map. Set here
+                before the race rather than on the map during it: nobody
+                clicks around a web page while driving. */}
+            {session && <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />}
             {/* Stewards on a phone: straight into the TV board with race
                 control on, the one reason to open it there. */}
             {rcAllowed && (
@@ -4141,6 +4166,8 @@ export default function Live() {
                 // down with the rest: a map of the other circuit would be a
                 // confident lie.
                 server={board?.serverKey || serverKey}
+                pitLoss={pitLoss}
+                demo={!!board?.demo}
                 hotlap={liveHotlap.videos}
                 hotlapTrack={liveTrack}
               />

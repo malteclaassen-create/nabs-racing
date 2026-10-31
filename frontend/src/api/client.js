@@ -685,6 +685,9 @@ export const api = {
     if (server) parts.push(`server=${encodeURIComponent(server)}`);
     return request(`/live/track-line?${parts.join("&")}`);
   },
+  // Which cars on the live board are the signed-in member's own (the board's
+  // pseudonymous ids), for the map's pit window. Empty when signed out.
+  liveMe: () => request("/live/me", { userAuth: true }),
   // Race control (stewards + admins): does this viewer get the button, the
   // incidents of the session on air, and the two things a steward changes.
   raceControlAccess: () => request("/live/incidents/access", { auth: true }),

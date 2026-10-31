@@ -1,6 +1,9 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Minus, Plus, X } from "lucide-react";
 import { api } from "../api/client.js";
+import { createProgressTracker, computePitWindow, positionAtSpline, TRAFFIC_MS } from "../utils/pitWindow.mjs";
+import { useOwnLiveGuids, usePitWindowShown } from "../hooks/usePitWindow.js";
+import PitWindowPanel from "./PitWindowPanel.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { aerialForTrack } from "../data/aerialMaps.js";
 import SlidingTabs from "./SlidingTabs.jsx";
@@ -284,6 +287,9 @@ function useSmoothCars({ dots, focusGuid, zoom, camInfo, onPositions, project })
         // Ease BOTH camera position and zoom from the currently displayed view.
         // Switching drivers or returning to overview can interrupt the flight.
         const target = focusPos ? zTarget : 1;
+        // A zoom of 1 is the whole circuit, wherever the followed car is (the
+        // pit window keeps the map there): no panning after it.
+        if (target <= 1) focusPos = null;
         const blend = instant ? 1 : 1 - Math.exp(-dt / 190);
         const z = liveRef.current.zoomShown + (target - liveRef.current.zoomShown) * blend;
         // Settle exactly on the target, so the marker scale above stops being
@@ -534,7 +540,16 @@ function useTags({ dots, focusGuid, zoom, r, rotated, H }) {
 // The lap as a polyline (first point = start line), with a way to find any
 // point on it by share of the lap, and where its two sector lines fall.
 function sectorGeometry(points, lines) {
-  if (!points || points.length < 3 || !lines) return null;
+  if (!lines) return null;
+  const line = lineGeometry(points);
+  if (!line) return null;
+  const [s1, s2] = lines.map((v) => v / 100);
+  return { at: line.at, cuts: [s1, s2] };
+}
+
+// Any point on the lap's polyline by share of the lap (0 = the start line).
+function lineGeometry(points) {
+  if (!points || points.length < 3) return null;
   const cum = [0];
   for (let i = 1; i < points.length; i++) {
     cum.push(cum[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
@@ -551,8 +566,57 @@ function sectorGeometry(points, lines) {
     const t = (want - cum[i - 1]) / span;
     return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, angle: (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI };
   };
-  const [s1, s2] = lines.map((v) => v / 100);
-  return { at, cuts: [s1, s2] };
+  return { at };
+}
+
+// ---- Pit window --------------------------------------------------------------
+
+// Where the pit window's car would rejoin: a dashed ring with a PIT tag, amber
+// when it lands right next to another car. Glides like a car (it is fed to
+// useSmoothCars under its own id) and stays out of the way of clicks.
+const GHOST_ID = "__pit";
+function PitGhost({ x, y, r, traffic, counterRotate, registerRef }) {
+  const ring = r * 2.3;
+  const tagW = r * 2.9;
+  const tagH = r * 1.45;
+  const tone = traffic ? "stroke-amber-500" : "stroke-dark";
+  return (
+    <g ref={registerRef} style={{ transform: `translate(${x}px, ${y}px)`, pointerEvents: "none" }}>
+      <g data-car data-rot={counterRotate ? "-90" : undefined} transform={counterRotate ? "rotate(-90) scale(1)" : "scale(1)"}>
+        <circle r={ring} className={traffic ? "fill-amber-500" : "fill-dark"} opacity={0.12} />
+        <circle
+          r={ring}
+          fill="none"
+          className={tone}
+          strokeWidth={r * 0.28}
+          strokeDasharray={`${r * 0.75} ${r * 0.55}`}
+          strokeLinecap="round"
+        />
+        <g transform={`translate(${-tagW / 2} ${-ring - tagH - r * 0.35})`}>
+          <rect width={tagW} height={tagH} rx={r * 0.36} className={traffic ? "fill-amber-500" : "fill-dark"} />
+          <text
+            x={tagW / 2}
+            y={tagH / 2 + r * 0.04}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={r * 0.95}
+            fontWeight="800"
+            className={`font-mono ${traffic ? "fill-[#1f1300]" : "fill-card"}`}
+          >
+            PIT
+          </text>
+        </g>
+      </g>
+    </g>
+  );
+}
+
+// The ghost's place on the drawn map, or null. `toXY` projects a world
+// position; `atSpline` finds a share of the lap on the drawn circuit.
+function ghostDotFor(ghost, toXY, atSpline) {
+  if (!ghost) return null;
+  const p = ghost.pos && toXY ? toXY(ghost.pos) : atSpline ? atSpline(ghost.spline) : null;
+  return p ? { guid: GHOST_ID, x: p.x, y: p.y } : null;
 }
 
 // The lap's three markers: a bar across the start line and a labelled disc at
@@ -654,7 +718,7 @@ function useTrackLine(ver, server) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null }) {
+function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null, ghost = null }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
@@ -691,7 +755,23 @@ function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocu
     [cars, cal, matchFn]
   );
   const project = useCallback((x, z) => projectXZ(x, z, cal), [cal]);
-  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: W, h: H }, onPositions, project });
+  // The pit window's ring: at the car's own past position when there is one,
+  // else on the AI line at that share of the lap.
+  const lineGeo = useMemo(() => (line ? lineGeometry([...line, line[0]].map(([x, z]) => projectXZ(x, z, cal))) : null), [line, cal]);
+  const ghostDot = useMemo(
+    () =>
+      ghostDotFor(
+        ghost,
+        (p) => {
+          const [x, y] = projectXZ(p.x, p.z, cal);
+          return { x, y };
+        },
+        lineGeo ? (s) => lineGeo.at(s) : null
+      ),
+    [ghost, cal, lineGeo]
+  );
+  const smoothDots = useMemo(() => (ghostDot ? [...dots, ghostDot] : dots), [dots, ghostDot]);
+  const { register, camRef } = useSmoothCars({ dots: smoothDots, focusGuid, zoom, camInfo: { w: W, h: H }, onPositions, project });
   const [svgEl, setSvgEl] = useState(null);
   const fit = useFitScale(svgEl, rotated ? H : W, rotated ? W : H);
   // The circuit-relative size is what the markers had before the map is
@@ -778,6 +858,9 @@ function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocu
               const [x, y] = projectXZ(inc.x, inc.z, cal);
               return <IncidentMark key={inc.id} x={x} y={y} r={rBase / (focusGuid ? Math.sqrt(zoom) : 1)} inc={inc} />;
             })}
+            {ghostDot && (
+              <PitGhost x={ghostDot.x} y={ghostDot.y} r={r} traffic={!!ghost?.traffic} counterRotate={rotated} registerRef={register(GHOST_ID)} />
+            )}
             {dots.map((dot) => (
               <CarMarker
                 key={dot.guid}
@@ -808,7 +891,7 @@ const OUTLINE_SAMPLES = 360;
 // direction, so the positions are indicative. Unknown tracks render nothing.
 // The sector colours walk the same path by the same share of the lap, so they
 // agree with where the cars are drawn, approximation and all.
-function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGuid, zoom, onFocus, className = "", incidents = null, sectorLines = null }) {
+function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGuid, zoom, onFocus, className = "", incidents = null, sectorLines = null, ghost = null }) {
   // The same resolver the card around this map uses to decide there IS an
   // outline to show. It used to be the plain lookup, which knows "Most" but
   // not "NABS Autodrom Most (no chicane)" — so the card promised a map and
@@ -843,6 +926,19 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
   const [, , vwRaw, vhRaw] = (circuit?.box || "0 0 100 100").split(/\s+/).map(Number);
   const vw = vwRaw || 100;
   const vh = vhRaw || 100;
+  // Portrait outlines lie down, exactly like the real map does (ROTATE_RATIO):
+  // Monza is drawn tall, and stood upright in a landscape box it came out a
+  // thin column with half the card empty either side of it.
+  const rotated = vh / vw > ROTATE_RATIO;
+  // The pit window's ring, walked along the outline like the cars are.
+  const ghostDot = useMemo(
+    () =>
+      len && pathRef.current
+        ? ghostDotFor(ghost, null, (s) => pathRef.current.getPointAtLength((((s % 1) + 1) % 1) * len))
+        : null,
+    [ghost, len]
+  );
+  const smoothDots = useMemo(() => (ghostDot ? [...dots, ghostDot] : dots), [dots, ghostDot]);
   // Along the outline, by the spline — the same walk as the dots above.
   const project = useCallback(
     (x, z, spline) => {
@@ -852,9 +948,9 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
     },
     [len]
   );
-  const { register, camRef } = useSmoothCars({ dots, focusGuid, zoom, camInfo: { w: vw, h: vh }, onPositions, project });
+  const { register, camRef } = useSmoothCars({ dots: smoothDots, focusGuid, zoom, camInfo: { w: vw, h: vh }, onPositions, project });
   const [svgEl, setSvgEl] = useState(null);
-  const fit = useFitScale(svgEl, vw, vh);
+  const fit = useFitScale(svgEl, rotated ? vh : vw, rotated ? vw : vh);
   // Car size off the box's DIAGONAL, not its width, until the map is measured.
   // Off the width, a wide, flat circuit (Most's box is twice as wide as it is
   // tall) got cars twice the size of a tall one's relative to the track around
@@ -862,14 +958,14 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
   const diag = Math.hypot(vw, vh);
   const rBase = diag * 0.018;
   const r = markerRadius(fit, rBase);
-  const tags = useTags({ dots, focusGuid, zoom, r, rotated: false, H: vh });
+  const tags = useTags({ dots, focusGuid, zoom, r, rotated, H: vh });
 
   if (!circuit) return null;
 
   return (
     <svg
       ref={setSvgEl}
-      viewBox={circuit.box || "0 0 100 100"}
+      viewBox={rotated ? `0 0 ${vh} ${vw}` : circuit.box || "0 0 100 100"}
       preserveAspectRatio="xMidYMid meet"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
@@ -877,6 +973,8 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
       aria-label={`Live track map, ${dots.length} cars`}
       onClick={() => onFocus(null)}
     >
+      {/* One group carries the rotation, as on the real map. */}
+      <g transform={rotated ? `translate(${vh} 0) rotate(90)` : undefined}>
       <g ref={camRef}>
         {/* the outline itself — quiet, so the cars read as the foreground.
             Quiet is not invisible, though: drawn in the border colour it was a
@@ -898,7 +996,7 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
           vectorEffect="non-scaling-stroke"
           opacity={0.6}
         />
-        {geo && <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={false} />}
+        {geo && <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} />}
         {len > 0 &&
           pathRef.current &&
           (incidents || []).map((inc) => {
@@ -906,6 +1004,9 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
             const pt = pathRef.current.getPointAtLength((((inc.spline % 1) + 1) % 1) * len);
             return <IncidentMark key={inc.id} x={pt.x} y={pt.y} r={rBase / (focusGuid ? Math.sqrt(zoom) : 1)} inc={inc} />;
           })}
+        {ghostDot && (
+          <PitGhost x={ghostDot.x} y={ghostDot.y} r={r} traffic={!!ghost?.traffic} counterRotate={rotated} registerRef={register(GHOST_ID)} />
+        )}
         {dots.map((d) => (
           <CarMarker
             key={d.guid}
@@ -913,11 +1014,12 @@ function StylisedTrackMap({ track, trackId, cars, onPositions, matchFn, focusGui
             r={r}
             spot={tags.get(d.guid)}
             isFocusTarget={d.guid === focusGuid}
-            counterRotate={false}
+            counterRotate={rotated}
             onFocus={onFocus}
             registerRef={register(d.guid)}
           />
         ))}
+      </g>
       </g>
     </svg>
   );
@@ -992,6 +1094,62 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
   );
 }
 
+// Everything the pit window needs, worked out per board update: whose car it
+// is about, the progress history it reads (createProgressTracker), the stop
+// cost, and the answer. `ghost` is what the map draws, null for no ring.
+//
+// Whose car: the one being followed, else the last one picked (the ring stays
+// on it after the follow ends, so it does not blink away), else the viewer's
+// own.
+function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matchFn }) {
+  const on = !!pitWindow;
+  const ownGuids = useOwnLiveGuids(cars, on);
+  // The stop cost is decided on the page (usePitLoss, set in the header).
+  const loss = pitWindow?.loss || null;
+  const lossMs = loss?.ms ?? 0;
+  const [shown, setShown] = usePitWindowShown();
+  const tracker = useRef(null);
+  if (!tracker.current) tracker.current = createProgressTracker();
+  useEffect(() => tracker.current.clear(), [trackId]);
+
+  const own = on ? (cars || []).find((c) => ownGuids.includes(c.guid) && c.onTrack) || null : null;
+  const find = (g) => (g ? (cars || []).find((c) => c.guid === g && c.onTrack) : null);
+  const subject = on ? find(focusGuid) || find(pickGuid) || own : null;
+  // Fed on every board, whether or not anybody is looking at the panel: the
+  // ring is only as good as the history behind it. `fed` is when new data
+  // last arrived, and only moves then: a re-render with the same board must
+  // give the same ring, or the ring steps forward between real updates and
+  // the glide on the map turns into stop-and-go.
+  const fedAt = useRef(0);
+  const fed = useMemo(() => {
+    if (!on) return 0;
+    const now = Date.now();
+    if (tracker.current.update(cars, now)) fedAt.current = now;
+    return fedAt.current;
+  }, [on, cars]);
+  const win = useMemo(
+    () =>
+      subject && lossMs ? computePitWindow({ cars, subjectGuid: subject.guid, lossMs, tracker: tracker.current, now: fed }) : null,
+    [subject, cars, lossMs, fed]
+  );
+  const ghost = useMemo(
+    () =>
+      win && !win.inLane
+        ? { spline: win.spline, pos: win.pos || positionAtSpline(tracker.current, win.spline), traffic: win.traffic }
+        : null,
+    [win]
+  );
+  // Who a car is as the league knows them: name, team, team colour.
+  const infoOf = useCallback((n) => {
+    const m = matchFn ? matchFn(n.name) : null;
+    return { name: m?.nabsName || n.name, team: m?.teamName || null, color: m?.teamColor || "#94a3b8" };
+  }, [matchFn]);
+  const nameOf = useCallback((n) => infoOf(n).name, [infoOf]);
+  const isOwn = !!subject && ownGuids.includes(subject.guid);
+  const who = subject ? (isOwn ? "You" : nameOf(subject)) : "";
+  return { subject, win, ghost, loss, shown, setShown, infoOf, who, canShowMine: !!own && !isOwn, driving: !!own };
+}
+
 // Picks the real map when calibration is present, else the stylised outline.
 // Owns the focus + zoom state so they survive a map-mode change mid-session.
 // `className` dresses the map itself; `wrapClassName` REPLACES the frame around
@@ -1003,14 +1161,33 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
 // a caller's `absolute` are the same property and the stylesheet, not the class
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned.
-export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, focusGuid: focusProp = null, onFocusChange = null }) {
+//
+// `pitWindow` ({ loss }, race only; loss is usePitLoss, set in the page
+// header) turns on the pit window: a dashed ring where the picked car (or the
+// viewer's own) would rejoin after a stop, and a panel under the map saying
+// where that is and among whom. While it is on, clicking a car
+// picks it without zooming: the map stays on the whole circuit, so car and
+// ring are both in view. + still zooms in on purpose, and − back out to the
+// whole circuit. Without it the map is exactly what it was.
+export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, focusGuid: focusProp = null, onFocusChange = null, pitWindow = null }) {
   // Which car the camera follows. The map keeps that itself, unless the page
   // around it does (onFocusChange): the Live page lets a click on a driver's
   // name in its tables put the map on them, so the choice has to live there.
   const [focusOwn, setFocusOwn] = useState(null);
   const focusGuid = onFocusChange ? focusProp : focusOwn;
   const setFocusGuid = onFocusChange || setFocusOwn;
+  const [pickGuid, setPickGuid] = useState(null);
+  useEffect(() => {
+    if (focusGuid) setPickGuid(focusGuid);
+  }, [focusGuid]);
+  const pit = usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId: trackId || track, matchFn });
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  // With the pit window on the map stays on the whole circuit until somebody
+  // asks for a close-up with +. A new pick starts on the whole circuit again.
+  const [closeUp, setCloseUp] = useState(false);
+  useEffect(() => setCloseUp(false), [focusGuid]);
+  const wholeMap = !!pitWindow && !closeUp;
+  const shownZoom = wholeMap ? 1 : zoom;
   const [mapMode, setMapMode] = useState("track");
   const [imageFailed, setImageFailed] = useState(false);
   const [aerialLoaded, setAerialLoaded] = useState(false);
@@ -1025,12 +1202,18 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   useEffect(() => {
     if (focusGuid && !focusedCar) setFocusGuid(null);
   }, [focusGuid, focusedCar]);
+  // A viewer driving in this race has speed, gear and revs on their own
+  // screen already, so the cockpit panel stays away for them. Everybody
+  // watching rather than driving keeps it.
+  const cockpit = !(pitWindow && (pit.driving || pitWindow.asDriver));
   // Tell the backend which car this viewer follows, so its cockpit numbers
   // arrive on the fast-lane instead of the 700ms tick. Cleared on unmount.
+  // Nothing to stream for with the cockpit panel away.
+  const streamGuid = cockpit ? focusGuid : null;
   useEffect(() => {
-    follow?.(focusGuid);
+    follow?.(streamGuid);
     return () => follow?.(null);
-  }, [focusGuid, follow]);
+  }, [streamGuid, follow]);
 
   const real = map && map.width && map.height && map.scaleFactor;
   // Kept as the same array while the two numbers stay put, so the outline is
@@ -1043,8 +1226,22 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   const focusColor = focusMatch?.teamColor || "#94a3b8";
   // The speed bar's full scale: the fastest anyone has gone this session.
   const vmax = Math.max(0, ...(cars || []).map((c) => Number(c.topSpeed) || 0));
-  const zoomStep = (dir) =>
+  const zoomStep = (dir) => {
+    if (pitWindow) {
+      if (wholeMap) {
+        if (dir > 0) {
+          setZoom(ZOOM_MIN);
+          setCloseUp(true);
+        }
+        return;
+      }
+      if (dir < 0 && zoom <= ZOOM_MIN * 1.01) {
+        setCloseUp(false);
+        return;
+      }
+    }
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, dir > 0 ? z * 1.4 : z / 1.4)));
+  };
   const zoomBtn = "grid h-8 w-8 place-items-center text-medium transition hover:bg-surface2 hover:text-dark";
   const hud = (cls) => (
     <FollowHud
@@ -1085,13 +1282,14 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           onAerialLoad={() => setAerialLoaded(true)}
           matchFn={matchFn}
           focusGuid={focusGuid}
-          zoom={zoom}
+          zoom={shownZoom}
           onFocus={setFocusGuid}
           server={server}
           className={className}
           incidents={incidents}
           line={line}
           sectorLines={lines}
+          ghost={pit.ghost}
           onImageError={() => { setImageFailed(true); setMapMode("track"); setAerialLoaded(false); setLoadAerial(false); }}
         />
       ) : (
@@ -1102,11 +1300,12 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           onPositions={onPositions}
           matchFn={matchFn}
           focusGuid={focusGuid}
-          zoom={zoom}
+          zoom={shownZoom}
           onFocus={setFocusGuid}
           className={className}
           incidents={incidents}
           sectorLines={lines}
+          ghost={pit.ghost}
         />
       )}
       {imageFailed && <p role="status" className="absolute bottom-2 left-2 rounded bg-black/80 px-2 py-1 text-xs text-white">Satellite image unavailable. Showing track map.</p>}
@@ -1114,7 +1313,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
         <>
           {/* Floats over the map from sm up; a phone gets it under the map
               (below), where it does not cover the cars it is about. */}
-          {hud("absolute bottom-3 left-3 z-10 hidden max-w-[calc(100%-4.5rem)] sm:flex")}
+          {cockpit && hud("absolute bottom-3 left-3 z-10 hidden max-w-[calc(100%-4.5rem)] sm:flex")}
           {/* zoom controls — how close the follow-camera sits */}
           <div className="absolute bottom-3 right-3 z-10 flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             <button type="button" className={`${zoomBtn} border-b border-border`} onClick={() => zoomStep(1)} title="Zoom in" aria-label="Zoom in">
@@ -1127,7 +1326,28 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
         </>
       )}
       </div>
-      {focusedCar && hud("mt-2 flex shrink-0 sm:hidden")}
+      {focusedCar && cockpit && hud("mt-2 flex shrink-0 sm:hidden")}
+      {pit.subject && (
+        <PitWindowPanel
+          className="mt-2 shrink-0"
+          open={pit.shown}
+          onToggle={() => pit.setShown(!pit.shown)}
+          win={pit.win}
+          who={pit.who}
+          loss={pit.loss}
+          subject={pit.subject}
+          infoOf={pit.infoOf}
+          trafficMs={TRAFFIC_MS}
+          onShowMine={
+            pit.canShowMine
+              ? () => {
+                  setFocusGuid(null);
+                  setPickGuid(null);
+                }
+              : null
+          }
+        />
+      )}
       {aerialAvailable && (
         <div className="shrink-0 px-1 pt-2 text-xs leading-relaxed text-light">
           <a href={aerialMap.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-dark">{aerialMap.source}</a>

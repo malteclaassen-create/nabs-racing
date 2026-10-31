@@ -36,6 +36,7 @@ import { createGapTracker } from "./liveGaps.js";
 import * as liveIncidents from "./liveIncidents.js";
 import { buildTrackMask } from "../lib/trackMask.js";
 import { createPitFilter, speedKmhOf } from "./pitFlag.js";
+import { createPitLossLearner } from "../lib/pitLoss.js";
 import { trackKeyOf } from "../lib/telemetryLaps.js";
 import { currentBests, setBoardScopes, boardScopes, baseTrackOf } from "../lib/liveBestLaps.js";
 import { noteBoard, sectorLinesFor } from "../lib/sectorLines.js";
@@ -262,6 +263,8 @@ const DEMO_ENABLED =
   process.env.LIVE_TIMING_DEMO === "1" ||
   (process.env.NODE_ENV !== "production" && !ON_RAILWAY);
 const DEMO_RACE_LAPS = 30; // the fabricated race's distance (drives the strategy axis)
+const DEMO_START_LAP = 6; // laps already done when the demo race comes on air
+const DEMO_LOOP_S = 20 * 60; // then it starts over (about 15 laps later)
 
 const nsToMs = (ns) => (typeof ns === "number" && ns > 0 ? Math.round(ns / 1e6) : null);
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -719,6 +722,10 @@ function createRelay(server) {
   // km/h through the last corners at Most.
   const pitFilter = createPitFilter();
 
+  // What a stop costs here, learned from this race's own stops (lib/pitLoss.js)
+  // for the live map's pit window. Cleared with the crossings it reads.
+  const pitLoss = createPitLossLearner();
+
   // Who is on an OUT LAP, and the state needed to know when it ends.
   //
   //   lap     the lap counter when they left the pit lane
@@ -1032,6 +1039,7 @@ function createRelay(server) {
       crossingsByGuid.clear();
       deltaTracker.clear();
       gapTracker.clear();
+      pitLoss.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -1557,6 +1565,10 @@ function createRelay(server) {
     const lapCount = car?.NumLaps ?? d.TotalNumLaps ?? 0;
     const spline = live.NormalisedSplinePos ?? d.NormalisedSplinePos ?? 0;
     const outLap = trackOutLap(guid, { inPits, lapCount, spline, onTrack });
+    if (status?.SessionInfo?.Type === 3) {
+      pitLoss.note(guid, { inPits, lapCount, onTrack });
+      pitLoss.evaluate(guid, crossingsByGuid.get(guid), { inPits });
+    }
 
     return {
       // The real GUID stays server-side (it keys the stint and race-position
@@ -2227,6 +2239,12 @@ function createRelay(server) {
         // null at a circuit nobody has recorded a matching lap on yet: the map
         // then draws the track in one colour rather than guessing thirds.
         sectorLines: sectorLinesFor(trackKeyOf(si.Track || "", si.TrackConfig || "")),
+        // What a pit stop has cost in this race so far, { ms, stops }, for the
+        // map's pit window. Null outside a race and before the first stop.
+        pitLoss: isRace ? pitLoss.result() : null,
+        // The leader has taken the flag: the race is decided and the cars
+        // still out are on their cool-down lap. The map's pit window goes away.
+        chequered: isRace && raceFlagAt != null,
       },
       entries,
       updatedAt: Date.now(),
@@ -2345,6 +2363,7 @@ function createRelay(server) {
       crossingsByGuid.clear();
       deltaTracker.clear();
       gapTracker.clear();
+      pitLoss.clear();
       pitFilter.clear();
       outLapByGuid.clear();
       lastSplineByGuid.clear();
@@ -2593,13 +2612,20 @@ async function ensureDemoState() {
         guid: `demo-${i}`,
         name,
         raceNumber: i + 2,
-        base: (i / 12 + i * 0.017) % 1, // starting spline, spread around the lap
-        speed: 0.010 + (i % 5) * 0.0006, // spline per second (a lap ≈ 90-100s)
+        // Starting spline: the field strung out over about half the lap
+        // (some 45 seconds, leader to last), not round the whole of it.
+        base: (11 - i) * 0.05,
+        // Spline per second: a lap of about 81-83s, the quickest and slowest a
+        // second and a half apart, like a real field. It was ten seconds a lap
+        // apart before, and after half an hour of demo every car was lapped.
+        speed: 0.0123 - (i % 5) * 0.00006,
         pitsAround: i === 5 ? 0.62 : i === 10 ? 0.31 : null, // a couple of pit cars
         stints,
         grow, // a still-current stint that keeps adding laps
         currentTyre: last?.tyre ?? null,
-        lapBase: stints.reduce((a, s) => a + s.laps, 0),
+        // The same for everyone: they are all in the same race. (Each car's
+        // own stint total made them look laps apart from the first second.)
+        lapBase: DEMO_START_LAP,
       };
     }),
   };
@@ -2722,8 +2748,11 @@ function getDemoBoard(kind = "race") {
     return { ok: false, connected: false, demo: true, stale: false, session: null, entries: [], updatedAt: Date.now() };
   }
   const secs = (Date.now() - demoState.startedAt) / 1000;
+  // The race starts over every DEMO_LOOP_S, so a demo left running all
+  // evening still looks like a race and not like a field lapped five times.
+  const raceSecs = practice ? secs : secs % DEMO_LOOP_S;
   const entries = demoState.cars.map((c, idx) => {
-    const prog = c.base + c.speed * secs; // total laps of progress (fractional)
+    const prog = c.base + c.speed * raceSecs; // total laps of progress (fractional)
     const spline = ((prog % 1) + 1) % 1;
     const lapsDone = Math.floor(prog);
     // A pit car dips off track for a slice of each lap near its pit window.
@@ -2873,6 +2902,8 @@ function getDemoBoard(kind = "race") {
       // The demo's own cuts, so the map's sector colours line up with the
       // sector times the board builds.
       sectorLines: [DEMO_CUT[0] * 100, (DEMO_CUT[0] + DEMO_CUT[1]) * 100],
+      // A learned stop cost, so the map's pit window shows its "learned" state.
+      pitLoss: practice ? null : { ms: 21500, stops: 3 },
     },
     entries,
     updatedAt: Date.now(),
