@@ -67,7 +67,7 @@ import { buildRobotsTxt, buildSitemapXml } from "./lib/sitemap.js";
 import { readAndroidApp, buildAssetLinks } from "./lib/androidApp.js";
 import { androidRelease } from "./lib/androidRelease.js";
 import { buildCrawlLinks, applyCrawlLinks } from "./lib/crawlLinks.js";
-import { legacyRedirects, canonicalUrl, applyCanonical, isKnownRoute, seriesSlugKnown, applyNoindex } from "./lib/seo.js";
+import { legacyRedirects, railwayHostRedirect, canonicalUrl, applyCanonical, isKnownRoute, seriesSlugKnown, applyNoindex } from "./lib/seo.js";
 import prisma from "./lib/prisma.js";
 import { ensureDownloadTables } from "./lib/downloads.js";
 import { ensureAppSchema } from "./lib/ensureSchema.js";
@@ -130,6 +130,11 @@ const PORT = process.env.PORT || 4000;
 // login limiter would count ALL visitors as one IP and lock everyone out
 // together after a few failed attempts.
 app.set("trust proxy", 1);
+
+// The Railway address sends every page to the league domain, so search
+// engines stop keeping a second copy of the site there (lib/seo.js). First,
+// so robots.txt and the sitemap redirect too.
+app.use(railwayHostRedirect());
 
 const origins = (process.env.CORS_ORIGIN || "http://localhost:5173")
   .split(",")

@@ -8,7 +8,7 @@
 // multiplies into endless near-duplicates; keep too little and a hundred race
 // results share one address. Hence the tests.
 import { describe, it, expect, vi } from "vitest";
-import { canonicalUrl, applyCanonical, legacyRedirects, seasonLabel, isKnownRoute } from "./seo.js";
+import { canonicalUrl, applyCanonical, legacyRedirects, seasonLabel, isKnownRoute, railwayRedirectTarget } from "./seo.js";
 
 // Just enough Prisma for the two lookups canonicalUrl makes: the primary series
 // (to fold its home onto "/") and the active season number (to drop a parameter
@@ -301,5 +301,37 @@ describe("isKnownRoute", () => {
       expect(isKnownRoute(p), p).toBe(true);
     }
     expect(isKnownRoute("/newsx")).toBe(false);
+  });
+});
+
+describe("railway.app address", () => {
+  const O = "https://nabsracing.com";
+  const req = (over = {}) => ({
+    method: "GET",
+    host: "nabs-racing-production.up.railway.app",
+    path: "/s/friday-f1/drivers",
+    originalUrl: "/s/friday-f1/drivers?season=7",
+    ...over,
+  });
+
+  it("sends pages to the league domain, query and all", () => {
+    expect(railwayRedirectTarget(req(), O)).toBe(`${O}/s/friday-f1/drivers?season=7`);
+    expect(railwayRedirectTarget(req({ path: "/", originalUrl: "/" }), O)).toBe(`${O}/`);
+    expect(railwayRedirectTarget(req({ path: "/robots.txt", originalUrl: "/robots.txt" }), O)).toBe(`${O}/robots.txt`);
+    expect(railwayRedirectTarget(req({ method: "HEAD" }), O)).toBe(`${O}/s/friday-f1/drivers?season=7`);
+  });
+
+  it("leaves the API, logins, other methods and other hosts alone", () => {
+    expect(railwayRedirectTarget(req({ path: "/api/health", originalUrl: "/api/health" }), O)).toBe(null);
+    expect(railwayRedirectTarget(req({ path: "/auth/discord/callback", originalUrl: "/auth/discord/callback?code=x" }), O)).toBe(null);
+    expect(railwayRedirectTarget(req({ method: "POST" }), O)).toBe(null);
+    expect(railwayRedirectTarget(req({ host: "nabsracing.com" }), O)).toBe(null);
+    expect(railwayRedirectTarget(req({ host: "localhost:4000" }), O)).toBe(null);
+    expect(railwayRedirectTarget(req({ host: "healthcheck.railway.app" }), O)).toBe(null);
+  });
+
+  it("never loops when the domain itself is the railway one", () => {
+    expect(railwayRedirectTarget(req(), "https://nabs-racing-production.up.railway.app")).toBe(null);
+    expect(railwayRedirectTarget(req(), "not a url")).toBe(null);
   });
 });
