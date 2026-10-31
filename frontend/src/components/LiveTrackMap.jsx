@@ -787,6 +787,10 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
   const [, , vwRaw, vhRaw] = (circuit?.box || "0 0 100 100").split(/\s+/).map(Number);
   const vw = vwRaw || 100;
   const vh = vhRaw || 100;
+  // Portrait outlines lie down, exactly like the real map does (ROTATE_RATIO):
+  // Monza is drawn tall, and stood upright in a landscape box it came out a
+  // thin column with half the card empty either side of it.
+  const rotated = vh / vw > ROTATE_RATIO;
   // The pit window's ring, walked along the outline like the cars are.
   const ghostDot = useMemo(
     () =>
@@ -798,7 +802,7 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
   const smoothDots = useMemo(() => (ghostDot ? [...dots, ghostDot] : dots), [dots, ghostDot]);
   const { register, camRef } = useSmoothCars({ dots: smoothDots, focusGuid, zoom, camInfo: { w: vw, h: vh } });
   const [svgEl, setSvgEl] = useState(null);
-  const fit = useFitScale(svgEl, vw, vh);
+  const fit = useFitScale(svgEl, rotated ? vh : vw, rotated ? vw : vh);
   // Car size off the box's DIAGONAL, not its width, until the map is measured.
   // Off the width, a wide, flat circuit (Most's box is twice as wide as it is
   // tall) got cars twice the size of a tall one's relative to the track around
@@ -806,14 +810,14 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
   const diag = Math.hypot(vw, vh);
   const rBase = diag * 0.018;
   const r = markerRadius(fit, rBase);
-  const tags = useTags({ dots, focusGuid, zoom, r, rotated: false, H: vh });
+  const tags = useTags({ dots, focusGuid, zoom, r, rotated, H: vh });
 
   if (!circuit) return null;
 
   return (
     <svg
       ref={setSvgEl}
-      viewBox={circuit.box || "0 0 100 100"}
+      viewBox={rotated ? `0 0 ${vh} ${vw}` : circuit.box || "0 0 100 100"}
       preserveAspectRatio="xMidYMid meet"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
@@ -821,6 +825,8 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
       aria-label={`Live track map, ${dots.length} cars`}
       onClick={() => onFocus(null)}
     >
+      {/* One group carries the rotation, as on the real map. */}
+      <g transform={rotated ? `translate(${vh} 0) rotate(90)` : undefined}>
       <g ref={camRef}>
         {/* the outline itself — quiet, so the cars read as the foreground.
             Quiet is not invisible, though: drawn in the border colour it was a
@@ -842,7 +848,7 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
           vectorEffect="non-scaling-stroke"
           opacity={0.6}
         />
-        {geo && <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={false} />}
+        {geo && <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} />}
         {len > 0 &&
           pathRef.current &&
           (incidents || []).map((inc) => {
@@ -851,7 +857,7 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
             return <IncidentMark key={inc.id} x={pt.x} y={pt.y} r={rBase / (focusGuid ? Math.sqrt(zoom) : 1)} inc={inc} />;
           })}
         {ghostDot && (
-          <PitGhost x={ghostDot.x} y={ghostDot.y} r={r} traffic={!!ghost?.traffic} counterRotate={false} registerRef={register(GHOST_ID)} />
+          <PitGhost x={ghostDot.x} y={ghostDot.y} r={r} traffic={!!ghost?.traffic} counterRotate={rotated} registerRef={register(GHOST_ID)} />
         )}
         {dots.map((d) => (
           <CarMarker
@@ -860,11 +866,12 @@ function StylisedTrackMap({ track, trackId, cars, matchFn, focusGuid, zoom, onFo
             r={r}
             spot={tags.get(d.guid)}
             isFocusTarget={d.guid === focusGuid}
-            counterRotate={false}
+            counterRotate={rotated}
             onFocus={onFocus}
             registerRef={register(d.guid)}
           />
         ))}
+      </g>
       </g>
     </svg>
   );
