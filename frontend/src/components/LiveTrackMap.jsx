@@ -984,10 +984,15 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
         : null,
     [win]
   );
-  const nameOf = useCallback((n) => (matchFn ? matchFn(n.name)?.nabsName : null) || n.name, [matchFn]);
+  // Who a car is as the league knows them: name, team, team colour.
+  const infoOf = useCallback((n) => {
+    const m = matchFn ? matchFn(n.name) : null;
+    return { name: m?.nabsName || n.name, team: m?.teamName || null, color: m?.teamColor || "#94a3b8" };
+  }, [matchFn]);
+  const nameOf = useCallback((n) => infoOf(n).name, [infoOf]);
   const isOwn = !!subject && ownGuids.includes(subject.guid);
   const who = subject ? (isOwn ? "You" : nameOf(subject)) : "";
-  return { subject, win, ghost, loss, shown, setShown, nameOf, who, canShowMine: !!own && !isOwn, driving: !!own };
+  return { subject, win, ghost, loss, shown, setShown, infoOf, who, canShowMine: !!own && !isOwn, driving: !!own };
 }
 
 // Picks the real map when calibration is present, else the stylised outline.
@@ -1168,7 +1173,8 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           win={pit.win}
           who={pit.who}
           loss={pit.loss}
-          nameOf={pit.nameOf}
+          subject={pit.subject}
+          infoOf={pit.infoOf}
           trafficMs={TRAFFIC_MS}
           onShowMine={
             pit.canShowMine
