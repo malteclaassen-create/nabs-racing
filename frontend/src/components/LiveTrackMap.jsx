@@ -1040,7 +1040,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   // A viewer driving in this race has speed, gear and revs on their own
   // screen already, so the cockpit panel stays away for them. Everybody
   // watching rather than driving keeps it.
-  const cockpit = !(pitWindow && pit.driving);
+  const cockpit = !(pitWindow && (pit.driving || pitWindow.asDriver));
   // Tell the backend which car this viewer follows, so its cockpit numbers
   // arrive on the fast-lane instead of the 700ms tick. Cleared on unmount.
   // Nothing to stream for with the cockpit panel away.

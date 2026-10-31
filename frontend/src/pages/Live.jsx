@@ -2049,7 +2049,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, pitLoss = null, hotlap = null, hotlapTrack = null, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, pitLoss = null, demo = false, hotlap = null, hotlapTrack = null, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -2057,7 +2057,10 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
   const mapCarCount = cars.filter((e) => !e.isSafetyCar).length;
-  const pitWindow = useMemo(() => (pitLoss ? { loss: pitLoss } : null), [pitLoss]);
+  // The demo race plays it as a driver would see it (no cockpit panel when a
+  // car is clicked), so the page can be shown off the way it looks on race
+  // night from the seat.
+  const pitWindow = useMemo(() => (pitLoss ? { loss: pitLoss, asDriver: demo } : null), [pitLoss, demo]);
   // With a stream configured, map and player SHARE this card and a switch picks
   // between them, rather than stacking two tall windows down a narrow column.
   // No stream link, no switch — the card is the map, exactly as before.
@@ -4044,6 +4047,7 @@ export default function Live() {
                 // confident lie.
                 server={board?.serverKey || serverKey}
                 pitLoss={pitLoss}
+                demo={!!board?.demo}
                 hotlap={liveHotlap.videos}
                 hotlapTrack={liveTrack}
               />
