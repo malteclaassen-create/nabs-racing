@@ -189,6 +189,8 @@ const DEMO_ENABLED =
   process.env.LIVE_TIMING_DEMO === "1" ||
   (process.env.NODE_ENV !== "production" && !ON_RAILWAY);
 const DEMO_RACE_LAPS = 30; // the fabricated race's distance (drives the strategy axis)
+const DEMO_START_LAP = 6; // laps already done when the demo race comes on air
+const DEMO_LOOP_S = 20 * 60; // then it starts over (about 15 laps later)
 
 const nsToMs = (ns) => (typeof ns === "number" && ns > 0 ? Math.round(ns / 1e6) : null);
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -2445,13 +2447,20 @@ async function ensureDemoState() {
         guid: `demo-${i}`,
         name,
         raceNumber: i + 2,
-        base: (i / 12 + i * 0.017) % 1, // starting spline, spread around the lap
-        speed: 0.010 + (i % 5) * 0.0006, // spline per second (a lap ≈ 90-100s)
+        // Starting spline: the field strung out over about half the lap
+        // (some 45 seconds, leader to last), not round the whole of it.
+        base: (11 - i) * 0.05,
+        // Spline per second: a lap of about 81-83s, the quickest and slowest a
+        // second and a half apart, like a real field. It was ten seconds a lap
+        // apart before, and after half an hour of demo every car was lapped.
+        speed: 0.0123 - (i % 5) * 0.00006,
         pitsAround: i === 5 ? 0.62 : i === 10 ? 0.31 : null, // a couple of pit cars
         stints,
         grow, // a still-current stint that keeps adding laps
         currentTyre: last?.tyre ?? null,
-        lapBase: stints.reduce((a, s) => a + s.laps, 0),
+        // The same for everyone: they are all in the same race. (Each car's
+        // own stint total made them look laps apart from the first second.)
+        lapBase: DEMO_START_LAP,
       };
     }),
   };
@@ -2574,8 +2583,11 @@ function getDemoBoard(kind = "race") {
     return { ok: false, connected: false, demo: true, stale: false, session: null, entries: [], updatedAt: Date.now() };
   }
   const secs = (Date.now() - demoState.startedAt) / 1000;
+  // The race starts over every DEMO_LOOP_S, so a demo left running all
+  // evening still looks like a race and not like a field lapped five times.
+  const raceSecs = practice ? secs : secs % DEMO_LOOP_S;
   const entries = demoState.cars.map((c, idx) => {
-    const prog = c.base + c.speed * secs; // total laps of progress (fractional)
+    const prog = c.base + c.speed * raceSecs; // total laps of progress (fractional)
     const spline = ((prog % 1) + 1) % 1;
     const lapsDone = Math.floor(prog);
     // A pit car dips off track for a slice of each lap near its pit window.
