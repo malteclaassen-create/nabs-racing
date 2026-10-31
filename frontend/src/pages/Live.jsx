@@ -13,6 +13,8 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
+import PitStopSetting from "../components/PitStopSetting.jsx";
+import { usePitLoss } from "../hooks/usePitWindow.js";
 import { Activity, ShieldAlert } from "lucide-react";
 import {
   useRaceControlAccess,
@@ -2047,7 +2049,7 @@ function StreamLink({ url, stream }) {
 // Shares a row with the session card on lg+ (the map used to be its own
 // full-width section, which was mostly empty margin), so the heading moved
 // inside the card as a compact header strip.
-function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, hotlap = null, hotlapTrack = null, className = "" }) {
+function TrackMapSection({ session, entries, match, follow, onCarTelemetry, streamUrl, server, pitLoss = null, hotlap = null, hotlapTrack = null, className = "" }) {
   const realMap = session.map || null;
   // Live sessions carry the mod's display name ("NABS Monza F1 2025") which the
   // tidy resolver can't place, so try the AC id (session.track) too.
@@ -2055,14 +2057,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, stre
   const hasMap = !!realMap || !!stylised;
   const cars = entries.filter((e) => e.onTrack || e.inPits);
   const mapCarCount = cars.filter((e) => !e.isSafetyCar).length;
-  // Same object while the learned stop cost stays put, so the map is not told
-  // something new on every board tick.
-  const learnedMs = session.pitLoss?.ms ?? null;
-  const learnedStops = session.pitLoss?.stops ?? 0;
-  const pitWindow = useMemo(
-    () => ({ learned: learnedMs != null ? { ms: learnedMs, stops: learnedStops } : null }),
-    [learnedMs, learnedStops]
-  );
+  const pitWindow = useMemo(() => (pitLoss ? { loss: pitLoss } : null), [pitLoss]);
   // With a stream configured, map and player SHARE this card and a switch picks
   // between them, rather than stacking two tall windows down a narrow column.
   // No stream link, no switch — the card is the map, exactly as before.
@@ -3567,6 +3562,9 @@ export default function Live() {
   // held one): everything arriving, fresh, and our own socket up.
   const connected = feed?.connected && !feed?.stale && socketState === "open";
   const session = board?.session;
+  // What a pit stop costs, for the map's pit window. Decided up in the header
+  // (PitStopSetting) before the race, read by the map during it.
+  const pitLoss = usePitLoss(session?.track || session?.trackName, session?.type === "Race" ? session?.pitLoss : null);
 
   // Has the relay said anything at all yet? `feed` is null only until the first
   // frame lands and never goes back to null, so this is precisely "we have been
@@ -3927,6 +3925,10 @@ export default function Live() {
                   and leaves you to guess what. */}
               {!tvSeen && <span className="pill bg-brand/30 text-[9px] text-dark">New</span>}
             </button>
+            {/* What a pit stop costs, for the pit window on the map. Set here
+                before the race rather than on the map during it: nobody
+                clicks around a web page while driving. */}
+            {session && <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />}
             {/* Stewards on a phone: straight into the TV board with race
                 control on, the one reason to open it there. */}
             {rcAllowed && (
@@ -4040,6 +4042,7 @@ export default function Live() {
                 // down with the rest: a map of the other circuit would be a
                 // confident lie.
                 server={board?.serverKey || serverKey}
+                pitLoss={pitLoss}
                 hotlap={liveHotlap.videos}
                 hotlapTrack={liveTrack}
               />

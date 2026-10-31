@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Minus, Plus, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { createProgressTracker, computePitWindow, positionAtSpline, TRAFFIC_MS } from "../utils/pitWindow.mjs";
-import { useOwnLiveGuids, usePitLoss, usePitWindowShown } from "../hooks/usePitWindow.js";
+import { useOwnLiveGuids, usePitWindowShown } from "../hooks/usePitWindow.js";
 import PitWindowPanel from "./PitWindowPanel.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { aerialForTrack } from "../data/aerialMaps.js";
@@ -949,7 +949,9 @@ function FollowHud({ car, name, color, vmax, onCarTelemetry, onClose, className 
 function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matchFn }) {
   const on = !!pitWindow;
   const ownGuids = useOwnLiveGuids(cars, on);
-  const loss = usePitLoss(trackId, pitWindow?.learned);
+  // The stop cost is decided on the page (usePitLoss, set in the header).
+  const loss = pitWindow?.loss || null;
+  const lossMs = loss?.ms ?? 0;
   const [shown, setShown] = usePitWindowShown();
   const tracker = useRef(null);
   if (!tracker.current) tracker.current = createProgressTracker();
@@ -972,8 +974,8 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
   }, [on, cars]);
   const win = useMemo(
     () =>
-      subject ? computePitWindow({ cars, subjectGuid: subject.guid, lossMs: loss.ms, tracker: tracker.current, now: fed }) : null,
-    [subject, cars, loss.ms, fed]
+      subject && lossMs ? computePitWindow({ cars, subjectGuid: subject.guid, lossMs, tracker: tracker.current, now: fed }) : null,
+    [subject, cars, lossMs, fed]
   );
   const ghost = useMemo(
     () =>
@@ -1000,9 +1002,10 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
 // string, decides which of the two wins. Whatever a caller passes has to keep
 // this element positioned.
 //
-// `pitWindow` ({ learned }, race only) turns on the pit window: a dashed ring
-// where the picked car (or the viewer's own) would rejoin after a stop, and a
-// panel under the map to set what a stop costs. While it is on, clicking a car
+// `pitWindow` ({ loss }, race only; loss is usePitLoss, set in the page
+// header) turns on the pit window: a dashed ring where the picked car (or the
+// viewer's own) would rejoin after a stop, and a panel under the map saying
+// where that is and among whom. While it is on, clicking a car
 // picks it without zooming: the map stays on the whole circuit, so car and
 // ring are both in view. + still zooms in on purpose, and − back out to the
 // whole circuit. Without it the map is exactly what it was.
