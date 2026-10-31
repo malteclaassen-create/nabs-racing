@@ -13,6 +13,8 @@ not an AI: everyday words, no hype or marketing words, no emoji, no
 exclamation marks, no em dashes, no jokes or memes (see CLAUDE.md).
 Delete the lines below (keep the heading) if nobody needs to read about
 this, e.g. an admin-only fix or a docs change: it then stays off the page.
+Never list anything that isn't public yet (hidden, test-only, not announced):
+mention it in the PR that makes it public.
 -->
 Title:
 - New:

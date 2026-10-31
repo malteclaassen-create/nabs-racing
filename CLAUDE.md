@@ -15,6 +15,10 @@ Discord as is. It must read like a league member wrote it, never like an AI:
 - The title is a few plain words ("A fresher look"), not a slogan.
 - Leave the section empty if drivers don't need to know (admin-only, docs,
   internal fixes): it then stays off the page and out of Discord.
+- Never mention anything that isn't meant for members yet: features that are
+  hidden, behind a flag, admin- or tester-only, previews on a dev server, or
+  anything still being kept quiet. Leave those lines out (or the whole section
+  empty). Announce it in the PR that actually makes it public.
 
 Good: `- Better: The menu marks the page you're on with a pink line under it instead of a box`
 Bad:  `- Better: Tighter corners on the site. Shame about your lines through turn 1`
