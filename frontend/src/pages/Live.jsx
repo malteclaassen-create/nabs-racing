@@ -3053,7 +3053,7 @@ function TvPitLane({ entries, match, className = "" }) {
   );
 }
 
-function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen, rcAllowed = false }) {
+function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, server, gap, connected, onExit, onSeen, rcAllowed = false, pitLoss = null, demo = false }) {
   // The page underneath is still mounted, and without this it scrolls away
   // behind the board on any stray wheel event.
   useScrollLock(true);
@@ -3200,6 +3200,10 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
       ? Math.min(session.raceLaps, session.raceLaps - session.lapsLeft + 1)
       : null;
   const cars = (entries || []).filter((e) => e.onTrack || e.inPits);
+  // The pit window, as on the page: races only, until the flag. In a race it
+  // takes the best sectors' place under the map; nobody chases a sector then.
+  const pitOn = !!pitLoss && session?.type === "Race" && !session?.finished && !session?.chequered;
+  const pitWindow = useMemo(() => (pitOn ? { loss: pitLoss, asDriver: demo } : null), [pitOn, pitLoss, demo]);
   // Either the race server's own overhead picture, or a stylised outline we
   // hold for that circuit. With neither, the map stands down and the order
   // takes the whole screen rather than sharing it with an empty rectangle.
@@ -3299,6 +3303,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
           )}
           <div className="flex items-center gap-2">
             {rcAllowed && <RaceControlToggle on={rcOn} onChange={setRc} className={btn} />}
+            {session && pitLoss && <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />}
             <button
               type="button"
               onClick={toggleFull}
@@ -3446,6 +3451,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
                   wrapClassName={mapFrame}
                   className={`${mapFit} text-medium`}
                   incidents={mapIncidents}
+                  pitWindow={pitWindow}
                 />
               </div>
             )}
@@ -3458,7 +3464,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, s
               />
             ) : (
               <>
-            <TvSectors entries={entries} match={match} />
+            {!pitOn && <TvSectors entries={entries} match={match} />}
             {/* A FIXED share of the column, not "as tall as it needs". Sized
                 to what it holds, it grew every time somebody pitted and took
                 the height out of the map above it — so the picture everyone is
@@ -3879,6 +3885,8 @@ export default function Live() {
         gap={gap}
         connected={connected}
         onExit={exitTv}
+        pitLoss={pitLoss}
+        demo={!!board?.demo}
       />
     );
 
