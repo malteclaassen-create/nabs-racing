@@ -290,14 +290,15 @@ export default function Constructors() {
   // ?demo knob to preview on an archive.
   const demoArrows = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
   const showMovement = (!seasonDecided || demoArrows) && !projecting;
-  // Same window as the driver standings: only in the last stretch (no more
-  // rounds left than drops), live seasons only. The choices run from what the
-  // rule drops TODAY (unrun rounds soak up drops) up to the season's count.
-  const roundsLeft = t1.data.raceNumbers.length - completedRounds(t1.data).length;
+  // Same window as the driver standings: live seasons only, once more rounds
+  // are in than the rule drops. The choices run from what the rule drops
+  // TODAY (unrun rounds soak up drops) up to the season's count.
+  const roundsRun = completedRounds(t1.data).length;
+  const roundsLeft = t1.data.raceNumbers.length - roundsRun;
   const previewDrops = t1.data.previewDrops || 0;
   const dropsNow = Math.min(t1.data.dropsNow ?? 0, hasT2 ? t2.data.dropsNow ?? 0 : Infinity);
   const dropChoices =
-    !seasonDecided && previewDrops > 0 && roundsLeft > 0 && roundsLeft <= previewDrops
+    !seasonDecided && previewDrops > 0 && roundsLeft > 0 && roundsRun > previewDrops
       ? Array.from({ length: previewDrops - dropsNow + 1 }, (_, i) => dropsNow + i)
       : [];
   const pickDrops = (n) => setDropPick(n === dropsNow ? null : n);

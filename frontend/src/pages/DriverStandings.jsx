@@ -439,12 +439,14 @@ export default function DriverStandings() {
   // Rounds still to run, and from that what the drop rule takes off TODAY:
   // an unrun round counts as 0 and soaks up a drop, so with two rounds left
   // one real result is already gone. The preview offers that number up to the
-  // season's full count, but only in the last stretch (no more rounds left
-  // than drops), where "what if it ended now" is a question people ask.
+  // season's full count for as long as the season runs, once more rounds are
+  // in than the rule drops (before that, dropping them all would leave
+  // nothing to count). A one-drop season (the Sunday series) gets the switch
+  // from round 2, not only before the finale.
   const roundsLeft = data.raceNumbers.length - scoredRounds.length;
   const dropsNow = Math.max(0, (realData.dropWorst || 0) - roundsLeft);
   const dropChoices =
-    !seasonDecided && !realData.officialTotals && realData.dropWorst > 0 && roundsLeft > 0 && roundsLeft <= realData.dropWorst
+    !seasonDecided && !realData.officialTotals && realData.dropWorst > 0 && roundsLeft > 0 && scoredRounds.length > realData.dropWorst
       ? Array.from({ length: realData.dropWorst - dropsNow + 1 }, (_, i) => dropsNow + i)
       : [];
   const pickDrops = (n) => setDropPick(n === dropsNow ? null : n);
