@@ -13,7 +13,7 @@ import { PageHeader, SectionHeading, SafetyCarBadge, NoData, MEDAL_TEXT } from "
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import LiveTrackMap from "../components/LiveTrackMap.jsx";
-import { Activity, ShieldAlert } from "../components/icons/filled.jsx";
+import { Activity } from "../components/icons/filled.jsx";
 import PitStopSetting from "../components/PitStopSetting.jsx";
 import { usePitLoss } from "../hooks/usePitWindow.js";
 import {
@@ -4050,27 +4050,14 @@ export default function Live() {
             </button>
             {/* What a pit stop costs, for the pit window on the map. Set here
                 before the race rather than on the map during it: nobody
-                clicks around a web page while driving. */}
-            {session && <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />}
-            {/* Stewards on a phone: straight into the TV board with race
-                control on, the one reason to open it there. */}
-            {rcAllowed && (
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    localStorage.setItem("nabs_live_rc", "1");
-                  } catch {
-                    /* then they switch it on in there */
-                  }
-                  enterTv();
-                }}
-                title="Race control: off track, stopped cars, contacts"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 hover:text-dark sm:hidden"
-              >
-                <ShieldAlert className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
-                Race control
-              </button>
+                clicks around a web page while driving. Not on phones, like TV
+                mode: it only feeds the map's pit window, and on a phone the
+                header is better left to the server switch. Race control has no
+                button here either; stewards open it from TV mode. */}
+            {session && (
+              <div className="hidden sm:block">
+                <PitStopSetting loss={pitLoss} trackName={session.trackName || session.track} />
+              </div>
             )}
             {/* The board names its own server, so the switch shows where the
                 data actually comes from rather than what was last clicked. The

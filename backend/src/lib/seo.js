@@ -386,3 +386,54 @@ export function disciplineOf(game, seriesName) {
   };
   return read(game) || (String(game || "").trim() ? null : read(seriesName));
 }
+
+// ---------------------------------------------------------------------------
+// The Railway address (<name>.up.railway.app).
+//
+// The hosting gives the service a second address of its own, and it served the
+// whole site there too, with every page naming ITSELF as the official address
+// (canonicalUrl above builds it from the host asked for). So Google kept both,
+// and a search for a driver could turn up the railway.app copy under a
+// "Railway" label. A permanent redirect to the league domain settles it: Google
+// moves what it has onto nabsracing.com and drops the railway.app entries.
+//
+// Only pages and files, only GET/HEAD. /api stays answering on both addresses,
+// because the Discord bot, the AC apps and Railway's own health check may talk
+// to the service by that address, and /auth too, so a Discord login that was
+// started there can finish where it began.
+// ---------------------------------------------------------------------------
+const RAILWAY_HOST = /\.up\.railway\.app$/i;
+
+export function siteOrigin() {
+  return String(process.env.PUBLIC_ORIGIN || "https://nabsracing.com").trim().replace(/\/+$/, "");
+}
+
+// Where to send this request, or null to answer it here. Pure.
+export function railwayRedirectTarget({ method, host, path, originalUrl }, origin = siteOrigin()) {
+  if (method !== "GET" && method !== "HEAD") return null;
+  const name = String(host || "").split(":")[0];
+  if (!RAILWAY_HOST.test(name)) return null;
+  let target;
+  try {
+    target = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (target.hostname.toLowerCase() === name.toLowerCase()) return null; // never loop
+  if (path === "/api" || path.startsWith("/api/")) return null;
+  if (path === "/auth" || path.startsWith("/auth/")) return null;
+  return `${target.origin}${originalUrl || path || "/"}`;
+}
+
+export function railwayHostRedirect() {
+  return (req, res, next) => {
+    const to = railwayRedirectTarget({
+      method: req.method,
+      host: req.get("host"),
+      path: req.path,
+      originalUrl: req.originalUrl,
+    });
+    if (!to) return next();
+    res.redirect(301, to);
+  };
+}
