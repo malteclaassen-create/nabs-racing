@@ -690,8 +690,9 @@ export async function notifyAdminsRaceRequest(prisma, member, text) {
 
 // Somebody new signed themselves up (lib/newcomers.js): the site made their
 // reserve driver on its own, so they could answer straight away. Nothing for
-// the admins to DO before the next race; it is here so a stranger on the entry
-// list is never a surprise. Deduped per sign-up, like the hand-raise above.
+// the admins to DO unless the site found something about them worth a look,
+// which the To do card lists (reviewNewcomers). This row is the record of the
+// sign-up. Deduped per sign-up, like the hand-raise above.
 export async function notifyAdminsNewDriver(prisma, member, { driver, race = null } = {}) {
   try {
     if (!member?.discordId) return;
@@ -700,9 +701,27 @@ export async function notifyAdminsNewDriver(prisma, member, { driver, race = nul
       title: `New driver: ${driver?.name || memberName(member)}`,
       body:
         `They signed themselves up${where} and are on the reserve list now. ` +
-        "Keep them or turn them away in the Members tab. Turning them away removes their driver and their answers.",
+        "If anything about them needs a look, they show up under New drivers in the Members tab.",
       link: "/admin?tab=members",
       dedupeSuffix: `admin-new-driver:${member.discordId}:${member.newDriverAt || driver?.id || ""}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// A login the site recognised by its Steam account as a driver it already
+// knew (lib/newcomers.js recogniseBySteam), and linked without asking anybody.
+// Proof, not a guess, so nothing to do: the record of it, for the day somebody
+// asks why a login landed on that driver.
+export async function notifyAdminsRecognised(prisma, member, { driver } = {}) {
+  try {
+    if (!member?.discordId || !driver) return;
+    await notifyAdmins(prisma, {
+      title: `${memberName(member)} is ${driver.name}`,
+      body: `Their Steam account is the one ${driver.name}'s race results were saved under, so their login was linked to that driver.`,
+      link: "/admin?tab=members",
+      dedupeSuffix: `admin-recognised:${member.discordId}:${driver.id}`,
     });
   } catch {
     /* best-effort */

@@ -63,6 +63,18 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // whose driver an admin already deleted by hand in the Drivers tab has had its
 // answer.
 const isNewDriver = (m) => !!(m.newDriverAt && !m.mainDiscordId && m.driver);
+// A new driver the site found something about (backend lib/newcomers.js
+// reviewNewcomers): who they may already be, or a brand-new Discord account.
+// Only these are work; the rest signed up cleanly and need nobody. The same
+// rule the server counts for the nav badge and the To do card.
+const needsCheck = (m) => isNewDriver(m) && !!m.newcomer?.review?.needsCheck;
+// Why the site thinks a newcomer may be an entry it already has.
+const WHY_TEXT = {
+  steam: "same Steam account",
+  handle: "their Discord name is the handle on that entry",
+  name: "same name",
+  similar: "similar name",
+};
 const hasPills = (m) =>
   !!(
     m.isAdmin || m.isSteward || m.isRaceControl || m.banned || m.mainDiscordId || m.seconds?.length ||
@@ -99,6 +111,7 @@ const MEMBER_FILTERS = [
   { key: "racecontrol", label: "Race control", test: (m) => !!m.isRaceControl && !m.isAdmin },
   { key: "admin", label: "Admins", test: (m) => !!m.isAdmin },
   { key: "new", label: "New drivers", test: isNewDriver },
+  { key: "check", label: "To check", test: needsCheck },
   { key: "nodriver", label: "Without driver", test: (m) => !m.driver },
   { key: "steam", label: "Steam differs", test: steamDiffers },
 ];
@@ -235,10 +248,13 @@ export default function AdminMembers() {
     .filter((m) => !m.driver && !m.mainDiscordId)
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   const requests = unlinked.filter((m) => m.raceRequestAt).length;
-  // Newcomers who signed themselves up, newest first like the To do card.
+  // Newcomers who signed themselves up, newest first like the To do card:
+  // the ones with something to look at, and the ones without.
   const newDrivers = members
     .filter(isNewDriver)
     .sort((a, b) => (Date.parse(b.newDriverAt) || 0) - (Date.parse(a.newDriverAt) || 0));
+  const toCheck = newDrivers.filter(needsCheck);
+  const clean = newDrivers.filter((m) => !needsCheck(m));
   const q = query.trim().toLowerCase();
   const shownMembers = members.filter(
     (m) => (!q || memberMatches(m, q)) && MEMBER_FILTERS.every((f) => !chips.has(f.key) || f.test(m))
@@ -315,7 +331,10 @@ export default function AdminMembers() {
   function link(m, driverId) {
     if (!driverId) return;
     const who = m.displayName || m.username;
-    const target = unclaimed.find((d) => d.id === driverId)?.name || "that driver";
+    const target =
+      unclaimed.find((d) => d.id === driverId)?.name ||
+      m.newcomer?.review?.matches?.find((x) => x.driverId === driverId)?.name ||
+      "that driver";
     act(m.discordId, async () => {
       const res = await api.linkMember(m.discordId, driverId);
       const note = steamNote(res?.steam, who);
@@ -376,6 +395,154 @@ export default function AdminMembers() {
   function suggestionFor(m) {
     const keys = [norm(m.username), norm(m.displayName)].filter(Boolean);
     return unclaimed.find((d) => keys.includes(norm(d.name)) || keys.includes(norm(d.discordName))) || null;
+  }
+
+  // One newcomer on the New drivers card. What the site found comes first
+  // (the reason they are listed at all), then their driver and the races
+  // they have put their name down for, because those are what a turn-away
+  // takes with it.
+  function newDriverRow(m) {
+    const who = m.displayName || m.username;
+    const nc = m.newcomer || {};
+    const review = nc.review || {};
+    const answers = nc.answers || [];
+    const otherRows = (nc.rows || []).filter((r) => r.id !== m.driver.id);
+    const raced = (nc.results || 0) > 0;
+    // Who they may be. An entry another login holds cannot be linked to (that
+    // would take it off the other login); it is shown, and the way to deal with
+    // a second account is "Same person as…" in the list below.
+    const matches = review.matches || [];
+    const linkable = matches.filter((x) => !x.claimed);
+    const suggested = linkable[0] ? { id: linkable[0].driverId, name: linkable[0].name } : suggestionFor(m);
+    const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
+    return (
+      <li key={m.discordId} className="py-4">
+        <MemberRow
+          avatar={<DriverAvatar name={who} photoUrl={m.avatarUrl} color={m.driver.team?.color || "#64748b"} size={40} />}
+          actions={
+            <>
+              <button
+                className="btn-primary py-1.5 text-sm disabled:opacity-50"
+                disabled={busy === m.discordId}
+                onClick={() => keep(m)}
+                title="They stay in the league. Nothing else changes."
+              >
+                Keep
+              </button>
+              <select
+                aria-label={`${who} is the same driver as`}
+                className="input w-full py-1.5 text-sm sm:w-64"
+                value={sel}
+                onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
+              >
+                <option value="">Same driver as…</option>
+                {linkable.length > 0 && (
+                  <optgroup label="Might be">
+                    {linkable.map((x) => (
+                      <option key={`m-${x.driverId}`} value={x.driverId}>
+                        {x.name}
+                        {x.seasonName ? ` (${x.seasonName})` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="On a roster now">
+                  {unclaimed
+                    .filter((d) => !linkable.some((x) => x.driverId === d.id))
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
+                      </option>
+                    ))}
+                </optgroup>
+              </select>
+              <button
+                className="btn-secondary py-1.5 text-sm disabled:opacity-50"
+                disabled={!sel || busy === m.discordId}
+                onClick={() => link(m, sel)}
+                title="Their account moves to that driver. The entry the site made for them in that season is merged into it, race answers included."
+              >
+                Link
+              </button>
+              {/* Pushed away from Keep, like Ban is on the other rows. Gone
+                  once they have race results: the server refuses then, and
+                  keeping or banning is what is left. */}
+              {!raced && (
+                <button
+                  className="ml-auto rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10 2xl:ml-1"
+                  disabled={busy === m.discordId}
+                  onClick={() => turnAway(m)}
+                >
+                  Turn away
+                </button>
+              )}
+            </>
+          }
+        >
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="font-semibold text-dark">{who}</span>
+            <span className="font-mono text-xs text-light">@{m.username}</span>
+            <span className="inline-flex items-center gap-1.5 text-sm text-medium">
+              <TeamLogo id={m.driver.team?.id} name={m.driver.team?.name || ""} color={m.driver.team?.color || "#64748b"} size={18} />
+              <span className="font-semibold text-dark">{m.driver.name}</span>
+              {m.driver.team?.name && <span className="text-light">· {m.driver.team.name}</span>}
+            </span>
+          </div>
+          {(matches.length > 0 || review.newAccountDays != null) && (
+            <ul className="mt-1.5 space-y-0.5 text-sm text-warn">
+              {matches.slice(0, 3).map((x) => (
+                <li key={x.driverId}>
+                  Might be <b>{x.name}</b>
+                  {x.seasonName ? ` (${x.seasonName}${x.starts ? `, ${plural(x.starts, "race", "races")}` : ""})` : ""}:{" "}
+                  {x.why.map((w) => WHY_TEXT[w] || w).join(", ")}
+                  {x.claimed && ". Another login has that driver, so this may be their second account (Same person as… below)"}
+                </li>
+              ))}
+              {review.newAccountDays != null && (
+                <li>
+                  Their Discord account was{" "}
+                  {review.newAccountDays === 0 ? "made the same day" : `${plural(review.newAccountDays, "day", "days")} old`} when
+                  they signed up.
+                </li>
+              )}
+            </ul>
+          )}
+          {otherRows.length > 0 && (
+            <p className="mt-1 text-xs text-light">
+              Also signed up as {otherRows.map((r) => `${r.name}${r.seasonName ? ` in ${r.seasonName}` : ""}`).join(", ")}
+            </p>
+          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {answers.length ? (
+              answers.map((a) => {
+                const pill = ANSWER_PILL[a.status] || { label: a.status, className: "bg-surface2 text-light" };
+                return (
+                  <span key={a.raceId} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.className}`}>
+                    {answerPlace(a)} · {pill.label}
+                  </span>
+                );
+              })
+            ) : (
+              <span className="text-xs text-light">No answers for races still to come</span>
+            )}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-light">
+            <IdChip platform="discord" value={m.discordId} />
+            <span className="whitespace-nowrap">signed up {fmtDate(m.newDriverAt)}</span>
+            {review.lastSeenOnDiscord === null && <span className="whitespace-nowrap">not seen on our Discord yet</span>}
+            {review.lastSeenOnDiscord && (
+              <span className="whitespace-nowrap">last seen on our Discord {fmtDate(review.lastSeenOnDiscord)}</span>
+            )}
+          </div>
+          {raced && (
+            <p className="mt-1.5 text-xs text-warn">
+              They have race results now, so they can&rsquo;t be turned away. Keep them, or ban the account in the list
+              below.
+            </p>
+          )}
+        </MemberRow>
+      </li>
+    );
   }
 
   async function unlink(m) {
@@ -540,9 +707,9 @@ export default function AdminMembers() {
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm text-medium">
         Everyone who has logged in with Discord shows up here automatically. An account connects to its driver via
         the stored Discord user ID (set in the Drivers tab, or by linking below). Someone new gets a reserve driver
-        by themselves the first time they answer a race, and shows up under <b>New drivers</b> for you to keep or
-        turn away. <b>Needs attention</b> lists the logins that still have no driver. Banning an account blocks
-        logins <i>and</i> cuts off its current session.
+        by themselves the first time they answer a race, and a returning driver is found by their Steam account.
+        You only need to step in when <b>New drivers</b> lists someone to check. <b>Needs attention</b> lists the
+        logins that still have no driver. Banning an account blocks logins <i>and</i> cuts off its current session.
       </div>
 
       {msg && !msg.ok && <ErrorBox message={msg.text} />}
@@ -734,147 +901,50 @@ export default function AdminMembers() {
       )}
 
       {/* --- newcomers who signed themselves up ------------------------------
-          The second to-do list, and a gentler one: doing nothing here is
-          keeping them, so it is tinted blue rather than amber. What the admin
-          needs to decide is all on the row: who it is, the driver the site made,
-          and which races they have put their name down for, because those are
-          what a turn-away takes with it. */}
+          The site signs new people up by itself (backend lib/newcomers.js) and
+          recognises a returning driver by their Steam account without anybody.
+          What is left for an admin is the newcomers it found something about:
+          a name or Discord handle matching an entry the league already has, a
+          Steam account another login holds, a Discord account only days old.
+          Those come first, each with the reason and the likely entry ready to
+          link. The rest sit folded away below: nothing to do, but there to look
+          at, keep or turn away. Doing nothing keeps them either way, so the
+          card is tinted blue rather than amber. */}
       {newDrivers.length > 0 && (
-        <div className="card overflow-hidden border-sky-500/40 p-0">
-          <div className="border-b border-sky-500/30 bg-sky-500/10 px-5 py-4">
+        <div className={`card overflow-hidden p-0 ${toCheck.length ? "border-sky-500/40" : ""}`}>
+          <div className={`px-5 py-4 ${toCheck.length ? "border-b border-sky-500/30 bg-sky-500/10" : ""}`}>
             <h3 className="flex flex-wrap items-center gap-2 font-display text-base font-extrabold uppercase tracking-tight text-dark">
               <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-sky-600" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="10" cy="8" r="4" />
                 <path d="M2 21a8 8 0 0113.3-6M19 16v6M16 19h6" />
               </svg>
-              New drivers: signed themselves up
-              <span className="rounded-full bg-sky-500/20 px-2 py-0.5 font-mono text-xs text-sky-600">
-                {newDrivers.length} to check
-              </span>
+              New drivers
+              {toCheck.length > 0 ? (
+                <span className="rounded-full bg-sky-500/20 px-2 py-0.5 font-mono text-xs text-sky-600">
+                  {toCheck.length} to check
+                </span>
+              ) : (
+                <span className="rounded-full bg-surface2 px-2 py-0.5 font-mono text-xs text-light">nothing to check</span>
+              )}
             </h3>
             <p className="mt-1.5 max-w-3xl text-sm text-medium">
-              These people answered a race (or pressed Join on their profile) and got a reserve driver straight away.
-              Keep them, or turn them away if they shouldn&rsquo;t be here. Doing nothing keeps them. If one of them
-              already has an entry on the roster, pick it under <b>Same driver as…</b> and the two become one, race
-              answers included.
+              New people sign themselves up on their first race answer, and a returning driver is found by their Steam
+              account. You only need to look when the site lists someone here: a name that matches an entry we already
+              have, a Steam account another login holds, or a brand-new Discord account. If it&rsquo;s fine, press{" "}
+              <b>Keep</b>. If it&rsquo;s their old entry, pick it under <b>Same driver as…</b> and the two become one,
+              race answers included.
             </p>
           </div>
-          <ul className="divide-y divide-border px-5 pb-2">
-            {newDrivers.map((m) => {
-              const who = m.displayName || m.username;
-              const nc = m.newcomer || {};
-              const answers = nc.answers || [];
-              const otherRows = (nc.rows || []).filter((r) => r.id !== m.driver.id);
-              const raced = (nc.results || 0) > 0;
-              const suggested = suggestionFor(m);
-              const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
-              return (
-                <li key={m.discordId} className="py-4">
-                  <MemberRow
-                    avatar={
-                      <DriverAvatar name={who} photoUrl={m.avatarUrl} color={m.driver.team?.color || "#64748b"} size={40} />
-                    }
-                    actions={
-                      <>
-                        <button
-                          className="btn-primary py-1.5 text-sm disabled:opacity-50"
-                          disabled={busy === m.discordId}
-                          onClick={() => keep(m)}
-                          title="They stay in the league. Nothing else changes."
-                        >
-                          Keep
-                        </button>
-                        <select
-                          aria-label={`${who} is the same driver as`}
-                          className="input w-full py-1.5 text-sm sm:w-64"
-                          value={sel}
-                          onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
-                        >
-                          <option value="">Same driver as…</option>
-                          {unclaimed.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="btn-secondary py-1.5 text-sm disabled:opacity-50"
-                          disabled={!sel || busy === m.discordId}
-                          onClick={() => link(m, sel)}
-                          title="Their account moves to that driver. The entry the site made for them in that season is merged into it, race answers included."
-                        >
-                          Link
-                        </button>
-                        {/* Pushed away from Keep, like Ban is on the other
-                            rows. Gone once they have race results: the server
-                            refuses then, and keeping or banning is what is
-                            left. */}
-                        {!raced && (
-                          <button
-                            className="ml-auto rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10 2xl:ml-1"
-                            disabled={busy === m.discordId}
-                            onClick={() => turnAway(m)}
-                          >
-                            Turn away
-                          </button>
-                        )}
-                      </>
-                    }
-                  >
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="font-semibold text-dark">{who}</span>
-                      <span className="font-mono text-xs text-light">@{m.username}</span>
-                      <span className="inline-flex items-center gap-1.5 text-sm text-medium">
-                        <TeamLogo
-                          id={m.driver.team?.id}
-                          name={m.driver.team?.name || ""}
-                          color={m.driver.team?.color || "#64748b"}
-                          size={18}
-                        />
-                        <span className="font-semibold text-dark">{m.driver.name}</span>
-                        {m.driver.team?.name && <span className="text-light">· {m.driver.team.name}</span>}
-                      </span>
-                    </div>
-                    {otherRows.length > 0 && (
-                      <p className="mt-1 text-xs text-light">
-                        Also signed up as{" "}
-                        {otherRows.map((r) => `${r.name}${r.seasonName ? ` in ${r.seasonName}` : ""}`).join(", ")}
-                      </p>
-                    )}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      {answers.length ? (
-                        answers.map((a) => {
-                          const pill = ANSWER_PILL[a.status] || { label: a.status, className: "bg-surface2 text-light" };
-                          return (
-                            <span key={a.raceId} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.className}`}>
-                              {answerPlace(a)} · {pill.label}
-                            </span>
-                          );
-                        })
-                      ) : (
-                        <span className="text-xs text-light">No answers for races still to come</span>
-                      )}
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-light">
-                      <IdChip platform="discord" value={m.discordId} />
-                      <span className="whitespace-nowrap">signed up {fmtDate(m.newDriverAt)}</span>
-                    </div>
-                    {raced && (
-                      <p className="mt-1.5 text-xs text-warn">
-                        They have race results now, so they can&rsquo;t be turned away. Keep them, or ban the account in
-                        the list below.
-                      </p>
-                    )}
-                    {suggested && sel === suggested.id && (
-                      <p className="mt-1.5 font-mono text-[11px] text-ok">
-                        name matches {suggested.name} on the roster · if it&rsquo;s them, hit Link
-                      </p>
-                    )}
-                  </MemberRow>
-                </li>
-              );
-            })}
-          </ul>
+          {toCheck.length > 0 && <ul className="divide-y divide-border px-5 pb-2">{toCheck.map(newDriverRow)}</ul>}
+          {clean.length > 0 && (
+            <details className="border-t border-border px-5 py-3">
+              <summary className="cursor-pointer text-sm font-semibold text-medium">
+                {toCheck.length ? "And " : ""}
+                {plural(clean.length, "new driver", "new drivers")} with nothing to check
+              </summary>
+              <ul className="divide-y divide-border">{clean.map(newDriverRow)}</ul>
+            </details>
+          )}
         </div>
       )}
 

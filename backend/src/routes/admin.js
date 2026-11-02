@@ -109,7 +109,7 @@ import {
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
-import { newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer } from "../lib/newcomers.js";
+import { newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers } from "../lib/newcomers.js";
 import { uniqueDriverId as uniqueDriverIdFor } from "../lib/driverHandles.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
@@ -3753,8 +3753,12 @@ router.get("/members", async (req, res, next) => {
     // one, so a mistyped entry is one click away from being corrected once the
     // person actually logs in. Every series' active roster is listed.
     // The newcomers who signed themselves up and are not kept yet (the "New
-    // drivers" card): which rows the site made for them and which upcoming
-    // races they answered, so "Turn away" can say what it is about to remove.
+    // drivers" card): which rows the site made for them, which upcoming races
+    // they answered (so "Turn away" can say what it is about to remove), and
+    // what the site found about them (lib/newcomers.js reviewNewcomers): who
+    // they may already be, a brand-new Discord account, when the bot last saw
+    // them. Only the ones with something found need an admin.
+    const reviews = await reviewNewcomers(prisma).catch(() => new Map());
     for (const m of members) {
       if (!m.newDriverAt || m.mainDiscordId) continue;
       const fresh = await newcomerRows(prisma, m).catch(() => []);
@@ -3774,6 +3778,7 @@ router.get("/members", async (req, res, next) => {
           status: a.status,
         })),
         results: fresh.reduce((n, r) => n + (r._count?.results || 0), 0),
+        review: reviews.get(String(m.discordId)) || null,
       };
     }
     const knownIds = new Set(rows.map((r) => String(r.discordId)));
@@ -3819,16 +3824,17 @@ router.get("/members/pending", async (req, res, next) => {
   }
 });
 
-// Newcomers waiting for a keep or a turn-away: marked, and still holding a
-// driver (an admin who deleted the row by hand in the Drivers tab has
-// answered the question too). Never throws: a badge is not worth a 500.
+// Newcomers an admin should look at: marked as new, still holding a driver
+// (an admin who deleted the row by hand in the Drivers tab has answered the
+// question too), and with something the site found about them, a possible
+// existing entry or a brand-new Discord account (lib/newcomers.js
+// reviewNewcomers). The rest signed up cleanly and need nobody. Never throws:
+// a badge is not worth a 500.
 async function countNewDrivers() {
   try {
-    const rows = await prisma.$queryRaw`
-      SELECT COUNT(*) AS n FROM "MemberAccount" m
-      WHERE m."newDriverAt" IS NOT NULL AND m."mainDiscordId" IS NULL
-        AND EXISTS (SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId")`;
-    return Number(rows[0]?.n || 0);
+    let n = 0;
+    for (const r of (await reviewNewcomers(prisma)).values()) if (r.needsCheck) n++;
+    return n;
   } catch {
     return 0;
   }
@@ -3971,19 +3977,30 @@ router.get("/todo", async (req, res, next) => {
     // A failure here must not cost the admin the rest of the card.
     const overdue = await overdueOfActiveSeason(req.query.series).catch(() => []);
 
-    // Newcomers who signed themselves up (lib/newcomers.js) and are waiting
-    // for a keep or a turn-away. Same rule as the Members tab's badge.
+    // Newcomers who signed themselves up (lib/newcomers.js) and need a look:
+    // the site found who they may already be, or a brand-new Discord account.
+    // Same rule as the Members tab's badge; the clean ones are not work.
+    const reviews = await reviewNewcomers(prisma).catch(() => new Map());
     const newRows = await prisma.$queryRaw`
       SELECT m."discordId", m."displayName", m."username", m."newDriverAt", d."name" AS "driverName"
       FROM "MemberAccount" m
       JOIN "Driver" d ON d."discordUserId" = m."discordId"
       WHERE m."newDriverAt" IS NOT NULL AND m."mainDiscordId" IS NULL
       ORDER BY m."newDriverAt" DESC`.catch(() => []);
-    const newDrivers = newRows.map((m) => ({
-      discordId: String(m.discordId),
-      name: m.driverName || m.displayName || m.username || "Someone",
-      at: m.newDriverAt,
-    }));
+    const newDrivers = newRows
+      .filter((m) => reviews.get(String(m.discordId))?.needsCheck)
+      .map((m) => {
+        const r = reviews.get(String(m.discordId));
+        return {
+          discordId: String(m.discordId),
+          name: m.driverName || m.displayName || m.username || "Someone",
+          at: m.newDriverAt,
+          // What to say on the card: the likeliest existing entry, and/or how
+          // new the Discord account was.
+          maybe: r.matches[0] ? { name: r.matches[0].name, why: r.matches[0].why, claimed: r.matches[0].claimed } : null,
+          newAccountDays: r.newAccountDays,
+        };
+      });
 
     res.json({ resets, requests, givenBack, overdue, newDrivers });
   } catch (e) {

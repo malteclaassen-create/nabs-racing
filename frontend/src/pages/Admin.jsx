@@ -1460,14 +1460,28 @@ function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
   if (requests.length > 3) {
     rows.push(<TodoRow key="req-more" icon={Hand} action="Open" title={`${requests.length - 3} more asked to race`} onAction={() => onPick("members")} />);
   }
-  // Newcomers who signed themselves up on their first race answer. Already
-  // racing as reserves, so this is a check rather than a wait: doing nothing
-  // keeps them, and the Members tab has the two buttons.
+  // Newcomers who signed themselves up and that the site found something
+  // about (backend lib/newcomers.js reviewNewcomers): who they may already be,
+  // or a brand-new Discord account. The clean ones never reach this card.
+  // Already racing as reserves, so this is a check rather than a wait: doing
+  // nothing keeps them, and the Members tab has the buttons.
+  const whyListed = (n) => {
+    const bits = [];
+    if (n.maybe) {
+      bits.push(
+        n.maybe.claimed
+          ? `${n.maybe.why.includes("steam") ? "Their Steam account" : "Their name"} points at ${n.maybe.name}, who already has a login. Maybe a second account.`
+          : `Might be ${n.maybe.name} (${n.maybe.why.includes("steam") ? "same Steam account" : n.maybe.why.includes("handle") ? "same Discord name" : n.maybe.why.includes("name") ? "same name" : "similar name"}).`
+      );
+    }
+    if (n.newAccountDays != null) bits.push(`Their Discord account is ${n.newAccountDays === 1 ? "1 day" : `${n.newAccountDays} days`} old.`);
+    return bits.join(" ");
+  };
   for (const n of newDrivers.slice(0, 3)) {
     rows.push(
       <TodoRow key={`new-${n.discordId}`} icon={UserRoundPlus} action="Check"
         title={`${n.name} signed up as a new driver`}
-        detail={`${n.at ? `Signed up ${ago(n.at)}. ` : ""}Keep them or turn them away in the Members tab.`}
+        detail={`${whyListed(n)} ${n.at ? `Signed up ${ago(n.at)}.` : ""}`.trim()}
         onAction={() => onPick("members")} />
     );
   }

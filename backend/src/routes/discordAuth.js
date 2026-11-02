@@ -16,6 +16,7 @@ import { dbRecordLogin, dbGetMember, mainAccountId, isBanned, isUncheckedNewcome
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
+import { recogniseBySteam } from "../lib/newcomers.js";
 import { attachReferralByName } from "../lib/tokens.js";
 
 const router = Router();
@@ -160,6 +161,14 @@ router.post("/callback", async (req, res, next) => {
     // or pre-fills the driver's Discord user id in the Drivers tab; the login
     // then connects by exact id. Unmatched logins simply stay unlinked.
     let driver = await prisma.driver.findUnique({ where: { discordUserId: who } });
+    // No driver on this login, but a Steam account proved on an earlier visit:
+    // that is proof of who they are, unlike a name. If the race imports saved
+    // an old entry's results under it, the login goes onto that entry
+    // (lib/newcomers.js recogniseBySteam). Never fails a login.
+    if (!driver && !viaSecond) {
+      const known = await recogniseBySteam(prisma, who).catch(() => null);
+      if (known?.driver) driver = known.driver;
+    }
     // The season handover below targets the series the member was VIEWING when
     // they logged in (the frontend sends its slug), falling back to the
     // primary series — so a GT member logging in on the GT pages lands on the

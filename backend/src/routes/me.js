@@ -933,7 +933,14 @@ router.post("/join", async (req, res, next) => {
       });
     }
     if (!out.driver) return res.status(409).json({ error: "You can't sign up from this account. Ask on Discord" });
-    res.json({ ok: true, driverId: out.driver.id, driverName: out.driver.name, joined: out.created });
+    res.json({
+      ok: true,
+      driverId: out.driver.id,
+      driverName: out.driver.name,
+      joined: out.created,
+      // Their Steam account led to the driver they raced as before.
+      recognised: !!out.recognised,
+    });
   } catch (e) {
     next(e);
   }

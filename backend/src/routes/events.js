@@ -535,7 +535,9 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
           (await addToReservePool(prisma, own, race.seasonId));
       }
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
-      joined = { driverId: out.driver.id, driverName: out.driver.name };
+      // `recognised`: not new at all. Their Steam account led to the driver
+      // they raced as before (lib/newcomers.js recogniseBySteam).
+      joined = { driverId: out.driver.id, driverName: out.driver.name, ...(out.recognised ? { recognised: true } : {}) };
     }
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting

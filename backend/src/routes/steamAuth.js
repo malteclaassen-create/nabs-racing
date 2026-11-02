@@ -32,6 +32,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { requireUser, resolveDriverId } from "../middleware/auth.js";
+import { recogniseBySteam } from "../lib/newcomers.js";
 import { IS_DEPLOYED } from "../lib/deployment.js";
 import {
   applyMemberSteamId,
@@ -282,13 +283,21 @@ router.post("/verify", requireUser, async (req, res, next) => {
 
     await dbSetSteamId(prisma, discordId, steamId);
 
+    // The Steam account may be the one an old entry's race results were saved
+    // under: a returning driver on a login with no driver yet, or with only
+    // the reserve row the site made when they signed themselves up. Then the
+    // login goes onto that entry, the new row folded in (lib/newcomers.js).
+    // Before the copy below, so the old entry is found and not the new row.
+    const known = await recogniseBySteam(prisma, discordId).catch(() => null);
+    const recognised = known?.driver ? known.recognised : null;
+
     // If a driver row already exists for this login, seed it right away; the
     // admin onboarding paths do the same for accounts that get one later.
     let driver = { written: false, reason: "no-driver" };
     const driverId = await resolveDriverId(prisma, req.user);
     if (driverId) driver = await applyMemberSteamId(prisma, discordId, driverId);
 
-    res.json({ ok: true, steamId, driver });
+    res.json({ ok: true, steamId, driver, recognised });
   } catch (e) {
     next(e);
   }

@@ -103,12 +103,14 @@ export default function Attendance() {
   );
   const newcomer = isLoggedIn && !driverId && !!raceRequest.data?.canJoin;
   const canSignUp = isLoggedIn && (!!driverId || newcomer);
-  // Said once, right after the first answer made them a driver.
-  const [joinedNote, setJoinedNote] = useState(false);
+  // Said once, right after the first answer made them a driver: "new" for a
+  // fresh reserve, "back" when their Steam account led to the driver they
+  // raced as before (lib/newcomers.js recogniseBySteam on the server).
+  const [joinedNote, setJoinedNote] = useState(null);
   function tookAnswer(res) {
     if (!res?.joined) return;
     adoptDriver(res.joined);
-    setJoinedNote(true);
+    setJoinedNote(res.joined.recognised ? "back" : "new");
   }
   async function requestSeat(raceId) {
     setError(null);
@@ -278,10 +280,16 @@ export default function Attendance() {
 
       {/* A newcomer's first answer made them a driver. Worth saying, because
           their name now shows up on the reserve list and in the entry list. */}
-      {joinedNote && (
+      {joinedNote === "new" && (
         <Notice kind="success">
           You&rsquo;re on the reserve list now, so you can answer every race from here. The admins look
           over new drivers and will get in touch on Discord if anything is missing.
+        </Notice>
+      )}
+      {joinedNote === "back" && (
+        <Notice kind="success">
+          Welcome back. Your Steam account matched the driver you raced as before, so your answer is saved
+          there.
         </Notice>
       )}
 

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const accounts = new Map();
 vi.mock("./members.js", () => ({
   dbGetMember: vi.fn(async (_p, id) => accounts.get(String(id)) || null),
+  dbClearRaceRequest: vi.fn(async () => {}),
   applyMemberSteamId: vi.fn(async () => ({ written: false })),
   isUncheckedNewcomer: vi.fn(async () => false),
 }));
@@ -15,15 +16,34 @@ vi.mock("./reservePool.js", () => ({
 const links = new Map();
 vi.mock("./persons.js", () => ({
   getLinkedDriverIds: vi.fn(async (_p, id) => links.get(id) || [id]),
+  // Person groups from the same `links` map: every id listed under a key is
+  // one person, keyed by the first id.
+  getPersonGroups: vi.fn(async () => {
+    const byDriver = new Map();
+    const byPerson = new Map();
+    for (const ids of links.values()) {
+      const key = `p:${ids[0]}`;
+      byPerson.set(key, ids);
+      for (const id of ids) byDriver.set(id, key);
+    }
+    return { byDriver, byPerson };
+  }),
+  dbLinkDrivers: vi.fn(async () => "p"),
 }));
+vi.mock("../services/driverMerge.js", () => ({ mergeDrivers: vi.fn(async () => ({ merged: true })) }));
 vi.mock("./waitlist.js", () => ({ promoteFromWaitlist: vi.fn(async () => []) }));
 vi.mock("../services/discordService.js", () => ({ syncRaceToDiscord: vi.fn(async () => ({ ok: true })) }));
 vi.mock("./notifications.js", () => ({
   notifyAdminsNewDriver: vi.fn(async () => {}),
   notifyTurnedAway: vi.fn(async () => {}),
+  notifyAdminsRecognised: vi.fn(async () => {}),
 }));
 
-const { joinBlock, pickNewcomerName, joinAsNewcomer, turnAwayNewcomer, newcomerRows } = await import("./newcomers.js");
+const {
+  joinBlock, pickNewcomerName, joinAsNewcomer, turnAwayNewcomer, newcomerRows,
+  recogniseBySteam, similarNames, discordCreatedAt,
+} = await import("./newcomers.js");
+const { mergeDrivers } = await import("../services/driverMerge.js");
 const { promoteFromWaitlist } = await import("./waitlist.js");
 const { syncRaceToDiscord } = await import("../services/discordService.js");
 const { notifyAdminsNewDriver, notifyTurnedAway } = await import("./notifications.js");
@@ -55,6 +75,9 @@ function db({ drivers = [], rsvps = [], offers = [] } = {}) {
     $transaction: async (ops) => {
       for (const op of ops) await op;
     },
+    // Only the Steam lookup in recogniseBySteam reads raw.
+    $queryRawUnsafe: async (_sql, steamId) =>
+      state.drivers.filter((d) => d.steamId === steamId).map((d) => ({ id: d.id })),
     driver: {
       findUnique: async ({ where }) => state.drivers.find((d) => byWhere(d, where)) || null,
       findMany: async ({ where = {}, include } = {}) =>
@@ -83,6 +106,11 @@ function db({ drivers = [], rsvps = [], offers = [] } = {}) {
       delete: ({ where }) => {
         state.drivers = state.drivers.filter((d) => d.id !== where.id);
         return Promise.resolve();
+      },
+      update: async ({ where, data }) => {
+        const row = state.drivers.find((d) => d.id === where.id);
+        Object.assign(row, data);
+        return row;
       },
     },
     raceRsvp: {
@@ -271,5 +299,100 @@ describe("turnAwayNewcomer", () => {
     await expect(turnAwayNewcomer(prisma, "111")).rejects.toMatchObject({ status: 409 });
     expect(prisma.state.drivers).toHaveLength(2);
     expect(prisma.state.rsvps).toHaveLength(4);
+  });
+});
+
+describe("similarNames", () => {
+  it("catches the same name written another way, and near misses in longer names", () => {
+    expect(similarNames("Malte Goat", "maltegoat")).toBe(true);
+    expect(similarNames("maltegoat86", "Maltegoat")).toBe(true);
+    expect(similarNames("Verstapen", "Verstappen")).toBe(true);
+  });
+  it("leaves short and different names alone", () => {
+    expect(similarNames("Max", "Maxwell")).toBe(false);
+    expect(similarNames("Leclerc", "Sainz")).toBe(false);
+    expect(similarNames("Alonso", "Alon")).toBe(false);
+  });
+});
+
+describe("discordCreatedAt", () => {
+  it("reads the creation time out of a Discord id", () => {
+    // Discord's own documentation example: 175928847299117063 = 2016-04-30.
+    expect(discordCreatedAt("175928847299117063").toISOString().slice(0, 10)).toBe("2016-04-30");
+    expect(discordCreatedAt("not an id")).toBe(null);
+  });
+});
+
+describe("recogniseBySteam", () => {
+  const steam = "76561198000000001";
+
+  it("puts a returning driver's login on their old entry, without a new row", async () => {
+    accounts.set("111", account({ steamId: steam }));
+    links.set("max_s6", ["max_s6", "max_s7"]);
+    const prisma = db({
+      drivers: [
+        { id: "max_s6", name: "Max", seasonId: "s6", steamId: steam, discordUserId: null },
+        { id: "max_s7", name: "Max", seasonId: "s7", steamId: null, discordUserId: null },
+      ],
+    });
+    // The newest season counts as the running one here.
+    prisma.driver.findMany = ((orig) => async (args) =>
+      (await orig(args)).map((d) => ({ ...d, season: { number: Number(d.seasonId.slice(1)), isActive: d.seasonId === "s7", name: d.seasonId } })))(prisma.driver.findMany);
+
+    const out = await recogniseBySteam(prisma, "111");
+    expect(out.recognised).toMatchObject({ id: "max_s7", name: "Max" });
+    expect(prisma.state.drivers.find((d) => d.id === "max_s7").discordUserId).toBe("111");
+    expect(prisma.state.drivers).toHaveLength(2);
+  });
+
+  it("joining with a proved Steam account finds the old entry instead of making one", async () => {
+    accounts.set("111", account({ steamId: steam }));
+    const prisma = db({ drivers: [{ id: "max_s7", name: "Max", seasonId: "s7", steamId: steam, discordUserId: null }] });
+    const out = await joinAsNewcomer(prisma, { discordId: "111", seasonId: "s7" });
+    expect(out).toMatchObject({ created: false, recognised: { id: "max_s7" } });
+    expect(prisma.state.drivers).toHaveLength(1);
+    expect(accounts.get("111").newDriverAt ?? null).toBe(null);
+  });
+
+  it("folds the row the site already made into the old entry of the same season", async () => {
+    const at = new Date("2026-11-02T12:00:00.000Z");
+    accounts.set("111", account({ steamId: steam, newDriverAt: at.toISOString() }));
+    const prisma = db({
+      drivers: [
+        { id: "new_kid", name: "New Kid", seasonId: "s7", steamId: steam, discordUserId: "111", createdAt: at },
+        { id: "max_s7", name: "Max", seasonId: "s7", steamId: steam, discordUserId: null, createdAt: new Date("2025-01-01") },
+      ],
+    });
+    await recogniseBySteam(prisma, "111");
+    expect(mergeDrivers).toHaveBeenCalledWith(prisma, { keepId: "max_s7", dropId: "new_kid" });
+    expect(accounts.get("111").newDriverAt).toBe(null);
+  });
+
+  it("does not move an entry another login already holds", async () => {
+    accounts.set("111", account({ steamId: steam }));
+    const prisma = db({ drivers: [{ id: "max_s7", name: "Max", seasonId: "s7", steamId: steam, discordUserId: "999" }] });
+    const out = await recogniseBySteam(prisma, "111");
+    expect(out.conflict).toBe("claimed");
+    expect(prisma.state.drivers[0].discordUserId).toBe("999");
+  });
+
+  it("does not pick between two different people with the same Steam id", async () => {
+    accounts.set("111", account({ steamId: steam }));
+    const prisma = db({
+      drivers: [
+        { id: "a", name: "A", seasonId: "s6", steamId: steam, discordUserId: null },
+        { id: "b", name: "B", seasonId: "s7", steamId: steam, discordUserId: null },
+      ],
+    });
+    expect((await recogniseBySteam(prisma, "111")).conflict).toBe("several");
+  });
+
+  it("does nothing without a proved Steam account, or for somebody turned away", async () => {
+    const prisma = db({ drivers: [{ id: "max_s7", name: "Max", seasonId: "s7", steamId: steam, discordUserId: null }] });
+    accounts.set("111", account());
+    expect(await recogniseBySteam(prisma, "111")).toBe(null);
+    accounts.set("111", account({ steamId: steam, turnedAwayAt: "2026-11-01T00:00:00.000Z" }));
+    expect(await recogniseBySteam(prisma, "111")).toBe(null);
+    expect(prisma.state.drivers[0].discordUserId).toBe(null);
   });
 });

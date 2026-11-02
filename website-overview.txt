@@ -90,9 +90,14 @@ Sign up
   Every answer also gets posted and updated automatically in the Discord
   channel. Someone new does not have to wait for an admin: their first answer
   (or the Join button on their profile) puts them on the reserve list straight
-  away. The admins see them under New drivers in the Members tab and can keep
-  them or turn them away; turning someone away removes their driver and their
-  answers again, and the waiting list moves up. While logged in a driver can also pick his own country here, and that
+  away. Before that the site checks whether it already knows them: a returning
+  driver whose Steam account matches the one their old results were saved under
+  gets their old driver back, by itself. The admins only see a newcomer when
+  something needs a look (a name matching an existing driver, a Steam account
+  another login holds, a brand-new Discord account), under New drivers in the
+  Members tab: keep them, link them to their old entry, or turn them away.
+  Turning someone away removes their driver and their answers again, and the
+  waiting list moves up. While logged in a driver can also pick his own country here, and that
   then shows as his flag everywhere on the site. Profile edits (name, flag,
   picture, bio, number, socials, stat tiles) apply to the driver's row in every
   league they race in, not only the one their login is tied to.

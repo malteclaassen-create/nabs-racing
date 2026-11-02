@@ -472,7 +472,7 @@ export const ADMIN_INDEX = [
   {
     tab: "members",
     title: "New drivers: keep or turn away",
-    hint: "Newcomers who signed themselves up on their first race answer. Keep them, turn them away, or join them to their old entry.",
+    hint: "Newcomers sign themselves up. Listed to check only when the site found something: a name that matches an entry, a Steam account another login holds, a brand-new Discord account. Keep them, turn them away, or join them to their old entry.",
     keywords: "new driver drivers newcomer newcomers signed up sign up joined join check keep turn away reject remove decline say no merge same driver",
   },
   {

@@ -13,7 +13,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth, getUserToken, saveUser, adoptDriver } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
-import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
+import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field, Notice } from "../components/ui.jsx";
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { COUNTRIES } from "../data/countries.js";
@@ -93,7 +93,7 @@ function normalizeSocials(map) {
 // The Steam connection, shown to newcomers on the welcome screen and to drivers
 // who already have a profile (theirs may be missing or wrong: an id is only
 // captured automatically once they have actually raced).
-function SteamLinkCard({ steam, onChanged, demo = false }) {
+function SteamLinkCard({ steam, onChanged, demo = false, newcomer = false }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -138,6 +138,7 @@ function SteamLinkCard({ steam, onChanged, demo = false }) {
             We import race results straight out of Assetto Corsa, and the game identifies you by your Steam
             account, not by your name. Connect it once and your results are added to your profile
             automatically.
+            {newcomer && " Raced with us before? This also finds your old driver, with all your results."}
           </p>
           {error && <p className="mt-2 text-sm font-semibold text-rose-500">{error}</p>}
           {steam?.linked ? (
@@ -188,6 +189,8 @@ function useSteamResult(onDone) {
         "Steam account connected, but a different Steam account is already stored on your driver entry. An admin needs to look at that one."
       );
     else if (result === "cancelled") setNote("Steam sign-in was cancelled. Nothing was saved.");
+    // "found" (a returning driver recognised by Steam) is said by the profile
+    // itself: by then this welcome screen has given way to it.
     setParams({}, { replace: true });
     onDone?.();
     // onDone is a refetch; re-running on its identity would loop.
@@ -227,15 +230,21 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const note = useSteamResult(reload);
+  const [, setSearch] = useSearchParams();
 
   async function join() {
     if (demo) return;
     setBusy("join");
     setError(null);
     try {
-      adoptDriver(await api.joinLeague());
+      const res = await api.joinLeague();
+      adoptDriver(res);
       // /api/me now answers with the driver, and this screen gives way to it.
-      reload?.();
+      // A returning driver (their proved Steam account led to their old
+      // entry) is told so by the profile, the same way as coming back from
+      // Steam; useSteamResult above reloads on that marker.
+      if (res?.recognised) setSearch({ steam: "found", as: res.driverName || "" }, { replace: true });
+      else reload?.();
     } catch (e) {
       setError(e.message);
       setBusy(null);
@@ -275,7 +284,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
         )}
 
         {/* Step 1: Steam. Stated in terms of what it does for THEM. */}
-        <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} />
+        <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} newcomer />
 
         {/* Step 2: join, or (turned away once) ask. Nothing until the account
             has been looked up, so neither flashes past for the other. */}
@@ -903,6 +912,21 @@ function MyProfile() {
   const [scope, setScope] = useState("all"); // "all" | a league row's driverId
   const [params, setParams] = useSearchParams();
   const tab = sectionKeys(COCKPIT_TABS).includes(params.get("tab")) ? params.get("tab") : "profile";
+  // Back from Steam as a returning driver (pages/SteamCallback.jsx): their
+  // Steam account led to the driver they raced as, and this page is that
+  // driver now. Said once, then the address is tidied up.
+  const [welcomeBack, setWelcomeBack] = useState(null);
+  const foundAs = params.get("steam") === "found" ? params.get("as") || "" : null;
+  useEffect(() => {
+    if (foundAs === null) return;
+    setWelcomeBack(foundAs || "your driver");
+    const next = new URLSearchParams(params);
+    next.delete("steam");
+    next.delete("as");
+    setParams(next, { replace: true });
+    // Only when the marker arrives; params/setParams change with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foundAs]);
   const setTab = (key) => {
     if (key === "feedback") return openFeedback(); // the panel, not a section
     // My reports and Admin are pages of their own: the nav draws them as links
@@ -996,6 +1020,12 @@ function MyProfile() {
           ) : null
         }
       />
+      {welcomeBack && (
+        <Notice kind="success">
+          Welcome back. Your Steam account is the one {welcomeBack} raced with, so your login is linked to that
+          driver now, with all your results.
+        </Notice>
+      )}
 
       <div className="page-in-steady flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">
       <ProfileNav

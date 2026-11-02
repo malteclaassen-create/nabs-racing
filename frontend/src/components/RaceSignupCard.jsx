@@ -561,7 +561,12 @@ export default function RaceSignupCard({
                 surprise when their name turns up on the reserve list. */}
             {newcomer && !myStatus && (
               <p className="w-full text-sm leading-relaxed text-light">
-                You haven&rsquo;t raced with us yet. Your first answer puts you on the reserve list.
+                You haven&rsquo;t raced with us yet. Your first answer puts you on the reserve list. Raced
+                here before?{" "}
+                <Link to="/profile" className="font-semibold text-link hover:underline">
+                  Connect Steam on your profile
+                </Link>{" "}
+                and we find your old driver.
               </p>
             )}
           </div>

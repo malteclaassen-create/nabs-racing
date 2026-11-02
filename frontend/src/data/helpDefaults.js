@@ -69,7 +69,7 @@ Not sure which file is the problem? The [Content Check](/content-check) tells yo
         },
         {
           q: "I'm new. How do I join?",
-          a: "Log in with Discord and answer the next race on the [Attendance](/attendance) page, or press **Join as a reserve** on your [profile](/profile). Either one puts you on the reserve list straight away, no need to wait for an admin. The admins look over new drivers and get in touch on Discord if anything is missing.",
+          a: "Log in with Discord and answer the next race on the [Attendance](/attendance) page, or press **Join as a reserve** on your [profile](/profile). Either one puts you on the reserve list straight away, no need to wait for an admin. Raced with us before? Connect your Steam account on your [profile](/profile) and your old driver is found by itself, with all your results.",
         },
         {
           q: "I can't make it this week",

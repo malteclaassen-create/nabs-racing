@@ -97,6 +97,14 @@ export function adoptDriver(joined) {
   });
 }
 
+// Ask again now, whatever this page load already asked: something just
+// changed who this login is (Steam recognised a returning driver, see
+// pages/SteamCallback.jsx). Resolves once the snapshot is current.
+export function recheckDriverLink() {
+  checkedLink = false;
+  return refreshDriverLink();
+}
+
 // Reactive view of the logged-in driver (via Discord).
 export function useAuth() {
   const [user, setUser] = useState(readUser);
