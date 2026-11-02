@@ -15,6 +15,9 @@ import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 // site. Logins connect to a driver ONLY via a stored Discord user ID (the old
 // name matcher was an impersonation hole and is gone), so this tab is where
 // identities get managed:
+//   * check the newcomers who signed themselves up (their first race answer
+//     made them a reserve driver, backend lib/newcomers.js): keep them, turn
+//     them away, or join them to the roster entry they already had,
 //   * see who logged in but is NOT linked to any driver (and link them by hand),
 //   * see which roster drivers never logged in at all,
 //   * ban an account (no more logins, running sessions stop working),
@@ -22,9 +25,10 @@ import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 //     main one (backend lib/accountLinks.js).
 const fmtDate = (v) => fmtStamp(v) || NO_VALUE;
 
-// The admin navigation puts the "logins with no driver" count on the Members
-// tab. Linking somebody (or creating their driver, or banning them) has to take
-// that number down straight away, so every finished action says so
+// The admin navigation puts the "logins with no driver" count, plus the new
+// drivers waiting for a check, on the Members tab. Linking somebody (or
+// creating their driver, keeping or turning away a newcomer, banning them) has
+// to take that number down straight away, so every finished action says so
 // (MEMBERS_CHANGED_EVENT, data/adminEvents.js).
 
 // One row of this tab, in two parts: WHO on the left, WHAT YOU CAN DO on the
@@ -52,8 +56,36 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // Whether StatusPills has anything to say. A linked, unbanned, ordinary member
 // has none of them, and the row must not keep an empty line's worth of margin
 // for the pills that aren't there.
+//
+// A newcomer who signed themselves up and nobody has kept or turned away yet
+// is isNewDriver: the same rule the server counts for the nav badge (GET
+// /members/pending). A second account drives as its main one, and an account
+// whose driver an admin already deleted by hand in the Drivers tab has had its
+// answer.
+const isNewDriver = (m) => !!(m.newDriverAt && !m.mainDiscordId && m.driver);
 const hasPills = (m) =>
-  !!(m.isAdmin || m.isSteward || m.isRaceControl || m.banned || m.mainDiscordId || m.seconds?.length || !m.driver || !m.driver.isActiveSeason);
+  !!(
+    m.isAdmin || m.isSteward || m.isRaceControl || m.banned || m.mainDiscordId || m.seconds?.length ||
+    isNewDriver(m) || m.turnedAwayAt || !m.driver || !m.driver.isActiveSeason
+  );
+
+// Their upcoming race answers, as the small pills on a New drivers row. The
+// words are the ones the attendance history uses (In / Out / Maybe), so an
+// admin reads the same thing in both places.
+const ANSWER_PILL = {
+  ACCEPTED: { label: "In", className: "bg-ok/10 text-ok" },
+  TENTATIVE: { label: "Maybe", className: "bg-warn/10 text-warn" },
+  DECLINED: { label: "Out", className: "bg-bad/10 text-bad" },
+  WAITLIST: { label: "Waiting list", className: "bg-sky-500/15 text-sky-600" },
+};
+const answerPlace = (a) => (a.round != null ? `R${a.round} ${a.track}` : a.track || "A race");
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// "Max 2", or "Max 2 and Max 2 (GT Season 1)" when a second series signed them
+// up too. The season only gets named when there is more than one to tell apart.
+function rowNames(rows) {
+  const names = rows.map((r) => (rows.length > 1 && r.seasonName ? `${r.name} (${r.seasonName})` : r.name));
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] || "";
+}
 
 // The chips over "All login accounts". Each is one of the questions this list
 // gets asked ("who is banned?", "who are the stewards?"), answered from what
@@ -66,6 +98,7 @@ const MEMBER_FILTERS = [
   { key: "steward", label: "Stewards", test: (m) => !!m.isSteward && !m.isAdmin },
   { key: "racecontrol", label: "Race control", test: (m) => !!m.isRaceControl && !m.isAdmin },
   { key: "admin", label: "Admins", test: (m) => !!m.isAdmin },
+  { key: "new", label: "New drivers", test: isNewDriver },
   { key: "nodriver", label: "Without driver", test: (m) => !m.driver },
   { key: "steam", label: "Steam differs", test: steamDiffers },
 ];
@@ -122,6 +155,24 @@ function StatusPills({ m }) {
       {m.banned && (
         <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-bad" title={m.banReason || undefined}>
           banned{m.banReason ? ` · ${m.banReason}` : ""}
+        </span>
+      )}
+      {isNewDriver(m) && (
+        <span
+          className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-600"
+          title={`Signed themselves up on ${fmtDate(m.newDriverAt)}. Keep them or turn them away under New drivers.`}
+        >
+          new
+        </span>
+      )}
+      {/* Quiet on purpose: it is history, not work. It only matters when they
+          ask to race again, and then the row says so on its own. */}
+      {m.turnedAwayAt && (
+        <span
+          className="rounded-full bg-surface2 px-2 py-0.5 text-[11px] font-semibold text-light"
+          title={`Turned away on ${fmtDate(m.turnedAwayAt)}. The site won't sign them up by itself again. They can still ask with "I want to race".`}
+        >
+          turned away
         </span>
       )}
       {m.driver ? (
@@ -184,6 +235,10 @@ export default function AdminMembers() {
     .filter((m) => !m.driver && !m.mainDiscordId)
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   const requests = unlinked.filter((m) => m.raceRequestAt).length;
+  // Newcomers who signed themselves up, newest first like the To do card.
+  const newDrivers = members
+    .filter(isNewDriver)
+    .sort((a, b) => (Date.parse(b.newDriverAt) || 0) - (Date.parse(a.newDriverAt) || 0));
   const q = query.trim().toLowerCase();
   const shownMembers = members.filter(
     (m) => (!q || memberMatches(m, q)) && MEMBER_FILTERS.every((f) => !chips.has(f.key) || f.test(m))
@@ -252,13 +307,64 @@ export default function AdminMembers() {
     return { ok: false, text: `${who} is set up, but their Steam account could not be carried over. Enter it under Drivers.` };
   }
 
+  // Also the New drivers card's "Same driver as…": a newcomer who turns out to
+  // be a roster driver who had never logged in. The server folds the row it
+  // made for them in that season into the picked driver, answers included, and
+  // says which row went (`merged`), so the admin is not left wondering where
+  // the new entry they were looking at disappeared to.
   function link(m, driverId) {
     if (!driverId) return;
     const who = m.displayName || m.username;
+    const target = unclaimed.find((d) => d.id === driverId)?.name || "that driver";
     act(m.discordId, async () => {
       const res = await api.linkMember(m.discordId, driverId);
       const note = steamNote(res?.steam, who);
-      if (note) setMsg(note);
+      if (res?.merged) {
+        const text = `${who} is linked to ${target}. Their new entry ${res.merged.name} and its race answers moved over to ${target}.`;
+        setMsg({ ok: !note || note.ok, text: note ? `${text} ${note.text}` : text });
+      } else if (note) setMsg(note);
+    });
+  }
+
+  // A newcomer stays: off the New drivers list, and nothing else changes.
+  function keep(m) {
+    const who = m.displayName || m.username;
+    act(m.discordId, async () => {
+      await api.keepMember(m.discordId);
+      setMsg({ ok: true, text: `Kept ${who}. They stay on as ${m.driver?.name || "a reserve"}.` });
+    });
+  }
+
+  // A newcomer goes. The question spells out what the server is about to
+  // remove (lib/newcomers.js turnAwayNewcomer): the rows it made for them and
+  // their answers to races still to come, read off the list the card already
+  // shows, so the admin is never surprised by what went.
+  async function turnAway(m) {
+    const who = m.displayName || m.username;
+    const nc = m.newcomer || {};
+    const rows = nc.rows?.length ? nc.rows : [{ name: m.driver?.name || who }];
+    const n = nc.answers?.length || 0;
+    const ok = await ask({
+      title: `Turn "${who}" away?`,
+      body:
+        `Their ${rows.length === 1 ? "driver" : "drivers"} ${rowNames(rows)} ${rows.length === 1 ? "goes" : "go"}` +
+        (n ? `, and so ${n === 1 ? "does their 1 race answer" : `do their ${n} race answers`}. The waiting list moves up into any seat they held.` : ". They have no answers for races still to come.") +
+        ` They get a message saying so, and they can't sign themselves up again. They can still ask with "I want to race".`,
+      danger: true,
+      confirmLabel: "Turn away",
+    });
+    if (!ok) return;
+    act(m.discordId, async () => {
+      const res = await api.turnAwayMember(m.discordId);
+      const gone = res?.removed?.length ? rowNames(res.removed) : null;
+      const answers = Number(res?.answers) || 0;
+      setMsg({
+        ok: true,
+        text:
+          `Turned ${who} away.` +
+          (gone ? ` Removed ${gone}` : "") +
+          (gone && answers ? ` and ${plural(answers, "race answer", "race answers")}.` : gone ? "." : ""),
+      });
     });
   }
 
@@ -433,9 +539,10 @@ export default function AdminMembers() {
     <div className="space-y-6">
       <div className="rounded-lg bg-surface2/60 px-4 py-3 text-sm text-medium">
         Everyone who has logged in with Discord shows up here automatically. An account connects to its driver via
-        the stored Discord user ID (set in the Drivers tab, or by linking below); new logins without one land in{" "}
-        <b>Needs attention</b>, where you link them by hand. Banning an account blocks logins <i>and</i> cuts
-        off its current session.
+        the stored Discord user ID (set in the Drivers tab, or by linking below). Someone new gets a reserve driver
+        by themselves the first time they answer a race, and shows up under <b>New drivers</b> for you to keep or
+        turn away. <b>Needs attention</b> lists the logins that still have no driver. Banning an account blocks
+        logins <i>and</i> cuts off its current session.
       </div>
 
       {msg && !msg.ok && <ErrorBox message={msg.text} />}
@@ -464,10 +571,11 @@ export default function AdminMembers() {
               )}
             </h3>
             <p className="mt-1.5 max-w-3xl text-sm text-medium">
-              These people signed in but aren&rsquo;t connected to a roster driver yet. (Logins only auto-connect via a
-              stored Discord user ID; there is no name guessing, so nobody can claim someone else&rsquo;s profile.) Pick
-              their driver entry to link them, or, for someone completely new to the league, create a fresh driver in
-              one step with <b>New driver</b>.
+              These people signed in but have no driver yet: someone who hasn&rsquo;t answered a race, a returning
+              driver to link to their old entry, or someone you turned away who asked again. (Logins only connect by
+              themselves via a stored Discord user ID; there is no name guessing, so nobody can claim someone
+              else&rsquo;s profile.) Pick their driver entry to link them, or make a fresh one in one step with{" "}
+              <b>New driver</b>.
             </p>
           </div>
           <ul className="divide-y divide-border px-5 pb-2">
@@ -619,6 +727,151 @@ export default function AdminMembers() {
                 )}
                 {pairingPanel(m)}
               </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* --- newcomers who signed themselves up ------------------------------
+          The second to-do list, and a gentler one: doing nothing here is
+          keeping them, so it is tinted blue rather than amber. What the admin
+          needs to decide is all on the row: who it is, the driver the site made,
+          and which races they have put their name down for, because those are
+          what a turn-away takes with it. */}
+      {newDrivers.length > 0 && (
+        <div className="card overflow-hidden border-sky-500/40 p-0">
+          <div className="border-b border-sky-500/30 bg-sky-500/10 px-5 py-4">
+            <h3 className="flex flex-wrap items-center gap-2 font-display text-base font-extrabold uppercase tracking-tight text-dark">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-sky-600" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="10" cy="8" r="4" />
+                <path d="M2 21a8 8 0 0113.3-6M19 16v6M16 19h6" />
+              </svg>
+              New drivers: signed themselves up
+              <span className="rounded-full bg-sky-500/20 px-2 py-0.5 font-mono text-xs text-sky-600">
+                {newDrivers.length} to check
+              </span>
+            </h3>
+            <p className="mt-1.5 max-w-3xl text-sm text-medium">
+              These people answered a race (or pressed Join on their profile) and got a reserve driver straight away.
+              Keep them, or turn them away if they shouldn&rsquo;t be here. Doing nothing keeps them. If one of them
+              already has an entry on the roster, pick it under <b>Same driver as…</b> and the two become one, race
+              answers included.
+            </p>
+          </div>
+          <ul className="divide-y divide-border px-5 pb-2">
+            {newDrivers.map((m) => {
+              const who = m.displayName || m.username;
+              const nc = m.newcomer || {};
+              const answers = nc.answers || [];
+              const otherRows = (nc.rows || []).filter((r) => r.id !== m.driver.id);
+              const raced = (nc.results || 0) > 0;
+              const suggested = suggestionFor(m);
+              const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
+              return (
+                <li key={m.discordId} className="py-4">
+                  <MemberRow
+                    avatar={
+                      <DriverAvatar name={who} photoUrl={m.avatarUrl} color={m.driver.team?.color || "#64748b"} size={40} />
+                    }
+                    actions={
+                      <>
+                        <button
+                          className="btn-primary py-1.5 text-sm disabled:opacity-50"
+                          disabled={busy === m.discordId}
+                          onClick={() => keep(m)}
+                          title="They stay in the league. Nothing else changes."
+                        >
+                          Keep
+                        </button>
+                        <select
+                          aria-label={`${who} is the same driver as`}
+                          className="input w-full py-1.5 text-sm sm:w-64"
+                          value={sel}
+                          onChange={(e) => setLinkChoice((c) => ({ ...c, [m.discordId]: e.target.value }))}
+                        >
+                          <option value="">Same driver as…</option>
+                          {unclaimed.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn-secondary py-1.5 text-sm disabled:opacity-50"
+                          disabled={!sel || busy === m.discordId}
+                          onClick={() => link(m, sel)}
+                          title="Their account moves to that driver. The entry the site made for them in that season is merged into it, race answers included."
+                        >
+                          Link
+                        </button>
+                        {/* Pushed away from Keep, like Ban is on the other
+                            rows. Gone once they have race results: the server
+                            refuses then, and keeping or banning is what is
+                            left. */}
+                        {!raced && (
+                          <button
+                            className="ml-auto rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-bad transition hover:bg-red-500/10 2xl:ml-1"
+                            disabled={busy === m.discordId}
+                            onClick={() => turnAway(m)}
+                          >
+                            Turn away
+                          </button>
+                        )}
+                      </>
+                    }
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="font-semibold text-dark">{who}</span>
+                      <span className="font-mono text-xs text-light">@{m.username}</span>
+                      <span className="inline-flex items-center gap-1.5 text-sm text-medium">
+                        <TeamLogo
+                          id={m.driver.team?.id}
+                          name={m.driver.team?.name || ""}
+                          color={m.driver.team?.color || "#64748b"}
+                          size={18}
+                        />
+                        <span className="font-semibold text-dark">{m.driver.name}</span>
+                        {m.driver.team?.name && <span className="text-light">· {m.driver.team.name}</span>}
+                      </span>
+                    </div>
+                    {otherRows.length > 0 && (
+                      <p className="mt-1 text-xs text-light">
+                        Also signed up as{" "}
+                        {otherRows.map((r) => `${r.name}${r.seasonName ? ` in ${r.seasonName}` : ""}`).join(", ")}
+                      </p>
+                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {answers.length ? (
+                        answers.map((a) => {
+                          const pill = ANSWER_PILL[a.status] || { label: a.status, className: "bg-surface2 text-light" };
+                          return (
+                            <span key={a.raceId} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.className}`}>
+                              {answerPlace(a)} · {pill.label}
+                            </span>
+                          );
+                        })
+                      ) : (
+                        <span className="text-xs text-light">No answers for races still to come</span>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-light">
+                      <IdChip platform="discord" value={m.discordId} />
+                      <span className="whitespace-nowrap">signed up {fmtDate(m.newDriverAt)}</span>
+                    </div>
+                    {raced && (
+                      <p className="mt-1.5 text-xs text-warn">
+                        They have race results now, so they can&rsquo;t be turned away. Keep them, or ban the account in
+                        the list below.
+                      </p>
+                    )}
+                    {suggested && sel === suggested.id && (
+                      <p className="mt-1.5 font-mono text-[11px] text-ok">
+                        name matches {suggested.name} on the roster · if it&rsquo;s them, hit Link
+                      </p>
+                    )}
+                  </MemberRow>
+                </li>
               );
             })}
           </ul>
