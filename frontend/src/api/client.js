@@ -719,6 +719,8 @@ export const api = {
   },
   attendanceOpen: () => request(`/events/open${seriesQ()}`, { auth: true }),
   // `car` = a special event's { carNumber, liveryUrl }, sent with the sign-up.
+  // A newcomer's first answer also makes their driver; the reply then carries
+  // `joined: { driverId, driverName }` (hooks/useAuth.js adoptDriver).
   rsvp: (raceId, driverId, status, car = null) =>
     request(`/events/${raceId}/rsvp`, { method: "POST", body: { driverId, status, ...(car || {}) }, userAuth: true }),
   // A special event's car for the signed-in member: read it, change it after
@@ -756,10 +758,15 @@ export const api = {
   // queue. Nobody is promoted behind them.
   adminTrimGrid: (raceId) =>
     request(`/admin/attendance/${raceId}/trim`, { method: "POST", identityAuth: true }),
-  // "I want to race": a logged-in account with no driver profile raises a hand
-  // for a race; the admin sees it in Members → Needs attention.
+  // A logged-in account with no driver profile: { canJoin } says it signs
+  // itself up with its first answer (or joinLeague below); { turnedAway } says
+  // the admins said no once, and "I want to race" (requestRace) is what is
+  // left, which the admin sees in Members → Needs attention.
   myRaceRequest: () => request("/me/race-request", { userAuth: true }),
   requestRace: (raceId) => request("/me/race-request", { method: "POST", body: { raceId }, userAuth: true }),
+  // The profile's Join button: a reserve driver straight away, in the active
+  // season of the series being viewed. -> { driverId, driverName }
+  joinLeague: () => request("/me/join", { method: "POST", body: { series: SELECTED_SERIES || undefined }, userAuth: true }),
 
   // "Sign in through Steam": start returns the URL to send the browser to;
   // Steam then comes back to /auth/steam/callback in this app, and THAT page
@@ -1549,6 +1556,10 @@ export const api = {
   linkMember: (discordId, driverId) =>
     request(`/admin/members/${discordId}/link`, { method: "POST", body: { driverId }, auth: true }),
   unlinkMember: (discordId) => request(`/admin/members/${discordId}/unlink`, { method: "POST", auth: true }),
+  // A newcomer who signed themselves up: keep them (off the "New drivers"
+  // list), or turn them away (their driver and answers go, lib/newcomers.js).
+  keepMember: (discordId) => request(`/admin/members/${discordId}/keep`, { method: "POST", auth: true }),
+  turnAwayMember: (discordId) => request(`/admin/members/${discordId}/turn-away`, { method: "POST", auth: true }),
   // One driver, two Discord accounts: `discordId` signs in as `mainId` from now on.
   setSecondAccount: (discordId, mainId) =>
     request(`/admin/members/${discordId}/second-account`, { method: "POST", body: { mainId }, auth: true }),

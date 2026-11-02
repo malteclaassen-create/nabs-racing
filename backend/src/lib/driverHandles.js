@@ -22,6 +22,17 @@ export function driverHandle(name) {
   );
 }
 
+// A fresh row id for a driver called `name`: the handle, with _2, _3 … on the
+// end when that id is already taken. Driver ids are permanent technical
+// handles, generated so nobody ever has to invent one (the admin's Drivers and
+// Members tabs, and a newcomer's own sign-up in lib/newcomers.js).
+export async function uniqueDriverId(prisma, name) {
+  const base = driverHandle(name);
+  let id = base;
+  for (let i = 2; await prisma.driver.findUnique({ where: { id } }); i++) id = `${base}_${i}`;
+  return id;
+}
+
 // The driver row `key` means under /s/<series> with season <season> selected
 // (number; null = that league's active season). Order of preference:
 //   1. a row of that season whose handle (or id) is the key,

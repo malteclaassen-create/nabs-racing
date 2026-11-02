@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
+import { recheckDriverLink } from "../hooks/useAuth.js";
 import { Spinner, ErrorBox } from "../components/ui.jsx";
 
 // Where Steam sends the member back after "Sign in through Steam".
@@ -44,6 +45,16 @@ export default function SteamCallback() {
         const d = res?.driver;
         const needsAdmin =
           d && d.written === false && !["no-driver", "no-claim", "already-set"].includes(d.reason);
+        // A returning driver: the Steam account is the one an old entry's
+        // results were saved under, and the login now sits on that driver. The
+        // page has to know before it draws the profile.
+        if (res?.recognised) {
+          return recheckDriverLink().then(() => {
+            if (gone) return;
+            const as = encodeURIComponent(res.recognised.name || "");
+            navigate(`/profile?steam=found&as=${as}`, { replace: true });
+          });
+        }
         navigate(`/profile?steam=${needsAdmin ? "carried" : "ok"}`, { replace: true });
       })
       .catch((e) => {

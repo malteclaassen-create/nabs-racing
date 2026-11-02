@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundX } from "lucide-react";
+import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundPlus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -1417,9 +1417,12 @@ function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
   const requests = todo.data?.requests || [];
   const givenBack = todo.data?.givenBack || [];
   const overdue = todo.data?.overdue || [];
+  const newDrivers = todo.data?.newDrivers || [];
   const count = (key) => parts.find((p) => p.key === key)?.n || 0;
   // Logins without a driver, less the ones already listed by name for having
-  // asked to race: the same person should not be two lines.
+  // asked to race: the same person should not be two lines. A newcomer who
+  // signed themselves up has a driver, so they are in neither number and get
+  // lines of their own below.
   const quietLogins = Math.max(0, count("members") - requests.length);
 
   const rows = [];
@@ -1457,6 +1460,41 @@ function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
   if (requests.length > 3) {
     rows.push(<TodoRow key="req-more" icon={Hand} action="Open" title={`${requests.length - 3} more asked to race`} onAction={() => onPick("members")} />);
   }
+  // Newcomers who signed themselves up and that the site found something
+  // about (backend lib/newcomers.js reviewNewcomers): who they may already be,
+  // or a brand-new Discord account. The clean ones never reach this card.
+  // Already racing as reserves, so this is a check rather than a wait: doing
+  // nothing keeps them, and the Members tab has the buttons.
+  const whyListed = (n) => {
+    const bits = [];
+    if (n.maybe) {
+      bits.push(
+        n.maybe.claimed
+          ? `${n.maybe.why.includes("steam") ? "Their Steam account" : "Their name"} points at ${n.maybe.name}, who already has a login. Maybe a second account.`
+          : `Might be ${n.maybe.name} (${n.maybe.why.includes("steam") ? "same Steam account" : n.maybe.why.includes("handle") ? "same Discord name" : n.maybe.why.includes("name") ? "same name" : "similar name"}).`
+      );
+    }
+    // Their age on the day they signed up, which is what was checked.
+    if (n.newAccountDays != null)
+      bits.push(
+        n.newAccountDays === 0
+          ? "Their Discord account was made the day they signed up."
+          : `Their Discord account was ${n.newAccountDays === 1 ? "1 day" : `${n.newAccountDays} days`} old when they signed up.`
+      );
+    return bits.join(" ");
+  };
+  for (const n of newDrivers.slice(0, 3)) {
+    rows.push(
+      <TodoRow key={`new-${n.discordId}`} icon={UserRoundPlus} action="Check"
+        title={`${n.name} signed up as a new driver`}
+        detail={`${whyListed(n)} ${n.at ? `Signed up ${ago(n.at)}.` : ""}`.trim()}
+        onAction={() => onPick("members")} />
+    );
+  }
+  if (newDrivers.length > 3) {
+    const k = newDrivers.length - 3;
+    rows.push(<TodoRow key="new-more" icon={UserRoundPlus} action="Open" title={`${k} more new driver${k === 1 ? "" : "s"} to check`} onAction={() => onPick("members")} />);
+  }
   for (const g of givenBack) {
     rows.push(<TodoRow key={`back-${g.offerId}`} icon={UserMinus} action="Open" title={g.title} detail={`${g.body || ""} ${ago(g.at)}.`.trim()} onAction={() => navigate(g.link || "/attendance")} />);
   }
@@ -1465,7 +1503,7 @@ function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
     rows.push(<TodoRow key="market" icon={Armchair} action="Open" title={`${n} seat${n === 1 ? "" : "s"} waiting on a decision`} detail="Reserves have put their hand up. Pick who gets the seat." onAction={() => onPick("market")} />);
   }
   if (quietLogins) {
-    rows.push(<TodoRow key="logins" icon={UserRoundX} action="Open" title={`${quietLogins} login${quietLogins === 1 ? "" : "s"} without a driver`} detail="Somebody signed in with Discord and no driver row carries their account." onAction={() => onPick("members")} />);
+    rows.push(<TodoRow key="logins" icon={UserRoundX} action="Open" title={`${quietLogins} login${quietLogins === 1 ? "" : "s"} without a driver`} detail="Signed in with Discord, but no driver yet. Someone new gets one on their first race answer. A returning driver needs linking to their old entry." onAction={() => onPick("members")} />);
   }
   if (count("feedback")) {
     const n = count("feedback");

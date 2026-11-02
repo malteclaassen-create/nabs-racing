@@ -298,6 +298,13 @@ export async function ensureAppSchema(prisma) {
   // per season. SQLite treats NULLs as distinct, so the many rows without a
   // captured GUID never collide on this index.
   await addColumn(prisma, "Driver", "steamId", "TEXT");
+  // A row the site made by itself for a newcomer nobody has checked yet
+  // (lib/newcomers.js). Its name and handle are whatever the newcomer's Discord
+  // account said, so no name match ever lands on it (lib/persons.js
+  // seasonRowForDriver, the season handover, the in-game report ingest).
+  // Cleared once an admin keeps or links the newcomer. Migration
+  // member_newcomer.
+  await addColumn(prisma, "Driver", "selfMadeAt", "DATETIME");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "Driver_seasonId_steamId_key" ON "Driver"("seasonId", "steamId")`
   );
@@ -483,6 +490,20 @@ export async function ensureAppSchema(prisma) {
   // this account then acts as the main one (lib/accountLinks.js). Null for an
   // ordinary account.
   await addColumn(prisma, "MemberAccount", "mainDiscordId", "TEXT");
+  // A newcomer who signed themselves up (lib/newcomers.js). newDriverAt is when
+  // the site made their reserve driver on its own, and stays set until an
+  // admin keeps them: it is what puts them on the Members tab's "New drivers"
+  // list. turnedAwayAt is when an admin turned them away: their driver and
+  // answers are gone, and the site does not sign them up by itself again until
+  // an admin links them or creates a driver for them. Migration
+  // member_newcomer mirrors both.
+  await addColumn(prisma, "MemberAccount", "newDriverAt", "DATETIME");
+  await addColumn(prisma, "MemberAccount", "turnedAwayAt", "DATETIME");
+  // When an admin took this login off its driver by hand (Members tab Unlink,
+  // or clearing the Discord ID in the Drivers tab). From then on only an admin
+  // links it again: the site neither recognises it by Steam nor lets it sign
+  // itself up. Cleared when an admin links it or makes its driver.
+  await addColumn(prisma, "MemberAccount", "manualLinkAt", "DATETIME");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );

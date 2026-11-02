@@ -68,6 +68,10 @@ Not sure which file is the problem? The [Content Check](/content-check) tells yo
           a: "On the [Attendance](/attendance) page, pick {answers} for the next round. Sign-up opens a few days before the race, and you can change your answer until then.",
         },
         {
+          q: "I'm new. How do I join?",
+          a: "Log in with Discord and answer the next race on the [Attendance](/attendance) page, or press **Join as a reserve** on your [profile](/profile). Either one puts you on the reserve list straight away, no need to wait for an admin. Raced with us before? Connect your Steam account on your [profile](/profile) and your old driver is found by itself, with all your results.",
+        },
+        {
           q: "I can't make it this week",
           a: "Mark yourself **Declined** on the [Attendance](/attendance) page as early as you can. There is no penalty for it, and it gives your seat to a reserve.",
         },
@@ -107,7 +111,7 @@ Not sure which file is the problem? The [Content Check](/content-check) tells yo
         },
         {
           q: "I logged in but my profile has no results",
-          a: "Your Discord account isn't linked to your driver yet. An admin does that in a minute, just send a message in Discord with your driver name.",
+          a: "If you raced with us before you had an account here, your Discord account isn't linked to your old driver yet. An admin does that in a minute, just send a message in Discord with your driver name.",
         },
         {
           q: "Something on the site is broken",

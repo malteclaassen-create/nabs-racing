@@ -73,12 +73,39 @@ async function refreshDriverLink() {
   try {
     const me = await api.me();
     const freshId = me?.isLinked ? me.driverId : null;
-    if ((user.driverId || null) !== freshId) {
-      saveUser(localStorage.getItem(TOKEN_KEY), { ...user, driverId: freshId });
+    // The name follows the driver: after Steam found a returning driver, or a
+    // merge took the newcomer's own row away, the old one is no longer theirs.
+    const freshName = me?.isLinked ? me.name || null : user.driverName ?? null;
+    if ((user.driverId || null) !== freshId || (user.driverName ?? null) !== freshName) {
+      saveUser(localStorage.getItem(TOKEN_KEY), { ...user, driverId: freshId, driverName: freshName });
     }
   } catch {
     /* the snapshot stands; the next page load asks again */
   }
+}
+
+// A newcomer who just signed themselves up (their first race answer, or Join
+// on the profile) is a driver from this moment on. The token can stay as it
+// is: the backend finds the driver by Discord id on every request. Only the
+// snapshot is behind, and without this the page would keep showing them the
+// newcomer's view until the next page load.
+export function adoptDriver(joined) {
+  if (!joined?.driverId) return;
+  const user = readUser();
+  if (!user || user.driverId === joined.driverId) return;
+  saveUser(localStorage.getItem(TOKEN_KEY), {
+    ...user,
+    driverId: joined.driverId,
+    driverName: joined.driverName ?? user.driverName ?? null,
+  });
+}
+
+// Ask again now, whatever this page load already asked: something just
+// changed who this login is (Steam recognised a returning driver, see
+// pages/SteamCallback.jsx). Resolves once the snapshot is current.
+export function recheckDriverLink() {
+  checkedLink = false;
+  return refreshDriverLink();
 }
 
 // Reactive view of the logged-in driver (via Discord).

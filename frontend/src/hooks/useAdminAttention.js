@@ -14,9 +14,10 @@ import { FEEDBACK_CHANGED_EVENT, MEMBERS_CHANGED_EVENT, REPORTS_CHANGED_EVENT } 
 // row, a seat somebody wants) sit unseen behind a menu until somebody thinks to
 // look. The dot is there so nobody has to think to look.
 //
-// One request, four numbers and their sum, and only for an admin: everyone else
-// never calls it. The admin's own navigation keeps its own per-tab counts,
-// because it has the lists in hand anyway; this is only the total for a dot.
+// One request, a handful of numbers and their sum, and only for an admin:
+// everyone else never calls it. The admin's own navigation keeps its own
+// per-tab counts, because it has the lists in hand anyway; this is only the
+// total for a dot.
 //
 // The dot itself is components/AttentionDot.jsx — this file stays free of JSX
 // so it can be a plain .js hook like the rest of them.
@@ -101,6 +102,10 @@ export function useAdminAttention() {
   const parts = [
     { key: "feedback", tab: "feedback", n: counts?.feedback || 0, one: "bug report", many: "bug reports" },
     { key: "members", tab: "members", n: counts?.members || 0, one: "login without a driver", many: "logins without a driver" },
+    // A newcomer who signed themselves up and is waiting for a keep or a turn
+    // away (Members tab, "New drivers"). Its own line rather than folded into
+    // the one above: they have a driver already, and the job is a different one.
+    { key: "newDrivers", tab: "members", n: counts?.newDrivers || 0, one: "new driver to check", many: "new drivers to check" },
     { key: "market", tab: "market", n: counts?.market || 0, one: "seat waiting", many: "seats waiting" },
     // A server reset whose practice times are waiting to be kept or dropped
     // (the Live Timing tab, "Training best times").
@@ -112,6 +117,7 @@ export function useAdminAttention() {
     total: counts?.total || 0,
     feedback: counts?.feedback || 0,
     members: counts?.members || 0,
+    newDrivers: counts?.newDrivers || 0,
     market: counts?.market || 0,
     resets: counts?.resets || 0,
     // WHAT is waiting, not just how much. The dot used to be a red spot with a

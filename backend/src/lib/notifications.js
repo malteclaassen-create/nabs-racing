@@ -659,7 +659,9 @@ export async function notifyAdminsUnlinkedLogin(prisma, member) {
     if (!member?.discordId) return;
     await notifyAdmins(prisma, {
       title: `New login with no driver: ${memberName(member)}`,
-      body: "They signed in with Discord but no roster driver carries their Discord id. Link them, or create a driver for them, in the Members tab.",
+      body:
+        "They signed in with Discord and have no driver yet. Their first race answer signs them up as a reserve. " +
+        "If they raced with us before, link them to their driver in the Members tab.",
       link: "/admin?tab=members",
       dedupeSuffix: `admin-unlinked:${member.discordId}`,
     });
@@ -680,6 +682,67 @@ export async function notifyAdminsRaceRequest(prisma, member, text) {
         : "They asked for a seat. Link them to a driver in the Members tab, and that answers the request.",
       link: "/admin?tab=members",
       dedupeSuffix: `admin-race-request:${member.discordId}:${member.raceRequestAt || ""}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Somebody new signed themselves up (lib/newcomers.js): the site made their
+// reserve driver on its own, so they could answer straight away. Nothing for
+// the admins to DO unless the site found something about them worth a look,
+// which the To do card lists (reviewNewcomers). This row is the record of the
+// sign-up. Deduped per sign-up, like the hand-raise above.
+export async function notifyAdminsNewDriver(prisma, member, { driver, race = null } = {}) {
+  try {
+    if (!member?.discordId) return;
+    const where = race ? ` for ${roundName(race)}${race.track && race.number ? ` at ${race.track}` : ""}` : "";
+    await notifyAdmins(prisma, {
+      title: `New driver: ${driver?.name || memberName(member)}`,
+      body:
+        `They signed themselves up${where} and are on the reserve list now. ` +
+        "If anything about them needs a look, they show up under New drivers in the Members tab.",
+      link: "/admin?tab=members",
+      dedupeSuffix: `admin-new-driver:${member.discordId}:${member.newDriverAt || driver?.id || ""}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// A login the site recognised by its Steam account as a driver it already
+// knew (lib/newcomers.js recogniseBySteam), and linked without asking anybody.
+// Proof, not a guess, so nothing to do: the record of it, for the day somebody
+// asks why a login landed on that driver.
+export async function notifyAdminsRecognised(prisma, member, { driver } = {}) {
+  try {
+    if (!member?.discordId || !driver) return;
+    await notifyAdmins(prisma, {
+      title: `${memberName(member)} is ${driver.name}`,
+      body: `Their Steam account is the one ${driver.name}'s race results were saved under, so their login was linked to that driver.`,
+      link: "/admin?tab=members",
+      dedupeSuffix: `admin-recognised:${member.discordId}:${driver.id}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// The member side of a turn-away: their driver and their answers are gone, and
+// a member who finds their name missing from the entry list with no word why
+// is a Discord argument waiting to happen. Goes to the ACCOUNT, which outlives
+// the deleted driver row. Not muteable, same reason as the waiting list notes.
+export async function notifyTurnedAway(prisma, { discordId, races = [] }) {
+  try {
+    if (!discordId) return;
+    const named = races.filter(Boolean).slice(0, 3).map((r) => `${roundName(r)}${r.number && r.track ? ` at ${r.track}` : ""}`);
+    const answers = named.length ? ` Your answers for ${named.join(", ")}${races.length > named.length ? " and more" : ""} were removed with it.` : "";
+    await dbCreateNotification(prisma, {
+      type: "ATTENDANCE",
+      title: "You're not on the roster",
+      body: `The league admins took your driver off the reserve list.${answers} Ask on Discord if you think this is a mistake.`,
+      link: "/profile",
+      recipientId: discordId,
     });
   } catch {
     /* best-effort */

@@ -38,6 +38,7 @@
 import { rmSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getLinkedDriverIds } from "../lib/persons.js";
+import { removeNewcomerRows } from "../lib/newcomers.js";
 import { safeUploadPath } from "../lib/safeUpload.js";
 import { removeFeedbackFiles } from "../lib/feedbackFiles.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
@@ -96,6 +97,19 @@ export async function previewAccountDeletion(prisma, discordId) {
 export async function deleteMemberAccount(prisma, discordId) {
   if (!discordId) throw Object.assign(new Error("No account"), { status: 400 });
 
+  const account = await prisma.memberAccount.findUnique({ where: { discordId } });
+
+  // A newcomer who signed themselves up and leaves before anybody checked them
+  // takes the rows the site made for them along (lib/newcomers.js), answers
+  // included, and any seat they held goes to the waiting list. Those rows are
+  // nothing but their own say-so: kept, they would sit on the roster as a
+  // stranger with nobody behind them, and a fresh sign-up from the same
+  // Discord account would make another one beside them. A row with race
+  // results is part of a classification and stays, like any driver's.
+  if (account?.newDriverAt && !account.mainDiscordId) {
+    await removeNewcomerRows(prisma, { ...account, discordId: String(discordId) }).catch(() => null);
+  }
+
   const driverIds = await driverRowsForMember(prisma, discordId);
   // Read the picture paths BEFORE the columns are cleared; the files are
   // removed once the transaction has committed.
@@ -105,8 +119,12 @@ export async function deleteMemberAccount(prisma, discordId) {
         .catch(() => [])
     : [];
 
-  const account = await prisma.memberAccount.findUnique({ where: { discordId } });
   const keepBan = !!account?.banned;
+  // A turn-away, or an admin taking the login off its driver by hand, is a
+  // decision about this Discord account like a ban is. Deleting the account
+  // must not be the way round it ("delete, sign in again, sign yourself up"),
+  // so the row survives as a bare marker with that decision on it.
+  const keepRow = keepBan || !!account?.turnedAwayAt || !!account?.manualLinkAt;
 
   // Feedback threads that go with the account; their pictures are files on disk
   // and are only taken away once the transaction has committed.
@@ -173,7 +191,7 @@ export async function deleteMemberAccount(prisma, discordId) {
     const notifications = (await tx.notification.deleteMany({ where: { recipientId: discordId } }))
       .count;
 
-    if (keepBan) {
+    if (keepRow) {
       await tx.memberAccount.update({
         where: { discordId },
         data: {

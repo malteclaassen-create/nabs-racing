@@ -7,6 +7,7 @@ import {
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
+import { selfMadeRowIds } from "../lib/members.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
 import { anchorReports } from "../lib/reportAnchor.js";
 import { discordIdsForGuids, linkInGameReporters } from "../lib/reportReporter.js";
@@ -589,30 +590,36 @@ router.post("/ingest", async (req, res, next) => {
     const candidates = [rawName];
     const tagCut = rawName.lastIndexOf("|");
     if (tagCut !== -1) candidates.push(rawName.slice(tagCut + 1).trim());
-    const hit = candidates
-      .filter(Boolean)
-      .map((c) => drivers.find((d) => norm(d.name) === norm(c) || norm(d.discordName) === norm(c)))
-      .find(Boolean);
-    const discordIds = hit ? await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map()) : new Map();
-    let reporterDiscordId = hit ? discordIds.get(hit.id) || null : null;
-
     // The round it belongs to: whatever race is currently live, or the most
     // recent one. Without this an in-game report lands under "no round given"
     // and an admin has to work out which evening it was from the timestamp.
     const raceId = await currentRaceId(prisma);
 
-    // No roster name matched: ask the live server whose car carries that name.
-    // The Steam GUID it answers with is on the roster even when the name is not,
-    // and the round's own season is asked first (see discordIdsForGuids).
-    if (!reporterDiscordId) {
-      const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
-      if (guid) {
-        const seasonId = raceId
-          ? (await prisma.race.findUnique({ where: { id: raceId }, select: { seasonId: true } }).catch(() => null))?.seasonId
-          : null;
-        reporterDiscordId =
-          (await discordIdsForGuids(prisma, [guid], { seasonId }).catch(() => new Map())).get(guid) || null;
-      }
+    // Who pressed it. The live server first: whose car carries that name, by
+    // the Steam GUID the game reports, which nobody can type. Only when the
+    // server does not know the name does a roster name stand in, and never the
+    // name of a row the site made for an unchecked newcomer (their own say-so,
+    // lib/newcomers.js): with sign-up open to any Discord account, a name is
+    // something anybody can put on a row, and the reporter of a report is who
+    // gets into its stewarding thread. The round's own season is asked first
+    // (see discordIdsForGuids).
+    let reporterDiscordId = null;
+    const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
+    if (guid) {
+      const seasonId = raceId
+        ? (await prisma.race.findUnique({ where: { id: raceId }, select: { seasonId: true } }).catch(() => null))?.seasonId
+        : null;
+      reporterDiscordId =
+        (await discordIdsForGuids(prisma, [guid], { seasonId }).catch(() => new Map())).get(guid) || null;
+    }
+    const selfMade = await selfMadeRowIds(prisma);
+    const hit = candidates
+      .filter(Boolean)
+      .map((c) => drivers.find((d) => !selfMade.has(d.id) && (norm(d.name) === norm(c) || norm(d.discordName) === norm(c))))
+      .find(Boolean);
+    if (!reporterDiscordId && hit) {
+      const discordIds = await discordIdsForDrivers(prisma, [hit.id]).catch(() => new Map());
+      reporterDiscordId = discordIds.get(hit.id) || null;
     }
 
     // The same press, relayed twice. Exactly one person in the lobby is meant

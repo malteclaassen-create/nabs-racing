@@ -12,10 +12,11 @@ import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
-import { dbRecordLogin, dbGetMember, mainAccountId, isBanned } from "../lib/members.js";
+import { dbRecordLogin, dbGetMember, mainAccountId, isBanned, isUncheckedNewcomer, selfMadeRowIds } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
+import { recogniseBySteam } from "../lib/newcomers.js";
 import { attachReferralByName } from "../lib/tokens.js";
 
 const router = Router();
@@ -160,6 +161,14 @@ router.post("/callback", async (req, res, next) => {
     // or pre-fills the driver's Discord user id in the Drivers tab; the login
     // then connects by exact id. Unmatched logins simply stay unlinked.
     let driver = await prisma.driver.findUnique({ where: { discordUserId: who } });
+    // No driver on this login, but a Steam account proved on an earlier visit:
+    // that is proof of who they are, unlike a name. If the race imports saved
+    // an old entry's results under it, the login goes onto that entry
+    // (lib/newcomers.js recogniseBySteam). Never fails a login.
+    if (!driver && !viaSecond) {
+      const known = await recogniseBySteam(prisma, who).catch(() => null);
+      if (known?.driver) driver = known.driver;
+    }
     // The season handover below targets the series the member was VIEWING when
     // they logged in (the frontend sends its slug), falling back to the
     // primary series — so a GT member logging in on the GT pages lands on the
@@ -197,10 +206,20 @@ router.post("/callback", async (req, res, next) => {
       // be steered from outside. The cross-season person link above is tried
       // first and covers the whole current roster anyway; this is the fallback
       // for a row the admin has not linked yet.
-      const keys = [norm(driver.discordName)].filter(Boolean);
+      //
+      // Not even that for a newcomer nobody has checked yet: the site made
+      // their row itself (lib/newcomers.js), with whatever their Discord
+      // username was that day as the handle. The person link above still works.
+      const unchecked = await isUncheckedNewcomer(prisma, who);
+      const keys = unchecked ? [] : [norm(driver.discordName)].filter(Boolean);
+      // ...and never onto a row the site made for an unchecked newcomer, whose
+      // name and handle are that newcomer's own say-so.
+      const selfMade = keys.length ? await selfMadeRowIds(prisma) : new Set();
       const successor =
         roster.find((d) => !d.discordUserId && linkedIds.includes(d.id)) ||
-        roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k)));
+        roster.find(
+          (d) => !d.discordUserId && !selfMade.has(d.id) && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k))
+        );
       if (successor) {
         const old = driver;
         // discordUserId is unique -> clear the old row before setting the new one.

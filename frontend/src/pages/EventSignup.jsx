@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { useAuth } from "../hooks/useAuth.js";
+import { useAuth, adoptDriver } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries, useSeriesPath } from "../context/SeriesContext.jsx";
@@ -59,6 +59,13 @@ export default function EventSignup() {
   const myCar = useApi(
     useCallback(() => (ev?.id && isLoggedIn ? api.myCar(ev.id) : Promise.resolve(null)), [ev?.id, isLoggedIn])
   );
+  // No driver yet: a newcomer signs up here like anybody else, and the sign-up
+  // makes them a reserve driver (lib/newcomers.js on the server). Somebody the
+  // admins turned away once is sent to ask for a seat instead.
+  const account = useApi(
+    useCallback(() => (isLoggedIn && !driverId ? api.myRaceRequest() : Promise.resolve(null)), [isLoggedIn, driverId])
+  );
+  const newcomer = isLoggedIn && !driverId && !!account.data?.canJoin;
 
   const defaults = defaultLiveriesFor(season?.game || series?.game);
   const carUrl = carStoreUrl(season?.game || series?.game);
@@ -90,7 +97,8 @@ export default function EventSignup() {
     setBusy(true);
     setError(null);
     try {
-      await api.rsvp(ev.id, driverId, status, draftBody(draft));
+      const res = await api.rsvp(ev.id, driverId, status, draftBody(draft));
+      if (res?.joined) adoptDriver(res.joined);
       announceRsvpChanged();
       navigate(seriesPath("/attendance"), { replace: true });
     } catch (e) {
@@ -165,14 +173,22 @@ export default function EventSignup() {
           <div className="min-w-0 space-y-4">
             {!isLoggedIn ? (
               <SignIn />
-            ) : !driverId ? (
-              <div className="card p-5 text-sm leading-relaxed text-medium">
-                You haven&rsquo;t raced with us yet, so there is no driver profile to sign up with.{" "}
-                <Link to={seriesPath("/attendance")} className="font-semibold text-link hover:underline">
-                  Ask for a seat on the attendance page
-                </Link>{" "}
-                and an admin sets you up.
-              </div>
+            ) : !driverId && !newcomer ? (
+              account.loading && !account.data ? (
+                <TableSkeleton rows={3} />
+              ) : account.error && !account.data ? (
+                <div className="card p-5 text-sm leading-relaxed text-medium">
+                  We couldn&rsquo;t check your account just now. Reload the page to sign up.
+                </div>
+              ) : (
+                <div className="card p-5 text-sm leading-relaxed text-medium">
+                  The admins haven&rsquo;t put you on the roster.{" "}
+                  <Link to={seriesPath("/attendance")} className="font-semibold text-link hover:underline">
+                    Ask for a seat on the attendance page
+                  </Link>{" "}
+                  and they&rsquo;ll get back to you.
+                </div>
+              )
             ) : notYetOpen || closed ? (
               <div className="card p-5 text-sm leading-relaxed text-medium">
                 {closed

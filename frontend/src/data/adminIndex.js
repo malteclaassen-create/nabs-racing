@@ -471,9 +471,15 @@ export const ADMIN_INDEX = [
   // --- Community ------------------------------------------------------------
   {
     tab: "members",
+    title: "New drivers: keep or turn away",
+    hint: "Newcomers sign themselves up. Listed to check only when the site found something: a name that matches an entry, a Steam account another login holds, a brand-new Discord account. Keep them, turn them away, or join them to their old entry.",
+    keywords: "new driver drivers newcomer newcomers signed up sign up joined join check keep turn away reject remove decline say no merge same driver",
+  },
+  {
+    tab: "members",
     title: "Logins with no driver yet",
-    hint: "People who signed in but aren't connected to a roster driver, including anyone who asked for a seat.",
-    keywords: "needs attention unlinked new member login connect i want to race request",
+    hint: "People who signed in but have no driver: not answered a race yet, a returning driver to link, or someone turned away who asked again.",
+    keywords: "needs attention unlinked new member login connect link returning i want to race request turned away",
   },
   {
     tab: "members",

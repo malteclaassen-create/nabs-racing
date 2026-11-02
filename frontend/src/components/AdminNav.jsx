@@ -38,7 +38,8 @@ import { MARKET_CHANGED_EVENT } from "../hooks/useAdminAttention.js";
 
 // How many things are waiting in each tab. Every one of them means "somebody is
 // waiting on you today": a new bug report, a login sitting there without a
-// driver, a seat, a server reset nobody has answered.
+// driver, a newcomer who signed themselves up and wants a look, a seat, a
+// server reset nobody has answered.
 //
 // Incident reports are deliberately NOT counted. They come in a clump on a race
 // night and the office works through them together on the Monday, so the number
@@ -69,7 +70,10 @@ function useAdminBadges() {
   }, [reloadAttention]);
   return {
     feedback: feedback.data?.newCount || 0,
-    members: members.data?.unlinked || 0,
+    // Logins with no driver, plus the newcomers waiting for a keep or a turn
+    // away (the Members tab's New drivers card). The two never overlap: a
+    // newcomer has a driver, so they are not among the unlinked.
+    members: (members.data?.unlinked || 0) + (members.data?.newDrivers || 0),
     market: attention.data?.market || 0,
     // A server reset waiting to be answered lives on the Live tab, in the
     // training best times card.
