@@ -1474,7 +1474,13 @@ function TodoCard({ onPick, onPickInSeason, onOpenRound, onReset }) {
           : `Might be ${n.maybe.name} (${n.maybe.why.includes("steam") ? "same Steam account" : n.maybe.why.includes("handle") ? "same Discord name" : n.maybe.why.includes("name") ? "same name" : "similar name"}).`
       );
     }
-    if (n.newAccountDays != null) bits.push(`Their Discord account is ${n.newAccountDays === 1 ? "1 day" : `${n.newAccountDays} days`} old.`);
+    // Their age on the day they signed up, which is what was checked.
+    if (n.newAccountDays != null)
+      bits.push(
+        n.newAccountDays === 0
+          ? "Their Discord account was made the day they signed up."
+          : `Their Discord account was ${n.newAccountDays === 1 ? "1 day" : `${n.newAccountDays} days`} old when they signed up.`
+      );
     return bits.join(" ");
   };
   for (const n of newDrivers.slice(0, 3)) {

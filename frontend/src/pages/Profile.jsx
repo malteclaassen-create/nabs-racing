@@ -189,8 +189,9 @@ function useSteamResult(onDone) {
         "Steam account connected, but a different Steam account is already stored on your driver entry. An admin needs to look at that one."
       );
     else if (result === "cancelled") setNote("Steam sign-in was cancelled. Nothing was saved.");
-    // "found" (a returning driver recognised by Steam) is said by the profile
-    // itself: by then this welcome screen has given way to it.
+    // "found" (a returning driver recognised by Steam) is the profile's to say
+    // and to tidy away (MyProfile), so it is left in the address here.
+    if (result === "found") return;
     setParams({}, { replace: true });
     onDone?.();
     // onDone is a refetch; re-running on its identity would loop.
@@ -244,7 +245,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
       // entry) is told so by the profile, the same way as coming back from
       // Steam; useSteamResult above reloads on that marker.
       if (res?.recognised) setSearch({ steam: "found", as: res.driverName || "" }, { replace: true });
-      else reload?.();
+      reload?.();
     } catch (e) {
       setError(e.message);
       setBusy(null);
@@ -284,10 +285,15 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
         )}
 
         {/* Step 1: Steam. Stated in terms of what it does for THEM. */}
-        <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} newcomer />
+        <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} newcomer={!!request.data?.canJoin} />
 
         {/* Step 2: join, or (turned away once) ask. Nothing until the account
             has been looked up, so neither flashes past for the other. */}
+        {request.error && !request.data && (
+          <div className="card p-5 text-sm leading-relaxed text-medium">
+            We couldn&rsquo;t check your account just now. Reload the page to join.
+          </div>
+        )}
         {request.data && (
         <div className="card p-5">
           <div className="flex items-start gap-4">
@@ -927,6 +933,9 @@ function MyProfile() {
     // Only when the marker arrives; params/setParams change with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foundAs]);
+  // Back from Steam without being recognised ("connected", "cancelled", ...),
+  // for the newcomer who connects it from here (the card below).
+  const steamNote = useSteamResult(me.reload);
   const setTab = (key) => {
     if (key === "feedback") return openFeedback(); // the panel, not a section
     // My reports and Admin are pages of their own: the nav draws them as links
@@ -1025,6 +1034,14 @@ function MyProfile() {
           Welcome back. Your Steam account is the one {welcomeBack} raced with, so your login is linked to that
           driver now, with all your results.
         </Notice>
+      )}
+      {steamNote && <Notice kind="info">{steamNote}</Notice>}
+      {/* A driver who signed themselves up and nobody has checked yet. If they
+          raced with us before they first had an account here, Steam is how the
+          site finds that old entry (backend lib/newcomers.js), so the card
+          stays until they have connected it. */}
+      {me.data?.isNewcomer && !me.data?.steam?.linked && (
+        <SteamLinkCard steam={me.data.steam} onChanged={me.reload} newcomer />
       )}
 
       <div className="page-in-steady flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-8">

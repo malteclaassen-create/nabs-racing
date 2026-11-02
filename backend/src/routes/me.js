@@ -23,7 +23,7 @@ import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { ownedDesigns } from "../lib/cardShop.js";
 import { notifyCardUnlocks, notifyAdminsRaceRequest } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
-import { joinBlock, joinAsNewcomer } from "../lib/newcomers.js";
+import { joinBlock, joinAsNewcomer, ASK_INSTEAD, isUncheckedNewcomer } from "../lib/newcomers.js";
 import { resolveSeries } from "../lib/series.js";
 import { getActiveSeason, getPrivateSeasonIds } from "../services/seasonService.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
@@ -146,6 +146,10 @@ router.get("/", async (req, res, next) => {
     res.json({
       isLinked: true,
       steam,
+      // Signed themselves up and nobody has checked yet (lib/newcomers.js):
+      // the profile then offers the Steam sign-in, which is how a returning
+      // driver who answered before connecting Steam gets their old entry back.
+      isNewcomer: await isUncheckedNewcomer(prisma, req.user.discordId).catch(() => false),
       driverId: driver.id,
       // The row's own season — the rating card must label itself with THIS
       // season, not whichever one the site's switcher happens to be on.
@@ -895,7 +899,7 @@ router.get("/race-request", async (req, res, next) => {
       pending: !!acct?.raceRequestAt,
       text: acct?.raceRequestText || null,
       canJoin: !linked && !block,
-      turnedAway: !linked && block === "turned-away",
+      turnedAway: !linked && ASK_INSTEAD.has(block),
     });
   } catch (e) {
     next(e);
@@ -918,15 +922,17 @@ router.post("/join", async (req, res, next) => {
     // A special event is a weekend of its own, not a league to join: its
     // sign-up page does that. From there, or anywhere else, this is the main
     // league's reserve list.
+    // A series still being built (only a private season so far) is no place
+    // to join either: the main league then.
+    const priv = await getPrivateSeasonIds(prisma);
     const viewed = req.body?.series ? await resolveSeries(prisma, req.body.series).catch(() => null) : null;
     let season = viewed && viewed.kind !== "event" ? await getActiveSeason(prisma, viewed.id) : null;
-    if (!season) season = await getActiveSeason(prisma);
-    const priv = await getPrivateSeasonIds(prisma);
+    if (!season || priv.has(season.id)) season = await getActiveSeason(prisma);
     if (!season || priv.has(season.id)) {
       return res.status(409).json({ error: "There's no season to join right now. Ask on Discord" });
     }
     const out = await joinAsNewcomer(prisma, { discordId: req.user.discordId, seasonId: season.id });
-    if (out.error === "turned-away") {
+    if (ASK_INSTEAD.has(out.error)) {
       return res.status(403).json({
         error: "The admins haven't put you on the roster. Ask for a seat and they'll get back to you",
         turnedAway: true,

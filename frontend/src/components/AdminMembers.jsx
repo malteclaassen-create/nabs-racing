@@ -62,7 +62,8 @@ function MemberRow({ avatar, children, actions, className = "" }) {
 // /members/pending). A second account drives as its main one, and an account
 // whose driver an admin already deleted by hand in the Drivers tab has had its
 // answer.
-const isNewDriver = (m) => !!(m.newDriverAt && !m.mainDiscordId && m.driver);
+// A banned one has been dealt with: the ban turns them away too.
+const isNewDriver = (m) => !!(m.newDriverAt && !m.mainDiscordId && m.driver && !m.banned);
 // A new driver the site found something about (backend lib/newcomers.js
 // reviewNewcomers): who they may already be, or a brand-new Discord account.
 // Only these are work; the rest signed up cleanly and need nobody. The same
@@ -78,7 +79,7 @@ const WHY_TEXT = {
 const hasPills = (m) =>
   !!(
     m.isAdmin || m.isSteward || m.isRaceControl || m.banned || m.mainDiscordId || m.seconds?.length ||
-    isNewDriver(m) || m.turnedAwayAt || !m.driver || !m.driver.isActiveSeason
+    isNewDriver(m) || m.turnedAwayAt || m.manualLinkAt || !m.driver || !m.driver.isActiveSeason
   );
 
 // Their upcoming race answers, as the small pills on a New drivers row. The
@@ -188,6 +189,14 @@ function StatusPills({ m }) {
           turned away
         </span>
       )}
+      {m.manualLinkAt && !m.driver && (
+        <span
+          className="rounded-full bg-surface2 px-2 py-0.5 text-[11px] font-semibold text-light"
+          title={`An admin took this login off its driver on ${fmtDate(m.manualLinkAt)}. The site won't link it or sign it up by itself again. Link it here when you know who it is.`}
+        >
+          unlinked by an admin
+        </span>
+      )}
       {m.driver ? (
         !m.driver.isActiveSeason && (
           <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-600">
@@ -244,8 +253,11 @@ export default function AdminMembers() {
   // Accounts with a pending "I want to race" hand-raise float to the top —
   // that's the most actionable item in the whole tab. A second account has
   // nothing waiting: it drives as its main account.
+  // Somebody an admin already decided about (turned away, or taken off their
+  // driver by hand) is not waiting for anything, unless they asked to race
+  // since. Same rule as the server's badge count.
   const unlinked = members
-    .filter((m) => !m.driver && !m.mainDiscordId)
+    .filter((m) => !m.driver && !m.mainDiscordId && (m.raceRequestAt || !(m.turnedAwayAt || m.manualLinkAt)))
     .sort((a, b) => (b.raceRequestAt ? 1 : 0) - (a.raceRequestAt ? 1 : 0));
   const requests = unlinked.filter((m) => m.raceRequestAt).length;
   // Newcomers who signed themselves up, newest first like the To do card:
@@ -413,7 +425,15 @@ export default function AdminMembers() {
     // a second account is "Same person as…" in the list below.
     const matches = review.matches || [];
     const linkable = matches.filter((x) => !x.claimed);
-    const suggested = linkable[0] ? { id: linkable[0].driverId, name: linkable[0].name } : suggestionFor(m);
+    // Their own rows (a second series signs them up too) are not somebody
+    // they might be.
+    const ownIds = new Set((nc.rows || []).map((r) => r.id));
+    const nameHit = suggestionFor(m);
+    const suggested = linkable[0]
+      ? { id: linkable[0].driverId, name: linkable[0].name }
+      : nameHit && !ownIds.has(nameHit.id)
+        ? nameHit
+        : null;
     const sel = linkChoice[m.discordId] ?? suggested?.id ?? "";
     return (
       <li key={m.discordId} className="py-4">
@@ -448,7 +468,7 @@ export default function AdminMembers() {
                 )}
                 <optgroup label="On a roster now">
                   {unclaimed
-                    .filter((d) => !linkable.some((x) => x.driverId === d.id))
+                    .filter((d) => !ownIds.has(d.id) && !linkable.some((x) => x.driverId === d.id))
                     .map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name} ({d.team?.name || NO_VALUE}){d.preEnteredId ? " · replaces typed ID" : ""}
@@ -496,6 +516,7 @@ export default function AdminMembers() {
                   {x.seasonName ? ` (${x.seasonName}${x.starts ? `, ${plural(x.starts, "race", "races")}` : ""})` : ""}:{" "}
                   {x.why.map((w) => WHY_TEXT[w] || w).join(", ")}
                   {x.claimed && ". Another login has that driver, so this may be their second account (Same person as… below)"}
+                  {x.typedId && ". That entry has a Discord ID typed in that nobody signs in with; Link replaces it"}
                 </li>
               ))}
               {review.newAccountDays != null && (

@@ -14,7 +14,7 @@ import {
 import { collapseByPerson, byNewestAnswer, duplicateRsvps } from "../lib/onePerPerson.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { applyMemberSteamId, dbGetMember } from "../lib/members.js";
-import { joinBlock, joinAsNewcomer } from "../lib/newcomers.js";
+import { joinBlock, joinAsNewcomer, ASK_INSTEAD, markSelfMade, isUncheckedNewcomer } from "../lib/newcomers.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
@@ -400,7 +400,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     if (!driverId) {
       if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord to respond" });
       const block = joinBlock(await dbGetMember(prisma, req.user.discordId).catch(() => null));
-      if (block === "turned-away") {
+      if (ASK_INSTEAD.has(block)) {
         return res.status(403).json({
           error: "The admins haven't put you on the roster. Ask for a seat and they'll get back to you",
           turnedAway: true,
@@ -469,6 +469,9 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
         // by name again. Never throws.
         if (driver && req.user?.discordId) {
           await applyMemberSteamId(prisma, req.user.discordId, driver.id);
+          // The second series of a newcomer nobody has checked: this row's
+          // name and handle are their own say-so too (lib/newcomers.js).
+          if (await isUncheckedNewcomer(prisma, req.user.discordId)) await markSelfMade(prisma, [driver.id]);
         }
       }
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
@@ -530,9 +533,13 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       // person's row in its own season the usual way.
       if (driver && driver.seasonId !== race.seasonId) {
         const own = driver;
-        driver =
-          (await seasonRowForDriver(prisma, own, race.seasonId, req.user.discordId)) ||
-          (await addToReservePool(prisma, own, race.seasonId));
+        driver = await seasonRowForDriver(prisma, own, race.seasonId, req.user.discordId);
+        if (!driver) {
+          driver = await addToReservePool(prisma, own, race.seasonId);
+          // Seeded like the branch above: a recognised driver has a proved
+          // Steam account, and the import of this race should know them by it.
+          if (driver) await applyMemberSteamId(prisma, req.user.discordId, driver.id);
+        }
       }
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
       // `recognised`: not new at all. Their Steam account led to the driver
@@ -641,7 +648,9 @@ async function siblingRows(driverId) {
 // the links that came in. A number can still be picked by somebody who signs
 // up late and has none, but no longer changed.
 async function checkCar(race, driverId, body) {
-  const stored = (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`) || null;
+  // No row yet (a newcomer's first answer): nothing stored. Not a lookup of
+  // "<race>:null", which is a real key for a driver whose row id is "null".
+  const stored = driverId ? (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`) || null : null;
   const locked = carLocked(race);
   const fields = {};
 
@@ -652,7 +661,7 @@ async function checkCar(race, driverId, body) {
       if (locked && stored?.carNumber != null) {
         return { status: 403, error: "Car numbers are fixed now. Ask an admin if yours has to change" };
       }
-      const holder = await numberTakenBy(prisma, race.id, n.value, [driverId, ...(await siblingRows(driverId))]);
+      const holder = await numberTakenBy(prisma, race.id, n.value, driverId ? [driverId, ...(await siblingRows(driverId))] : []);
       if (holder) return { status: 409, error: `#${n.value} is already taken by ${holder.name}. Pick another number`, needsCar: true };
       fields.carNumber = n.value;
     }

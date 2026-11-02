@@ -298,6 +298,13 @@ export async function ensureAppSchema(prisma) {
   // per season. SQLite treats NULLs as distinct, so the many rows without a
   // captured GUID never collide on this index.
   await addColumn(prisma, "Driver", "steamId", "TEXT");
+  // A row the site made by itself for a newcomer nobody has checked yet
+  // (lib/newcomers.js). Its name and handle are whatever the newcomer's Discord
+  // account said, so no name match ever lands on it (lib/persons.js
+  // seasonRowForDriver, the season handover, the in-game report ingest).
+  // Cleared once an admin keeps or links the newcomer. Migration
+  // member_newcomer.
+  await addColumn(prisma, "Driver", "selfMadeAt", "DATETIME");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "Driver_seasonId_steamId_key" ON "Driver"("seasonId", "steamId")`
   );
@@ -492,6 +499,11 @@ export async function ensureAppSchema(prisma) {
   // member_newcomer mirrors both.
   await addColumn(prisma, "MemberAccount", "newDriverAt", "DATETIME");
   await addColumn(prisma, "MemberAccount", "turnedAwayAt", "DATETIME");
+  // When an admin took this login off its driver by hand (Members tab Unlink,
+  // or clearing the Discord ID in the Drivers tab). From then on only an admin
+  // links it again: the site neither recognises it by Steam nor lets it sign
+  // itself up. Cleared when an admin links it or makes its driver.
+  await addColumn(prisma, "MemberAccount", "manualLinkAt", "DATETIME");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );

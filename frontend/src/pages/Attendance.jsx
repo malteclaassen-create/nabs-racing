@@ -3,7 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSwapClass } from "../hooks/motion.js";
 import { useApi } from "../hooks/useApi.js";
-import { useAuth, adoptDriver } from "../hooks/useAuth.js";
+import { useAuth, adoptDriver, recheckDriverLink } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useReserveSeats } from "../hooks/useReserveSeats.js";
 import { useSeason } from "../context/SeasonContext.jsx";
@@ -103,6 +103,12 @@ export default function Attendance() {
   );
   const newcomer = isLoggedIn && !driverId && !!raceRequest.data?.canJoin;
   const canSignUp = isLoggedIn && (!!driverId || newcomer);
+  // The server says this login HAS a driver, but this page was drawn without
+  // one (an admin linked it a moment ago, or Steam found their old entry in
+  // another tab): catch the page up instead of offering "I want to race".
+  useEffect(() => {
+    if (raceRequest.data?.linked) recheckDriverLink();
+  }, [raceRequest.data?.linked]);
   // Said once, right after the first answer made them a driver: "new" for a
   // fresh reserve, "back" when their Steam account led to the driver they
   // raced as before (lib/newcomers.js recogniseBySteam on the server).
@@ -191,6 +197,10 @@ export default function Attendance() {
       return null;
     } catch (e) {
       if (!car) setError(e.message);
+      // Turned away (or taken off by hand) while this page was open: the
+      // driver it remembers is gone. Ask again, and the card turns into
+      // "I want to race".
+      if (e?.data?.turnedAway) recheckDriverLink();
       return e.message;
     } finally {
       setBusy(null);
@@ -217,7 +227,9 @@ export default function Attendance() {
     (async () => {
       try {
         tookAnswer(await api.rsvp(race.id, driverId, wanted));
-        await events.reload();
+        // The market too: a newcomer's first answer made them a reserve, and
+        // the market's idea of "me" was read before that.
+        await Promise.all([events.reload(), market.reload()]);
         setAutoAnswered(wanted);
       } catch (e) {
         setError(e.message);
@@ -394,7 +406,8 @@ export default function Attendance() {
               canSignUp={canSignUp}
               newcomer={newcomer}
               isLoggedIn={isLoggedIn}
-              raceRequest={raceRequest.data}
+              // A failed look-up says so instead of leaving the card blank.
+              raceRequest={raceRequest.data || (raceRequest.error ? { failed: true } : null)}
               onRequestSeat={requestSeat}
               busy={busy}
               onSetStatus={setStatus}

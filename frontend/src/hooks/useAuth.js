@@ -73,8 +73,11 @@ async function refreshDriverLink() {
   try {
     const me = await api.me();
     const freshId = me?.isLinked ? me.driverId : null;
-    if ((user.driverId || null) !== freshId) {
-      saveUser(localStorage.getItem(TOKEN_KEY), { ...user, driverId: freshId });
+    // The name follows the driver: after Steam found a returning driver, or a
+    // merge took the newcomer's own row away, the old one is no longer theirs.
+    const freshName = me?.isLinked ? me.name || null : user.driverName ?? null;
+    if ((user.driverId || null) !== freshId || (user.driverName ?? null) !== freshName) {
+      saveUser(localStorage.getItem(TOKEN_KEY), { ...user, driverId: freshId, driverName: freshName });
     }
   } catch {
     /* the snapshot stands; the next page load asks again */

@@ -104,12 +104,14 @@ import {
   serveFeedbackImage,
 } from "../lib/feedbackFiles.js";
 import {
-  dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId,
+  dbListMembers, dbGetMember, dbSetBanned, dbClearRaceRequest, shapeMember, applyMemberSteamId, dbMarkManualLink,
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
-import { newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers } from "../lib/newcomers.js";
+import {
+  newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
+} from "../lib/newcomers.js";
 import { uniqueDriverId as uniqueDriverIdFor } from "../lib/driverHandles.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
@@ -3368,6 +3370,14 @@ router.put("/drivers/:id", async (req, res, next) => {
         }
       }
       data.discordUserId = v || null;
+      // The login that sat on this row is being taken off it by hand. Steam
+      // must not put it straight back (lib/newcomers.js recogniseBySteam, which
+      // would find the Steam id the earlier link copied onto this row): from
+      // here only an admin links that login again.
+      const before = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { discordUserId: true } });
+      if (before?.discordUserId && before.discordUserId !== data.discordUserId) {
+        await dbMarkManualLink(prisma, before.discordUserId);
+      }
     }
     // A role-only change arrives with an empty prisma patch — just read the row.
     const driver = Object.keys(data).length
@@ -3801,6 +3811,9 @@ router.get("/members", async (req, res, next) => {
 // badge doesn't have to pull the whole member list (every driver of every
 // season) on each admin page load.
 //   unlinked   = login accounts no driver row carries the Discord id of,
+//                leaving out the ones an admin already decided about (turned
+//                away, or taken off their driver by hand) unless they asked
+//                to race since,
 //   requests   = how many of those pressed "I want to race",
 //   newDrivers = newcomers who signed themselves up and nobody has kept or
 //                turned away yet (lib/newcomers.js).
@@ -3811,6 +3824,7 @@ router.get("/members/pending", async (req, res, next) => {
              SUM(CASE WHEN m."raceRequestAt" IS NOT NULL THEN 1 ELSE 0 END) AS r
       FROM "MemberAccount" m
       WHERE m."mainDiscordId" IS NULL
+        AND (m."raceRequestAt" IS NOT NULL OR (m."turnedAwayAt" IS NULL AND m."manualLinkAt" IS NULL))
         AND NOT EXISTS (
         SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
       )`;
@@ -4071,6 +4085,7 @@ router.get("/attention", async (req, res, next) => {
         SELECT COUNT(*) AS n
         FROM "MemberAccount" m
         WHERE m."mainDiscordId" IS NULL
+          AND (m."raceRequestAt" IS NOT NULL OR (m."turnedAwayAt" IS NULL AND m."manualLinkAt" IS NULL))
           AND NOT EXISTS (
           SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
         )`.catch(() => []),
@@ -4138,7 +4153,16 @@ router.post("/members/:discordId/ban", async (req, res, next) => {
     const existing = await dbGetMember(prisma, req.params.discordId);
     if (!existing) return res.status(404).json({ error: "Account not found" });
     const row = await dbSetBanned(prisma, req.params.discordId, !!banned, reason || null);
-    res.json({ ok: true, member: shapeMember(row) });
+    // Banning a newcomer nobody has kept yet turns them away as well: the rows
+    // the site made for them and their answers go, and the seats they held
+    // move to the waiting list (lib/newcomers.js). A ban alone would leave a
+    // stranger's name on the entry list. Rows with race results stay (the
+    // turn-away refuses then); the ban itself holds either way.
+    let turnedAway = null;
+    if (banned && existing.newDriverAt) {
+      turnedAway = await turnAwayNewcomer(prisma, req.params.discordId).catch(() => null);
+    }
+    res.json({ ok: true, member: shapeMember(await dbGetMember(prisma, req.params.discordId)) || shapeMember(row), turnedAway });
   } catch (e) {
     next(e);
   }
@@ -4221,11 +4245,22 @@ router.post("/members/:discordId/link", async (req, res, next) => {
       const fresh = (await newcomerRows(prisma, account)).filter((r) => r.id !== driver.id);
       const twin = fresh.find((r) => r.seasonId === driver.seasonId);
       if (twin) {
-        await mergeDrivers(prisma, { keepId: driver.id, dropId: twin.id });
+        // The newer answer wins where both rows answered a race, and the seat
+        // and the race posts follow (lib/newcomers.js foldNewRowInto).
+        await foldNewRowInto(prisma, driver.id, twin.id);
         merged = { id: twin.id, name: twin.name };
       }
+      // Their rows of other seasons stay, as the same person, and go by the
+      // name and handle this driver has always had rather than the ones the
+      // newcomer's Discord account gave them.
       const others = fresh.filter((r) => r.id !== twin?.id).map((r) => r.id);
-      if (others.length) await dbLinkDrivers(prisma, [driver.id, ...others]).catch(() => {});
+      if (others.length) {
+        await prisma.driver.updateMany({
+          where: { id: { in: others } },
+          data: { name: driver.name, ...(driver.discordName ? { discordName: driver.discordName } : {}) },
+        });
+        await dbLinkDrivers(prisma, [driver.id, ...others]).catch(() => {});
+      }
     }
     await prisma.$transaction([
       prisma.driver.updateMany({
@@ -4350,6 +4385,11 @@ router.post("/members/:discordId/unlink", async (req, res, next) => {
       where: { discordUserId: req.params.discordId },
       data: { discordUserId: null },
     });
+    // Taken off by hand: only an admin links this login again. Without the
+    // mark, the Steam id the link copied onto the driver would hand it straight
+    // back on the next login (lib/newcomers.js recogniseBySteam), and a
+    // newcomer would sign themselves up afresh beside the row they just lost.
+    await dbMarkManualLink(prisma, req.params.discordId);
     res.json({ ok: true });
   } catch (e) {
     next(e);

@@ -176,6 +176,10 @@ export default function EventSignup() {
             ) : !driverId && !newcomer ? (
               account.loading && !account.data ? (
                 <TableSkeleton rows={3} />
+              ) : account.error && !account.data ? (
+                <div className="card p-5 text-sm leading-relaxed text-medium">
+                  We couldn&rsquo;t check your account just now. Reload the page to sign up.
+                </div>
               ) : (
                 <div className="card p-5 text-sm leading-relaxed text-medium">
                   The admins haven&rsquo;t put you on the roster.{" "}

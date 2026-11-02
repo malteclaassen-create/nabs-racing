@@ -12,7 +12,7 @@ import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
-import { dbRecordLogin, dbGetMember, mainAccountId, isBanned, isUncheckedNewcomer } from "../lib/members.js";
+import { dbRecordLogin, dbGetMember, mainAccountId, isBanned, isUncheckedNewcomer, selfMadeRowIds } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
@@ -212,9 +212,14 @@ router.post("/callback", async (req, res, next) => {
       // username was that day as the handle. The person link above still works.
       const unchecked = await isUncheckedNewcomer(prisma, who);
       const keys = unchecked ? [] : [norm(driver.discordName)].filter(Boolean);
+      // ...and never onto a row the site made for an unchecked newcomer, whose
+      // name and handle are that newcomer's own say-so.
+      const selfMade = keys.length ? await selfMadeRowIds(prisma) : new Set();
       const successor =
         roster.find((d) => !d.discordUserId && linkedIds.includes(d.id)) ||
-        roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k)));
+        roster.find(
+          (d) => !d.discordUserId && !selfMade.has(d.id) && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k))
+        );
       if (successor) {
         const old = driver;
         // discordUserId is unique -> clear the old row before setting the new one.

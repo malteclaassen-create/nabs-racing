@@ -19,6 +19,10 @@ export function driverRefCleanup(prisma, driverId) {
     prisma.$executeRaw`UPDATE "Season" SET "championDriverId" = NULL WHERE "championDriverId" = ${driverId}`,
     // The report keeps the name it was filed against (accusedName).
     prisma.$executeRaw`UPDATE "Report" SET "accusedDriverId" = NULL WHERE "accusedDriverId" = ${driverId}`,
+    // A news comment keeps its author's Discord id; only the row it showed
+    // the author as goes, so a later driver under the same id does not inherit
+    // somebody else's comments.
+    prisma.$executeRaw`UPDATE "NewsComment" SET "driverId" = NULL WHERE "driverId" = ${driverId}`,
   ];
 }
 

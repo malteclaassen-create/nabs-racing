@@ -300,6 +300,10 @@ model Driver {
   // reactivating clears it. Managed via raw SQL (ensureAppSchema), migration
   // driver_hide_from_standings.
   hideFromStandings Boolean @default(false)
+  // A row the site made by itself for a newcomer nobody has checked yet
+  // (lib/newcomers.js): no name match may land on it. Cleared when an admin
+  // keeps or links the newcomer. Raw-SQL column, migration member_newcomer.
+  selfMadeAt        DateTime?
   results     RaceResult[]
   rsvps       RaceRsvp[]
   // Driver Market: seats this driver has offered, seats this (reserve) driver
@@ -593,6 +597,9 @@ model MemberAccount {
   // own again. Raw-SQL columns (lib/ensureSchema.js), migration member_newcomer.
   newDriverAt     DateTime?
   turnedAwayAt    DateTime?
+  // When an admin took this login off its driver by hand; from then on only an
+  // admin links it again. Raw-SQL column, migration member_newcomer.
+  manualLinkAt    DateTime?
 }
 
 // In-site notifications behind the nav-bar bell. recipientId null = broadcast

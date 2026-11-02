@@ -576,7 +576,11 @@ export default function RaceSignupCard({
           // tab, where a driver is one click. Nothing while the account is
           // still being looked up (raceRequest not loaded yet), or a newcomer
           // would see this flash past before their buttons appear.
-          !raceRequest ? null : raceRequest.pending ? (
+          !raceRequest ? null : raceRequest.failed ? (
+            <p className="text-sm leading-relaxed text-medium">
+              We couldn&rsquo;t check your account just now. Reload the page to sign up.
+            </p>
+          ) : raceRequest.pending ? (
             <div className="text-sm leading-relaxed text-medium">
               <span className="font-semibold text-ok">Request sent.</span> The admins will look at it and get
               back to you. Once you&rsquo;re set up, the sign-up buttons appear here.

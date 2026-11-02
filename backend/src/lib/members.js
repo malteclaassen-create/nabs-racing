@@ -40,7 +40,37 @@ export function shapeMember(r) {
     // the admins turned away (lib/newcomers.js).
     newDriverAt: r.newDriverAt ?? null,
     turnedAwayAt: r.turnedAwayAt ?? null,
+    // An admin took this login off its driver by hand; only an admin links it
+    // again (lib/newcomers.js joinBlock, recogniseBySteam).
+    manualLinkAt: r.manualLinkAt ?? null,
   };
+}
+
+// The rows the site made by itself for newcomers nobody has checked yet
+// (Driver.selfMadeAt, lib/newcomers.js). Every name or handle match leaves
+// them out: their name and handle are whatever a Discord account said, and a
+// match is how a login comes to act as a row. An empty set when the column is
+// not there yet, which is also when no such row can exist.
+export async function selfMadeRowIds(prisma) {
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Driver" WHERE "selfMadeAt" IS NOT NULL`);
+    return new Set(rows.map((r) => r.id));
+  } catch {
+    return new Set();
+  }
+}
+
+// An admin took `discordId` off its driver by hand. Never throws: the unlink it
+// belongs to has already happened.
+export async function dbMarkManualLink(prisma, discordId) {
+  if (!discordId) return;
+  try {
+    await prisma.$executeRaw`
+      UPDATE "MemberAccount" SET "manualLinkAt" = ${new Date().toISOString()}, "newDriverAt" = NULL
+      WHERE "discordId" = ${String(discordId)}`;
+  } catch {
+    /* column missing on a very old database: nothing to remember it in */
+  }
 }
 
 // --- Steam account link ------------------------------------------------------

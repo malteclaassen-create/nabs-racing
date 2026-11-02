@@ -47,12 +47,12 @@
 // on Discord after a driver who has not logged in yet, and signing up, would
 // hand you that driver's row the next time those two went looking for one.
 // ---------------------------------------------------------------------------
-import { rmSync } from "node:fs";
+import { rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ensureReservePool } from "./reservePool.js";
-import { uniqueDriverId } from "./driverHandles.js";
+import { driverHandle } from "./driverHandles.js";
 import { dbGetMember, applyMemberSteamId, isUncheckedNewcomer, dbClearRaceRequest } from "./members.js";
-import { getLinkedDriverIds, getPersonGroups, dbLinkDrivers } from "./persons.js";
+import { getLinkedDriverIds, getPersonGroups, dbLinkDrivers, dbMergeDuplicateAnswers } from "./persons.js";
 import { personKey } from "./onePerPerson.js";
 import { mergeDrivers } from "../services/driverMerge.js";
 import { deleteDriverOps } from "./driverDeletion.js";
@@ -83,13 +83,20 @@ const norm = (s) =>
 //                   (optionalUser drops it), but the rule should not lean on it
 //   second-account  it signs in as its main account; the main one is checked
 //   turned-away     an admin said no once; from here it is the admin's call
+//   admin-hold      an admin took this login off its driver by hand
+//                   (manualLinkAt); the same: only an admin links it again
 export function joinBlock(account) {
   if (!account) return "no-account";
   if (Number(account.banned)) return "banned";
   if (account.mainDiscordId) return "second-account";
   if (account.turnedAwayAt) return "turned-away";
+  if (account.manualLinkAt) return "admin-hold";
   return null;
 }
+
+// Whether a block means "ask an admin" (the hand-raise is what is left) rather
+// than "not this account at all".
+export const ASK_INSTEAD = new Set(["turned-away", "admin-hold"]);
 
 // The name the new row goes by: their Discord display name, else the
 // username, as long as nobody on any roster already goes by it. A newcomer
@@ -109,6 +116,54 @@ export function pickNewcomerName(account, takenNames) {
     if (!taken.has(norm(name))) return name;
   }
   return base;
+}
+
+// Whether pictures are still on disk under this row id (a row deleted by a
+// turn-away, or merged away with its photo still pointing at the file).
+function picturesExist(driverId) {
+  for (const dir of [join(UPLOADS_DIR, "avatars"), join(UPLOADS_DIR, "cards")]) {
+    for (const ext of IMG_EXTS) {
+      const file = safeUploadPath(dir, `${driverId}${ext}`);
+      if (file && existsSync(file)) return true;
+    }
+  }
+  return false;
+}
+
+// A row id for a new driver called `name`: the handle, numbered on when that
+// id is taken or still has somebody's pictures lying under it. Uploads are
+// named after the row id, so reusing one would put the old pictures (or a
+// merged driver's photo, still pointing at its old file) on the new row.
+async function freshDriverId(prisma, name) {
+  const base = driverHandle(name);
+  for (let i = 1; i < 10_000; i++) {
+    const id = i === 1 ? base : `${base}_${i}`;
+    if (!(await prisma.driver.findUnique({ where: { id } })) && !picturesExist(id)) return id;
+  }
+  return `${base}_${Date.now().toString(36)}`;
+}
+
+// Mark rows as made by the site for an unchecked newcomer (Driver.selfMadeAt):
+// no name match lands on them. Best-effort: the sign-up stands either way.
+export async function markSelfMade(prisma, driverIds) {
+  for (const id of driverIds || []) {
+    await prisma.$executeRawUnsafe(`UPDATE "Driver" SET "selfMadeAt" = ? WHERE "id" = ?`, new Date().toISOString(), id).catch(() => {});
+  }
+}
+
+// An admin has looked: the rows of this login's person are ordinary rows now.
+async function clearSelfMade(prisma, discordId) {
+  try {
+    const own = await prisma.driver.findUnique({ where: { discordUserId: String(discordId) } });
+    if (!own) return;
+    const ids = [...new Set([own.id, ...(await getLinkedDriverIds(prisma, own.id).catch(() => []))])];
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Driver" SET "selfMadeAt" = NULL WHERE "id" IN (${ids.map(() => "?").join(",")})`,
+      ...ids
+    );
+  } catch {
+    /* best-effort */
+  }
 }
 
 async function markNew(prisma, discordId) {
@@ -150,7 +205,7 @@ export async function joinAsNewcomer(prisma, { discordId, seasonId, race = null 
   try {
     driver = await prisma.driver.create({
       data: {
-        id: await uniqueDriverId(prisma, name),
+        id: await freshDriverId(prisma, name),
         name,
         // Their Discord username, the same as an admin's "New driver" button
         // writes. Not used as a handle while the account is unchecked (see the
@@ -173,6 +228,7 @@ export async function joinAsNewcomer(prisma, { discordId, seasonId, race = null 
   }
 
   await markNew(prisma, id);
+  await markSelfMade(prisma, [driver.id]);
   // A Steam account proved on the welcome page goes onto the row now, so the
   // import of the very race they signed up for matches them by Steam id.
   await applyMemberSteamId(prisma, id, driver.id);
@@ -181,17 +237,21 @@ export async function joinAsNewcomer(prisma, { discordId, seasonId, race = null 
   return { driver, created: true };
 }
 
-// An admin kept the newcomer: off the "New drivers" list, nothing else.
+// An admin kept the newcomer: off the "New drivers" list, and their rows are
+// ordinary rows from now on. Nothing else changes.
 export async function keepNewcomer(prisma, discordId) {
+  await clearSelfMade(prisma, discordId);
   await prisma.$executeRaw`
     UPDATE "MemberAccount" SET "newDriverAt" = NULL WHERE "discordId" = ${String(discordId)}`;
 }
 
-// An admin decided by hand (linked the account, or made its driver): neither
-// "new" nor "turned away" applies any more.
+// The question of who this login is has been answered (an admin linked the
+// account or made its driver, or Steam proved it): neither "new", "turned
+// away" nor "taken off by hand" applies any more.
 export async function settleNewcomer(prisma, discordId) {
+  await clearSelfMade(prisma, discordId);
   await prisma.$executeRaw`
-    UPDATE "MemberAccount" SET "newDriverAt" = NULL, "turnedAwayAt" = NULL
+    UPDATE "MemberAccount" SET "newDriverAt" = NULL, "turnedAwayAt" = NULL, "manualLinkAt" = NULL
     WHERE "discordId" = ${String(discordId)}`;
 }
 
@@ -235,28 +295,19 @@ function removeRowPictures(driverId) {
   }
 }
 
-// Turn a newcomer away: see the note at the top. Throws with .status on a
-// refusal. Returns { removed: [{ id, name }], answers } where answers counts the
-// upcoming races they had answered.
-export async function turnAwayNewcomer(prisma, discordId) {
-  const account = await dbGetMember(prisma, String(discordId));
-  if (!account) throw fail(404, "Account not found");
-  if (!account.newDriverAt) {
-    throw fail(409, "Only a new driver nobody has kept yet can be turned away. Remove other drivers in the Drivers tab.");
-  }
+// Delete the rows the site made for a newcomer, with every answer on them,
+// then hand any seat they held to the waiting list and redo the race posts on
+// Discord so their name leaves them. Rows with race results are left alone
+// (and listed in `kept`): those are part of a classification now. Returns
+// { removed: [{ id, name }], kept, races } where races are the upcoming ones
+// they had answered.
+export async function removeNewcomerRows(prisma, account) {
   const rows = await newcomerRows(prisma, account);
-  const raced = rows.find((r) => r._count.results > 0);
-  if (raced) {
-    throw fail(
-      409,
-      `${raced.name} has race results in ${raced.season?.name || "a season"} now, so turning them away would change the results. Keep them, or ban the account in the Members tab.`
-    );
-  }
-  const ids = rows.map((r) => r.id);
+  const kept = rows.filter((r) => r._count.results > 0);
+  const gone = rows.filter((r) => r._count.results === 0);
+  const ids = gone.map((r) => r.id);
 
-  // What their answers were, read before they go: a seat they held is handed
-  // to the waiting list, and every race they answered gets its Discord post
-  // redone so their name leaves it.
+  // What their answers were, read before they go.
   const answers = ids.length
     ? await prisma.raceRsvp.findMany({
         where: { driverId: { in: ids } },
@@ -268,10 +319,44 @@ export async function turnAwayNewcomer(prisma, discordId) {
     : [];
 
   // One transaction per row, like the bulk delete: a row the foreign keys
-  // refuse leaves the others deleted and says which.
+  // refuse leaves the others deleted.
   for (const id of ids) await prisma.$transaction(deleteDriverOps(prisma, id));
   for (const id of ids) removeRowPictures(id);
 
+  const upcoming = answers.filter((a) => a.race && !a.race.isCompleted);
+  const heldSeat = new Set(upcoming.filter((a) => a.status === "ACCEPTED").map((a) => a.raceId));
+  for (const raceId of heldSeat) await promoteFromWaitlist(prisma, raceId);
+  const touched = new Set([...upcoming.map((a) => a.raceId), ...filled.map((f) => f.raceId)]);
+  for (const raceId of touched) await syncRaceToDiscord(prisma, raceId).catch(() => null);
+
+  return {
+    removed: gone.map((r) => ({ id: r.id, name: r.name })),
+    kept,
+    races: [...new Map(upcoming.map((a) => [a.raceId, a.race])).values()],
+  };
+}
+
+// Turn a newcomer away: see the note at the top. Throws with .status on a
+// refusal. Returns { removed: [{ id, name }], answers } where answers counts the
+// upcoming races they had answered.
+export async function turnAwayNewcomer(prisma, discordId) {
+  const account = await dbGetMember(prisma, String(discordId));
+  if (!account) throw fail(404, "Account not found");
+  if (!account.newDriverAt) {
+    throw fail(409, "Only a new driver nobody has kept yet can be turned away. Remove other drivers in the Drivers tab.");
+  }
+  const raced = (await newcomerRows(prisma, account)).find((r) => r._count.results > 0);
+  if (raced) {
+    throw fail(
+      409,
+      `${raced.name} has race results in ${raced.season?.name || "a season"} now, so turning them away would change the results. Keep them, or ban the account in the Members tab.`
+    );
+  }
+
+  // The mark goes on FIRST. A sign-up that arrives while the rows are being
+  // deleted then meets "turned away" instead of finding no driver and making
+  // a fresh one behind the admin's back. `account` still holds newDriverAt,
+  // which is what finds the rows.
   await prisma.$executeRaw`
     UPDATE "MemberAccount" SET
       "newDriverAt" = NULL,
@@ -280,15 +365,30 @@ export async function turnAwayNewcomer(prisma, discordId) {
       "raceRequestText" = NULL
     WHERE "discordId" = ${String(account.discordId)}`;
 
-  const upcoming = answers.filter((a) => a.race && !a.race.isCompleted);
-  const heldSeat = new Set(upcoming.filter((a) => a.status === "ACCEPTED").map((a) => a.raceId));
-  for (const raceId of heldSeat) await promoteFromWaitlist(prisma, raceId);
-  const touched = new Set([...upcoming.map((a) => a.raceId), ...filled.map((f) => f.raceId)]);
-  for (const raceId of touched) await syncRaceToDiscord(prisma, raceId).catch(() => null);
+  const out = await removeNewcomerRows(prisma, account);
+  await notifyTurnedAway(prisma, { discordId: String(account.discordId), races: out.races });
+  return { removed: out.removed, answers: out.races.length };
+}
 
-  const races = [...new Map(upcoming.map((a) => [a.raceId, a.race])).values()];
-  await notifyTurnedAway(prisma, { discordId: String(account.discordId), races });
-  return { removed: rows.map((r) => ({ id: r.id, name: r.name })), answers: races.length };
+// The row the site made for a newcomer, folded into the entry they turn out to
+// be (same season): everything moves over (services/driverMerge.js). Where both
+// rows answered the same race the NEWER answer stays, not the kept row's: the
+// one the member just gave is what they meant, the old one may be an admin's
+// entry from weeks ago. Then the seat question is settled and the race posts
+// redone, the way any answer change does it.
+export async function foldNewRowInto(prisma, keepId, dropId) {
+  const answered = await prisma.raceRsvp.findMany({
+    where: { driverId: { in: [keepId, dropId] } },
+    include: { race: { select: { id: true, isCompleted: true } } },
+  });
+  await dbMergeDuplicateAnswers(prisma, [keepId, dropId]);
+  const result = await mergeDrivers(prisma, { keepId, dropId });
+  const races = [...new Set(answered.filter((a) => a.race && !a.race.isCompleted).map((a) => a.raceId))];
+  for (const raceId of races) {
+    await promoteFromWaitlist(prisma, raceId);
+    await syncRaceToDiscord(prisma, raceId).catch(() => null);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +418,13 @@ export async function recogniseBySteam(prisma, discordId) {
   const id = String(discordId || "");
   const account = id ? await dbGetMember(prisma, id) : null;
   if (!account?.steamId) return null;
-  // A ban, a second account (it signs in as its main one) and a turn-away are
-  // all decisions somebody made about this login. Not undone from here.
-  if (Number(account.banned) || account.mainDiscordId || account.turnedAwayAt) return null;
+  // A ban, a second account (it signs in as its main one), a turn-away and an
+  // admin taking the login off its driver by hand are all decisions somebody
+  // made about this login. Not undone from here. The last one matters most:
+  // the Steam id an admin's link once copied onto a driver is still on that
+  // row after the admin unlinks it, and would otherwise put the login straight
+  // back on the next visit.
+  if (joinBlock(account)) return null;
 
   // Only for a login with no driver, or with the rows the site made for it.
   // A driver an admin set up or kept is already where they belong.
@@ -348,10 +452,24 @@ export async function recogniseBySteam(prisma, discordId) {
     where: { id: { in: personIds } },
     include: { season: { select: { id: true, number: true, isActive: true, name: true } } },
   });
+
   // Somebody else signs in as this driver already: maybe their second Discord
-  // account, maybe a mix-up. Either way not for the site to move.
-  const claimed = rows.filter((r) => r.discordUserId && r.discordUserId !== id);
+  // account, maybe a mix-up. Either way not for the site to move. Only a real
+  // login counts: a Discord id an admin typed in that nobody has ever signed
+  // in with is what a link replaces anyway.
+  const logins = await loginIds(prisma);
+  const claimed = rows.filter((r) => r.discordUserId && r.discordUserId !== id && logins.has(String(r.discordUserId)));
   if (claimed.length) return { conflict: "claimed", rows: claimed };
+
+  // One person, two Steam accounts on their rows: an import that matched the
+  // wrong car once, or two people an admin linked as one. Which of them is
+  // this login is not something to guess.
+  const steamOnRows = await prisma.$queryRawUnsafe(
+    `SELECT "id", "steamId" FROM "Driver" WHERE "id" IN (${rows.map(() => "?").join(",")})`,
+    ...rows.map((r) => r.id)
+  );
+  const mixed = steamOnRows.filter((r) => r.steamId && String(r.steamId) !== String(account.steamId));
+  if (mixed.length) return { conflict: "mixed", rows: rows.filter((r) => mixed.some((m) => m.id === r.id)) };
 
   // The entry the login goes onto: their row in a running season, newest
   // first, else their newest row.
@@ -362,24 +480,34 @@ export async function recogniseBySteam(prisma, discordId) {
   const target = rows[0];
 
   // Rows the site made for them before Steam gave them away: the one in a
-  // season their old entry also has is folded into it, answers and all
-  // (services/driverMerge.js moves the login along when it merges); any other
-  // stays, as the same person.
+  // season their old entry also has is folded into it, answers and all (the
+  // login moves along with the merge); any other stays, as the same person,
+  // under the name and handle that person has always had.
   const fresh = own ? await newcomerRows(prisma, account) : [];
   for (const r of fresh) {
     const twin = rows.find((x) => x.seasonId === r.seasonId);
-    if (twin) await mergeDrivers(prisma, { keepId: twin.id, dropId: r.id });
+    if (twin) await foldNewRowInto(prisma, twin.id, r.id);
   }
   const leftover = fresh.filter((r) => !rows.some((x) => x.seasonId === r.seasonId)).map((r) => r.id);
-  if (leftover.length) await dbLinkDrivers(prisma, [target.id, ...leftover]).catch(() => {});
+  if (leftover.length) {
+    await prisma.driver.updateMany({
+      where: { id: { in: leftover } },
+      data: { name: target.name, ...(target.discordName ? { discordName: target.discordName } : {}) },
+    });
+    await dbLinkDrivers(prisma, [target.id, ...leftover]).catch(() => {});
+  }
 
-  // No row of their own at all: the login goes straight onto the old entry.
+  // No row of their own at all: the login goes straight onto the old entry,
+  // and only while nobody else's login is on it (two of these at the same
+  // moment must not overwrite each other).
   let login = await prisma.driver.findUnique({ where: { discordUserId: id } });
   if (!login) {
-    login = await prisma.driver.update({
-      where: { id: target.id },
-      data: { discordUserId: id, discordAvatar: account.avatarUrl ?? undefined },
+    const { count } = await prisma.driver.updateMany({
+      where: { id: target.id, OR: [{ discordUserId: null }, { discordUserId: { notIn: [...logins] } }] },
+      data: { discordUserId: id, ...(account.avatarUrl ? { discordAvatar: account.avatarUrl } : {}) },
     });
+    if (!count) return { conflict: "claimed", rows: [target] };
+    login = await prisma.driver.findUnique({ where: { id: target.id } });
   }
 
   await settleNewcomer(prisma, id);
@@ -387,6 +515,16 @@ export async function recogniseBySteam(prisma, discordId) {
   await applyMemberSteamId(prisma, id, login.id).catch(() => null);
   notifyAdminsRecognised(prisma, account, { driver: target }).catch(() => {});
   return { driver: login, recognised: { id: target.id, name: target.name, seasonName: target.season?.name || null } };
+}
+
+// Every Discord id that has signed in on the site at least once.
+async function loginIds(prisma) {
+  try {
+    const rows = await prisma.$queryRaw`SELECT "discordId" FROM "MemberAccount"`;
+    return new Set(rows.map((r) => String(r.discordId)));
+  } catch {
+    return new Set();
+  }
 }
 
 // When a Discord account was made: Discord ids carry their own creation time
@@ -445,7 +583,12 @@ function editDistanceAtMostOne(x, y) {
 //                  one per person, with why: "steam" (their proved Steam id is
 //                  on it), "handle" (their Discord username is the handle an
 //                  admin wrote on it), "name" (same name), "similar" (nearly);
-//                  `claimed` when another login holds that entry
+//                  `claimed` when another login holds that entry, `typedId`
+//                  when it only carries a Discord id an admin typed in that
+//                  nobody signs in with (a link simply replaces that). The
+//                  entry shown is the person's row in a season the newcomer
+//                  has a row in where there is one, because that is the row
+//                  a link merges their new row into.
 //   newAccountDays how old the Discord account was at sign-up, when that is
 //                  under NEW_ACCOUNT_DAYS
 //   lastSeenOnDiscord  the last day the league's bot saw them talk or sit in
@@ -454,12 +597,14 @@ function editDistanceAtMostOne(x, y) {
 //   needsCheck     any match, or a brand-new account. Only these reach the
 //                  admins' To do card and the badges; the rest need nobody.
 export async function reviewNewcomers(prisma) {
+  // A banned newcomer has been dealt with (the ban turns them away too).
   const marked = await prisma.$queryRaw`
-    SELECT * FROM "MemberAccount" WHERE "newDriverAt" IS NOT NULL AND "mainDiscordId" IS NULL`.catch(() => []);
+    SELECT * FROM "MemberAccount"
+    WHERE "newDriverAt" IS NOT NULL AND "mainDiscordId" IS NULL AND COALESCE("banned", 0) = 0`.catch(() => []);
   const out = new Map();
   if (!marked.length) return out;
 
-  const [drivers, steamRows, groups, resultCounts, seen, botAlive] = await Promise.all([
+  const [drivers, steamRows, groups, resultCounts, seen, botAlive, logins] = await Promise.all([
     prisma.driver.findMany({
       select: {
         id: true, name: true, discordName: true, discordUserId: true, seasonId: true,
@@ -477,6 +622,7 @@ export async function reviewNewcomers(prisma) {
       `SELECT 1 AS "x" FROM "TokenActivity" WHERE "day" >= ? LIMIT 1`,
       new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
     ).then((r) => r.length > 0).catch(() => false),
+    loginIds(prisma),
   ]);
   const steamOf = new Map(steamRows.map((r) => [r.id, String(r.steamId)]));
   const starts = new Map(resultCounts.map((r) => [r.driverId, r._count?._all || 0]));
@@ -514,13 +660,16 @@ export async function reviewNewcomers(prisma) {
       people.set(key, entry);
     }
 
+    const ownSeasons = new Set([...ownIds].map((x) => byId.get(x)?.seasonId).filter(Boolean));
     const matches = [...people.entries()].map(([key, { rows, why }]) => {
       const all = key.startsWith("row:") ? rows : (groups.byPerson.get(key) || []).map((x) => byId.get(x)).filter(Boolean);
       const pick = [...all].sort(
         (a, b) =>
-          (b.season?.isActive ? 1 : 0) - (a.season?.isActive ? 1 : 0) || (b.season?.number ?? 0) - (a.season?.number ?? 0)
+          (ownSeasons.has(b.seasonId) ? 1 : 0) - (ownSeasons.has(a.seasonId) ? 1 : 0) ||
+          (b.season?.isActive ? 1 : 0) - (a.season?.isActive ? 1 : 0) ||
+          (b.season?.number ?? 0) - (a.season?.number ?? 0)
       )[0];
-      const claimedBy = all.find((r) => r.discordUserId && r.discordUserId !== id)?.discordUserId || null;
+      const others = all.filter((r) => r.discordUserId && r.discordUserId !== id);
       if (why.has("name")) why.delete("similar");
       return {
         driverId: pick.id,
@@ -529,7 +678,8 @@ export async function reviewNewcomers(prisma) {
         activeSeason: !!pick.season?.isActive,
         starts: all.reduce((n, r) => n + (starts.get(r.id) || 0), 0),
         why: [...why],
-        claimed: !!claimedBy,
+        claimed: others.some((r) => logins.has(String(r.discordUserId))),
+        typedId: others.length > 0 && others.every((r) => !logins.has(String(r.discordUserId))),
       };
     });
     const rank = (m) => (m.why.includes("steam") ? 4 : m.why.includes("handle") ? 3 : m.why.includes("name") ? 2 : 1);
