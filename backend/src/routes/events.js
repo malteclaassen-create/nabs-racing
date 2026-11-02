@@ -13,7 +13,8 @@ import {
 } from "../lib/persons.js";
 import { collapseByPerson, byNewestAnswer, duplicateRsvps } from "../lib/onePerPerson.js";
 import { ensureReservePool } from "../lib/reservePool.js";
-import { applyMemberSteamId } from "../lib/members.js";
+import { applyMemberSteamId, dbGetMember } from "../lib/members.js";
+import { joinBlock, joinAsNewcomer } from "../lib/newcomers.js";
 import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
@@ -383,13 +384,31 @@ export async function clearOtherAnswers(raceId, driverId) {
 
 // POST /api/events/:id/rsvp  { driverId, status }
 // Upserts the driver's status for the race and syncs the Discord message.
+// A newcomer's first answer also makes their driver (lib/newcomers.js); the
+// response then carries `joined: { driverId, driverName }` so the page can
+// treat them as the driver they now are without signing in again.
 router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
   try {
     const { status } = req.body || {};
     // Identity must come from a Discord login (forgery-proof). No anonymous
     // RSVP. Resolved fresh from the DB so an admin unlink applies immediately.
     const driverId = await resolveDriverId(prisma, req.user);
-    if (!driverId) return res.status(401).json({ error: "Sign in with Discord to respond" });
+    // Signed in, but no driver anywhere: a newcomer. They sign themselves up
+    // with this answer, unless the admins turned them away once; then it is
+    // the admins' call again, and the page offers "I want to race" instead.
+    let newcomer = false;
+    if (!driverId) {
+      if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord to respond" });
+      const block = joinBlock(await dbGetMember(prisma, req.user.discordId).catch(() => null));
+      if (block === "turned-away") {
+        return res.status(403).json({
+          error: "The admins haven't put you on the roster. Ask for a seat and they'll get back to you",
+          turnedAway: true,
+        });
+      }
+      if (block) return res.status(401).json({ error: "Sign in with Discord to respond" });
+      newcomer = true;
+    }
     if (!VALID.includes(status)) return res.status(400).json({ error: "Invalid status" });
 
     const race = await prisma.race.findUnique({ where: { id: req.params.id } });
@@ -426,26 +445,34 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // RSVP as the person's row in the RACE's season — the login may still
     // point at another season's row (e.g. answering next season's opener
     // before ever logging in again after the season switch).
-    const base = await prisma.driver.findUnique({ where: { id: driverId } });
-    if (!base) return res.status(404).json({ error: "Driver not found" });
-    let driver = await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
-    // Known member, but no row in the race's season yet (e.g. next season's
-    // roster is still being built): let them sign up anyway. Their login is
-    // already tied to a real driver of this series, so we add them to the
-    // season's Reserve pool on the spot — the admin then sees the sign-up AND
-    // the person in the roster, and the race import checks who actually drove.
-    // Accounts never linked to any driver still can't RSVP (the 401 above).
-    if (!driver) {
-      driver = await addToReservePool(prisma, base, race.seasonId);
-      // A row created here is brand new, so it carries no Steam id yet. If the
-      // member proved their Steam account on their profile, seed it now, or the
-      // import of the very race they just signed up for would be matching them
-      // by name again. Never throws.
-      if (driver && req.user?.discordId) {
-        await applyMemberSteamId(prisma, req.user.discordId, driver.id);
+    //
+    // A newcomer has no row yet. Theirs is made further down, right before
+    // the answer is written, so an answer refused on the way (a taken car
+    // number, a full grid) leaves no empty driver behind.
+    let driver = null;
+    if (!newcomer) {
+      const base = await prisma.driver.findUnique({ where: { id: driverId } });
+      if (!base) return res.status(404).json({ error: "Driver not found" });
+      driver = await seasonRowForDriver(prisma, base, race.seasonId, req.user?.discordId);
+      // Known member, but no row in the race's season yet (e.g. next season's
+      // roster is still being built): let them sign up anyway. Their login is
+      // already tied to a real driver of this series, so we add them to the
+      // season's Reserve pool on the spot — the admin then sees the sign-up AND
+      // the person in the roster, and the race import checks who actually drove.
+      // (An account never linked to any driver is a newcomer: their row is
+      // made further down.)
+      if (!driver) {
+        driver = await addToReservePool(prisma, base, race.seasonId);
+        // A row created here is brand new, so it carries no Steam id yet. If the
+        // member proved their Steam account on their profile, seed it now, or the
+        // import of the very race they just signed up for would be matching them
+        // by name again. Never throws.
+        if (driver && req.user?.discordId) {
+          await applyMemberSteamId(prisma, req.user.discordId, driver.id);
+        }
       }
+      if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
     }
-    if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
 
     // A special event's car (lib/eventCars.js). Checked before anything is
     // written, so a taken number leaves the answer as it was. A driver who
@@ -453,7 +480,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // picked before or one sent with this answer.
     let car = null;
     if (status !== "DECLINED" && (await isEventRace(prisma, race.id))) {
-      car = await checkCar(race, driver.id, req.body || {});
+      car = await checkCar(race, driver?.id ?? null, req.body || {});
       if (car.error) return res.status(car.status).json({ error: car.error, needsCar: car.needsCar || undefined });
     }
 
@@ -464,7 +491,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // "maybe" is still refused: taking a car away from a reserve for somebody
     // who is not sure yet would be the worst of both.
     let reclaimed = false;
-    if (status !== "DECLINED" && (await standingSeatOffer(race.id, driver.id))) {
+    if (driver && status !== "DECLINED" && (await standingSeatOffer(race.id, driver.id))) {
       if (status !== "ACCEPTED" && status !== WAITLIST) {
         return res.status(409).json({
           error: "Your seat is up in the Driver Market for this race. Press Accept to take it back, or withdraw the offer there",
@@ -480,7 +507,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // this existed, where nobody is pushed out.
     // Somebody taking their own seat back is not queueing for one: the car was
     // held for them the whole time.
-    const seats = await seatsFor(prisma, race, driver.id);
+    const seats = await seatsFor(prisma, race, driver?.id ?? null);
     if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free) {
       return res.status(409).json({
         error: `The grid is full (${seats.accepted}/${seats.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
@@ -491,6 +518,25 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // must not put somebody in a queue that no longer exists.
     const want =
       status === WAITLIST && (reclaimed || seats.free || seats.mine === "ACCEPTED") ? "ACCEPTED" : status;
+
+    // The newcomer's driver, now that the answer is going through: a reserve
+    // of their own in this race's season, linked to their Discord account.
+    let joined = null;
+    if (newcomer) {
+      const out = await joinAsNewcomer(prisma, { discordId: req.user.discordId, seasonId: race.seasonId, race });
+      driver = out.driver || null;
+      // Two answers at once from one newcomer, for races of two seasons: the
+      // other request made their row, in its season. This race books the
+      // person's row in its own season the usual way.
+      if (driver && driver.seasonId !== race.seasonId) {
+        const own = driver;
+        driver =
+          (await seasonRowForDriver(prisma, own, race.seasonId, req.user.discordId)) ||
+          (await addToReservePool(prisma, own, race.seasonId));
+      }
+      if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
+      joined = { driverId: out.driver.id, driverName: out.driver.name };
+    }
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting
     // list's queue position, so re-pressing the button you are already on would
@@ -532,7 +578,7 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
 
     // Fire-and-await Discord sync, but don't fail the request if Discord errors.
     const discord = await syncRaceToDiscord(prisma, race.id);
-    res.json({ ok: true, discord });
+    res.json({ ok: true, discord, ...(joined ? { joined } : {}) });
   } catch (e) {
     next(e);
   }

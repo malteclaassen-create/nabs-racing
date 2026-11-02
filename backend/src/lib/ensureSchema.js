@@ -483,6 +483,15 @@ export async function ensureAppSchema(prisma) {
   // this account then acts as the main one (lib/accountLinks.js). Null for an
   // ordinary account.
   await addColumn(prisma, "MemberAccount", "mainDiscordId", "TEXT");
+  // A newcomer who signed themselves up (lib/newcomers.js). newDriverAt is when
+  // the site made their reserve driver on its own, and stays set until an
+  // admin keeps them: it is what puts them on the Members tab's "New drivers"
+  // list. turnedAwayAt is when an admin turned them away: their driver and
+  // answers are gone, and the site does not sign them up by itself again until
+  // an admin links them or creates a driver for them. Migration
+  // member_newcomer mirrors both.
+  await addColumn(prisma, "MemberAccount", "newDriverAt", "DATETIME");
+  await addColumn(prisma, "MemberAccount", "turnedAwayAt", "DATETIME");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "MemberAccount_steamId_key" ON "MemberAccount"("steamId")`
   );

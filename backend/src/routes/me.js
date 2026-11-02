@@ -23,6 +23,9 @@ import { cardUnlockInputs } from "../services/driverProfileService.js";
 import { ownedDesigns } from "../lib/cardShop.js";
 import { notifyCardUnlocks, notifyAdminsRaceRequest } from "../lib/notifications.js";
 import { dbGetMember, dbSetRaceRequest } from "../lib/members.js";
+import { joinBlock, joinAsNewcomer } from "../lib/newcomers.js";
+import { resolveSeries } from "../lib/series.js";
+import { getActiveSeason, getPrivateSeasonIds } from "../services/seasonService.js";
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { previewAccountDeletion, deleteMemberAccount } from "../services/accountDeletionService.js";
@@ -868,20 +871,69 @@ router.get("/rating/career", async (req, res, next) => {
   }
 });
 
-// --- "I want to race" hand-raise -------------------------------------------
-// A logged-in Discord account that has NO driver profile anywhere (never raced
-// with us, nothing to link) can ask for a seat from the Attendance page. The
-// request lands on the account row and shows up in the admin Members tab
-// ("Needs attention"), where one click creates their driver. Accounts that DO
-// resolve to a driver don't need this — their sign-up buttons work directly.
+// --- Newcomers: signing yourself up, or asking -------------------------------
+// A logged-in Discord account with NO driver profile anywhere (never raced
+// with us, nothing to link) signs itself up: its first race answer, or the
+// Join button on its profile, makes it a reserve driver straight away
+// (lib/newcomers.js). The admins look over new drivers afterwards.
+//
+// An account the admins turned away does not get that again. It can still
+// ask for a seat ("I want to race"): the request lands on the account row and
+// shows up in the admin Members tab, where one click creates their driver.
 
-// GET /api/me/race-request -> { linked, pending, text }
+// GET /api/me/race-request -> { linked, pending, text, canJoin, turnedAway }
+//   canJoin     no driver yet, and may sign itself up (the answer buttons work)
+//   turnedAway  no driver, and only an admin can change that (ask instead)
 router.get("/race-request", async (req, res, next) => {
   try {
     if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
     const linked = !!(await resolveDriverId(prisma, req.user));
     const acct = await dbGetMember(prisma, req.user.discordId);
-    res.json({ linked, pending: !!acct?.raceRequestAt, text: acct?.raceRequestText || null });
+    const block = linked ? null : joinBlock(acct);
+    res.json({
+      linked,
+      pending: !!acct?.raceRequestAt,
+      text: acct?.raceRequestText || null,
+      canJoin: !linked && !block,
+      turnedAway: !linked && block === "turned-away",
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/me/join { series? } -> { ok, driverId, driverName }
+// The profile's Join button: sign yourself up as a reserve without a race to
+// answer first (the off-season, or a newcomer who simply wants in). The driver
+// goes into the active season of the series they were looking at, or of the
+// main series.
+router.post("/join", async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.status(401).json({ error: "Sign in with Discord first" });
+    const linked = await resolveDriverId(prisma, req.user);
+    if (linked) {
+      const d = await prisma.driver.findUnique({ where: { id: linked }, select: { id: true, name: true } });
+      return res.json({ ok: true, driverId: d?.id || linked, driverName: d?.name || null, already: true });
+    }
+    // A special event is a weekend of its own, not a league to join: its
+    // sign-up page does that. From there, or anywhere else, this is the main
+    // league's reserve list.
+    const viewed = req.body?.series ? await resolveSeries(prisma, req.body.series).catch(() => null) : null;
+    let season = viewed && viewed.kind !== "event" ? await getActiveSeason(prisma, viewed.id) : null;
+    if (!season) season = await getActiveSeason(prisma);
+    const priv = await getPrivateSeasonIds(prisma);
+    if (!season || priv.has(season.id)) {
+      return res.status(409).json({ error: "There's no season to join right now. Ask on Discord" });
+    }
+    const out = await joinAsNewcomer(prisma, { discordId: req.user.discordId, seasonId: season.id });
+    if (out.error === "turned-away") {
+      return res.status(403).json({
+        error: "The admins haven't put you on the roster. Ask for a seat and they'll get back to you",
+        turnedAway: true,
+      });
+    }
+    if (!out.driver) return res.status(409).json({ error: "You can't sign up from this account. Ask on Discord" });
+    res.json({ ok: true, driverId: out.driver.id, driverName: out.driver.name, joined: out.created });
   } catch (e) {
     next(e);
   }

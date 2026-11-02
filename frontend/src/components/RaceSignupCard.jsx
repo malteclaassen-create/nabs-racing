@@ -227,6 +227,9 @@ export default function RaceSignupCard({
   reloadMarket,
   driverId,
   canSignUp,
+  // Signed in with no driver yet, and allowed to sign themselves up: the
+  // buttons work, and the first answer makes them a reserve driver.
+  newcomer = false,
   isLoggedIn,
   raceRequest,
   onRequestSeat,
@@ -553,15 +556,25 @@ export default function RaceSignupCard({
                 {standingDown ? "…" : "I can't take this seat"}
               </button>
             )}
+            {/* Somebody new: no driver yet, but nothing to wait for either.
+                Saying what the first press does keeps it from being a
+                surprise when their name turns up on the reserve list. */}
+            {newcomer && !myStatus && (
+              <p className="w-full text-sm leading-relaxed text-light">
+                You haven&rsquo;t raced with us yet. Your first answer puts you on the reserve list.
+              </p>
+            )}
           </div>
         ) : isLoggedIn ? (
-          // Logged in, but no driver profile anywhere: they can't RSVP yet,
-          // but they can raise a hand — the league admin gets it in the
-          // Members tab and can create their driver from there.
-          raceRequest?.pending ? (
+          // Logged in, no driver, and the admins turned them away once: the
+          // only way back is asking. The request lands in the admin Members
+          // tab, where a driver is one click. Nothing while the account is
+          // still being looked up (raceRequest not loaded yet), or a newcomer
+          // would see this flash past before their buttons appear.
+          !raceRequest ? null : raceRequest.pending ? (
             <div className="text-sm leading-relaxed text-medium">
-              <span className="font-semibold text-ok">Request sent.</span> The league admin will set up your
-              driver profile and get back to you. Once that's done, the sign-up buttons appear here.
+              <span className="font-semibold text-ok">Request sent.</span> The admins will look at it and get
+              back to you. Once you&rsquo;re set up, the sign-up buttons appear here.
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
@@ -573,7 +586,7 @@ export default function RaceSignupCard({
                 I want to race
               </button>
               <span className="text-sm text-light">
-                You haven't raced with us yet. Ask for a seat and the admin will set you up.
+                The admins haven&rsquo;t put you on the roster. Ask for a seat and they&rsquo;ll get back to you.
               </span>
             </div>
           )

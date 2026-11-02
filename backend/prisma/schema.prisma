@@ -586,6 +586,13 @@ model MemberAccount {
   // this account acts as the main one. Raw-SQL column (lib/ensureSchema.js,
   // lib/accountLinks.js).
   mainDiscordId   String?
+  // A newcomer who signed themselves up (lib/newcomers.js): newDriverAt is
+  // when the site made their reserve driver by itself, set until an admin
+  // keeps them (the Members tab's "New drivers" list); turnedAwayAt is when an
+  // admin turned them away, after which the site does not sign them up on its
+  // own again. Raw-SQL columns (lib/ensureSchema.js), migration member_newcomer.
+  newDriverAt     DateTime?
+  turnedAwayAt    DateTime?
 }
 
 // In-site notifications behind the nav-bar bell. recipientId null = broadcast

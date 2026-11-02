@@ -12,7 +12,7 @@ import prisma from "../lib/prisma.js";
 import { signUserToken } from "../middleware/auth.js";
 import { getActiveSeason } from "../services/seasonService.js";
 import { resolveSeries } from "../lib/series.js";
-import { dbRecordLogin, dbGetMember, mainAccountId, isBanned } from "../lib/members.js";
+import { dbRecordLogin, dbGetMember, mainAccountId, isBanned, isUncheckedNewcomer } from "../lib/members.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { isDiscordAdmin } from "../lib/adminUsers.js";
 import { notifyAdminsUnlinkedLogin } from "../lib/notifications.js";
@@ -197,7 +197,12 @@ router.post("/callback", async (req, res, next) => {
       // be steered from outside. The cross-season person link above is tried
       // first and covers the whole current roster anyway; this is the fallback
       // for a row the admin has not linked yet.
-      const keys = [norm(driver.discordName)].filter(Boolean);
+      //
+      // Not even that for a newcomer nobody has checked yet: the site made
+      // their row itself (lib/newcomers.js), with whatever their Discord
+      // username was that day as the handle. The person link above still works.
+      const unchecked = await isUncheckedNewcomer(prisma, who);
+      const keys = unchecked ? [] : [norm(driver.discordName)].filter(Boolean);
       const successor =
         roster.find((d) => !d.discordUserId && linkedIds.includes(d.id)) ||
         roster.find((d) => !d.discordUserId && [norm(d.discordName), norm(d.name)].some((k) => keys.includes(k)));

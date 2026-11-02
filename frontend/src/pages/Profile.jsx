@@ -10,7 +10,7 @@ import ProfileNav from "../components/ProfileNav.jsx";
 import Tools from "./Tools.jsx";
 import { api, rememberInviter, storedInviter } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { useAuth, getUserToken, saveUser } from "../hooks/useAuth.js";
+import { useAuth, getUserToken, saveUser, adoptDriver } from "../hooks/useAuth.js";
 import { useAdminAttention } from "../hooks/useAdminAttention.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { Spinner, ErrorBox, PageHeader, DriverAvatar, TierBadge, CardBar, Field } from "../components/ui.jsx";
@@ -198,25 +198,49 @@ function useSteamResult(onDone) {
 
 // The screen a brand-new login lands on: signed in, but not on any roster yet.
 //
-// Two things they can do here, and both save the admin work later:
+// Two things they can do here:
 //   1. Link their Steam account. Race results come out of Assetto Corsa
 //      identified by SteamID64, so a linked account means their very first race
 //      lands on their name automatically instead of on a fuzzy name match.
-//   2. Raise a hand. That shows up in the admin's Members tab as "wants to
-//      race", which is the queue the admin works through.
-// The hand-raise used to live only on the Attendance page, which is hidden from
-// the menu whenever no sign-up window is open — so in the off-season, exactly
-// when newcomers arrive, it was unreachable.
+//   2. Join. One press makes them a reserve driver of the league they are
+//      looking at (lib/newcomers.js on the server), and this page turns into
+//      their driver profile. The admins look over new drivers afterwards.
+//      Answering a race on the Attendance page does the same, but that page is
+//      hidden from the menu whenever no sign-up window is open, so in the
+//      off-season, exactly when newcomers arrive, this is the way in.
+//
+// Somebody the admins turned away once does not get Join back. They can still
+// raise a hand ("I want to race"), which lands in the admin's Members tab.
 function NewMemberWelcome({ me, reload, logout, demo = false }) {
   const social = useSocial();
   // `demo` shows the screen without a session (dev only, see the Profile route
   // below), so it must not ask for anything a signed-out visitor can't have.
   const request = useApi(
-    useCallback(() => (demo ? Promise.resolve({ pending: me.demoPending || false }) : api.myRaceRequest()), [demo, me.demoPending])
+    useCallback(
+      () =>
+        demo
+          ? Promise.resolve({ pending: me.demoPending || false, canJoin: !me.demoTurnedAway, turnedAway: !!me.demoTurnedAway })
+          : api.myRaceRequest(),
+      [demo, me.demoPending, me.demoTurnedAway]
+    )
   );
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const note = useSteamResult(reload);
+
+  async function join() {
+    if (demo) return;
+    setBusy("join");
+    setError(null);
+    try {
+      adoptDriver(await api.joinLeague());
+      // /api/me now answers with the driver, and this screen gives way to it.
+      reload?.();
+    } catch (e) {
+      setError(e.message);
+      setBusy(null);
+    }
+  }
 
   async function raiseHand() {
     if (demo) return;
@@ -233,6 +257,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
   }
 
   const pending = !!request.data?.pending;
+  const canJoin = !!request.data?.canJoin;
 
   return (
     <div className="content-in">
@@ -252,19 +277,36 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
         {/* Step 1: Steam. Stated in terms of what it does for THEM. */}
         <SteamLinkCard steam={me.steam} onChanged={reload} demo={demo} />
 
-        {/* Step 2: tell the admin you exist. */}
+        {/* Step 2: join, or (turned away once) ask. Nothing until the account
+            has been looked up, so neither flashes past for the other. */}
+        {request.data && (
         <div className="card p-5">
           <div className="flex items-start gap-4">
             <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
+                {/* A person with a plus to join, the old padlock to ask. */}
+                {canJoin ? (
+                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" />
+                ) : (
+                  <path d="M7 11V7a5 5 0 0110 0v4M5 11h14l-1 9H6z" />
+                )}
               </svg>
             </span>
             <div className="min-w-0 flex-1">
               <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
-                Ask for a seat
+                {canJoin ? "Join the league" : "Ask for a seat"}
               </h3>
-              {pending ? (
+              {canJoin ? (
+                <>
+                  <p className="mt-1 text-sm leading-relaxed text-medium">
+                    You go on the reserve list straight away and can sign up for races. This page then becomes
+                    your driver profile. The admins look over new drivers and can still take you off.
+                  </p>
+                  <button className="btn-primary mt-3" disabled={busy === "join"} onClick={join}>
+                    {busy === "join" ? "Joining…" : "Join as a reserve"}
+                  </button>
+                </>
+              ) : pending ? (
                 <p className="mt-1 text-sm leading-relaxed text-medium">
                   <span className="font-semibold text-ok">Your request is in.</span> An admin will get
                   back to you. Once you are set up, this page becomes your driver profile, with your card,
@@ -273,8 +315,8 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
               ) : (
                 <>
                   <p className="mt-1 text-sm leading-relaxed text-medium">
-                    Tell the league you want to drive. An admin sees it, sets up your driver profile and puts
-                    you on a team.
+                    The admins haven&rsquo;t put you on the roster. Ask for a seat and they&rsquo;ll get back
+                    to you.
                   </p>
                   <button className="btn-primary mt-3" disabled={busy === "hand"} onClick={raiseHand}>
                     {busy === "hand" ? "Sending…" : "I want to race"}
@@ -284,6 +326,7 @@ function NewMemberWelcome({ me, reload, logout, demo = false }) {
             </div>
           </div>
         </div>
+        )}
 
         {/* Where the league actually talks. For a newcomer this is the useful
             next click, and it was missing from the old dead end entirely. */}
@@ -894,7 +937,13 @@ function MyProfile() {
   // do. It is now the welcome screen: what happens next, plus the two things
   // they CAN do right away.
   if (me.data && me.data.isLinked === false) {
-    return <NewMemberWelcome me={me.data} reload={me.reload} logout={logout} />;
+    // The leagues list too: read while there was no driver, it came back
+    // empty, and Join (or a Steam link) is what changes that.
+    const reloadAll = () => {
+      me.reload();
+      leagues.reload();
+    };
+    return <NewMemberWelcome me={me.data} reload={reloadAll} logout={logout} />;
   }
 
   const d = me.data;
@@ -1099,13 +1148,14 @@ function MyProfile() {
 
 export default function Profile() {
   const { isLoggedIn } = useAuth();
-  // Dev-only (?demo=newmember, or ?demo=newmember-done for the state after
-  // both steps): shows the screen a brand-new login lands on, WITHOUT needing
-  // to be one. There is no way to reach it otherwise on a local machine, since
-  // Discord cannot redirect a login to localhost. Same idea as ?opener= on the
-  // home page, and equally absent from a build.
+  // Dev-only: shows the screen a brand-new login lands on, WITHOUT needing to
+  // be one. ?demo=newmember is a newcomer who can join; ?demo=newmember-away
+  // one the admins turned away; ?demo=newmember-done that one after asking
+  // for a seat and linking Steam. There is no way to reach it otherwise on a
+  // local machine, since Discord cannot redirect a login to localhost. Same
+  // idea as ?opener= on the home page, and equally absent from a build.
   const demo = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
-  if (demo === "newmember" || demo === "newmember-done") {
+  if (demo === "newmember" || demo === "newmember-away" || demo === "newmember-done") {
     const done = demo === "newmember-done";
     return (
       <NewMemberWelcome
@@ -1113,6 +1163,7 @@ export default function Profile() {
         me={{
           discordName: "New driver",
           demoPending: done,
+          demoTurnedAway: demo !== "newmember",
           steam: done ? { linked: true, id: "76561198000000000", verifiedAt: new Date().toISOString() } : { linked: false },
         }}
         logout={() => {}}

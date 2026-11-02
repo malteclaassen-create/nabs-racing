@@ -3,7 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSwapClass } from "../hooks/motion.js";
 import { useApi } from "../hooks/useApi.js";
-import { useAuth } from "../hooks/useAuth.js";
+import { useAuth, adoptDriver } from "../hooks/useAuth.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { useReserveSeats } from "../hooks/useReserveSeats.js";
 import { useSeason } from "../context/SeasonContext.jsx";
@@ -87,19 +87,29 @@ export default function Attendance() {
   const eventCar = season?.game || series?.game || null;
   const seasonHeading = seasonName ? `${seasonName} Attendance` : "Attendance";
   const driverId = isLoggedIn ? user?.driverId : null;
-  const canSignUp = isLoggedIn && !!driverId;
 
   const events = useApi(useCallback(() => api.events(), []));
   const market = useApi(useCallback(() => api.market(), []));
-  // Logged in but no driver profile anywhere (never raced with us): they can't
-  // RSVP, but they can raise a hand — "I want to race" — which the admin sees
-  // in Members → Needs attention.
+  // Logged in but no driver profile anywhere (never raced with us): a
+  // newcomer. They answer like everybody else, and their first answer makes
+  // them a reserve driver (lib/newcomers.js on the server). Only somebody the
+  // admins turned away once can't: they get "I want to race" instead, which
+  // the admin sees in Members → Needs attention.
   const raceRequest = useApi(
     useCallback(
       () => (isLoggedIn && !driverId ? api.myRaceRequest() : Promise.resolve(null)),
       [isLoggedIn, driverId]
     )
   );
+  const newcomer = isLoggedIn && !driverId && !!raceRequest.data?.canJoin;
+  const canSignUp = isLoggedIn && (!!driverId || newcomer);
+  // Said once, right after the first answer made them a driver.
+  const [joinedNote, setJoinedNote] = useState(false);
+  function tookAnswer(res) {
+    if (!res?.joined) return;
+    adoptDriver(res.joined);
+    setJoinedNote(true);
+  }
   async function requestSeat(raceId) {
     setError(null);
     setBusy(`${raceId}:request`);
@@ -171,7 +181,7 @@ export default function Attendance() {
     setError(null);
     setBusy(`${raceId}:${status}`);
     try {
-      await api.rsvp(raceId, driverId, status, car);
+      tookAnswer(await api.rsvp(raceId, driverId, status, car));
       // The answer can move the market too: declining puts a full-time
       // driver's seat up, saying yes again takes it back.
       await Promise.all([events.reload(), market.reload(), myCar.reload()]);
@@ -204,7 +214,7 @@ export default function Attendance() {
     autoFired.current = true;
     (async () => {
       try {
-        await api.rsvp(race.id, driverId, wanted);
+        tookAnswer(await api.rsvp(race.id, driverId, wanted));
         await events.reload();
         setAutoAnswered(wanted);
       } catch (e) {
@@ -263,6 +273,15 @@ export default function Attendance() {
           {autoAnswered === "ACCEPTED" && "You're in. See you on the grid."}
           {autoAnswered === "TENTATIVE" && "Marked as tentative. Update it any time below."}
           {autoAnswered === "DECLINED" && "Marked as not racing. Thanks for letting the grid know."}
+        </Notice>
+      )}
+
+      {/* A newcomer's first answer made them a driver. Worth saying, because
+          their name now shows up on the reserve list and in the entry list. */}
+      {joinedNote && (
+        <Notice kind="success">
+          You&rsquo;re on the reserve list now, so you can answer every race from here. The admins look
+          over new drivers and will get in touch on Discord if anything is missing.
         </Notice>
       )}
 
@@ -365,6 +384,7 @@ export default function Attendance() {
               seatRef={setSeatEl}
               driverId={driverId}
               canSignUp={canSignUp}
+              newcomer={newcomer}
               isLoggedIn={isLoggedIn}
               raceRequest={raceRequest.data}
               onRequestSeat={requestSeat}

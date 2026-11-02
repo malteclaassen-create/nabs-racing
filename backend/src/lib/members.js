@@ -36,6 +36,10 @@ export function shapeMember(r) {
     // Set when this is a person's second Discord account: the main account's
     // id (lib/accountLinks.js).
     mainDiscordId: r.mainDiscordId ?? null,
+    // A newcomer who signed themselves up and has not been kept yet, and one
+    // the admins turned away (lib/newcomers.js).
+    newDriverAt: r.newDriverAt ?? null,
+    turnedAwayAt: r.turnedAwayAt ?? null,
   };
 }
 
@@ -118,6 +122,22 @@ export async function applyMemberSteamId(prisma, discordId, driverId) {
     return { written: true, reason: "written", steamId };
   } catch {
     return { written: false, reason: "write-failed" };
+  }
+}
+
+// Whether this login signed itself up and no admin has looked yet
+// (lib/newcomers.js). Never
+// throws: on any doubt it answers true, which only switches off the name match
+// that the caller would otherwise use. A missed person link costs an admin one
+// click; a wrong name match hands somebody another driver's row.
+export async function isUncheckedNewcomer(prisma, discordId) {
+  if (!discordId) return false;
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT "newDriverAt" FROM "MemberAccount" WHERE "discordId" = ${String(discordId)} LIMIT 1`;
+    return !!rows[0]?.newDriverAt;
+  } catch {
+    return true;
   }
 }
 

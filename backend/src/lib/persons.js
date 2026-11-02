@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
 import { getActiveSeason } from "../services/seasonService.js";
+import { isUncheckedNewcomer } from "./members.js";
 
 // The active season's number, or null when it can't be read (fresh checkout,
 // missing tables). Null just means "no cap": overrides then consider every row.
@@ -192,7 +193,12 @@ export async function seasonRowForDriver(prisma, driver, seasonId, discordId) {
   // it let anyone rename themselves onto an unclaimed roster row and then RSVP,
   // offer that seat and pick its replacement as that driver. Same reasoning as
   // the season handover in routes/discordAuth.js; the two must stay in step.
-  const keys = [driver.discordName].map(norm).filter(Boolean);
+  //
+  // And not even that while the login is a newcomer nobody has checked yet:
+  // their row was made by the site itself (lib/newcomers.js), so its handle is
+  // simply whatever their Discord username was that day.
+  const unchecked = await isUncheckedNewcomer(prisma, discordId || driver.discordUserId);
+  const keys = unchecked ? [] : [driver.discordName].map(norm).filter(Boolean);
   const ownable = (d) => !d.discordUserId || (discordId && d.discordUserId === discordId);
   return (
     roster.find((d) => linkedIds.includes(d.id) && ownable(d)) ||

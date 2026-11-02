@@ -81,6 +81,22 @@ async function refreshDriverLink() {
   }
 }
 
+// A newcomer who just signed themselves up (their first race answer, or Join
+// on the profile) is a driver from this moment on. The token can stay as it
+// is: the backend finds the driver by Discord id on every request. Only the
+// snapshot is behind, and without this the page would keep showing them the
+// newcomer's view until the next page load.
+export function adoptDriver(joined) {
+  if (!joined?.driverId) return;
+  const user = readUser();
+  if (!user || user.driverId === joined.driverId) return;
+  saveUser(localStorage.getItem(TOKEN_KEY), {
+    ...user,
+    driverId: joined.driverId,
+    driverName: joined.driverName ?? user.driverName ?? null,
+  });
+}
+
 // Reactive view of the logged-in driver (via Discord).
 export function useAuth() {
   const [user, setUser] = useState(readUser);

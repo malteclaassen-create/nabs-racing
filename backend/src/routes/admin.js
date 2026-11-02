@@ -108,6 +108,9 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { deleteDriverOps } from "../lib/driverDeletion.js";
+import { newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer } from "../lib/newcomers.js";
+import { uniqueDriverId as uniqueDriverIdFor } from "../lib/driverHandles.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
 import { planMerge, mergeDrivers } from "../services/driverMerge.js";
@@ -2964,14 +2967,8 @@ router.put("/races/:id/honours", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // Driver ids are permanent technical handles — generated from the name (slug,
 // uniquified with a numeric suffix) so the admin never has to invent one.
-async function uniqueDriverId(name) {
-  const base =
-    String(name).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") ||
-    "driver";
-  let id = base;
-  for (let i = 2; await prisma.driver.findUnique({ where: { id } }); i++) id = `${base}_${i}`;
-  return id;
-}
+// The rule lives in lib/driverHandles.js, shared with the newcomer sign-up.
+const uniqueDriverId = (name) => uniqueDriverIdFor(prisma, name);
 
 router.post("/drivers", async (req, res, next) => {
   try {
@@ -3603,39 +3600,13 @@ router.delete("/drivers/:id", async (req, res, next) => {
 
     // Raw references first (no FK cascade), then everything that references
     // the row, then the row itself — one transaction, so a delete the foreign
-    // keys refuse leaves the person link standing.
-    await prisma.$transaction([
-      ...driverRefCleanup(driver.id),
-      prisma.raceRsvp.deleteMany({ where: { driverId: driver.id } }),
-      prisma.seatInterest.deleteMany({ where: { driverId: driver.id } }),
-      // Offers they made: drop them (any interests cascade with the offer).
-      prisma.seatOffer.deleteMany({ where: { driverId: driver.id } }),
-      // Offers they were chosen to FILL belong to another driver — keep those,
-      // just un-pick the deleted reserve so the seat reads open again.
-      prisma.seatOffer.updateMany({ where: { filledById: driver.id }, data: { filledById: null, status: "OPEN" } }),
-      prisma.driver.delete({ where: { id: driver.id } }),
-    ]);
+    // keys refuse leaves the person link standing (lib/driverDeletion.js).
+    await prisma.$transaction(deleteDriverOps(prisma, driver.id));
     res.json({ ok: true, removed: { rsvps: c.rsvps, seatInterests: c.seatInterests, seatOffers: c.seatOffersOffered } });
   } catch (e) {
     next(e);
   }
 });
-
-// What names a driver row without a foreign key, and so is left pointing at
-// nothing when the row is deleted. Driver ids are derived (`<id>_s<N>`), so a
-// row created later under the same id would otherwise inherit all of it: the
-// person link, recorded transfers (which decide the team its rounds are saved
-// under), and the picks and reports that name it.
-function driverRefCleanup(driverId) {
-  return [
-    prisma.$executeRaw`DELETE FROM "PersonLink" WHERE "driverId" = ${driverId}`,
-    prisma.$executeRaw`DELETE FROM "DriverTeamChange" WHERE "driverId" = ${driverId}`,
-    prisma.$executeRaw`UPDATE "Race" SET "driverOfTheDayId" = NULL, "driverOfTheDayBy" = NULL WHERE "driverOfTheDayId" = ${driverId}`,
-    prisma.$executeRaw`UPDATE "Season" SET "championDriverId" = NULL WHERE "championDriverId" = ${driverId}`,
-    // The report keeps the name it was filed against (accusedName).
-    prisma.$executeRaw`UPDATE "Report" SET "accusedDriverId" = NULL WHERE "accusedDriverId" = ${driverId}`,
-  ];
-}
 
 // POST /api/admin/drivers/bulk-delete -> remove SEVERAL driver rows at once
 // (same rules as the single delete above). Two-step like the single route:
@@ -3697,14 +3668,7 @@ router.post("/drivers/bulk-delete", async (req, res, next) => {
       // Same order as the single delete: person-link first (raw table, no FK),
       // then dependents, then the row. One transaction per driver keeps a
       // mid-list failure from voiding the deletions already done.
-      await prisma.$transaction([
-        ...driverRefCleanup(d.id),
-        prisma.raceRsvp.deleteMany({ where: { driverId: d.id } }),
-        prisma.seatInterest.deleteMany({ where: { driverId: d.id } }),
-        prisma.seatOffer.deleteMany({ where: { driverId: d.id } }),
-        prisma.seatOffer.updateMany({ where: { filledById: d.id }, data: { filledById: null, status: "OPEN" } }),
-        prisma.driver.delete({ where: { id: d.id } }),
-      ]);
+      await prisma.$transaction(deleteDriverOps(prisma, d.id));
       deleted.push(d.name);
     }
     res.json({
@@ -3788,6 +3752,30 @@ router.get("/members", async (req, res, next) => {
     // a typo. Linking such a driver simply replaces the wrong ID with the real
     // one, so a mistyped entry is one click away from being corrected once the
     // person actually logs in. Every series' active roster is listed.
+    // The newcomers who signed themselves up and are not kept yet (the "New
+    // drivers" card): which rows the site made for them and which upcoming
+    // races they answered, so "Turn away" can say what it is about to remove.
+    for (const m of members) {
+      if (!m.newDriverAt || m.mainDiscordId) continue;
+      const fresh = await newcomerRows(prisma, m).catch(() => []);
+      const answers = fresh.length
+        ? await prisma.raceRsvp.findMany({
+            where: { driverId: { in: fresh.map((r) => r.id) }, race: { isCompleted: false } },
+            include: { race: { select: { id: true, number: true, track: true, date: true } } },
+            orderBy: { race: { date: "asc" } },
+          })
+        : [];
+      m.newcomer = {
+        rows: fresh.map((r) => ({ id: r.id, name: r.name, team: r.team?.name || null, seasonName: r.season?.name || null })),
+        answers: answers.map((a) => ({
+          raceId: a.raceId,
+          round: a.race?.number ?? null,
+          track: a.race?.track || "",
+          status: a.status,
+        })),
+        results: fresh.reduce((n, r) => n + (r._count?.results || 0), 0),
+      };
+    }
     const knownIds = new Set(rows.map((r) => String(r.discordId)));
     const unclaimed = drivers
       .filter(
@@ -3803,12 +3791,14 @@ router.get("/members", async (req, res, next) => {
   }
 });
 
-// GET /api/admin/members/pending -> { unlinked, requests }
-// Just the two numbers the admin navigation puts on the Members tab, so the
+// GET /api/admin/members/pending -> { unlinked, requests, newDrivers }
+// Just the numbers the admin navigation puts on the Members tab, so the
 // badge doesn't have to pull the whole member list (every driver of every
 // season) on each admin page load.
-//   unlinked = login accounts no driver row carries the Discord id of,
-//   requests = how many of those pressed "I want to race".
+//   unlinked   = login accounts no driver row carries the Discord id of,
+//   requests   = how many of those pressed "I want to race",
+//   newDrivers = newcomers who signed themselves up and nobody has kept or
+//                turned away yet (lib/newcomers.js).
 router.get("/members/pending", async (req, res, next) => {
   try {
     const rows = await prisma.$queryRaw`
@@ -3819,7 +3809,52 @@ router.get("/members/pending", async (req, res, next) => {
         AND NOT EXISTS (
         SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId"
       )`;
-    res.json({ unlinked: Number(rows[0]?.n || 0), requests: Number(rows[0]?.r || 0) });
+    res.json({
+      unlinked: Number(rows[0]?.n || 0),
+      requests: Number(rows[0]?.r || 0),
+      newDrivers: await countNewDrivers(),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Newcomers waiting for a keep or a turn-away: marked, and still holding a
+// driver (an admin who deleted the row by hand in the Drivers tab has
+// answered the question too). Never throws: a badge is not worth a 500.
+async function countNewDrivers() {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT COUNT(*) AS n FROM "MemberAccount" m
+      WHERE m."newDriverAt" IS NOT NULL AND m."mainDiscordId" IS NULL
+        AND EXISTS (SELECT 1 FROM "Driver" d WHERE d."discordUserId" = m."discordId")`;
+    return Number(rows[0]?.n || 0);
+  } catch {
+    return 0;
+  }
+}
+
+// POST /api/admin/members/:discordId/keep
+// A newcomer who signed themselves up stays: off the "New drivers" list.
+router.post("/members/:discordId/keep", async (req, res, next) => {
+  try {
+    const account = await dbGetMember(prisma, req.params.discordId);
+    if (!account) return res.status(404).json({ error: "Account not found" });
+    await keepNewcomer(prisma, req.params.discordId);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/members/:discordId/turn-away
+// A newcomer who signed themselves up is not taken on: the driver rows the
+// site made for them and every answer on them go, the waiting list moves up
+// into any seat that frees, the race posts on Discord are redone and the
+// member is told (lib/newcomers.js). 409 once they have race results.
+router.post("/members/:discordId/turn-away", async (req, res, next) => {
+  try {
+    res.json({ ok: true, ...(await turnAwayNewcomer(prisma, req.params.discordId)) });
   } catch (e) {
     next(e);
   }
@@ -3846,7 +3881,7 @@ async function adminSeriesScope(seriesSlug) {
   return { series, seasonIds, raceIds: new Set(races.map((r) => r.id)) };
 }
 
-// GET /api/admin/todo -> { resets, requests, givenBack, overdue }
+// GET /api/admin/todo -> { resets, requests, givenBack, overdue, newDrivers }
 // The To do card at the top of the admin area: the pieces of work that used to
 // arrive as bell notifications, listed where they are done and only for as
 // long as they are open. The counts beside them (bug reports, logins, seats)
@@ -3857,6 +3892,8 @@ async function adminSeriesScope(seriesSlug) {
 //             series — the question belongs to a board, and an admin looking
 //             at Friday must still see that Sunday's times are waiting.
 //   requests  who pressed "I want to race" and is not linked to a driver yet.
+//   newDrivers newcomers who signed themselves up and are not kept or turned
+//             away yet (lib/newcomers.js).
 //   givenBack seats a reserve gave back that are still open on a race that has
 //             not been run. Nothing else in the database remembers that a seat
 //             was once filled, so these come from the admin rows written when
@@ -3934,7 +3971,21 @@ router.get("/todo", async (req, res, next) => {
     // A failure here must not cost the admin the rest of the card.
     const overdue = await overdueOfActiveSeason(req.query.series).catch(() => []);
 
-    res.json({ resets, requests, givenBack, overdue });
+    // Newcomers who signed themselves up (lib/newcomers.js) and are waiting
+    // for a keep or a turn-away. Same rule as the Members tab's badge.
+    const newRows = await prisma.$queryRaw`
+      SELECT m."discordId", m."displayName", m."username", m."newDriverAt", d."name" AS "driverName"
+      FROM "MemberAccount" m
+      JOIN "Driver" d ON d."discordUserId" = m."discordId"
+      WHERE m."newDriverAt" IS NOT NULL AND m."mainDiscordId" IS NULL
+      ORDER BY m."newDriverAt" DESC`.catch(() => []);
+    const newDrivers = newRows.map((m) => ({
+      discordId: String(m.discordId),
+      name: m.driverName || m.displayName || m.username || "Someone",
+      at: m.newDriverAt,
+    }));
+
+    res.json({ resets, requests, givenBack, overdue, newDrivers });
   } catch (e) {
     next(e);
   }
@@ -4041,6 +4092,8 @@ router.get("/attention", async (req, res, next) => {
       (r) => !REPORT_DECIDED.includes(r.status) && (!scope || !r.raceId || scope.raceIds.has(r.raceId))
     ).length;
     const members = Number(memberRows[0]?.n || 0);
+    // Newcomers who signed themselves up and wait for a keep or a turn-away.
+    const newDrivers = await countNewDrivers();
     // A server reset whose times nobody has kept or dropped yet. It is work in
     // the same sense the rest of this is: until it is answered the training
     // board is missing the week, and the times age out after a fortnight.
@@ -4049,11 +4102,12 @@ router.get("/attention", async (req, res, next) => {
     res.json({
       feedback,
       members,
+      newDrivers,
       market,
       resets,
       // Not added in. See the note above.
       reports,
-      total: feedback + members + market + resets,
+      total: feedback + members + newDrivers + market + resets,
     });
   } catch (e) {
     next(e);
@@ -4139,6 +4193,23 @@ router.post("/members/:discordId/link", async (req, res, next) => {
     if (account.mainDiscordId) {
       return res.status(400).json({ error: "This is a second account. Link its main account to the driver instead, or make it stand on its own first." });
     }
+    // A newcomer who signed themselves up and turns out to be somebody we
+    // know: a driver from the roster who had simply never logged in. The row
+    // the site made for them in the same season is folded into this one, with
+    // their answers (services/driverMerge.js), so the season does not end up
+    // with the same person twice. Rows it made in other seasons stay, linked
+    // to this driver as the same person.
+    let merged = null;
+    if (account.newDriverAt) {
+      const fresh = (await newcomerRows(prisma, account)).filter((r) => r.id !== driver.id);
+      const twin = fresh.find((r) => r.seasonId === driver.seasonId);
+      if (twin) {
+        await mergeDrivers(prisma, { keepId: driver.id, dropId: twin.id });
+        merged = { id: twin.id, name: twin.name };
+      }
+      const others = fresh.filter((r) => r.id !== twin?.id).map((r) => r.id);
+      if (others.length) await dbLinkDrivers(prisma, [driver.id, ...others]).catch(() => {});
+    }
     await prisma.$transaction([
       prisma.driver.updateMany({
         where: { discordUserId: req.params.discordId },
@@ -4149,13 +4220,15 @@ router.post("/members/:discordId/link", async (req, res, next) => {
         data: { discordUserId: req.params.discordId, discordAvatar: account.avatarUrl ?? undefined },
       }),
     ]);
-    // Linked = their "I want to race" hand-raise (if any) is answered.
+    // Linked = their "I want to race" hand-raise (if any) is answered, and an
+    // admin has decided who they are: neither "new" nor "turned away" now.
     await dbClearRaceRequest(prisma, req.params.discordId);
+    await settleNewcomer(prisma, req.params.discordId);
     // If they linked their Steam account while waiting for a driver row, the
     // proved id moves onto that row now, so the next result import matches them
     // by Steam GUID instead of by name.
     const steam = await applyMemberSteamId(prisma, req.params.discordId, driverId);
-    res.json({ ok: true, steam });
+    res.json({ ok: true, steam, merged });
   } catch (e) {
     next(e);
   }
@@ -4201,8 +4274,10 @@ router.post("/members/:discordId/create-driver", async (req, res, next) => {
         },
       }),
     ]);
-    // A fresh driver answers their "I want to race" hand-raise (if any).
+    // A fresh driver answers their "I want to race" hand-raise (if any), and
+    // settles a turn-away: an admin made this driver by hand.
     await dbClearRaceRequest(prisma, req.params.discordId);
+    await settleNewcomer(prisma, req.params.discordId);
     // This is the main case for the member-side Steam link: they proved their
     // account weeks ago, the driver row only exists now. Seed it here.
     const steam = await applyMemberSteamId(prisma, req.params.discordId, driver.id);
