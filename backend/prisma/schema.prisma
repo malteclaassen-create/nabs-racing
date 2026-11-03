@@ -734,6 +734,13 @@ model Report {
   penaltyKind       String?
   // Unused since the league dropped licence points; old rows keep theirs.
   licencePoints     Int?
+  // Why the stewards decided as they did: one of lib/reports.js
+  // DECISION_REASONS (AVOIDABLE_CONTACT, OFF_TRACK_OVERTAKE, ...). NULL on a
+  // decision from before reasons existed, and on anything not decided.
+  decisionReason    String?
+  // A report its driver took back (status WITHDRAWN): their reason and when.
+  withdrawReason    String?
+  withdrawnAt       DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime?
 

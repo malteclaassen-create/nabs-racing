@@ -37,6 +37,7 @@ const {
   dbAddAttachment, dbAttachments, dbDeleteReport, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES,
   dbReportsFor, roleOn, dbPenaltiesForRace, dbMarkPenaltiesApplied,
   dbGetReport, dbDriverRecord, penaltyOutcome,
+  dbWithdrawReport, decisionText, DECISION_REASONS, REPORT_DECIDED,
 } = await import("./reports.js");
 
 // A report is a PRIVATE conversation, and everything below is about who is let
@@ -86,6 +87,12 @@ function makePrisma({ races = [], settings = {} } = {}) {
         rows.ReportBlock = rows.ReportBlock.filter((b) => b.reportId !== a[0]);
       } else if (sql.startsWith('DELETE FROM "ReportViewer" WHERE "reportId" = ? AND "discordId"')) {
         rows.ReportViewer = rows.ReportViewer.filter((v) => !(v.reportId === a[0] && v.discordId === a[1]));
+      } else if (sql.startsWith('UPDATE "Report" SET "status" = ?, "withdrawReason"')) {
+        const r = rows.Report.find((x) => x.id === a[4]);
+        Object.assign(r, { status: a[0], withdrawReason: a[1], withdrawnAt: a[2], updatedAt: a[3] });
+      } else if (sql.startsWith('UPDATE "Report" SET "decisionReason"')) {
+        const r = rows.Report.find((x) => x.id === a[1]);
+        if (r) r.decisionReason = a[0];
       } else if (sql.startsWith('UPDATE "Report" SET "status"')) {
         const r = rows.Report.find((x) => x.id === a[5]);
         Object.assign(r, { status: a[0], verdict: a[1], penaltySeconds: a[2], penaltyKind: a[3], updatedAt: a[4] });
@@ -779,5 +786,82 @@ describe("driver record", () => {
     const p = makePrisma({ races: S7 });
     expect(await dbDriverRecord(p, await dbCreateReport(p, { ...base, raceId: "r1" }))).toBe(null);
     expect(await dbDriverRecord(p, await dbCreateReport(p, { ...base, accusedDriverId: "d2" }))).toBe(null);
+  });
+});
+
+// The stewards' reason, and the reporter taking a report back. Both were asked
+// for by the league's drivers; both are about who gets to know what.
+describe("decision reasons", () => {
+  it("keeps the reason with a penalty and tells both drivers what it was for", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2", accusedName: "Max" });
+    notes.length = 0;
+    const out = await dbDecideReport(prisma, r, {
+      status: "PENALTY", penaltyKind: "TIME", penaltySeconds: 5, decisionReason: "avoidable_contact",
+      verdict: "Late on the brakes into T1 and took Max out.",
+    });
+    expect(out.decisionReason).toBe("AVOIDABLE_CONTACT");
+    expect(notes.map((n) => n.body)).toEqual([
+      "Penalty: 5 seconds. Reason: Avoidable Contact.",
+      "Penalty: 5 seconds. Reason: Avoidable Contact.",
+    ]);
+  });
+
+  it("explains a no-penalty too, and leaves the reason off anything that is not an answer", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2", accusedName: "Max" });
+    const none = await dbDecideReport(prisma, r, { status: "NO_PENALTY", decisionReason: "NA" });
+    expect(none.decisionReason).toBe("NA");
+    expect(decisionText(none)).toBe("No penalty was given.");
+    const closed = await dbDecideReport(prisma, r, { status: "DISMISSED", decisionReason: "UNSAFE_REJOIN" });
+    expect(closed.decisionReason).toBe(null);
+  });
+
+  it("refuses a reason the drivers' page could not put into words", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2" });
+    await expect(dbDecideReport(prisma, r, { status: "PENALTY", decisionReason: "SPEEDING" })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("offers exactly the list the stewards asked for", () => {
+    expect(Object.values(DECISION_REASONS)).toEqual([
+      "Avoidable Contact", "Overtaking Off Track", "Overtaking Under SC", "Unsafe Rejoin", "N/A", "Other",
+    ]);
+  });
+});
+
+describe("withdrawing a report", () => {
+  it("keeps the report, closes it with the reason and tells the driver it named, not why", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2", accusedName: "Max" });
+    notes.length = 0;
+    const out = await dbWithdrawReport(prisma, r, { reason: "We talked it out after the race" });
+    expect(out.status).toBe("WITHDRAWN");
+    expect(out.withdrawReason).toBe("We talked it out after the race");
+    expect(out.withdrawnAt).toBeTruthy();
+    expect(rows.Report).toHaveLength(1);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].recipientId).toBe("222");
+    expect(notes[0].body).not.toContain("talked");
+    // Closed: out of every "open" count.
+    expect(REPORT_DECIDED).toContain("WITHDRAWN");
+  });
+
+  it("works while the stewards are looking at it, with the thread kept", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2" });
+    await dbAddMessage(prisma, r, { author: "ACCUSED", authorDiscordId: "222", authorName: "Max", body: "Sorry about that" });
+    const looking = await dbDecideReport(prisma, r, { status: "REVIEWING" });
+    const out = await dbWithdrawReport(prisma, looking, { reason: "He said sorry" });
+    expect(out.status).toBe("WITHDRAWN");
+    expect(rows.ReportMessage).toHaveLength(1);
+  });
+
+  it("needs a reason, and is not possible once the stewards have decided", async () => {
+    const prisma = makePrisma();
+    const r = await dbCreateReport(prisma, { ...base, accusedDriverId: "d2" });
+    await expect(dbWithdrawReport(prisma, r, { reason: " " })).rejects.toMatchObject({ status: 400 });
+    const decided = await dbDecideReport(prisma, r, { status: "NO_PENALTY", decisionReason: "NA" });
+    await expect(dbWithdrawReport(prisma, decided, { reason: "Changed my mind" })).rejects.toMatchObject({ status: 409 });
   });
 });

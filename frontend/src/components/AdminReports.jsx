@@ -9,7 +9,7 @@ import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
 import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
 import AdminIncidentWatch from "./AdminIncidentWatch.jsx";
-import { PENALTY_KINDS, filterReports, penaltyLabel, resultsGap } from "./reportDesk.mjs";
+import { PENALTY_KINDS, DECISION_REASONS, needsReason, decisionMissing, reasonLabel, filterReports, penaltyLabel, resultsGap } from "./reportDesk.mjs";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -37,8 +37,12 @@ const STATUS = [
   { key: "PENALTY", label: "Penalty", cls: "bg-red-500/15 text-bad" },
   { key: "NO_PENALTY", label: "No penalty", cls: "bg-emerald-500/15 text-ok" },
   { key: "DISMISSED", label: "Closed", cls: "bg-surface2 text-light" },
+  // The reporter took it back, with a reason (backend dbWithdrawReport). Not an
+  // outcome the desk can pick: the Outcome select only shows it while a report
+  // already has it.
+  { key: "WITHDRAWN", label: "Withdrawn", cls: "bg-surface2 text-light" },
 ];
-const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
+const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED", "WITHDRAWN"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 // "R5 Spa", "R5 Spa Sprint". The desk's races already carry their event's
@@ -54,13 +58,15 @@ const draftOf = (rep) => ({
   penaltyKind: rep.penaltyKind || "TIME",
   penaltySeconds: rep.penaltySeconds ?? "",
   verdict: rep.verdict || "",
+  decisionReason: rep.decisionReason || "",
 });
 
 const draftDirty = (draft, rep) =>
   draft.status !== rep.status ||
   (draft.status === "PENALTY" && draft.penaltyKind !== (rep.penaltyKind || "TIME")) ||
   String(draft.penaltySeconds) !== String(rep.penaltySeconds ?? "") ||
-  draft.verdict !== (rep.verdict || "");
+  draft.verdict !== (rep.verdict || "") ||
+  (needsReason(draft.status) && draft.decisionReason !== (rep.decisionReason || ""));
 
 // What the server is sent. The kind only means something on a penalty, and the
 // seconds only on a TIME one: the backend drops them on any other kind anyway,
@@ -70,11 +76,21 @@ const decisionBody = (draft) => ({
   penaltyKind: draft.status === "PENALTY" ? draft.penaltyKind : null,
   penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
   verdict: draft.verdict,
+  // Why: asked with every penalty and every "no penalty", so both drivers know
+  // (reportDesk.mjs DECISION_REASONS). Nothing for any other outcome.
+  decisionReason: needsReason(draft.status) ? draft.decisionReason || null : null,
 });
+
+// The stewards' sentence. With a reason picked from the list it is the extra
+// word on top; with "Other" it is the reason, and Save waits for it.
+const VERDICT_PLACEHOLDER = "One sentence for both drivers: what you saw and why you decided this…";
 
 // The line under the Save button: what saving does and, as important, what it
 // does NOT do. Only a time penalty goes anywhere near the results.
 function decisionNote(draft, who = "the drivers") {
+  // Still as the reporter left it: nothing to save, but the desk can decide it
+  // anyway by picking an outcome.
+  if (draft.status === "WITHDRAWN") return "Withdrawn by the driver who filed it. Pick an outcome to decide it anyway.";
   if (!DECIDED.includes(draft.status)) return "Nothing is sent yet.";
   if (draft.status !== "PENALTY" || draft.penaltyKind === "TIME") {
     return `Saving tells ${who}. Enter the penalty in Edit Results too.`;
@@ -100,11 +116,26 @@ function DecisionFields({ draft, setDraft, busy }) {
           disabled={busy}
           onChange={(e) => setDraft({ ...draft, status: e.target.value })}
         >
-          {STATUS.map((s) => (
-            <option key={s.key} value={s.key}>{s.label}</option>
+          {STATUS.filter((s) => s.key !== "WITHDRAWN" || draft.status === "WITHDRAWN").map((s) => (
+            <option key={s.key} value={s.key} disabled={s.key === "WITHDRAWN"}>{s.label}</option>
           ))}
         </select>
       </Field>
+      {needsReason(draft.status) && (
+        <Field label="Reason" tone="plain">
+          <select
+            className="input py-1.5 text-sm"
+            value={draft.decisionReason}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, decisionReason: e.target.value })}
+          >
+            <option value="">Pick a reason…</option>
+            {DECISION_REASONS.map((x) => (
+              <option key={x.key} value={x.key}>{x.label}</option>
+            ))}
+          </select>
+        </Field>
+      )}
       {penalty && (
         <Field label="Kind" tone="plain">
           <select
@@ -119,7 +150,7 @@ function DecisionFields({ draft, setDraft, busy }) {
           </select>
         </Field>
       )}
-      {(!penalty || draft.penaltyKind === "TIME") && (
+      {(!penalty || draft.penaltyKind === "TIME") && draft.status !== "WITHDRAWN" && (
         <Field label="Seconds" tone="plain">
           <input
             type="number"
@@ -367,8 +398,9 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
   const [draft, setDraft] = useState(() => draftOf(linked));
   useEffect(() => {
     setDraft(draftOf(linked));
-  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.verdict]);
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.verdict, linked.decisionReason]);
   const dirty = draftDirty(draft, linked);
+  const missing = decisionMissing(draft);
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -388,7 +420,7 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
       <textarea
         aria-label={`What the stewards decided about ${linked.accusedName || "the second driver"}`}
         className="input mt-2 h-16 resize-none"
-        placeholder="What you decided, in the drivers' words rather than yours…"
+        placeholder={VERDICT_PLACEHOLDER}
         value={draft.verdict}
         disabled={busy}
         onChange={(e) => setDraft({ ...draft, verdict: e.target.value })}
@@ -396,13 +428,14 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <button
           className="btn-primary"
-          disabled={busy || !dirty}
+          disabled={busy || !dirty || !!missing}
+          title={missing || undefined}
           onClick={() => onSave(decisionBody(draft))}
         >
           {busy ? "Saving…" : "Save decision"}
         </button>
-        <p className="min-w-40 flex-1 text-xs text-light">
-          {decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
+        <p className={`min-w-40 flex-1 text-xs ${missing && dirty ? "font-semibold text-warn" : "text-light"}`}>
+          {missing && dirty ? `${missing} first.` : decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
         </p>
       </div>
     </div>
@@ -542,6 +575,19 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
           />
 
 
+      {/* Taken back by the driver who filed it, and why. The report stays so
+          the stewards are never left wondering where it went; deciding it
+          anyway is still possible below. */}
+      {r.status === "WITHDRAWN" && (
+        <div className="rounded-lg border border-border bg-surface2/60 p-4 text-sm">
+          <div className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">
+            Withdrawn by {r.reporterName || "the driver who filed it"}
+            {r.withdrawnAt ? ` · ${when(r.withdrawnAt)}` : ""}
+          </div>
+          <p className="mt-1 leading-relaxed text-dark">{r.withdrawReason || "No reason given."}</p>
+        </div>
+      )}
+
       {/* the decision */}
       <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Decision</div>
@@ -549,7 +595,7 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
         <textarea
           aria-label="What the stewards decided"
           className="input mt-2 h-16 resize-none"
-          placeholder="What you decided, in the drivers' words rather than yours…"
+          placeholder={VERDICT_PLACEHOLDER}
           value={draft.verdict}
           disabled={busy}
           onChange={(e) => setDraft({ ...draft, verdict: e.target.value })}
@@ -557,7 +603,8 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             className="btn-primary"
-            disabled={busy || !dirty}
+            disabled={busy || !dirty || !!decisionMissing(draft)}
+            title={decisionMissing(draft) || undefined}
             onClick={() =>
               run(
                 () => api.decideReport(id, decisionBody(draft)),
@@ -586,7 +633,9 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
           )}
           {/* The one thing the controls do NOT say: saving sends a message to
               people, and these seconds never reach the classification. */}
-          <p className="min-w-40 flex-1 text-xs text-light">{decisionNote(draft)}</p>
+          <p className={`min-w-40 flex-1 text-xs ${decisionMissing(draft) && dirty ? "font-semibold text-warn" : "text-light"}`}>
+            {decisionMissing(draft) && dirty ? `${decisionMissing(draft)} first.` : decisionNote(draft)}
+          </p>
         </div>
         {/* Decided, and not in the classification yet. The editor fills the
             seconds in when the round is opened; until somebody does and
@@ -985,6 +1034,9 @@ function ContactSuggestions({ report }) {
                   <span className="pill bg-brand/15 text-brand">in-game</span>
                 )}
                 <span className={`pill ${s.cls}`}>{s.label}</span>
+                {reasonLabel(openReportRow) && (
+                  <span className="pill bg-surface2 text-medium">{reasonLabel(openReportRow)}</span>
+                )}
                 {penaltyLabel(openReportRow) && (
                   <span className="pill bg-red-500/15 text-bad">{penaltyLabel(openReportRow)}</span>
                 )}
@@ -1241,6 +1293,8 @@ function ContactSuggestions({ report }) {
                       </span>
                     )}
                     {penaltyLabel(r) && <span className="pill bg-red-500/15 text-bad">{penaltyLabel(r)}</span>}
+                    {/* Why, as the drivers read it. */}
+                    {reasonLabel(r) && <span className="pill bg-surface2 text-medium">{reasonLabel(r)}</span>}
                     {/* Decided and not in the classification yet — the one
                         thing on a decided report still waiting for somebody. */}
                     {resultsGap(r) && <span className="pill bg-amber-500/15 text-warn">{resultsGap(r)}</span>}
