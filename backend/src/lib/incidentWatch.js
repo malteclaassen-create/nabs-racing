@@ -117,7 +117,9 @@ export function incidentWatch({
     }
   }
   for (const rep of reports) {
-    if (!rep.accusedDriverId) continue;
+    // A report its driver withdrew (often "filed by mistake", against the
+    // wrong name) says nothing about the driver it named.
+    if (!rep.accusedDriverId || rep.status === "WITHDRAWN") continue;
     const roundId = roundFor(rep.raceId);
     if (!roundId) continue;
     const cell = cellOf(personOf(rep.accusedDriverId), roundId);

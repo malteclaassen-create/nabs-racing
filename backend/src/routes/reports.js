@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
   dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead,
-  dbAttachments, roleOn, dbSetAccused, dbThreadVoices, dbWithdrawReport,
+  dbAttachments, roleOn, dbSetAccused, dbThreadVoices, dbWithdrawReport, WITHDRAWN,
 } from "../lib/reports.js";
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
@@ -389,7 +389,9 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     // than the row it was opened from.
     const oneRace = await racesForReports([report]);
     const [anchored] = await withSeries(await anchorReports(prisma, [report], oneRace), oneRace);
-    const role = me.isAdmin ? null : await roleOn(prisma, report, me.discordId);
+    // Asked of admins too: an admin who filed a report (or filed it from a
+    // second account) is its reporter on this page like anybody else.
+    const role = await roleOn(prisma, report, me.discordId);
     res.json({
       report: forReader(
         // `myRole` as the list carries it, so the page knows who it is talking
@@ -496,6 +498,11 @@ router.put("/:id/accused", optionalUser, async (req, res, next) => {
     }
     if (!me.discordId || String(report.reporterDiscordId || "") !== String(me.discordId)) {
       return res.status(403).json({ error: "Only the driver who filed a report can say who it is about" });
+    }
+    // Naming somebody lets them in and tells them. On a report that has been
+    // withdrawn that would pull a driver into something already closed.
+    if (report.status === WITHDRAWN) {
+      return res.status(409).json({ error: "This report was withdrawn, so it can't name anyone now" });
     }
     const driverId = String(req.body?.accusedDriverId || "").trim();
     const driver = driverId

@@ -108,8 +108,10 @@ function Thread({ id, races, onBack, onChanged }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.withdrawReport(id, why.trim());
-      setData((d) => ({ ...d, report: { ...d.report, ...res.report } }));
+      await api.withdrawReport(id, why.trim());
+      // Read again rather than merged: the page's copy carries the matched
+      // contact (lap, speed) that the plain answer does not.
+      await load();
       setWithdrawing(false);
       onChanged?.();
     } catch (e) {
@@ -139,7 +141,7 @@ function Thread({ id, races, onBack, onChanged }) {
   // do twice, so it is a one-way door: once it is answered — here, or at the
   // stewards' desk after the race — nobody can re-point the report.
   const needsAccused =
-    !!r && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
+    !!r && r.status !== "WITHDRAWN" && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
   // The driver who filed it (from their second account too, which the server
   // works out) may take it back until the stewards have decided.
   const isReporter = !!r && (r.myRole === "REPORTER" || (!!myDiscordId() && r.reporterDiscordId === myDiscordId()));

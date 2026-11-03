@@ -876,7 +876,10 @@ export async function dbDecidedForRace(prisma, raceId) {
   if (!raceId) return [];
   const rows = await prisma
     .$queryRawUnsafe(
-      `SELECT * FROM "Report" WHERE "raceId" = ? AND "status" IN ('PENALTY','NO_PENALTY','DISMISSED')
+      // WITHDRAWN too: a penalty already written into the classification,
+      // reopened and then withdrawn by the reporter, is worth nothing now, and
+      // the editor has to see it to take the seconds back off.
+      `SELECT * FROM "Report" WHERE "raceId" = ? AND "status" IN ('PENALTY','NO_PENALTY','DISMISSED','WITHDRAWN')
         ORDER BY datetime("updatedAt") DESC, datetime("createdAt") DESC`,
       raceId
     )

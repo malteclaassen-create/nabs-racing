@@ -115,7 +115,7 @@ function makePrisma({ races = [], settings = {} } = {}) {
       if (sql.includes('FROM "Report" WHERE "raceId" IN')) return rows.Report.filter((r) => a.includes(r.raceId));
       if (sql.includes('FROM "Report" WHERE "raceId"'))
         return rows.Report.filter(
-          (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED"].includes(r.status)
+          (r) => r.raceId === a[0] && ["PENALTY", "NO_PENALTY", "DISMISSED", "WITHDRAWN"].includes(r.status)
         );
       if (sql.includes('FROM "Report" ORDER BY')) return [...rows.Report];
       if (sql.includes('FROM "ReportBlock" WHERE "reportId"')) return rows.ReportBlock.filter((b) => b.reportId === a[0]);

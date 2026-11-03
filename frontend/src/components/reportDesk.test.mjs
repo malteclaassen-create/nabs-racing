@@ -69,6 +69,8 @@ test("a penalty or a no-penalty needs a reason before it can be saved, and Other
   // Nothing is owed for anything that is not an answer.
   assert.equal(decisionMissing({ status: "REVIEWING" }), null);
   assert.equal(decisionMissing({ status: "DISMISSED" }), null);
+  // A withdrawn report cannot be saved as it is: the desk picks an outcome.
+  assert.equal(decisionMissing({ status: "WITHDRAWN", verdict: "Noted." }), "Pick an outcome");
 });
 
 test("the reason reads as the stewards' own words, and N/A and Other leave it to their sentence", () => {

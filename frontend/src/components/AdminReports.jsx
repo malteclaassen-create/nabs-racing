@@ -105,7 +105,7 @@ function decisionNote(draft, who = "the drivers") {
 // linked driver's. The kind only appears on a penalty, and seconds only
 // on a time penalty, so the form never offers a number that would be thrown
 // away.
-function DecisionFields({ draft, setDraft, busy }) {
+function DecisionFields({ draft, setDraft, busy, stored = null }) {
   const penalty = draft.status === "PENALTY";
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -116,8 +116,10 @@ function DecisionFields({ draft, setDraft, busy }) {
           disabled={busy}
           onChange={(e) => setDraft({ ...draft, status: e.target.value })}
         >
-          {STATUS.filter((s) => s.key !== "WITHDRAWN" || draft.status === "WITHDRAWN").map((s) => (
-            <option key={s.key} value={s.key} disabled={s.key === "WITHDRAWN"}>{s.label}</option>
+          {/* Withdrawn is listed only on a report that is withdrawn, so the
+              desk can go back to leaving it as the reporter left it. */}
+          {STATUS.filter((s) => s.key !== "WITHDRAWN" || stored === "WITHDRAWN" || draft.status === "WITHDRAWN").map((s) => (
+            <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
       </Field>
@@ -416,7 +418,14 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
           Remove from this incident
         </button>
       </div>
-      <DecisionFields draft={draft} setDraft={setDraft} busy={busy} />
+      {/* This driver's report was withdrawn by whoever filed it. */}
+      {linked.status === "WITHDRAWN" && (
+        <p className="mb-2 text-sm leading-relaxed text-dark">
+          Withdrawn by the driver who filed it{linked.withdrawnAt ? ` (${when(linked.withdrawnAt)})` : ""}:{" "}
+          {linked.withdrawReason || "No reason given."}
+        </p>
+      )}
+      <DecisionFields draft={draft} setDraft={setDraft} busy={busy} stored={linked.status} />
       <textarea
         aria-label={`What the stewards decided about ${linked.accusedName || "the second driver"}`}
         className="input mt-2 h-16 resize-none"
@@ -434,6 +443,11 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
         >
           {busy ? "Saving…" : "Save decision"}
         </button>
+        {dirty && (
+          <button className="btn-secondary" disabled={busy} onClick={() => setDraft(draftOf(linked))}>
+            Undo
+          </button>
+        )}
         <p className={`min-w-40 flex-1 text-xs ${missing && dirty ? "font-semibold text-warn" : "text-light"}`}>
           {missing && dirty ? `${missing} first.` : decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
         </p>
@@ -591,7 +605,7 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
       {/* the decision */}
       <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Decision</div>
-        <DecisionFields draft={draft} setDraft={setDraft} busy={busy} />
+        <DecisionFields draft={draft} setDraft={setDraft} busy={busy} stored={r.status} />
         <textarea
           aria-label="What the stewards decided"
           className="input mt-2 h-16 resize-none"

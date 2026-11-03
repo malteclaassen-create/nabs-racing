@@ -7982,6 +7982,7 @@ router.get("/reports/:id", async (req, res, next) => {
         penaltyKind: l.penaltyKind,
         decisionReason: l.decisionReason,
         withdrawReason: l.withdrawReason,
+        withdrawnAt: l.withdrawnAt,
       })),
       // The named driver's season so far — their other reports and how each was
       // decided — so a third incident is never decided without the first two

@@ -107,6 +107,9 @@ describe("incidentWatch", () => {
         { raceId: "r1", accusedDriverId: "a", status: "PENALTY" },
         { raceId: "r1", accusedDriverId: "a", status: "NO_PENALTY" },
         { raceId: "r2s", accusedDriverId: "a", status: "NEW" },
+        // Withdrawn by the driver who filed it (a misclick, a settled
+        // argument): not held against the driver it named.
+        { raceId: "r1", accusedDriverId: "a", status: "WITHDRAWN" },
         // Names nobody: belongs to no line.
         { raceId: "r1", accusedDriverId: null, status: "NEW" },
         // Named in a round they did not start: still listed, with no races.

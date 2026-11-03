@@ -47,6 +47,9 @@ export function reasonLabel(r) {
 // is complete: a reason on a penalty or a no-penalty, and their own sentence
 // when the reason is "Other".
 export function decisionMissing(d) {
+  // Withdrawn is how the reporter left it, not an outcome the desk can save:
+  // deciding it anyway means picking one.
+  if (d?.status === "WITHDRAWN") return "Pick an outcome";
   if (!needsReason(d?.status)) return null;
   if (!d.decisionReason) return "Pick a reason";
   if (d.decisionReason === "OTHER" && !String(d.verdict || "").trim()) return "Write one sentence for Other";
