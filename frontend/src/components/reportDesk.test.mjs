@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterReports, penaltyLabel, penaltySummary, resultsGap } from "./reportDesk.mjs";
+import { filterReports, penaltyLabel, penaltySummary, resultsGap, reasonLabel, decisionMissing, DECISION_REASONS } from "./reportDesk.mjs";
 
 const rep = (over = {}) => ({
   id: "x",
@@ -59,4 +59,33 @@ test("the list filters combine", () => {
   assert.deepEqual(ids({ show: "all", q: "power" }), ["d"]);
   assert.deepEqual(ids({ show: "all", q: "STEVE" }), ["c"]);
   assert.deepEqual(ids({ show: "open", q: "mtim" }), ["a"]);
+});
+
+test("a penalty or a no-penalty needs a reason before it can be saved, and Other needs a sentence", () => {
+  assert.equal(decisionMissing({ status: "PENALTY" }), "Pick a reason");
+  assert.equal(decisionMissing({ status: "NO_PENALTY", decisionReason: "OTHER", verdict: " " }), "Write one sentence for Other");
+  assert.equal(decisionMissing({ status: "NO_PENALTY", decisionReason: "OTHER", verdict: "Both drivers were at fault." }), null);
+  assert.equal(decisionMissing({ status: "PENALTY", decisionReason: "UNSAFE_REJOIN" }), null);
+  // Nothing is owed for anything that is not an answer.
+  assert.equal(decisionMissing({ status: "REVIEWING" }), null);
+  assert.equal(decisionMissing({ status: "DISMISSED" }), null);
+  // A withdrawn report cannot be saved as it is: the desk picks an outcome.
+  assert.equal(decisionMissing({ status: "WITHDRAWN", verdict: "Noted." }), "Pick an outcome");
+});
+
+test("the reason reads as the stewards' own words, and N/A and Other leave it to their sentence", () => {
+  assert.equal(reasonLabel({ decisionReason: "SC_OVERTAKE" }), "Overtaking Under SC");
+  assert.equal(reasonLabel({ decisionReason: "NA" }), null);
+  assert.equal(reasonLabel({ decisionReason: "OTHER" }), null);
+  assert.equal(reasonLabel({}), null);
+  assert.deepEqual(
+    DECISION_REASONS.map((r) => r.label),
+    ["Avoidable Contact", "Overtaking Off Track", "Overtaking Under SC", "Unsafe Rejoin", "N/A", "Other"]
+  );
+});
+
+test("a withdrawn report is closed, not waiting", () => {
+  const list = [rep({ id: "a", status: "WITHDRAWN" }), rep({ id: "b", status: "NEW" })];
+  const open = filterReports(list, { show: "open" });
+  assert.deepEqual(open.map((r) => r.id), ["b"]);
 });

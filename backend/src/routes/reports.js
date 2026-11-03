@@ -2,10 +2,10 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
-  dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead, dbDeleteReport,
-  dbAttachments, roleOn, dbSetAccused, dbThreadVoices,
+  dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead,
+  dbAttachments, roleOn, dbSetAccused, dbThreadVoices, dbWithdrawReport, WITHDRAWN,
 } from "../lib/reports.js";
-import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
+import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { selfMadeRowIds } from "../lib/members.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
@@ -159,39 +159,46 @@ router.post("/", optionalUser, async (req, res, next) => {
   }
 });
 
-// DELETE /api/reports/:id — withdrawing one you filed by mistake.
+// POST /api/reports/:id/withdraw { reason } — the driver who filed a report
+// takes it back, and says why (lib/reports.js dbWithdrawReport).
 //
-// Only the reporter, and only while nothing has happened to it: once the
-// stewards have opened it or answered, it is part of a conversation with other
-// people in it and taking it away silently is not the reporter's to do. They
-// can say so in the thread instead.
-router.delete("/:id", optionalUser, async (req, res, next) => {
+// It used to be a delete, and only while nobody had touched the report: then
+// it was gone, thread and all, and the stewards were left with nothing. The
+// stewards asked for the reason instead, so the report now stays, closed, with
+// the reporter's word on it. Possible until the stewards have decided it.
+//
+// The reporter is worked out the way the rest of the thread does it (roleOn),
+// so a report filed from somebody's second Discord account can be withdrawn
+// from their main one too.
+async function withdraw(req, res, next) {
   try {
     const me = caller(req);
     const report = await dbGetReport(prisma, req.params.id);
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
-    if (String(report.reporterDiscordId || "") !== String(me.discordId || "")) {
+    if ((await roleOn(prisma, report, me.discordId)) !== "REPORTER") {
       return res.status(403).json({ error: "Only the driver who filed a report can withdraw it" });
     }
-    if (report.status !== "NEW") {
-      return res.status(409).json({ error: "The stewards have already picked this up. Say so in the thread instead." });
-    }
-    const messages = await dbMessages(prisma, report.id);
-    if (messages.length) {
-      return res.status(409).json({ error: "Somebody has answered this already. Say so in the thread instead." });
-    }
-    // The files go too. dbDeleteReport hands back what was on disk and this
-    // route used to drop that on the floor, so a withdrawn report left its
-    // pictures behind: rows gone, bytes still there, and nothing left pointing
-    // at them to ever clean them up. The admin delete has always done this.
-    removeAttachmentFiles(report.id, await dbDeleteReport(prisma, report.id));
-    res.json({ ok: true });
+    const fresh = await dbWithdrawReport(prisma, report, { reason: req.body?.reason });
+    res.json({ ok: true, report: fresh });
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
-});
+}
+router.post("/:id/withdraw", optionalUser, withdraw);
+// The old address, for a page that was open before this changed. It needs the
+// reason in its body like the new one: nothing disappears without a word.
+router.delete("/:id", optionalUser, withdraw);
+
+// The reporter's reason for withdrawing is their word to the stewards. The
+// reporter and the stewards read it; the driver it named and anybody let in to
+// read along see that it was withdrawn, not why.
+function forReader(report, role, isAdmin) {
+  if (!report?.withdrawReason || isAdmin || role === "REPORTER" || role === "STEWARD") return report;
+  return { ...report, withdrawReason: null };
+}
 
 // The Steam GUID this account races under, across every season row the person
 // owns. Assetto Corsa knows people by that number and nothing else, and it is
@@ -352,7 +359,9 @@ router.get("/", optionalUser, async (req, res, next) => {
     // running it showed the driver, and the steward reading the same page, a
     // row that said only who filed it, while the admin tab showed the incident.
     res.json({
-      reports: await withSeries(await anchorReports(prisma, reports, races), races),
+      reports: (await withSeries(await anchorReports(prisma, reports, races), races)).map((r) =>
+        forReader(r, r.myRole, me.isAdmin)
+      ),
       // What the window is holding back, counted on reports this account may
       // actually read — so the button never offers rounds that turn out to be
       // somebody else's arguments.
@@ -380,8 +389,17 @@ router.get("/:id", optionalUser, async (req, res, next) => {
     // than the row it was opened from.
     const oneRace = await racesForReports([report]);
     const [anchored] = await withSeries(await anchorReports(prisma, [report], oneRace), oneRace);
+    // Asked of admins too: an admin who filed a report (or filed it from a
+    // second account) is its reporter on this page like anybody else.
+    const role = await roleOn(prisma, report, me.discordId);
     res.json({
-      report: { ...anchored, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
+      report: forReader(
+        // `myRole` as the list carries it, so the page knows who it is talking
+        // to (only the REPORTER is offered "withdraw", second account included).
+        { ...anchored, myRole: role, reporterTeam: teams.get(String(report.reporterDiscordId || "")) || null },
+        role,
+        me.isAdmin
+      ),
       messages: await dbMessages(prisma, report.id, me.discordId, teams),
       attachments: await dbAttachments(prisma, report.id),
     });
@@ -480,6 +498,11 @@ router.put("/:id/accused", optionalUser, async (req, res, next) => {
     }
     if (!me.discordId || String(report.reporterDiscordId || "") !== String(me.discordId)) {
       return res.status(403).json({ error: "Only the driver who filed a report can say who it is about" });
+    }
+    // Naming somebody lets them in and tells them. On a report that has been
+    // withdrawn that would pull a driver into something already closed.
+    if (report.status === WITHDRAWN) {
+      return res.status(409).json({ error: "This report was withdrawn, so it can't name anyone now" });
     }
     const driverId = String(req.body?.accusedDriverId || "").trim();
     const driver = driverId

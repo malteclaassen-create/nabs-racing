@@ -93,6 +93,14 @@ Not sure which file is the problem? The [Content Check](/content-check) tells yo
           a: "Use **Stewarding** on the site: [Report an incident](/reports). Add the lap and the corner, and the stewards can jump straight to that moment in the replay. Only you and the stewards see your report.",
         },
         {
+          q: "Can I take a report back?",
+          a: "Yes, until the stewards have decided it. Open it under [Stewarding](/reports), press **Withdraw this report** and say why, for example that you talked it out. The stewards see your reason, and the driver you named is told it was withdrawn.",
+        },
+        {
+          q: "Why did the stewards decide that?",
+          a: "Every penalty and every no-penalty comes with a reason, like **Avoidable Contact** or **Unsafe Rejoin**, and usually a sentence from the stewards. You find it on the report under [Stewarding](/reports) and in the notification. Still unsure? Ask in the report's thread.",
+        },
+        {
           q: "Why did my result change after the race?",
           a: "Penalties are added as **seconds on your race time** once the stewards are done, so positions can move after the race. The [Races](/races) page always shows the current classification.",
         },

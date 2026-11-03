@@ -10,7 +10,7 @@ import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
-import { penaltyLabel, penaltySummary } from "../components/reportDesk.mjs";
+import { penaltyLabel, penaltySummary, reasonLabel, WITHDRAW_REASONS } from "../components/reportDesk.mjs";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { ChevronDown } from "lucide-react";
 
@@ -47,6 +47,7 @@ const STATUS_META = {
   PENALTY: { label: "Penalty", cls: "bg-red-500/15 text-bad" },
   NO_PENALTY: { label: "No penalty", cls: "bg-emerald-500/15 text-ok" },
   DISMISSED: { label: "Closed", cls: "bg-surface2 text-light" },
+  WITHDRAWN: { label: "Withdrawn", cls: "bg-surface2 text-light" },
 };
 
 const when = (iso) => (iso ? fmtStamp(iso) : "");
@@ -57,6 +58,9 @@ function Thread({ id, races, onBack, onChanged }) {
   const [error, setError] = useState(null);
   const [drivers, setDrivers] = useState([]);
   const [pick, setPick] = useState("");
+  // Taking it back: the box opens on the button, and the reason is required.
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [why, setWhy] = useState("");
 
   const load = useCallback(
     () => api.report(id).then(setData).catch((e) => setError(e.message)),
@@ -100,6 +104,23 @@ function Thread({ id, races, onBack, onChanged }) {
     }
   }
 
+  async function withdraw() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.withdrawReport(id, why.trim());
+      // Read again rather than merged: the page's copy carries the matched
+      // contact (lap, speed) that the plain answer does not.
+      await load();
+      setWithdrawing(false);
+      onChanged?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(body, files) {
     setBusy(true);
     setError(null);
@@ -120,7 +141,12 @@ function Thread({ id, races, onBack, onChanged }) {
   // do twice, so it is a one-way door: once it is answered — here, or at the
   // stewards' desk after the race — nobody can re-point the report.
   const needsAccused =
-    !!r && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
+    !!r && r.status !== "WITHDRAWN" && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
+  // The driver who filed it (from their second account too, which the server
+  // works out) may take it back until the stewards have decided.
+  const isReporter = !!r && (r.myRole === "REPORTER" || (!!myDiscordId() && r.reporterDiscordId === myDiscordId()));
+  const canWithdraw = isReporter && (r.status === "NEW" || r.status === "REVIEWING");
+  const reason = r ? reasonLabel(r) : null;
 
   if (error && !data) return <ErrorBox message={error} />;
   if (!data) return <Spinner />;
@@ -174,14 +200,93 @@ function Thread({ id, races, onBack, onChanged }) {
             after it, what the penalty was — seconds, a warning, a grid drop or
             a disqualification. Only THIS report's; a driver's season record is
             the stewards' to see. */}
-        {(r.verdict || penaltySummary(r)) && (
+        {(r.verdict || penaltySummary(r) || reason) && (
           <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
             <span className="font-semibold text-dark">The stewards: </span>
+            {/* Why, from the stewards' list (Avoidable Contact, Unsafe
+                Rejoin, ...), so both drivers know what it was for. */}
+            {reason && <span className="font-semibold text-dark">{reason}. </span>}
             {r.verdict}
-            {penaltySummary(r) && (r.verdict ? ` (${penaltySummary(r)})` : `${capitalise(penaltySummary(r))}.`)}
+            {penaltySummary(r) &&
+              (r.verdict || reason ? ` (${penaltySummary(r)})` : `${capitalise(penaltySummary(r))}.`)}
           </p>
         )}
+        {/* Taken back by the driver who filed it. The reason is theirs to the
+            stewards: the server sends it to them and the reporter only. */}
+        {r.status === "WITHDRAWN" && (
+          <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
+            <span className="font-semibold text-dark">
+              {isReporter ? "You withdrew this report" : `${r.reporterName || "The driver who filed it"} withdrew this report`}
+              {r.withdrawnAt ? ` on ${when(r.withdrawnAt)}` : ""}.
+            </span>
+            {r.withdrawReason && <> Reason: {r.withdrawReason}</>}
+          </p>
+        )}
+        {canWithdraw && !withdrawing && (
+          <div className="mt-3 border-t border-border pt-3">
+            <button
+              className="transition text-sm font-semibold text-light hover:text-bad"
+              onClick={() => {
+                setError(null);
+                setWithdrawing(true);
+              }}
+            >
+              Withdraw this report
+            </button>
+          </div>
+        )}
       </div>
+
+      {withdrawing && (
+        <div className="card space-y-3 p-5">
+          <div>
+            <div className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+              Withdraw this report
+            </div>
+            <p className="mt-1 text-sm leading-relaxed text-light">
+              Say why. The stewards see your reason, and the report stays with them, closed.
+              {r.accusedName ? ` ${r.accusedName} is told it was withdrawn, but not why.` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {WITHDRAW_REASONS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  why === w ? "border-brand bg-brand/15 text-dark" : "border-border text-medium hover:border-brand/50"
+                }`}
+                disabled={busy}
+                onClick={() => setWhy(w)}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+          <textarea
+            aria-label="Why you are withdrawing this report"
+            className="input h-20 resize-none"
+            placeholder="Your reason, in a sentence…"
+            maxLength={300}
+            value={why}
+            disabled={busy}
+            onChange={(e) => setWhy(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-bad transition hover:bg-red-500/10 disabled:opacity-50"
+              disabled={busy || why.trim().length < 3}
+              onClick={withdraw}
+            >
+              {busy ? "Withdrawing…" : "Withdraw report"}
+            </button>
+            <button className="btn-secondary" disabled={busy} onClick={() => setWithdrawing(false)}>
+              Keep it
+            </button>
+          </div>
+          {error && <p className="text-sm text-bad">{error}</p>}
+        </div>
+      )}
 
       {needsAccused && (
         <div className="card space-y-3 border-amber-500/40 p-5">

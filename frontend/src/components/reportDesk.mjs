@@ -16,7 +16,54 @@ export const PENALTY_KINDS = [
   { key: "DSQ", label: "Disqualification" },
 ];
 
-const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
+// WITHDRAWN is the driver who filed it taking it back (with a reason the
+// stewards read). Closed like a decision, so it counts as one here.
+const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED", "WITHDRAWN"];
+
+// Why the stewards decided as they did: the list the league's stewards asked
+// for, the same codes as backend lib/reports.js DECISION_REASONS. Asked with
+// every penalty and every "no penalty".
+export const DECISION_REASONS = [
+  { key: "AVOIDABLE_CONTACT", label: "Avoidable Contact" },
+  { key: "OFF_TRACK_OVERTAKE", label: "Overtaking Off Track" },
+  { key: "SC_OVERTAKE", label: "Overtaking Under SC" },
+  { key: "UNSAFE_REJOIN", label: "Unsafe Rejoin" },
+  { key: "NA", label: "N/A" },
+  { key: "OTHER", label: "Other" },
+];
+
+// Whether a status is one the stewards owe a reason for.
+export const needsReason = (status) => status === "PENALTY" || status === "NO_PENALTY";
+
+// The reason as words, or null. "N/A" and "Other" say nothing on their own, so
+// they are left to the stewards' sentence beside them.
+export function reasonLabel(r) {
+  const hit = DECISION_REASONS.find((x) => x.key === r?.decisionReason);
+  if (!hit || hit.key === "NA" || hit.key === "OTHER") return null;
+  return hit.label;
+}
+
+// What the stewards still owe before a decision can be saved, or null when it
+// is complete: a reason on a penalty or a no-penalty, and their own sentence
+// when the reason is "Other".
+export function decisionMissing(d) {
+  // Withdrawn is how the reporter left it, not an outcome the desk can save:
+  // deciding it anyway means picking one.
+  if (d?.status === "WITHDRAWN") return "Pick an outcome";
+  if (!needsReason(d?.status)) return null;
+  if (!d.decisionReason) return "Pick a reason";
+  if (d.decisionReason === "OTHER" && !String(d.verdict || "").trim()) return "Write one sentence for Other";
+  return null;
+}
+
+// Quick reasons offered to a driver withdrawing their own report. They fill
+// the box, which they can still change; the box itself is what gets sent.
+export const WITHDRAW_REASONS = [
+  "We talked it out",
+  "Filed by mistake",
+  "A racing incident, looking at it again",
+  "It was already dealt with in the race",
+];
 
 // A decision already read by the server has its kind filled in; one saved
 // before kinds existed and not yet re-read is seconds, which is what they all
