@@ -329,7 +329,9 @@ function navLinks(p) {
 
 // A special event's nav (Series.kind "event"): one race, so no standings and
 // no calendar. What it offers follows the race (utils/eventPhase.js):
-//   before  Event · Sign up · Race Info · Live (greyed until race night)
+//   before  Event · Sign up · Race Info · Live (greyed until race night,
+//           unless the race server is already up with a session on it:
+//           practice in the days before is worth watching too)
 //   live    Live first, then Event · Entry list · Race Info
 //   after   Event · Results · Race replay
 // `disabled` items render as plain text with their `hint` (the race date).
@@ -347,7 +349,7 @@ export function eventEntryPath(phase, signedUp) {
   return eventEntryLabel(phase, signedUp) === "Sign up" ? "/signup" : "/attendance";
 }
 
-export function eventNavLinks(p, race, phase, signedUp = false) {
+export function eventNavLinks(p, race, phase, signedUp = false, serverUp = false) {
   const home = { to: p(""), label: "Event", end: true, alsoActiveOn: "/" };
   const entry = { to: p(eventEntryPath(phase, signedUp)), label: eventEntryLabel(phase, signedUp) };
   const ready = { to: "/downloads", label: "Race Info" };
@@ -356,6 +358,7 @@ export function eventNavLinks(p, race, phase, signedUp = false) {
     return [home, { to: p(`/races?race=${race.id}`), label: "Results" }, { to: p(`/recap/${race.id}`), label: "Race replay" }];
   }
   if (phase === "live" || phase === "pending") return [live, home, entry, ready];
+  if (serverUp) return [home, entry, ready, live];
   const day = race?.date ? new Date(race.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null;
   return [home, entry, ready, { ...live, disabled: true, hint: day }];
 }
@@ -971,13 +974,25 @@ export default function NavBar() {
   // The series is the reset key: the bar stays mounted across a series switch
   // now, and the other series' race server is a different answer.
   const [liveNow, setLiveNow] = useState(0);
+  // Whether the series' race server is up with a session loaded at all, even
+  // with nobody on it: a special event greys its Live item out until race
+  // night, but not while its server is already open for practice.
+  const [serverUp, setServerUp] = useState(false);
   useVisiblePoll(
     (alive) => {
       api
         .liveStatus()
-        .then((d) => alive() && setLiveNow(d?.onTrack || 0))
+        .then((d) => {
+          if (!alive()) return;
+          setLiveNow(d?.onTrack || 0);
+          setServerUp(!!d?.session);
+        })
         // A decoration must never make noise: unreachable simply means no dot.
-        .catch(() => alive() && setLiveNow(0));
+        .catch(() => {
+          if (!alive()) return;
+          setLiveNow(0);
+          setServerUp(false);
+        });
     },
     45_000,
     true,
@@ -1081,7 +1096,7 @@ export default function NavBar() {
   const { race: eventRace, phase: eventPhase } = useEventRace(isEvent);
   const eventSignedUp = useMyEventEntry(isEvent && eventPhase !== "after" ? eventRace?.id : null);
   const links = isEvent
-    ? eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp)
+    ? eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp, serverUp)
     : navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
   // Reserve drivers only, and only until they have looked or applied.
   const seats = useReserveSeats();
