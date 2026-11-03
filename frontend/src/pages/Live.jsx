@@ -166,8 +166,12 @@ function SessionHeader({ session, receivedAt, links, patreonUrl, telemetry = nul
   // shown beside a board has to be the week of the server that board is.
   const week = useMemo(() => {
     if (!practiceWeek?.publicPages) return null;
-    const mine = (practiceWeek.weeks || []).find((w) => w.server === serverKey);
-    return mine ? { ...practiceWeek, ...mine } : practiceWeek;
+    // A server missing from the list pays nothing for training this week (its
+    // series has training switched off, or the server itself is), so it gets
+    // no bar, rather than another server's week standing in for it.
+    if (!practiceWeek.weeks || !serverKey) return practiceWeek;
+    const mine = practiceWeek.weeks.find((w) => w.server === serverKey);
+    return mine ? { ...practiceWeek, ...mine } : null;
   }, [practiceWeek, serverKey]);
   const trackTitle = (session.trackName || "").replace(/\s*[-–—]\s*F1\s*2025\s*[-–—]\s*EuroRacers\s*$/i, "");
   // The panel's open height, measured from the content so the close animation
