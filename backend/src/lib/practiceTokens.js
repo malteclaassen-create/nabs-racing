@@ -906,65 +906,130 @@ export async function moveLentServerLapsOnce(prisma) {
 
 // ---- The season's practice board ----------------------------------------------
 //
-// Who has done the most training laps this season, per series: every week of
-// the running season added up, both servers together. Only the weeks that led
-// up to a round of an active season count (a "week:" period with no round
-// ahead belongs to no season), and laps filed from the wrong circuit are left
-// out the same way the training bar leaves them out. What the board can show
-// is what the relay counted: laps on a server the league had switched off were
-// never written, and switching the counting on drops the weeks before it.
+// Who has done the most training laps this season, per series. Two records
+// feed it:
+//
+//   * the race servers' practice result files (lib/practiceFromServer.js),
+//     which go back to the start of the season and carry every lap with its
+//     Steam id and the second it was driven;
+//   * the live relay's weekly count in TokenPractice, which also has the laps
+//     of a session that is still running and so has no file yet.
+//
+// Each lap belongs to the round it was driven before, the same "week" the
+// training points use, and only counts when the server ran that round's
+// circuit. Per driver and week the bigger of the two counts is taken, so a
+// week both records saw is not counted twice. Only the drivers of the series'
+// running season are listed.
 
-// Rows of TokenPractice summed per series and Steam id. `races` maps a period
-// key ("race:<id>") to the round it leads up to ({ series, track }).
-export function sumSeasonPractice(rows, races) {
+// The round a moment leads up to in a series: the first round whose start is
+// after it. `rounds` is sorted by start.
+function roundAt(rounds, ms) {
+  for (const r of rounds) if (r.start > ms) return r;
+  return null;
+}
+
+// Laps per series, driver and week from both records. `rounds` maps a series
+// slug to its rounds ({ id, track, start, active }) sorted by start;
+// `sessions` are the server's practice files; `relay` the TokenPractice rows.
+export function seasonPracticeTotals({ rounds, sessions = [], relay = [] }) {
+  const fromFiles = new Map(); // `${series}|${steamId}|${period}` -> laps
+  for (const s of sessions) {
+    for (const [steamId, stamps] of Object.entries(s.laps || {})) {
+      for (const at of stamps) {
+        for (const [series, list] of rounds) {
+          const r = roundAt(list, at * 1000);
+          if (!r || !r.active || offTrack(r.track, s.track)) continue;
+          const key = `${series}|${steamId}|race:${r.id}`;
+          fromFiles.set(key, (fromFiles.get(key) || 0) + 1);
+        }
+      }
+    }
+  }
+  const fromRelay = new Map();
+  const byId = new Map();
+  for (const [series, list] of rounds) for (const r of list) byId.set(`${series}|race:${r.id}`, r);
+  for (const row of relay) {
+    const r = byId.get(`${row.series}|${row.period}`);
+    if (!r || !r.active || offTrack(r.track, row.trackKey)) continue;
+    const key = `${row.series}|${row.steamId}|${row.period}`;
+    fromRelay.set(key, (fromRelay.get(key) || 0) + Number(row.laps || 0));
+  }
   const out = new Map(); // `${series}|${steamId}` -> { series, steamId, laps }
-  for (const r of rows || []) {
-    const race = races.get(String(r.period || ""));
-    if (!race || race.series !== r.series) continue;
-    if (offTrack(race.track, r.trackKey)) continue;
-    const laps = Number(r.laps || 0);
+  for (const key of new Set([...fromFiles.keys(), ...fromRelay.keys()])) {
+    const laps = Math.max(fromFiles.get(key) || 0, fromRelay.get(key) || 0);
     if (!(laps > 0)) continue;
-    const key = `${r.series}|${r.steamId}`;
-    const have = out.get(key);
+    const [series, steamId] = key.split("|");
+    const k = `${series}|${steamId}`;
+    const have = out.get(k);
     if (have) have.laps += laps;
-    else out.set(key, { series: r.series, steamId: String(r.steamId), laps });
+    else out.set(k, { series, steamId, laps });
   }
   return [...out.values()];
 }
 
-export async function practiceSeasonBoard(prisma, limit = 10, meId = null) {
+// How long the board waits for the server's files before it answers with what
+// the relay has. The very first read of a season's files takes a while; it
+// carries on in the background and the next visit has it.
+const FILES_WAIT_MS = 8000;
+
+export async function practiceSeasonBoard(prisma, limit = 10, meId = null, { sessionsSince = null } = {}) {
   const raceRows = await prisma
     .$queryRawUnsafe(
-      `SELECT ra."id" AS "id", ra."track" AS "track", ra."seasonId" AS "seasonId",
-              se."slug" AS "slug", se."name" AS "name"
+      `SELECT ra."id" AS "id", ra."track" AS "track", ra."date" AS "date", ra."seasonId" AS "seasonId",
+              s."isActive" AS "isActive", se."slug" AS "slug", se."name" AS "name"
          FROM "Race" ra
          JOIN "Season" s ON s."id" = ra."seasonId"
          JOIN "Series" se ON se."id" = s."seriesId"
-        WHERE s."isActive" = 1 AND ra."isSpecialEvent" = 0`
+        WHERE ra."isSpecialEvent" = 0`
     )
     .catch(() => []);
-  if (!raceRows.length) return [];
-  const races = new Map();
-  const seriesInfo = new Map(); // slug -> { name, seasonId }
+  const rounds = new Map(); // slug -> rounds sorted by start
+  const seriesInfo = new Map(); // slug -> { name, seasonId } of the running season
   for (const r of raceRows) {
-    races.set(`race:${r.id}`, { series: String(r.slug), track: r.track || null });
-    if (!seriesInfo.has(String(r.slug))) seriesInfo.set(String(r.slug), { name: r.name || r.slug, seasonId: r.seasonId });
+    const slug = String(r.slug);
+    const active = Number(r.isActive) === 1 || r.isActive === true;
+    if (active && !seriesInfo.has(slug)) seriesInfo.set(slug, { name: r.name || slug, seasonId: r.seasonId });
+    const start = r.date == null ? null : raceKickoff(new Date(Number(r.date)))?.getTime();
+    if (!start) continue;
+    if (!rounds.has(slug)) rounds.set(slug, []);
+    rounds.get(slug).push({ id: r.id, track: r.track || null, start, active });
   }
-  const keys = [...races.keys()];
-  const rows = await prisma
+  for (const [slug, list] of rounds) {
+    if (!seriesInfo.has(slug)) rounds.delete(slug);
+    else list.sort((a, b) => a.start - b.start);
+  }
+  if (!seriesInfo.size) return [];
+
+  // The window opens when the last round before the season was raced, so the
+  // practice for round 1 counts. A first season reaches back two months.
+  let since = Infinity;
+  for (const list of rounds.values()) {
+    const first = list.findIndex((r) => r.active);
+    if (first < 0) continue;
+    since = Math.min(since, first > 0 ? list[first - 1].start : list[first].start - 60 * 86400000);
+  }
+
+  const relay = await prisma
     .$queryRawUnsafe(
       `SELECT "steamId" AS "steamId", "series" AS "series", "period" AS "period",
               "laps" AS "laps", "trackKey" AS "trackKey"
-         FROM "TokenPractice" WHERE "period" IN (${keys.map(() => "?").join(",")})`,
-      ...keys
+         FROM "TokenPractice" WHERE "period" LIKE 'race:%'`
     )
     .catch(() => []);
-  const totals = sumSeasonPractice(rows, races);
+
+  let sessions = [];
+  if (Number.isFinite(since)) {
+    const load = (sessionsSince || (await import("./practiceFromServer.js")).practiceSessionsSince)(since);
+    load.catch(() => {});
+    sessions = await Promise.race([
+      load.catch(() => []),
+      new Promise((resolve) => setTimeout(() => resolve([]), FILES_WAIT_MS).unref?.()),
+    ]);
+  }
+  const totals = seasonPracticeTotals({ rounds, sessions, relay });
   if (!totals.length) return [];
 
-  // Steam id to the league's name for it. The race server knows nobody by
-  // name, so a Steam id no driver row carries is somebody who is not in the
-  // league (yet) and stays off the board.
+  // The drivers of each series' running season, by Steam id.
   const steamIds = [...new Set(totals.map((t) => t.steamId))];
   const drivers = await prisma
     .$queryRawUnsafe(
@@ -979,11 +1044,7 @@ export async function practiceSeasonBoard(prisma, limit = 10, meId = null) {
     const list = totals
       .filter((t) => t.series === slug)
       .map((t) => {
-        const all = drivers.filter((d) => String(d.steamId) === t.steamId);
-        // This season's row of the driver first, else the newest one there is.
-        const d =
-          all.find((x) => x.seasonId === info.seasonId) ||
-          all.sort((a, b) => String(b.id).localeCompare(String(a.id)))[0];
+        const d = drivers.find((x) => String(x.steamId) === t.steamId && x.seasonId === info.seasonId);
         return d ? { steamId: t.steamId, laps: t.laps, name: d.name, avatarUrl: d.photoUrl || null } : null;
       })
       .filter(Boolean)
