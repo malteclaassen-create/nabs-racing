@@ -12,6 +12,7 @@ import TrainingBar from "../components/TrainingBar.jsx";
 import RatingCard, { CardBack } from "../components/RatingCard.jsx";
 import { shrinkImage } from "../utils/imageResize.js";
 import { useSwapClass } from "../hooks/motion.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 
 // ---------------------------------------------------------------------------
 // NABS Tokens: the member's own page. What they have, how it got there, how to
@@ -186,19 +187,29 @@ function Goal({ item, balance, onClear }) {
   );
 }
 
-// Who is ahead. Three lists: points earned (spending does not count against
-// you), time in voice and messages written. Voice and chat are their own boards
+// Who is ahead. Four lists: points earned (spending does not count against
+// you), time in voice, messages written and training laps this season (one
+// list per series, the one being viewed first). Voice and chat are their own boards
 // rather than one added together, because an hour is sixty and a good evening
 // of typing is twenty, so the sum was a voice board wearing a disguise.
 // Your own row is marked so you do not have to hunt for it.
 function Leaderboard() {
   const board = useApi(useCallback(() => api.tokenLeaderboard(), []));
   const [tab, setTab] = useState("earned");
+  const { slug: viewedSeries } = useSeries();
+  const [pickedSeries, setPickedSeries] = useState(null);
   // Switching boards fades the new one over; the first arrival still deals in.
-  const swap = useSwapClass(tab);
+  const swap = useSwapClass(`${tab}|${pickedSeries || ""}`);
   const d = board.data;
   if (!d || d.enabled === false) return null;
-  const rows = tab === "earned" ? d.earned : tab === "voice" ? d.voice : d.chat;
+  const practiceLists = d.practice || [];
+  const practice =
+    practiceLists.find((p) => p.series === pickedSeries) ||
+    practiceLists.find((p) => p.series === viewedSeries) ||
+    practiceLists[0] ||
+    null;
+  const rows =
+    tab === "earned" ? d.earned : tab === "voice" ? d.voice : tab === "practice" ? practice?.rows || [] : d.chat;
   const hours = (m) => Math.round((m || 0) / 6) / 10;
   // The one number that makes a board worth coming back to: how far it is to
   // the next name up.
@@ -209,6 +220,7 @@ function Leaderboard() {
     const me = rows[myIndex];
     if (tab === "earned") chase = `${fmt(ahead.earned - me.earned + 1)} tokens`;
     else if (tab === "voice") chase = hm(Math.max(1, (ahead.minutes || 0) - (me.minutes || 0) + 1));
+    else if (tab === "practice") chase = `${fmt((ahead.laps || 0) - (me.laps || 0) + 1)} laps`;
     else chase = `${fmt((ahead.messages || 0) - (me.messages || 0) + 1)} messages`;
   }
   return (
@@ -216,8 +228,12 @@ function Leaderboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Heading>Who is ahead</Heading>
-          {tab !== "earned" && (
-            <div className="mt-0.5 text-[11px] text-light">Last {d.windowDays || 30} days</div>
+          {tab === "practice" ? (
+            <div className="mt-0.5 text-[11px] text-light">
+              This season{practice && practiceLists.length > 1 ? `, ${practice.seriesName}` : ""}
+            </div>
+          ) : (
+            tab !== "earned" && <div className="mt-0.5 text-[11px] text-light">Last {d.windowDays || 30} days</div>
           )}
         </div>
         <SlidingTabs
@@ -225,6 +241,7 @@ function Leaderboard() {
             { key: "earned", label: "Tokens earned" },
             { key: "voice", label: "Time in voice" },
             { key: "chat", label: "Messages" },
+            { key: "practice", label: "Practice laps" },
           ]}
           value={tab}
           onChange={setTab}
@@ -232,6 +249,17 @@ function Leaderboard() {
           btnClassName="px-3 py-1 text-[12px]"
         />
       </div>
+      {tab === "practice" && practiceLists.length > 1 && (
+        <div className="mt-3">
+          <SlidingTabs
+            items={practiceLists.map((p) => ({ key: p.series, label: p.seriesName }))}
+            value={practice?.series}
+            onChange={setPickedSeries}
+            wrapClassName="inline-flex rounded-xl border border-border bg-surface2/60 p-1"
+            btnClassName="px-3 py-1 text-[12px]"
+          />
+        </div>
+      )}
       {rows?.length > 0 && (myIndex === 0 || chase) && (
         <div key={`chase-${tab}`} className="pop-in mt-3 text-xs text-medium">
           {myIndex === 0 ? (
@@ -247,7 +275,7 @@ function Leaderboard() {
       {rows?.length ? (
         // keyed on the tab so a switch swaps the board (one fade) rather than
         // blanking it and dealing every row in again.
-        <div key={tab} className={swap}>
+        <div key={`${tab}|${practice?.series || ""}`} className={swap}>
         <ol className="cascade mt-3 divide-y divide-border">
           {rows.map((r, i) => {
             const mine = !!r.mine;
@@ -273,6 +301,8 @@ function Leaderboard() {
                     <TokenIcon className="h-3.5 w-3.5 text-brand" />
                     {fmt(r.earned)}
                   </span>
+                ) : tab === "practice" ? (
+                  <span className="font-mono text-xs font-bold tabular-nums text-dark">{fmt(r.laps)} laps</span>
                 ) : (
                   // The number the list is ranked on leads, the other one
                   // follows in grey. Otherwise a voice board and a message
@@ -302,7 +332,9 @@ function Leaderboard() {
         <p className="mt-3 text-sm text-light">
           {tab === "earned"
             ? "Nobody has earned anything yet. The first race night decides."
-            : "Nothing counted yet. This fills up once the league's Discord bot is running."}
+            : tab === "practice"
+              ? "No practice laps counted this season yet."
+              : "Nothing counted yet. This fills up once the league's Discord bot is running."}
         </p>
       )}
     </div>

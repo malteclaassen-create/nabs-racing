@@ -903,3 +903,94 @@ export async function moveLentServerLapsOnce(prisma) {
     return null;
   }
 }
+
+// ---- The season's practice board ----------------------------------------------
+//
+// Who has done the most training laps this season, per series: every week of
+// the running season added up, both servers together. Only the weeks that led
+// up to a round of an active season count (a "week:" period with no round
+// ahead belongs to no season), and laps filed from the wrong circuit are left
+// out the same way the training bar leaves them out. What the board can show
+// is what the relay counted: laps on a server the league had switched off were
+// never written, and switching the counting on drops the weeks before it.
+
+// Rows of TokenPractice summed per series and Steam id. `races` maps a period
+// key ("race:<id>") to the round it leads up to ({ series, track }).
+export function sumSeasonPractice(rows, races) {
+  const out = new Map(); // `${series}|${steamId}` -> { series, steamId, laps }
+  for (const r of rows || []) {
+    const race = races.get(String(r.period || ""));
+    if (!race || race.series !== r.series) continue;
+    if (offTrack(race.track, r.trackKey)) continue;
+    const laps = Number(r.laps || 0);
+    if (!(laps > 0)) continue;
+    const key = `${r.series}|${r.steamId}`;
+    const have = out.get(key);
+    if (have) have.laps += laps;
+    else out.set(key, { series: r.series, steamId: String(r.steamId), laps });
+  }
+  return [...out.values()];
+}
+
+export async function practiceSeasonBoard(prisma, limit = 10, meId = null) {
+  const raceRows = await prisma
+    .$queryRawUnsafe(
+      `SELECT ra."id" AS "id", ra."track" AS "track", ra."seasonId" AS "seasonId",
+              se."slug" AS "slug", se."name" AS "name"
+         FROM "Race" ra
+         JOIN "Season" s ON s."id" = ra."seasonId"
+         JOIN "Series" se ON se."id" = s."seriesId"
+        WHERE s."isActive" = 1 AND ra."isSpecialEvent" = 0`
+    )
+    .catch(() => []);
+  if (!raceRows.length) return [];
+  const races = new Map();
+  const seriesInfo = new Map(); // slug -> { name, seasonId }
+  for (const r of raceRows) {
+    races.set(`race:${r.id}`, { series: String(r.slug), track: r.track || null });
+    if (!seriesInfo.has(String(r.slug))) seriesInfo.set(String(r.slug), { name: r.name || r.slug, seasonId: r.seasonId });
+  }
+  const keys = [...races.keys()];
+  const rows = await prisma
+    .$queryRawUnsafe(
+      `SELECT "steamId" AS "steamId", "series" AS "series", "period" AS "period",
+              "laps" AS "laps", "trackKey" AS "trackKey"
+         FROM "TokenPractice" WHERE "period" IN (${keys.map(() => "?").join(",")})`,
+      ...keys
+    )
+    .catch(() => []);
+  const totals = sumSeasonPractice(rows, races);
+  if (!totals.length) return [];
+
+  // Steam id to the league's name for it. The race server knows nobody by
+  // name, so a Steam id no driver row carries is somebody who is not in the
+  // league (yet) and stays off the board.
+  const steamIds = [...new Set(totals.map((t) => t.steamId))];
+  const drivers = await prisma
+    .$queryRawUnsafe(
+      `SELECT "id","name","photoUrl","steamId","seasonId" FROM "Driver" WHERE "steamId" IN (${steamIds.map(() => "?").join(",")})`,
+      ...steamIds
+    )
+    .catch(() => []);
+  const mine = new Set(meId ? await steamIdsFor(prisma, meId).catch(() => []) : []);
+
+  const out = [];
+  for (const [slug, info] of seriesInfo) {
+    const list = totals
+      .filter((t) => t.series === slug)
+      .map((t) => {
+        const all = drivers.filter((d) => String(d.steamId) === t.steamId);
+        // This season's row of the driver first, else the newest one there is.
+        const d =
+          all.find((x) => x.seasonId === info.seasonId) ||
+          all.sort((a, b) => String(b.id).localeCompare(String(a.id)))[0];
+        return d ? { steamId: t.steamId, laps: t.laps, name: d.name, avatarUrl: d.photoUrl || null } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.laps - a.laps || a.name.localeCompare(b.name))
+      .slice(0, limit)
+      .map((r, i) => ({ id: `p${slug}${i}`, name: r.name, avatarUrl: r.avatarUrl, laps: r.laps, mine: mine.has(r.steamId) }));
+    if (list.length) out.push({ series: slug, seriesName: info.name, rows: list });
+  }
+  return out;
+}

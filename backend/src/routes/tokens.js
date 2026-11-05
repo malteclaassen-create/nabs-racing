@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { STUDIO_SLOTS, studioCatalogue, readStudio, equipStudio, profileMediaOwner } from "../lib/profileStudio.js";
-import { practiceProgress } from "../lib/practiceTokens.js";
+import { practiceProgress, practiceSeasonBoard } from "../lib/practiceTokens.js";
 import { LIVE_SERVERS } from "../lib/liveServers.js";
 import prisma from "../lib/prisma.js";
 import { setBriefingRoom, briefingKickoffs, readManualUntil, BRIEFING_WINDOW } from "../lib/briefingRoom.js";
@@ -277,7 +277,8 @@ router.get("/practice", requireUser, async (req, res, next) => {
   }
 });
 
-// GET /api/tokens/leaderboard: top earners and the most present on Discord.
+// GET /api/tokens/leaderboard: top earners, the most present on Discord, and
+// the most training laps this season.
 router.get("/leaderboard", requireUser, async (req, res, next) => {
   try {
     if (!(await tokensVisibleTo(prisma, req))) return res.json({ enabled: false });
@@ -285,7 +286,9 @@ router.get("/leaderboard", requireUser, async (req, res, next) => {
     // ids and letting the browser compare: the page only needs to know which
     // line is yours.
     const board = await leaderboard(prisma, 10, req.user.discordId);
-    res.json({ enabled: true, ...board });
+    // Training laps this season, one list per series.
+    const practice = await practiceSeasonBoard(prisma, 10, req.user.discordId).catch(() => []);
+    res.json({ enabled: true, ...board, practice });
   } catch (e) {
     next(e);
   }
