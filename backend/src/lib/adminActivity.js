@@ -8,7 +8,7 @@
 // Lines written before names were recorded have no `who`. They stay readable:
 // what a line MEANS is worked out when it is read, not when it is written, so
 // they get the same labels as the new ones.
-import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "fs";
+import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync, renameSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { LOGS_DIR } from "./dataDirs.js";
 
@@ -18,6 +18,10 @@ const ACTIVITY_LOG = join(LOGS_DIR, "admin-activity.log");
 // few MB at worst, read only when an admin opens the page.
 const MAX_LINES_READ = 20000;
 const MAX_CHANGES = 80;
+// The file never grows past this. Past the limit the oldest lines go, down to
+// KEEP_BYTES, so the trim runs once in a long while and not on every save.
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+const KEEP_BYTES = 4 * 1024 * 1024;
 const MAX_TEXT = 160;
 
 export const ACTIVITY_AREAS = [
@@ -424,6 +428,7 @@ export function activityLogger(prisma, { prefix = "" } = {}) {
         }
         mkdirSync(LOGS_DIR, { recursive: true });
         appendFileSync(ACTIVITY_LOG, `${JSON.stringify(entry)}\n`);
+        trimLog(ACTIVITY_LOG);
       } catch {
         /* logging must never break the request */
       }
@@ -470,6 +475,27 @@ function readTailLines(path, wantLines) {
   } finally {
     closeSync(fd);
   }
+}
+
+// Drops the oldest lines once the file is over the limit. Written to a second
+// file and swapped in, so a crash halfway leaves the whole log, not half of it.
+export function trimLog(path, maxBytes = MAX_LOG_BYTES, keepBytes = KEEP_BYTES) {
+  const size = statSync(path).size;
+  if (size <= maxBytes) return false;
+  const fd = openSync(path, "r");
+  let tail;
+  try {
+    tail = Buffer.alloc(keepBytes);
+    const read = readSync(fd, tail, 0, keepBytes, size - keepBytes);
+    tail = tail.subarray(0, read);
+  } finally {
+    closeSync(fd);
+  }
+  // The cut lands mid-line, so the first partial line goes too.
+  const kept = tail.subarray(tail.indexOf(10) + 1);
+  writeFileSync(`${path}.tmp`, kept);
+  renameSync(`${path}.tmp`, path);
+  return true;
 }
 
 // The key a person is filtered by. Lines from before names were recorded share

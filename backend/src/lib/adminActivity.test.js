@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
-  actorOf, describeAction, isLogged, safeFields, diffRows, diffResults, diffReport, queryEntries,
+  actorOf, describeAction, isLogged, safeFields, diffRows, diffResults, diffReport, queryEntries, trimLog,
 } from "./adminActivity.js";
 
 describe("actorOf", () => {
@@ -136,5 +139,35 @@ describe("queryEntries", () => {
     const out = queryEntries(lines, { offset: 1, limit: 1 });
     expect(out.entries.map((e) => e.t)).toEqual(["2"]);
     expect(out.total).toBe(3);
+  });
+});
+
+describe("trimLog", () => {
+  const withLog = (text, run) => {
+    const dir = mkdtempSync(join(tmpdir(), "adminlog-"));
+    const file = join(dir, "log");
+    writeFileSync(file, text);
+    try {
+      run(file);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const lines = Array.from({ length: 100 }, (_, i) => JSON.stringify({ n: i, name: "Müller" })).join("\n") + "\n";
+
+  it("leaves a log under the limit alone", () => {
+    withLog(lines, (file) => {
+      expect(trimLog(file, 1000000, 500000)).toBe(false);
+      expect(readFileSync(file, "utf-8")).toBe(lines);
+    });
+  });
+  it("keeps the newest lines, whole, and stays under the limit", () => {
+    withLog(lines, (file) => {
+      expect(trimLog(file, 1000, 500)).toBe(true);
+      expect(statSync(file).size).toBeLessThanOrEqual(500);
+      const kept = readFileSync(file, "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(kept.at(-1).n).toBe(99);
+      expect(kept.every((l) => l.name === "Müller")).toBe(true);
+    });
   });
 });
