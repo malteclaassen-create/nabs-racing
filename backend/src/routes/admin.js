@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
-import { writeFileSync, mkdirSync, appendFileSync, readFileSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, openSync, readSync, closeSync, fstatSync, statfsSync, rmSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, statfsSync, rmSync } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { PROMO_TMP_PREFIX, sweepStalePromoUploads } from "../lib/promoUploads.js";
 import { fileURLToPath } from "url";
@@ -177,6 +177,7 @@ import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setA
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
 import { draftRaceReport } from "../lib/newsRaceReport.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
+import { activityLogger, readActivity, readResultRows, diffResults, diffReport, raceTarget } from "../lib/adminActivity.js";
 import { UPLOADS_DIR, LOGS_DIR, BACKUPS_DIR, RESULTS_ARCHIVE_DIR, DATA_ROOT } from "../lib/dataDirs.js";
 import {
   LIVE_SERVERS, DEFAULT_SERVER_KEY, readLiveServerMap, writeLiveServerMap, serverAssignment,
@@ -267,85 +268,19 @@ function refusedBrokenImage(req, res, what) {
 // All routes below require admin auth.
 router.use(requireAdmin);
 
-// ---------------------------------------------------------------------------
-// ACTIVITY LOG
-// Every successful admin change is appended to a JSON-lines file, so there is
-// always an answer to "what was changed, and when?". File-based on purpose:
-// no schema migration needed, trivially greppable, survives DB restores.
-// ---------------------------------------------------------------------------
-const ACTIVITY_LOG = join(LOGS_DIR, "admin-activity.log");
+// Who changed what, and what it was before (lib/adminActivity.js).
+router.use(activityLogger(prisma));
 
-router.use((req, res, next) => {
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
-  // A preview (POST /races/preview, /ratings/preview) changes nothing; logged,
-  // it buried the real changes under a line per keystroke of tuning.
-  if (/\/preview$/.test(req.path)) return next();
-  res.on("finish", () => {
-    if (res.statusCode >= 300) return; // only log successful changes
-    try {
-      mkdirSync(LOGS_DIR, { recursive: true });
-      appendFileSync(
-        ACTIVITY_LOG,
-        JSON.stringify({ t: new Date().toISOString(), method: req.method, path: req.originalUrl.replace(/^\/api\/admin/, "") }) + "\n"
-      );
-    } catch {
-      /* logging must never break the request */
-    }
-  });
-  next();
-});
-
-// The log only ever grows and the view below only ever shows its newest lines,
-// so it is read from the end: a chunk off the tail, grown fourfold until it
-// holds enough lines or the whole file has been covered. Same lines, same order, but
-// the request no longer pulls the entire history onto the heap.
-function readTailLines(path, wantLines) {
-  const fd = openSync(path, "r");
-  try {
-    const size = fstatSync(fd).size;
-    let chunk = 64 * 1024;
-    for (;;) {
-      const start = Math.max(0, size - chunk);
-      const buf = Buffer.alloc(size - start);
-      // readSync may come back short; keep going, a truncated tail would hide
-      // the newest entries.
-      let filled = 0;
-      while (filled < buf.length) {
-        const n = readSync(fd, buf, filled, buf.length - filled, start + filled);
-        if (!n) break;
-        filled += n;
-      }
-      let text = buf.subarray(0, filled).toString("utf-8");
-      if (start > 0) {
-        // A chunk starting mid-file also starts mid-line, and possibly mid
-        // UTF-8 character (an umlaut in a driver name would decode to garbage).
-        // Everything up to the first newline is therefore dropped; only a chunk
-        // that reaches byte 0 keeps its first line.
-        const nl = text.indexOf("\n");
-        text = nl === -1 ? "" : text.slice(nl + 1).replace(/\s+$/, "");
-      } else {
-        text = text.trim();
-      }
-      const lines = text.split("\n");
-      if (lines.length >= wantLines || start === 0) return lines;
-      chunk *= 4;
-    }
-  } finally {
-    closeSync(fd);
-  }
-}
-
-// GET /api/admin/activity -> the latest admin actions, newest first.
+// GET /api/admin/activity?who=&area=&q=&offset=&limit= -> the admin log, newest
+// first, with everybody who appears in it for the filter.
 router.get("/activity", (req, res) => {
   try {
-    if (!existsSync(ACTIVITY_LOG)) return res.json({ entries: [] });
-    const lines = readTailLines(ACTIVITY_LOG, 150);
-    const entries = lines.slice(-150).reverse().map((l) => {
-      try { return JSON.parse(l); } catch { return null; }
-    }).filter(Boolean);
-    res.json({ entries });
+    const { who, area, q } = req.query;
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 100));
+    res.json(readActivity({ who, area, q, offset, limit }));
   } catch {
-    res.json({ entries: [] });
+    res.json({ entries: [], total: 0, people: [], areas: [] });
   }
 });
 
@@ -801,7 +736,12 @@ router.post("/races/commit", async (req, res, next) => {
       prisma,
       `before-import-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : race.number != null ? `r${race.number}` : "training"}`
     );
+    const resultsBefore = await readResultRows(prisma, race.id);
     const saveSummary = await saveRaceResults(prisma, race.id, results);
+    res.locals.activity = {
+      target: await raceTarget(prisma, race, sprintOf),
+      changes: diffResults(resultsBefore, await readResultRows(prisma, race.id)),
+    };
     // Bell notification (deduped per race, so re-imports stay silent). On a
     // sprint weekend it waits until both races are in and then rings once, for
     // the event, with whichever save completed the pair.
@@ -2783,7 +2723,12 @@ router.put("/races/:id/results", async (req, res, next) => {
       prisma,
       `before-edit-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : `r${race.number ?? "x"}`}`
     );
+    const resultsBefore = await readResultRows(prisma, race.id);
     await saveRaceResults(prisma, race.id, results);
+    res.locals.activity = {
+      target: await raceTarget(prisma, race, sprintOf),
+      changes: diffResults(resultsBefore, await readResultRows(prisma, race.id)),
+    };
     // Bell notification (deduped per race: only the FIRST save of this round
     // pings the members, edits stay silent). A sprint child stays quiet, as
     // on import — the evening's bell rings once, with the feature.
@@ -5135,6 +5080,7 @@ router.delete("/races/:id/results", async (req, res, next) => {
       return res.status(409).json({ error: "This race has no stored results." });
     }
     await tryCreateBackup(prisma, `before-clear-results-r${race.number ?? "x"}`);
+    res.locals.activity = { changes: [{ field: "Results", from: `${race._count.results} drivers`, to: "none" }] };
     await prisma.$transaction([
       prisma.raceResult.deleteMany({ where: { raceId: race.id } }),
       prisma.constructorRaceScore.deleteMany({ where: { raceId: race.id } }),
@@ -8092,7 +8038,9 @@ router.put("/reports/:id", async (req, res, next) => {
     const report = await dbGetReport(prisma, req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
     const b = req.body || {};
-    res.json({ ok: true, report: await dbDecideReport(prisma, report, b) });
+    const decided = await dbDecideReport(prisma, report, b);
+    res.locals.activity = { changes: diffReport(report, decided) };
+    res.json({ ok: true, report: decided });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
@@ -8182,7 +8130,9 @@ async function nameAccused(reportId, driverId) {
 // PUT /api/admin/reports/:id/accused  { accusedDriverId }
 router.put("/reports/:id/accused", async (req, res, next) => {
   try {
+    const was = await dbGetReport(prisma, req.params.id);
     const report = await nameAccused(req.params.id, req.body?.accusedDriverId);
+    res.locals.activity = { changes: [{ field: "Accused", from: was?.accusedName || "none", to: report?.accusedName || "none" }] };
     res.json({ ok: true, report });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });

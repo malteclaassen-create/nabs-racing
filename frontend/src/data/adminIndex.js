@@ -140,6 +140,7 @@ export const TAB_VIEWS = {
   },
   system: {
     health: "Health & backups",
+    log: "Admin log",
     traffic: "Traffic",
     discord: "Discord",
     access: "Admin PIN",
@@ -718,9 +719,16 @@ export const ADMIN_INDEX = [
   {
     tab: "system",
     view: "health",
-    title: "Disk, memory and the admin log",
-    hint: "Server disk usage, memory, unused uploaded files and a log of recent admin changes.",
-    keywords: "disk space storage memory heap server activity log recent changes unused files clean up",
+    title: "Disk and memory",
+    hint: "Server disk usage, memory and unused uploaded files.",
+    keywords: "disk space storage memory heap server unused files clean up",
+  },
+  {
+    tab: "system",
+    view: "log",
+    title: "Admin log: who changed what",
+    hint: "Every admin change with the name of the admin and the old and new value, penalties and results included.",
+    keywords: "admin log activity audit history who changed what changes penalty penalties steward decision results edited ban role tokens adjusted before after",
   },
   {
     tab: "system",

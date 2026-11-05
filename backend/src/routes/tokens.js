@@ -29,6 +29,7 @@ import { LIVE_SERVERS } from "../lib/liveServers.js";
 import prisma from "../lib/prisma.js";
 import { setBriefingRoom, briefingKickoffs, readManualUntil, BRIEFING_WINDOW } from "../lib/briefingRoom.js";
 import { requireUser, requireAdmin } from "../middleware/auth.js";
+import { activityLogger } from "../lib/adminActivity.js";
 import {
   SHOP_ITEMS,
   isTokensEnabled,
@@ -390,6 +391,7 @@ router.post("/briefing/times", async (req, res, next) => {
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
+adminRouter.use(activityLogger(prisma, { prefix: "/tokens" }));
 adminRouter.use((req, res, next) => ensureTuning(prisma).then(() => next(), next));
 
 // GET /api/admin/tokens — the switch, everyone's balance, every open order.

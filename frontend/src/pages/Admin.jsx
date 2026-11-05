@@ -64,6 +64,7 @@ const TAB_CHUNKS = {
   AdminSocialFeed: () => import("../components/AdminSocialFeed.jsx"),
   AdminLinkPreviews: () => import("../components/AdminLinkPreviews.jsx"),
   AdminHealth: () => import("../components/AdminHealth.jsx"),
+  AdminActivityLog: () => import("../components/AdminActivityLog.jsx"),
   AdminMembers: () => import("../components/AdminMembers.jsx"),
   AdminNotifications: () => import("../components/AdminNotifications.jsx"),
   AdminFeedback: () => import("../components/AdminFeedback.jsx"),
@@ -89,6 +90,7 @@ const AdminAttendance = lazy(TAB_CHUNKS.AdminAttendance);
 const AdminSocialFeed = lazy(TAB_CHUNKS.AdminSocialFeed);
 const AdminLinkPreviews = lazy(TAB_CHUNKS.AdminLinkPreviews);
 const AdminHealth = lazy(TAB_CHUNKS.AdminHealth);
+const AdminActivityLog = lazy(TAB_CHUNKS.AdminActivityLog);
 const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
 const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
 const AdminFeedback = lazy(TAB_CHUNKS.AdminFeedback);
@@ -202,6 +204,7 @@ function SystemTab({ jumpView, jumpKey, onJump }) {
       <ViewSwitch
         items={[
           { key: "health", label: "Health & backups" },
+          { key: "log", label: "Admin log" },
           { key: "traffic", label: "Traffic" },
           { key: "discord", label: "Discord" },
           { key: "access", label: "Admin PIN" },
@@ -210,6 +213,7 @@ function SystemTab({ jumpView, jumpKey, onJump }) {
         onChange={setView}
       />
       {view === "health" && <AdminHealth />}
+      {view === "log" && <AdminActivityLog />}
       {view === "traffic" && <TrafficAdmin />}
       {view === "discord" && <AdminDiscordConnections onJump={onJump} />}
       {view === "access" && <ChangePin />}

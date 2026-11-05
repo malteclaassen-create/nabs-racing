@@ -5,8 +5,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, Notice, CardHead } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 
-// Admin "Health" tab: one-click season integrity check, database backups, and
-// the recent admin activity log.
+// Admin "Health" tab: one-click season integrity check and database backups.
 
 const SEVERITY_META = {
   error: { label: "Error", cls: "bg-red-500/15 text-bad border-red-500/30" },
@@ -75,37 +74,6 @@ function fmtTime(iso) {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-// Turn a raw activity log path into something an admin can read.
-function describeActivity(e) {
-  const p = e.path.split("?")[0];
-  const rules = [
-    [/^\/races\/commit/, "Race results imported"],
-    [/^\/races\/.+\/results/, "Race results edited"],
-    [/^\/backups/, "Backup created"],
-    [/^\/drivers\/(.+)/, (m) => `Driver updated: ${m[1]}`],
-    [/^\/drivers$/, "Driver created"],
-    [/^\/teams\/(.+)\/logo/, (m) => `Team logo uploaded: ${m[1]}`],
-    [/^\/teams\/(.+)/, (m) => `Team updated: ${m[1]}`],
-    [/^\/teams$/, "Team created"],
-    [/^\/seasons\/.+\/activate/, "Season activated"],
-    [/^\/seasons\/.+\/clone-roster/, "Roster cloned from another season"],
-    [/^\/seasons\/.+\/clone-teams/, "Teams cloned from another season"],
-    [/^\/seasons/, "Season created/updated"],
-    [/^\/events\/.+\/announce/, "Event posted to Discord"],
-    [/^\/events/, e.method === "DELETE" ? "Event deleted" : "Event created"],
-    [/^\/market/, "Driver Market updated"],
-    [/^\/settings\/pin/, "Admin PIN changed"],
-    [/^\/discord/, "Discord settings updated"],
-    [/^\/social/, "Social links updated"],
-    [/^\/downloads/, "Downloads updated"],
-  ];
-  for (const [re, out] of rules) {
-    const m = re.exec(p);
-    if (m) return typeof out === "function" ? out(m) : out;
-  }
-  return `${e.method} ${p}`;
-}
-
 export default function AdminHealth() {
   const { current } = useSeason();
   const [report, setReport] = useState(null);
@@ -117,7 +85,6 @@ export default function AdminHealth() {
   const ask = useAsk();
 
   const backups = useApi(useCallback(() => api.backups(), [backupDone]));
-  const activity = useApi(useCallback(() => api.activity(), []));
   // Live memory breakdown. Loaded once on open; the Refresh button re-reads it,
   // which is how you watch a suspicious climb without leaving the tab.
   const memory = useApi(useCallback(() => api.memory(), []));
@@ -504,28 +471,6 @@ export default function AdminHealth() {
             );
           })()
         )}
-      </section>
-
-      {/* --- Activity log ------------------------------------------------------ */}
-      <section className="card p-5">
-        <CardHead title="Recent admin activity" />
-        <p className="-mt-2 mb-4 text-sm text-light">What changed in the admin panel and when (logged automatically).</p>
-        <div className="mt-4">
-          {activity.error ? (
-            <ErrorBox message={activity.error} onRetry={activity.reload} title="Couldn't read the activity log" />
-          ) : (activity.data?.entries || []).length === 0 ? (
-            <p className="text-sm text-light">{activity.loading ? "Reading the activity log…" : "No logged actions yet."}</p>
-          ) : (
-            <ul className="divide-y divide-border text-sm">
-              {(activity.data?.entries || []).slice(0, 25).map((e, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 py-2">
-                  <span className="text-medium">{describeActivity(e)}</span>
-                  <span className="shrink-0 font-mono text-xs text-light">{fmtTime(e.t)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </section>
     </div>
   );

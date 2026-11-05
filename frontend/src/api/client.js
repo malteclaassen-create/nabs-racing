@@ -1497,7 +1497,10 @@ export const api = {
     const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1];
     return { blob: await res.blob(), name: name || "nabs-full-backup.zip" };
   },
-  activity: () => request("/admin/activity", { auth: true }),
+  activity: (filters = {}) => {
+    const q = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== "" && v != null)).toString();
+    return request(`/admin/activity${q ? `?${q}` : ""}`, { auth: true });
+  },
   createTeam: (body) => request("/admin/teams", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   // Teams of every OTHER season in this series, for the "bring one over" search
   // next to Add team. `seasonId` is the season being edited.
