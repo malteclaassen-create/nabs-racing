@@ -58,6 +58,15 @@ describe("season practice totals", () => {
     ]);
   });
 
+  it("starts the count one week before the first round", () => {
+    const totals = seasonPracticeTotals({
+      rounds: ROUNDS,
+      since: T0 - 7 * DAY,
+      sessions: [{ track: "spa", laps: { [A]: [sec(T0 - 10 * DAY), sec(T0 - 6 * DAY)] } }],
+    });
+    expect(totals).toEqual([{ series: "nabs", steamId: A, laps: 1 }]);
+  });
+
   it("takes the bigger of the files and the live count per week, never both", () => {
     const totals = seasonPracticeTotals({
       rounds: ROUNDS,
@@ -117,8 +126,8 @@ describe("season practice board", () => {
       ];
     };
     const board = await practiceSeasonBoard(prisma, 10, "disc-a", { sessionsSince });
-    // the window opens at last season's final round
-    expect(askedSince).toBe(T0 - 14 * DAY);
+    // the count starts one week before the season's first round
+    expect(askedSince).toBe(T0 - 7 * DAY);
     expect(board).toHaveLength(1);
     expect(board[0].rows.map((r) => [r.name, r.laps, r.mine])).toEqual([
       ["Bob", 2, false],

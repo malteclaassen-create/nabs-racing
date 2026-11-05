@@ -917,7 +917,7 @@ export async function moveLentServerLapsOnce(prisma) {
 //
 // Each lap belongs to the round it was driven before, the same "week" the
 // training points use, and only counts when the server ran that round's
-// circuit. Per driver and week the bigger of the two counts is taken, so a
+// circuit. The season's count starts one week before its first round. Per driver and week the bigger of the two counts is taken, so a
 // week both records saw is not counted twice. Only the drivers of the series'
 // running season are listed.
 
@@ -931,11 +931,12 @@ function roundAt(rounds, ms) {
 // Laps per series, driver and week from both records. `rounds` maps a series
 // slug to its rounds ({ id, track, start, active }) sorted by start;
 // `sessions` are the server's practice files; `relay` the TokenPractice rows.
-export function seasonPracticeTotals({ rounds, sessions = [], relay = [] }) {
+export function seasonPracticeTotals({ rounds, sessions = [], relay = [], since = 0 }) {
   const fromFiles = new Map(); // `${series}|${steamId}|${period}` -> laps
   for (const s of sessions) {
     for (const [steamId, stamps] of Object.entries(s.laps || {})) {
       for (const at of stamps) {
+        if (at * 1000 <= since) continue;
         for (const [series, list] of rounds) {
           const r = roundAt(list, at * 1000);
           if (!r || !r.active || offTrack(r.track, s.track)) continue;
@@ -1000,13 +1001,12 @@ export async function practiceSeasonBoard(prisma, limit = 10, meId = null, { ses
   }
   if (!seriesInfo.size) return [];
 
-  // The window opens when the last round before the season was raced, so the
-  // practice for round 1 counts. A first season reaches back two months.
+  // The count starts one week before the season's first round, so the week
+  // of practice for round 1 counts and the break before it does not.
   let since = Infinity;
   for (const list of rounds.values()) {
-    const first = list.findIndex((r) => r.active);
-    if (first < 0) continue;
-    since = Math.min(since, first > 0 ? list[first - 1].start : list[first].start - 60 * 86400000);
+    const first = list.find((r) => r.active);
+    if (first) since = Math.min(since, first.start - 7 * 86400000);
   }
 
   const relay = await prisma
@@ -1026,7 +1026,7 @@ export async function practiceSeasonBoard(prisma, limit = 10, meId = null, { ses
       new Promise((resolve) => setTimeout(() => resolve([]), FILES_WAIT_MS).unref?.()),
     ]);
   }
-  const totals = seasonPracticeTotals({ rounds, sessions, relay });
+  const totals = seasonPracticeTotals({ rounds, sessions, relay, since: Number.isFinite(since) ? since : 0 });
   if (!totals.length) return [];
 
   // The drivers of each series' running season, by Steam id.
