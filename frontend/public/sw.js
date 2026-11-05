@@ -106,6 +106,44 @@ async function cacheFirst(request, cacheName, { revalidate = false } = {}) {
   return res;
 }
 
+// A page load. Network first, always; the offline page only when that fails.
+//
+// A failed fetch() does NOT mean the visitor is offline. It rejects the same
+// way for a dropped Wi-Fi, a DNS lookup that went wrong, a connection reset on
+// the way to Railway, a VPN or antivirus web shield in the middle, or Windows
+// briefly swapping network adapters. The first version answered all of those
+// with "You are offline", which a driver with YouTube playing in the next tab
+// rightly found baffling (and the browser's own error page, which would have
+// named the actual cause, never showed).
+//
+// So: when the device says it has a connection, give the network one more go
+// after a short pause, which gets past the brief blips on its own. If that
+// fails too, the offline page still shows, and works out for itself (from
+// navigator.onLine) whether to say "you are offline" or "the site did not
+// answer".
+async function navigate(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    if (self.navigator.onLine !== false) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      try {
+        return await fetch(request);
+      } catch {
+        // fall through to the offline page
+      }
+    }
+    const cache = await caches.open(SHELL_CACHE);
+    return (
+      (await cache.match(OFFLINE_URL)) ||
+      new Response("NABS could not be reached. Please try again in a minute.", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      })
+    );
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   // Only ever plain GETs from this origin. A POST (signing up for a race,
@@ -117,18 +155,7 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(SHELL_CACHE);
-        return (
-          (await cache.match(OFFLINE_URL)) ||
-          new Response("You are offline.", {
-            status: 503,
-            headers: { "Content-Type": "text/plain; charset=utf-8" },
-          })
-        );
-      })
-    );
+    event.respondWith(navigate(request));
     return;
   }
 
