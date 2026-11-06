@@ -5370,6 +5370,7 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
   const [preview, setPreview] = useState(false);
   const [progress, setProgress] = useState(null);
   const filmRef = useRef(null);
+  const coverRef = useRef(null);
   const covered = !!season.carCovered;
   const unveiledAt = season.carUnveiledAt;
   // <input type="datetime-local"> speaks local time without a zone.
@@ -5400,6 +5401,29 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
       await api.uploadSeasonCarVideo(season.id, file, setProgress);
       onSaved(`Film uploaded for the ${season.name} unveil.`);
     } catch (err) { onError(err.message); } finally { setBusy(false); setProgress(null); }
+  }
+
+  async function pickCover(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      await api.uploadSeasonCarCover(season.id, await shrinkImage(file, { maxSide: 1920 }));
+      onSaved(`Cover photo updated for ${season.name}.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function releaseFilm() {
+    if (
+      !(await ask({
+        title: "Play the film for everyone?",
+        body: "Every open home page plays the film now.",
+        confirmLabel: "Play the film",
+      }))
+    )
+      return;
+    set("film", "The film is playing for everyone.");
   }
 
   async function clearFilm() {
@@ -5492,11 +5516,37 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
           )}
           <span className="text-light">
             {season.carUnveilAt
-              ? "The home page counts down to it and the cover comes off by itself. Unveil now still works before it."
-              : "Without a time the cover stays on until you press Unveil now."}
+              ? "The home page counts down to it. At zero it says Season reveal soon, and the car stays covered until you present it."
+              : "Without a time the home page says Unveiled at the briefing."}
           </span>
         </label>
       )}
+      <div className="flex w-full flex-wrap items-center gap-2">
+        <span className="font-semibold text-light">Cover photo</span>
+        <input
+          aria-label={`Cover photo for ${season.name}`}
+          ref={coverRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={pickCover}
+        />
+        <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+          onClick={() => coverRef.current?.click()}>
+          {season.carCoverUrl ? "Replace" : "Upload"}
+        </button>
+        {season.carCoverUrl && (
+          <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try { await api.clearSeasonCarCover(season.id); onSaved("Cover photo removed."); }
+              catch (err) { onError(err.message); } finally { setBusy(false); }
+            }}>
+            Remove
+          </button>
+        )}
+        <span className="text-light">The car under its foil. Shown while it is covered; without one a drawn cover stands in.</span>
+      </div>
       <div className="flex w-full flex-wrap items-center gap-2">
         <span className="font-semibold text-light">Film after the reveal</span>
         <input
@@ -5518,12 +5568,27 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
             Remove film
           </button>
         )}
-        <span className="text-light">MP4 or WebM, up to 300 MB. Hidden like the car until the unveil.</span>
+        <span className="text-light">MP4 or WebM, up to 300 MB. Hidden until you play it for everyone.</span>
+        {season.carVideoUrl && !covered && unveiledAt && !season.carFilmAt && (
+          <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={busy} onClick={releaseFilm}>
+            Play the film for everyone
+          </button>
+        )}
+        {season.carFilmAt && (
+          <>
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400">Film released</span>
+            <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+              onClick={() => set("film-off", "The film is hidden again.")}>
+              Hide it again
+            </button>
+          </>
+        )}
       </div>
       {preview && (
         <UnveilShow
           src={season.carImageUrl}
           video={season.carVideoUrl}
+          coverUrl={season.carCoverUrl}
           number={season.number}
           name={season.name}
           game={season.game}

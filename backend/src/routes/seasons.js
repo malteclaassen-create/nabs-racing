@@ -29,6 +29,9 @@ router.get("/teaser", async (req, res, next) => {
     // than the panel already does.
     res.json(
       t && {
+        // Admins only: what the unveil buttons on the page act on. The teased
+        // season is usually still private, so nobody else gets its id.
+        ...(isAdminRequest(req) ? { id: t.id } : {}),
         number: t.number,
         name: t.name,
         game: t.game,
@@ -36,6 +39,9 @@ router.get("/teaser", async (req, res, next) => {
         carCovered: t.carCovered,
         carUnveiledAt: t.carUnveiledAt,
         carUnveilAt: t.carUnveilAt,
+        carCoverUrl: t.carCoverUrl,
+        carHasFilm: t.carHasFilm,
+        carFilmAt: t.carFilmAt,
         carVideoUrl: t.carVideoUrl,
         serverNow: new Date().toISOString(),
         firstRace: t.firstRace,
@@ -104,9 +110,10 @@ router.get("/", async (req, res, next) => {
 // GET /api/seasons/car-unveil?series=<slug>&number=<n> -> is the season's car
 // still under its cover? Asked every few seconds by a page showing the cover;
 // the first answer without it starts the reveal there.
-//   { covered, unveiledAt, unveilAt, serverNow, carImageUrl, carVideoUrl }
-//   (the picture and the film only once unveiled; serverNow so every page
-//   counts down to unveilAt on the same clock)
+//   { covered, unveiledAt, unveilAt, serverNow, coverUrl, carImageUrl,
+//     hasFilm, filmAt, carVideoUrl }
+//   (the picture only once unveiled, the film only once released; serverNow
+//   so every page counts down to unveilAt on the same clock)
 router.get("/car-unveil", async (req, res, next) => {
   try {
     const series = await resolveSeries(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
@@ -127,7 +134,10 @@ router.get("/car-unveil", async (req, res, next) => {
       unveiledAt: car.carUnveiledAt,
       unveilAt: car.carUnveilAt,
       serverNow: new Date().toISOString(),
+      coverUrl: car.carCoverUrl,
       carImageUrl: car.carImageUrl,
+      hasFilm: car.carHasFilm,
+      filmAt: car.carFilmAt,
       carVideoUrl: car.carVideoUrl,
     });
   } catch (e) {

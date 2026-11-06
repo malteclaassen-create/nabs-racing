@@ -12,14 +12,17 @@
 // name (see renameCarFile), so it cannot be guessed from the season's id
 // either. The admin list still has the address, for the preview.
 //
-// Season.carUnveilAt can name the moment the cover comes off by itself (the
-// start of the briefing): from then on the car reads as unveiled at that time,
-// with nobody pressing anything. "Unveil now" still works before it.
-// Season.carVideoUrl is the film played after the reveal, hidden the same way.
+// Season.carUnveilAt is the time the pages count down to (the briefing). At
+// zero nothing happens by itself: the pages say the reveal is coming, and an
+// admin presents the car when the moment is right ("Unveil now").
+// Season.carCoverUrl is the league's own picture of the car under its foil,
+// shown while it is covered (it gives nothing away, so it is public).
+// Season.carVideoUrl is the film for after the reveal. It stays hidden until
+// an admin releases it (Season.carFilmAt), and then plays on every open page.
 //
-// Pages that show the cover count down to carUnveilAt on the server's clock
-// (serverNow) and ask GET /api/seasons/car-unveil every few seconds; the
-// answer that comes back without the cover is what starts the reveal.
+// Pages count down on the server's clock (serverNow) and ask
+// GET /api/seasons/car-unveil every few seconds; an answer without the cover
+// starts the reveal, an answer with the film released starts the film.
 // ---------------------------------------------------------------------------
 import { randomBytes } from "node:crypto";
 import { existsSync, renameSync, unlinkSync } from "node:fs";
@@ -28,32 +31,33 @@ import { join, basename } from "node:path";
 export const COVERED = "covered";
 
 // The car columns every read of a season's car needs.
-export const CAR_COLUMNS = `"carImageUrl", "carUnveil", "carUnveilAt", "carVideoUrl"`;
+export const CAR_COLUMNS = `"carImageUrl", "carUnveil", "carUnveilAt", "carVideoUrl", "carCoverUrl", "carFilmAt"`;
 
 const iso = (v) => (v && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null);
 
-// covered: still under the cover now. unveiledAt: when it came off.
-// unveilAt: when it is set to come off by itself (only while covered).
-export function carState(raw, at = null, now = Date.now()) {
+// covered: still under the cover. unveiledAt: when it came off.
+// unveilAt: the time the pages count down to (only while covered).
+export function carState(raw, at = null) {
   const v = raw == null ? null : String(raw);
-  const planned = iso(at);
-  if (v === COVERED) {
-    if (planned && now >= Date.parse(planned)) return { covered: false, unveiledAt: planned, unveilAt: null };
-    return { covered: true, unveiledAt: null, unveilAt: planned };
-  }
+  if (v === COVERED) return { covered: true, unveiledAt: null, unveilAt: iso(at) };
   return { covered: false, unveiledAt: iso(v), unveilAt: null };
 }
 
-// The car fields of a season as the public sees them: no picture and no film
-// while it is under the cover.
-export function publicCar(row, now = Date.now()) {
-  const s = carState(row?.carUnveil, row?.carUnveilAt, now);
+// The car fields of a season as the public sees them: no picture while it is
+// under the cover, and no film until it is released.
+export function publicCar(row) {
+  const s = carState(row?.carUnveil, row?.carUnveilAt);
+  const filmAt = s.covered ? null : iso(row?.carFilmAt);
   return {
     carImageUrl: s.covered ? null : row?.carImageUrl || null,
-    carVideoUrl: s.covered ? null : row?.carVideoUrl || null,
     carCovered: s.covered,
     carUnveiledAt: s.unveiledAt,
     carUnveilAt: s.unveilAt,
+    carCoverUrl: row?.carCoverUrl || null,
+    // Whether a film is waiting, so pages keep listening for its release.
+    carHasFilm: !!row?.carVideoUrl,
+    carFilmAt: filmAt,
+    carVideoUrl: filmAt ? row?.carVideoUrl || null : null,
   };
 }
 
@@ -66,6 +70,14 @@ export async function readCarUnveil(prisma, seasonId) {
 
 export async function writeCarUnveilAt(prisma, seasonId, value) {
   await prisma.$executeRawUnsafe(`UPDATE "Season" SET "carUnveilAt" = ? WHERE "id" = ?`, value, seasonId);
+}
+
+export async function writeCarFilmAt(prisma, seasonId, value) {
+  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "carFilmAt" = ? WHERE "id" = ?`, value, seasonId);
+}
+
+export async function writeCarCover(prisma, seasonId, url) {
+  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "carCoverUrl" = ? WHERE "id" = ?`, url, seasonId);
 }
 
 export async function writeCarVideo(prisma, seasonId, url) {

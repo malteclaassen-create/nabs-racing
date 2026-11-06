@@ -12,23 +12,41 @@ describe("car unveil", () => {
     expect(carState("nonsense")).toEqual({ covered: false, unveiledAt: null, unveilAt: null });
   });
 
-  it("comes off by itself at the set time", () => {
+  it("stays covered after the countdown ends, until an admin unveils it", () => {
     const at = "2026-11-07T18:30:00.000Z";
-    const before = Date.parse(at) - 1000;
-    const after = Date.parse(at) + 1000;
-    expect(carState(COVERED, at, before)).toEqual({ covered: true, unveiledAt: null, unveilAt: at });
-    expect(carState(COVERED, at, after)).toEqual({ covered: false, unveiledAt: at, unveilAt: null });
-    // "Unveil now" before the time wins
-    expect(carState("2026-11-07T18:00:00.000Z", at, before).covered).toBe(false);
+    expect(carState(COVERED, at)).toEqual({ covered: true, unveiledAt: null, unveilAt: at });
+    expect(carState("2026-11-07T18:40:00.000Z", at)).toEqual({
+      covered: false,
+      unveiledAt: "2026-11-07T18:40:00.000Z",
+      unveilAt: null,
+    });
   });
 
-  it("hands out no picture and no film while the car is covered", () => {
-    const row = { carImageUrl: "/api/uploads/seasons/s9-car-ab.jpg", carVideoUrl: "/f.mp4", carUnveil: COVERED, carUnveilAt: null };
-    expect(publicCar(row)).toEqual({ carImageUrl: null, carVideoUrl: null, carCovered: true, carUnveiledAt: null, carUnveilAt: null });
-    const open = publicCar({ ...row, carUnveil: "2026-11-07T19:35:00.000Z" });
-    expect(open.carImageUrl).toBe(row.carImageUrl);
-    expect(open.carVideoUrl).toBe("/f.mp4");
-    expect(publicCar({ carImageUrl: "/x.jpg" })).toEqual({ carImageUrl: "/x.jpg", carVideoUrl: null, carCovered: false, carUnveiledAt: null, carUnveilAt: null });
+  it("hides the picture while covered and the film until it is released", () => {
+    const row = {
+      carImageUrl: "/api/uploads/seasons/s9-car-ab.jpg",
+      carVideoUrl: "/f.mp4",
+      carCoverUrl: "/cover.jpg",
+      carUnveil: COVERED,
+      carUnveilAt: null,
+      carFilmAt: "2026-11-07T18:00:00.000Z", // a stale release does not count while covered
+    };
+    expect(publicCar(row)).toEqual({
+      carImageUrl: null,
+      carCovered: true,
+      carUnveiledAt: null,
+      carUnveilAt: null,
+      carCoverUrl: "/cover.jpg",
+      carHasFilm: true,
+      carFilmAt: null,
+      carVideoUrl: null,
+    });
+    const out = publicCar({ ...row, carUnveil: "2026-11-07T19:35:00.000Z", carFilmAt: null });
+    expect(out.carImageUrl).toBe(row.carImageUrl);
+    expect(out.carVideoUrl).toBe(null);
+    const film = publicCar({ ...row, carUnveil: "2026-11-07T19:35:00.000Z", carFilmAt: "2026-11-07T19:40:00.000Z" });
+    expect(film.carVideoUrl).toBe("/f.mp4");
+    expect(film.carFilmAt).toBe("2026-11-07T19:40:00.000Z");
   });
 
   it("names uploads so they cannot be guessed", () => {

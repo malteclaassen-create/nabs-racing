@@ -1,36 +1,33 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api } from "../api/client.js";
+import { api, getToken } from "../api/client.js";
+import { useAuth } from "../hooks/useAuth.js";
 import "./carUnveil.css";
 
 // ---------------------------------------------------------------------------
-// The season's car under a cover, a countdown to the moment the cover comes
-// off, the reveal, and the film after it.
+// The season's car under its cover, a countdown to the briefing, the reveal
+// and the film after it.
 //
-// The admin can set the time the cover comes off by itself (the start of the
-// briefing). Every page counts down to it on the server's clock, and the
-// countdown screen ("Watch the unveil", or a link with ?unveil=watch) shows a
-// big clock over the covered car that turns into the reveal at zero. After the
-// car is out, the film plays, if one was uploaded.
+// How it goes on the night:
+//   1. The car waits under its cover: the league's own picture of it under the
+//      foil where one was uploaded, else a drawn one. The site hands out no
+//      picture of the car itself (backend lib/carUnveil.js).
+//   2. Pages count down to the set time on the server's clock. At zero nothing
+//      happens by itself: they say "Season reveal soon".
+//   3. An admin presents the car (on the countdown screen itself, or in the
+//      Seasons tab). Every open page plays the reveal within seconds.
+//   4. An admin releases the film. Every open page plays it.
 //
-// An admin uploads the car and puts it under the cover (Seasons tab). Until
-// they press "Unveil now" the site hands out no picture at all, only the cover
-// (backend lib/carUnveil.js). A page showing the cover asks every few seconds
-// whether it is still on; the first answer without it plays the reveal over
-// the whole screen, so everyone watching the briefing sees it at once.
-//
-// Who sees the reveal:
-//   - everyone who had the cover on screen when the car was unveiled
-//   - whoever opens the page in the first 15 minutes after it, once per browser
-//   - anyone with ?unveil=replay in the address, after the unveil
-//   - an admin's preview from the Seasons tab, before anything is unveiled
+// The countdown screen opens from "Watch the unveil" on the home page, or a
+// link with ?unveil=watch. Late arrivals (15 minutes) see the reveal once;
+// ?unveil=replay plays it again after the unveil.
 // ---------------------------------------------------------------------------
 
 const POLL_MS = 5000;
 const LATE_WINDOW_MS = 15 * 60 * 1000;
 const SEEN_PREFIX = "nabs_unveil_seen:";
 
-// One reveal on screen at a time, however many panels on the page carry the car.
+// One unveil screen at a time, however many panels on the page carry the car.
 let overlayOpen = false;
 
 function seenKey(series, number) {
@@ -51,9 +48,12 @@ function markSeen(series, number, unveiledAt) {
   }
 }
 
-// The car's state on a page: covered or not, when the cover comes off, its
-// picture and film once unveiled, and the screens (countdown, reveal) to render.
+const seasonTitle = (name, number) =>
+  name && /^\d+$/.test(String(name).trim()) ? `Season ${name}` : name || (number != null ? `Season ${number}` : "The new car");
+
+// The car's state on a page and the screens to render.
 export function useCarUnveil({
+  seasonId = null,
   series,
   number,
   name,
@@ -62,14 +62,20 @@ export function useCarUnveil({
   unveiledAt,
   unveilAt,
   serverNow,
+  coverUrl,
   carImageUrl,
+  hasFilm,
+  filmAt,
   carVideoUrl,
 }) {
   const initial = () => ({
     covered: !!covered,
     unveiledAt: unveiledAt || null,
     unveilAt: unveilAt || null,
+    coverUrl: coverUrl || null,
     url: carImageUrl || null,
+    hasFilm: !!hasFilm,
+    filmAt: filmAt || null,
     video: carVideoUrl || null,
   });
   const [state, setState] = useState(initial);
@@ -77,21 +83,23 @@ export function useCarUnveil({
   // moment however wrong the device's clock is.
   const [offset, setOffset] = useState(() => (serverNow ? Date.parse(serverNow) - Date.now() : 0));
   const [screen, setScreen] = useState(null); // null | "countdown" | "reveal"
-  const [fromCountdown, setFromCountdown] = useState(false);
+  const [mode, setMode] = useState("full"); // how the reveal starts: full | quick | film
   const screenRef = useRef(null);
   screenRef.current = screen;
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     setState(initial());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series, number, covered, unveiledAt, unveilAt, carImageUrl, carVideoUrl]);
+  }, [series, number, covered, unveiledAt, unveilAt, coverUrl, carImageUrl, hasFilm, filmAt, carVideoUrl]);
 
-  const open = useCallback((which) => {
+  const open = useCallback((which, how = "full") => {
     // The countdown turns into the reveal on the same screen; anything else
     // waits for the screen that is up to be closed.
     if (overlayOpen && screenRef.current !== "countdown") return;
     overlayOpen = true;
-    setFromCountdown(screenRef.current === "countdown" && which === "reveal");
+    setMode(screenRef.current === "countdown" && which === "reveal" ? "quick" : how);
     setScreen(which);
   }, []);
 
@@ -99,30 +107,36 @@ export function useCarUnveil({
     (r) => {
       if (!r) return;
       if (r.serverNow) setOffset(Date.parse(r.serverNow) - Date.now());
-      if (r.covered) {
-        setState((s) => ({ ...s, unveilAt: r.unveilAt || null }));
-        return;
-      }
-      setState({
-        covered: false,
+      const prev = stateRef.current;
+      const next = {
+        covered: !!r.covered,
         unveiledAt: r.unveiledAt || null,
-        unveilAt: null,
+        unveilAt: r.unveilAt || null,
+        coverUrl: r.coverUrl || null,
         url: r.carImageUrl || null,
+        hasFilm: !!r.hasFilm,
+        filmAt: r.filmAt || null,
         video: r.carVideoUrl || null,
-      });
-      if (r.carImageUrl) open("reveal");
+      };
+      setState(next);
+      // The cover just came off: the reveal.
+      if (prev.covered && !next.covered && next.url) open("reveal");
+      // The film was just released and no screen is up: the film, straight away.
+      else if (!prev.filmAt && next.filmAt && next.video && screenRef.current == null) open("reveal", "film");
     },
     [open]
   );
 
-  // While the cover is on, keep asking: right away (for the server's clock),
-  // then every few seconds, and every second once the set time has come.
+  // Keep asking while the cover is on, and after it while a film waits for
+  // its release: right away (for the server's clock), then every few seconds.
+  const listening = state.covered || (state.hasFilm && !state.filmAt);
   useEffect(() => {
-    if (!state.covered || number == null) return undefined;
+    if (!listening || number == null) return undefined;
     let stopped = false;
     let busy = false;
     const ask = async () => {
       if (busy || stopped) return;
+      if (typeof document !== "undefined" && document.hidden && screenRef.current == null) return;
       busy = true;
       try {
         const r = await api.carUnveilState(series, number);
@@ -133,23 +147,13 @@ export function useCarUnveil({
         busy = false;
       }
     };
-    let last = 0;
-    const tick = () => {
-      if (typeof document !== "undefined" && document.hidden && screenRef.current == null) return;
-      const due = state.unveilAt && Date.now() + offset >= Date.parse(state.unveilAt) - 500;
-      if (due || Date.now() - last >= POLL_MS) {
-        last = Date.now();
-        ask();
-      }
-    };
     ask();
-    last = Date.now();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(ask, POLL_MS);
     return () => {
       stopped = true;
       clearInterval(id);
     };
-  }, [state.covered, state.unveilAt, offset, series, number, apply]);
+  }, [listening, series, number, apply]);
 
   // A link with ?unveil=watch opens the countdown (or, once the car is out,
   // plays the reveal); arriving just after the unveil plays it once.
@@ -162,13 +166,26 @@ export function useCarUnveil({
     if (!state.unveiledAt || !state.url) return;
     const fresh = Date.now() - Date.parse(state.unveiledAt) < LATE_WINDOW_MS;
     if (param === "replay" || param === "watch" || (fresh && !hasSeen(series, number, state.unveiledAt))) open("reveal");
-  }, [state.covered, state.unveiledAt, state.url, series, number, open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.covered, state.unveiledAt, state.url, series, number]);
 
   const close = useCallback(() => {
     overlayOpen = false;
     setScreen(null);
-    if (state.unveiledAt) markSeen(series, number, state.unveiledAt);
-  }, [series, number, state.unveiledAt]);
+    if (stateRef.current.unveiledAt) markSeen(series, number, stateRef.current.unveiledAt);
+  }, [series, number]);
+
+  // An admin acting from the screen itself. The answer is applied right away,
+  // so the admin's own screen does not wait for the next poll.
+  const act = useCallback(
+    async (what) => {
+      if (!seasonId) return;
+      await api.setCarUnveil(seasonId, what);
+      const r = await api.carUnveilState(series, number);
+      apply(r);
+    },
+    [seasonId, series, number, apply]
+  );
 
   let overlay = null;
   if (screen === "countdown" && state.covered) {
@@ -177,6 +194,8 @@ export function useCarUnveil({
         target={state.unveilAt ? Date.parse(state.unveilAt) - offset : null}
         number={number}
         name={name}
+        coverUrl={state.coverUrl}
+        onPresent={seasonId ? () => act("unveiled") : null}
         onClose={close}
       />
     );
@@ -185,10 +204,12 @@ export function useCarUnveil({
       <UnveilShow
         src={state.url}
         video={state.video}
+        coverUrl={state.coverUrl}
         number={number}
         name={name}
         game={game}
-        quick={fromCountdown}
+        start={mode}
+        onReleaseFilm={seasonId && state.hasFilm && !state.filmAt ? () => act("film") : null}
         onClose={close}
       />
     );
@@ -197,11 +218,19 @@ export function useCarUnveil({
   return {
     covered: state.covered,
     url: state.url,
-    // When the cover comes off, on this device's clock (null: no set time).
+    coverUrl: state.coverUrl,
+    // The countdown's end on this device's clock (null: no set time).
     unveilTarget: state.unveilAt ? Date.parse(state.unveilAt) - offset : null,
     openCountdown: () => open("countdown"),
     overlay,
   };
+}
+
+// Is the person looking an admin? Admin buttons on the unveil screens; the
+// server checks again on every call.
+function useIsAdmin() {
+  const { user } = useAuth();
+  return !!user?.isAdmin || !!getToken();
 }
 
 // "2d 04:12:09", "04:12:09", "12:09".
@@ -217,7 +246,7 @@ export function fmtCountdown(ms) {
   return `${two(m)}:${two(sec)}`;
 }
 
-// Ticks once a second while mounted; returns now.
+// Ticks while mounted; returns now.
 export function useNow(active = true) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -226,59 +255,6 @@ export function useNow(active = true) {
     return () => clearInterval(id);
   }, [active]);
   return now;
-}
-
-const seasonTitle = (name, number) =>
-  name && /^\d+$/.test(String(name).trim()) ? `Season ${name}` : name || (number != null ? `Season ${number}` : "The new car");
-
-// The countdown screen: the covered car under a spotlight and a big clock to
-// the moment the cover comes off. When it comes off, this screen turns into
-// the reveal by itself. Without a set time it simply waits for the unveil.
-export function UnveilCountdown({ target, number, name, onClose }) {
-  const now = useNow(true);
-  const left = target == null ? null : target - now;
-  const last = left != null && left <= 10000 && left > 0;
-  const title = seasonTitle(name, number);
-  useOverlayChrome(onClose);
-
-  const fullScreen = () => {
-    const el = document.documentElement;
-    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    else el.requestFullscreen?.().catch(() => {});
-  };
-
-  return createPortal(
-    <div className="unveil is-wait" role="dialog" aria-modal="true" aria-label={`${title}: countdown to the new car`}>
-      <div className="unveil-spot" />
-      <div className="unveil-top">
-        <span className="unveil-eyebrow">NABS Racing League</span>
-        <span className="unveil-sub">{title} · the new car</span>
-      </div>
-      <div className="unveil-stage">
-        <CoveredCar number={number} className="unveil-cover" />
-      </div>
-      <div className="unveil-clock-wrap" aria-live="off">
-        <div className="unveil-clock-label">
-          {left == null ? "Unveiled during the briefing" : left > 0 ? "Unveiled in" : "Any second now"}
-        </div>
-        {left != null && left > 0 && (
-          <div className={`unveil-clock ${last ? "unveil-clock-last" : ""}`} key={last ? Math.ceil(left / 1000) : "clock"}>
-            {last ? Math.ceil(left / 1000) : fmtCountdown(left)}
-          </div>
-        )}
-        {left != null && left > 0 && (
-          <div className="unveil-clock-when">
-            {new Date(target).toLocaleString(undefined, { weekday: "long", hour: "2-digit", minute: "2-digit" })}
-          </div>
-        )}
-      </div>
-      <div className="unveil-actions">
-        <button type="button" onClick={fullScreen} className="unveil-close unveil-close-on">Full screen</button>
-        <button type="button" onClick={onClose} className="unveil-close unveil-close-on">Close</button>
-      </div>
-    </div>,
-    document.body
-  );
 }
 
 // Escape closes, and the page behind does not scroll.
@@ -297,10 +273,119 @@ function useOverlayChrome(onClose) {
   }, [onClose]);
 }
 
-// The car under a fitted cover: a low racing car's outline drawn as cloth,
-// with the bulges of the wheels, the cockpit, the airbox and the rear wing,
-// and the hem lying on the floor. Drawn rather than a photo, so the cover
-// gives nothing away about the car under it.
+// A button an admin presses twice: the first press asks, the second does it.
+// Inline rather than a dialog, so it works the same over a full-screen view.
+function AdminButton({ label, sure, onRun }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    if (!armed) return undefined;
+    const t = setTimeout(() => setArmed(false), 5000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <span className="unveil-admin-item">
+      <button
+        type="button"
+        disabled={busy}
+        className={`unveil-close unveil-close-on unveil-admin-btn ${armed ? "unveil-admin-armed" : ""}`}
+        onClick={async () => {
+          if (!armed) {
+            setArmed(true);
+            return;
+          }
+          setBusy(true);
+          setErr(null);
+          try {
+            await onRun();
+          } catch (e) {
+            setErr(e.message || "That did not work.");
+          } finally {
+            setBusy(false);
+            setArmed(false);
+          }
+        }}
+      >
+        {busy ? "One moment" : armed ? sure : label}
+      </button>
+      {err && <span className="unveil-admin-err">{err}</span>}
+    </span>
+  );
+}
+
+// What stands for the car while it is covered: the league's photo of it under
+// the foil, or the drawn cover.
+export function CoverVisual({ coverUrl, number, className = "", lifting = false, fill = false }) {
+  if (coverUrl) {
+    return (
+      <img
+        src={coverUrl}
+        alt="The new car, under its cover"
+        className={`car-cover-photo ${fill ? "car-cover-photo-fill" : ""} ${lifting ? "car-cover-photo-lift" : ""} ${className}`}
+      />
+    );
+  }
+  return <CoveredCar number={number} className={className} lifting={lifting} />;
+}
+
+// The countdown screen: the covered car under a spotlight and a big clock to
+// the briefing. At zero it says the reveal is coming; it turns into the reveal
+// the moment an admin presents the car.
+export function UnveilCountdown({ target, number, name, coverUrl, onPresent, onClose }) {
+  const now = useNow(true);
+  const isAdmin = useIsAdmin();
+  const left = target == null ? null : target - now;
+  const last = left != null && left <= 10000 && left > 0;
+  const title = seasonTitle(name, number);
+  useOverlayChrome(onClose);
+
+  const fullScreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+
+  return createPortal(
+    <div className="unveil is-wait" role="dialog" aria-modal="true" aria-label={`${title}: countdown to the new car`}>
+      <div className="unveil-spot" />
+      <div className="unveil-top">
+        <span className="unveil-eyebrow">NABS Racing League</span>
+        <span className="unveil-sub">{title} · the new car</span>
+      </div>
+      <div className="unveil-stage">
+        <CoverVisual coverUrl={coverUrl} number={number} className="unveil-cover" />
+      </div>
+      <div className="unveil-clock-wrap">
+        {left != null && left > 0 ? (
+          <>
+            <div className="unveil-clock-label">Unveiled in</div>
+            <div className={`unveil-clock ${last ? "unveil-clock-last" : ""}`} key={last ? Math.ceil(left / 1000) : "clock"}>
+              {last ? Math.ceil(left / 1000) : fmtCountdown(left)}
+            </div>
+            <div className="unveil-clock-when">
+              {new Date(target).toLocaleString(undefined, { weekday: "long", hour: "2-digit", minute: "2-digit" })}
+            </div>
+          </>
+        ) : (
+          <div className="unveil-soon">{left == null ? "Unveiled at the briefing" : "Season reveal soon"}</div>
+        )}
+      </div>
+      <div className="unveil-actions">
+        <button type="button" onClick={fullScreen} className="unveil-close unveil-close-on">Full screen</button>
+        <button type="button" onClick={onClose} className="unveil-close unveil-close-on">Close</button>
+      </div>
+      {isAdmin && onPresent && (
+        <div className="unveil-admin">
+          <span className="unveil-admin-label">Admin</span>
+          <AdminButton label="Present the car" sure="Press again to confirm" onRun={onPresent} />
+        </div>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+// The drawn cover, for when no photo of the covered car was uploaded.
 export function CoveredCar({ number, className = "", lifting = false }) {
   const uid = useId().replace(/:/g, "");
   return (
@@ -375,17 +460,21 @@ const FOLDS = [
 
 // The reveal, over the whole screen: the covered car under a spotlight, a
 // short count, the cover pulled off, a flash, and the car with the season's
-// name; then the film, if there is one. It stays until it is closed, so it can
-// be held on a shared screen. `quick` skips the count when the countdown
-// screen has just done it.
-export function UnveilShow({ src, video = null, number, name, game, quick = false, onClose }) {
+// name. It stays until it is closed, so it can be held on a shared screen.
+//   start "full":  with its own 3-2-1
+//   start "quick": straight from the countdown screen, without the count
+//   start "film":  the car is already out and the film was just released
+// The film plays once it is released (`video` arrives); the admin preview
+// passes it in from the start and gets the whole evening in one go.
+export function UnveilShow({ src, video = null, coverUrl = null, number, name, game, start = "full", onReleaseFilm = null, onClose }) {
   // dark -> count -> pull -> car -> done -> film -> after
-  const [phase, setPhase] = useState(quick ? "pull" : "dark");
+  const [phase, setPhase] = useState(start === "quick" ? "pull" : start === "film" ? "done" : "dark");
   const [count, setCount] = useState(3);
   const [carReady, setCarReady] = useState(false);
   const [muted, setMuted] = useState(false);
   const closeRef = useRef(null);
   const filmRef = useRef(null);
+  const isAdmin = useIsAdmin();
   const reduce =
     typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   useOverlayChrome(onClose);
@@ -400,25 +489,34 @@ export function UnveilShow({ src, video = null, number, name, game, quick = fals
   }, [src]);
 
   useEffect(() => {
-    if (!carReady) return undefined;
+    if (!carReady || start === "film") return undefined;
     const steps = reduce
       ? [[0, "car"], [1200, "done"]]
-      : quick
+      : start === "quick"
         ? [[150, "pull"], [1050, "car"], [2750, "done"]]
         : [[1200, "count"], [3600, "pull"], [4500, "car"], [6200, "done"]];
     const timers = steps.map(([ms, p]) => setTimeout(() => setPhase(p), ms));
-    if (!reduce && !quick) {
+    if (!reduce && start === "full") {
       timers.push(setTimeout(() => setCount(2), 2000), setTimeout(() => setCount(1), 2800));
     }
     return () => timers.forEach(clearTimeout);
-  }, [carReady, reduce, quick]);
+  }, [carReady, reduce, start]);
 
-  // The film follows a few seconds after the car is out.
+  // The film: a few seconds after the car is out when it was there from the
+  // start, at once when it is released while the car is on screen.
+  const hadVideo = useRef(!!video);
   useEffect(() => {
-    if (phase !== "done" || !video) return undefined;
-    const t = setTimeout(() => setPhase("film"), 3500);
-    return () => clearTimeout(t);
-  }, [phase, video]);
+    if (!video) return undefined;
+    if (phase === "done" || (phase === "after" && !hadVideo.current)) {
+      const wait = start === "film" || !hadVideo.current ? 300 : 3500;
+      const t = setTimeout(() => {
+        hadVideo.current = true;
+        setPhase("film");
+      }, wait);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [phase, video, start]);
 
   // Played with sound where the browser lets it, muted where it does not
   // (nobody touched the page yet): then a button turns the sound on.
@@ -462,7 +560,7 @@ export function UnveilShow({ src, video = null, number, name, game, quick = fals
         />
         {/* Gone for good once the car is out: drawn again later, it would fly off a second time. */}
         {["dark", "count", "pull", "car"].includes(phase) && !(reduce && shown) && (
-          <CoveredCar number={number} className="unveil-cover" lifting={pulling && !reduce} />
+          <CoverVisual coverUrl={coverUrl} number={number} className="unveil-cover" lifting={pulling && !reduce} />
         )}
         {phase === "count" && (
           <div className="unveil-count" key={count} aria-live="polite">
@@ -493,6 +591,13 @@ export function UnveilShow({ src, video = null, number, name, game, quick = fals
           Close
         </button>
       </div>
+
+      {isAdmin && onReleaseFilm && !video && (phase === "done" || phase === "after") && (
+        <div className="unveil-admin">
+          <span className="unveil-admin-label">Admin</span>
+          <AdminButton label="Play the film for everyone" sure="Press again to confirm" onRun={onReleaseFilm} />
+        </div>
+      )}
 
       {video && (
         <div className={`unveil-film ${film ? "unveil-film-on" : ""}`} aria-hidden={!film}>

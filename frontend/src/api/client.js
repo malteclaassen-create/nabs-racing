@@ -1436,6 +1436,13 @@ export const api = {
   // The film played after the reveal (mp4/webm), with upload progress.
   uploadSeasonCarVideo: (id, file, onProgress) => adminUploadWithProgress(`/admin/seasons/${id}/car-video`, file, onProgress),
   clearSeasonCarVideo: (id) => request(`/admin/seasons/${id}/car-video`, { method: "DELETE", auth: true }),
+  // The league's photo of the car under its foil, shown while it is covered.
+  uploadSeasonCarCover: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/seasons/${id}/car-cover`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeasonCarCover: (id) => request(`/admin/seasons/${id}/car-cover`, { method: "DELETE", auth: true }),
 
   // The round's own main-card photo: what the Home hero wears while this round
   // is the latest one. Cleared = back to the season photo. The public side

@@ -23,7 +23,7 @@ import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
-import { useCarUnveil, CoveredCar, fmtCountdown, useNow } from "../components/CarUnveil.jsx";
+import { useCarUnveil, CoverVisual, fmtCountdown, useNow } from "../components/CarUnveil.jsx";
 import IdleFilm from "../components/IdleFilm.jsx";
 import { useIdleFilm } from "../hooks/useIdleFilm.js";
 import { useSeries } from "../context/SeriesContext.jsx";
@@ -249,6 +249,7 @@ function CarReveal({ season }) {
   // A car kept under its cover until the briefing (components/CarUnveil.jsx):
   // the cover stands here instead, and the reveal plays once it comes off.
   const unveil = useCarUnveil({
+    seasonId: season?.id,
     series: useSeries().slug,
     number: season?.number,
     name: season?.name,
@@ -256,7 +257,10 @@ function CarReveal({ season }) {
     covered: season?.carCovered,
     unveiledAt: season?.carUnveiledAt,
     unveilAt: season?.carUnveilAt,
+    coverUrl: season?.carCoverUrl,
     carImageUrl: season?.carImageUrl,
+    hasFilm: season?.carHasFilm,
+    filmAt: season?.carFilmAt,
     carVideoUrl: season?.carVideoUrl,
   });
   const src = unveil.covered ? null : unveil.url || carFor(season);
@@ -331,12 +335,26 @@ function CarReveal({ season }) {
   );
 }
 
+// "Unveiled in 04:12:09" while the countdown runs, "Season reveal soon" once it
+// is over and the car still waits for the admins, "Unveiled at the briefing"
+// without a set time.
+function UnveilWhen({ target }) {
+  const now = useNow(target != null);
+  if (target == null) return "Unveiled at the briefing";
+  if (target - now <= 0) return "Season reveal soon";
+  return (
+    <>
+      Unveiled in <UnveilLeft target={target} />
+    </>
+  );
+}
+
 // Time left to the unveil, ticking ("2d 04:12:09"); null without a set time.
 function UnveilLeft({ target }) {
   const now = useNow(target != null);
   if (target == null) return null;
   const left = target - now;
-  return <span className="tabular-nums">{left > 0 ? fmtCountdown(left) : "Any second now"}</span>;
+  return <span className="tabular-nums">{fmtCountdown(left)}</span>;
 }
 
 // The coming-soon hero's car slot while the car waits under its cover: the
@@ -352,7 +370,11 @@ function CoveredPanel({ season, unveil }) {
         className="pointer-events-none absolute inset-0"
         style={{ background: "radial-gradient(60% 55% at 50% 40%, rgba(255,255,255,0.10), transparent 70%)" }}
       />
-      <CoveredCar number={season?.number} className="relative w-[88%]" />
+      {unveil.coverUrl ? (
+        <CoverVisual coverUrl={unveil.coverUrl} fill />
+      ) : (
+        <CoverVisual number={season?.number} className="relative w-[88%]" />
+      )}
       <button
         type="button"
         onClick={unveil.openCountdown}
@@ -363,7 +385,7 @@ function CoveredPanel({ season, unveil }) {
       <div className="pointer-events-none absolute bottom-3 left-4 right-4 flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">
         <span>The {season?.name} car</span>
         <span className="text-[rgb(244,175,198)]">
-          {unveil.unveilTarget != null ? <>Unveiled in <UnveilLeft target={unveil.unveilTarget} /></> : "Unveiled at the briefing"}
+          <UnveilWhen target={unveil.unveilTarget} />
         </span>
       </div>
       {unveil.overlay}
@@ -439,6 +461,7 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
   }, [teasedNumber]);
   // The car may still be under its cover until the briefing (CarUnveil.jsx).
   const unveil = useCarUnveil({
+    seasonId: teaser?.id,
     series: useSeries().slug,
     number: teaser?.number,
     name: teaser?.name,
@@ -447,7 +470,10 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
     unveiledAt: teaser?.carUnveiledAt,
     unveilAt: teaser?.carUnveilAt,
     serverNow: teaser?.serverNow,
+    coverUrl: teaser?.carCoverUrl,
     carImageUrl: teaser?.carImageUrl,
+    hasFilm: teaser?.carHasFilm,
+    filmAt: teaser?.carFilmAt,
     carVideoUrl: teaser?.carVideoUrl,
   });
 
@@ -491,9 +517,13 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
             <div className="speed-hatch absolute inset-0 opacity-20" />
             {unveil.covered && (
               <div className="absolute inset-0 flex items-end justify-center px-4 pb-2">
-                <CoveredCar number={teaser.number} className="w-full max-w-[300px]" />
+                {unveil.coverUrl ? (
+                  <CoverVisual coverUrl={unveil.coverUrl} fill />
+                ) : (
+                  <CoverVisual number={teaser.number} className="w-full max-w-[300px]" />
+                )}
                 <span className="absolute left-3 top-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(244,175,198)]">
-                  {unveil.unveilTarget != null ? <>Unveiled in <UnveilLeft target={unveil.unveilTarget} /></> : "Unveiled at the briefing"}
+                  <UnveilWhen target={unveil.unveilTarget} />
                 </span>
                 <button
                   type="button"
@@ -924,6 +954,7 @@ export default function Home() {
   const openerPanel =
     openerAwaited && season
       ? {
+          id: season.id,
           number: season.number,
           name: season.name,
           game: season.game,
@@ -931,6 +962,9 @@ export default function Home() {
           carCovered: season.carCovered,
           carUnveiledAt: season.carUnveiledAt,
           carUnveilAt: season.carUnveilAt,
+          carCoverUrl: season.carCoverUrl,
+          carHasFilm: season.carHasFilm,
+          carFilmAt: season.carFilmAt,
           carVideoUrl: season.carVideoUrl,
           firstRace: nextRace ? { track: nextRace.track, date: nextRace.date } : null,
         }
