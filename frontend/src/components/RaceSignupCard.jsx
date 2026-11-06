@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
-import { Fingerprint, Copy, Check, Undo2, Link2 } from "lucide-react";
+import { Fingerprint, Copy, Check, Undo2, Link2, Pencil } from "lucide-react";
 import { Hourglass } from "./icons/filled.jsx";
 import { NoData } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
@@ -13,6 +13,7 @@ import { copyText } from "../utils/copyText.js";
 import { useAsk } from "./overlay.jsx";
 import { threeLetterMonths } from "../utils/format.js";
 import { defaultLiveriesFor } from "../data/defaultLiveries.js";
+import { AdminCarDialog } from "./EventCar.jsx";
 
 // Quiet by default, colour only where it means something: the three answer
 // buttons are neutral outlines with a tinted icon, and fill with their status
@@ -184,6 +185,21 @@ function LiveryTag({ car, defaults = [] }) {
       <Link2 className="h-3 w-3" aria-hidden="true" />
       livery
     </a>
+  );
+}
+
+// The admin's pencil beside a livery: change this driver's car (AdminCarDialog).
+function CarEditButton({ name, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Change ${name}'s car`}
+      aria-label={`Change ${name}'s car`}
+      className="rounded p-0.5 text-faint transition hover:text-dark"
+    >
+      <Pencil className="h-3 w-3" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -371,6 +387,8 @@ export default function RaceSignupCard({
   const [steamError, setSteamError] = useState(null);
   // A special event's cars with the livery links, fetched with the Steam ids.
   const [cars, setCars] = useState(null);
+  // The entry whose car the admin is changing (AdminCarDialog), or null.
+  const [carEdit, setCarEdit] = useState(null);
   const [copiedLinks, setCopiedLinks] = useState(false);
   useEffect(() => {
     setAdminView(false);
@@ -715,6 +733,7 @@ export default function RaceSignupCard({
                   {adminView && (
                     <span className="ml-auto flex items-center gap-2">
                       {ev.isEvent && status !== "DECLINED" && cars && <LiveryTag car={cars[r.driverId]} defaults={defaultLiveriesFor(eventCar)} />}
+                      {ev.isEvent && status !== "DECLINED" && cars && <CarEditButton name={r.name} onClick={() => setCarEdit(r)} />}
                       <SteamTag steamId={steamIds?.[r.driverId]} />
                     </span>
                   )}
@@ -726,6 +745,21 @@ export default function RaceSignupCard({
           </div>
         ))}
       </div>
+      )}
+
+      {carEdit && (
+        <AdminCarDialog
+          ev={ev}
+          driver={carEdit}
+          car={cars?.[carEdit.driverId]}
+          defaults={defaultLiveriesFor(eventCar)}
+          onClose={() => setCarEdit(null)}
+          onSaved={(car) => {
+            setCars((c) => ({ ...(c || {}), [carEdit.driverId]: car }));
+            // The number sits in the public entry list, so that is refetched.
+            reloadMarket?.();
+          }}
+        />
       )}
 
       {/* The queue, under the columns rather than beside them: it is an order,
@@ -770,6 +804,7 @@ export default function RaceSignupCard({
                   {adminView && (
                     <span className="ml-auto flex items-center gap-2">
                       {ev.isEvent && cars && <LiveryTag car={cars[r.driverId]} defaults={defaultLiveriesFor(eventCar)} />}
+                      {ev.isEvent && cars && <CarEditButton name={r.name} onClick={() => setCarEdit(r)} />}
                       <SteamTag steamId={steamIds?.[r.driverId]} />
                     </span>
                   )}

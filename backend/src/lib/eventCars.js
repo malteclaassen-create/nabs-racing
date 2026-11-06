@@ -23,18 +23,68 @@ export const CAR_NUMBER_MIN = 1;
 export const CAR_NUMBER_MAX = 99;
 const LIVERY_URL_MAX = 500;
 const LIVERY_OLD_MAX = 120;
-// The links are due the day before the race, an hour before the race's own
-// clock time: Thursday 17:30 UTC for a Friday 18:30 UTC start. That is when the
-// organiser builds the car pack.
+// By default the links are due the day before the race, an hour before the
+// race's own clock time: Thursday 17:30 UTC for a Friday 18:30 UTC start. That
+// is when the organiser builds the car pack. An admin can set another time for
+// one event (Race.liveryClosesAt, Admin → Discord & Events → Edit), e.g. to
+// open the liveries again for a late change.
 const LIVERY_DEADLINE_HOURS = 25;
 
 // Answers that hold a car. A driver who declined has given theirs back, so
 // their number is free for somebody else.
 const HOLDS_A_CAR = ["ACCEPTED", "TENTATIVE", "WAITLIST"];
 
-export function liveryDeadline(race) {
+// When the liveries close if nobody set a time for the event.
+export function defaultLiveryDeadline(race) {
   const kickoff = raceKickoff(race?.date);
   return kickoff ? new Date(kickoff.getTime() - LIVERY_DEADLINE_HOURS * 3600e3) : null;
+}
+
+// The deadline that applies: the admin's own time for this event when there is
+// one (`race.liveryClosesAt`, see withLiveryClose), else the default.
+export function liveryDeadline(race) {
+  const own = race?.liveryClosesAt ? new Date(race.liveryClosesAt) : null;
+  if (own && !isNaN(own.getTime())) return own;
+  return defaultLiveryDeadline(race);
+}
+
+// Map raceId -> Date for the races an admin gave their own livery deadline.
+// Raw-SQL column (ensureAppSchema); missing column = none set.
+export async function readLiveryClose(prisma, raceIds) {
+  const ids = [...new Set((raceIds || []).filter(Boolean))];
+  const out = new Map();
+  if (!ids.length) return out;
+  try {
+    const ph = ids.map(() => "?").join(",");
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "id", "liveryClosesAt" FROM "Race" WHERE "id" IN (${ph}) AND "liveryClosesAt" IS NOT NULL`,
+      ...ids
+    );
+    for (const r of rows) {
+      const d = new Date(r.liveryClosesAt);
+      if (!isNaN(d.getTime())) out.set(r.id, d);
+    }
+  } catch {
+    /* column not there yet */
+  }
+  return out;
+}
+
+// The race with its own livery deadline (if any) put on it, for liveryDeadline
+// and carLocked. Returns the same object.
+export async function withLiveryClose(prisma, race) {
+  if (race) race.liveryClosesAt = (await readLiveryClose(prisma, [race.id])).get(race.id) || null;
+  return race;
+}
+
+// { ok, value } for the admin's livery deadline: an ISO date/time, or null /
+// "" for "back to the default". undefined = not sent ({ ok: false }).
+export function parseLiveryClosesAt(raw) {
+  if (raw === undefined) return { ok: false };
+  if (raw === null || raw === "") return { ok: true, value: null };
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return { error: "The livery deadline is not a valid date and time" };
+  return { ok: true, value: d.toISOString() };
 }
 
 export function carLocked(race, now = Date.now()) {

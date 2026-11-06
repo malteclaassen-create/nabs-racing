@@ -4860,6 +4860,7 @@ function DiscordEvents({ onJump }) {
       raceLaps: r.raceLaps ?? "",
       pointsTable: Array.isArray(r.pointsTable) ? r.pointsTable.join(", ") : "",
       info: r.info || "",
+      liveryClosesAt: toLocalInput(r.liveryClosesAt),
     });
   }
 
@@ -4879,6 +4880,8 @@ function DiscordEvents({ onJump }) {
         raceLaps: edit.raceLaps === "" ? null : edit.raceLaps,
         pointsTable: editPoints.value,
         info: edit.info || null,
+        // Only a special event's race has liveries; elsewhere leave it alone.
+        ...(isEvent && edit.type === "CHAMPIONSHIP" ? { liveryClosesAt: fromLocalInput(edit.liveryClosesAt) } : {}),
       });
       setMsg("Race saved. An already-announced Discord post updates itself.");
       setEditingId(null);
@@ -5110,6 +5113,34 @@ function DiscordEvents({ onJump }) {
                         </Field>
                       )}
                     </div>
+                    {/* The livery links of a special event close 25 hours
+                        before the start unless a time is set here. Setting a
+                        later one opens them again (lib/eventCars.js). */}
+                    {isEvent && edit.type === "CHAMPIONSHIP" && (
+                      <Field label="Liveries close (empty = 25 hours before the start)" tone="plain">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input aria-label="Liveries close" className="input w-auto" type="datetime-local" value={edit.liveryClosesAt}
+                            onChange={(e) => setEdit({ ...edit, liveryClosesAt: e.target.value })} />
+                          {edit.liveryClosesAt && (
+                            <button type="button" className="btn-secondary py-1 text-xs"
+                              onClick={() => setEdit({ ...edit, liveryClosesAt: "" })}>
+                              Back to the usual time
+                            </button>
+                          )}
+                        </div>
+                        {fromLocalInput(edit.liveryClosesAt) && (
+                          <div className="mt-1 text-xs text-light">
+                            Your time zone. In UTC that is{" "}
+                            <span className="font-semibold text-medium">
+                              {new Date(fromLocalInput(edit.liveryClosesAt)).toLocaleString("en-GB", {
+                                weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+                              })}{" "}
+                              UTC
+                            </span>
+                          </div>
+                        )}
+                      </Field>
+                    )}
                     <Field label="Details (rules, mods, links… shown in the Discord post and on the site)" tone="plain">
                       <textarea className="input min-h-24" value={edit.info}
                         onChange={(e) => setEdit({ ...edit, info: e.target.value })} />

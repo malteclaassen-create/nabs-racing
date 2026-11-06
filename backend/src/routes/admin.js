@@ -29,6 +29,7 @@ import {
   SOCIAL_KEYS, readSocialLinks, readLiveLinks, LIVE_LINK_DEFAULTS, LIVE_LINK_KEYS, liveLinkSeriesSlug,
 } from "./settings.js";
 import { combineQualiSplit, parseFormatNumber, parseRaceFormat, parseRacePointsTable } from "../lib/raceFormat.js";
+import { parseLiveryClosesAt } from "../lib/eventCars.js";
 import { leagueDay } from "../lib/tokenRules.js";
 import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds, resultsBellRace } from "../lib/sprintRaces.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
@@ -4893,6 +4894,10 @@ function parseEventExtras(body) {
   const highlights = parseHighlightsUrl(body.highlightsUrl);
   if (highlights.error) return { error: highlights.error };
   if (highlights.ok) out.highlightsUrl = highlights.value;
+  // A special event's own livery deadline (null = 25 hours before the start).
+  const liveryClose = parseLiveryClosesAt(body.liveryClosesAt);
+  if (liveryClose.error) return { error: liveryClose.error };
+  if (liveryClose.ok) out.liveryClosesAt = liveryClose.value;
   return out;
 }
 
@@ -4927,6 +4932,9 @@ async function writeRaceFormat(raceId, extras) {
   }
   if (extras.highlightsUrl !== undefined) {
     await writeRaceHighlights(prisma, raceId, extras.highlightsUrl);
+  }
+  if (extras.liveryClosesAt !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Race" SET "liveryClosesAt" = ? WHERE "id" = ?`, extras.liveryClosesAt, raceId);
   }
 }
 

@@ -728,6 +728,9 @@ export const api = {
   myCar: (raceId) => request(`/events/${raceId}/my-car`, { userAuth: true }),
   updateMyCar: (raceId, car) => request(`/events/${raceId}/my-car`, { method: "PUT", body: car, userAuth: true }),
   raceCars: (raceId) => request(`/events/${raceId}/cars`, { identityAuth: true }),
+  // Admins only: a driver's car, also after the liveries closed.
+  updateRaceCar: (raceId, driverId, car) =>
+    request(`/events/${raceId}/cars/${driverId}`, { method: "PUT", body: car, identityAuth: true }),
   removeRsvp: (raceId, driverId) =>
     request(`/events/${raceId}/rsvp/${driverId}`, { method: "DELETE", userAuth: true }),
   // Steam ids for one race's entry list, admins only. Its own request rather
