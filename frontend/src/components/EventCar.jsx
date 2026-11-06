@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Hash, Link2, Lock, Check, Paintbrush } from "lucide-react";
 import { api } from "../api/client.js";
+import { Modal } from "./overlay.jsx";
 import { threeLetterMonths } from "../utils/format.js";
 
 // A special event's car: the race number and the livery every driver brings
@@ -345,5 +346,56 @@ export function EventCarPanel({ ev, initial, myIds, onSaved, defaults = [] }) {
         )}
       </div>
     </div>
+  );
+}
+
+// The admin's editor for one driver's car, opened from the admin view of the
+// entry list. Not held to the deadline: the organiser can still take a late
+// change after the liveries closed. `car` is the stored car from /cars.
+export function AdminCarDialog({ ev, driver, car, onClose, onSaved, defaults = [] }) {
+  const [draft, setDraft] = useState(() => draftFrom(car, defaults));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const taken = takenNumbers(ev, new Set([driver.driverId]));
+
+  async function save() {
+    setError(null);
+    const p = draftProblem(draft, taken, defaults);
+    if (p) return setError(p);
+    setBusy(true);
+    try {
+      const r = await api.updateRaceCar(ev.id, driver.driverId, draftBody(draft));
+      onSaved?.({ carNumber: r.carNumber, liveryUrl: r.liveryUrl, liveryOld: r.liveryOld });
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${driver.name}'s car`}
+      description="Admins can change a car also after the liveries closed."
+      size="lg"
+      footer={
+        <div className="flex items-center justify-end gap-3">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn-primary" onClick={save} disabled={busy}>
+            {busy ? "Saving..." : "Save"}
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <EventCarFields draft={draft} setDraft={setDraft} taken={taken} defaults={defaults} />
+        {error && <p className="text-sm font-semibold text-bad">{error}</p>}
+      </div>
+    </Modal>
   );
 }

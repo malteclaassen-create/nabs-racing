@@ -651,13 +651,14 @@ async function siblingRows(driverId) {
 //
 // After the deadline the livery link is fixed: the car pack is being built from
 // the links that came in. A number can still be picked by somebody who signs
-// up late and has none, but no longer changed.
-async function checkCar(race, driverId, body) {
+// up late and has none, but no longer changed. `admin` skips the deadline: the
+// organiser can still change a car for a driver (PUT /:id/cars/:driverId).
+async function checkCar(race, driverId, body, { admin = false } = {}) {
   // No row yet (a newcomer's first answer): nothing stored. Not a lookup of
   // "<race>:null", which is a real key for a driver whose row id is "null".
   const stored = driverId ? (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`) || null : null;
   await withLiveryClose(prisma, race);
-  const locked = carLocked(race);
+  const locked = !admin && carLocked(race);
   const fields = {};
 
   if ("carNumber" in body) {
@@ -760,6 +761,33 @@ router.put("/:id/my-car", optionalUser, async (req, res, next) => {
     if (car.error) return res.status(car.status).json({ error: car.error });
     await writeCar(prisma, race.id, row.id, car.fields);
     const now = (await readCars(prisma, [race.id])).get(`${race.id}:${row.id}`);
+    res.json({ ok: true, carNumber: now?.carNumber ?? null, liveryUrl: now?.liveryUrl ?? null, liveryOld: now?.liveryOld ?? null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/events/:id/cars/:driverId { carNumber?, liveryUrl?, liveryOld? }
+// Admins only: change a driver's car for them, also after the liveries closed
+// (a late change the organiser agreed to). Same checks as the driver's own
+// edit otherwise: a free number, a real link, and only for somebody who holds a
+// car (in, tentatively in or waiting).
+router.put("/:id/cars/:driverId", optionalUser, async (req, res, next) => {
+  try {
+    if (!isAdminRequest(req)) return res.status(403).json({ error: "Admins only" });
+    const race = await prisma.race.findUnique({ where: { id: req.params.id } });
+    if (!race) return res.status(404).json({ error: "Race not found" });
+    if (!(await isEventRace(prisma, race.id))) return res.status(400).json({ error: "Only special events have a car to set" });
+    const driverId = req.params.driverId;
+    const rsvp = await prisma.raceRsvp.findUnique({
+      where: { raceId_driverId: { raceId: race.id, driverId } },
+      select: { status: true },
+    });
+    if (!rsvp || rsvp.status === "DECLINED") return res.status(400).json({ error: "This driver has no car for this race" });
+    const car = await checkCar(race, driverId, req.body || {}, { admin: true });
+    if (car.error) return res.status(car.status).json({ error: car.error });
+    await writeCar(prisma, race.id, driverId, car.fields);
+    const now = (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`);
     res.json({ ok: true, carNumber: now?.carNumber ?? null, liveryUrl: now?.liveryUrl ?? null, liveryOld: now?.liveryOld ?? null });
   } catch (e) {
     next(e);
