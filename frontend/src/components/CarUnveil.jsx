@@ -273,6 +273,7 @@ export function useCarUnveil({
     overlay = (
       <UnveilCountdown
         target={state.unveilAt ? Date.parse(state.unveilAt) - offset : null}
+        at={state.unveilAt}
         number={number}
         name={name}
         coverUrl={state.coverUrl}
@@ -404,6 +405,16 @@ export function UnveilDevBar() {
 function useIsAdmin() {
   const { user } = useAuth();
   return !!user?.isAdmin || !!getToken() || devAdminView();
+}
+
+// One person presents the car on the night, so nobody else can set it off by
+// accident: on these screens the buttons that act for everyone are his alone.
+// Other admins keep Test run, and the Car unveil panel stays as the way out if
+// he is not there.
+const UNVEIL_PRESENTER = "847431253572714567"; // Steve
+function useCanPresent() {
+  const { user } = useAuth();
+  return String(user?.discordId) === UNVEIL_PRESENTER || devAdminView();
 }
 
 // "2d 04:12:09", "04:12:09", "12:09".
@@ -696,9 +707,10 @@ function UnveilBrand({ title }) {
 // The countdown screen: the covered car under a spotlight and a big clock to
 // the briefing. At zero it says the reveal is coming; it turns into the reveal
 // the moment an admin presents the car.
-export function UnveilCountdown({ target, number, name, coverUrl, onPresent, onTestRun = null, onClose }) {
+export function UnveilCountdown({ target, at = null, number, name, coverUrl, onPresent, onTestRun = null, onClose }) {
   const now = useNow(true);
   const isAdmin = useIsAdmin();
+  const canPresent = useCanPresent();
   const left = target == null ? null : target - now;
   const last = left != null && left <= 10000 && left > 0;
   const title = seasonTitle(name, number);
@@ -732,7 +744,9 @@ export function UnveilCountdown({ target, number, name, coverUrl, onPresent, onT
               {last ? Math.ceil(left / 1000) : fmtCountdown(left)}
             </div>
             <div className="unveil-clock-when">
-              {new Date(target).toLocaleString("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit" })}
+              {/* The set time itself: `target` is moved to this device's clock, and a
+                  clock a few seconds off would print 19:29 for 19:30. */}
+              {new Date(at ?? target).toLocaleString("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit" })}
             </div>
           </>
         ) : (
@@ -766,7 +780,7 @@ export function UnveilCountdown({ target, number, name, coverUrl, onPresent, onT
         <div className="unveil-admin">
           <span className="unveil-admin-label">Admin</span>
           {onTestRun && <AdminButton label="Test run" sure="Only you will see it. Press again" onRun={onTestRun} />}
-          <AdminButton label="Unveil now" sure="Press again to confirm" onRun={onPresent} />
+          {canPresent && <AdminButton label="Unveil now" sure="Press again to confirm" onRun={onPresent} />}
         </div>
       )}
     </div>,
@@ -867,6 +881,7 @@ export function UnveilShow({ src, video = null, coverUrl = null, number, name, s
   const closeRef = useRef(null);
   const filmRef = useRef(null);
   const isAdmin = useIsAdmin();
+  const canPresent = useCanPresent();
   const reduce =
     typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   useOverlayChrome(onClose);
@@ -1018,7 +1033,7 @@ export function UnveilShow({ src, video = null, coverUrl = null, number, name, s
         </button>
       </div>
 
-      {isAdmin && onReleaseFilm && !video && (phase === "done" || phase === "after") && (
+      {isAdmin && (canPresent || testRun) && onReleaseFilm && !video && (phase === "done" || phase === "after") && (
         <div className="unveil-admin unveil-admin-film">
           <span className="unveil-admin-label">Admin</span>
           <AdminButton
