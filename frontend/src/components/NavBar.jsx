@@ -18,7 +18,7 @@ import SeriesSwitcher from "./SeriesSwitcher.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
 import { openFeedback } from "./FeedbackWidget.jsx";
-import { REPORTS_OPEN_TO_MEMBERS, reportsPath } from "../reportsAccess.js";
+import { REPORTS_OPEN_TO_MEMBERS, reportsPath, reportsWindowOpen } from "../reportsAccess.js";
 import { useTour } from "./Tour.jsx";
 import { DriverAvatar } from "./ui.jsx";
 import { useTokenBalance, takeTokenGain, peekTokenGain } from "../hooks/useTokenBalance.js";
@@ -1095,8 +1095,14 @@ export default function NavBar() {
   const isEvent = current?.kind === "event";
   const { race: eventRace, phase: eventPhase } = useEventRace(isEvent);
   const eventSignedUp = useMyEventEntry(isEvent && eventPhase !== "after" ? eventRace?.id : null);
+  // An event has no home page of the league's kind to carry the Report button,
+  // so on its evening and the two days after, the menu does.
+  const eventReport =
+    isEvent && isLoggedIn && REPORTS_OPEN_TO_MEMBERS && eventRace && reportsWindowOpen(eventRace.date)
+      ? [{ to: reportsPath({ nw: true, raceId: eventRace.id }), label: "Report" }]
+      : [];
   const links = isEvent
-    ? eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp, serverUp)
+    ? [...eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp, serverUp), ...eventReport]
     : navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
   // Reserve drivers only, and only until they have looked or applied.
   const seats = useReserveSeats();

@@ -360,6 +360,7 @@ function NewReport({ races, presetRaceId, onFiled }) {
           {races.map((r) => (
             <option key={r.id} value={r.id}>
               {raceLabel(r, races)}
+              {r.seriesName ? ` · ${r.seriesName}` : ""}
             </option>
           ))}
         </select>
@@ -630,6 +631,15 @@ export default function MyReports() {
   const list = useMemo(() => data?.reports || [], [data]);
   const older = data?.older || 0;
   const raceList = useMemo(() => races || [], [races]);
+  // The rounds to file about: this series' races that have started, with the
+  // last few days of the other series on top, named, for whoever got here from
+  // somewhere else than the race they drove in.
+  const { data: rounds } = useApi(useCallback(() => api.reportRounds().catch(() => null), []));
+  const reportable = useMemo(() => {
+    const here = raceList.filter((r) => r.isCompleted || (r.date && new Date(r.date) <= new Date()));
+    const have = new Set(here.map((r) => r.id));
+    return [...(rounds?.races || []).filter((r) => !have.has(r.id)), ...here];
+  }, [raceList, rounds]);
 
   const openThread = (id) => setParams(id ? { id } : {}, { replace: false });
   // ?new=1 (optionally &race=) opens the form straight away -- that is what the
@@ -710,7 +720,7 @@ export default function MyReports() {
         <div className="space-y-8">
           {filing && (
             <NewReport
-              races={raceList.filter((r) => r.isCompleted || (r.date && new Date(r.date) <= new Date()))}
+              races={reportable}
               presetRaceId={presetRace}
               onFiled={reload}
             />

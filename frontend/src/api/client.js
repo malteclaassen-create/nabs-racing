@@ -1694,6 +1694,7 @@ export const api = {
   },
   withdrawReport: (id) => request(`/reports/${id}`, { method: "DELETE", userAuth: true }),
   // The contacts AC recorded for you in one round, to pin a report to.
+  reportRounds: () => request("/reports/rounds"),
   myRaceContacts: (raceId) => request(`/reports/contacts?raceId=${encodeURIComponent(raceId)}`, { userAuth: true }),
   // The office's side.
   // Series-scoped, like the rest of the admin: an incident belongs to a race,

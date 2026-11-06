@@ -14,6 +14,7 @@ import { discordIdsForGuids, linkInGameReporters } from "../lib/reportReporter.j
 import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow.js";
 import { liveRaceSecond, liveGuidForName } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
+import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { clockNote } from "../lib/reportClock.js";
 import { withSprintRounds, readParentIds } from "../lib/sprintRaces.js";
 
@@ -365,6 +366,31 @@ router.get("/", optionalUser, async (req, res, next) => {
 });
 
 // GET /api/reports/:id -> one report with its thread
+// GET /api/reports/rounds -> the races of the last few days, in every series.
+// The form lists the series the visitor is on, so somebody who came in from
+// another series could not find the race they had just driven in. Reports are
+// taken for two days after a round; the third day covers the evening's end.
+router.get("/rounds", async (req, res, next) => {
+  try {
+    const now = Date.now();
+    const races = await prisma.race.findMany({
+      where: { date: { not: null, lte: new Date(now), gte: new Date(now - 3 * 24 * 60 * 60 * 1000) } },
+      select: { id: true, number: true, track: true, date: true, seasonId: true, season: { select: { series: { select: { name: true } } } } },
+      orderBy: { date: "desc" },
+      take: 12,
+    });
+    const hidden = await getPrivateSeasonIds(prisma);
+    const sprints = await readParentIds(prisma, races.map((r) => r.id));
+    res.json({
+      races: races
+        .filter((r) => !hidden.has(r.seasonId) && !sprints.has(r.id))
+        .map((r) => ({ id: r.id, number: r.number, track: r.track, date: r.date, seriesName: r.season?.series?.name || null })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/:id", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
