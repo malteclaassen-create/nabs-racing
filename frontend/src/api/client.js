@@ -644,6 +644,10 @@ export const api = {
     ),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
   seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
+  // Is the season's car still under its cover? Asked every few seconds while
+  // a page shows the cover (components/CarUnveil.jsx).
+  carUnveilState: (series, number) =>
+    request(`/seasons/car-unveil?series=${encodeURIComponent(series || "")}&number=${encodeURIComponent(number)}`),
   leagueStats: () => request("/settings/league-stats"),
   // Every season this team has raced and where it finished, for the team page's
   // career table and its constructor seals.
@@ -1423,6 +1427,22 @@ export const api = {
     return request(`/admin/seasons/${id}/car`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearSeasonCar: (id) => request(`/admin/seasons/${id}/car`, { method: "DELETE", auth: true }),
+  // The car under its cover: "covered", "unveiled" (now) or "off".
+  setCarUnveil: (id, state) =>
+    request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { state }, auth: true }),
+  // When the cover comes off by itself (ISO), or null for no set time.
+  setCarUnveilAt: (id, at) =>
+    request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { at }, auth: true }),
+  // The film played after the reveal (mp4/webm), with upload progress.
+  uploadSeasonCarVideo: (id, file, onProgress) => adminUploadWithProgress(`/admin/seasons/${id}/car-video`, file, onProgress),
+  clearSeasonCarVideo: (id) => request(`/admin/seasons/${id}/car-video`, { method: "DELETE", auth: true }),
+  // The league's photo of the car under its foil, shown while it is covered.
+  uploadSeasonCarCover: (id, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/seasons/${id}/car-cover`, { method: "POST", body: fd, auth: true, form: true });
+  },
+  clearSeasonCarCover: (id) => request(`/admin/seasons/${id}/car-cover`, { method: "DELETE", auth: true }),
 
   // The round's own main-card photo: what the Home hero wears while this round
   // is the latest one. Cleared = back to the season photo. The public side

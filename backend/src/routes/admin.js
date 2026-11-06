@@ -42,6 +42,7 @@ import { readIngestConfig, setIngestPaused, ensureIngestKey } from "../lib/telem
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { overdueRounds } from "../lib/overdueRounds.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
+import { COVERED, CAR_COLUMNS, carState, carFileName, readCarUnveil, writeCarUnveil, writeCarUnveilAt, writeCarVideo, writeCarFilmAt, writeCarCover, renameCarFile, removeCarFile } from "../lib/carUnveil.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
@@ -5537,7 +5538,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -5572,6 +5573,15 @@ router.get("/seasons", async (req, res, next) => {
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
             carImageUrl: extra.carImageUrl || null,
+            // The admin keeps the address while the car is covered: it is
+            // what the preview of the reveal plays.
+            carCovered: carState(extra.carUnveil, extra.carUnveilAt).covered,
+            carUnveiledAt: carState(extra.carUnveil, extra.carUnveilAt).unveiledAt,
+            // The planned moment as set, also once it has passed.
+            carUnveilAt: extra.carUnveilAt || null,
+            carVideoUrl: extra.carVideoUrl || null,
+            carCoverUrl: extra.carCoverUrl || null,
+            carFilmAt: extra.carFilmAt || null,
             cardsEnabled: extra.cardsEnabled == null ? true : !!Number(extra.cardsEnabled),
           };
         })
@@ -6202,13 +6212,170 @@ router.post("/seasons/:id/car", upload.single("file"), async (req, res, next) =>
     if (!season) return res.status(404).json({ error: "Season not found" });
 
     mkdirSync(SEASONS_DIR, { recursive: true });
-    const filename = `${season.id}-car${ext}`;
+    // A random name rather than "<id>-car": a car waiting under its cover
+    // must not be one guess away (lib/carUnveil.js).
+    const filename = carFileName(season.id, ext);
     const dest = safeUploadPath(SEASONS_DIR, filename);
     if (!dest) return res.status(400).json({ error: "This season's id can't be used as a file name" });
     writeFileSync(dest, req.file.buffer);
+    const before = await readCarUnveil(prisma, season.id);
     const carImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
     await writeSeasonCar(prisma, season.id, carImageUrl);
+    if (before?.carImageUrl) removeCarFile(SEASONS_DIR, before.carImageUrl);
     res.json({ ok: true, carImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id/car-unveil
+//   { state?: "covered" | "unveiled" | "film" | "film-off" | "off", at?: ISO | null }
+// covered:  the car stays under its cover; the site hands out no picture.
+//           The uploaded file gets a new random name, so an address that went
+//           out before the cover was on stops working.
+// unveiled: takes the cover off now. Open pages see it within seconds and
+//           play the reveal.
+// film:     releases the film: every open page plays it now.
+// film-off: takes the release back (the film is hidden again).
+// off:      no cover and no reveal, the car shows as uploaded.
+// at:       the time the pages count down to (the briefing), null for none.
+//           At zero nothing happens by itself: an admin unveils the car.
+router.put("/seasons/:id/car-unveil", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const state = String(req.body?.state || "");
+    const row = await readCarUnveil(prisma, season.id);
+    if ("at" in (req.body || {})) {
+      const at = req.body.at;
+      if (at != null && Number.isNaN(Date.parse(at))) return res.status(400).json({ error: "That is not a time." });
+      await writeCarUnveilAt(prisma, season.id, at == null ? null : new Date(at).toISOString());
+      if (!state) {
+        const after = await readCarUnveil(prisma, season.id);
+        return res.json({ ok: true, ...carState(after?.carUnveil, after?.carUnveilAt) });
+      }
+    }
+    if (state === "covered") {
+      const moved = row?.carImageUrl ? renameCarFile(SEASONS_DIR, season.id, row.carImageUrl) : null;
+      if (moved) await writeSeasonCar(prisma, season.id, moved);
+      const film = row?.carVideoUrl ? renameCarFile(SEASONS_DIR, season.id, row.carVideoUrl, "carfilm") : null;
+      if (film) await writeCarVideo(prisma, season.id, film);
+      await writeCarUnveil(prisma, season.id, COVERED);
+      await writeCarFilmAt(prisma, season.id, null);
+    } else if (state === "unveiled") {
+      if (!row?.carImageUrl) return res.status(400).json({ error: "Upload the car image first." });
+      await writeCarUnveil(prisma, season.id, new Date().toISOString());
+    } else if (state === "film") {
+      if (!row?.carVideoUrl) return res.status(400).json({ error: "Upload the film first." });
+      if (carState(row.carUnveil).covered) return res.status(400).json({ error: "Unveil the car first." });
+      await writeCarFilmAt(prisma, season.id, new Date().toISOString());
+    } else if (state === "film-off") {
+      await writeCarFilmAt(prisma, season.id, null);
+    } else if (state === "off") {
+      await writeCarUnveil(prisma, season.id, null);
+      await writeCarFilmAt(prisma, season.id, null);
+    } else {
+      return res.status(400).json({ error: "state must be covered, unveiled, film, film-off or off" });
+    }
+    const after = await readCarUnveil(prisma, season.id);
+    res.json({ ok: true, carImageUrl: after?.carImageUrl || null, ...carState(after?.carUnveil, after?.carUnveilAt) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/car-cover  (multipart: file=<image>)
+// The league's own picture of the car under its foil, shown while it is
+// covered (on the home page and under the countdown). Public on purpose.
+router.post("/seasons/:id/car-cover", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = LOGO_EXT[req.file.mimetype];
+    if (!ext) return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    mkdirSync(SEASONS_DIR, { recursive: true });
+    const filename = carFileName(season.id, ext, "carcover");
+    const dest = safeUploadPath(SEASONS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "This season's id can't be used as a file name" });
+    writeFileSync(dest, req.file.buffer);
+    const before = await readCarUnveil(prisma, season.id);
+    const url = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
+    await writeCarCover(prisma, season.id, url);
+    if (before?.carCoverUrl) removeCarFile(SEASONS_DIR, before.carCoverUrl);
+    res.json({ ok: true, carCoverUrl: url });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/car-cover -> back to the drawn cover.
+router.delete("/seasons/:id/car-cover", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const before = await readCarUnveil(prisma, season.id);
+    await writeCarCover(prisma, season.id, null);
+    if (before?.carCoverUrl) removeCarFile(SEASONS_DIR, before.carCoverUrl);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/car-video  (multipart: file=<mp4|webm>)
+// The film played after the reveal. Streams to disk like the series' promo
+// films (same size limit), under a random name: while the car is covered the
+// film is hidden as the picture is (lib/carUnveil.js).
+router.post("/seasons/:id/car-video", takePromoVideo, async (req, res, next) => {
+  const tmp = req.file?.path;
+  const dropTmp = () => {
+    try {
+      if (tmp && existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+  };
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = PROMO_VIDEO_EXT[req.file.mimetype];
+    if (!ext) {
+      dropTmp();
+      return res.status(400).json({ error: "Unsupported video type (use MP4 or WebM)" });
+    }
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) {
+      dropTmp();
+      return res.status(404).json({ error: "Season not found" });
+    }
+    mkdirSync(SEASONS_DIR, { recursive: true });
+    const filename = carFileName(season.id, ext, "carfilm");
+    const dest = safeUploadPath(SEASONS_DIR, filename);
+    if (!dest) {
+      dropTmp();
+      return res.status(400).json({ error: "This season's id can't be used as a file name" });
+    }
+    renameSync(tmp, dest);
+    const before = await readCarUnveil(prisma, season.id);
+    const url = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
+    await writeCarVideo(prisma, season.id, url);
+    if (before?.carVideoUrl) removeCarFile(SEASONS_DIR, before.carVideoUrl);
+    res.json({ ok: true, carVideoUrl: url });
+  } catch (e) {
+    dropTmp();
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/car-video -> no film after the reveal.
+router.delete("/seasons/:id/car-video", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const before = await readCarUnveil(prisma, season.id);
+    await writeCarVideo(prisma, season.id, null);
+    if (before?.carVideoUrl) removeCarFile(SEASONS_DIR, before.carVideoUrl);
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
@@ -6220,7 +6387,9 @@ router.delete("/seasons/:id/car", async (req, res, next) => {
   try {
     const season = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!season) return res.status(404).json({ error: "Season not found" });
+    const before = await readCarUnveil(prisma, season.id);
     await writeSeasonCar(prisma, season.id, null);
+    if (before?.carImageUrl) removeCarFile(SEASONS_DIR, before.carImageUrl);
     res.json({ ok: true });
   } catch (e) {
     next(e);

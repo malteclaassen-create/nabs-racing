@@ -1,0 +1,204 @@
+/* The car under its cover and the full-screen reveal (CarUnveil.jsx). */
+
+.car-cover { display: block; width: 100%; height: auto; overflow: visible; }
+.car-cover-edge { fill: none; stroke: rgb(255 255 255 / 0.16); stroke-width: 1.5; }
+.car-cover-fold { fill: none; stroke: rgb(255 255 255 / 0.06); stroke-width: 5; stroke-linecap: round; }
+.car-cover-fold-shade { fill: none; stroke: rgb(0 0 0 / 0.28); stroke-width: 7; stroke-linecap: round; }
+.car-cover-number {
+  font-family: "Archivo", "Inter", system-ui, sans-serif;
+  font-weight: 900; font-size: 64px; fill: rgb(244 175 198 / 0.16); letter-spacing: -0.04em;
+}
+
+/* The cloth breathes a little, as if air moved under it. */
+@media (prefers-reduced-motion: no-preference) {
+  .car-cover-cloth { transform-origin: 50% 85%; animation: cover-breathe 5.5s ease-in-out infinite; }
+  .car-cover-sheen { animation: cover-sheen 7s ease-in-out infinite; }
+}
+@keyframes cover-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.012) translateY(-1px); }
+}
+@keyframes cover-sheen {
+  0%, 100% { transform: translateX(-30px); opacity: 0.85; }
+  50% { transform: translateX(40px); opacity: 1; }
+}
+
+/* ---- The reveal ---------------------------------------------------------- */
+
+.unveil {
+  position: fixed; inset: 0; z-index: 200;
+  display: grid; grid-template-rows: auto 1fr auto auto; justify-items: center; align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 28px) max(20px, env(safe-area-inset-right, 0px))
+    calc(env(safe-area-inset-bottom, 0px) + 28px) max(20px, env(safe-area-inset-left, 0px));
+  background: #030407; color: #fff; overflow: hidden;
+  animation: unveil-in 0.5s ease both;
+}
+@keyframes unveil-in { from { opacity: 0; } to { opacity: 1; } }
+
+.unveil-spot {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(48% 42% at 50% 52%, rgb(255 255 255 / 0.13), transparent 70%),
+    radial-gradient(70% 30% at 50% 78%, rgb(244 175 198 / 0.10), transparent 70%);
+  opacity: 0; transition: opacity 1.2s ease;
+}
+.unveil:not(.is-dark) .unveil-spot { opacity: 1; }
+
+.unveil-top { position: relative; display: grid; justify-items: center; gap: 6px; text-align: center; }
+.unveil-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.3em; text-transform: uppercase; color: rgb(244 175 198);
+}
+.unveil-sub {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+  letter-spacing: 0.18em; text-transform: uppercase; color: rgb(255 255 255 / 0.55);
+}
+
+.unveil-stage { position: relative; width: min(92vw, 1100px); aspect-ratio: 16 / 7.5; max-height: 62vh; }
+/* The countdown needs room for the clock and its buttons under the car. */
+.unveil.is-wait .unveil-stage { max-height: 38vh; width: min(92vw, 1000px, 38vh * 16 / 7.5); }
+.unveil-car, .unveil-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
+.unveil-car {
+  object-fit: contain; mix-blend-mode: screen;
+  opacity: 0; filter: brightness(0.15) blur(4px); transform: scale(0.97);
+  transition: opacity 0.9s ease, filter 1.4s ease, transform 2.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.unveil-car-under { opacity: 0.55; filter: brightness(0.35) blur(1px); }
+.unveil-car-on { opacity: 1; filter: none; transform: scale(1); }
+.unveil-cover { top: auto; height: auto; bottom: 4%; }
+
+/* The cover is pulled off up and to the right, flapping as it goes. */
+.car-cover-lift { animation: cover-pull 1.15s cubic-bezier(0.55, 0, 0.75, 0.4) forwards; transform-origin: 85% 30%; }
+@keyframes cover-pull {
+  0% { transform: none; opacity: 1; }
+  18% { transform: translate(1%, -3%) skewX(-3deg) scaleY(1.04); }
+  45% { transform: translate(14%, -26%) rotate(9deg) skewX(-12deg) scale(1.05, 0.9); opacity: 1; }
+  100% { transform: translate(70%, -120%) rotate(28deg) skewX(-22deg) scale(1.2, 0.6); opacity: 0; }
+}
+.unveil.is-pull .car-cover-cloth, .unveil.is-car .car-cover-cloth { animation: none; }
+
+.unveil-count {
+  position: absolute; left: 50%; top: 14%; transform: translate(-50%, -50%);
+  font-family: "Archivo", "Inter", system-ui, sans-serif; font-weight: 900;
+  font-size: clamp(64px, 14vw, 160px); line-height: 1; color: rgb(255 255 255 / 0.9);
+  text-shadow: 0 0 40px rgb(244 175 198 / 0.5);
+  animation: count-pop 0.8s ease both;
+}
+@keyframes count-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  25% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+}
+
+.unveil-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.unveil-flash-on { animation: flash 0.75s ease-out both; }
+@keyframes flash { 0% { opacity: 0; } 12% { opacity: 0.8; } 100% { opacity: 0; } }
+
+.unveil-title {
+  position: relative; text-align: center; display: grid; gap: 8px;
+  opacity: 0; transform: translateY(14px);
+  transition: opacity 0.8s ease 0.5s, transform 0.8s ease 0.5s;
+}
+.unveil-title-on { opacity: 1; transform: none; }
+.unveil-name {
+  font-family: "Archivo", "Inter", system-ui, sans-serif; font-weight: 900; text-transform: uppercase;
+  font-size: clamp(36px, 7vw, 84px); line-height: 0.95; letter-spacing: -0.02em;
+}
+.unveil-game {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase; color: rgb(255 255 255 / 0.6);
+}
+
+.unveil-actions { position: relative; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
+.unveil-close {
+  padding: 10px 22px; border-radius: 10px; cursor: pointer;
+  font: 700 12px "Inter", system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+  color: #fff; background: rgb(255 255 255 / 0.08); border: 1px solid rgb(255 255 255 / 0.2);
+  opacity: 0; pointer-events: none; transition: opacity 0.6s ease, background 0.2s ease;
+}
+.unveil-close-on { opacity: 1; pointer-events: auto; }
+.unveil-close:hover { background: rgb(255 255 255 / 0.16); }
+.unveil-close:focus-visible { outline: 2px solid rgb(244 175 198); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .unveil, .unveil-count, .car-cover-lift { animation: none; }
+  .unveil-car { transition: opacity 0.6s ease; filter: none; transform: none; }
+}
+
+/* ---- The countdown screen ------------------------------------------------ */
+
+.unveil-clock-wrap { position: relative; display: grid; justify-items: center; gap: 6px; text-align: center; }
+.unveil-clock-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.24em; text-transform: uppercase; color: rgb(244 175 198);
+}
+.unveil-clock {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: clamp(44px, 10vw, 120px); line-height: 1; letter-spacing: -0.02em; color: #fff;
+  text-shadow: 0 0 36px rgb(244 175 198 / 0.25);
+}
+.unveil-clock-last { font-family: "Archivo", "Inter", system-ui, sans-serif; font-weight: 900; animation: count-tick 1s ease both; }
+@keyframes count-tick { 0% { transform: scale(1.35); opacity: 0; } 20% { transform: scale(1); opacity: 1; } 100% { opacity: 0.85; } }
+.unveil-clock-when {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: rgb(255 255 255 / 0.5);
+}
+
+/* ---- The film after the reveal ------------------------------------------- */
+
+.unveil-film {
+  position: absolute; inset: 0; z-index: 2; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.8s ease;
+}
+.unveil-film-on { opacity: 1; pointer-events: auto; }
+.unveil-film-video { width: 100%; height: 100%; object-fit: contain; }
+.unveil-film-bar {
+  position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex; gap: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .unveil-clock-last { animation: none; }
+}
+
+/* ---- The league's photo of the covered car --------------------------------- */
+
+.car-cover-photo { display: block; width: 100%; height: 100%; object-fit: contain; }
+.car-cover-photo-fill { position: absolute; inset: 0; object-fit: cover; }
+.unveil-stage .car-cover-photo { position: absolute; inset: 0; height: 100%; bottom: auto; }
+/* The foil comes off upwards and away. */
+.car-cover-photo-lift { animation: photo-lift 1.1s cubic-bezier(0.55, 0, 0.75, 0.4) forwards; transform-origin: 50% 100%; }
+@keyframes photo-lift {
+  0% { transform: none; opacity: 1; filter: none; }
+  30% { transform: translateY(-4%) scale(1.02); opacity: 1; }
+  100% { transform: translateY(-70%) scale(1.15); opacity: 0; filter: blur(6px); }
+}
+
+/* ---- "Season reveal soon" at zero ------------------------------------------ */
+
+.unveil-soon {
+  font-family: "Archivo", "Inter", system-ui, sans-serif; font-weight: 900; text-transform: uppercase;
+  font-size: clamp(32px, 7vw, 84px); line-height: 1; letter-spacing: -0.01em; color: #fff;
+  text-shadow: 0 0 40px rgb(244 175 198 / 0.35);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .unveil-soon { animation: soon-pulse 2.4s ease-in-out infinite; }
+}
+@keyframes soon-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* ---- Admin buttons on the unveil screens ----------------------------------- */
+
+.unveil-admin {
+  position: absolute; z-index: 3;
+  left: max(16px, env(safe-area-inset-left, 0px)); top: calc(env(safe-area-inset-top, 0px) + 16px);
+  max-width: calc(100% - 32px);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 12px; background: rgb(255 255 255 / 0.06); border: 1px dashed rgb(244 175 198 / 0.45);
+}
+.unveil-admin-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase; color: rgb(244 175 198);
+}
+.unveil-admin-item { display: inline-flex; align-items: center; gap: 8px; }
+.unveil-close.unveil-admin-btn { background: rgb(244 175 198 / 0.18); border-color: rgb(244 175 198 / 0.5); }
+.unveil-close.unveil-admin-armed { background: rgb(220 38 38 / 0.85); border-color: rgb(248 113 113); }
+.unveil-admin-err { font: 600 12px "Inter", system-ui, sans-serif; color: rgb(252 165 165); }
