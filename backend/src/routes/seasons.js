@@ -3,7 +3,7 @@ import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getPrivateSeasonIds, getSeasonTeaser, parseFastestLapPoints } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
-import { publicCar } from "../lib/carUnveil.js";
+import { publicCar, CAR_COLUMNS } from "../lib/carUnveil.js";
 
 const router = Router();
 
@@ -35,6 +35,9 @@ router.get("/teaser", async (req, res, next) => {
         carImageUrl: t.carImageUrl,
         carCovered: t.carCovered,
         carUnveiledAt: t.carUnveiledAt,
+        carUnveilAt: t.carUnveilAt,
+        carVideoUrl: t.carVideoUrl,
+        serverNow: new Date().toISOString(),
         firstRace: t.firstRace,
       }
     );
@@ -62,7 +65,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl / cardsEnabled
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "carImageUrl", "carUnveil", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -85,7 +88,7 @@ router.get("/", async (req, res, next) => {
           fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
           heroImageUrl: extra.heroImageUrl || null,
-          ...publicCar(extra.carImageUrl, extra.carUnveil),
+          ...publicCar(extra),
           // Drives the "Cards" view switch in the driver standings and the
           // rating card on the driver page. Missing column (pre-migration
           // read) reads as ON, the behaviour every season had before.
@@ -101,7 +104,9 @@ router.get("/", async (req, res, next) => {
 // GET /api/seasons/car-unveil?series=<slug>&number=<n> -> is the season's car
 // still under its cover? Asked every few seconds by a page showing the cover;
 // the first answer without it starts the reveal there.
-//   { covered, unveiledAt, carImageUrl }   (carImageUrl only once unveiled)
+//   { covered, unveiledAt, unveilAt, serverNow, carImageUrl, carVideoUrl }
+//   (the picture and the film only once unveiled; serverNow so every page
+//   counts down to unveilAt on the same clock)
 router.get("/car-unveil", async (req, res, next) => {
   try {
     const series = await resolveSeries(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
@@ -109,15 +114,22 @@ router.get("/car-unveil", async (req, res, next) => {
     if (!series || !Number.isFinite(number)) return res.status(404).json({ error: "Not found" });
     const rows = await prisma
       .$queryRawUnsafe(
-        `SELECT "carImageUrl", "carUnveil" FROM "Season" WHERE "number" = ? AND ("seriesId" = ? OR "seriesId" IS NULL)`,
+        `SELECT ${CAR_COLUMNS} FROM "Season" WHERE "number" = ? AND ("seriesId" = ? OR "seriesId" IS NULL)`,
         number,
         series.id
       )
       .catch(() => []);
     if (!rows[0]) return res.status(404).json({ error: "Not found" });
-    const car = publicCar(rows[0].carImageUrl, rows[0].carUnveil);
+    const car = publicCar(rows[0]);
     res.set("Cache-Control", "no-store");
-    res.json({ covered: car.carCovered, unveiledAt: car.carUnveiledAt, carImageUrl: car.carImageUrl });
+    res.json({
+      covered: car.carCovered,
+      unveiledAt: car.carUnveiledAt,
+      unveilAt: car.carUnveilAt,
+      serverNow: new Date().toISOString(),
+      carImageUrl: car.carImageUrl,
+      carVideoUrl: car.carVideoUrl,
+    });
   } catch (e) {
     next(e);
   }

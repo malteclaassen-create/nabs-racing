@@ -5368,8 +5368,48 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
   const ask = useAsk();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const filmRef = useRef(null);
   const covered = !!season.carCovered;
   const unveiledAt = season.carUnveiledAt;
+  // <input type="datetime-local"> speaks local time without a zone.
+  const toLocalInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const [at, setAt] = useState(toLocalInput(season.carUnveilAt));
+  useEffect(() => setAt(toLocalInput(season.carUnveilAt)), [season.carUnveilAt]);
+
+  async function saveAt(value) {
+    setBusy(true);
+    try {
+      await api.setCarUnveilAt(season.id, value ? new Date(value).toISOString() : null);
+      onSaved(value ? `The ${season.name} car is unveiled by itself at ${new Date(value).toLocaleString()}.` : "No set unveil time.");
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function pickFilm(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setProgress(0);
+    try {
+      await api.uploadSeasonCarVideo(season.id, file, setProgress);
+      onSaved(`Film uploaded for the ${season.name} unveil.`);
+    } catch (err) { onError(err.message); } finally { setBusy(false); setProgress(null); }
+  }
+
+  async function clearFilm() {
+    if (!(await ask({ title: "Remove the unveil film?", danger: true, confirmLabel: "Remove film" }))) return;
+    setBusy(true);
+    try {
+      await api.clearSeasonCarVideo(season.id);
+      onSaved("Film removed.");
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
 
   async function set(state, done) {
     setBusy(true);
@@ -5430,9 +5470,60 @@ function SeasonCarUnveil({ season, onSaved, onError }) {
           {covered ? "Take the cover off without a reveal" : "Reset"}
         </button>
       )}
+      {covered && (
+        <label className="flex w-full flex-wrap items-center gap-2">
+          <span className="font-semibold text-light">Unveil at</span>
+          <input
+            id={`unveil-at-${season.id}`}
+            type="datetime-local"
+            className="input w-auto px-2 py-1 text-xs"
+            value={at}
+            onChange={(e) => setAt(e.target.value)}
+          />
+          <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy || !at}
+            onClick={() => saveAt(at)}>
+            Save time
+          </button>
+          {season.carUnveilAt && (
+            <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+              onClick={() => saveAt(null)}>
+              No set time
+            </button>
+          )}
+          <span className="text-light">
+            {season.carUnveilAt
+              ? "The home page counts down to it and the cover comes off by itself. Unveil now still works before it."
+              : "Without a time the cover stays on until you press Unveil now."}
+          </span>
+        </label>
+      )}
+      <div className="flex w-full flex-wrap items-center gap-2">
+        <span className="font-semibold text-light">Film after the reveal</span>
+        <input
+          aria-label={`Unveil film for ${season.name}`}
+          ref={filmRef}
+          type="file"
+          accept="video/mp4,video/webm"
+          className="hidden"
+          onChange={pickFilm}
+        />
+        <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+          onClick={() => filmRef.current?.click()}>
+          {season.carVideoUrl ? "Replace film" : "Upload film"}
+        </button>
+        {progress != null && <span className="font-mono text-light">{progress}%</span>}
+        {season.carVideoUrl && (
+          <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+            onClick={clearFilm}>
+            Remove film
+          </button>
+        )}
+        <span className="text-light">MP4 or WebM, up to 300 MB. Hidden like the car until the unveil.</span>
+      </div>
       {preview && (
         <UnveilShow
           src={season.carImageUrl}
+          video={season.carVideoUrl}
           number={season.number}
           name={season.name}
           game={season.game}

@@ -54,6 +54,8 @@
 }
 
 .unveil-stage { position: relative; width: min(92vw, 1100px); aspect-ratio: 16 / 7.5; max-height: 62vh; }
+/* The countdown needs room for the clock and its buttons under the car. */
+.unveil.is-wait .unveil-stage { max-height: 38vh; width: min(92vw, 1000px, 38vh * 16 / 7.5); }
 .unveil-car, .unveil-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
 .unveil-car {
   object-fit: contain; mix-blend-mode: screen;
@@ -106,8 +108,9 @@
   letter-spacing: 0.2em; text-transform: uppercase; color: rgb(255 255 255 / 0.6);
 }
 
+.unveil-actions { position: relative; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
 .unveil-close {
-  margin-top: 18px; padding: 10px 22px; border-radius: 10px; cursor: pointer;
+  padding: 10px 22px; border-radius: 10px; cursor: pointer;
   font: 700 12px "Inter", system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
   color: #fff; background: rgb(255 255 255 / 0.08); border: 1px solid rgb(255 255 255 / 0.2);
   opacity: 0; pointer-events: none; transition: opacity 0.6s ease, background 0.2s ease;
@@ -119,4 +122,40 @@
 @media (prefers-reduced-motion: reduce) {
   .unveil, .unveil-count, .car-cover-lift { animation: none; }
   .unveil-car { transition: opacity 0.6s ease; filter: none; transform: none; }
+}
+
+/* ---- The countdown screen ------------------------------------------------ */
+
+.unveil-clock-wrap { position: relative; display: grid; justify-items: center; gap: 6px; text-align: center; }
+.unveil-clock-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.24em; text-transform: uppercase; color: rgb(244 175 198);
+}
+.unveil-clock {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: clamp(44px, 10vw, 120px); line-height: 1; letter-spacing: -0.02em; color: #fff;
+  text-shadow: 0 0 36px rgb(244 175 198 / 0.25);
+}
+.unveil-clock-last { font-family: "Archivo", "Inter", system-ui, sans-serif; font-weight: 900; animation: count-tick 1s ease both; }
+@keyframes count-tick { 0% { transform: scale(1.35); opacity: 0; } 20% { transform: scale(1); opacity: 1; } 100% { opacity: 0.85; } }
+.unveil-clock-when {
+  font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: rgb(255 255 255 / 0.5);
+}
+
+/* ---- The film after the reveal ------------------------------------------- */
+
+.unveil-film {
+  position: absolute; inset: 0; z-index: 2; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.8s ease;
+}
+.unveil-film-on { opacity: 1; pointer-events: auto; }
+.unveil-film-video { width: 100%; height: 100%; object-fit: contain; }
+.unveil-film-bar {
+  position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex; gap: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .unveil-clock-last { animation: none; }
 }

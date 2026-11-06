@@ -1430,6 +1430,12 @@ export const api = {
   // The car under its cover: "covered", "unveiled" (now) or "off".
   setCarUnveil: (id, state) =>
     request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { state }, auth: true }),
+  // When the cover comes off by itself (ISO), or null for no set time.
+  setCarUnveilAt: (id, at) =>
+    request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { at }, auth: true }),
+  // The film played after the reveal (mp4/webm), with upload progress.
+  uploadSeasonCarVideo: (id, file, onProgress) => adminUploadWithProgress(`/admin/seasons/${id}/car-video`, file, onProgress),
+  clearSeasonCarVideo: (id) => request(`/admin/seasons/${id}/car-video`, { method: "DELETE", auth: true }),
 
   // The round's own main-card photo: what the Home hero wears while this round
   // is the latest one. Cleared = back to the season photo. The public side

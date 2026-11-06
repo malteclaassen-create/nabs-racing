@@ -23,7 +23,7 @@ import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
-import { useCarUnveil, CoveredCar } from "../components/CarUnveil.jsx";
+import { useCarUnveil, CoveredCar, fmtCountdown, useNow } from "../components/CarUnveil.jsx";
 import IdleFilm from "../components/IdleFilm.jsx";
 import { useIdleFilm } from "../hooks/useIdleFilm.js";
 import { useSeries } from "../context/SeriesContext.jsx";
@@ -255,7 +255,9 @@ function CarReveal({ season }) {
     game: season ? seasonGameLabel(season) : null,
     covered: season?.carCovered,
     unveiledAt: season?.carUnveiledAt,
+    unveilAt: season?.carUnveilAt,
     carImageUrl: season?.carImageUrl,
+    carVideoUrl: season?.carVideoUrl,
   });
   const src = unveil.covered ? null : unveil.url || carFor(season);
 
@@ -283,7 +285,7 @@ function CarReveal({ season }) {
     };
   }, [src]);
 
-  if (unveil.covered) return <CoveredPanel season={season} />;
+  if (unveil.covered) return <CoveredPanel season={season} unveil={unveil} />;
   // Nothing to show (and nothing still probing): drop the panel entirely —
   // the announcement text simply fills the hero on its own.
   if (hasImg === false) return unveil.overlay;
@@ -329,8 +331,17 @@ function CarReveal({ season }) {
   );
 }
 
-// The coming-soon hero's car slot while the car waits under its cover.
-function CoveredPanel({ season }) {
+// Time left to the unveil, ticking ("2d 04:12:09"); null without a set time.
+function UnveilLeft({ target }) {
+  const now = useNow(target != null);
+  if (target == null) return null;
+  const left = target - now;
+  return <span className="tabular-nums">{left > 0 ? fmtCountdown(left) : "Any second now"}</span>;
+}
+
+// The coming-soon hero's car slot while the car waits under its cover: the
+// cover, the time left, and the button that opens the countdown screen.
+function CoveredPanel({ season, unveil }) {
   return (
     <div
       className="hero-car-slot hero-anim relative flex aspect-[16/10] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-black/10 bg-[#05070c] dark:border-white/12 lg:w-[42%]"
@@ -342,10 +353,20 @@ function CoveredPanel({ season }) {
         style={{ background: "radial-gradient(60% 55% at 50% 40%, rgba(255,255,255,0.10), transparent 70%)" }}
       />
       <CoveredCar number={season?.number} className="relative w-[88%]" />
+      <button
+        type="button"
+        onClick={unveil.openCountdown}
+        className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(244,175,198)]"
+      >
+        Watch the unveil
+      </button>
       <div className="pointer-events-none absolute bottom-3 left-4 right-4 flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">
         <span>The {season?.name} car</span>
-        <span className="text-[rgb(244,175,198)]">Unveiled at the briefing</span>
+        <span className="text-[rgb(244,175,198)]">
+          {unveil.unveilTarget != null ? <>Unveiled in <UnveilLeft target={unveil.unveilTarget} /></> : "Unveiled at the briefing"}
+        </span>
       </div>
+      {unveil.overlay}
     </div>
   );
 }
@@ -424,7 +445,10 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
     game: teaser?.game || null,
     covered: teaser?.carCovered,
     unveiledAt: teaser?.carUnveiledAt,
+    unveilAt: teaser?.carUnveilAt,
+    serverNow: teaser?.serverNow,
     carImageUrl: teaser?.carImageUrl,
+    carVideoUrl: teaser?.carVideoUrl,
   });
 
   if (!teaser) return null;
@@ -468,9 +492,16 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
             {unveil.covered && (
               <div className="absolute inset-0 flex items-end justify-center px-4 pb-2">
                 <CoveredCar number={teaser.number} className="w-full max-w-[300px]" />
-                <span className="absolute right-3 top-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(244,175,198)]">
-                  Unveiled at the briefing
+                <span className="absolute left-3 top-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(244,175,198)]">
+                  {unveil.unveilTarget != null ? <>Unveiled in <UnveilLeft target={unveil.unveilTarget} /></> : "Unveiled at the briefing"}
                 </span>
+                <button
+                  type="button"
+                  onClick={unveil.openCountdown}
+                  className="absolute right-2 top-1.5 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(244,175,198)]"
+                >
+                  Watch
+                </button>
               </div>
             )}
             {carSrc && (
@@ -899,6 +930,8 @@ export default function Home() {
           carImageUrl: season.carImageUrl,
           carCovered: season.carCovered,
           carUnveiledAt: season.carUnveiledAt,
+          carUnveilAt: season.carUnveilAt,
+          carVideoUrl: season.carVideoUrl,
           firstRace: nextRace ? { track: nextRace.track, date: nextRace.date } : null,
         }
       : null;

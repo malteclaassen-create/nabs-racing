@@ -206,6 +206,9 @@ export async function ensureAppSchema(prisma) {
   // --- The car under a cover until it is unveiled (lib/carUnveil.js):
   // null = shown as uploaded, "covered", or the ISO time it was unveiled.
   await addColumn(prisma, "Season", "carUnveil", "TEXT");
+  // When the cover comes off by itself (ISO), and the film played after it.
+  await addColumn(prisma, "Season", "carUnveilAt", "TEXT");
+  await addColumn(prisma, "Season", "carVideoUrl", "TEXT");
 
   // --- Driver rating cards per season (migration season_cards_enabled). The
   // ratings are distilled from race telemetry the early seasons never produced,
