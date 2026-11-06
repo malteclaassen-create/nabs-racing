@@ -270,6 +270,9 @@ export async function ensureAppSchema(prisma) {
   await addColumn(prisma, "RaceRsvp", "liveryUrl", "TEXT");
   // A custom livery the organiser already has from last time: its name.
   await addColumn(prisma, "RaceRsvp", "liveryOld", "TEXT");
+  // An admin's own livery deadline for one event (ISO text), null = the usual
+  // 25 hours before the start. See lib/eventCars.js.
+  await addColumn(prisma, "Race", "liveryClosesAt", "TEXT");
 
   // --- Admin-set: remove a (deactivated) driver from the public driver
   // standings entirely. Race results and constructor points stay untouched;

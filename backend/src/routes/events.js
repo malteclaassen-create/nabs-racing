@@ -23,6 +23,7 @@ import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
   isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, parseLiveryOld, liveryDeadline, carLocked,
+  readLiveryClose, withLiveryClose,
 } from "../lib/eventCars.js";
 
 const router = Router();
@@ -140,6 +141,8 @@ router.get("/", async (req, res, next) => {
 
     // Session format (raw-SQL columns) for the attendance hero.
     const format = await readRaceFormat(prisma, races.map((r) => r.id));
+    // An admin's own livery deadline per event (lib/eventCars.js).
+    const liveryClose = await readLiveryClose(prisma, races.map((r) => r.id));
     // Laps this event filmed for itself. Only the ones that HAVE their own are
     // in the map; the attendance page falls back to the circuit's for the rest.
     const hotlaps = await readRaceHotlaps(prisma, races.map((r) => r.id));
@@ -285,7 +288,9 @@ router.get("/", async (req, res, next) => {
         // A special event asks every sign-up for a car number and a livery
         // link, the link due by `liveryDeadline` (lib/eventCars.js).
         isEvent: eventIds.has(race.id),
-        liveryDeadline: eventIds.has(race.id) ? liveryDeadline(race)?.toISOString() ?? null : null,
+        liveryDeadline: eventIds.has(race.id)
+          ? liveryDeadline({ ...race, liveryClosesAt: liveryClose.get(race.id) || null })?.toISOString() ?? null
+          : null,
         visibleStatuses: notify.attendanceShow,
         // Is there still a seat to accept? The grid size is a rule now, not a
         // label: past it the Accept button becomes "join the waiting list".
@@ -651,6 +656,7 @@ async function checkCar(race, driverId, body) {
   // No row yet (a newcomer's first answer): nothing stored. Not a lookup of
   // "<race>:null", which is a real key for a driver whose row id is "null".
   const stored = driverId ? (await readCars(prisma, [race.id])).get(`${race.id}:${driverId}`) || null : null;
+  await withLiveryClose(prisma, race);
   const locked = carLocked(race);
   const fields = {};
 
@@ -717,6 +723,7 @@ router.get("/:id/my-car", optionalUser, async (req, res, next) => {
         })
       : null;
     const car = rsvp ? (await readCars(prisma, [race.id])).get(`${race.id}:${row.id}`) : null;
+    await withLiveryClose(prisma, race);
     res.json({
       // The row the answer sits on, which can be another season's row than the
       // login's: the page needs it to know which entry in the list is "me".

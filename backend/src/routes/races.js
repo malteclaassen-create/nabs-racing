@@ -7,6 +7,7 @@ import { buildRaceCalendar } from "../lib/ics.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
+import { readLiveryClose } from "../lib/eventCars.js";
 import { readParentIds, readSprintChildren, withSprintRounds } from "../lib/sprintRaces.js";
 import { readRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHeroes } from "../lib/raceHero.js";
@@ -123,7 +124,7 @@ router.get("/", async (req, res, next) => {
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
-    const [format, types, replays, winners, countries, photoCounts, highlights, withQuali, heroes] = await Promise.all([
+    const [format, types, replays, winners, countries, photoCounts, highlights, withQuali, heroes, liveryClose] = await Promise.all([
       readRaceFormat(prisma, races.map((r) => r.id)),
       readRaceTypes(prisma, races.map((r) => r.id)),
       dbReplaysByRace(prisma, races.map((r) => r.id)),
@@ -139,6 +140,8 @@ router.get("/", async (req, res, next) => {
       // The per-round main-card photo, so the Home hero can wear the picture of
       // the round it is actually about (lib/raceHero.js).
       readRaceHeroes(prisma, races.map((r) => r.id)),
+      // A special event's own livery deadline, for the admin's race editor.
+      readLiveryClose(prisma, races.map((r) => r.id)),
     ]);
     // Whether a classification pays championship points: a championship round
     // does, and so does the SPRINT of one — the child row is typed SPECIAL so
@@ -171,6 +174,8 @@ router.get("/", async (req, res, next) => {
         sprintLaps: format.get(r.id)?.sprintLaps ?? null,
         // The round's own points table (array) or null = the season's.
         pointsTable: format.get(r.id)?.pointsTable ?? null,
+        // Set by an admin for a special event; null = 25 hours before the start.
+        liveryClosesAt: liveryClose.get(r.id)?.toISOString() ?? null,
         // The event this row is the sprint classification of (only with
         // includeSprints), and the sprint child hanging off this event (so the
         // import page knows a sprint result is already in).
