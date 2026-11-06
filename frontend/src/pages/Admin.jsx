@@ -9,6 +9,7 @@ import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton } from "../components/ui.jsx";
 import { useAsk, Modal } from "../components/overlay.jsx";
+import { UnveilShow } from "../components/CarUnveil.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
 import { useUnsavedGuard, UnsavedHint } from "../hooks/useUnsavedGuard.js";
@@ -5353,6 +5354,91 @@ function SeasonCar({ season, onSaved, onError }) {
       <span className="text-light" title="Shown beside the season announcement while the season hasn't started. Best on a dark/black background.">
         Shown in the coming-soon hero; no image = no panel
       </span>
+      <SeasonCarUnveil season={season} onSaved={onSaved} onError={onError} />
+    </div>
+  );
+}
+
+// The car under a cover until it is unveiled live, at the briefing
+// (components/CarUnveil.jsx, backend lib/carUnveil.js). While it is covered
+// the site shows a cover instead of the picture and hands the picture to
+// nobody; "Unveil now" plays the reveal on every open home page within
+// seconds. The preview plays it here only, nothing changes for anyone else.
+function SeasonCarUnveil({ season, onSaved, onError }) {
+  const ask = useAsk();
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const covered = !!season.carCovered;
+  const unveiledAt = season.carUnveiledAt;
+
+  async function set(state, done) {
+    setBusy(true);
+    try {
+      await api.setCarUnveil(season.id, state);
+      onSaved(done);
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  async function unveil() {
+    if (
+      !(await ask({
+        title: `Unveil the ${season.name} car now?`,
+        body: "Everyone who has the home page open sees the reveal within a few seconds, and the car shows on the site from now on.",
+        confirmLabel: "Unveil now",
+      }))
+    )
+      return;
+    set("unveiled", `The ${season.name} car is unveiled.`);
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2">
+      <span className="font-semibold text-light">Unveil</span>
+      {covered ? (
+        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-600 dark:text-amber-400">Under cover</span>
+      ) : unveiledAt ? (
+        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400">
+          Unveiled {new Date(unveiledAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        </span>
+      ) : (
+        <span className="text-light">Shown as soon as it is uploaded</span>
+      )}
+      {!covered && (
+        <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={busy}
+          onClick={() => set("covered", `The ${season.name} car is under its cover now.`)}
+          title="The home page shows a covered car instead of the picture until you unveil it.">
+          {unveiledAt ? "Cover it again" : "Keep under cover"}
+        </button>
+      )}
+      {covered && (
+        <button type="button" className="btn-primary px-3 py-1 text-xs" disabled={busy || !season.carImageUrl}
+          onClick={unveil}
+          title={season.carImageUrl ? "Plays the reveal on every open home page" : "Upload the car image first"}>
+          Unveil now
+        </button>
+      )}
+      {season.carImageUrl && (
+        <button type="button" className="font-semibold text-light transition hover:text-dark" disabled={busy}
+          onClick={() => setPreview(true)}
+          title="Plays the reveal on this screen only">
+          Preview the reveal
+        </button>
+      )}
+      {(covered || unveiledAt) && (
+        <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={busy}
+          onClick={() => set("off", `${season.name}: no cover, the car shows as uploaded.`)}>
+          {covered ? "Take the cover off without a reveal" : "Reset"}
+        </button>
+      )}
+      {preview && (
+        <UnveilShow
+          src={season.carImageUrl}
+          number={season.number}
+          name={season.name}
+          game={season.game}
+          onClose={() => setPreview(false)}
+        />
+      )}
     </div>
   );
 }

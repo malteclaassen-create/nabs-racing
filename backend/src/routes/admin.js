@@ -42,6 +42,7 @@ import { readIngestConfig, setIngestPaused, ensureIngestKey } from "../lib/telem
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { overdueRounds } from "../lib/overdueRounds.js";
 import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
+import { COVERED, carState, carFileName, readCarUnveil, writeCarUnveil, renameCarFile, removeCarFile } from "../lib/carUnveil.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
@@ -5537,7 +5538,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "carImageUrl", "carUnveil", "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -5572,6 +5573,10 @@ router.get("/seasons", async (req, res, next) => {
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
             carImageUrl: extra.carImageUrl || null,
+            // The admin keeps the address while the car is covered: it is
+            // what the preview of the reveal plays.
+            carCovered: carState(extra.carUnveil).covered,
+            carUnveiledAt: carState(extra.carUnveil).unveiledAt,
             cardsEnabled: extra.cardsEnabled == null ? true : !!Number(extra.cardsEnabled),
           };
         })
@@ -6202,13 +6207,49 @@ router.post("/seasons/:id/car", upload.single("file"), async (req, res, next) =>
     if (!season) return res.status(404).json({ error: "Season not found" });
 
     mkdirSync(SEASONS_DIR, { recursive: true });
-    const filename = `${season.id}-car${ext}`;
+    // A random name rather than "<id>-car": a car waiting under its cover
+    // must not be one guess away (lib/carUnveil.js).
+    const filename = carFileName(season.id, ext);
     const dest = safeUploadPath(SEASONS_DIR, filename);
     if (!dest) return res.status(400).json({ error: "This season's id can't be used as a file name" });
     writeFileSync(dest, req.file.buffer);
+    const before = await readCarUnveil(prisma, season.id);
     const carImageUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
     await writeSeasonCar(prisma, season.id, carImageUrl);
+    if (before?.carImageUrl) removeCarFile(SEASONS_DIR, before.carImageUrl);
     res.json({ ok: true, carImageUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id/car-unveil  { state: "covered" | "unveiled" | "off" }
+// covered:  the car stays under its cover; the site hands out no picture.
+//           The uploaded file gets a new random name, so an address that went
+//           out before the cover was on stops working.
+// unveiled: takes the cover off now. Open pages see it within seconds and
+//           play the reveal.
+// off:      no cover and no reveal, the car shows as uploaded.
+router.put("/seasons/:id/car-unveil", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const state = String(req.body?.state || "");
+    const row = await readCarUnveil(prisma, season.id);
+    if (state === "covered") {
+      const moved = row?.carImageUrl ? renameCarFile(SEASONS_DIR, season.id, row.carImageUrl) : null;
+      if (moved) await writeSeasonCar(prisma, season.id, moved);
+      await writeCarUnveil(prisma, season.id, COVERED);
+    } else if (state === "unveiled") {
+      if (!row?.carImageUrl) return res.status(400).json({ error: "Upload the car image first." });
+      await writeCarUnveil(prisma, season.id, new Date().toISOString());
+    } else if (state === "off") {
+      await writeCarUnveil(prisma, season.id, null);
+    } else {
+      return res.status(400).json({ error: "state must be covered, unveiled or off" });
+    }
+    const after = await readCarUnveil(prisma, season.id);
+    res.json({ ok: true, carImageUrl: after?.carImageUrl || null, ...carState(after?.carUnveil) });
   } catch (e) {
     next(e);
   }
@@ -6220,7 +6261,9 @@ router.delete("/seasons/:id/car", async (req, res, next) => {
   try {
     const season = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!season) return res.status(404).json({ error: "Season not found" });
+    const before = await readCarUnveil(prisma, season.id);
     await writeSeasonCar(prisma, season.id, null);
+    if (before?.carImageUrl) removeCarFile(SEASONS_DIR, before.carImageUrl);
     res.json({ ok: true });
   } catch (e) {
     next(e);

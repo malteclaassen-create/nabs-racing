@@ -10,6 +10,7 @@
 // column (may not be in the generated client), read here with a short cache so
 // it costs about one query per 30s instead of one per request. The admin toggle
 // invalidates it so a publish/hide takes effect on the next request.
+import { publicCar } from "../lib/carUnveil.js";
 import { getActiveSeries, resolveSeries, seasonSeriesMap } from "../lib/series.js";
 
 const PRIVATE_CACHE_MS = 30_000;
@@ -146,7 +147,7 @@ export async function getSeasonTeaser(prisma, seriesRow) {
         // panel's picture, so without it here the admin's upload had nowhere to
         // travel and the panel was stuck on the static /cars/s<n>.jpg drop-in.
         // Safe in the same statement as isAnnounced — ensureSchema adds both.
-        `SELECT "id","number","name","game","carImageUrl" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
+        `SELECT "id","number","name","game","carImageUrl","carUnveil" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
       )
       .catch(() => []),
   ]);
@@ -180,7 +181,9 @@ export async function getSeasonTeaser(prisma, seriesRow) {
     number: Number(teased.number),
     name: teased.name,
     game: teased.game || null,
-    carImageUrl: teased.carImageUrl || null,
+    // No picture while the car is under its cover (lib/carUnveil.js): this
+    // also feeds the page's link preview.
+    ...publicCar(teased.carImageUrl, teased.carUnveil),
     firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
   };
 }

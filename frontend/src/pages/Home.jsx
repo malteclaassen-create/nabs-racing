@@ -23,6 +23,7 @@ import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import { useCarUnveil, CoveredCar } from "../components/CarUnveil.jsx";
 import IdleFilm from "../components/IdleFilm.jsx";
 import { useIdleFilm } from "../hooks/useIdleFilm.js";
 import { useSeries } from "../context/SeriesContext.jsx";
@@ -245,7 +246,18 @@ function CarReveal({ season }) {
   const [ok, setOk] = useState(false);
   // null = probing whether the car image exists, true/false = probe verdict.
   const [hasImg, setHasImg] = useState(null);
-  const src = carFor(season);
+  // A car kept under its cover until the briefing (components/CarUnveil.jsx):
+  // the cover stands here instead, and the reveal plays once it comes off.
+  const unveil = useCarUnveil({
+    series: useSeries().slug,
+    number: season?.number,
+    name: season?.name,
+    game: season ? seasonGameLabel(season) : null,
+    covered: season?.carCovered,
+    unveiledAt: season?.carUnveiledAt,
+    carImageUrl: season?.carImageUrl,
+  });
+  const src = unveil.covered ? null : unveil.url || carFor(season);
 
   // Probe the car shot first, so a season WITHOUT one renders no panel at all
   // instead of an empty placeholder box.
@@ -271,9 +283,10 @@ function CarReveal({ season }) {
     };
   }, [src]);
 
+  if (unveil.covered) return <CoveredPanel season={season} />;
   // Nothing to show (and nothing still probing): drop the panel entirely —
   // the announcement text simply fills the hero on its own.
-  if (hasImg === false) return null;
+  if (hasImg === false) return unveil.overlay;
   // Still probing: hold the space quietly (no placeholder copy) to avoid a
   // one-frame layout jump when the car pops in.
   const probing = hasImg === null;
@@ -311,6 +324,28 @@ function CarReveal({ season }) {
           The {season?.name} car{season?.game ? ` · ${seasonGameLabel(season)}` : ""}
         </div>
       )}
+      {unveil.overlay}
+    </div>
+  );
+}
+
+// The coming-soon hero's car slot while the car waits under its cover.
+function CoveredPanel({ season }) {
+  return (
+    <div
+      className="hero-car-slot hero-anim relative flex aspect-[16/10] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-black/10 bg-[#05070c] dark:border-white/12 lg:w-[42%]"
+      style={{ animationDelay: "0.24s" }}
+    >
+      <div className="speed-hatch absolute inset-0 opacity-20" />
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "radial-gradient(60% 55% at 50% 40%, rgba(255,255,255,0.10), transparent 70%)" }}
+      />
+      <CoveredCar number={season?.number} className="relative w-[88%]" />
+      <div className="pointer-events-none absolute bottom-3 left-4 right-4 flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">
+        <span>The {season?.name} car</span>
+        <span className="text-[rgb(244,175,198)]">Unveiled at the briefing</span>
+      </div>
     </div>
   );
 }
@@ -381,10 +416,20 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
     const el = carRef.current;
     if (el && el.complete && el.naturalWidth > 0) setCarOk(true);
   }, [teasedNumber]);
+  // The car may still be under its cover until the briefing (CarUnveil.jsx).
+  const unveil = useCarUnveil({
+    series: useSeries().slug,
+    number: teaser?.number,
+    name: teaser?.name,
+    game: teaser?.game || null,
+    covered: teaser?.carCovered,
+    unveiledAt: teaser?.carUnveiledAt,
+    carImageUrl: teaser?.carImageUrl,
+  });
 
   if (!teaser) return null;
   const opener = teaser.firstRace;
-  const carSrc = carFor(teaser);
+  const carSrc = unveil.covered ? null : unveil.url || carFor(teaser);
   const openerFlag = opener?.track ? flagFor(opener.track) : null;
   const mark = opener?.track ? circuitMark(opener.track) : null;
   // Is the race the button leads to actually THIS season's opener? Matched on
@@ -416,9 +461,18 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
             of the dark theme left in by accident.
             The shots put the car in the LOWER half of the frame, hence the low
             crop window. */}
-        <div className={`px-3 pt-3 dark:px-0 dark:pt-0 ${carOk ? "" : "hidden"}`}>
+        {unveil.overlay}
+        <div className={`px-3 pt-3 dark:px-0 dark:pt-0 ${carOk || unveil.covered ? "" : "hidden"}`}>
           <div className="relative h-32 overflow-hidden rounded-xl bg-[#05070c] ring-1 ring-ink/10 sm:h-36 dark:rounded-none dark:ring-0">
             <div className="speed-hatch absolute inset-0 opacity-20" />
+            {unveil.covered && (
+              <div className="absolute inset-0 flex items-end justify-center px-4 pb-2">
+                <CoveredCar number={teaser.number} className="w-full max-w-[300px]" />
+                <span className="absolute right-3 top-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[rgb(244,175,198)]">
+                  Unveiled at the briefing
+                </span>
+              </div>
+            )}
             {carSrc && (
               <img
                 ref={carRef}
@@ -843,6 +897,8 @@ export default function Home() {
           name: season.name,
           game: season.game,
           carImageUrl: season.carImageUrl,
+          carCovered: season.carCovered,
+          carUnveiledAt: season.carUnveiledAt,
           firstRace: nextRace ? { track: nextRace.track, date: nextRace.date } : null,
         }
       : null;

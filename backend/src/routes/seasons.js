@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { getPrivateSeasonIds, getSeasonTeaser, parseFastestLapPoints } from "../services/seasonService.js";
 import { resolveSeries, seasonSeriesMap } from "../lib/series.js";
+import { publicCar } from "../lib/carUnveil.js";
 
 const router = Router();
 
@@ -27,7 +28,15 @@ router.get("/teaser", async (req, res, next) => {
     // shows, so an admin upload has to reach the page. It gives away no more
     // than the panel already does.
     res.json(
-      t && { number: t.number, name: t.name, game: t.game, carImageUrl: t.carImageUrl, firstRace: t.firstRace }
+      t && {
+        number: t.number,
+        name: t.name,
+        game: t.game,
+        carImageUrl: t.carImageUrl,
+        carCovered: t.carCovered,
+        carUnveiledAt: t.carUnveiledAt,
+        firstRace: t.firstRace,
+      }
     );
   } catch (e) {
     next(e);
@@ -53,7 +62,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl / cardsEnabled
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "carImageUrl", "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "carImageUrl", "carUnveil", "cardsEnabled" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -76,7 +85,7 @@ router.get("/", async (req, res, next) => {
           fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
           heroImageUrl: extra.heroImageUrl || null,
-          carImageUrl: extra.carImageUrl || null,
+          ...publicCar(extra.carImageUrl, extra.carUnveil),
           // Drives the "Cards" view switch in the driver standings and the
           // rating card on the driver page. Missing column (pre-migration
           // read) reads as ON, the behaviour every season had before.
@@ -84,6 +93,31 @@ router.get("/", async (req, res, next) => {
         };
       })
     );
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/seasons/car-unveil?series=<slug>&number=<n> -> is the season's car
+// still under its cover? Asked every few seconds by a page showing the cover;
+// the first answer without it starts the reveal there.
+//   { covered, unveiledAt, carImageUrl }   (carImageUrl only once unveiled)
+router.get("/car-unveil", async (req, res, next) => {
+  try {
+    const series = await resolveSeries(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
+    const number = Number(req.query.number);
+    if (!series || !Number.isFinite(number)) return res.status(404).json({ error: "Not found" });
+    const rows = await prisma
+      .$queryRawUnsafe(
+        `SELECT "carImageUrl", "carUnveil" FROM "Season" WHERE "number" = ? AND ("seriesId" = ? OR "seriesId" IS NULL)`,
+        number,
+        series.id
+      )
+      .catch(() => []);
+    if (!rows[0]) return res.status(404).json({ error: "Not found" });
+    const car = publicCar(rows[0].carImageUrl, rows[0].carUnveil);
+    res.set("Cache-Control", "no-store");
+    res.json({ covered: car.carCovered, unveiledAt: car.carUnveiledAt, carImageUrl: car.carImageUrl });
   } catch (e) {
     next(e);
   }
