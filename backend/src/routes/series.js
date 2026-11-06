@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { publicCar, CAR_COLUMNS } from "../lib/carUnveil.js";
 import prisma from "../lib/prisma.js";
 import { isAdminRequest } from "../middleware/auth.js";
 import { dbListSeries, resolveSeries, seasonIdsOfSeries } from "../lib/series.js";
@@ -102,7 +103,7 @@ router.get("/:slug/promo", async (req, res, next) => {
     let pictures = {};
     if (race) {
       const rows = await prisma
-        .$queryRawUnsafe(`SELECT "heroImageUrl", "carImageUrl" FROM "Season" WHERE "id" = ?`, race.seasonId)
+        .$queryRawUnsafe(`SELECT "heroImageUrl", ${CAR_COLUMNS} FROM "Season" WHERE "id" = ?`, race.seasonId)
         .catch(() => []);
       pictures = rows[0] || {};
     }
@@ -139,7 +140,7 @@ router.get("/:slug/promo", async (req, res, next) => {
         sprintLaps: format.sprintLaps ?? null,
       },
       heroImageUrl: pictures.heroImageUrl || null,
-      carImageUrl: pictures.carImageUrl || null,
+      carImageUrl: publicCar(pictures).carImageUrl,
     });
   } catch (e) {
     next(e);

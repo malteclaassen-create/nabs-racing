@@ -1,3 +1,4 @@
+import { carTable } from "./carUnveil.js";
 // ---------------------------------------------------------------------------
 // Per-season hero photo override, for the Home/Welcome main card. Admin
 // uploads a photo (Seasons tab) — stored on disk under UPLOADS_DIR/seasons/
@@ -21,5 +22,5 @@ export async function writeSeasonHero(prisma, seasonId, url) {
 
 // Same pattern for the season's car image (the "coming soon" hero panel).
 export async function writeSeasonCar(prisma, seasonId, url) {
-  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "carImageUrl" = ? WHERE "id" = ?`, url, seasonId);
+  await prisma.$executeRawUnsafe(`UPDATE "${carTable(seasonId)}" SET "carImageUrl" = ? WHERE "id" = ?`, url, seasonId);
 }

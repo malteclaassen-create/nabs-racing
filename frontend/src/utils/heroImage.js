@@ -46,6 +46,9 @@ export function heroFor(season, race = null) {
 // public/cars/s<number>.jpg drop-a-file convention. Seasons with neither show
 // no car panel at all (no placeholder — see CarReveal).
 export function carFor(season) {
+  // A car under its cover (components/CarUnveil.jsx) has no picture yet, and
+  // the static drop-in must not stand in for it either.
+  if (season?.carCovered) return null;
   if (season?.carImageUrl) return season.carImageUrl;
   return season?.number ? `/cars/s${season.number}.jpg` : null;
 }

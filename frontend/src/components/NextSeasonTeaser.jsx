@@ -35,6 +35,9 @@ export default function NextSeasonTeaser({ data }) {
 
   const next = teaser.data;
   if (!next) return null;
+  // A car kept for its unveil: the season is not being announced yet, only the
+  // unveil is, and that has its own card on the member home.
+  if (next.carCovered || next.carUnveiledAt) return null;
 
   const firstRace = next.firstRace;
   const carSrc = carFor(next);

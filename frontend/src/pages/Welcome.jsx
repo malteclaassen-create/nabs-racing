@@ -25,6 +25,7 @@ import { seasonGameParts } from "../utils/seasonGame.js";
 import { disciplineOf } from "../utils/pageTitle.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useTour } from "../components/Tour.jsx";
+import { UnveilDevBar } from "../components/CarUnveil.jsx";
 import { singularOne } from "../utils/format.js";
 
 // League default points per finishing position — only the fallback: seasons
@@ -779,6 +780,7 @@ export default function Welcome() {
 
   return (
     <div className="content-in space-y-24">
+      {import.meta.env.DEV && <UnveilDevBar />}
       {/* ============================ HERO ============================ */}
       {/* A bento of tiles instead of one card with everything laid over a
           photo: the pitch, this season's car, the next round and who leads the
