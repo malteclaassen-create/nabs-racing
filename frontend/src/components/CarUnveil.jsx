@@ -80,6 +80,20 @@ const SEEN_PREFIX = "nabs_unveil_seen:";
 // One unveil screen at a time, however many panels on the page carry the car.
 let overlayOpen = false;
 
+// True the first time in this visit (this tab). One key for the whole visit:
+// the same home page answers at / and at /s/<slug>, with and without a slug.
+function firstArrival() {
+  const key = "nabs_unveil_arrived";
+  try {
+    if (sessionStorage.getItem(key)) return false;
+    sessionStorage.setItem(key, "1");
+  } catch {
+    // Private mode: better no countdown than one on every page.
+    return false;
+  }
+  return true;
+}
+
 function seenKey(series, number) {
   return `${SEEN_PREFIX}${series || ""}:${number}`;
 }
@@ -116,6 +130,7 @@ export function useCarUnveil({
   hasFilm,
   filmAt,
   carVideoUrl,
+  openOnArrival = false,
 }) {
   const initial = () => ({
     covered: !!covered,
@@ -211,18 +226,20 @@ export function useCarUnveil({
   }, [listening, series, number, apply]);
 
   // A link with ?unveil=watch opens the countdown (or, once the car is out,
-  // plays the reveal); arriving just after the unveil plays it once.
+  // plays the reveal); arriving just after the unveil plays it once. While the
+  // car is covered a member lands on the countdown, once per visit, so Close
+  // gets them to the site and it stays closed until they come back.
   useEffect(() => {
     const param = new URLSearchParams(window.location.search).get("unveil");
     if (state.covered) {
-      if (param === "watch") open("countdown");
+      if (param === "watch" || (openOnArrival && firstArrival())) open("countdown");
       return;
     }
     if (!state.unveiledAt || !state.url) return;
     const fresh = Date.now() - Date.parse(state.unveiledAt) < LATE_WINDOW_MS;
     if (param === "replay" || param === "watch" || (fresh && !hasSeen(series, number, state.unveiledAt))) open("reveal");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.covered, state.unveiledAt, state.url, series, number]);
+  }, [state.covered, state.unveiledAt, state.url, series, number, openOnArrival]);
 
   const close = useCallback(() => {
     overlayOpen = false;

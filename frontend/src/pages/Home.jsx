@@ -459,7 +459,9 @@ function NextSeasonPanel({ teaser, discord, signupRace, eyebrow = "Next season" 
     if (el && el.complete && el.naturalWidth > 0) setCarOk(true);
   }, [teasedNumber]);
   // The car may still be under its cover until the briefing (CarUnveil.jsx).
+  const { isLoggedIn } = useAuth();
   const unveil = useCarUnveil({
+    openOnArrival: isLoggedIn || import.meta.env.DEV,
     seasonId: teaser?.id,
     series: useSeries().slug,
     number: teaser?.number,
