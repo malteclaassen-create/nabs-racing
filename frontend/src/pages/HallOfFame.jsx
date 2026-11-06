@@ -8,6 +8,7 @@ import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, Driv
 import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { flagFor } from "../data/circuits.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 
 // ---------------------------------------------------------------------------
@@ -267,6 +268,142 @@ function TeamChampions({ champions }) {
   );
 }
 
+// --- Season awards ------------------------------------------------------------
+
+// The awards the league hands out by vote or decision at the end of a season
+// (best rookie, race of the season, ...), typed in under Admin > Seasons. One
+// season at a time, newest first, with a strip to go back through the others.
+// Nothing here is computed: see backend lib/seasonAwards.js.
+
+function fmtRaceDay(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function AwardCell({ award, seasonNumber, index }) {
+  const q = `?season=${seasonNumber}`;
+  let to = null;
+  let body;
+  if (award.kind === "driver") {
+    const d = award.driver;
+    to = `/drivers/${d.driverId}${q}`;
+    body = (
+      <div className="mt-4 flex items-center gap-3">
+        <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team?.color || "#64748b"} size={48} />
+        <span className="min-w-0">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark">{d.name}</span>
+            <Flag code={countryFor(d.driverId, d.country)} w={20} h={14} />
+          </span>
+          {d.team && (
+            <TeamLogo
+              id={d.team.id}
+              name={d.team.name}
+              color={d.team.color}
+              logoUrl={d.team.logoUrl}
+              size={16}
+              showName
+              className="mt-1"
+              nameClassName="truncate text-xs text-light"
+            />
+          )}
+        </span>
+      </div>
+    );
+  } else if (award.kind === "team") {
+    const t = award.team;
+    to = `/teams/${t.id}${q}`;
+    body = (
+      <div className="mt-4 flex items-center gap-3">
+        <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={48} />
+        <span className="min-w-0">
+          <span className="block truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark">{t.name}</span>
+          {t.tier ? (
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Tier {t.tier}</span>
+          ) : null}
+        </span>
+      </div>
+    );
+  } else if (award.kind === "race") {
+    const r = award.race;
+    if (r.isCompleted) to = `/races${q}&race=${r.id}`;
+    const flag = flagFor(r.track, r.country);
+    const day = fmtRaceDay(r.date);
+    body = (
+      <div className="mt-4 flex items-center gap-3">
+        {flag && <Flag code={flag} w={36} h={26} />}
+        <span className="min-w-0">
+          <span className="block truncate font-display text-xl font-extrabold uppercase tracking-tight text-dark">{r.track}</span>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+            {[r.round != null ? `Round ${r.round}` : null, day].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+      </div>
+    );
+  } else {
+    body = (
+      <div className="mt-4 font-display text-xl font-extrabold uppercase tracking-tight text-dark">{award.winnerText}</div>
+    );
+  }
+  const inner = (
+    <>
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        style={{ background: `radial-gradient(130% 130% at 100% 0%, ${MEDAL[0]}, transparent 55%)` }}
+      />
+      <div className="relative">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
+          {award.title}
+        </div>
+        {body}
+        {award.note && <p className="mt-3 text-sm leading-relaxed text-light">{award.note}</p>}
+      </div>
+    </>
+  );
+  const cls = "-ml-px -mt-px relative block overflow-hidden border-l border-t border-border bg-card p-6";
+  return (
+    <div className="grid" style={{ "--i": index }}>
+      {to ? (
+        <Link to={to} className={`${cls} transition hover:bg-surface2`}>
+          {inner}
+        </Link>
+      ) : (
+        <div className={cls}>{inner}</div>
+      )}
+    </div>
+  );
+}
+
+function SeasonAwards({ seasons }) {
+  const [picked, setPicked] = useState(seasons[0].seasonNumber);
+  const season = seasons.find((s) => s.seasonNumber === picked) || seasons[0];
+  const swap = useSwapClass(season.seasonNumber);
+  return (
+    <section className="reveal">
+      <SectionHead
+        eyebrow={season.seasonName || `Season ${season.seasonNumber}`}
+        title="Season awards"
+        right={
+          seasons.length > 1 ? (
+            <SlidingTabs
+              items={seasons.map((s) => ({ key: s.seasonNumber, label: `S${s.seasonNumber}`, title: s.seasonName }))}
+              value={season.seasonNumber}
+              onChange={setPicked}
+            />
+          ) : null
+        }
+      />
+      <div key={season.seasonNumber} className={swap}>
+        <div className="cascade grid overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-2 lg:grid-cols-3">
+          {season.awards.map((a, i) => (
+            <AwardCell key={a.id} award={a} seasonNumber={season.seasonNumber} index={i} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // --- Records ----------------------------------------------------------------
 
 function RecordCell({ rec }) {
@@ -514,6 +651,10 @@ function TopListPanel({ lists, teamLists, activeKey, onChange, seasons }) {
 export default function HallOfFame() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.seriesRecords(), []));
   const wall = useApi(useCallback(() => api.tokenWall(), []));
+  // The league's own awards, read on their own so an older server without
+  // them leaves the rest of the page alone.
+  const awards = useApi(useCallback(() => api.seriesAwards().catch(() => ({ seasons: [] })), []));
+  const awardSeasons = awards.data?.seasons || [];
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
   // The switch below fades its panel over instead of rebuilding it from blank;
@@ -584,6 +725,9 @@ export default function HallOfFame() {
           </div>
         </section>
       )}
+
+      {/* the awards the league handed out, one season at a time */}
+      {awardSeasons.length > 0 && <SeasonAwards seasons={awardSeasons} />}
 
       {/* single records — hairline band of golden numbers */}
       {data.records.length > 0 && (

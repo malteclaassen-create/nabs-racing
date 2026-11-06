@@ -60,6 +60,7 @@ import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
 import { invalidateRecordsCache } from "../services/recordsService.js";
+import { sanitizeAwardInput, checkWinnerInSeason, createAward, readAwardRow, updateAward, deleteAward, reorderAwards, readSeasonAwards, isAwardId } from "../lib/seasonAwards.js";
 import { invalidateCareerCache } from "../services/careerService.js";
 import { invalidateTeamAllTimeCache } from "../services/teamAllTimeService.js";
 import { invalidateTrackStrengthCache } from "../services/trackStrengthService.js";
@@ -5756,6 +5757,103 @@ router.post("/seasons", async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// SEASON AWARDS (lib/seasonAwards.js): the honours the league hands out at the
+// end of a season, typed in here and shown in the Hall of Fame and on Home.
+// ---------------------------------------------------------------------------
+
+// GET /api/admin/seasons/:id/awards -> the season's awards, in order.
+router.get("/seasons/:id/awards", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const [awards, drivers, teams, races] = await Promise.all([
+      readSeasonAwards(prisma, [season.id]),
+      prisma.driver.findMany({
+        where: { seasonId: season.id },
+        select: { id: true, name: true, tier: true, team: { select: { name: true } } },
+        orderBy: { name: "asc" },
+      }),
+      prisma.team.findMany({ where: { seasonId: season.id }, select: { id: true, name: true, tier: true }, orderBy: { name: "asc" } }),
+      prisma.race.findMany({
+        where: { seasonId: season.id },
+        select: { id: true, number: true, track: true, isSpecialEvent: true },
+        orderBy: [{ number: "asc" }, { date: "asc" }],
+      }),
+    ]);
+    // What the winner pickers offer: this season's drivers, teams and races.
+    res.json({
+      awards: awards.get(season.id) || [],
+      choices: {
+        drivers: drivers.map((d) => ({ id: d.id, name: d.name, tier: d.tier, team: d.team?.name || null })),
+        teams: teams.map((t) => ({ id: t.id, name: t.name, tier: t.tier })),
+        races: races.map((r) => ({ id: r.id, round: r.number, track: r.track })),
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/awards  { title, kind, winnerId?, winnerText?, note? }
+router.post("/seasons/:id/awards", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    const input = sanitizeAwardInput(req.body);
+    if (input.error) return res.status(400).json({ error: input.error });
+    if (!(await checkWinnerInSeason(prisma, season.id, input.value))) {
+      return res.status(400).json({ error: "The winner must be from this season" });
+    }
+    const made = await createAward(prisma, season.id, input.value);
+    if (made.error) return res.status(400).json({ error: made.error });
+    res.json({ ok: true, id: made.id });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id/awards/order  { ids: [...] } -> new order.
+router.put("/seasons/:id/awards/order", async (req, res, next) => {
+  try {
+    await reorderAwards(prisma, req.params.id, req.body?.ids);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/seasons/:id/awards/:awardId  { title, kind, winnerId?, winnerText?, note? }
+router.put("/seasons/:id/awards/:awardId", async (req, res, next) => {
+  try {
+    if (!isAwardId(req.params.awardId)) return res.status(404).json({ error: "Award not found" });
+    const row = await readAwardRow(prisma, req.params.awardId);
+    if (!row || row.seasonId !== req.params.id) return res.status(404).json({ error: "Award not found" });
+    const input = sanitizeAwardInput(req.body);
+    if (input.error) return res.status(400).json({ error: input.error });
+    if (!(await checkWinnerInSeason(prisma, row.seasonId, input.value))) {
+      return res.status(400).json({ error: "The winner must be from this season" });
+    }
+    await updateAward(prisma, row.id, input.value);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/awards/:awardId
+router.delete("/seasons/:id/awards/:awardId", async (req, res, next) => {
+  try {
+    if (!isAwardId(req.params.awardId)) return res.status(404).json({ error: "Award not found" });
+    const row = await readAwardRow(prisma, req.params.awardId);
+    if (!row || row.seasonId !== req.params.id) return res.status(404).json({ error: "Award not found" });
+    await deleteAward(prisma, row.id);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // PUT /api/admin/seasons/:id  { number?, name?, game?, dropWorst?, pointsTable? }
 router.put("/seasons/:id", async (req, res, next) => {
   try {
@@ -5895,6 +5993,8 @@ router.delete("/seasons/:id", async (req, res, next) => {
     } else {
       await prisma.season.delete({ where: { id: season.id } });
     }
+    // Its awards go with it (lib/seasonAwards.js).
+    await prisma.$executeRawUnsafe(`DELETE FROM "SeasonAward" WHERE "seasonId" = ?`, season.id).catch(() => {});
     res.json({ ok: true, deleted: { teams, drivers, races } });
   } catch (e) {
     next(e);

@@ -1072,3 +1072,22 @@ model NewsView {
   articleId String @id
   views     Int    @default(0)
 }
+
+// An award the league hands out at the end of a season (lib/seasonAwards.js):
+// best rookie, race of the season and so on, typed in by an admin. Won by one
+// driver, team or race of that season, or by a name typed by hand.
+// Raw-SQL managed; this model only mirrors it.
+model SeasonAward {
+  id         String   @id
+  seasonId   String
+  title      String
+  driverId   String?
+  teamId     String?
+  raceId     String?
+  winnerText String?
+  note       String?
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([seasonId, position])
+}

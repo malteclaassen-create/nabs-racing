@@ -13,6 +13,7 @@ import { getPersonGroups } from "../lib/persons.js";
 import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
 import { readSprintChildrenOf } from "../lib/sprintRaces.js";
 import { startsOf } from "../lib/standingsRow.js";
+import { readSeasonAwards } from "../lib/seasonAwards.js";
 
 function norm(s) {
   return (s || "")
@@ -192,6 +193,9 @@ export async function getSeasonHonours(prisma, seasonId) {
   }
   if (cleanest) delete cleanest.rate;
 
+  // The awards the league handed out by hand (lib/seasonAwards.js).
+  const awards = (await readSeasonAwards(prisma, [seasonId])).get(seasonId) || [];
+
   return {
     seasonNumber: season.number,
     seasonName: season.name,
@@ -206,5 +210,6 @@ export async function getSeasonHonours(prisma, seasonId) {
     mostOvertakes,
     mostLapsLed,
     cleanest,
+    awards,
   };
 }

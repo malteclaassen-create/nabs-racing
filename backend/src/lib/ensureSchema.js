@@ -14,6 +14,7 @@ import { adoptRootLaps } from "./telemetryLaps.js";
 import { ensureNewsTable } from "./news.js";
 import { ensureNewsCommentTable } from "./newsComments.js";
 import { ensureNewsReactionTables } from "./newsReactions.js";
+import { ensureSeasonAwardTable } from "./seasonAwards.js";
 
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
@@ -945,6 +946,9 @@ export async function ensureAppSchema(prisma) {
   await ensureNewsCommentTable(prisma);
   // ...the reactions on both, and who has seen an article (lib/newsReactions.js).
   await ensureNewsReactionTables(prisma);
+  // The awards the league hands out per season (lib/seasonAwards.js,
+  // migration season_awards).
+  await ensureSeasonAwardTable(prisma);
 
   await migrateLiveLinksToSeries(prisma);
   await resetReferralsOnce(prisma);

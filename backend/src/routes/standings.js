@@ -7,6 +7,9 @@ import {
 } from "../services/standingsService.js";
 import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
+import { readSeasonAwards } from "../lib/seasonAwards.js";
+import { resolveSeries, getActiveSeries } from "../lib/series.js";
+import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
 import { getCardRatings } from "../services/cardRatingService.js";
 import { parseCardPhotoPos, cardPictureFor, personPhotoFor, photoFallbacksFor } from "../lib/cardPhoto.js";
@@ -122,6 +125,35 @@ router.get("/records", async (req, res, next) => {
     const data = await getSeriesRecords(prisma, req.query.series, { includePrivate: isAdminRequest(req) });
     if (!data) return res.status(404).json({ error: "Series not found" });
     res.json(data);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /standings/awards?series= -> the awards the league handed out, every
+// visible season of the series that has any, newest season first (Hall of
+// Fame). Series-scoped like /records.
+router.get("/awards", async (req, res, next) => {
+  try {
+    const includePrivate = isAdminRequest(req);
+    const series = req.query.series
+      ? await resolveSeries(prisma, req.query.series, { includePrivate })
+      : await getActiveSeries(prisma);
+    if (!series) return res.status(404).json({ error: "Series not found" });
+    const priv = includePrivate ? new Set() : await getPrivateSeasonIds(prisma);
+    const seasons = (
+      await prisma.season.findMany({
+        where: { seriesId: series.id },
+        orderBy: { number: "desc" },
+        select: { id: true, number: true, name: true },
+      })
+    ).filter((s) => !priv.has(s.id));
+    const awards = await readSeasonAwards(prisma, seasons.map((s) => s.id));
+    res.json({
+      seasons: seasons
+        .filter((s) => awards.has(s.id))
+        .map((s) => ({ seasonNumber: s.number, seasonName: s.name, awards: awards.get(s.id) })),
+    });
   } catch (e) {
     next(e);
   }
