@@ -21,12 +21,14 @@ import "./carUnveil.css";
 //   4. An admin releases the film. Every open page plays it.
 //
 // The countdown screen opens from "Watch the unveil" on the home page, or a
-// link with ?unveil=watch. Late arrivals (15 minutes) see the reveal once;
+// link with ?unveil=watch. Late arrivals (30 minutes) see the reveal once;
 // ?unveil=replay plays it again after the unveil.
 // ---------------------------------------------------------------------------
 
 const POLL_MS = 5000;
-const LATE_WINDOW_MS = 15 * 60 * 1000;
+// How long after the set time, or after the unveil, the site still opens these
+// screens by itself. After that it is the ordinary site again.
+const LATE_WINDOW_MS = 30 * 60 * 1000;
 const DEV_SWITCHED = "nabs-unveil-dev";
 // How the cover photo gives way to the car (carUnveil.css). Localhost can try
 // the others with UnveilDevBar; everywhere else it is this one.
@@ -228,18 +230,20 @@ export function useCarUnveil({
   // A link with ?unveil=watch opens the countdown (or, once the car is out,
   // plays the reveal); arriving just after the unveil plays it once. While the
   // car is covered a member lands on the countdown, once per visit, so Close
-  // gets them to the site and it stays closed until they come back.
+  // gets them to the site and it stays closed until they come back, and only
+  // up to half an hour past the set time.
   useEffect(() => {
     const param = new URLSearchParams(window.location.search).get("unveil");
     if (state.covered) {
-      if (param === "watch" || (openOnArrival && firstArrival())) open("countdown");
+      const over = state.unveilAt && Date.now() + offset > Date.parse(state.unveilAt) + LATE_WINDOW_MS;
+      if (param === "watch" || (openOnArrival && !over && firstArrival())) open("countdown");
       return;
     }
     if (!state.unveiledAt || !state.url) return;
     const fresh = Date.now() - Date.parse(state.unveiledAt) < LATE_WINDOW_MS;
     if (param === "replay" || param === "watch" || (fresh && !hasSeen(series, number, state.unveiledAt))) open("reveal");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.covered, state.unveiledAt, state.url, series, number, openOnArrival]);
+  }, [state.covered, state.unveiledAt, state.unveilAt, state.url, series, number, openOnArrival]);
 
   const close = useCallback(() => {
     overlayOpen = false;
