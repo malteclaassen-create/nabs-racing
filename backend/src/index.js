@@ -47,6 +47,7 @@ import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
+import { boardLiveryColors, boardSkins, getLivery } from "./lib/liveryPreview.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
 import { isAdminRequest, resolveAdminContext, optionalUser } from "./middleware/auth.js";
@@ -320,6 +321,35 @@ app.get("/api/live/map.png", async (req, res) => {
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=300");
   res.send(png);
+});
+
+// The cars on the board as they look: a special event has no teams, so its live
+// page colours and pictures each car by its skin (lib/liveryPreview.js). The
+// colours are a separate read and not part of the board because they only change
+// when somebody new joins, and the board goes out several times a second.
+app.get("/api/live/liveries", async (req, res) => {
+  try {
+    const key = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
+    const server = LIVE_SERVERS.find((s) => s.key === key);
+    res.json(server ? await boardLiveryColors(server, getBoard(key)) : {});
+  } catch {
+    // Colour is a decoration: without it the rows stay as they were.
+    res.json({});
+  }
+});
+
+// One car's picture. Only for a skin on that server's board right now, so this
+// cannot be used to pull anything else through us.
+app.get("/api/live/livery.jpg", async (req, res) => {
+  const { car, skin } = req.query;
+  const key = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
+  const server = LIVE_SERVERS.find((s) => s.key === key);
+  const onBoard = server && boardSkins(getBoard(key)).some((c) => c.car === car && c.skin === skin);
+  const livery = onBoard ? await getLivery(server, car, skin) : null;
+  if (!livery?.image) return res.status(404).json({ error: "No picture of that car" });
+  res.setHeader("Content-Type", "image/jpeg");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(livery.image);
 });
 
 // The circuit's AI line (what the map.png band is drawn around) as a line in

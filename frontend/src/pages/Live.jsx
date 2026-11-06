@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeries } from "../context/SeriesContext.jsx";
 import { useLiveTiming } from "../hooks/useLiveTiming.js";
 import { useNow } from "../hooks/useNow.js";
 import { motionOff, useSwapClass } from "../hooks/motion.js";
@@ -40,6 +41,7 @@ import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
 import { fmtRaceDate, NO_VALUE} from "../utils/format.js";
 import {
   makeDriverMatcher,
+  withLiveries,
   formatLap,
   formatGap,
   formatRaceGap,
@@ -838,6 +840,22 @@ function PickName({ e, className, children }) {
   );
 }
 
+// The car itself, on a special event's board. The picture is a dark showroom
+// shot, so it sits as a small tile rather than trying to blend into the row.
+function LiveryThumb({ match, className = "" }) {
+  if (!match?.liveryImage) return null;
+  return (
+    <img
+      src={match.liveryImage}
+      alt=""
+      title={match.teamName}
+      loading="lazy"
+      decoding="async"
+      className={`shrink-0 rounded object-cover ${className}`}
+    />
+  );
+}
+
 function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
@@ -853,6 +871,7 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
           </span>
         )}
       </span>
+      <LiveryThumb match={match} className="hidden h-9 w-16 sm:block" />
       {/* From sm up the flag keeps its own slot ahead of the name, so the names
           line up in a column. On phones that slot is dead width, so the flag
           moves behind the name at a smaller size and the name starts flush. */}
@@ -2901,6 +2920,7 @@ function TvRow({ e, match, isRace, fastestLapMs, index = 0 }) {
         {pos ?? NO_VALUE}
       </span>
       <span className="relative h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      <LiveryThumb match={m} className="relative h-10 w-[72px]" />
       {m?.country ? (
         <Flag code={m.country} title={m.teamName} w={24} h={17} />
       ) : (
@@ -3623,7 +3643,7 @@ export default function Live() {
   const liveServers = useLiveServers();
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
-  const match = useMemo(() => makeDriverMatcher(teams), [teams]);
+  const rosterMatch = useMemo(() => makeDriverMatcher(teams), [teams]);
   // Admin-configured external buttons (server-manager live timing + CM join).
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
   // League social links — the Patreon button on the buttons row uses them.
@@ -3763,6 +3783,25 @@ export default function Live() {
   );
   const entries = board?.entries || [];
   const onTrack = entries.filter((e) => e.onTrack);
+  // A special event has no teams to tell the cars apart, so the cars do it
+  // themselves (withLiveries). Asked again only when a new skin joins the board,
+  // which the sorted list below is the test for.
+  const isEvent = useSeries().current?.kind === "event";
+  const liveryServer = board?.serverKey || serverKey;
+  const boardSkins = isEvent ? [...new Set(entries.map((e) => `${e.carModel}/${e.carSkin}`))].sort().join("|") : "";
+  const { data: liveryColors } = useApi(
+    useCallback(
+      () => (boardSkins && liveryServer ? api.liveLiveries(liveryServer) : Promise.resolve(null)),
+      [boardSkins, liveryServer]
+    )
+  );
+  const match = useMemo(
+    () =>
+      isEvent
+        ? withLiveries(rosterMatch, liveryColors || {}, (car, skin) => api.liveLiveryImage(liveryServer, car, skin))
+        : rosterMatch,
+    [isEvent, rosterMatch, liveryColors, liveryServer]
+  );
   const receivedAt = useMemo(() => Date.now(), [board?.updatedAt]);
   // Nobody actually driving: the "right now" block (driving now, track map,
   // pit lane) and the strategy views would all be empty shells, so the page

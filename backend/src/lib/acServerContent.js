@@ -69,6 +69,14 @@ async function fetchWithTimeout(url, { as = "text", timeoutMs = TIMEOUT_MS } = {
   }
 }
 
+// A skin preview picture, as the server has it. Both names come from the live
+// feed and go into a path, hence the encoding: "No. 48 Alex Bowman" is a real one.
+export function fetchSkinPreview(origin, car, skin) {
+  const base = String(origin).replace(/\/+$/, "");
+  const url = `${base}/content/cars/${encodeURIComponent(car)}/skins/${encodeURIComponent(skin)}/preview.jpg`;
+  return fetchWithTimeout(url, { as: "buffer", timeoutMs: 15000 });
+}
+
 // The newest session the manager lists, whatever its type: practice counts.
 // A driver who cannot join is usually trying to join the session that is
 // running right now, and that is the content the server is holding open.

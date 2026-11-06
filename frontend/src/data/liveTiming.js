@@ -1,6 +1,7 @@
 // Helpers for the Live page: format lap times, map in-sim driver names to NABS
 // drivers (for flag + team colour), and resolve the session country flag.
 import { countryFor } from "./driverCountries.js";
+import { defaultLiveriesFor } from "./defaultLiveries.js";
 import { NO_VALUE } from "../utils/format.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -135,6 +136,46 @@ export function makeDriverMatcher(teams) {
 }
 
 // nanosecond-derived ms -> "1:27.622" / "27.6s". null -> NO_VALUE.
+// What to call a skin on the board. The car's own skins have names on the
+// sign-up page ("light_hyperion_67" is Light); anything else is a folder name
+// somebody typed, which reads fine once the separators are gone.
+export function liveryLabel(skin, carName) {
+  const known = defaultLiveriesFor(carName).find((l) => l.skin === skin);
+  if (known) return known.name;
+  const words = String(skin || "").replace(/[_-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// The matcher for a special event, where nobody has a team: the whole grid is
+// on one "Reserve" row, so a team colour and team name say nothing about anyone.
+// Here the car takes their place, and since every view reads teamColor and
+// teamName, the rows, the map, the strategy bars and TV mode all follow.
+//
+// `colors` is the /api/live/liveries answer, `imageOf(car, skin)` the address of
+// the picture. Needs the board ENTRY: a bare name has no car to go by. What it
+// hands out is remembered, because the board asks on every snapshot and a new
+// object each time would count as a change to everything that holds on to it.
+export function withLiveries(match, colors, imageOf) {
+  const made = new Map();
+  return (entryOrName) => {
+    const m = match(entryOrName);
+    const e = entryOrName && typeof entryOrName === "object" ? entryOrName : null;
+    if (!e?.carSkin || e.isSafetyCar) return m;
+    const key = `${m?.id || e.name}|${e.carModel}/${e.carSkin}`;
+    if (made.has(key)) return made.get(key);
+    const color = colors[`${e.carModel}/${e.carSkin}`] || null;
+    const dressed = {
+      ...m,
+      teamName: liveryLabel(e.carSkin, e.carName),
+      // No colour means the server had no picture of this skin either.
+      teamColor: color || m?.teamColor,
+      liveryImage: color ? imageOf(e.carModel, e.carSkin) : null,
+    };
+    made.set(key, dressed);
+    return dressed;
+  };
+}
+
 export function formatLap(ms) {
   if (!ms || ms <= 0) return NO_VALUE;
   const totalSec = ms / 1000;

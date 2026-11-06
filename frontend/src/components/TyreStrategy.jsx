@@ -230,7 +230,7 @@ export default function TyreStrategy({ entries, matchFn, raceLaps }) {
           behind them — the graphic builds up like the TV version */}
       <div className="cascade divide-y divide-border">
         {rows.map((e, i) => {
-          const m = matchFn ? matchFn(e.name) : null;
+          const m = matchFn ? matchFn(e) : null;
           const name = m?.nabsName || e.name;
           const color = m?.teamColor || "var(--c-border)";
           const stints = Array.isArray(e.stints) ? e.stints : [];

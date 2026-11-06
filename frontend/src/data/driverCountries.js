@@ -63,6 +63,14 @@ export function countryFor(driverId, dbCountry) {
 // when the plain id was already taken). Only the prefix used to be stripped, so
 // from Season 8 on the baseline lookup missed every driver and the only flags
 // left were the handful of members who had picked a country themselves.
+//
+// A season cloned from a clone stacks them ("takoda_s1_s2_s3"), and a series
+// that takes the roster over counts instead ("rashford_2"): the special events
+// do that, which left Rashford flagless on the event's live page
+// while the Friday league showed the same person with one.
 function baseDriverId(id) {
-  return id.replace(/^s\d+_/, "").replace(/_s\d+(_[a-z0-9]+)?$/i, "");
+  return id
+    .replace(/^s\d+_/, "")
+    .replace(/(_s\d+)+(_[a-z0-9]+)?$/i, "")
+    .replace(/_\d+$/, "");
 }

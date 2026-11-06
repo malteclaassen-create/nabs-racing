@@ -658,6 +658,14 @@ export const api = {
   // page's switch can say which board is worth looking at. `server` is only
   // used to keep the reply about the same series; the list is always all of them.
   liveServers: () => request(`/live/servers${seriesQ()}`),
+  // The main colour of every car on a board, by "<car>/<skin>". Special events
+  // only: they have no team colours to go by.
+  liveLiveries: (server) => request(`/live/liveries?server=${encodeURIComponent(server)}`),
+  // For an <img>, so it needs the whole address.
+  liveLiveryImage: (server, car, skin) =>
+    withApiBase(
+      `/api/live/livery.jpg?server=${encodeURIComponent(server)}&car=${encodeURIComponent(car)}&skin=${encodeURIComponent(skin)}`
+    ),
   // The files the race server checksums, with ITS hashes — the /content-check
   // page compares them against the driver's own copies in the browser.
   contentCheck: (server = null) =>

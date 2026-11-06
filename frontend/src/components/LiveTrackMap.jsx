@@ -363,7 +363,7 @@ function gearLabel(g) {
 
 // One car as the map draws it, whichever of the two maps it is on.
 function toDot(car, x, y, matchFn) {
-  const m = matchFn ? matchFn(car.name) : null;
+  const m = matchFn ? matchFn(car) : null;
   const color = m?.teamColor || "#94a3b8";
   const title = m?.nabsName || car.name;
   // The disc carries the running position: on a map the question is who is
@@ -1141,7 +1141,7 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
   );
   // Who a car is as the league knows them: name, team, team colour.
   const infoOf = useCallback((n) => {
-    const m = matchFn ? matchFn(n.name) : null;
+    const m = matchFn ? matchFn(n) : null;
     return { name: m?.nabsName || n.name, team: m?.teamName || null, color: m?.teamColor || "#94a3b8" };
   }, [matchFn]);
   const nameOf = useCallback((n) => infoOf(n).name, [infoOf]);
@@ -1221,7 +1221,7 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   const [lineA, lineB] = Array.isArray(sectorLines) ? sectorLines : [];
   const lines = useMemo(() => validLines([lineA, lineB]), [lineA, lineB]);
   const line = useTrackLine(real ? map.ver ?? 0 : null, server);
-  const focusMatch = focusedCar && matchFn ? matchFn(focusedCar.name) : null;
+  const focusMatch = focusedCar && matchFn ? matchFn(focusedCar) : null;
   const focusName = focusedCar ? focusMatch?.nabsName || focusedCar.name : null;
   const focusColor = focusMatch?.teamColor || "#94a3b8";
   // The speed bar's full scale: the fastest anyone has gone this session.
