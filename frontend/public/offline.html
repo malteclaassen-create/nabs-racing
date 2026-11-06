@@ -6,11 +6,18 @@
     <title>Offline · NABS Racing League</title>
     <meta name="robots" content="noindex" />
     <!--
-      Shown by the service worker when a page is asked for and there is no
-      connection. Everything is inline and nothing is fetched: no stylesheet, no
-      font file, no script, not even the logo. This page has to render when the
-      cache holds nothing else, which is exactly the moment a missing asset
-      would leave a blank screen.
+      Shown by the service worker when a page is asked for and the network
+      did not answer. Everything is inline and nothing is fetched: no
+      stylesheet, no font file, no script file, not even the logo. This page has
+      to render when the cache holds nothing else, which is exactly the moment a
+      missing asset would leave a blank screen.
+
+      Two messages, one page. "You are offline" is the one in the HTML, so it is
+      what shows without JavaScript. The small inline script at the bottom
+      swaps it for "Can't reach NABS" when the device says it does have a
+      connection: then the visitor is clearly online and it is the site (or
+      something between them and it) that did not answer, and telling them to
+      "find some signal" is just wrong.
     -->
     <style>
       :root {
@@ -84,6 +91,7 @@
         text-transform: uppercase;
         text-decoration: none;
       }
+      [hidden] { display: none !important; }
       .foot {
         margin: 22px 0 0;
         padding-top: 16px;
@@ -94,15 +102,51 @@
   </head>
   <body>
     <main class="card">
-      <p class="eyebrow">No connection</p>
-      <h1>You are offline</h1>
-      <p>
-        NABS could not reach the internet, so there is nothing new to show. Nothing is broken and
-        nothing was lost.
-      </p>
-      <p>Find some signal and try again. Pages you already opened may still work.</p>
-      <a class="retry" href="/">Try again</a>
+      <div id="offline">
+        <p class="eyebrow">No connection</p>
+        <h1>You are offline</h1>
+        <p>
+          NABS could not reach the internet, so there is nothing new to show. Nothing is broken and
+          nothing was lost.
+        </p>
+        <p>Find some signal and try again. Pages you already opened may still work.</p>
+      </div>
+      <div id="unreachable" hidden>
+        <p class="eyebrow">Site not answering</p>
+        <h1>Can't reach NABS</h1>
+        <p>
+          Your internet seems to work, but nabsracing.com did not answer. The site may be down for a
+          minute, or something on this computer or network is blocking it.
+        </p>
+        <p>
+          Try again in a minute. If it keeps happening, open nabsracing.com in a private window to
+          see the browser's own error message, and try with any VPN, ad blocker or antivirus web
+          protection turned off for the site. Still stuck? Post that error message on Discord.
+        </p>
+      </div>
+      <a class="retry" id="retry" href="/">Try again</a>
       <p class="foot">NABS Racing League</p>
     </main>
+    <script>
+      (function () {
+        var offline = document.getElementById("offline");
+        var unreachable = document.getElementById("unreachable");
+        function show() {
+          var online = navigator.onLine !== false;
+          offline.hidden = online;
+          unreachable.hidden = !online;
+          document.title = (online ? "Can't reach NABS" : "Offline") + " · NABS Racing League";
+        }
+        show();
+        window.addEventListener("online", show);
+        window.addEventListener("offline", show);
+        // The worker answers on the address that was asked for, so "try again"
+        // reloads that page rather than sending the visitor to the home page.
+        document.getElementById("retry").addEventListener("click", function (e) {
+          e.preventDefault();
+          location.reload();
+        });
+      })();
+    </script>
   </body>
 </html>
