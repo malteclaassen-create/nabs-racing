@@ -724,7 +724,13 @@ function AwardRail({ season, plans }) {
   const [two, three, four] = plans;
   return (
     <>
-      <ul ref={railRef} role="list" data-count={n} className="aw-cards-rail cascade">
+      <ul
+        ref={railRef}
+        role="list"
+        data-count={n}
+        data-notes={season.awards.some((a) => a.note) ? "" : undefined}
+        className="aw-cards-rail cascade"
+      >
         {awards.map((a, i) => (
           <AwardCard
             key={a.id}

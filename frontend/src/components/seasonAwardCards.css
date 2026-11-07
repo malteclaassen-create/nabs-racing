@@ -615,13 +615,16 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   line-height: 1.5;
   text-wrap: pretty;
 }
-/* The phone rail keeps two lines for the reason on every card, written or
-   not (an empty one, data-empty), so the cards come out the same height and
-   only a reason of three lines or more makes them all taller. It shows every
+/* When any award of the season has a reason (data-notes on the rail), the
+   phone rail keeps two lines for it on every card, written or not (an empty
+   one, data-empty), so the cards come out the same height and only a reason
+   of three lines or more makes them all taller. A season without reasons
+   keeps no room for them: the footer follows the figures. It shows every
    reason in full: a phone has no tooltip to read the rest in (see the end of
    "What is on the card" for where the room goes when one runs longer). */
 @media (max-width: 559.98px) {
-  .aw-cards-note { min-height: 3em; }
+  [data-notes] .aw-cards-note { min-height: 3em; }
+  .aw-cards-rail:not([data-notes]) .aw-cards-note[data-empty] { display: none; }
 }
 /* The display needs no empty reason: a row stretches to its tallest card. */
 @media (min-width: 560px) {
@@ -652,7 +655,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   justify-content: center;
   gap: 7px;
   margin-top: auto;
-  padding: 14px 0 0 0.26em;
+  padding: 12px 0 0 0.26em;
   color: rgba(255, 255, 255, 0.42);
   font-size: 8.5px;
   font-weight: 700;
@@ -673,12 +676,13 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   background: linear-gradient(90deg, color-mix(in srgb, var(--aw-team) 55%, #000), var(--aw-team) 30%, color-mix(in srgb, var(--aw-team) 70%, #fff) 50%, var(--aw-team) 70%, color-mix(in srgb, var(--aw-team) 55%, #000));
 }
 
-/* In the phone rail every card is as tall as the tallest, and only a reason
-   of three lines or more makes one taller than the rest. The others then keep
-   their rule, reason and footer together at the foot, the way a trading card
-   keeps its text box, and the spare room goes between who won and why rather
-   than opening up above the footer. With no spare room nothing moves. */
+/* In the phone rail every card is as tall as the tallest (a name on two
+   lines, a long reason). The others keep their rule, figures and footer
+   together at the foot, the way a trading card keeps its text box, and their
+   spare room is shared out evenly above the name and above the rule rather
+   than opening up as one gap anywhere. With no spare room nothing moves. */
 @media (max-width: 559.98px) {
+  .aw-cards-name { margin-top: auto; }
   .aw-cards-sub { margin-bottom: 14px; }
   .aw-cards-rule { margin-top: auto; }
   .aw-cards-brand { margin-top: 0; }
