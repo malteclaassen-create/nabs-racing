@@ -1,0 +1,365 @@
+/* ---------------------------------------------------------------------------
+   Season awards, look "cards" (LookCards.jsx). Every award is a trophy card in
+   the language of the driver rating cards (.rcard-* in index.css): chamfered
+   corners, the champion edition's gold metal as the frame, a dark face in both
+   themes. Every class here starts with aw-cards-, so none of it reaches the
+   rest of the site.
+   --------------------------------------------------------------------------- */
+
+/* --- Sizes ------------------------------------------------------------------- */
+
+/* The cards' size and how many share a row. --aw-per2/3/4 come from the JSX:
+   the most even rows for the count at two, three and four across. */
+.aw-cards-stage { --aw-w: 248px; --aw-gap: 24px; }
+@media (min-width: 640px) { .aw-cards-stage { --aw-per: var(--aw-per2, 2); } }
+@media (min-width: 1024px) { .aw-cards-stage { --aw-per: var(--aw-per3, 3); } }
+@media (min-width: 1280px) { .aw-cards-stage { --aw-per: var(--aw-per4, 4); } }
+
+/* --- The row of cards ------------------------------------------------------ */
+
+/* A phone gets a rail of its own that swipes sideways, with the next card
+   peeking in at the right. It reaches out through the page's 16px gutter to
+   the screen edges, so a card slides all the way off instead of being cut
+   short of the edge, and the padding puts the first card back in line with the
+   heading. The bottom padding is room for the cards' shadow, which a scroller
+   would otherwise cut off. */
+.aw-cards-rail {
+  display: flex;
+  gap: 12px;
+  margin: 0 -16px;
+  padding: 2px 16px 22px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 16px;
+  scrollbar-width: none;
+}
+.aw-cards-rail::-webkit-scrollbar { display: none; }
+.aw-cards-rail > li {
+  display: flex;
+  flex: 0 0 min(300px, calc(100% - 58px));
+  /* A card is as wide as its slot, whatever is written on it: without this a
+     long one-word name widened its card past the slot (and knocked a card
+     out of the row) instead of being fitted down to size. */
+  min-width: 0;
+  scroll-snap-align: start;
+}
+/* One award has nothing to peek at: it takes the whole width. */
+.aw-cards-rail[data-count="1"] > li { flex-basis: 100%; }
+/* The rail's cards rise without the scale the cascade normally adds: a card
+   that overshoots past full size would stretch the rail's scroll for a moment. */
+@media (max-width: 639.98px) {
+  .aw-cards-rail.cascade.is-visible > li { animation-name: nabs-fade-in, nabs-spring-up-y; }
+}
+
+/* Anything wider: a centred display that wraps, only as wide as the number of
+   cards a row should hold, so six awards come out as three and three. */
+@media (min-width: 640px) {
+  .aw-cards-rail {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 28px var(--aw-gap);
+    max-width: calc(var(--aw-per) * var(--aw-w) + (var(--aw-per) - 1) * var(--aw-gap));
+    margin: 0 auto;
+    padding: 0;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .aw-cards-rail > li,
+  .aw-cards-rail[data-count="1"] > li { flex: 0 0 var(--aw-w); }
+}
+
+/* Where you are in the rail, on a phone only. */
+.aw-cards-dots { display: flex; justify-content: center; gap: 6px; padding: 0 0 4px; margin-top: -4px; }
+.aw-cards-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  /* The faint text tone, half strength: --c-border all but vanished on the
+     light page. */
+  background: color-mix(in srgb, var(--c-faint) 50%, transparent);
+  transition: width var(--t-base) var(--e-out), background-color var(--t-base) var(--e-out);
+}
+.aw-cards-dots > span.is-on { width: 18px; background: var(--medal-1); }
+@media (min-width: 640px) { .aw-cards-dots { display: none; } }
+
+/* --- One card --------------------------------------------------------------- */
+
+/* The part that lifts. It also draws the shadow, because the clip-path that
+   cuts the corners below would cut a shadow off along with them. */
+.aw-cards-card {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.5));
+  transition: transform var(--t-base) var(--e-out), filter var(--t-base) var(--e-out);
+}
+html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42, 0.22)); }
+
+/* The gold frame: the champion edition's metal, 2px of it round the face. */
+.aw-cards-frame {
+  --cut: 18px;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 2px;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  background: linear-gradient(135deg, #fbe6a8 0%, #e9bc42 15%, #a8770e 39%, #4a3406 50%, #a8770e 61%, #e9bc42 85%, #fbe6a8 100%);
+}
+
+/* The face. Dark in both themes, like every card on the site. The inner cut is
+   shorter than the frame's so the diagonal edge stays as thick as the straight
+   ones (18 - 2 x (2 - 1.414) = 16.8, see .rcard-frame). */
+.aw-cards-body {
+  --cut: 16.8px;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 18px 22px;
+  overflow: hidden;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  color: #fff;
+  text-align: center;
+  background:
+    radial-gradient(95% 40% at 50% 27%, color-mix(in srgb, var(--aw-team) 26%, transparent), transparent 74%),
+    radial-gradient(60% 32% at 50% 30%, rgba(234, 179, 8, 0.13), transparent 72%),
+    linear-gradient(180deg, #121b2e 0%, #0b111e 50%, #070b14 100%);
+}
+@media (min-width: 640px) { .aw-cards-body { padding: 12px 16px 18px; } }
+/* A hairline just inside the frame, as on the rating cards. */
+.aw-cards-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 0 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Fine diagonal foil lines, strongest toward the lower right. */
+.aw-cards-foil {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(123deg, transparent 0 22px, rgba(255, 236, 179, 0.045) 22px 25px);
+  -webkit-mask-image: linear-gradient(125deg, transparent 30%, #000 100%);
+  mask-image: linear-gradient(125deg, transparent 30%, #000 100%);
+}
+
+/* The light that runs across the foil when a pointer comes onto the card. It
+   waits fully off the card, so nothing of it shows at rest. */
+.aw-cards-sheen {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  z-index: 4;
+  width: 60%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(100deg, transparent 18%, rgba(255, 228, 150, 0.16) 42%, rgba(255, 248, 225, 0.3) 50%, rgba(255, 228, 150, 0.16) 58%, transparent 82%);
+  transform: translateX(-120%) skewX(-16deg);
+}
+@keyframes aw-cards-sheen {
+  from { opacity: 1; transform: translateX(-120%) skewX(-16deg); }
+  to { opacity: 1; transform: translateX(260%) skewX(-16deg); }
+}
+
+/* A pointer gets the lift and the sheen; a finger does not (a tap would leave
+   the card stuck in its hover state). */
+@media (hover: hover) {
+  .aw-cards-card:hover {
+    transform: translateY(-6px);
+    filter: drop-shadow(0 22px 28px rgba(0, 0, 0, 0.55));
+  }
+  html:not(.dark) .aw-cards-card:hover { filter: drop-shadow(0 20px 24px rgba(15, 23, 42, 0.28)); }
+  .aw-cards-card:hover .aw-cards-sheen { animation: aw-cards-sheen 1.1s var(--e-out) both; }
+}
+/* The keyboard gets the same lift, plus a ring inside the frame. */
+.aw-cards-card:has(.aw-cards-link:focus-visible) { transform: translateY(-6px); }
+
+/* The winner's name is the link, stretched over the whole card. */
+.aw-cards-link { color: inherit; }
+.aw-cards-link:focus-visible { outline: none; }
+.aw-cards-link::after { content: ""; position: absolute; inset: 0; z-index: 5; }
+.aw-cards-link:focus-visible::after { box-shadow: inset 0 0 0 3px rgb(var(--c-brand)); }
+
+/* --- What is on the card ---------------------------------------------------- */
+
+/* The award's name on a gold ribbon with notched ends. */
+.aw-cards-ribbon {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-height: 38px;
+  margin: 0 -8px;
+  padding: 6px 17px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 50%, 100% 100%, 0 100%, 10px 50%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.14)),
+    linear-gradient(90deg, #a8770e 0%, #e9bc42 20%, #f8e08e 50%, #e9bc42 80%, #a8770e 100%);
+  color: #261a05;
+  font-size: 12px;
+  text-wrap: balance;
+}
+
+/* The laurel, the ring and the portrait inside it, all sized off --m. */
+.aw-cards-medal {
+  --m: clamp(140px, 43vw, 168px); /* a little smaller on the smallest phones */
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--m);
+  height: var(--m);
+  margin-top: 6px;
+}
+@media (min-width: 640px) { .aw-cards-medal { --m: 144px; margin-top: 4px; } }
+.aw-cards-laurel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+}
+.aw-cards-ring {
+  position: relative;
+  width: calc(var(--m) * 0.68);
+  height: calc(var(--m) * 0.68);
+  padding: 3px;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, #fbe6a8, #a8770e 25%, #f8e08e 50%, #7c5a0b 75%, #fbe6a8);
+  box-shadow: 0 12px 26px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.aw-cards-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.12), transparent 62%),
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--aw-team) 34%, #0b1220), #0b1220 78%);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+/* A driver without a photo: the initials on their team colour, lit from the
+   upper left like the ring around it. A photo simply covers it. */
+.aw-cards-disc[data-kind="driver"] {
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--aw-team) 70%, #fff) 0%, var(--aw-team) 48%, color-mix(in srgb, var(--aw-team) 62%, #000) 100%);
+}
+.aw-cards-initials { font-size: calc(var(--m) * 0.27); }
+.aw-cards-track { width: 70%; height: 70%; filter: drop-shadow(0 0 6px rgba(234, 179, 8, 0.45)); }
+.aw-cards-trophy { width: 44%; height: 44%; color: #f8e08e; filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.35)); }
+.aw-cards-mono {
+  font-size: calc(var(--m) * 0.27);
+  background: linear-gradient(180deg, #fbe6a8, #e9bc42 55%, #a8770e);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+}
+.aw-cards-mono[data-len="3"] { font-size: calc(var(--m) * 0.23); }
+
+/* The season tag sits in the gap at the top of the laurel, over the ring. */
+.aw-cards-season {
+  position: absolute;
+  top: calc(var(--m) * 0.16 - 11px);
+  left: 50%;
+  z-index: 2;
+  padding: 3px 7px 2px;
+  border-radius: 3px;
+  transform: translateX(-50%);
+  background: #0b1120;
+  box-shadow: inset 0 0 0 1px #e9bc42, 0 3px 8px rgba(0, 0, 0, 0.6);
+  color: #f8e08e;
+  line-height: 1.2;
+}
+/* The country, pinned to the ring at the lower right. */
+.aw-cards-flag {
+  position: absolute;
+  display: flex; /* no text baseline under the picture */
+  right: calc(var(--m) * 0.26 - 14px);
+  bottom: calc(var(--m) * 0.26 - 10px);
+  z-index: 2;
+  padding: 2px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #fbe6a8, #a8770e);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+
+.aw-cards-name {
+  align-self: stretch;
+  margin-top: 4px;
+  font-size: 26px;
+  color: #fff;
+  text-wrap: balance;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.85), 0 2px 8px rgba(0, 0, 0, 0.4);
+  hyphens: none;
+}
+@media (min-width: 640px) { .aw-cards-name { margin-top: 2px; font-size: 24px; } }
+.aw-cards-sub { color: color-mix(in srgb, var(--aw-team) 52%, #fff); }
+
+/* A thin gold rule with a diamond in the middle, between who won and why. */
+.aw-cards-rule {
+  position: relative;
+  flex: none;
+  width: 72%;
+  height: 7px;
+  margin-top: 14px;
+  background: linear-gradient(90deg, transparent, rgba(233, 188, 66, 0.5) 30%, rgba(233, 188, 66, 0.5) calc(50% - 9px), transparent calc(50% - 9px), transparent calc(50% + 9px), rgba(233, 188, 66, 0.5) calc(50% + 9px), rgba(233, 188, 66, 0.5) 70%, transparent) center / 100% 1px no-repeat;
+}
+.aw-cards-rule::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  transform: rotate(45deg);
+  background: #e9bc42;
+}
+@media (min-width: 640px) { .aw-cards-rule { margin-top: 12px; } }
+
+/* Why it was won. Takes whatever height the row has left, so the strip below
+   sits at the foot of every card in the row. */
+.aw-cards-note {
+  flex: 1 0 auto;
+  align-self: stretch;
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* The team colour across the foot of the card. */
+.aw-cards-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aw-team) 55%, #000), var(--aw-team) 30%, color-mix(in srgb, var(--aw-team) 70%, #fff) 50%, var(--aw-team) 70%, color-mix(in srgb, var(--aw-team) 55%, #000));
+}
+
+/* --- Motion off -------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .aw-cards-card,
+  .aw-cards-dots > span { transition: none; }
+  .aw-cards-card:hover,
+  .aw-cards-card:has(.aw-cards-link:focus-visible) { transform: none; }
+  .aw-cards-sheen { display: none; }
+}
+.fx-lite .aw-cards-card { transition: none; transform: none !important; }
+.fx-lite .aw-cards-sheen { display: none; }

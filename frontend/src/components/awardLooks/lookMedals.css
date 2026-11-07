@@ -1,0 +1,372 @@
+/* ---------------------------------------------------------------------------
+   Season awards look "medals" (LookMedals.jsx). Every class and keyframe here
+   starts with aw-medals- so nothing leaks into the rest of the site.
+
+   The medal itself is the same object in both themes (gold is gold); only the
+   things that sit ON the card change with the theme: the wreath's tones, the
+   glow behind each medal and the shadow it casts.
+   --------------------------------------------------------------------------- */
+
+.aw-medals-root {
+  /* Light card: deeper golds, or the bright half of each leaf vanishes into
+     the white. */
+  --aw-medals-leaf-hi: #d29e12;
+  --aw-medals-leaf-lo: #8d5f05;
+  --aw-medals-glow: rgb(234 179 8 / 0.16);
+  --aw-medals-drop: drop-shadow(0 9px 10px rgb(15 23 42 / 0.2)) drop-shadow(0 2px 2px rgb(15 23 42 / 0.16));
+}
+.dark .aw-medals-root {
+  --aw-medals-leaf-hi: #f1cd5b;
+  --aw-medals-leaf-lo: #a87a10;
+  --aw-medals-glow: rgb(234 179 8 / 0.13);
+  --aw-medals-drop: drop-shadow(0 12px 14px rgb(0 0 0 / 0.55)) drop-shadow(0 2px 3px rgb(0 0 0 / 0.4));
+}
+
+/* A faint pool of gold light from the top of the wall, and a gold hairline
+   inside its edge, the way a display case frames what is in it. */
+.aw-medals-wall::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(70% 55% at 50% 0%, rgb(234 179 8 / 0.09), transparent 70%);
+}
+.aw-medals-wall::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgb(234 179 8 / 0.16);
+  border-radius: 5px;
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .aw-medals-wall::after { inset: 10px; }
+}
+
+/* --- The grid --------------------------------------------------------------
+   Flex rather than grid so a short last row sits in the middle (five awards:
+   three, then two centred) instead of leaving a hole on the right. Two across
+   on a phone, three from md; one across only on the narrowest phones, where
+   two medals side by side would have to shrink past reading. */
+.aw-medals-list {
+  --aw-medals-gap: 0.75rem;
+  --aw-medals-max: 108px;
+  column-gap: var(--aw-medals-gap);
+}
+.aw-medals-item {
+  /* the column the medal measures itself against (cqi, below) */
+  container-type: inline-size;
+  width: calc((100% - var(--aw-medals-gap)) / 2);
+}
+@media (max-width: 339.98px) {
+  .aw-medals-item { width: 100%; }
+}
+@media (min-width: 640px) {
+  .aw-medals-list { --aw-medals-max: 124px; }
+}
+@media (min-width: 768px) {
+  .aw-medals-list { --aw-medals-gap: 1.5rem; }
+  .aw-medals-item { width: calc((100% - 2 * var(--aw-medals-gap)) / 3); }
+}
+@media (min-width: 1024px) {
+  .aw-medals-list { --aw-medals-max: 140px; }
+}
+
+/* --- One medallion ----------------------------------------------------------
+   All of it is measured in --aw-medals-d, the medal's diameter: the wreath
+   box is 1.4d square and starts 0.26d down, the ribbon hangs into its open
+   top, and the medal sits in the middle of the wreath. */
+.aw-medals-art {
+  --aw-medals-d: var(--aw-medals-max);
+  position: relative;
+  width: calc(var(--aw-medals-d) * 1.4);
+  height: calc(var(--aw-medals-d) * 1.6);
+  margin-inline: auto;
+  transition: transform var(--t-base) var(--e-out);
+}
+/* Sized off the column it sits in (cqi), so it can never push the column
+   wider than its share; the plain cap is for browsers without container
+   units. */
+@supports (width: 1cqi) {
+  .aw-medals-art { --aw-medals-d: min(var(--aw-medals-max), 64cqi); }
+}
+/* the soft light the medal hangs in */
+.aw-medals-art::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(var(--aw-medals-d) * 0.96);
+  width: calc(var(--aw-medals-d) * 2.1);
+  height: calc(var(--aw-medals-d) * 2.1);
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, var(--aw-medals-glow), transparent);
+  pointer-events: none;
+}
+
+/* Swings from the ribbon's pin bar (top centre) when it comes in. */
+.aw-medals-hang {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 0;
+}
+
+.aw-medals-laurel {
+  position: absolute;
+  left: 0;
+  top: calc(var(--aw-medals-d) * 0.26);
+  width: calc(var(--aw-medals-d) * 1.4);
+  height: calc(var(--aw-medals-d) * 1.4);
+  overflow: visible;
+  filter: var(--aw-medals-drop);
+}
+.aw-medals-stem {
+  fill: none;
+  stroke: var(--aw-medals-leaf-lo);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+.aw-medals-leaf-hi { fill: var(--aw-medals-leaf-hi); }
+.aw-medals-leaf-lo { fill: var(--aw-medals-leaf-lo); }
+
+.aw-medals-ribbon {
+  position: absolute;
+  left: calc(var(--aw-medals-d) * 0.5);
+  top: 0;
+  width: calc(var(--aw-medals-d) * 0.4);
+  height: calc(var(--aw-medals-d) * 0.52);
+  overflow: visible;
+  z-index: 2;
+}
+
+/* The medal: a polished rim (conic, so the light catches it in several
+   places), a bevel stepping down to the face, the face with a beaded border,
+   and the inlay set into the middle. */
+.aw-medals-medal {
+  position: absolute;
+  left: calc(var(--aw-medals-d) * 0.2);
+  top: calc(var(--aw-medals-d) * 0.46);
+  width: var(--aw-medals-d);
+  height: var(--aw-medals-d);
+  border-radius: 9999px;
+  z-index: 1;
+  background: conic-gradient(
+    from 200deg,
+    #8a5a0b,
+    #fde68a 9%,
+    #c99a1a 20%,
+    #fff4c2 31%,
+    #a8770f 44%,
+    #eab308 57%,
+    #fff7d6 67%,
+    #b7860f 79%,
+    #fcd34d 90%,
+    #8a5a0b
+  );
+  box-shadow:
+    0 0 0 1px rgb(92 58 8 / 0.7),
+    inset 0 1px 1px rgb(255 255 255 / 0.55);
+  filter: var(--aw-medals-drop);
+}
+/* bevel: dark where it falls away from the light, bright where it faces it */
+.aw-medals-medal::before {
+  content: "";
+  position: absolute;
+  inset: 6.5%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #7a4f0a, #b8860b 35%, #fde68a 75%, #fff4c2);
+  box-shadow: 0 0 0 1px rgb(92 58 8 / 0.55);
+}
+.aw-medals-face {
+  position: absolute;
+  inset: 10%;
+  border-radius: inherit;
+  background:
+    radial-gradient(90% 90% at 32% 24%, rgb(255 255 255 / 0.5), transparent 46%),
+    radial-gradient(circle at 50% 42%, #fbe07c 0%, #f0c02e 38%, #cf9a16 68%, #a3730b 100%);
+  box-shadow:
+    inset 0 2px 4px rgb(92 58 8 / 0.55),
+    inset 0 -2px 3px rgb(255 247 214 / 0.55);
+}
+/* beaded border round the face */
+.aw-medals-face::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  border-radius: inherit;
+  background: repeating-conic-gradient(rgb(110 70 6 / 0.6) 0 2deg, transparent 2deg 7.5deg);
+  --aw-medals-ring: radial-gradient(
+    closest-side,
+    transparent calc(100% - 3.5px),
+    #000 calc(100% - 3px),
+    #000 calc(100% - 0.5px),
+    transparent 100%
+  );
+  -webkit-mask: var(--aw-medals-ring);
+  mask: var(--aw-medals-ring);
+}
+
+.aw-medals-inlay {
+  position: absolute;
+  inset: 21%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  box-shadow:
+    0 0 0 1.5px #6b4508,
+    0 0 0 3px #fde68a,
+    0 0 0 4px rgb(92 58 8 / 0.55);
+}
+/* set-in shadow and a little glass over whatever is inlaid */
+.aw-medals-inlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(80% 60% at 30% 18%, rgb(255 255 255 / 0.2), transparent 60%);
+  box-shadow:
+    inset 0 3px 6px rgb(0 0 0 / 0.42),
+    inset 0 -1px 2px rgb(255 255 255 / 0.18);
+}
+/* DriverAvatar sizes itself in px; here it fills the inlay at any medal size. */
+.aw-medals-avatar {
+  width: 100% !important;
+  height: 100% !important;
+  font-size: calc(var(--aw-medals-d) * 0.2) !important;
+}
+/* Team logos sit on pale enamel with a hint of the team's colour. Pale
+   because the logo files are drawn for a white card first: a dark enamel lost
+   the black lettering of the Toro Rosso mark completely. */
+.aw-medals-enamel {
+  background-color: #eef2f7;
+  background-image: radial-gradient(
+    circle at 50% 30%,
+    #ffffff,
+    color-mix(in srgb, var(--aw-medals-tint) 18%, #e6ebf2) 80%
+  );
+}
+/* Wider than tall, so a wordmark gets the width a round inlay has across
+   its middle, while a crest is held by the height. */
+.aw-medals-logo {
+  display: flex;
+  width: 80%;
+  height: 62%;
+  align-items: center;
+  justify-content: center;
+}
+.aw-medals-logo > span {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.aw-medals-logo img,
+.aw-medals-logo > span > span {
+  width: 100% !important;
+  height: 100% !important;
+}
+/* A team without a logo file gets TeamLogo's monogram tile; inside the medal
+   it is struck into the enamel instead (its tile is white on a white team). */
+.aw-medals-logo > span > span {
+  background: none !important;
+  box-shadow: none !important;
+  color: #7a5408 !important;
+  font-family: Archivo, Inter, system-ui, sans-serif !important;
+  font-weight: 900 !important;
+  font-size: calc(var(--aw-medals-d) * 0.17) !important;
+  letter-spacing: 0.02em;
+}
+/* typed names, or a race without a flag: a recessed matte field with a star */
+.aw-medals-matte {
+  background: radial-gradient(circle at 50% 40%, #e3b22a, #b48410 80%);
+}
+.aw-medals-star {
+  width: 72%;
+  height: 72%;
+  filter: drop-shadow(0 1px 1px rgb(92 58 8 / 0.6));
+}
+
+/* --- Light on the metal ----------------------------------------------------
+   A glint crosses each medal once as it comes into view, and again on hover.
+   Two layers, so ending a hover cannot restart the first. */
+.aw-medals-medal::after,
+.aw-medals-shine {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  /* A narrow band, laid over the metal rather than painted on it (overlay),
+     so it brightens the gold instead of fogging it white. */
+  background: linear-gradient(112deg, transparent 43%, rgb(255 255 255 / 0.85) 50%, transparent 57%) no-repeat;
+  background-size: 260% 100%;
+  background-position: 94% 0;
+  mix-blend-mode: overlay;
+}
+/* 94% to 6% is the stretch where the band is over the medal at all. */
+@keyframes aw-medals-glint {
+  0% { opacity: 1; background-position: 94% 0; }
+  100% { opacity: 1; background-position: 6% 0; }
+}
+@keyframes aw-medals-glint-hover {
+  0% { opacity: 1; background-position: 94% 0; }
+  100% { opacity: 1; background-position: 6% 0; }
+}
+/* The observer staggers --reveal-delay down the medals that come into view
+   together, so the glints run along the row one after another. */
+.aw-medals-art.is-visible .aw-medals-medal::after {
+  animation: aw-medals-glint 950ms cubic-bezier(0.45, 0, 0.25, 1) both;
+  animation-delay: calc(var(--reveal-delay, 0s) + 600ms);
+}
+
+/* Each medal sways on its ribbon as it comes into view and settles: a few
+   small swings either side of still, smaller each time. A few degrees only.
+   It starts and ends at rest, so a medal that scrolls in mid-page does not
+   jump. (The hover lift sits on the parent, so the two never fight.) */
+@keyframes aw-medals-swing {
+  0% { transform: none; }
+  18% { transform: rotate(2.6deg); }
+  42% { transform: rotate(-1.6deg); }
+  66% { transform: rotate(0.8deg); }
+  86% { transform: rotate(-0.25deg); }
+  100% { transform: none; }
+}
+.aw-medals-art.is-visible .aw-medals-hang {
+  animation: aw-medals-swing 1500ms ease-in-out;
+  animation-delay: var(--reveal-delay, 0s);
+}
+
+/* The bit of the note that sets it off from the name. */
+.aw-medals-rule {
+  display: block;
+  width: 2.25rem;
+  height: 1px;
+  margin: 0.7rem auto 0.6rem;
+  background: linear-gradient(90deg, transparent, var(--medal-1), transparent);
+  opacity: 0.7;
+}
+
+/* Hover only where there is a pointer: a tap on a phone would leave it stuck
+   until the next tap. The medal lifts and catches the light, the way the
+   site's .lift cards rise; the text stays as it is. */
+@media (hover: hover) {
+  .aw-medals-link:hover .aw-medals-art { transform: translateY(-3px); }
+  .aw-medals-link:hover .aw-medals-shine { animation: aw-medals-glint-hover 800ms cubic-bezier(0.45, 0, 0.25, 1) both; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aw-medals-art { transition: none; transform: none !important; }
+  .aw-medals-hang { animation: none !important; }
+  .aw-medals-medal::after,
+  .aw-medals-shine { animation: none !important; opacity: 0; }
+}
+.fx-lite .aw-medals-art { transition: none; transform: none !important; }
+.fx-lite .aw-medals-hang { animation: none !important; }
+.fx-lite .aw-medals-medal::after,
+.fx-lite .aw-medals-shine { animation: none !important; opacity: 0; }
