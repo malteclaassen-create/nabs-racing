@@ -5,6 +5,7 @@
 // truth); finishing-order extras (grid, best lap, positions gained) come from
 // the per-result metadata stored at import/seed time.
 // ---------------------------------------------------------------------------
+import { readQualiSheets, sheetOf, statGrid } from "../lib/missedQuali.js";
 import {
   getDriverStandings,
   getT1ConstructorStandings,
@@ -147,6 +148,11 @@ export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, sea
   // The grid numbers stay on the feature races: a sprint's slot is usually
   // reversed or inherited, not a qualifying result.
   const qualified = rows.filter((r) => r.status !== "DNS");
+  // The grid slots that say something about pace: a round whose qualifying
+  // the driver skipped puts them at the back, and that slot stays out of Best
+  // and Avg Grid (lib/missedQuali.js).
+  const qualiSheets = await readQualiSheets(prisma, qualified.map((r) => r.raceId));
+  const statGrids = qualified.map((r) => statGrid(r, qualiSheets)).filter((g) => g != null);
 
   let fastest = null;
   for (const r of rows) {
@@ -201,11 +207,9 @@ export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, sea
     bestFinish: finishPositions.length ? Math.min(...finishPositions) : null,
     worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
     avgFinish: avg(finishPositions),
-    bestGrid: qualified.some((r) => r.grid != null)
-      ? Math.min(...qualified.filter((r) => r.grid != null).map((r) => r.grid))
-      : null,
+    bestGrid: statGrids.length ? Math.min(...statGrids) : null,
     polePositions,
-    avgGrid: avg(qualified.filter((r) => r.grid != null).map((r) => r.grid)),
+    avgGrid: avg(statGrids),
     positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
     winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
     podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
@@ -770,6 +774,8 @@ export async function getDriverProfile(prisma, driverId) {
   // position is read from there rather than re-ranked out of lap times.
   // Rounds without an uploaded quali session simply have no entry.
   const qualiByRaceId = new Map();
+  // Every round with a qualifying on file, for the grid stats below.
+  const qualiSheets = new Map();
   try {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT "id", "qualiJson" FROM "Race" WHERE "seasonId" = ? AND "qualiJson" IS NOT NULL`,
@@ -782,6 +788,8 @@ export async function getDriverProfile(prisma, driverId) {
       } catch {
         continue; // a corrupt blob must not cost the whole profile
       }
+      const sheet = sheetOf(blob);
+      if (sheet) qualiSheets.set(row.id, sheet);
       const mine = (blob?.entries || []).find((e) => e.driverId === driverId);
       if (mine?.position != null) {
         qualiByRaceId.set(row.id, { position: mine.position, bestLapMs: mine.bestLapMs ?? null });
@@ -894,6 +902,11 @@ export async function getDriverProfile(prisma, driverId) {
   // The grid numbers stay on the feature races: a sprint's slot is usually
   // reversed or inherited, not a qualifying result.
   const qualified = perRace.filter((r) => r.status !== "DNS");
+  // Best and Avg Grid leave out a round whose qualifying the driver skipped:
+  // that slot is the back of the field, not a lap (lib/missedQuali.js).
+  const statGrids = qualified
+    .map((r) => statGrid({ raceId: r.raceId, driverId, grid: r.grid }, qualiSheets))
+    .filter((g) => g != null);
   // Places gained belongs with them: it is grid minus finish, and only the
   // round cell carries a grid.
   const gained = qualified
@@ -1057,9 +1070,9 @@ export async function getDriverProfile(prisma, driverId) {
       bestFinish: finishPositions.length ? Math.min(...finishPositions) : null,
       worstFinish: finishPositions.length ? Math.max(...finishPositions) : null,
       avgFinish: avg(finishPositions),
-      bestGrid: qualified.some((r) => r.grid != null) ? Math.min(...qualified.filter((r) => r.grid != null).map((r) => r.grid)) : null,
+      bestGrid: statGrids.length ? Math.min(...statGrids) : null,
       polePositions,
-      avgGrid: avg(qualified.filter((r) => r.grid != null).map((r) => r.grid)),
+      avgGrid: avg(statGrids),
       positionsGained: gained.length ? gained.reduce((a, b) => a + b, 0) : 0,
       winRate: starts.length ? Math.round((wins / starts.length) * 100) : 0,
       podiumRate: starts.length ? Math.round((podiums / starts.length) * 100) : 0,
