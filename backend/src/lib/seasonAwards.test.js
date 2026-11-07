@@ -39,6 +39,13 @@ describe("sanitizeAwardInput, shared awards", () => {
     const r = sanitizeAwardInput({ title: "Best Partnership", kind: "driver", winnerId: "a", partnerId: "b" });
     expect(r.value).toMatchObject({ driverId: "a", partnerId: "b" });
   });
+  it("takes the race a driver award was won in", () => {
+    expect(sanitizeAwardInput({ title: "Drive of the Season", kind: "driver", winnerId: "a", raceId: "r8" }).value).toMatchObject({
+      driverId: "a",
+      raceId: "r8",
+    });
+    expect(sanitizeAwardInput({ title: "T", kind: "team", winnerId: "t", raceId: "r8" }).value.raceId).toBe(null);
+  });
   it("ignores a partner on other kinds and refuses the same driver twice", () => {
     expect(sanitizeAwardInput({ title: "T", kind: "team", winnerId: "t", partnerId: "b" }).value.partnerId).toBe(null);
     expect(sanitizeAwardInput({ title: "T", kind: "driver", winnerId: "a", partnerId: "a" }).error).toBeTruthy();
@@ -71,6 +78,11 @@ describe("shapeAward", () => {
     });
     expect(a.driver.photoUrl).toBe("/api/uploads/avatars/d1.jpg");
     expect(a.driver.photoFallbacks).toEqual(["https://cdn.example/a.png"]);
+  });
+
+  it("hands out the race a driver award was won in", () => {
+    const a = shapeAward({ ...row, raceId: "r8" }, { driver: { id: "d1", name: "Max", team: null }, race: { id: "r8", number: 8, track: "Interlagos", isCompleted: true } });
+    expect(a).toMatchObject({ kind: "driver", race: { id: "r8", round: 8, track: "Interlagos" } });
   });
 
   it("hands out both drivers of a shared award, and keeps the second if the first is gone", () => {

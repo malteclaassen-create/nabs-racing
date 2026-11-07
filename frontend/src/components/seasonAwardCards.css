@@ -593,8 +593,9 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   line-height: 1.4;
 }
 .aw-cards-stats b { color: #f8e08e; font-weight: 800; }
-.aw-cards-stats > span { white-space: nowrap; }
-.aw-cards-stats > span + span::before {
+.aw-cards-stats > span { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 5px; }
+.aw-cards-stats > span > span { white-space: nowrap; }
+.aw-cards-stats > span > span + span::before {
   content: "·";
   margin-right: 5px;
   color: rgba(233, 188, 66, 0.6);

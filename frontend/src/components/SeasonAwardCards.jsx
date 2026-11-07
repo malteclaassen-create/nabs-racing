@@ -22,6 +22,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import CircuitMap from "./CircuitMap.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import { hasOutline, useTrackOutlines } from "../data/trackOutlines.js";
+import { flagFor } from "../data/circuits.js";
 import { motionOff, useSwapClass } from "../hooks/motion.js";
 import { winnerOf } from "./seasonAwardWinner.js";
 import "./seasonAwardCards.css";
@@ -44,72 +45,103 @@ const WORDMARK = 3;
 
 const r2 = (v) => Math.round(v * 100) / 100;
 
-// The laurel round the portrait: two branches that rise from the foot of the
-// ring and stop short of the season tag at the top. Each is a thin stem along
-// a circle with leaves growing from it, outside and inside by turns, all
-// pointing up the branch and smaller toward its tip. The podium seal's ring of
-// loose leaves (ChampionBadge.jsx) works at 40px; at the size of a portrait it
-// read as a ring of gold beans. `clasp` leaves a gap at the foot for the flag
-// pinned there.
+// The laurel round the portrait: two olive branches that rise from the foot
+// of the ring and stop short of the season tag at the top. Each is a stem
+// along a circle with slim leaves growing from it in pairs, one out and one
+// in, smaller toward the tip, and a few berries tucked inside. Every leaf is
+// struck in two halves, a lit one and a shaded one either side of its vein,
+// so the wreath reads as embossed metal rather than flat gold cut-outs.
+// `clasp` leaves a gap at the foot for the flag pinned there.
 function laurel(clasp) {
-  const R = 40.5; // the stem's circle, in a 100 x 100 box
-  const base = clasp ? 158 : 170; // degrees round from 12 o'clock
-  const tip = 38;
-  const N = 13; // leaves per branch, the last one on the tip
+  const R = 42.5; // the stem's circle, in a 100 x 100 box
+  const base = clasp ? 160 : 172; // degrees round from 12 o'clock
+  const tip = 36;
+  const N = 9; // leaf pairs per branch, plus one leaf on the tip
   const stems = [];
   const leaves = [];
+  const berries = [];
   for (const side of [1, -1]) {
-    const at = (deg) => [50 + side * R * Math.sin((deg * Math.PI) / 180), 50 - R * Math.cos((deg * Math.PI) / 180)];
+    const at = (deg, r = R) => [50 + side * r * Math.sin((deg * Math.PI) / 180), 50 - r * Math.cos((deg * Math.PI) / 180)];
     const [x0, y0] = at(base);
-    const [x1, y1] = at(tip + 2);
+    const [x1, y1] = at(tip + 1);
     stems.push(`M${r2(x0)} ${r2(y0)}A${R} ${R} 0 0 ${side > 0 ? 0 : 1} ${r2(x1)} ${r2(y1)}`);
-    for (let i = 0; i < N; i++) {
-      const t = i / (N - 1); // 0 at the foot, 1 at the tip
-      const deg = base - t * (base - tip);
-      const size = 1 - 0.42 * t;
-      const ry = 5.8 * size; // half the leaf's length
-      const w = 3.2 * size; // its curves' pull, about 1.3 times its half-width
+    const leaf = (deg, lean, size, key) => {
+      const ry = 6 * size; // half the leaf's length
+      const w = 2.9 * size; // its curves' pull: a slim olive leaf
       // Which way the leaf points, clockwise from 12 o'clock: along the stem
-      // toward the tip (deg - 90), turned out or in by 38 degrees.
-      const lean = i === N - 1 ? 0 : i % 2 ? -38 : 38;
+      // toward the tip (deg - 90), turned out or in by `lean` degrees.
       const phi = side * (deg - 90 + lean);
       const ux = Math.sin((phi * Math.PI) / 180);
       const uy = -Math.cos((phi * Math.PI) / 180);
       const [px, py] = at(deg);
+      // Base at (0, ry) on the stem, tip at (0, -ry); the half facing the
+      // light (the outer side of each branch) is the bright one.
+      const half = (sx) =>
+        `M0 ${r2(ry)}C${r2(sx * w)} ${r2(ry * 0.5)} ${r2(sx * w)} ${r2(-ry * 0.4)} 0 ${r2(-ry)}Z`;
       leaves.push({
-        key: `${side}-${i}`,
-        // Base at (0, ry) on the stem, tip at (0, -ry), widest nearer the base.
-        d: `M0 ${r2(ry)}C${r2(w)} ${r2(ry * 0.55)} ${r2(w)} ${r2(-ry * 0.35)} 0 ${r2(-ry)}C${r2(-w)} ${r2(-ry * 0.35)} ${r2(-w)} ${r2(ry * 0.55)} 0 ${r2(ry)}Z`,
-        transform: `translate(${r2(px + ux * ry * 0.92)} ${r2(py + uy * ry * 0.92)}) rotate(${r2(phi)})`,
+        key,
+        lit: half(side),
+        shade: half(-side),
+        vein: `M0 ${r2(ry * 0.9)}Q${r2(side * w * 0.12)} 0 0 ${r2(-ry * 0.82)}`,
+        transform: `translate(${r2(px + ux * ry * 0.9)} ${r2(py + uy * ry * 0.9)}) rotate(${r2(phi)})`,
       });
+    };
+    for (let i = 0; i < N; i++) {
+      const t = i / N; // 0 at the foot
+      const deg = base - t * (base - tip);
+      const size = 1 - 0.45 * t;
+      leaf(deg, 44, size, `${side}-o${i}`); // out
+      leaf(deg - (base - tip) / N / 2, -24, size * 0.9, `${side}-i${i}`); // in, half a step on
+      // A berry inside the branch at every other pair, below the top third.
+      if (i % 2 === 1 && t < 0.7) {
+        const [bx, by] = at(deg - (base - tip) / N / 4, R - 3.4);
+        berries.push({ key: `${side}-b${i}`, cx: r2(bx), cy: r2(by), r: r2(1.35 * (1 - 0.3 * t)) });
+      }
     }
+    leaf(tip, 0, 0.5, `${side}-tip`);
   }
-  return { stems, leaves };
+  return { stems, leaves, berries };
 }
 const LAURELS = { clasp: laurel(true), full: laurel(false) };
 
 function Laurel({ clasp }) {
-  // One gradient per card: two cards must not share an id, or the second one's
-  // leaves would point at the first one's gradient.
+  // One set of gradients per card: two cards must not share an id, or the
+  // second one's leaves would point at the first one's gradients.
   const id = useId().replace(/:/g, "");
-  const { stems, leaves } = clasp ? LAURELS.clasp : LAURELS.full;
+  const { stems, leaves, berries } = clasp ? LAURELS.clasp : LAURELS.full;
   return (
     <svg className="aw-cards-laurel" viewBox="0 0 100 100" aria-hidden="true">
       <defs>
-        <linearGradient id={`${id}-leaf`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={GOLD_HI} />
-          <stop offset="0.5" stopColor={GOLD} />
+        <linearGradient id={`${id}-lit`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff4cf" />
+          <stop offset="0.45" stopColor={GOLD_HI} />
+          <stop offset="1" stopColor={GOLD} />
+        </linearGradient>
+        <linearGradient id={`${id}-shade`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={GOLD} />
           <stop offset="1" stopColor={GOLD_DEEP} />
         </linearGradient>
+        <radialGradient id={`${id}-berry`} cx="0.35" cy="0.35" r="0.7">
+          <stop offset="0" stopColor="#fff4cf" />
+          <stop offset="0.5" stopColor={GOLD} />
+          <stop offset="1" stopColor={GOLD_DEEP} />
+        </radialGradient>
       </defs>
-      <g fill="none" stroke={`url(#${id}-leaf)`} strokeWidth={1.1} strokeLinecap="round">
+      <g fill="none" stroke={GOLD_DEEP} strokeWidth={1.3} strokeLinecap="round">
         {stems.map((d) => (
           <path key={d} d={d} />
         ))}
       </g>
-      <g fill={`url(#${id}-leaf)`}>
-        {leaves.map((l) => (
-          <path key={l.key} d={l.d} transform={l.transform} />
+      {leaves.map((l) => (
+        <g key={l.key} transform={l.transform}>
+          <path d={l.shade} fill={`url(#${id}-shade)`} />
+          <path d={l.lit} fill={`url(#${id}-lit)`} />
+          <path d={l.vein} fill="none" stroke={GOLD_DEEP} strokeWidth={0.35} strokeOpacity={0.7} />
+        </g>
+      ))}
+      <g fill={`url(#${id}-berry)`}>
+        {berries.map((b) => (
+          <circle key={b.key} cx={b.cx} cy={b.cy} r={b.r} />
         ))}
       </g>
     </svg>
@@ -488,6 +520,12 @@ function TeamFace({ team }) {
   );
 }
 
+// The flag of the race a driver award was won in, before its name.
+function RaceFlag({ race }) {
+  const code = flagFor(race.track, race.country)?.country || race.country || null;
+  return code ? <Flag code={code} w={18} h={13} /> : null;
+}
+
 // The small logo before a driver's team name, sized by its drawing like the
 // big one: a wordmark gets the width it needs (seasonAwardCards.css).
 function SubLogo({ team }) {
@@ -584,6 +622,9 @@ function AwardCard({ award, seasonNumber, index, place }) {
   // one-word handle can only shrink, so it may go smaller before it breaks.
   const nameRef = useFitText(w.name, /\s/.test(String(w.name || "").trim()) ? 16 : 13, 2);
   const subRef = useFitText(w.sub, 9, 1);
+  // The figures stay on one line, a little smaller where they run long.
+  const statsText = (award.stats || []).map((x) => [x.pre, x.value, x.label].filter(Boolean).join(" ")).join(" · ");
+  const statsRef = useFitText(statsText, 8, 1);
   const [noteRef, noteCut] = useCutShort(award.note);
   return (
     <li style={{ "--i": Math.min(index, 12), ...place }}>
@@ -632,7 +673,8 @@ function AwardCard({ award, seasonNumber, index, place }) {
             </p>
             {w.sub ? (
               <div className="aw-cards-sub font-display text-[11px] font-bold uppercase tracking-[0.14em]">
-                {w.kind === "driver" && w.team && <SubLogo team={w.team} />}
+                {w.kind === "driver" && w.context && w.context.track && <RaceFlag race={w.context} />}
+                {w.kind === "driver" && !w.context && w.team && <SubLogo team={w.team} />}
                 <span ref={subRef} className="truncate">
                   {w.sub}
                 </span>
@@ -651,12 +693,15 @@ function AwardCard({ award, seasonNumber, index, place }) {
                 the phone rail, like the reason below. */}
             {award.stats?.length ? (
               <p className="aw-cards-stats font-mono uppercase">
-                {award.stats.map((x, i) => (
-                  <span key={i}>
-                    <b>{x.value}</b>
-                    {x.label && ` ${x.label}`}
-                  </span>
-                ))}
+                <span ref={statsRef}>
+                  {award.stats.map((x, i) => (
+                    <span key={i}>
+                      {x.pre && `${x.pre} `}
+                      <b>{x.value}</b>
+                      {x.label && ` ${x.label}`}
+                    </span>
+                  ))}
+                </span>
               </p>
             ) : (
               <p className="aw-cards-stats" data-empty="" aria-hidden="true" />

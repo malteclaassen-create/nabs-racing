@@ -10,7 +10,8 @@
 // migration. An award is won by ONE of: a driver of that season, a team of
 // that season, a race of that season, or a name typed by hand (someone who
 // is not on the roster). A driver award can name a second driver for an
-// award two people share (best partnership). A short line under it says why,
+// award two people share (best partnership), or the race it was won in
+// (drive of the season). A short line under it says why,
 // if the league wants one.
 //
 // Shown in the Hall of Fame (all seasons) and in the season honours on Home.
@@ -63,8 +64,8 @@ function cleanText(v, max) {
 }
 
 // What an admin sent, checked and trimmed. Exactly one kind of winner:
-// { kind: "driver"|"team"|"race"|"text", winnerId?, partnerId?, winnerText? },
-// partnerId only with a driver. The ids are checked
+// { kind: "driver"|"team"|"race"|"text", winnerId?, partnerId?, raceId?,
+// winnerText? }; partnerId and raceId only with a driver. The ids are checked
 // against the season by the caller (checkWinnerInSeason), since that needs
 // the database.
 export function sanitizeAwardInput(body) {
@@ -84,6 +85,11 @@ export function sanitizeAwardInput(body) {
       if (partner === id) return { error: "Pick two different drivers." };
       out.partnerId = partner;
     }
+    const race = b.raceId == null ? "" : String(b.raceId);
+    if (kind === "driver" && race) {
+      if (!isAwardId(race)) return { error: "Pick the race again." };
+      out.raceId = race;
+    }
   } else if (kind === "text") {
     const text = cleanText(b.winnerText, AWARD_LIMITS.winner);
     if (!text) return { error: "Type who won it." };
@@ -97,6 +103,11 @@ export function sanitizeAwardInput(body) {
 // The picked driver, team or race must belong to the award's season, or the
 // Hall of Fame would show a Season 3 award won by a Season 7 row.
 export async function checkWinnerInSeason(prisma, seasonId, award) {
+  // A driver award's race is checked on its own; the driver below.
+  if (award.driverId && award.raceId) {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "seasonId" FROM "Race" WHERE "id" = ?`, award.raceId);
+    if (!rows.length || rows[0].seasonId !== seasonId) return false;
+  }
   if (award.partnerId) {
     const rows = await prisma.$queryRawUnsafe(`SELECT "seasonId" FROM "Driver" WHERE "id" = ?`, award.partnerId);
     if (!rows.length || rows[0].seasonId !== seasonId) return false;
@@ -289,27 +300,27 @@ export function shapeAward(row, { driver, partner, team, race } = {}) {
       kind: "driver",
       driver: shapeDriver(first),
       partner: second ? shapeDriver(second) : null,
+      // The race a drive of the season was won in, if the award names one.
+      race: race ? shapeRace(race) : null,
     };
   }
   if (row.teamId && team) {
     return { ...base, kind: "team", team: { ...team } };
   }
-  if (row.raceId && race) {
-    return {
-      ...base,
-      kind: "race",
-      race: {
-        id: race.id,
-        round: race.number ?? null,
-        track: race.track,
-        country: race.country || null,
-        date: race.date ? new Date(race.date).toISOString() : null,
-        isCompleted: !!race.isCompleted,
-      },
-    };
-  }
+  if (row.raceId && race) return { ...base, kind: "race", race: shapeRace(race) };
   if (row.winnerText) return { ...base, kind: "text", winnerText: row.winnerText };
   return null;
+}
+
+function shapeRace(race) {
+  return {
+    id: race.id,
+    round: race.number ?? null,
+    track: race.track,
+    country: race.country || null,
+    date: race.date ? new Date(race.date).toISOString() : null,
+    isCompleted: !!race.isCompleted,
+  };
 }
 
 function shapeDriver(driver) {

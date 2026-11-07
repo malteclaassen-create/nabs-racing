@@ -22,6 +22,8 @@ function fmtRaceDay(iso) {
 //             for a driver award
 //   partner   the second driver of an award two drivers share, else null
 //   links     [{ name, to }] for each driver of a shared award, else null
+//   context   the race a driver award was won in (drive of the season), else
+//             null; `sub` then names it instead of the team
 //   team      { id, name, color, logoUrl, tier } for a team award, or the
 //             driver's team for a driver award
 //   race      { id, round, track, country, date, isCompleted } for a race award
@@ -50,10 +52,14 @@ export function winnerOf(award, seasonNumber) {
   }
   if (award.kind === "driver") {
     const d = award.driver;
+    // An award won in one race (drive of the season) names that race where
+    // the team would go, so the figures under it have their context.
+    const at = award.race;
     return {
       kind: "driver",
       name: d.name,
-      sub: d.team?.name || null,
+      sub: at ? [at.track, at.round != null ? `Round ${at.round}` : null].filter(Boolean).join(" · ") : d.team?.name || null,
+      context: at || null,
       to: `/drivers/${d.driverId}${q}`,
       flag: countryFor(d.driverId, d.country) || null,
       driver: d,
