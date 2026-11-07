@@ -647,6 +647,22 @@ function AwardCard({ award, seasonNumber, index, place }) {
             {/* The ornament is there with or without a reason, so it lines up
                 across a row and a card without one still reads as finished. */}
             <span className="aw-cards-rule" aria-hidden="true" />
+            {/* The winner's season in figures (worked out by the server:
+                position, points, wins and poles; a race's contacts, overtakes
+                and DNFs). A card without any keeps the line's room on
+                the phone rail, like the reason below. */}
+            {award.stats?.length ? (
+              <p className="aw-cards-stats font-mono uppercase">
+                {award.stats.map((x, i) => (
+                  <span key={i}>
+                    <b>{x.value}</b>
+                    {x.label && ` ${x.label}`}
+                  </span>
+                ))}
+              </p>
+            ) : (
+              <p className="aw-cards-stats" data-empty="" aria-hidden="true" />
+            )}
             {award.note ? (
               <p ref={noteRef} className="aw-cards-note">
                 {award.note}

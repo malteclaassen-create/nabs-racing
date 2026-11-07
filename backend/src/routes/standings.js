@@ -8,6 +8,7 @@ import {
 import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { readSeasonAwards } from "../lib/seasonAwards.js";
+import { withAwardStats } from "../lib/seasonAwardStats.js";
 import { resolveSeries, getActiveSeries } from "../lib/series.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { resolveSeasonId } from "../services/seasonService.js";
@@ -148,7 +149,7 @@ router.get("/awards", async (req, res, next) => {
         select: { id: true, number: true, name: true },
       })
     ).filter((s) => !priv.has(s.id));
-    const awards = await readSeasonAwards(prisma, seasons.map((s) => s.id));
+    const awards = await withAwardStats(prisma, await readSeasonAwards(prisma, seasons.map((s) => s.id)));
     res.json({
       seasons: seasons
         .filter((s) => awards.has(s.id))
