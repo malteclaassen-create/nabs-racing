@@ -41,7 +41,7 @@ import { telemetryScript } from "../lib/telemetryScript.js";
 import { readIngestConfig, setIngestPaused, ensureIngestKey } from "../lib/telemetryKeys.js";
 import { RACE_TYPES, writeRaceType, readRaceTypes } from "../lib/raceTypes.js";
 import { overdueRounds } from "../lib/overdueRounds.js";
-import { writeSeasonHero, writeSeasonCar } from "../lib/seasonHero.js";
+import { writeSeasonHero, writeSeasonCar, writeSeasonPreviewLoop } from "../lib/seasonHero.js";
 import { COVERED, CAR_COLUMNS, carState, carFileName, readCarUnveil, writeCarUnveil, writeCarUnveilAt, writeCarVideo, writeCarFilmAt, writeCarCover, renameCarFile, removeCarFile, ensureCarEvent, isCarEventId } from "../lib/carUnveil.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
@@ -5538,7 +5538,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -5572,6 +5572,7 @@ router.get("/seasons", async (req, res, next) => {
             isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
             isAnnounced: !!Number(extra.isAnnounced ?? 0),
             heroImageUrl: extra.heroImageUrl || null,
+            previewLoopUrl: extra.previewLoopUrl || null,
             carImageUrl: extra.carImageUrl || null,
             // The admin keeps the address while the car is covered: it is
             // what the preview of the reveal plays.
@@ -6194,6 +6195,70 @@ router.delete("/seasons/:id/hero", async (req, res, next) => {
     const season = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!season) return res.status(404).json({ error: "Season not found" });
     await writeSeasonHero(prisma, season.id, null);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/preview-loop  (multipart: file=<mp4|webm>)
+// The season's preview loop: a short film the "coming soon" main card plays
+// muted, over and over, from the moment the season is previewed until its
+// first result is in. Streams to disk like the series' films (same size
+// limit, same temporary name), then moves into the seasons folder.
+router.post("/seasons/:id/preview-loop", takePromoVideo, async (req, res, next) => {
+  const tmp = req.file?.path;
+  const dropTmp = () => {
+    try {
+      if (tmp && existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+  };
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const ext = PROMO_VIDEO_EXT[req.file.mimetype];
+    if (!ext) {
+      dropTmp();
+      return res.status(400).json({ error: "Unsupported video type (use MP4 or WebM)" });
+    }
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) {
+      dropTmp();
+      return res.status(404).json({ error: "Season not found" });
+    }
+    mkdirSync(SEASONS_DIR, { recursive: true });
+    const filename = `${season.id}-loop${ext}`;
+    const dest = safeUploadPath(SEASONS_DIR, filename);
+    if (!dest) {
+      dropTmp();
+      return res.status(400).json({ error: "This season's id can't be used as a file name" });
+    }
+    renameSync(tmp, dest);
+    for (const other of Object.values(PROMO_VIDEO_EXT)) {
+      if (other === ext) continue;
+      const old = safeUploadPath(SEASONS_DIR, `${season.id}-loop${other}`);
+      if (old && existsSync(old)) unlinkSync(old);
+    }
+    const previewLoopUrl = `/api/uploads/seasons/${filename}?v=${Date.now()}`;
+    await writeSeasonPreviewLoop(prisma, season.id, previewLoopUrl);
+    res.json({ ok: true, previewLoopUrl });
+  } catch (e) {
+    dropTmp();
+    next(e);
+  }
+});
+
+// DELETE /api/admin/seasons/:id/preview-loop -> the card shows its photo again.
+router.delete("/seasons/:id/preview-loop", async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!season) return res.status(404).json({ error: "Season not found" });
+    for (const ext of Object.values(PROMO_VIDEO_EXT)) {
+      const file = safeUploadPath(SEASONS_DIR, `${season.id}-loop${ext}`);
+      if (file && existsSync(file)) unlinkSync(file);
+    }
+    await writeSeasonPreviewLoop(prisma, season.id, null);
     res.json({ ok: true });
   } catch (e) {
     next(e);

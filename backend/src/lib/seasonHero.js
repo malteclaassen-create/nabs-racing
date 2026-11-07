@@ -20,6 +20,12 @@ export async function writeSeasonHero(prisma, seasonId, url) {
   await prisma.$executeRawUnsafe(`UPDATE "Season" SET "heroImageUrl" = ? WHERE "id" = ?`, url, seasonId);
 }
 
+// The season's preview loop: the film the "coming soon" main card plays while
+// the season waits for its first race.
+export async function writeSeasonPreviewLoop(prisma, seasonId, url) {
+  await prisma.$executeRawUnsafe(`UPDATE "Season" SET "previewLoopUrl" = ? WHERE "id" = ?`, url, seasonId);
+}
+
 // Same pattern for the season's car image (the "coming soon" hero panel).
 export async function writeSeasonCar(prisma, seasonId, url) {
   await prisma.$executeRawUnsafe(`UPDATE "${carTable(seasonId)}" SET "carImageUrl" = ? WHERE "id" = ?`, url, seasonId);
