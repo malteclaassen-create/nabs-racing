@@ -5,7 +5,8 @@
 // (RatingCard.jsx and the .rcard-* rules in index.css): chamfered corners, the
 // gold metal frame the champion edition wears, a dark face in both themes. The
 // award's name rides on a ribbon at the top, the winner sits in a laurel in the
-// middle, and the name, the team and the reason follow underneath.
+// middle, the name, the team and the reason follow underneath, and the card
+// signs off with the rating cards' "NABS RACING" line at its foot.
 //
 // A phone swipes through the cards in a rail of their own (the page itself
 // never scrolls sideways); anything wider shows them as a centred display, in
@@ -20,7 +21,7 @@ import TeamLogo from "../TeamLogo.jsx";
 import CircuitMap from "../CircuitMap.jsx";
 import SlidingTabs from "../SlidingTabs.jsx";
 import { hasOutline, useTrackOutlines } from "../../data/trackOutlines.js";
-import { useSwapClass } from "../../hooks/motion.js";
+import { motionOff, useSwapClass } from "../../hooks/motion.js";
 import { winnerOf } from "./shared.js";
 import "./lookCards.css";
 
@@ -30,33 +31,67 @@ const GOLD_HI = "#fbe6a8";
 const GOLD = "#e9bc42";
 const GOLD_DEEP = "#a8770e";
 
-// The laurel round the portrait. The podium seal's recipe (wreathLeaves in
-// ChampionBadge.jsx): two mirrored branches of leaves along a circle, open at
-// the top and meeting at the bottom, each leaf tilted off its radius so it lies
-// along the branch. Drawn on a wider circle with slimmer leaves here, so a
-// whole portrait fits inside it rather than a two-letter season tag.
-function laurelLeaves() {
+// More awards than this and the phone rail counts ("3 / 24") instead of
+// showing a dot per card: forty dots no longer fit a phone and came out as
+// slivers.
+const MAX_DOTS = 12;
+
+// A logo whose drawing is more than this many times wider than tall (a
+// wordmark such as Toro Rosso's) is too thin to read in the round: the card
+// shows the team's initials in its place.
+const WORDMARK = 3;
+
+const r2 = (v) => Math.round(v * 100) / 100;
+
+// The laurel round the portrait: two branches that rise from the foot of the
+// ring and stop short of the season tag at the top. Each is a thin stem along
+// a circle with leaves growing from it, outside and inside by turns, all
+// pointing up the branch and smaller toward its tip. The podium seal's ring of
+// loose leaves (ChampionBadge.jsx) works at 40px; at the size of a portrait it
+// read as a ring of gold beans. `clasp` leaves a gap at the foot for the flag
+// pinned there.
+function laurel(clasp) {
+  const R = 40.5; // the stem's circle, in a 100 x 100 box
+  const base = clasp ? 158 : 170; // degrees round from 12 o'clock
+  const tip = 38;
+  const N = 13; // leaves per branch, the last one on the tip
+  const stems = [];
   const leaves = [];
-  const N = 9;
   for (const side of [1, -1]) {
+    const at = (deg) => [50 + side * R * Math.sin((deg * Math.PI) / 180), 50 - R * Math.cos((deg * Math.PI) / 180)];
+    const [x0, y0] = at(base);
+    const [x1, y1] = at(tip + 2);
+    stems.push(`M${r2(x0)} ${r2(y0)}A${R} ${R} 0 0 ${side > 0 ? 0 : 1} ${r2(x1)} ${r2(y1)}`);
     for (let i = 0; i < N; i++) {
-      const t = i / (N - 1);
-      const deg = side * (40 + t * (166 - 40));
-      const rad = (deg * Math.PI) / 180;
-      const scale = 0.6 + 0.4 * t; // small at the top, full at the bottom
-      const x = 50 + 41 * Math.sin(rad);
-      const y = 50 - 41 * Math.cos(rad);
-      leaves.push({ key: `${side}-${i}`, x, y, rx: 2.6 * scale, ry: 6.4 * scale, rot: side * (Math.abs(deg) + 112) });
+      const t = i / (N - 1); // 0 at the foot, 1 at the tip
+      const deg = base - t * (base - tip);
+      const size = 1 - 0.42 * t;
+      const ry = 5.8 * size; // half the leaf's length
+      const w = 3.2 * size; // its curves' pull, about 1.3 times its half-width
+      // Which way the leaf points, clockwise from 12 o'clock: along the stem
+      // toward the tip (deg - 90), turned out or in by 38 degrees.
+      const lean = i === N - 1 ? 0 : i % 2 ? -38 : 38;
+      const phi = side * (deg - 90 + lean);
+      const ux = Math.sin((phi * Math.PI) / 180);
+      const uy = -Math.cos((phi * Math.PI) / 180);
+      const [px, py] = at(deg);
+      leaves.push({
+        key: `${side}-${i}`,
+        // Base at (0, ry) on the stem, tip at (0, -ry), widest nearer the base.
+        d: `M0 ${r2(ry)}C${r2(w)} ${r2(ry * 0.55)} ${r2(w)} ${r2(-ry * 0.35)} 0 ${r2(-ry)}C${r2(-w)} ${r2(-ry * 0.35)} ${r2(-w)} ${r2(ry * 0.55)} 0 ${r2(ry)}Z`,
+        transform: `translate(${r2(px + ux * ry * 0.92)} ${r2(py + uy * ry * 0.92)}) rotate(${r2(phi)})`,
+      });
     }
   }
-  return leaves;
+  return { stems, leaves };
 }
-const LEAVES = laurelLeaves();
+const LAURELS = { clasp: laurel(true), full: laurel(false) };
 
-function Laurel() {
+function Laurel({ clasp }) {
   // One gradient per card: two cards must not share an id, or the second one's
   // leaves would point at the first one's gradient.
   const id = useId().replace(/:/g, "");
+  const { stems, leaves } = clasp ? LAURELS.clasp : LAURELS.full;
   return (
     <svg className="aw-cards-laurel" viewBox="0 0 100 100" aria-hidden="true">
       <defs>
@@ -66,18 +101,42 @@ function Laurel() {
           <stop offset="1" stopColor={GOLD_DEEP} />
         </linearGradient>
       </defs>
+      <g fill="none" stroke={`url(#${id}-leaf)`} strokeWidth={1.1} strokeLinecap="round">
+        {stems.map((d) => (
+          <path key={d} d={d} />
+        ))}
+      </g>
       <g fill={`url(#${id}-leaf)`}>
-        {LEAVES.map((l) => (
-          <ellipse key={l.key} cx={l.x} cy={l.y} rx={l.rx} ry={l.ry} transform={`rotate(${l.rot} ${l.x} ${l.y})`} />
+        {leaves.map((l) => (
+          <path key={l.key} d={l.d} transform={l.transform} />
         ))}
       </g>
     </svg>
   );
 }
 
-// Rows as even as the count allows, at most `cols` across: six awards on a
-// screen that fits four are two rows of three, not four and a lonely two.
-const perRow = (n, cols) => Math.max(1, Math.ceil(n / Math.ceil(n / cols)));
+// Rows as even as the count allows, `cols` across at most and the longer rows
+// first: thirteen awards four across come out 4, 3, 3, 3 rather than three
+// full rows and one card on its own, and six come out as two rows of three.
+function rowSizes(n, cols) {
+  const rows = Math.ceil(n / cols);
+  const base = Math.floor(n / rows);
+  return Array.from({ length: rows }, (_, r) => base + (r < n % rows ? 1 : 0));
+}
+
+// The display is a grid of half-card columns, so that a shorter row can sit
+// centred under a longer one: its first card starts half a card further in for
+// every card the row is short. Gives the number of half columns and, for every
+// card, the column it starts on (null: straight after the card before it).
+function gridPlan(n, cols) {
+  if (!n) return { halves: 2, starts: [] };
+  const sizes = rowSizes(n, cols);
+  const widest = sizes[0];
+  const starts = sizes.flatMap((size) =>
+    Array.from({ length: size }, (_, i) => (i === 0 && size < widest ? 1 + widest - size : null)),
+  );
+  return { halves: widest * 2, starts };
+}
 
 // Two letters for a portrait, the way DriverAvatar writes them. A handle that
 // starts with a number keeps the number: "13bot" reads "13", not a lone "1".
@@ -104,15 +163,112 @@ function monogramOf(text) {
   return null;
 }
 
+// A team's initials, up to three: "Scuderia Torro Rosso Junior Team" reads
+// "STR". For the disc of a team whose logo cannot be shown there.
+function teamInitials(name) {
+  return String(name || "?")
+    .split(/\s+/)
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("")
+    .toUpperCase();
+}
+
+// Where the drawing in a logo file actually is, in the file's own pixels.
+// Several of the league's logos are square files with the mark in a band
+// across the middle (Super Aguri, NCB Mugen, Jaguar, McLaren), so sized by
+// the file they came out a third of the size of the others. Read once per
+// picture from a small copy; a picture from another site cannot be read back,
+// and then all of it counts.
+const logoShapes = new Map();
+function logoShape(img) {
+  const key = img.currentSrc || img.src;
+  if (logoShapes.has(key)) return logoShapes.get(key);
+  const nw = img.naturalWidth || 1;
+  const nh = img.naturalHeight || 1;
+  let box = [0, 0, nw, nh];
+  try {
+    const k = Math.min(1, 160 / Math.max(nw, nh));
+    const w = Math.max(1, Math.round(nw * k));
+    const h = Math.max(1, Math.round(nh * k));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const g = canvas.getContext("2d", { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h);
+    const px = g.getImageData(0, 0, w, h).data;
+    let [x0, y0, x1, y1] = [w, h, -1, -1];
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        if (px[(y * w + x) * 4 + 3] > 24) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+    if (x1 >= x0) box = [x0 / k, y0 / k, (x1 + 1) / k, (y1 + 1) / k];
+  } catch {
+    // tainted or undrawable: keep the whole file
+  }
+  const [x0, y0, x1, y1] = box;
+  const shape = { nw, nh, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  logoShapes.set(key, shape);
+  return shape;
+}
+
+// The numbers lookCards.css sizes a logo by (.aw-cards-logo, .aw-cards-sublogo):
+// the drawing's width in file pixels (a logo is never drawn larger than its
+// file), its proportions, and where it sits in the file.
+function shapeVars(s) {
+  return {
+    "--lw": r2(s.w),
+    "--lr": r2(s.w / s.h),
+    "--lcos": r2(s.w / Math.hypot(s.w, s.h)),
+    "--lsx": r2(s.nw / s.w),
+    "--lsy": r2(s.nh / s.h),
+    "--lox": r2(s.x / s.w),
+    "--loy": r2(s.y / s.h),
+  };
+}
+
+// A picture that loads without a size of its own (an uploaded SVG with only a
+// viewBox, in some browsers): drawn as a square, at whatever size fits.
+const UNSIZED = { nw: 1000, nh: 1000, x: 0, y: 0, w: 1000, h: 1000 };
+
+// The shape of the logo TeamLogo draws inside `ref`, once it has loaded. Null
+// until then, and for a team without a picture (TeamLogo's own badge).
+function useLogoShape(key) {
+  const ref = useRef(null);
+  const [shape, setShape] = useState(null);
+  useLayoutEffect(() => {
+    const img = ref.current?.querySelector("img");
+    if (!img) return undefined;
+    // Called once straight away (a picture already in the cache is sized
+    // before the first paint) and again on load. A complete picture with no
+    // size before its load event may yet turn out broken, which TeamLogo
+    // handles; one that has loaded and still has no size is UNSIZED.
+    const read = (e) => {
+      if (!img.complete) return;
+      if (img.naturalWidth) setShape(logoShape(img));
+      else if (e) setShape(UNSIZED);
+    };
+    read();
+    img.addEventListener("load", read);
+    return () => img.removeEventListener("load", read);
+  }, [key]);
+  return [ref, shape];
+}
+
 // Fits a line of type to its card: starting from the size the stylesheet gives
 // it, steps down until no word runs past the edge and the text takes at most
 // `lines` lines. A long one-word handle would otherwise be cut off at the card
 // edge, and a long typed name would push the rest of the card down by three or
-// four lines. Runs before paint, so nothing jumps; a name still too long at the
-// smallest size may then break mid-word. `orFull`: when even the smallest size
-// does not fit, go back to the full size and let it wrap (an award title that
-// needs two lines anyway reads better large).
-function useFitText(text, min, lines, orFull = false) {
+// four lines. Text that fits in `lines` lines keeps its full size and wraps.
+// Runs before paint, so nothing jumps. Text still too long at the smallest
+// size gets data-over (the ribbon gives a third line room, the sub line closes
+// up its letter spacing), and a word still too wide then breaks mid-word.
+function useFitText(text, min, lines) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -124,16 +280,22 @@ function useFitText(text, min, lines, orFull = false) {
       width = el.clientWidth;
       el.style.fontSize = "";
       el.style.overflowWrap = "normal";
+      el.removeAttribute("data-over");
       const cs = getComputedStyle(el);
       let size = parseFloat(cs.fontSize);
       const lineRatio = parseFloat(cs.lineHeight) / size;
-      const over = () => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > size * lineRatio * lines + 1;
+      // Lines are counted, not compared in pixels: with a line height under 1
+      // the last line's letters reach a pixel or two below the box, and an
+      // honest two lines measured as more than two.
+      const count = () => Math.round(el.scrollHeight / (size * lineRatio));
+      const over = () => el.scrollWidth > el.clientWidth + 1 || count() > lines;
       while (size > min && over()) {
         size = Math.max(min, size - 0.5);
         el.style.fontSize = `${size}px`;
       }
-      if (orFull && over()) el.style.fontSize = "";
-      if (el.scrollWidth > el.clientWidth + 1) el.style.overflowWrap = "anywhere";
+      const tooWide = el.scrollWidth > el.clientWidth + 1;
+      el.toggleAttribute("data-over", tooWide || count() > lines);
+      if (tooWide) el.style.overflowWrap = "anywhere";
     };
     fit();
     // Again once the display font is in: the fallback measures differently.
@@ -151,8 +313,27 @@ function useFitText(text, min, lines, orFull = false) {
       cancelled = true;
       ro?.disconnect();
     };
-  }, [text, min, lines, orFull]);
+  }, [text, min, lines]);
   return ref;
+}
+
+// Whether a note runs past the lines the display gives it (see .aw-cards-note),
+// so the card can carry the whole of it as a tooltip.
+function useCutShort(text) {
+  const ref = useRef(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const check = () => setCut(el.scrollHeight > el.clientHeight + 1);
+    check();
+    // The phone rail shows the whole note and the display does not, and the
+    // font arriving late can add or take away a line.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(check) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [text]);
+  return [ref, cut];
 }
 
 // Which card of the phone rail is in view, for the dots under it.
@@ -185,8 +366,71 @@ function useRailIndex(count) {
   return [ref, index];
 }
 
-// A driver's photo, or their initials on the team colour when there is none
-// (or the picture link has died, as Discord avatars do).
+// The cards of a row share their ribbon and name heights: where one name in a
+// row runs to two lines, every name in that row gets the room of that one
+// (--aw-name-h, read by .aw-cards-name), and a title on three lines gives the
+// row's ribbons its height (--aw-ribbon-h), so the medals, team lines and
+// rules stay level across the row. A row of one-line names, the usual case,
+// keeps them snug under the medal instead of holding an empty second line for
+// each. Measured in pixels from the text itself, not lines and not the boxes
+// these values stretch: a long name fitted down to 16px takes two lines of
+// 16px, not two of the 26px the others are set in. The phone rail is one row.
+function useRowHeights(ref, key) {
+  useLayoutEffect(() => {
+    const ul = ref.current;
+    if (!ul) return undefined;
+    let frame = 0;
+    // Layout heights, which the cards' entrance (a scale) does not distort the
+    // way it does a bounding box.
+    const heightOf = (el) => (el ? parseFloat(getComputedStyle(el).height) || 0 : 0);
+    const measure = () => {
+      frame = 0;
+      const lis = [...ul.children];
+      const rows = new Map();
+      for (const li of lis) {
+        const ribbon = li.querySelector(".aw-cards-ribbon");
+        const cs = ribbon && getComputedStyle(ribbon);
+        const title = ribbon ? heightOf(ribbon.firstElementChild) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) : 0;
+        const row = rows.get(li.offsetTop) || { name: 0, title: 0 };
+        row.name = Math.max(row.name, heightOf(li.querySelector(".aw-cards-name > span")));
+        row.title = Math.max(row.title, title);
+        rows.set(li.offsetTop, row);
+      }
+      for (const li of lis) {
+        const row = rows.get(li.offsetTop) || { name: 0, title: 0 };
+        li.style.setProperty("--aw-name-h", `${r2(row.name)}px`);
+        li.style.setProperty("--aw-ribbon-h", `${r2(row.title)}px`);
+      }
+    };
+    const later = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    // Again once the names have been fitted with the display font, and when
+    // the rows change (a resize, a turned tablet).
+    document.fonts?.ready.then(later);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(later) : null;
+    ro?.observe(ul);
+    return () => {
+      ro?.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [ref, key]);
+}
+
+// A card tabbed to in the phone rail slides fully into view: the browser only
+// scrolled as far as the name, which left the card half off the screen.
+function showInRail(e) {
+  const li = e.currentTarget.closest("li");
+  const rail = li?.parentElement;
+  if (!rail || rail.scrollWidth <= rail.clientWidth + 1) return;
+  li.scrollIntoView({ inline: "start", block: "nearest", behavior: motionOff() ? "auto" : "smooth" });
+}
+
+// A driver's photo, or their initials when there is none (or the picture link
+// has died, as Discord avatars do): on the team colour, or in gold on the dark
+// disc for a driver without a team, where gold letters on a gold disc inside
+// a gold ring all ran together.
 function DriverFace({ driver, color }) {
   const [broken, setBroken] = useState(false);
   if (driver.photoUrl && !broken)
@@ -200,6 +444,12 @@ function DriverFace({ driver, color }) {
         onError={() => setBroken(true)}
       />
     );
+  if (!color)
+    return (
+      <span className="aw-cards-mono font-display font-black leading-none tracking-tight" data-len="2">
+        {initialsOf(driver.name)}
+      </span>
+    );
   return (
     <span className="aw-cards-initials font-display font-black leading-none tracking-tight" style={{ color: readableInkOn(color) }}>
       {initialsOf(driver.name)}
@@ -207,10 +457,55 @@ function DriverFace({ driver, color }) {
   );
 }
 
+// A team's logo on a cream enamel plate, so that dark marks (Toro Rosso's
+// black lettering, NCB Mugen's flag) read inside the dark medal. The logo is
+// sized by its drawing, not its file, and never past the file's own pixels.
+// A wordmark too thin for the round, or a team with no logo at all, shows its
+// initials in gold instead (lookCards.css).
+function TeamFace({ team }) {
+  const [ref, shape] = useLogoShape(team.logoUrl || team.id);
+  const mark = teamInitials(team.name);
+  return (
+    <>
+      <span
+        ref={ref}
+        className="aw-cards-plate"
+        data-shaped={shape ? "" : undefined}
+        data-wide={shape && shape.w / shape.h > WORDMARK ? "" : undefined}
+        style={shape ? shapeVars(shape) : undefined}
+      >
+        <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={64} className="aw-cards-logo" />
+      </span>
+      <span className="aw-cards-mono aw-cards-teammono font-display font-black leading-none tracking-tight" data-len={mark.length}>
+        {mark}
+      </span>
+    </>
+  );
+}
+
+// The small logo before a driver's team name. Sized by its drawing like the
+// big one; a wordmark is left out (at this size it was a 3px sliver), the name
+// beside it says the same.
+function SubLogo({ team }) {
+  const [ref, shape] = useLogoShape(team.logoUrl || team.id);
+  return (
+    <span
+      ref={ref}
+      className="aw-cards-sublogo"
+      data-shaped={shape ? "" : undefined}
+      data-wide={shape && shape.w / shape.h > WORDMARK ? "" : undefined}
+      style={shape ? shapeVars(shape) : undefined}
+      aria-hidden="true"
+    >
+      <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} className="aw-cards-logo" />
+    </span>
+  );
+}
+
 // The portrait in its laurel, with the season tag on top and the country flag
-// pinned to the ring. All picture: a screen reader gets the award, the name and
-// the team as text, and the season from the heading, rather than "S7" and two
-// letters of initials on every card.
+// pinned at the foot of the ring, where the two branches meet. All picture: a
+// screen reader gets the award, the name and the team as text, and the season
+// from the heading, rather than "S7" and two letters of initials on every card.
 function Medal({ w, seasonNumber }) {
   useTrackOutlines(); // a track outline an admin uploaded arrives after boot
   const flag = typeof w.flag === "string" ? w.flag : w.flag?.country || null;
@@ -218,15 +513,18 @@ function Medal({ w, seasonNumber }) {
   const trophy = <Trophy className="aw-cards-trophy" strokeWidth={1.6} aria-hidden="true" />;
   let face;
   // Same colour as the card's --aw-team, so the initials are worked out for the
-  // disc they are actually drawn on (gold for a driver without a team).
-  if (w.kind === "driver") face = <DriverFace driver={w.driver} color={w.color || MEDAL[0]} />;
-  else if (w.kind === "team")
-    face = <TeamLogo id={w.team.id} name={w.team.name} color={w.team.color} logoUrl={w.team.logoUrl} size={58} />;
+  // disc they are actually drawn on.
+  if (w.kind === "driver") face = <DriverFace driver={w.driver} color={w.color} />;
+  else if (w.kind === "team") face = <TeamFace team={w.team} />;
   else if (w.kind === "race")
     face = outline ? (
       <CircuitMap track={w.race.track} className="aw-cards-track" stroke={GOLD_HI} strokeWidth={2.2} />
     ) : flag ? (
-      <Flag code={flag} w={60} h={40} />
+      // At 40px, the size of the flag files (and of their 2x files on a sharp
+      // screen): drawn any bigger, they came out soft.
+      <span className="aw-cards-flagface">
+        <Flag code={flag} w={40} h={28} />
+      </span>
     ) : (
       trophy
     );
@@ -241,12 +539,12 @@ function Medal({ w, seasonNumber }) {
     );
   }
   // A race without an outline already shows its flag as the portrait.
-  const pin = flag && (w.kind === "driver" || outline);
+  const pin = Boolean(flag && (w.kind === "driver" || outline));
   return (
     <div className="aw-cards-medal" aria-hidden="true">
-      <Laurel />
+      <Laurel clasp={pin} />
       <div className="aw-cards-ring">
-        <div className="aw-cards-disc" data-kind={w.kind}>
+        <div className="aw-cards-disc" data-kind={w.kind} data-teamless={w.kind === "driver" && !w.color ? "" : undefined}>
           {face}
         </div>
       </div>
@@ -260,15 +558,26 @@ function Medal({ w, seasonNumber }) {
   );
 }
 
-function AwardCard({ award, seasonNumber, index }) {
+function AwardCard({ award, seasonNumber, index, place }) {
   const w = winnerOf(award, seasonNumber);
-  const titleRef = useFitText(award.title, 10.5, 1, true);
-  const nameRef = useFitText(w.name, 16, 2);
+  const titleRef = useFitText(award.title, 10, 2);
+  // A name with a space wraps onto a second line before it shrinks far; a
+  // one-word handle can only shrink, so it may go smaller before it breaks.
+  const nameRef = useFitText(w.name, /\s/.test(String(w.name || "").trim()) ? 16 : 13, 2);
+  const subRef = useFitText(w.sub, 9, 1);
+  const [noteRef, noteCut] = useCutShort(award.note);
   return (
-    <li style={{ "--i": Math.min(index, 12) }}>
+    <li style={{ "--i": Math.min(index, 12), ...place }}>
       {/* The team colour (gold where there is no team) tints the face, the
-          sub line and the strip at the foot of the card. */}
-      <div className="aw-cards-card" style={{ "--aw-team": w.color || MEDAL[0] }}>
+          sub line and the strip at the foot of the card. Only a card that
+          opens something lifts on hover (data-link). A note cut short in the
+          display reads in full as the card's tooltip. */}
+      <div
+        className="aw-cards-card"
+        data-link={w.to ? "" : undefined}
+        title={noteCut ? award.note : undefined}
+        style={{ "--aw-team": w.color || MEDAL[0] }}
+      >
         <div className="aw-cards-frame">
           <div className="aw-cards-body">
             <span className="aw-cards-foil" aria-hidden="true" />
@@ -277,31 +586,52 @@ function AwardCard({ award, seasonNumber, index }) {
               <span ref={titleRef}>{award.title}</span>
             </h3>
             <Medal w={w} seasonNumber={seasonNumber} />
-            <p ref={nameRef} className="aw-cards-name font-display font-black uppercase leading-[0.95] tracking-tight">
-              {w.to ? (
-                <Link to={w.to} className="aw-cards-link">
-                  {w.name}
-                </Link>
-              ) : (
-                w.name
-              )}
-            </p>
-            {w.sub && (
-              <div className="aw-cards-sub mt-1.5 flex max-w-full items-center justify-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-[0.14em]">
-                {w.kind === "driver" && w.team && (
-                  <span aria-hidden="true">
-                    <TeamLogo id={w.team.id} name={w.team.name} color={w.team.color} logoUrl={w.team.logoUrl} size={16} />
-                  </span>
+            <p className="aw-cards-name font-display font-black uppercase leading-[0.95] tracking-tight">
+              <span ref={nameRef}>
+                {w.to ? (
+                  <Link to={w.to} className="aw-cards-link" onFocus={showInRail}>
+                    {/* Tabbing from card to card, a name on its own does not
+                        say what it won (and one driver can win twice). */}
+                    <span className="sr-only">{award.title}: </span>
+                    {w.name}
+                  </Link>
+                ) : (
+                  w.name
                 )}
-                <span className="truncate" title={w.sub}>
+              </span>
+            </p>
+            {w.sub ? (
+              <div className="aw-cards-sub font-display text-[11px] font-bold uppercase tracking-[0.14em]">
+                {w.kind === "driver" && w.team && <SubLogo team={w.team} />}
+                <span ref={subRef} className="truncate">
                   {w.sub}
                 </span>
               </div>
+            ) : (
+              // An empty line of the same height (a typed name has no team or
+              // date), so the rules and notes of a row stay level.
+              <span className="aw-cards-sub" data-empty="" aria-hidden="true" />
             )}
             {/* The ornament is there with or without a reason, so it lines up
                 across a row and a card without one still reads as finished. */}
             <span className="aw-cards-rule" aria-hidden="true" />
-            {award.note ? <p className="aw-cards-note">{award.note}</p> : <span className="aw-cards-note" />}
+            {award.note ? (
+              <p ref={noteRef} className="aw-cards-note">
+                {award.note}
+              </p>
+            ) : (
+              // The phone rail keeps two lines for a reason on every card, so
+              // a card without one is as tall as the rest (lookCards.css).
+              <p className="aw-cards-note" data-empty="" aria-hidden="true" />
+            )}
+            {/* The rating cards' signature line. It sits at the foot of the
+                card, so a card with a shorter note than its neighbours ends
+                on it instead of on an empty band. */}
+            <span className="aw-cards-brand font-mono uppercase" aria-hidden="true">
+              <b>NABS</b> Racing
+              <i />
+              Season awards
+            </span>
             <span className="aw-cards-strip" aria-hidden="true" />
           </div>
         </div>
@@ -310,22 +640,35 @@ function AwardCard({ award, seasonNumber, index }) {
   );
 }
 
-function AwardRail({ season }) {
+function AwardRail({ season, plans }) {
   const awards = season.awards;
   const n = awards.length;
   const [railRef, at] = useRailIndex(n);
+  useRowHeights(railRef, season);
+  const [two, three, four] = plans;
   return (
     <>
       <ul ref={railRef} role="list" data-count={n} className="aw-cards-rail cascade">
         {awards.map((a, i) => (
-          <AwardCard key={a.id} award={a} seasonNumber={season.seasonNumber} index={i} />
+          <AwardCard
+            key={a.id}
+            award={a}
+            seasonNumber={season.seasonNumber}
+            index={i}
+            place={{ "--aw-s2": two.starts[i], "--aw-s3": three.starts[i], "--aw-s4": four.starts[i] }}
+          />
         ))}
       </ul>
-      {n > 1 && (
+      {n > 1 && n <= MAX_DOTS && (
         <div className="aw-cards-dots" aria-hidden="true">
           {awards.map((a, i) => (
             <span key={a.id} className={i === at ? "is-on" : undefined} />
           ))}
+        </div>
+      )}
+      {n > MAX_DOTS && (
+        <div className="aw-cards-count font-mono text-[11px] font-bold tracking-[0.2em] text-light" aria-hidden="true">
+          {at + 1} / {n}
         </div>
       )}
     </>
@@ -340,9 +683,17 @@ export default function LookCards({ seasons }) {
   if (!season) return null;
   const label = season.seasonName || `Season ${season.seasonNumber}`;
   const n = season.awards.length;
+  // Two, three and four across; the stylesheet picks one by the room the
+  // section has. The heading row reads the same plan, so it spans exactly the
+  // cards below it.
+  const plans = [2, 3, 4].map((cols) => gridPlan(n, cols));
   return (
-    <section data-awards-look="cards" className="reveal">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6">
+    <section
+      data-awards-look="cards"
+      className="reveal aw-cards"
+      style={{ "--aw-halves2": plans[0].halves, "--aw-halves3": plans[1].halves, "--aw-halves4": plans[2].halves }}
+    >
+      <div className="aw-cards-head mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6">
         <div className="min-w-0">
           <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:text-[11px] sm:tracking-[0.2em]">
             {label} · {n} {n === 1 ? "award" : "awards"}
@@ -363,12 +714,8 @@ export default function LookCards({ seasons }) {
           />
         )}
       </div>
-      <div
-        key={season.seasonNumber}
-        className={`aw-cards-stage ${swap}`}
-        style={{ "--aw-per2": perRow(n, 2), "--aw-per3": perRow(n, 3), "--aw-per4": perRow(n, 4) }}
-      >
-        <AwardRail season={season} />
+      <div key={season.seasonNumber} className={swap}>
+        <AwardRail season={season} plans={plans} />
       </div>
     </section>
   );

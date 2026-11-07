@@ -17,10 +17,10 @@ import "./lookGala.css";
 // The section is a dark stage in both themes (`dark` + bg-ink, like the top
 // list further down the page). The first award of the picked season is the
 // headline: admins put the one they want up front first, so it gets the
-// spotlight, a big picture in a gold ring and the name in large type. It stays
-// a size below the reigning champion in the section above, though: that is
-// still the biggest name in the Hall of Fame. The rest sit underneath as
-// gold-framed tiles. The season switch is part of the panel.
+// spotlight, a big picture in a gold ring and the name in large type. The
+// name is set no larger than the reigning champion's in the section above,
+// though: that is still the biggest name in the Hall of Fame. The rest sit
+// underneath as gold-framed tiles. The season switch is part of the panel.
 // ---------------------------------------------------------------------------
 
 // shared.js hands a driver's flag over as a plain country code but a race's
@@ -28,8 +28,9 @@ import "./lookGala.css";
 const flagCode = (f) => (typeof f === "string" ? f : f?.country) || null;
 
 // Whether the window is at least `px` wide, kept live. The pictures take
-// their size in pixels (photo thumbnails are picked by it), so the phone and
-// desktop sizes are chosen here instead of in a class.
+// their size in pixels (photo thumbnails are picked by it) and the tiles
+// their layout from the number of tiles to a row, so the breakpoints are read
+// here instead of in a class.
 function useMinWidth(px) {
   const query = `(min-width: ${px}px)`;
   const [on, setOn] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
@@ -44,6 +45,30 @@ function useMinWidth(px) {
   return on;
 }
 
+// Turns true once, when at least `share` of the element is on screen.
+function useSeen(ref, share) {
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seen) return undefined;
+    if (typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        // The first report comes straight away, and can be for a sliver; the
+        // hundredth spares a ratio that rounds to just under the threshold.
+        if (entry.isIntersecting && entry.intersectionRatio >= share - 0.01) setSeen(true);
+      },
+      { threshold: share }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref, share, seen]);
+  return seen;
+}
+
 // How many cells a last row leaves empty with `cols` tiles to a row; a tile
 // left alone on its row counts one extra, as it reads worst.
 const emptyCells = (n, cols) => {
@@ -52,10 +77,15 @@ const emptyCells = (n, cols) => {
 };
 
 // From xl up the tiles run three or four to a row, whichever leaves the fuller
-// last row: four tiles as one row rather than three and a lone one, seven as
-// four and three, ten as 4-4-2 rather than 3-3-3-1.
+// last row, and on a tie the one that takes fewer rows: four tiles as one row
+// rather than three and a lone one, seven as four and three, ten as 4-4-2
+// rather than 3-3-3-1, eleven as 4-4-3 rather than 3-3-3-2.
 function xlColumns(n) {
-  return n > 3 && emptyCells(n, 4) < emptyCells(n, 3) ? 4 : 3;
+  if (n <= 3) return 3;
+  const four = emptyCells(n, 4);
+  const three = emptyCells(n, 3);
+  if (four !== three) return four < three ? 4 : 3;
+  return Math.ceil(n / 4) < Math.ceil(n / 3) ? 4 : 3;
 }
 
 // From lg to xl a row only has room for three, so the other choice is two:
@@ -65,6 +95,14 @@ function xlColumns(n) {
 function lgColumns(n) {
   const lone = (cols) => n > cols && n % cols === 1;
   return lone(3) && !lone(2) && Math.ceil(n / 2) === Math.ceil(n / 3) ? 2 : 3;
+}
+
+// Tiles to a row at the window's width: one on a phone, two from sm, then
+// lgColumns and xlColumns.
+function columnsFor(n, sm, lg, xl) {
+  if (!sm) return 1;
+  if (!lg) return 2;
+  return xl ? xlColumns(n) : lgColumns(n);
 }
 
 // The pieces of a name a line can break between: words, and a hyphenated
@@ -80,26 +118,32 @@ const longestPiece = (name) => Math.max(1, ...pieces(name).map((p) => p.length))
 // gets longer, so a long one does not run to four lines), and how many
 // letters must fit on one line. A short name is kept on a single line whole,
 // so "J. Yamanaka" never leaves the initial on a line of its own. The largest
-// size stays under the reigning champion's in the section above.
+// size (48px) is the reigning champion's own in the section above: an award
+// winner set larger than the champion made the champion look like the side
+// award.
 function headlineFit(name) {
   const n = String(name || "").length;
   const max =
     n > 40
-      ? "[--aw-max:1.375rem] sm:[--aw-max:2rem] xl:[--aw-max:2.25rem]"
+      ? "[--aw-max:1.375rem] sm:[--aw-max:1.75rem] xl:[--aw-max:2rem]"
       : n > 20
-        ? "[--aw-max:1.5rem] sm:[--aw-max:2.25rem] xl:[--aw-max:2.5rem]"
+        ? "[--aw-max:1.5rem] sm:[--aw-max:2rem] xl:[--aw-max:2.25rem]"
         : n > 12
-          ? "[--aw-max:1.75rem] sm:[--aw-max:2.75rem] xl:[--aw-max:3.25rem]"
-          : "[--aw-max:2rem] sm:[--aw-max:3.5rem] xl:[--aw-max:4rem]";
+          ? "[--aw-max:1.75rem] sm:[--aw-max:2.5rem] xl:[--aw-max:2.75rem]"
+          : "[--aw-max:2rem] sm:[--aw-max:3rem]";
   return { max, len: Math.max(n <= 14 ? n : 0, longestPiece(name)) };
 }
 
-// The letters for a driver without a photo: the first letter of the first two
-// words ("J. Yamanaka" is JY). A one-word name that starts with a digit keeps
-// its first two characters, so "13bot" reads 13 and not a lone 1 that looks
-// like a first-place medal. Symbols in front of a word ("[NABS]") are skipped.
+// The letters for a winner without a picture: the first letter of the first
+// two words ("J. Yamanaka" is JY, "Pink Panthers Racing" PP). A clan tag or
+// anything else in brackets ("[NABS] Ünal") is left out, so the letters are
+// the name's own. A one-word name that starts with a digit keeps its first
+// two characters, so "13bot" reads 13 and not a lone 1 that looks like a
+// first-place medal. Other symbols in front of a word are skipped.
 function initialsOf(name) {
-  const words = String(name || "")
+  const full = String(name || "");
+  const bare = full.replace(/[[({<][^\])}>]*[\])}>]/g, " ");
+  const words = (bare.trim() ? bare : full)
     .split(/\s+/)
     .map((word) => word.replace(/^[^\p{L}\p{N}]+/u, ""))
     .filter(Boolean);
@@ -112,16 +156,17 @@ function initialsOf(name) {
     .toUpperCase();
 }
 
-// From sm up the tiles stand side by side, and a title that wraps onto a
-// second line would push its picture below its neighbours'. So every title
-// block in the grid is made as tall as the tallest title (--aw-title-h, read
-// in the CSS from sm up), measured after layout and again whenever one of
-// them changes size: fonts landing, the window resized.
+// Tiles standing side by side (the "stack" layout, see Tile) line their
+// pictures up, and a title that wraps onto a second line would push its
+// picture below its neighbours'. So every such title block is made as tall
+// as the tallest title (--aw-title-h, read in the CSS), measured after layout
+// and again whenever one of them changes size: fonts landing, the window
+// resized. `key` changes with the season and the tiles to a row.
 function useEqualTitles(ref, key) {
   useLayoutEffect(() => {
     const grid = ref.current;
     if (!grid) return undefined;
-    const texts = [...grid.querySelectorAll(".aw-gala-tile-title-text")];
+    const texts = [...grid.querySelectorAll(".aw-gala-tile-stack .aw-gala-tile-title-text")];
     const sync = () => {
       const h = Math.max(0, ...texts.map((t) => t.offsetHeight));
       if (h) grid.style.setProperty("--aw-title-h", `${h}px`);
@@ -193,17 +238,30 @@ function Wreath({ className = "" }) {
   );
 }
 
+// A winner's letters in gold, sized to the disc (`size` px across): a single
+// letter a little larger than two.
+function Initials({ name, size }) {
+  const letters = initialsOf(name);
+  return (
+    <span
+      className="font-display font-black leading-none tracking-tight"
+      style={{ fontSize: Math.round(size * (letters.length > 1 ? 0.36 : 0.42)) }}
+    >
+      {letters}
+    </span>
+  );
+}
+
 // A driver in the ring: the photo when there is one (a dead link falls back
 // to the letters), otherwise the initials set in gold on the dark disc like
 // the team, race and wreath marks. A disc of team colour with letters on it
 // read as a coin or a big button under the light; the team colour stays as
-// a faint tint behind the letters instead.
+// a faint glow and a hairline in the disc instead (see .aw-gala-disc).
 function Portrait({ w, size }) {
   const url = w.driver.photoUrl;
   const [failed, setFailed] = useState(null); // the photo that would not load
-  const letters = initialsOf(w.name);
   return (
-    <span className="aw-gala-disc aw-gala-tint" style={{ width: size, height: size, "--aw-team": w.color || undefined }}>
+    <span className="aw-gala-disc" style={{ width: size, height: size, "--aw-team": w.color || undefined }}>
       {url && url !== failed ? (
         <img
           src={sizedAvatarUrl(url, size)}
@@ -214,12 +272,75 @@ function Portrait({ w, size }) {
           onError={() => setFailed(url)}
         />
       ) : (
-        <span
-          className="font-display font-black leading-none tracking-tight"
-          style={{ fontSize: Math.round(size * (letters.length > 1 ? 0.36 : 0.42)) }}
-        >
-          {letters}
-        </span>
+        <Initials name={w.name} size={size} />
+      )}
+    </span>
+  );
+}
+
+// A team's logo in its disc. TeamLogo picks the file (the team's own upload,
+// or the bundled /teams/<id>.png for older teams) and the CSS fits it into a
+// wide box (.aw-gala-logo), so a logo up to about 2.5:1 (Red Bull's) spans
+// the disc instead of shrinking into a square. Read off the picture here:
+// - With no logo, a dead link, or a wordmark wider than 2.5:1, the team gets
+//   gold initials like a driver ("PP", "TR"). TeamLogo's own fallback is the
+//   first three letters of the name, which set large in the ring read as a
+//   word ("PIN" for Pink Panthers); and a wordmark, Toro Rosso's at 5:1, can
+//   be no taller than a strip inside a circle, its dark letters lost on the
+//   dark disc.
+// - A raster logo is drawn at most a quarter larger than its own size: the
+//   bundled ones are small PNGs (Williams is 44px) and go soft blown up past
+//   that. An SVG scales cleanly and keeps the whole box.
+// Measured before paint where the picture is already in, so TeamLogo's three
+// letters never show.
+function TeamMark({ w, size }) {
+  const box = useRef(null);
+  const [initials, setInitials] = useState(false);
+  const [cap, setCap] = useState(null); // [width, height] in px, or null
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const read = () => {
+      const img = el.querySelector("img");
+      if (!img) {
+        setInitials(true);
+        return;
+      }
+      if (!img.complete || !img.naturalWidth || !img.naturalHeight) return;
+      if (img.naturalWidth / img.naturalHeight > 2.5) {
+        setInitials(true);
+        return;
+      }
+      const vector = /\.svg(?:[?#]|$)/i.test(img.currentSrc || img.src);
+      setCap(vector ? null : [img.naturalWidth * 1.25, img.naturalHeight * 1.25]);
+    };
+    const fail = () => setInitials(true);
+    read();
+    // Neither load nor error bubbles; listening on the way down catches both.
+    el.addEventListener("load", read, true);
+    el.addEventListener("error", fail, true);
+    return () => {
+      el.removeEventListener("load", read, true);
+      el.removeEventListener("error", fail, true);
+    };
+  }, []);
+  return (
+    <span
+      ref={box}
+      className="aw-gala-logo"
+      style={cap ? { "--aw-cap-w": `${cap[0]}px`, "--aw-cap-h": `${cap[1]}px` } : undefined}
+    >
+      {initials ? (
+        <Initials name={w.name} size={size} />
+      ) : (
+        <TeamLogo
+          id={w.team.id}
+          name={w.name}
+          color={w.color || "#64748b"}
+          logoUrl={w.team.logoUrl}
+          size={Math.round(size * 0.56)}
+          className="aw-gala-team"
+        />
       )}
     </span>
   );
@@ -236,19 +357,8 @@ function Medallion({ w, size, big = false }) {
   } else {
     let mark;
     if (w.kind === "team") {
-      // At most 72px: the bundled logos are small PNGs (44 to 128px) and go
-      // soft when blown up further. A team without a logo gets TeamLogo's
-      // monogram, restyled as gold letters by .aw-gala-team in the CSS.
-      mark = (
-        <TeamLogo
-          id={w.team.id}
-          name={w.name}
-          color={w.color || "#64748b"}
-          logoUrl={w.team.logoUrl}
-          size={Math.min(72, Math.round(size * 0.56))}
-          className="aw-gala-team"
-        />
-      );
+      // Keyed to the logo, so a changed one is read afresh.
+      mark = <TeamMark key={`${w.team.id}|${w.team.logoUrl || ""}`} w={w} size={size} />;
     } else if (w.kind === "race") {
       mark = hasOutline(w.race.track) ? (
         <CircuitMap track={w.race.track} className="h-[62%] w-[62%]" stroke={MEDAL[0]} strokeWidth={big ? 3 : 2} />
@@ -260,14 +370,9 @@ function Medallion({ w, size, big = false }) {
     }
     picture = (
       <span
-        className="aw-gala-disc aw-gala-tint"
-        style={{
-          width: size,
-          height: size,
-          // A team's own colour glows faintly behind its logo.
-          "--aw-team": (w.kind === "team" && w.color) || undefined,
-          "--aw-mono": `${Math.round(size * 0.27)}px`,
-        }}
+        className="aw-gala-disc"
+        // A team's own colour glows faintly behind its logo.
+        style={{ width: size, height: size, "--aw-team": (w.kind === "team" && w.color) || undefined }}
       >
         {mark}
       </span>
@@ -324,14 +429,20 @@ function SubLine({ w, big = false, withFlag = false, className = "" }) {
 }
 
 // The first award, under the spotlight.
-function Headline({ award, seasonNumber, wide }) {
+function Headline({ award, seasonNumber, sm }) {
   const w = winnerOf(award, seasonNumber);
   const fit = headlineFit(w.name);
+  // The gold band runs through the name once the name itself is on screen.
+  // Keyed to the section's reveal, it played on page load while the name was
+  // still below the fold (the section's top shows first, under the champions
+  // on a desktop), and nobody saw it.
+  const nameRef = useRef(null);
+  const lit = useSeen(nameRef, 0.75);
   const body = (
     <>
-      <span className="relative mb-8 inline-flex sm:mb-9">
+      <span className="relative mb-7 inline-flex">
         <span aria-hidden="true" className="aw-gala-halo" />
-        <Medallion w={w} size={wide ? 128 : 104} big />
+        <Medallion w={w} size={sm ? 112 : 96} big />
       </span>
       <span
         className="mb-3 flex items-center justify-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.3em] sm:text-xs"
@@ -342,9 +453,12 @@ function Headline({ award, seasonNumber, wide }) {
         <span aria-hidden="true" className="aw-gala-rule aw-gala-rule-r" />
       </span>
       {/* No margin classes here: the clip fix in the CSS sets this box's
-          vertical margins, and the gap above comes from the title's mb-3. */}
+          vertical margins, and the gap above comes from the title's mb-3.
+          Line height 1.05, not tighter: on two lines the marks of one line
+          ran into the next (the cedilla of Ç into the ring of Å). */}
       <span
-        className={`aw-gala-name aw-gala-hl-name aw-gala-glint block max-w-full text-balance font-display font-black uppercase leading-[0.95] tracking-tight [overflow-wrap:anywhere] ${fit.max}`}
+        ref={nameRef}
+        className={`aw-gala-name aw-gala-hl-name aw-gala-glint block max-w-full text-balance font-display font-black uppercase leading-[1.05] tracking-tight [overflow-wrap:anywhere] ${fit.max} ${lit ? "is-lit" : ""}`}
         style={{ "--aw-len": fit.len }}
       >
         {w.name}
@@ -352,13 +466,13 @@ function Headline({ award, seasonNumber, wide }) {
       <SubLine w={w} big withFlag className="mt-3 justify-center sm:mt-4" />
     </>
   );
-  // The headline's box reaches up past the halos round the ring (pt-7) and a
+  // The headline's box reaches up past the halos round the ring (pt-6) and a
   // little below the last line, so a keyboard focus ring goes round the whole
   // of it instead of cutting through the halos. The negative margins keep the
   // layout where it would be without that room; the minimum width keeps a
   // short name's box wider than the halos.
   const cls =
-    "relative -mb-3 -mt-7 flex min-w-[min(100%,13.5rem)] max-w-full flex-col items-center rounded-2xl px-3 pb-3 pt-7 text-center";
+    "relative -mb-3 -mt-6 flex min-w-[min(100%,13.5rem)] max-w-full flex-col items-center rounded-2xl px-3 pb-3 pt-6 text-center";
   return (
     <div className="aw-gala-fit relative flex flex-col items-center pt-9 sm:pt-8">
       {w.to ? (
@@ -372,7 +486,9 @@ function Headline({ award, seasonNumber, wide }) {
         <div className={cls}>{body}</div>
       )}
       {award.note && (
-        <p className="mt-4 max-w-xl text-pretty text-center text-[15px] leading-relaxed text-medium sm:mt-5 sm:text-base">
+        // overflow-wrap: a link or other long unbroken string in a note breaks
+        // inside the box instead of running out past the panel's edge.
+        <p className="mt-4 max-w-xl text-pretty text-center text-[15px] leading-relaxed text-medium [overflow-wrap:anywhere] sm:mt-5 sm:text-base">
           {award.note}
         </p>
       )}
@@ -380,11 +496,19 @@ function Headline({ award, seasonNumber, wide }) {
   );
 }
 
-// One of the other awards. On a phone it reads as a row (picture left); from
-// sm up it stands centred, like a small copy of the headline.
-function Tile({ award, seasonNumber, wide }) {
+// One of the other awards, laid out one of three ways:
+// - "row", on a phone: the title on top, then the picture left of the name.
+// - "stack", from sm up, side by side: centred like a small copy of the
+//   headline. Tiles in a row share its height, so each ends on a small gold
+//   mark at its foot: the room a short tile has left over then sits inside
+//   the tile, above the mark, instead of reading as a blank.
+// - "wide", for a tile that would be alone on the last row: it spans the row
+//   instead, picture left of all its text, the two centred in the tile.
+function Tile({ award, seasonNumber, layout }) {
   const w = winnerOf(award, seasonNumber);
   const code = flagCode(w.flag);
+  const stack = layout === "stack";
+  const wide = layout === "wide";
   // The flag rides on the last word, so the name is sized to leave room for
   // it on that line (20px wide plus its 8px margin, and a hair to spare).
   const parts = pieces(w.name);
@@ -393,43 +517,81 @@ function Tile({ award, seasonNumber, wide }) {
     "--aw-tail": code ? Math.max(1, (parts[parts.length - 1] || "").length) : 1,
     "--aw-flag": code ? "30px" : "0px",
   };
-  const inner = (
-    <>
+  const title = (
+    <span
+      className={`aw-gala-tile-title flex items-center gap-2.5 font-mono font-bold uppercase tracking-[0.22em] ${
+        stack ? "justify-center text-center" : wide ? "mb-1.5" : ""
+      }`}
+      style={{ color: MEDAL_TEXT[0] }}
+    >
+      {stack && <span aria-hidden="true" className="aw-gala-rule aw-gala-rule-sm" />}
+      <span className={`aw-gala-tile-title-text min-w-0 text-balance ${stack ? "pl-[0.22em]" : ""}`}>{award.title}</span>
+      {stack && <span aria-hidden="true" className="aw-gala-rule aw-gala-rule-r aw-gala-rule-sm" />}
+    </span>
+  );
+  // overflow-wrap: a link or other long unbroken string in a note breaks
+  // inside the tile instead of running out of it.
+  const note = award.note && (
+    <span
+      className={`block min-w-0 text-sm leading-relaxed text-medium [overflow-wrap:anywhere] ${wide ? "mt-2" : "mt-3"} ${
+        stack ? "text-balance text-center" : "text-pretty"
+      }`}
+    >
+      {award.note}
+    </span>
+  );
+  // In the wide layout the text takes only the room it needs (up to 28rem),
+  // so picture and text centre as a pair; the name there is sized against
+  // the whole tile, which is a container from sm up (see the CSS).
+  const winner = (
+    <span
+      className={`flex min-w-0 flex-col ${
+        stack ? "aw-gala-fit w-full items-center text-center" : wide ? "max-w-[28rem]" : "aw-gala-fit flex-1"
+      }`}
+    >
+      {wide && title}
       <span
-        className="aw-gala-tile-title flex items-center gap-2.5 font-mono font-bold uppercase tracking-[0.22em] sm:justify-center sm:text-center"
-        style={{ color: MEDAL_TEXT[0] }}
+        className={`aw-gala-tile-name max-w-full text-balance font-display font-black uppercase leading-tight tracking-tight text-dark [overflow-wrap:anywhere] ${
+          layout === "row" ? "[--aw-max:1.125rem]" : "[--aw-max:1.25rem]"
+        }`}
+        style={fit}
       >
-        <span aria-hidden="true" className="aw-gala-rule aw-gala-rule-sm hidden sm:block" />
-        <span className="aw-gala-tile-title-text min-w-0 text-balance sm:pl-[0.22em]">{award.title}</span>
-        <span aria-hidden="true" className="aw-gala-rule aw-gala-rule-r aw-gala-rule-sm hidden sm:block" />
+        {w.name}
+        {/* A word joiner, so the flag never wraps onto a line alone. */}
+        {code && (
+          <>
+            {"\u2060"}
+            <Flag code={code} w={20} h={14} className="ml-2 align-[-0.08em]" />
+          </>
+        )}
       </span>
-      <span className="mt-3 flex items-center gap-3.5 sm:mt-4 sm:flex-col sm:gap-3">
-        <Medallion w={w} size={wide ? 68 : 52} />
-        <span className="aw-gala-fit flex min-w-0 flex-1 flex-col sm:w-full sm:flex-none sm:items-center sm:text-center">
-          <span
-            className="aw-gala-tile-name max-w-full text-balance font-display font-black uppercase leading-tight tracking-tight text-dark [--aw-max:1.125rem] [overflow-wrap:anywhere] sm:[--aw-max:1.25rem]"
-            style={fit}
-          >
-            {w.name}
-            {/* A word joiner, so the flag never wraps onto a line alone. */}
-            {code && (
-              <>
-                {"⁠"}
-                <Flag code={code} w={20} h={14} className="ml-2 align-[-0.08em]" />
-              </>
-            )}
-          </span>
-          <SubLine w={w} className="mt-1 sm:justify-center" />
-        </span>
+      <SubLine w={w} className={`mt-1 ${stack ? "justify-center" : ""}`} />
+      {wide && note}
+    </span>
+  );
+  const inner = wide ? (
+    <span className="flex items-center justify-center gap-5">
+      <Medallion w={w} size={60} />
+      {winner}
+    </span>
+  ) : (
+    <>
+      {title}
+      <span className={stack ? "mt-4 flex flex-col items-center gap-3" : "mt-3 flex items-center gap-3.5"}>
+        <Medallion w={w} size={stack ? 60 : 52} />
+        {winner}
       </span>
-      {award.note && (
-        <span className="mt-3 block text-pretty text-sm leading-relaxed text-medium sm:text-balance sm:text-center">
-          {award.note}
+      {note}
+      {stack && (
+        <span aria-hidden="true" className="aw-gala-end mt-auto pt-4">
+          <span />
         </span>
       )}
     </>
   );
-  const cls = "aw-gala-tile block h-full p-4 sm:px-5 sm:py-6";
+  const cls = stack
+    ? "aw-gala-tile aw-gala-tile-stack flex h-full flex-col px-5 pb-4 pt-5"
+    : `aw-gala-tile block h-full ${wide ? "p-5" : "p-4"}`;
   return w.to ? (
     <Link to={w.to} className={`${cls} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70`}>
       {inner}
@@ -444,11 +606,17 @@ export default function LookGala({ seasons }) {
   const season = seasons.find((s) => s.seasonNumber === picked) || seasons[0];
   // Switching seasons fades the stage over; the panel and its lights stay.
   const swap = useSwapClass(season.seasonNumber);
-  const wide = useMinWidth(640);
+  const sm = useMinWidth(640);
+  const lg = useMinWidth(1024);
+  const xl = useMinWidth(1280);
   const headingId = useId();
   const gridRef = useRef(null);
-  useEqualTitles(gridRef, season.seasonNumber);
   const [first, ...rest] = season.awards;
+  const cols = columnsFor(rest.length, sm, lg, xl);
+  // A tile that would sit alone on the last row spans that row instead (the
+  // wide layout), so the grid never ends on a leftover.
+  const spanLast = cols > 1 && rest.length % cols === 1;
+  useEqualTitles(gridRef, `${season.seasonNumber}:${cols}:${spanLast}`);
   const seasonName = season.seasonName || `Season ${season.seasonNumber}`;
   // The tile titles of a season share one size (see .aw-gala-tile-title):
   // the one the longest of them needs to fit on a line, down to 10px.
@@ -465,7 +633,7 @@ export default function LookGala({ seasons }) {
       <div aria-hidden="true" className="aw-gala-lamp" />
       <div aria-hidden="true" className="aw-gala-frame" />
 
-      <div className="relative px-5 pb-7 pt-7 sm:px-10 sm:pb-12 sm:pt-10">
+      <div className="relative px-5 pb-7 pt-7 sm:px-10 sm:pb-11 sm:pt-10">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
             <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-eyebrow sm:text-[11px] sm:tracking-[0.25em]">
@@ -499,27 +667,32 @@ export default function LookGala({ seasons }) {
 
         <div key={season.seasonNumber} className={swap}>
           {first ? (
-            <Headline award={first} seasonNumber={season.seasonNumber} wide={wide} />
+            <Headline award={first} seasonNumber={season.seasonNumber} sm={sm} />
           ) : (
             <p className="py-16 text-center text-medium">No awards for this season yet.</p>
           )}
           {rest.length > 0 && (
             <>
-              <div aria-hidden="true" className="aw-gala-divider my-8">
+              <div aria-hidden="true" className="aw-gala-divider my-7">
                 <span />
               </div>
               <div
                 ref={gridRef}
                 className="aw-gala-grid cascade"
-                data-cols-lg={lgColumns(rest.length)}
-                data-cols={xlColumns(rest.length)}
-                style={{ "--aw-tlen": longestTitle }}
+                style={{ "--aw-tlen": longestTitle, "--aw-cols": cols }}
               >
-                {rest.map((a, i) => (
-                  <div key={a.id} style={{ "--i": i }}>
-                    <Tile award={a} seasonNumber={season.seasonNumber} wide={wide} />
-                  </div>
-                ))}
+                {rest.map((a, i) => {
+                  const span = spanLast && i === rest.length - 1;
+                  return (
+                    <div key={a.id} className={span ? "aw-gala-span" : undefined} style={{ "--i": i }}>
+                      <Tile
+                        award={a}
+                        seasonNumber={season.seasonNumber}
+                        layout={!sm ? "row" : span ? "wide" : "stack"}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}

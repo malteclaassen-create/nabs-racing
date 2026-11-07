@@ -7,25 +7,42 @@
 
 .aw-ceremony {
   /* The gold of the medals at the strengths the programme uses. --medal-1 is
-     bright in dark mode and a deeper amber in light mode, so the thin lines
-     keep their weight on a white card too. */
+     bright in dark mode and a deeper amber in light mode, so text in it keeps
+     its contrast on a white card too. */
   --aw-ceremony-gold: var(--medal-1);
-  --aw-ceremony-rule: color-mix(in srgb, var(--medal-1) 30%, transparent);
-  --aw-ceremony-ring: color-mix(in srgb, var(--medal-1) 55%, transparent);
+  /* The bright medal gold (MEDAL[0] in ui.jsx), the same in both themes. */
+  --aw-ceremony-leaf: #eab308;
+  /* The lines. Light mode's deep amber thinned out with white came out
+     peach, so on a white card the thin rules mix the bright gold into the
+     border grey, and the heavy line of the double rule mixes it into the
+     amber: both still read as gold, not orange. */
+  --aw-ceremony-rule: color-mix(in srgb, var(--aw-ceremony-leaf) 60%, var(--c-border));
+  --aw-ceremony-heavy: color-mix(in srgb, var(--aw-ceremony-leaf) 65%, var(--medal-1));
+  --aw-ceremony-ring: color-mix(in srgb, var(--aw-ceremony-heavy) 70%, transparent);
   /* What outlined type is filled with: the card under it (see below). */
   --aw-ceremony-paper: var(--c-card);
+}
+/* On the dark card the gold itself, thinned. A third of it read as olive
+   brown; half of it still reads as gold. */
+.dark .aw-ceremony {
+  --aw-ceremony-rule: color-mix(in srgb, var(--medal-1) 50%, transparent);
+  --aw-ceremony-heavy: color-mix(in srgb, var(--medal-1) 75%, transparent);
+  --aw-ceremony-ring: color-mix(in srgb, var(--medal-1) 55%, transparent);
 }
 
 /* --- Outlined type ---------------------------------------------------------- */
 
 /* The site's fonts are variable fonts, whose letters are built from shapes
    that overlap. A plain see-through outline draws every overlap as a stray
-   line inside the letter, and another wherever two kerned letters touch (LA,
-   AW). So the outline is a stroke painted UNDER a fill in the card's own
-   colour: the fill covers the inner half of the stroke and all of those
-   lines, and what shows is one clean edge around each word. That only works
-   on the plain card colour, which is why nothing here puts a gradient or a
-   tint behind outlined type. */
+   line inside the letter. So the outline is a stroke painted UNDER a fill in
+   the card's own colour: the fill covers the inner half of the stroke and all
+   of those lines, and what shows is one clean edge around each letter. That
+   only works on the plain card colour, which is why nothing here puts a
+   gradient or a tint behind outlined type. It is also why the outlined type
+   is tracked open, by at least 2px: the stroke never gets thinner than 2px,
+   so 1px of it shows outside every letter, and with less room than that
+   between them the edges of neighbouring letters touched and ran together
+   into one shape on a phone. */
 .aw-ceremony-title,
 .aw-ceremony-numeral {
   color: var(--aw-ceremony-paper);
@@ -40,14 +57,14 @@
 /* Thick and thin, like the rule under the title of a printed programme. */
 .aw-ceremony-double {
   height: 6px;
-  border-top: 2px solid color-mix(in srgb, var(--medal-1) 75%, transparent);
+  border-top: 2px solid var(--aw-ceremony-heavy);
   border-bottom: 1px solid var(--aw-ceremony-rule);
 }
 /* The same pair closing the programme at the bottom, turned over, either
-   side of a small laurel. */
+   side of a small laurel (or of the button that opens a long season). */
 .aw-ceremony-double.aw-ceremony-end {
   border-top: 1px solid var(--aw-ceremony-rule);
-  border-bottom: 2px solid color-mix(in srgb, var(--medal-1) 75%, transparent);
+  border-bottom: 2px solid var(--aw-ceremony-heavy);
 }
 .aw-ceremony-coda {
   display: flex;
@@ -56,6 +73,35 @@
 }
 .aw-ceremony-coda > .aw-ceremony-double {
   flex: 1;
+}
+
+/* "Show all 12 awards": small gold capitals on a thin gold ring, the size of
+   a finger. */
+.aw-ceremony-more {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0 1.125rem;
+  border: 1px solid var(--aw-ceremony-ring);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--aw-ceremony-gold);
+  transition: border-color var(--t-base) var(--e-soft), background-color var(--t-base) var(--e-soft);
+}
+.aw-ceremony-more:focus-visible {
+  outline: 2px solid rgb(var(--c-accent));
+  outline-offset: 2px;
+}
+.aw-ceremony-more-icon {
+  transition: transform var(--t-base) var(--e-soft);
+}
+.aw-ceremony-more[aria-expanded="true"] .aw-ceremony-more-icon {
+  transform: rotate(180deg);
 }
 
 /* The season switch: a strip that scrolls sideways on its own when there are
@@ -67,19 +113,20 @@
   margin: -4px calc(-4px - 0.5rem);
 }
 .aw-ceremony-season {
-  font-size: 2.25rem;
+  font-size: 2rem;
   line-height: 1;
   padding: 0.25rem 0.5rem 0.75rem;
   flex-shrink: 0;
 }
 .aw-ceremony-switch-wrap.aw-ceremony-many .aw-ceremony-season {
-  font-size: 2rem;
+  font-size: 1.75rem;
 }
 .aw-ceremony-season + .aw-ceremony-season {
   margin-left: 1rem;
 }
 /* The slash between two seasons, drawn as a thin slanted line so it has no
-   text for a screen reader to read out. */
+   text for a screen reader to read out. Half-strength muted text: the plain
+   border colour all but vanished on the dark card. */
 .aw-ceremony-season + .aw-ceremony-season::before {
   content: "";
   position: absolute;
@@ -87,13 +134,13 @@
   top: 0.2em;
   width: 1.5px;
   height: 0.85em;
-  background: var(--c-border);
+  background: color-mix(in srgb, var(--c-text3) 55%, transparent);
   transform: rotate(20deg);
 }
 .aw-ceremony-numeral {
   display: block;
   font-weight: 900;
-  letter-spacing: -0.02em;
+  letter-spacing: max(0.01em, 2px);
   text-transform: uppercase;
   -webkit-text-stroke-color: var(--c-text3);
 }
@@ -126,19 +173,38 @@
 
 /* --- One award --------------------------------------------------------------- */
 
-/* Phone: number, award, winner, note, one under the other. The row is a size
-   container so the winner's name can be sized against the room it has (see
-   --aw-ceremony-who). */
+/* The list is a size container: how a row is laid out depends on how wide
+   the list is, not the window (see the @container rules at the end, and
+   MID, SPLIT and WIDE in LookCeremony.jsx, which must match them). */
+.aw-ceremony-list {
+  container: aw-ceremony-list / inline-size;
+}
+
+/* Narrow (a phone): the number beside the award's name, then the winner and
+   the note under both. The number used to sit on a line of its own; with it
+   beside the name and the gaps a little tighter, six awards take a good
+   screen less on a phone. */
 .aw-ceremony-row {
   position: relative;
-  container-type: inline-size;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "num" "title" "winner" "note";
-  padding-block: 1.5rem 1.75rem;
-  /* The room beside the winner's picture: the row minus the picture (56px
-     and its ring) and the gap. Kept in step with the grid below. */
-  --aw-ceremony-who: calc(100cqi - 84px);
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "num title" "winner winner" "note note";
+  column-gap: 0.625rem;
+  padding-block: 1rem 1.25rem;
+}
+/* "Show all" can hand the focus to a row with no link in it. Its ring is
+   drawn where a link's is (see .aw-ceremony-link), clear of the number. */
+.aw-ceremony-row:focus {
+  outline: none;
+}
+.aw-ceremony-row:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 0 -0.75rem;
+  border-radius: var(--r-lg);
+  outline: 2px solid rgb(var(--c-accent));
+  outline-offset: -2px;
+  pointer-events: none;
 }
 
 /* The gold rule above every award but the first (the masthead's double rule
@@ -164,9 +230,10 @@
   animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 35ms + 120ms);
 }
 
+/* Level with the top of the capitals beside it, not the top of the line. */
 .aw-ceremony-num {
   grid-area: num;
-  margin-bottom: 0.625rem;
+  padding-top: 0.25rem;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -175,35 +242,64 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The award's name, as big as its column allows: an eighth of the column's
-   width, at most 3.75rem, and never so big that its longest word has to break. */
+/* The award's name, as big as its column allows: at most 3rem (2.5rem for a
+   long one), at most 12% of the column's width (11% once the number has a
+   column of its own), which is what keeps it in proportion on a phone, and
+   never so big that its longest word has to break. The per-letter width
+   (0.83em and the 2px of tracking) is on the generous side for these
+   capitals. */
 .aw-ceremony-head {
   grid-area: title;
   min-width: 0;
   container-type: inline-size;
 }
 .aw-ceremony-title {
+  --aw-ceremony-title-max: 3rem;
+  --aw-ceremony-title-fit: 12cqi;
   display: block;
   font-weight: 900;
   line-height: 0.92;
-  letter-spacing: -0.01em;
+  letter-spacing: max(0.03em, 2px);
   text-transform: uppercase;
   text-wrap: balance;
   overflow-wrap: anywhere;
-  font-size: 2.5rem;
-  font-size: max(1.5rem, min(3.75rem, 12.5cqi, calc(100cqi / (var(--aw-ceremony-longest, 8) * 0.8))));
+  font-size: 2rem;
+  font-size: max(
+    1.125rem,
+    min(
+      var(--aw-ceremony-title-max),
+      var(--aw-ceremony-title-fit),
+      (100cqi - var(--aw-ceremony-longest, 8) * 2px) / (var(--aw-ceremony-longest, 8) * 0.83)
+    )
+  );
+}
+/* "Most improved driver of the second half of the season" steps down, so it
+   takes three or four lines instead of six. */
+.aw-ceremony-title.aw-ceremony-long {
+  --aw-ceremony-title-max: 2.5rem;
+  --aw-ceremony-title-fit: 9cqi;
 }
 
+/* The picture beside a column of label, name and sub line. */
 .aw-ceremony-winner {
   grid-area: winner;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
-  margin-top: 1.125rem;
+  margin-top: 0.625rem;
+}
+/* A size container, so the name can be sized against the room it has. */
+.aw-ceremony-who {
+  flex: 1 1 0%;
+  min-width: 0;
+  container-type: inline-size;
 }
 .aw-ceremony-label {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.4375rem;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.25em;
@@ -223,7 +319,7 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  padding: 5px;
+  padding: 4px;
   border: 1px solid var(--aw-ceremony-ring);
   border-radius: 9999px;
   transition: border-color var(--t-base) var(--e-soft), box-shadow var(--t-base) var(--e-soft);
@@ -231,14 +327,56 @@
 /* On the dark card the ring gives off a little gold light, as if lit from the
    stage. A glow on white only looks grubby, so light mode keeps the plain ring. */
 .dark .aw-ceremony-medal {
-  box-shadow: 0 0 30px -8px color-mix(in srgb, var(--medal-1) 45%, transparent);
+  box-shadow: 0 0 26px -8px color-mix(in srgb, var(--medal-1) 45%, transparent);
 }
+.aw-ceremony-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: var(--c-surface2);
+}
+/* A driver's initials and a team's monogram are set in gold, like the
+   circuit and the laurel, with the team's colour as a thin ring inside the
+   gold one. */
+.aw-ceremony-mono,
+.aw-ceremony-disc:has(> .aw-ceremony-crest > span) {
+  box-shadow: inset 0 0 0 2px var(--aw-ceremony-team, transparent);
+}
+.aw-ceremony-initials {
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--aw-ceremony-gold);
+}
+/* TeamLogo is drawn the size of the whole disc. A logo picture is padded in
+   from the edge so it clears the curve; the monogram of a team with no logo
+   is rounded off and set in gold (TeamLogo gets no fill colour for it). */
+.aw-ceremony-crest > img {
+  padding: calc(var(--aw-ceremony-size, 64px) * 0.19);
+}
+.aw-ceremony-crest > span {
+  border-radius: 9999px;
+  box-shadow: none;
+  color: var(--aw-ceremony-gold);
+}
+.aw-ceremony-circuit,
 .aw-ceremony-laurel {
   color: var(--aw-ceremony-gold);
 }
 
-/* The winner's name: solid where the award's name is outlined. Sized like
-   the title, so a long one-word gamer tag shrinks before it would break. */
+/* The winner's name: solid where the award's name is outlined. Every name of
+   a season is set at one size, the largest at which the most demanding of
+   them (its longest word and its flag, --aw-ceremony-names, set on the list)
+   still fits its column: names that jumped between 17px and 24px from row
+   to row on a small phone read as a mistake. Two exceptions:
+   - a long gamer tag is left out of that (NAME_OUTLIER in the jsx) and
+     shrinks on its own (--aw-ceremony-need, set on the name);
+   - nothing goes under 14px, unless the longest word would not fit on a
+     line even by itself at that size: then down to 12px, and its flag goes
+     to the next line (see .aw-ceremony-tail), which beats cutting the word.
+   The per-letter width (0.8em) is on the generous side for these capitals. */
 .aw-ceremony-name {
   --aw-ceremony-name-max: 1.5rem;
   font-weight: 900;
@@ -248,27 +386,47 @@
   text-wrap: balance;
   overflow-wrap: anywhere;
   color: var(--c-text);
-  font-size: 1.5rem;
-  font-size: max(1rem, min(var(--aw-ceremony-name-max), calc(var(--aw-ceremony-who) / (var(--aw-ceremony-longest, 8) * 0.8))));
-  transition: color var(--t-base) var(--e-soft);
+  font-size: 1.375rem;
+  font-size: max(
+    max(0.75rem, min(0.875rem, 100cqi / (var(--aw-ceremony-word, 8) * 0.8))),
+    min(
+      var(--aw-ceremony-name-max),
+      100cqi / (var(--aw-ceremony-names, 8) * 0.8),
+      100cqi / (var(--aw-ceremony-need, 8) * 0.8)
+    )
+  );
 }
 /* A long typed-in name ("Maltegoat, Pizd and the rest of the grid") steps
    down a size rather than stacking four lines high. */
 .aw-ceremony-name.aw-ceremony-long {
   --aw-ceremony-name-max: 1.25rem;
 }
+/* The last word and the flag, kept together (see NameWithFlag). Never wider
+   than the column: when the word and the flag do not fit side by side, the
+   flag goes under the word, and only a word too long for the column on its
+   own breaks inside. */
+.aw-ceremony-tail {
+  display: inline-block;
+  max-width: 100%;
+}
+/* Every flag the same height, about half the capitals', centred on them
+   (Tailwind's base styles let each flag keep its own shape at a fixed width,
+   so a Union Jack came out 12px tall beside a 17px Albanian flag). Two
+   letters' room is kept for it, which holds the widest common shape, 2:1. */
 .aw-ceremony-flag {
-  margin-left: 0.5rem;
-  vertical-align: 0.12em;
+  width: auto;
+  height: clamp(10px, 0.52em, 17px);
+  margin-left: 0.25em;
+  vertical-align: 0.1em;
 }
 
 /* The note, set as a short quote with the opening mark hung in the margin. */
 .aw-ceremony-note {
   grid-area: note;
   max-width: 38rem;
-  margin-top: 1.125rem;
+  margin-top: 0.75rem;
   font-size: 0.9375rem;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--c-text2);
   text-indent: -0.42em;
   text-wrap: pretty;
@@ -304,74 +462,141 @@
   outline: 2px solid rgb(var(--c-accent));
   outline-offset: -2px;
 }
-/* Pointing at a row lights its award up in gold and its winner in pink. Only
-   where the pointer can hover: a tap on a phone leaves :hover stuck on
-   whatever was under the finger, which lit up a row after a season switch. */
+/* Pointing at a row lights its award's outline and the picture's ring up in
+   gold: one accent, the programme's own. Only where the pointer can hover: a
+   tap on a phone leaves :hover stuck on whatever was under the finger, which
+   lit up a row after a season switch. */
 @media (hover: hover) {
   .aw-ceremony-row.aw-ceremony-linked:hover .aw-ceremony-title {
-    color: color-mix(in srgb, var(--medal-1) 14%, var(--aw-ceremony-paper));
     -webkit-text-stroke-color: var(--aw-ceremony-gold);
-  }
-  .aw-ceremony-row.aw-ceremony-linked:hover .aw-ceremony-name {
-    color: var(--c-eyebrow);
   }
   .aw-ceremony-row.aw-ceremony-linked:hover .aw-ceremony-medal {
     border-color: var(--aw-ceremony-gold);
   }
   .dark .aw-ceremony-row.aw-ceremony-linked:hover .aw-ceremony-medal {
-    box-shadow: 0 0 34px -6px color-mix(in srgb, var(--medal-1) 65%, transparent);
+    box-shadow: 0 0 30px -6px color-mix(in srgb, var(--medal-1) 65%, transparent);
   }
   .aw-ceremony-season:hover .aw-ceremony-numeral {
     -webkit-text-stroke-color: var(--c-text);
   }
+  .aw-ceremony-more:hover {
+    border-color: var(--aw-ceremony-gold);
+    background-color: color-mix(in srgb, var(--medal-1) 8%, transparent);
+  }
 }
 /* The same for a keyboard reaching the link. */
 .aw-ceremony-row.aw-ceremony-linked:has(.aw-ceremony-link:focus-visible) .aw-ceremony-title {
-  color: color-mix(in srgb, var(--medal-1) 14%, var(--aw-ceremony-paper));
   -webkit-text-stroke-color: var(--aw-ceremony-gold);
 }
+.aw-ceremony-row.aw-ceremony-linked:has(.aw-ceremony-link:focus-visible) .aw-ceremony-medal {
+  border-color: var(--aw-ceremony-gold);
+}
 
-/* Tablet: the number moves into a column of its own on the left. */
+/* Off a phone the season numbers grow a size. They sit outside the list, so
+   this one goes by the window. */
 @media (min-width: 640px) {
+  .aw-ceremony-season {
+    font-size: 2.25rem;
+  }
+  .aw-ceremony-switch-wrap.aw-ceremony-many .aw-ceremony-season {
+    font-size: 2rem;
+  }
+}
+
+/* MID: the number moves into a column of its own on the left, with the
+   award, the winner and the note one under the other beside it, and the
+   name and the picture grow a size. */
+@container aw-ceremony-list (min-width: 30rem) {
   .aw-ceremony-row {
     grid-template-columns: 3.25rem minmax(0, 1fr);
     grid-template-areas: "num title" "num winner" "num note";
-    padding-block: 2rem 2.25rem;
-    /* the number's column, the 80px picture with its ring, the gap */
-    --aw-ceremony-who: calc(100cqi - 3.25rem - 112px);
+    column-gap: 0;
+    padding-block: 1.375rem 1.625rem;
   }
-  /* Level with the top of the capitals beside it, not the top of the line. */
   .aw-ceremony-num {
-    margin-bottom: 0;
     padding-top: 0.3rem;
     font-size: 0.8125rem;
   }
-  .aw-ceremony-season {
-    font-size: 2.5rem;
+  .aw-ceremony-title {
+    --aw-ceremony-title-fit: 11cqi;
+  }
+  .aw-ceremony-title.aw-ceremony-long {
+    --aw-ceremony-title-fit: 8.5cqi;
+  }
+  .aw-ceremony-winner {
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  .aw-ceremony-note {
+    margin-top: 0.875rem;
   }
   .aw-ceremony-name {
-    --aw-ceremony-name-max: 2.125rem;
+    --aw-ceremony-name-max: 2rem;
   }
   .aw-ceremony-name.aw-ceremony-long {
-    --aw-ceremony-name-max: 1.625rem;
+    --aw-ceremony-name-max: 1.5rem;
   }
 }
 
-/* Desktop: number, award and note on the left, the winner on the right. */
-@media (min-width: 1024px) {
+/* SPLIT (a tablet, a small laptop): the award and its note on the left, the
+   winner on the right, as on a desktop. With the winner under the award, the
+   award used to fill the row and leave the right third of the card empty in
+   every row. Up to 48rem the winner's column is too narrow for the picture
+   beside the name (the names came out at 18px), so the picture sits above
+   the label and the name, and the name keeps the column's full width. */
+@container aw-ceremony-list (min-width: 38rem) {
   .aw-ceremony-row {
-    grid-template-columns: 3.5rem minmax(0, 1.45fr) 3rem minmax(0, 1fr);
+    grid-template-columns: 3.25rem minmax(0, 1fr) 1.5rem minmax(0, 0.9fr);
     grid-template-rows: auto 1fr;
     grid-template-areas: "num title . winner" "num note . winner";
-    /* the winner's column is 1 part of 2.45 after the fixed 6.5rem */
-    --aw-ceremony-who: calc((100cqi - 6.5rem) / 2.45 - 112px);
   }
-  /* The label's capitals level with the award's, like the number's. */
+  .aw-ceremony-title {
+    --aw-ceremony-title-max: 2.5rem;
+  }
+  .aw-ceremony-title.aw-ceremony-long {
+    --aw-ceremony-title-max: 2.125rem;
+  }
   .aw-ceremony-winner {
-    margin-top: 0.3rem;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: start;
+    gap: 0.75rem;
+    margin-top: 0;
+  }
+  /* Stretched: as a size container it has no width of its own to shrink to. */
+  .aw-ceremony-who {
+    flex: none;
+    align-self: stretch;
   }
   .aw-ceremony-note {
     align-self: start;
+  }
+}
+
+/* From 48rem there is room for the picture beside the name again, which
+   keeps the rows as short as on a desktop. */
+@container aw-ceremony-list (min-width: 48rem) {
+  .aw-ceremony-winner {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+  }
+  .aw-ceremony-who {
+    flex: 1 1 0%;
+    align-self: auto;
+  }
+}
+
+/* WIDE: the award's name gets its full size and the larger share of the row. */
+@container aw-ceremony-list (min-width: 60rem) {
+  .aw-ceremony-row {
+    grid-template-columns: 3.5rem minmax(0, 1.3fr) 2.5rem minmax(0, 1fr);
+  }
+  .aw-ceremony-title {
+    --aw-ceremony-title-max: 3rem;
+  }
+  .aw-ceremony-title.aw-ceremony-long {
+    --aw-ceremony-title-max: 2.5rem;
   }
 }
 
@@ -384,8 +609,9 @@
   }
   .aw-ceremony-title,
   .aw-ceremony-numeral,
-  .aw-ceremony-name,
-  .aw-ceremony-medal {
+  .aw-ceremony-medal,
+  .aw-ceremony-more,
+  .aw-ceremony-more-icon {
     transition: none;
   }
 }

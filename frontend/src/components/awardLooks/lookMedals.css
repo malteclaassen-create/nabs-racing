@@ -12,14 +12,19 @@
      the white. */
   --aw-medals-leaf-hi: #d29e12;
   --aw-medals-leaf-lo: #8d5f05;
-  --aw-medals-glow: rgb(234 179 8 / 0.16);
+  --aw-medals-glow: rgb(234 179 8 / 0.11);
   --aw-medals-drop: drop-shadow(0 9px 10px rgb(15 23 42 / 0.2)) drop-shadow(0 2px 2px rgb(15 23 42 / 0.16));
+  --aw-medals-leaf-drop: drop-shadow(0 4px 5px rgb(15 23 42 / 0.13)) drop-shadow(0 1px 1px rgb(15 23 42 / 0.12));
 }
+/* The glow stays low, and the wreath's shadow lower than the medal's: the
+   wall sits under Champions on the page and should not outshine the title
+   itself. */
 .dark .aw-medals-root {
   --aw-medals-leaf-hi: #f1cd5b;
   --aw-medals-leaf-lo: #a87a10;
-  --aw-medals-glow: rgb(234 179 8 / 0.13);
+  --aw-medals-glow: rgb(234 179 8 / 0.07);
   --aw-medals-drop: drop-shadow(0 12px 14px rgb(0 0 0 / 0.55)) drop-shadow(0 2px 3px rgb(0 0 0 / 0.4));
+  --aw-medals-leaf-drop: drop-shadow(0 5px 6px rgb(0 0 0 / 0.36)) drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
 }
 
 /* A faint pool of gold light from the top of the wall, and a gold hairline
@@ -29,7 +34,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(70% 55% at 50% 0%, rgb(234 179 8 / 0.09), transparent 70%);
+  background: radial-gradient(70% 55% at 50% 0%, rgb(234 179 8 / 0.07), transparent 70%);
 }
 .aw-medals-wall::after {
   content: "";
@@ -46,30 +51,96 @@
 /* --- The grid --------------------------------------------------------------
    Flex rather than grid so a short last row sits in the middle (five awards:
    three, then two centred) instead of leaving a hole on the right. Two across
-   on a phone, three from md; one across only on the narrowest phones, where
-   two medals side by side would have to shrink past reading. */
+   on a phone, three from md; four awards stay two and two. */
+.aw-medals-frame {
+  /* measured for the one-across layout at the end of this file */
+  container: aw-medals-frame / inline-size;
+}
 .aw-medals-list {
   --aw-medals-gap: 0.75rem;
   --aw-medals-max: 108px;
+  --aw-medals-name: 1.125rem;
   column-gap: var(--aw-medals-gap);
+  row-gap: 1.75rem;
 }
 .aw-medals-item {
-  /* the column the medal measures itself against (cqi, below) */
+  /* the column the medal measures itself against (cqi) */
   container-type: inline-size;
   width: calc((100% - var(--aw-medals-gap)) / 2);
 }
-@media (max-width: 339.98px) {
-  .aw-medals-item { width: 100%; }
-}
 @media (min-width: 640px) {
-  .aw-medals-list { --aw-medals-max: 124px; }
+  .aw-medals-list { --aw-medals-max: 116px; --aw-medals-name: 1.25rem; row-gap: 1.5rem; }
 }
 @media (min-width: 768px) {
   .aw-medals-list { --aw-medals-gap: 1.5rem; }
-  .aw-medals-item { width: calc((100% - 2 * var(--aw-medals-gap)) / 3); }
+  .aw-medals-trio > .aw-medals-item { width: calc((100% - 2 * var(--aw-medals-gap)) / 3); }
+  /* two columns about as wide as three would be, in the middle of the wall */
+  .aw-medals-pairs { max-width: 50rem; margin-inline: auto; }
 }
 @media (min-width: 1024px) {
-  .aw-medals-list { --aw-medals-max: 140px; }
+  .aw-medals-list { --aw-medals-name: 1.5rem; }
+}
+/* Over six awards, a size down. */
+.aw-medals-list.aw-medals-many { --aw-medals-max: 96px; }
+@media (min-width: 1024px) {
+  .aw-medals-list.aw-medals-many { --aw-medals-name: 1.25rem; }
+}
+
+/* --- One award -------------------------------------------------------------
+   The medal over its text, all centred. */
+.aw-medals-body {
+  display: block;
+  height: 100%;
+  padding: 0.5rem 0 0.75rem;
+}
+.aw-medals-text {
+  /* the width the name sizes itself to (cqi) */
+  container-type: inline-size;
+  margin-top: 0.75rem;
+  text-align: center;
+}
+.aw-medals-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+}
+.aw-medals-sublogo {
+  display: flex;
+  flex: none;
+}
+/* A team without a logo file: TeamLogo's monogram tile is too small here to
+   hold its letters, and would only repeat the team name beside it. */
+.aw-medals-sublogo > span > span { display: none; }
+.aw-medals-sublogo:not(:has(img)) { display: none; }
+.aw-medals-note {
+  max-width: 34ch;
+  margin-inline: auto;
+}
+
+/* The winner's name: the usual size, unless the longest unbreakable run of
+   the tightest name in its row (LookMedals.jsx nameFit, rowFits) would not
+   fit the column at that size; then just small enough that it does, down to
+   12px. Only past that does a word break, and then only where it must. The
+   shared size is the one for the number of columns in use. */
+.aw-medals-list .aw-medals-name { --aw-medals-fit: var(--aw-medals-fit-2); }
+@media (min-width: 768px) {
+  .aw-medals-trio .aw-medals-name { --aw-medals-fit: var(--aw-medals-fit-3); }
+}
+.aw-medals-name {
+  font-size: var(--aw-medals-name);
+  overflow-wrap: break-word;
+  /* A name stepped down still takes a full-size line, centred in it, so the
+     space from the award title to the team line is the same in every row. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(var(--aw-medals-name) * 1.08);
+}
+@supports (width: 1cqi) {
+  .aw-medals-name {
+    font-size: clamp(0.75rem, calc(var(--aw-medals-fit, 99) * 1cqi), var(--aw-medals-name));
+  }
 }
 
 /* --- One medallion ----------------------------------------------------------
@@ -104,11 +175,12 @@
   pointer-events: none;
 }
 
-/* Swings from the ribbon's pin bar (top centre) when it comes in. */
+/* The ribbon and the medal: what sways, from the middle of the pin bar. The
+   laurel and the bar are outside it and stay still, like a frame on a wall. */
 .aw-medals-hang {
   position: absolute;
   inset: 0;
-  transform-origin: 50% 0;
+  transform-origin: 50% calc(var(--aw-medals-d) * 0.025);
 }
 
 .aw-medals-laurel {
@@ -118,7 +190,7 @@
   width: calc(var(--aw-medals-d) * 1.4);
   height: calc(var(--aw-medals-d) * 1.4);
   overflow: visible;
-  filter: var(--aw-medals-drop);
+  filter: var(--aw-medals-leaf-drop);
 }
 .aw-medals-stem {
   fill: none;
@@ -138,6 +210,8 @@
   overflow: visible;
   z-index: 2;
 }
+/* over the top of the swaying strip, which starts under it */
+.aw-medals-bar { z-index: 3; }
 
 /* The medal: a polished rim (conic, so the light catches it in several
    places), a bevel stepping down to the face, the face with a beaded border,
@@ -195,15 +269,15 @@
   inset: 4%;
   border-radius: inherit;
   background: repeating-conic-gradient(rgb(110 70 6 / 0.6) 0 2deg, transparent 2deg 7.5deg);
-  --aw-medals-ring: radial-gradient(
+  --aw-medals-beads: radial-gradient(
     closest-side,
     transparent calc(100% - 3.5px),
     #000 calc(100% - 3px),
     #000 calc(100% - 0.5px),
     transparent 100%
   );
-  -webkit-mask: var(--aw-medals-ring);
-  mask: var(--aw-medals-ring);
+  -webkit-mask: var(--aw-medals-beads);
+  mask: var(--aw-medals-beads);
 }
 
 .aw-medals-inlay {
@@ -231,12 +305,60 @@
     inset 0 3px 6px rgb(0 0 0 / 0.42),
     inset 0 -1px 2px rgb(255 255 255 / 0.18);
 }
-/* DriverAvatar sizes itself in px; here it fills the inlay at any medal size. */
-.aw-medals-avatar {
-  width: 100% !important;
-  height: 100% !important;
-  font-size: calc(var(--aw-medals-d) * 0.2) !important;
+/* A driver's team colour as a thin ring of enamel round the centre, between
+   two gold keylines. */
+.aw-medals-ringed {
+  box-shadow:
+    0 0 0 1.5px #6b4508,
+    0 0 0 4px var(--aw-medals-ring, #fde68a),
+    0 0 0 5px rgb(92 58 8 / 0.75);
 }
+
+/* The recessed matte field behind struck initials, a flag plaque, the star
+   and the chequered flag: duller than the polished face around it, with fine
+   rings turned into it, so the centre reads as worked metal. */
+.aw-medals-matte {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgb(255 244 200 / 0.09) 0 1px, transparent 1px 3px),
+    radial-gradient(circle at 50% 40%, #e3b22a, #b48410 80%);
+}
+/* Initials struck into the gold: dark where the cut falls away from the light,
+   a bright lip below. */
+.aw-medals-initials {
+  position: relative;
+  font-size: calc(var(--aw-medals-d) * 0.21);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #6b4508;
+  text-shadow:
+    0 1px 0 rgb(255 240 200 / 0.6),
+    0 -1px 0 rgb(92 58 8 / 0.4);
+}
+/* three letters (a team without a logo) in the same circle */
+.aw-medals-initials-3 {
+  font-size: calc(var(--aw-medals-d) * 0.165);
+  letter-spacing: 0.04em;
+}
+/* The flag at its own shape, whole, and never wider than 40px: the 40px file
+   (or the 80px one on a sharp screen, RaceInlay) then shows at its own size
+   instead of blown up. */
+.aw-medals-plaque {
+  position: relative;
+  width: auto;
+  height: auto;
+  max-width: min(70%, 40px);
+  max-height: 50%;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px #6b4508,
+    0 1px 2px rgb(60 36 4 / 0.55);
+}
+.aw-medals-mark {
+  width: 72%;
+  height: 72%;
+  filter: drop-shadow(0 1px 1px rgb(92 58 8 / 0.6));
+}
+
 /* Team logos sit on pale enamel with a hint of the team's colour. Pale
    because the logo files are drawn for a white card first: a dark enamel lost
    the black lettering of the Toro Rosso mark completely. */
@@ -248,47 +370,44 @@
     color-mix(in srgb, var(--aw-medals-tint) 18%, #e6ebf2) 80%
   );
 }
-/* Wider than tall, so a wordmark gets the width a round inlay has across
-   its middle, while a crest is held by the height. */
+/* Until the logo is measured (and for a monogram), a plain box in the middle. */
 .aw-medals-logo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.aw-medals-logo > span {
   display: flex;
   width: 80%;
   height: 62%;
   align-items: center;
   justify-content: center;
 }
-.aw-medals-logo > span {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-}
-.aw-medals-logo img,
-.aw-medals-logo > span > span {
+.aw-medals-logo img {
   width: 100% !important;
   height: 100% !important;
 }
-/* A team without a logo file gets TeamLogo's monogram tile; inside the medal
-   it is struck into the enamel instead (its tile is white on a white team). */
-.aw-medals-logo > span > span {
-  background: none !important;
-  box-shadow: none !important;
-  color: #7a5408 !important;
-  font-family: Archivo, Inter, system-ui, sans-serif !important;
-  font-weight: 900 !important;
-  font-size: calc(var(--aw-medals-d) * 0.17) !important;
-  letter-spacing: 0.02em;
+/* A hairline edge, so yellow or white lettering (NCB Mugen) holds on the pale
+   enamel. */
+.aw-medals-logo img {
+  filter: drop-shadow(0 0 0.6px rgb(0 0 0 / 0.55));
 }
-/* typed names, or a race without a flag: a recessed matte field with a star */
-.aw-medals-matte {
-  background: radial-gradient(circle at 50% 40%, #e3b22a, #b48410 80%);
+/* Measured (LookMedals.jsx logoFit): the file is placed so its ink fills the
+   biggest box of its shape the circle holds. */
+.aw-medals-fit img {
+  position: absolute;
+  left: var(--aw-medals-lx);
+  top: var(--aw-medals-ly);
+  width: var(--aw-medals-lw) !important;
+  height: var(--aw-medals-lh) !important;
+  max-width: none;
 }
-.aw-medals-star {
-  width: 72%;
-  height: 72%;
-  filter: drop-shadow(0 1px 1px rgb(92 58 8 / 0.6));
-}
+/* A team without a logo file gets the look's own struck initials (TeamInlay),
+   not TeamLogo's monogram tile; should the tile ever show for a moment (a
+   logo link that has just failed), it shows as bare enamel. */
+.aw-medals-logo > span > span { visibility: hidden; }
 
 /* --- Light on the metal ----------------------------------------------------
    A glint crosses each medal once as it comes into view, and again on hover.
@@ -309,20 +428,20 @@
   background-position: 94% 0;
   mix-blend-mode: overlay;
 }
-/* 94% to 6% is the stretch where the band is over the medal at all. */
+/* 94% to 6% is the stretch where the band is over the medal at all. It fades
+   in and out at the ends and keeps nothing afterwards: held at full opacity,
+   the band's edge stayed parked on the rim as a faint sliver. */
 @keyframes aw-medals-glint {
-  0% { opacity: 1; background-position: 94% 0; }
-  100% { opacity: 1; background-position: 6% 0; }
+  0% { opacity: 0; background-position: 94% 0; }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { opacity: 0; background-position: 6% 0; }
 }
-@keyframes aw-medals-glint-hover {
-  0% { opacity: 1; background-position: 94% 0; }
-  100% { opacity: 1; background-position: 6% 0; }
-}
-/* The observer staggers --reveal-delay down the medals that come into view
-   together, so the glints run along the row one after another. */
-.aw-medals-art.is-visible .aw-medals-medal::after {
-  animation: aw-medals-glint 950ms cubic-bezier(0.45, 0, 0.25, 1) both;
-  animation-delay: calc(var(--reveal-delay, 0s) + 600ms);
+/* useMedalsInView staggers --aw-medals-delay down the medals that come into
+   view together, so the glints run along the row one after another. */
+.aw-medals-art.aw-medals-seen .aw-medals-medal::after {
+  animation: aw-medals-glint 950ms cubic-bezier(0.45, 0, 0.25, 1);
+  animation-delay: calc(var(--aw-medals-delay, 0s) + 600ms);
 }
 
 /* Each medal sways on its ribbon as it comes into view and settles: a few
@@ -337,9 +456,9 @@
   86% { transform: rotate(-0.25deg); }
   100% { transform: none; }
 }
-.aw-medals-art.is-visible .aw-medals-hang {
+.aw-medals-art.aw-medals-seen .aw-medals-hang {
   animation: aw-medals-swing 1500ms ease-in-out;
-  animation-delay: var(--reveal-delay, 0s);
+  animation-delay: var(--aw-medals-delay, 0s);
 }
 
 /* The bit of the note that sets it off from the name. */
@@ -357,7 +476,7 @@
    site's .lift cards rise; the text stays as it is. */
 @media (hover: hover) {
   .aw-medals-link:hover .aw-medals-art { transform: translateY(-3px); }
-  .aw-medals-link:hover .aw-medals-shine { animation: aw-medals-glint-hover 800ms cubic-bezier(0.45, 0, 0.25, 1) both; }
+  .aw-medals-link:hover .aw-medals-shine { animation: aw-medals-glint 800ms cubic-bezier(0.45, 0, 0.25, 1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -370,3 +489,34 @@
 .fx-lite .aw-medals-hang { animation: none !important; }
 .fx-lite .aw-medals-medal::after,
 .fx-lite .aw-medals-shine { animation: none !important; opacity: 0; }
+
+/* --- One across ------------------------------------------------------------
+   When two columns would be under ~150px (phones narrower than about 370px),
+   the league's longest handles no longer fit two across at a readable size.
+   Stacked one across, though, every award took most of a screen. So there
+   each award is a row instead: a smaller medal on the left and its text
+   beside it, left-aligned. On the wall's own width, not the screen's, so it
+   holds wherever the section sits (312px of list plus its 24px of padding).
+   Last among the layout rules, so it wins over the column widths above. */
+@container aw-medals-frame (max-width: 335.98px) {
+  .aw-medals-list { row-gap: 1rem; }
+  .aw-medals-list > .aw-medals-item { width: 100%; --aw-medals-max: 62px; }
+  .aw-medals-list .aw-medals-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 0.375rem 0.25rem 0.5rem;
+  }
+  .aw-medals-list .aw-medals-art { flex: none; margin-inline: 0; }
+  .aw-medals-list .aw-medals-text { flex: 1 1 0%; min-width: 0; margin-top: 0; text-align: left; }
+  .aw-medals-list .aw-medals-name { --aw-medals-fit: var(--aw-medals-fit-1); }
+  .aw-medals-list .aw-medals-sub { justify-content: flex-start; }
+  .aw-medals-list .aw-medals-rule { margin-inline: 0; }
+  .aw-medals-list .aw-medals-note { max-width: none; margin-inline: 0; }
+}
+/* Without container queries: one across, as a plain column. */
+@supports not (container-type: inline-size) {
+  @media (max-width: 369.98px) {
+    .aw-medals-list > .aw-medals-item { width: 100%; }
+  }
+}
