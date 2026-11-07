@@ -10,6 +10,7 @@ import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import { flagFor } from "../data/circuits.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { AWARD_LOOKS } from "../components/awardLooks/index.js";
 
 // ---------------------------------------------------------------------------
 // /records — the Hall of Fame: the champions gallery (drivers ⇄ teams), the
@@ -655,6 +656,8 @@ export default function HallOfFame() {
   // them leaves the rest of the page alone.
   const awards = useApi(useCallback(() => api.seriesAwards().catch(() => ({ seasons: [] })), []));
   const awardSeasons = awards.data?.seasons || [];
+  // Preview of the looks under consideration (?look=gala etc.).
+  const AwardLook = AWARD_LOOKS[new URLSearchParams(window.location.search).get("look")] || null;
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
   // The switch below fades its panel over instead of rebuilding it from blank;
@@ -727,7 +730,8 @@ export default function HallOfFame() {
       )}
 
       {/* the awards the league handed out, one season at a time */}
-      {awardSeasons.length > 0 && <SeasonAwards seasons={awardSeasons} />}
+      {awardSeasons.length > 0 &&
+        (AwardLook ? <AwardLook seasons={awardSeasons} /> : <SeasonAwards seasons={awardSeasons} />)}
 
       {/* single records — hairline band of golden numbers */}
       {data.records.length > 0 && (
