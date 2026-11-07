@@ -45,105 +45,85 @@ const WORDMARK = 3;
 
 const r2 = (v) => Math.round(v * 100) / 100;
 
-// The laurel round the portrait: two olive branches that rise from the foot
-// of the ring and stop short of the season tag at the top. Each is a stem
-// along a circle with slim leaves growing from it in pairs, one out and one
-// in, smaller toward the tip, and a few berries tucked inside. Every leaf is
-// struck in two halves, a lit one and a shaded one either side of its vein,
-// so the wreath reads as embossed metal rather than flat gold cut-outs.
-// `clasp` leaves a gap at the foot for the flag pinned there.
+// The laurel round the portrait: two branches that rise from the foot of the
+// ring and stop short of the season tag at the top, every leaf outside the
+// ring. Each branch carries two rows of slim leaves, one flaring out and one
+// running along it, each leaf bent a little toward the tip and smaller toward
+// it. The gold is one light for the whole wreath, from the upper left as on
+// the ring, and every leaf has a dark edge and a bright vein, so it reads as
+// struck metal. `clasp` leaves a gap at the foot for the flag pinned there.
 function laurel(clasp) {
-  const R = 42.5; // the stem's circle, in a 100 x 100 box
-  const base = clasp ? 160 : 172; // degrees round from 12 o'clock
-  const tip = 36;
-  const N = 9; // leaf pairs per branch, plus one leaf on the tip
+  const R = 40; // the stem's circle, in a 100 x 100 box (the ring is 34)
+  const base = clasp ? 162 : 174; // degrees round from 12 o'clock
+  const tip = 30;
+  const N = 13; // steps per branch
   const stems = [];
   const leaves = [];
-  const berries = [];
   for (const side of [1, -1]) {
     const at = (deg, r = R) => [50 + side * r * Math.sin((deg * Math.PI) / 180), 50 - r * Math.cos((deg * Math.PI) / 180)];
     const [x0, y0] = at(base);
-    const [x1, y1] = at(tip + 1);
+    const [x1, y1] = at(tip + 2);
     stems.push(`M${r2(x0)} ${r2(y0)}A${R} ${R} 0 0 ${side > 0 ? 0 : 1} ${r2(x1)} ${r2(y1)}`);
     const leaf = (deg, lean, size, key) => {
-      const ry = 6 * size; // half the leaf's length
-      const w = 2.9 * size; // its curves' pull: a slim olive leaf
-      // Which way the leaf points, clockwise from 12 o'clock: along the stem
-      // toward the tip (deg - 90), turned out or in by `lean` degrees.
-      const phi = side * (deg - 90 + lean);
-      const ux = Math.sin((phi * Math.PI) / 180);
-      const uy = -Math.cos((phi * Math.PI) / 180);
+      const L = 13 * size; // length, base to tip
+      const w = 2.7 * size; // half-width
+      const bend = side * 1.6 * size; // the tip leans toward the branch's tip
+      // Pointing, clockwise from 12 o'clock, and the leaf's own frame: u along
+      // it toward the tip, v across it. Points are worked out in the wreath's
+      // own coordinates (no transform), so the one light across the whole
+      // wreath falls on every leaf where it actually is.
+      const phi = ((side * (deg - 90 + lean)) * Math.PI) / 180;
       const [px, py] = at(deg);
-      // Base at (0, ry) on the stem, tip at (0, -ry); the half facing the
-      // light (the outer side of each branch) is the bright one.
-      const half = (sx) =>
-        `M0 ${r2(ry)}C${r2(sx * w)} ${r2(ry * 0.5)} ${r2(sx * w)} ${r2(-ry * 0.4)} 0 ${r2(-ry)}Z`;
+      const u = [Math.sin(phi), -Math.cos(phi)];
+      const v = [Math.cos(phi), Math.sin(phi)];
+      const P = (across, along) => `${r2(px + v[0] * across + u[0] * along)} ${r2(py + v[1] * across + u[1] * along)}`;
       leaves.push({
         key,
-        lit: half(side),
-        shade: half(-side),
-        vein: `M0 ${r2(ry * 0.9)}Q${r2(side * w * 0.12)} 0 0 ${r2(-ry * 0.82)}`,
-        transform: `translate(${r2(px + ux * ry * 0.9)} ${r2(py + uy * ry * 0.9)}) rotate(${r2(phi)})`,
+        // One side fuller than the other, as a real leaf.
+        d: `M${P(0, 0)}C${P(w * 1.15, L * 0.22)} ${P(w * 0.95 + bend, L * 0.72)} ${P(bend, L)}C${P(-w * 0.55 + bend, L * 0.7)} ${P(-w * 0.95, L * 0.3)} ${P(0, 0)}Z`,
+        vein: `M${P(0, L * 0.08)}Q${P(bend * 0.3, L * 0.5)} ${P(bend * 0.92, L * 0.9)}`,
       });
     };
     for (let i = 0; i < N; i++) {
       const t = i / N; // 0 at the foot
       const deg = base - t * (base - tip);
-      const size = 1 - 0.45 * t;
-      leaf(deg, 44, size, `${side}-o${i}`); // out
-      leaf(deg - (base - tip) / N / 2, -24, size * 0.9, `${side}-i${i}`); // in, half a step on
-      // A berry inside the branch at every other pair, below the top third.
-      if (i % 2 === 1 && t < 0.7) {
-        const [bx, by] = at(deg - (base - tip) / N / 4, R - 3.4);
-        berries.push({ key: `${side}-b${i}`, cx: r2(bx), cy: r2(by), r: r2(1.35 * (1 - 0.3 * t)) });
-      }
+      const size = 1 - 0.5 * t;
+      leaf(deg - (base - tip) / N / 2, 10, size * 0.9, `${side}-a${i}`); // along the branch
+      leaf(deg, 40, size, `${side}-o${i}`); // flaring out
     }
     leaf(tip, 0, 0.5, `${side}-tip`);
   }
-  return { stems, leaves, berries };
+  return { stems, leaves };
 }
 const LAURELS = { clasp: laurel(true), full: laurel(false) };
 
 function Laurel({ clasp }) {
-  // One set of gradients per card: two cards must not share an id, or the
-  // second one's leaves would point at the first one's gradients.
+  // One gradient per card: two cards must not share an id, or the second
+  // one's leaves would point at the first one's gradient.
   const id = useId().replace(/:/g, "");
-  const { stems, leaves, berries } = clasp ? LAURELS.clasp : LAURELS.full;
+  const { stems, leaves } = clasp ? LAURELS.clasp : LAURELS.full;
   return (
     <svg className="aw-cards-laurel" viewBox="0 0 100 100" aria-hidden="true">
       <defs>
-        <linearGradient id={`${id}-lit`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff4cf" />
-          <stop offset="0.45" stopColor={GOLD_HI} />
-          <stop offset="1" stopColor={GOLD} />
+        <linearGradient id={`${id}-gold`} gradientUnits="userSpaceOnUse" x1="14" y1="6" x2="86" y2="96">
+          <stop offset="0" stopColor="#fff2c4" />
+          <stop offset="0.28" stopColor="#f3cf6a" />
+          <stop offset="0.55" stopColor={GOLD} />
+          <stop offset="0.8" stopColor={GOLD_DEEP} />
+          <stop offset="1" stopColor="#6f4c06" />
         </linearGradient>
-        <linearGradient id={`${id}-shade`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={GOLD} />
-          <stop offset="1" stopColor={GOLD_DEEP} />
-        </linearGradient>
-        <radialGradient id={`${id}-berry`} cx="0.35" cy="0.35" r="0.7">
-          <stop offset="0" stopColor="#fff4cf" />
-          <stop offset="0.5" stopColor={GOLD} />
-          <stop offset="1" stopColor={GOLD_DEEP} />
-        </radialGradient>
       </defs>
-      <g fill="none" stroke={GOLD_DEEP} strokeWidth={1.3} strokeLinecap="round">
+      <g fill="none" stroke={`url(#${id}-gold)`} strokeWidth={1.2} strokeLinecap="round">
         {stems.map((d) => (
           <path key={d} d={d} />
         ))}
       </g>
       {leaves.map((l) => (
-        <g key={l.key} transform={l.transform}>
-          <path d={l.shade} fill={`url(#${id}-shade)`} />
-          <path d={l.lit} fill={`url(#${id}-lit)`} />
-          <path d={l.vein} fill="none" stroke={GOLD_DEEP} strokeWidth={0.35} strokeOpacity={0.7} />
+        <g key={l.key}>
+          <path d={l.d} fill={`url(#${id}-gold)`} stroke="#5c3d04" strokeWidth={0.35} strokeOpacity={0.65} strokeLinejoin="round" />
+          <path d={l.vein} fill="none" stroke="#fff2c4" strokeWidth={0.4} strokeOpacity={0.55} strokeLinecap="round" />
         </g>
       ))}
-      <g fill={`url(#${id}-berry)`}>
-        {berries.map((b) => (
-          <circle key={b.key} cx={b.cx} cy={b.cy} r={b.r} />
-        ))}
-      </g>
     </svg>
   );
 }
