@@ -444,8 +444,10 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   height: calc(var(--cw) / var(--lr));
 }
 /* The small one before a driver's team name: up to 24 x 14px. */
+/* 14px tall, and as wide as the drawing needs up to 64px, so a wordmark
+   (Brawn GP, AXN-RB) reads beside the team name instead of a sliver. */
 .aw-cards-sublogo {
-  --cw: min(24px, calc(14px * var(--lr)), calc(var(--lw) * 1px));
+  --cw: min(64px, calc(14px * var(--lr)), calc(var(--lw) * 1px));
   width: var(--cw);
   height: calc(var(--cw) / var(--lr));
 }
@@ -462,7 +464,6 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
    file at its first size for a frame. */
 .aw-cards-plate:not([data-shaped]) .aw-cards-logo,
 .aw-cards-sublogo:not([data-shaped]) { visibility: hidden; }
-.aw-cards-sublogo[data-wide] { display: none; }
 
 /* The team's initials in gold take the plate's place for a wordmark too thin
    for the round (data-wide), and for a team TeamLogo has no picture for (or

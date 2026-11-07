@@ -488,9 +488,8 @@ function TeamFace({ team }) {
   );
 }
 
-// The small logo before a driver's team name. Sized by its drawing like the
-// big one; a wordmark is left out (at this size it was a 3px sliver), the name
-// beside it says the same.
+// The small logo before a driver's team name, sized by its drawing like the
+// big one: a wordmark gets the width it needs (seasonAwardCards.css).
 function SubLogo({ team }) {
   const [ref, shape] = useLogoShape(team.logoUrl || team.id);
   return (
@@ -498,7 +497,6 @@ function SubLogo({ team }) {
       ref={ref}
       className="aw-cards-sublogo"
       data-shaped={shape ? "" : undefined}
-      data-wide={shape && shape.w / shape.h > WORDMARK ? "" : undefined}
       style={shape ? shapeVars(shape) : undefined}
       aria-hidden="true"
     >
