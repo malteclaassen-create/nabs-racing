@@ -94,15 +94,14 @@
    two cards fit side by side from there, and above 480px the rail's "peek" had
    grown into most of a second card cut off by the screen edge.
 
-   The heading row is as wide as the grid and centred with it, so the eyebrow
-   starts above the first card and the season switch ends above the last one,
-   instead of out at the column edges with the cards in an island between. */
+   The columns share out the section's whole width, so the cards line up with
+   the edges of the Champions and Records sections around them. A card never
+   grows past 380px: with only a few awards in a wide grid it stays card-sized
+   and sits in the middle of its columns. */
 @media (min-width: 560px) {
   .aw-cards-rail {
-    --aw-half: calc((var(--aw-w) - var(--aw-gap)) / 2);
     display: grid;
-    grid-template-columns: repeat(var(--aw-halves2, 4), var(--aw-half));
-    justify-content: center;
+    grid-template-columns: repeat(var(--aw-halves2, 4), minmax(0, 1fr));
     align-items: stretch;
     gap: 28px var(--aw-gap);
     margin: 0;
@@ -110,37 +109,30 @@
     overflow: visible;
     scroll-snap-type: none;
   }
-  .aw-cards-rail > li { grid-column: var(--aw-s2, auto) / span 2; }
-  .aw-cards-head {
-    max-width: calc(var(--aw-halves2, 4) * (var(--aw-w) + var(--aw-gap)) / 2 - var(--aw-gap));
-    margin-inline: auto;
-  }
+  .aw-cards-rail > li { grid-column: var(--aw-s2, auto) / span 2; display: flex; justify-content: center; }
+  .aw-cards-rail > li > .aw-cards-card { max-width: 380px; }
   .aw-cards-dots,
   .aw-cards-count { display: none; }
 }
 /* Three across once three 280px cards and their gaps fit (3 x 280 + 2 x 24),
    four once four do (4 x 280 + 3 x 24). */
 @container aw-cards (min-width: 888px) {
-  .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves3, 6), var(--aw-half)); }
+  .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves3, 6), minmax(0, 1fr)); }
   .aw-cards-rail > li { grid-column: var(--aw-s3, auto) / span 2; }
-  .aw-cards-head { max-width: calc(var(--aw-halves3, 6) * (var(--aw-w) + var(--aw-gap)) / 2 - var(--aw-gap)); }
 }
 @container aw-cards (min-width: 1192px) {
-  .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves4, 8), var(--aw-half)); }
+  .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves4, 8), minmax(0, 1fr)); }
   .aw-cards-rail > li { grid-column: var(--aw-s4, auto) / span 2; }
-  .aw-cards-head { max-width: calc(var(--aw-halves4, 8) * (var(--aw-w) + var(--aw-gap)) / 2 - var(--aw-gap)); }
 }
 /* A browser without container queries goes by the window, as before. */
 @supports not (container-type: inline-size) {
   @media (min-width: 1024px) {
-    .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves3, 6), var(--aw-half)); }
+    .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves3, 6), minmax(0, 1fr)); }
     .aw-cards-rail > li { grid-column: var(--aw-s3, auto) / span 2; }
-    .aw-cards-head { max-width: calc(var(--aw-halves3, 6) * (var(--aw-w) + var(--aw-gap)) / 2 - var(--aw-gap)); }
   }
   @media (min-width: 1280px) {
-    .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves4, 8), var(--aw-half)); }
+    .aw-cards-rail { grid-template-columns: repeat(var(--aw-halves4, 8), minmax(0, 1fr)); }
     .aw-cards-rail > li { grid-column: var(--aw-s4, auto) / span 2; }
-    .aw-cards-head { max-width: calc(var(--aw-halves4, 8) * (var(--aw-w) + var(--aw-gap)) / 2 - var(--aw-gap)); }
   }
 }
 
