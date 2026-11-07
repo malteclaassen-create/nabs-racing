@@ -1,11 +1,13 @@
 -- Season awards (lib/seasonAwards.js): the honours the league hands out at the
--- end of a season, typed in by an admin. Won by a driver, team or race of that
--- season, or by a name typed by hand. Mirrored by ensureAppSchema.
+-- end of a season, typed in by an admin. Won by a driver (or two drivers who
+-- share it), a team or a race of that season, or by a name typed by hand.
+-- Mirrored by ensureAppSchema.
 CREATE TABLE IF NOT EXISTS "SeasonAward" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "seasonId" TEXT NOT NULL,
   "title" TEXT NOT NULL,
   "driverId" TEXT,
+  "partnerId" TEXT,
   "teamId" TEXT,
   "raceId" TEXT,
   "winnerText" TEXT,

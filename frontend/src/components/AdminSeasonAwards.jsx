@@ -7,8 +7,8 @@ import { useAsk } from "./overlay.jsx";
 // ---------------------------------------------------------------------------
 // Admin › Seasons › one season › "Season awards": the honours the league hands
 // out by vote or decision (best rookie, best qualifier, race of the season...).
-// Each award is a name plus who won it: a driver, team or race of the season,
-// or a name typed by hand. Shown in the Hall of Fame and in the season honours
+// Each award is a name plus who won it: a driver (or two who share it), a team
+// or a race of the season, or a name typed by hand. Shown in the Hall of Fame and in the season honours
 // on Home (backend lib/seasonAwards.js).
 // ---------------------------------------------------------------------------
 
@@ -33,13 +33,14 @@ const KINDS = [
   { key: "text", label: "Typed name" },
 ];
 
-const EMPTY = { title: "", kind: "driver", winnerId: "", winnerText: "", note: "" };
+const EMPTY = { title: "", kind: "driver", winnerId: "", partnerId: "", winnerText: "", note: "" };
 
 function formFromAward(a) {
   return {
     title: a.title,
     kind: a.kind,
     winnerId: a.driver?.driverId || a.team?.id || a.race?.id || "",
+    partnerId: a.partner?.driverId || "",
     winnerText: a.winnerText || "",
     note: a.note || "",
   };
@@ -52,7 +53,7 @@ function raceLabel(r) {
 }
 
 export function awardWinnerLabel(a) {
-  if (a.kind === "driver") return a.driver.name;
+  if (a.kind === "driver") return a.partner ? `${a.driver.name} & ${a.partner.name}` : a.driver.name;
   if (a.kind === "team") return a.team.name;
   if (a.kind === "race") return raceLabel(a.race);
   return a.winnerText;
@@ -98,7 +99,7 @@ function AwardForm({ value, onChange, choices, onSubmit, onCancel, busy, submitL
         aria-label="Who won it"
         className="input py-1 text-xs"
         value={value.kind}
-        onChange={(e) => set({ kind: e.target.value, winnerId: "" })}
+        onChange={(e) => set({ kind: e.target.value, winnerId: "", partnerId: "" })}
       >
         {KINDS.map((k) => (
           <option key={k.key} value={k.key}>
@@ -128,6 +129,24 @@ function AwardForm({ value, onChange, choices, onSubmit, onCancel, busy, submitL
               {o.label}
             </option>
           ))}
+        </select>
+      )}
+      {/* A second driver, for an award two drivers share (best partnership). */}
+      {value.kind === "driver" && (
+        <select
+          aria-label="Second driver (optional)"
+          className="input min-w-40 max-w-64 flex-1 py-1 text-xs"
+          value={value.partnerId}
+          onChange={(e) => set({ partnerId: e.target.value })}
+        >
+          <option value="">Shared with… (optional)</option>
+          {options
+            .filter((o) => o.id !== value.winnerId)
+            .map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
         </select>
       )}
       <input
@@ -164,7 +183,9 @@ export default function AdminSeasonAwards({ season, onSaved, onError }) {
     title: f.title,
     kind: f.kind,
     note: f.note,
-    ...(f.kind === "text" ? { winnerText: f.winnerText } : { winnerId: f.winnerId }),
+    ...(f.kind === "text"
+      ? { winnerText: f.winnerText }
+      : { winnerId: f.winnerId, ...(f.kind === "driver" && f.partnerId ? { partnerId: f.partnerId } : {}) }),
   });
 
   async function run(fn, msg) {

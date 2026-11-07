@@ -1347,7 +1347,17 @@ export default function Home() {
         // the reason line sits under the name instead.
         for (const a of honours.awards || []) {
           const base = { key: `award-${a.id}`, label: a.title, note: a.note || null };
-          if (a.kind === "driver") {
+          if (a.kind === "driver" && a.partner) {
+            // Shared by two drivers: both names, linking the first; the team
+            // mark only when they drove for the same team.
+            const sameTeam = a.driver.team && a.partner.team && a.driver.team.id === a.partner.team.id;
+            cells.push({
+              ...base,
+              to: `/drivers/${a.driver.driverId}`,
+              name: `${a.driver.name} & ${a.partner.name}`,
+              team: sameTeam ? a.driver.team : null,
+            });
+          } else if (a.kind === "driver") {
             cells.push({
               ...base,
               to: `/drivers/${a.driver.driverId}`,

@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// Season awards, look "cards" (Hall of Fame preview, ?look=cards).
+// Season awards on the Hall of Fame: the awards the league hands out by vote
+// at the end of a season (backend lib/seasonAwards.js).
 //
 // Every award is a trophy card in the language of the driver rating cards
 // (RatingCard.jsx and the .rcard-* rules in index.css): chamfered corners, the
@@ -10,20 +11,20 @@
 //
 // A phone swipes through the cards in a rail of their own (the page itself
 // never scrolls sideways); anything wider shows them as a centred display, in
-// rows as even as the count allows. The material lives in lookCards.css.
+// rows as even as the count allows. The material lives in seasonAwardCards.css.
 // ---------------------------------------------------------------------------
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Trophy } from "lucide-react";
-import { MEDAL, readableInkOn, sizedAvatarUrl } from "../ui.jsx";
-import Flag from "../Flag.jsx";
-import TeamLogo from "../TeamLogo.jsx";
-import CircuitMap from "../CircuitMap.jsx";
-import SlidingTabs from "../SlidingTabs.jsx";
-import { hasOutline, useTrackOutlines } from "../../data/trackOutlines.js";
-import { motionOff, useSwapClass } from "../../hooks/motion.js";
-import { winnerOf } from "./shared.js";
-import "./lookCards.css";
+import { MEDAL, readableInkOn, sizedAvatarUrl } from "./ui.jsx";
+import Flag from "./Flag.jsx";
+import TeamLogo from "./TeamLogo.jsx";
+import CircuitMap from "./CircuitMap.jsx";
+import SlidingTabs from "./SlidingTabs.jsx";
+import { hasOutline, useTrackOutlines } from "../data/trackOutlines.js";
+import { motionOff, useSwapClass } from "../hooks/motion.js";
+import { winnerOf } from "./seasonAwardWinner.js";
+import "./seasonAwardCards.css";
 
 // The champion edition's gold (index.css, .rcard-frame[data-edition="champion"]),
 // so the laurel and the track are the same metal as the frame and the ribbon.
@@ -217,7 +218,7 @@ function logoShape(img) {
   return shape;
 }
 
-// The numbers lookCards.css sizes a logo by (.aw-cards-logo, .aw-cards-sublogo):
+// The numbers seasonAwardCards.css sizes a logo by (.aw-cards-logo, .aw-cards-sublogo):
 // the drawing's width in file pixels (a logo is never drawn larger than its
 // file), its proportions, and where it sits in the file.
 function shapeVars(s) {
@@ -432,16 +433,20 @@ function showInRail(e) {
 // disc for a driver without a team, where gold letters on a gold disc inside
 // a gold ring all ran together.
 function DriverFace({ driver, color }) {
-  const [broken, setBroken] = useState(false);
-  if (driver.photoUrl && !broken)
+  // The pictures to try in order: the photo, then the fallbacks the server
+  // hands along (the linked person's picture, the Discord avatar).
+  const [broken, setBroken] = useState([]);
+  const photo = [driver.photoUrl, ...(driver.photoFallbacks || [])].filter(Boolean).find((u) => !broken.includes(u));
+  if (photo)
     return (
       <img
-        src={sizedAvatarUrl(driver.photoUrl, 112)}
+        key={photo}
+        src={sizedAvatarUrl(photo, 112)}
         alt=""
         className="h-full w-full object-cover"
         loading="lazy"
         decoding="async"
-        onError={() => setBroken(true)}
+        onError={() => setBroken((seen) => (seen.includes(photo) ? seen : [...seen, photo]))}
       />
     );
   if (!color)
@@ -461,7 +466,7 @@ function DriverFace({ driver, color }) {
 // black lettering, NCB Mugen's flag) read inside the dark medal. The logo is
 // sized by its drawing, not its file, and never past the file's own pixels.
 // A wordmark too thin for the round, or a team with no logo at all, shows its
-// initials in gold instead (lookCards.css).
+// initials in gold instead (seasonAwardCards.css).
 function TeamFace({ team }) {
   const [ref, shape] = useLogoShape(team.logoUrl || team.id);
   const mark = teamInitials(team.name);
@@ -514,7 +519,18 @@ function Medal({ w, seasonNumber }) {
   let face;
   // Same colour as the card's --aw-team, so the initials are worked out for the
   // disc they are actually drawn on.
-  if (w.kind === "driver") face = <DriverFace driver={w.driver} color={w.color} />;
+  if (w.kind === "driver" && w.partner)
+    // A shared award: both drivers, as two smaller overlapping discs.
+    face = (
+      <span className="aw-cards-pair">
+        {[w.driver, w.partner].map((d) => (
+          <span key={d.driverId} className="aw-cards-half" style={{ "--aw-half": d.team?.color || MEDAL[0] }}>
+            <DriverFace driver={d} color={d.team?.color || null} />
+          </span>
+        ))}
+      </span>
+    );
+  else if (w.kind === "driver") face = <DriverFace driver={w.driver} color={w.color} />;
   else if (w.kind === "team") face = <TeamFace team={w.team} />;
   else if (w.kind === "race")
     face = outline ? (
@@ -544,7 +560,12 @@ function Medal({ w, seasonNumber }) {
     <div className="aw-cards-medal" aria-hidden="true">
       <Laurel clasp={pin} />
       <div className="aw-cards-ring">
-        <div className="aw-cards-disc" data-kind={w.kind} data-teamless={w.kind === "driver" && !w.color ? "" : undefined}>
+        <div
+          className="aw-cards-disc"
+          data-kind={w.kind}
+          data-teamless={w.kind === "driver" && !w.color ? "" : undefined}
+          data-pair={w.partner ? "" : undefined}
+        >
           {face}
         </div>
       </div>
@@ -588,7 +609,18 @@ function AwardCard({ award, seasonNumber, index, place }) {
             <Medal w={w} seasonNumber={seasonNumber} />
             <p className="aw-cards-name font-display font-black uppercase leading-[0.95] tracking-tight">
               <span ref={nameRef}>
-                {w.to ? (
+                {w.links ? (
+                  // A shared award: each name opens its own driver.
+                  w.links.map((l, i) => (
+                    <span key={l.to}>
+                      {i > 0 && " & "}
+                      <Link to={l.to} className="aw-cards-link" onFocus={showInRail}>
+                        {i === 0 && <span className="sr-only">{award.title}: </span>}
+                        {l.name}
+                      </Link>
+                    </span>
+                  ))
+                ) : w.to ? (
                   <Link to={w.to} className="aw-cards-link" onFocus={showInRail}>
                     {/* Tabbing from card to card, a name on its own does not
                         say what it won (and one driver can win twice). */}
@@ -621,7 +653,7 @@ function AwardCard({ award, seasonNumber, index, place }) {
               </p>
             ) : (
               // The phone rail keeps two lines for a reason on every card, so
-              // a card without one is as tall as the rest (lookCards.css).
+              // a card without one is as tall as the rest (seasonAwardCards.css).
               <p className="aw-cards-note" data-empty="" aria-hidden="true" />
             )}
             {/* The rating cards' signature line. It sits at the foot of the
@@ -675,7 +707,7 @@ function AwardRail({ season, plans }) {
   );
 }
 
-export default function LookCards({ seasons }) {
+export default function SeasonAwardCards({ seasons }) {
   const [picked, setPicked] = useState(seasons[0]?.seasonNumber);
   const season = seasons.find((s) => s.seasonNumber === picked) || seasons[0];
   // A new season fades over instead of dealing every card in again.
@@ -689,7 +721,7 @@ export default function LookCards({ seasons }) {
   const plans = [2, 3, 4].map((cols) => gridPlan(n, cols));
   return (
     <section
-      data-awards-look="cards"
+      data-season-awards
       className="reveal aw-cards"
       style={{ "--aw-halves2": plans[0].halves, "--aw-halves3": plans[1].halves, "--aw-halves4": plans[2].halves }}
     >

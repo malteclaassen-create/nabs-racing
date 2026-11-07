@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------
-   Season awards, look "cards" (LookCards.jsx). Every award is a trophy card in
+   Season awards on the Hall of Fame (SeasonAwardCards.jsx). Every award is a trophy card in
    the language of the driver rating cards (.rcard-* in index.css): chamfered
    corners, the champion edition's gold metal as the frame, a dark face in both
    themes. Every class here starts with aw-cards-, so none of it reaches the
@@ -67,7 +67,7 @@
 }
 
 /* Where you are in the rail: a dot per card, or "3 / 24" when there are more
-   cards than dots that fit (LookCards.jsx, MAX_DOTS). Positioned, so they draw
+   cards than dots that fit (SeasonAwardCards.jsx, MAX_DOTS). Positioned, so they draw
    over the soft end of the cards' shadow rather than under it. */
 .aw-cards-dots { position: relative; display: flex; justify-content: center; gap: 6px; padding: 0 0 4px; }
 .aw-cards-dots > span {
@@ -290,7 +290,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
    admin can type (60 characters) still needs three at the smallest size
    useFitText goes to, and then gets a little more room above and below
    (data-over), so the lines stay clear of the ribbon's edges; the other
-   ribbons of its row take the same height (--aw-ribbon-h, LookCards.jsx
+   ribbons of its row take the same height (--aw-ribbon-h, SeasonAwardCards.jsx
    useRowHeights). */
 .aw-cards-ribbon {
   position: relative;
@@ -370,11 +370,36 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
 }
 /* A driver without a photo: the initials on their team colour, lit from the
    upper left like the ring around it. A photo simply covers it. A driver
-   without a team keeps the dark disc and gets gold initials (LookCards.jsx). */
+   without a team keeps the dark disc and gets gold initials (SeasonAwardCards.jsx). */
 .aw-cards-disc[data-kind="driver"]:not([data-teamless]) {
   background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--aw-team) 70%, #fff) 0%, var(--aw-team) 48%, color-mix(in srgb, var(--aw-team) 62%, #000) 100%);
 }
 .aw-cards-initials { font-size: calc(var(--m) * 0.27); }
+/* An award two drivers share: both pictures whole, as two smaller discs that
+   overlap in the middle of the dark disc, each in a thin gold ring. Each keeps
+   its own driver's photo, or initials on its own team colour. */
+.aw-cards-pair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.aw-cards-half {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 54%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #e9bc42, 0 4px 10px rgba(0, 0, 0, 0.55);
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--aw-half) 70%, #fff) 0%, var(--aw-half) 48%, color-mix(in srgb, var(--aw-half) 62%, #000) 100%);
+}
+.aw-cards-half + .aw-cards-half { margin-left: -12%; }
+.aw-cards-half .aw-cards-initials,
+.aw-cards-half .aw-cards-mono { font-size: calc(var(--m) * 0.15); }
 .aw-cards-track { width: 70%; height: 70%; filter: drop-shadow(0 0 6px rgba(234, 179, 8, 0.45)); }
 .aw-cards-trophy { width: 44%; height: 44%; color: #f8e08e; filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.35)); }
 .aw-cards-mono {
@@ -389,7 +414,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
 
 /* A team's logo, on a cream enamel plate with a gold edge set into the dark
    disc, so dark marks read (Toro Rosso's black lettering would vanish on the
-   navy). The logo is sized by its drawing, not its file (LookCards.jsx,
+   navy). The logo is sized by its drawing, not its file (SeasonAwardCards.jsx,
    logoShape): --lw is the drawing's width in file pixels, --lr its width over
    its height, --lcos its width over its diagonal, and --lsx/--lsy/--lox/--loy
    place the whole file so that only the drawing fills the box. The drawing
@@ -491,7 +516,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
 
 /* The winner. The inner span is the part useFitText sizes; the paragraph
    around it is the box it sits in. A row where one name runs to two lines
-   gives every name in it that name's room (--aw-name-h, LookCards.jsx
+   gives every name in it that name's room (--aw-name-h, SeasonAwardCards.jsx
    useRowHeights) and sets each on its team line, so the team lines below stay
    level; elsewhere a name sits right under its medal. */
 .aw-cards-name {
@@ -572,7 +597,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   .aw-cards-note[data-empty] { display: none; }
 }
 /* Three lines at most in the display, where a pointer can read the rest as
-   the card's tooltip (LookCards.jsx). The longest note an admin can type (200
+   the card's tooltip (SeasonAwardCards.jsx). The longest note an admin can type (200
    characters) runs to seven, and every other card in its row stretched to
    match. A touch tablet has no tooltip, so it shows the note in full. */
 @media (min-width: 560px) and (hover: hover) {

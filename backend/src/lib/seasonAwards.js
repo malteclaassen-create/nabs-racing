@@ -9,12 +9,15 @@
 // (ensureSeasonAwardTable, called from ensureAppSchema) and mirrored by a
 // migration. An award is won by ONE of: a driver of that season, a team of
 // that season, a race of that season, or a name typed by hand (someone who
-// is not on the roster, or "X and Y" for a shared award). A short line under
-// it says why, if the league wants one.
+// is not on the roster). A driver award can name a second driver for an
+// award two people share (best partnership). A short line under it says why,
+// if the league wants one.
 //
 // Shown in the Hall of Fame (all seasons) and in the season honours on Home.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "node:crypto";
+import { getIdentityOverrides } from "./persons.js";
+import { parseCardPhotoPos, personPhotoFor, photoFallbacksFor } from "./cardPhoto.js";
 
 export const AWARD_LIMITS = { title: 60, winner: 80, note: 200, perSeason: 40 };
 
@@ -34,6 +37,7 @@ export async function ensureSeasonAwardTable(prisma) {
     "seasonId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "driverId" TEXT,
+    "partnerId" TEXT,
     "teamId" TEXT,
     "raceId" TEXT,
     "winnerText" TEXT,
@@ -41,6 +45,11 @@ export async function ensureSeasonAwardTable(prisma) {
     "position" INTEGER NOT NULL DEFAULT 0,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  // A table from before shared awards gets the column on its own.
+  const cols = await prisma.$queryRawUnsafe(`PRAGMA table_info("SeasonAward")`);
+  if (!cols.some((c) => c.name === "partnerId")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "SeasonAward" ADD COLUMN "partnerId" TEXT`);
+  }
   await prisma.$executeRawUnsafe(
     `CREATE INDEX IF NOT EXISTS "SeasonAward_seasonId_position_idx" ON "SeasonAward"("seasonId", "position")`
   );
@@ -54,7 +63,8 @@ function cleanText(v, max) {
 }
 
 // What an admin sent, checked and trimmed. Exactly one kind of winner:
-// { kind: "driver"|"team"|"race"|"text", id?, text? }. The ids are checked
+// { kind: "driver"|"team"|"race"|"text", winnerId?, partnerId?, winnerText? },
+// partnerId only with a driver. The ids are checked
 // against the season by the caller (checkWinnerInSeason), since that needs
 // the database.
 export function sanitizeAwardInput(body) {
@@ -63,11 +73,17 @@ export function sanitizeAwardInput(body) {
   if (!title) return { error: "Give the award a name." };
   const note = cleanText(b.note, AWARD_LIMITS.note) || null;
   const kind = String(b.kind || "");
-  const out = { title, note, driverId: null, teamId: null, raceId: null, winnerText: null };
+  const out = { title, note, driverId: null, partnerId: null, teamId: null, raceId: null, winnerText: null };
   if (kind === "driver" || kind === "team" || kind === "race") {
     const id = String(b.winnerId ?? "");
     if (!isAwardId(id)) return { error: `Pick the ${kind} who won it.` };
     out[`${kind}Id`] = id;
+    const partner = b.partnerId == null ? "" : String(b.partnerId);
+    if (kind === "driver" && partner) {
+      if (!isAwardId(partner)) return { error: "Pick the second driver again." };
+      if (partner === id) return { error: "Pick two different drivers." };
+      out.partnerId = partner;
+    }
   } else if (kind === "text") {
     const text = cleanText(b.winnerText, AWARD_LIMITS.winner);
     if (!text) return { error: "Type who won it." };
@@ -81,6 +97,10 @@ export function sanitizeAwardInput(body) {
 // The picked driver, team or race must belong to the award's season, or the
 // Hall of Fame would show a Season 3 award won by a Season 7 row.
 export async function checkWinnerInSeason(prisma, seasonId, award) {
+  if (award.partnerId) {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "seasonId" FROM "Driver" WHERE "id" = ?`, award.partnerId);
+    if (!rows.length || rows[0].seasonId !== seasonId) return false;
+  }
   const [table, id] = award.driverId
     ? ["Driver", award.driverId]
     : award.teamId
@@ -107,9 +127,9 @@ export async function createAward(prisma, seasonId, award) {
   );
   const id = randomUUID();
   await prisma.$executeRawUnsafe(
-    `INSERT INTO "SeasonAward" ("id","seasonId","title","driverId","teamId","raceId","winnerText","note","position")
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-    id, seasonId, award.title, award.driverId, award.teamId, award.raceId, award.winnerText, award.note,
+    `INSERT INTO "SeasonAward" ("id","seasonId","title","driverId","partnerId","teamId","raceId","winnerText","note","position")
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    id, seasonId, award.title, award.driverId, award.partnerId ?? null, award.teamId, award.raceId, award.winnerText, award.note,
     p == null ? 0 : Number(p) + 1
   );
   return { id };
@@ -122,8 +142,8 @@ export async function readAwardRow(prisma, id) {
 
 export async function updateAward(prisma, id, award) {
   await prisma.$executeRawUnsafe(
-    `UPDATE "SeasonAward" SET "title" = ?, "driverId" = ?, "teamId" = ?, "raceId" = ?, "winnerText" = ?, "note" = ? WHERE "id" = ?`,
-    award.title, award.driverId, award.teamId, award.raceId, award.winnerText, award.note, id
+    `UPDATE "SeasonAward" SET "title" = ?, "driverId" = ?, "partnerId" = ?, "teamId" = ?, "raceId" = ?, "winnerText" = ?, "note" = ? WHERE "id" = ?`,
+    award.title, award.driverId, award.partnerId ?? null, award.teamId, award.raceId, award.winnerText, award.note, id
   );
 }
 
@@ -179,16 +199,27 @@ export async function readSeasonAwards(prisma, seasonIds) {
   if (!rows.length) return out;
 
   const ids = (key) => [...new Set(rows.map((r) => r[key]).filter(Boolean))];
-  const [drivers, teams, races] = await Promise.all([
-    ids("driverId").length
+  const driverIds = [...new Set([...ids("driverId"), ...ids("partnerId")])];
+  const [drivers, pictures, identity, teams, races] = await Promise.all([
+    driverIds.length
       ? prisma.driver.findMany({
-          where: { id: { in: ids("driverId") } },
+          where: { id: { in: driverIds } },
           select: {
             id: true, name: true, photoUrl: true, discordAvatar: true, country: true, tier: true,
             team: { select: { id: true, name: true, color: true, logoUrl: true } },
           },
         })
       : [],
+    // The card picture columns are raw-SQL columns (see lib/cardPhoto.js).
+    driverIds.length
+      ? prisma
+          .$queryRawUnsafe(
+            `SELECT "id","cardPhotoUrl","cardPhotoPos" FROM "Driver" WHERE "id" IN (${driverIds.map(() => "?").join(",")})`,
+            ...driverIds
+          )
+          .catch(() => [])
+      : [],
+    driverIds.length ? getIdentityOverrides(prisma) : new Map(),
     ids("teamId").length
       ? prisma.team.findMany({
           where: { id: { in: ids("teamId") } },
@@ -203,12 +234,40 @@ export async function readSeasonAwards(prisma, seasonIds) {
       : [],
   ]);
   const byId = (list) => new Map(list.map((x) => [x.id, x]));
-  const d = byId(drivers);
+  // The picture follows the same rule as the standings: the row's own photo,
+  // else the linked person's newest, else the Discord avatar, with the rest
+  // of that chain as fallbacks for a dead link.
+  const pics = byId(pictures);
+  const d = new Map(
+    drivers.map((x) => {
+      const idov = identity.get(x.id);
+      const own = {
+        cardPhotoUrl: pics.get(x.id)?.cardPhotoUrl || null,
+        photoUrl: x.photoUrl || null,
+        discordAvatar: x.discordAvatar || null,
+        photoPos: parseCardPhotoPos(pics.get(x.id)?.cardPhotoPos),
+      };
+      return [
+        x.id,
+        {
+          ...x,
+          photoUrl: personPhotoFor(own, idov),
+          photoFallbacks: photoFallbacksFor(own, idov),
+          country: x.country || idov?.country || null,
+        },
+      ];
+    })
+  );
   const t = byId(teams);
   const r = byId(races);
 
   for (const row of rows) {
-    const award = shapeAward(row, { driver: d.get(row.driverId), team: t.get(row.teamId), race: r.get(row.raceId) });
+    const award = shapeAward(row, {
+      driver: d.get(row.driverId),
+      partner: d.get(row.partnerId),
+      team: t.get(row.teamId),
+      race: r.get(row.raceId),
+    });
     if (!award) continue;
     if (!out.has(row.seasonId)) out.set(row.seasonId, []);
     out.get(row.seasonId).push(award);
@@ -219,20 +278,17 @@ export async function readSeasonAwards(prisma, seasonIds) {
 // One award as the API hands it out. A winner whose row has since been
 // deleted falls back to the typed name, and with none the award is dropped
 // rather than shown as won by nobody.
-export function shapeAward(row, { driver, team, race } = {}) {
+export function shapeAward(row, { driver, partner, team, race } = {}) {
   const base = { id: row.id, title: row.title, note: row.note || null };
-  if (row.driverId && driver) {
+  // A shared award whose first driver is gone keeps the second one.
+  const first = row.driverId && driver ? driver : row.partnerId && partner ? partner : null;
+  if (first) {
+    const second = first === driver && row.partnerId && partner ? partner : null;
     return {
       ...base,
       kind: "driver",
-      driver: {
-        driverId: driver.id,
-        name: driver.name,
-        photoUrl: driver.photoUrl || driver.discordAvatar || null,
-        country: driver.country || null,
-        tier: driver.tier ?? null,
-        team: driver.team ? { ...driver.team } : null,
-      },
+      driver: shapeDriver(first),
+      partner: second ? shapeDriver(second) : null,
     };
   }
   if (row.teamId && team) {
@@ -254,4 +310,17 @@ export function shapeAward(row, { driver, team, race } = {}) {
   }
   if (row.winnerText) return { ...base, kind: "text", winnerText: row.winnerText };
   return null;
+}
+
+function shapeDriver(driver) {
+  const photoUrl = driver.photoUrl || driver.discordAvatar || null;
+  return {
+    driverId: driver.id,
+    name: driver.name,
+    photoUrl,
+    photoFallbacks: (driver.photoFallbacks || []).filter((u) => u && u !== photoUrl),
+    country: driver.country || null,
+    tier: driver.tier ?? null,
+    team: driver.team ? { ...driver.team } : null,
+  };
 }

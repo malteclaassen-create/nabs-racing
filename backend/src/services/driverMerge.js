@@ -238,6 +238,9 @@ export async function mergeDrivers(prisma, { keepId, dropId, mainAccountId = nul
     await tx.$executeRawUnsafe(`UPDATE "Season" SET "championDriverId" = ? WHERE "championDriverId" = ?`, keep.id, drop.id).catch(() => {});
     // ...and so does a season award the league gave it (lib/seasonAwards.js).
     await tx.$executeRawUnsafe(`UPDATE "SeasonAward" SET "driverId" = ? WHERE "driverId" = ?`, keep.id, drop.id).catch(() => {});
+    await tx.$executeRawUnsafe(`UPDATE "SeasonAward" SET "partnerId" = ? WHERE "partnerId" = ?`, keep.id, drop.id).catch(() => {});
+    // Merging the two drivers of a shared award leaves one driver, not a pair.
+    await tx.$executeRawUnsafe(`UPDATE "SeasonAward" SET "partnerId" = NULL WHERE "partnerId" = "driverId"`).catch(() => {});
 
     // Identity and profile: the login and the Steam id are unique, so they
     // leave the old row before they land on the kept one.
