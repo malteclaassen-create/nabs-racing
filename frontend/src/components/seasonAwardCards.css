@@ -175,7 +175,9 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   background: linear-gradient(135deg, #fbe6a8 0%, #e9bc42 15%, #a8770e 39%, #4a3406 50%, #a8770e 61%, #e9bc42 85%, #fbe6a8 100%);
 }
 
-/* The face. Dark in both themes, like every card on the site. The inner cut is
+/* The face. Dark in both themes, like every card on the site, and flat: the
+   team colour is in the strip at the foot and the team name, the metal in the
+   frame and the ribbon. The inner cut is
    shorter than the frame's so the diagonal edge stays as thick as the straight
    ones (18 - 2 x (2 - 1.414) = 16.8, see .rcard-frame). */
 .aw-cards-body {
@@ -192,10 +194,7 @@ html:not(.dark) .aw-cards-card { filter: drop-shadow(0 12px 18px rgba(15, 23, 42
   clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
   color: #fff;
   text-align: center;
-  background:
-    radial-gradient(95% 40% at 50% 27%, color-mix(in srgb, var(--aw-team) 26%, transparent), transparent 74%),
-    radial-gradient(60% 32% at 50% 30%, rgba(234, 179, 8, 0.13), transparent 72%),
-    linear-gradient(180deg, #121b2e 0%, #0b111e 50%, #070b14 100%);
+  background: #0b111c;
 }
 @media (min-width: 560px) { .aw-cards-body { padding: 12px 16px; } }
 /* A hairline just inside the frame, as on the rating cards. */
