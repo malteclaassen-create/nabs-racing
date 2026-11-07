@@ -21,10 +21,12 @@ import Flag from "./Flag.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import CircuitMap from "./CircuitMap.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { hasOutline, useTrackOutlines } from "../data/trackOutlines.js";
 import { flagFor } from "../data/circuits.js";
 import { motionOff, useSwapClass } from "../hooks/motion.js";
 import { winnerOf } from "./seasonAwardWinner.js";
+import { openingAwardSeason } from "./seasonAwardOpening.mjs";
 import "./seasonAwardCards.css";
 
 // The champion edition's gold (index.css, .rcard-frame[data-edition="champion"]),
@@ -758,8 +760,13 @@ function AwardRail({ season, plans }) {
 }
 
 export default function SeasonAwardCards({ seasons }) {
-  const [picked, setPicked] = useState(seasons[0]?.seasonNumber);
-  const season = seasons.find((s) => s.seasonNumber === picked) || seasons[0];
+  const { season: viewed } = useSeason();
+  const opening = openingAwardSeason(seasons, viewed);
+  const [picked, setPicked] = useState(opening);
+  // Switching season in the menu opens that season's awards again.
+  useEffect(() => setPicked(opening), [opening]);
+  // A season from before the first awards has no section at all.
+  const season = picked == null ? null : seasons.find((s) => s.seasonNumber === picked) || seasons[0];
   // A new season fades over instead of dealing every card in again.
   const swap = useSwapClass(season?.seasonNumber);
   if (!season) return null;
