@@ -1450,6 +1450,11 @@ export const api = {
     return request(`/admin/seasons/${id}/car`, { method: "POST", body: fd, auth: true, form: true });
   },
   clearSeasonCar: (id) => request(`/admin/seasons/${id}/car`, { method: "DELETE", auth: true }),
+  // The short film the "coming soon" main card plays while the season waits
+  // for its opener.
+  uploadSeasonPreviewLoop: (id, file, onProgress) =>
+    adminUploadWithProgress(`/admin/seasons/${id}/preview-loop`, file, onProgress),
+  clearSeasonPreviewLoop: (id) => request(`/admin/seasons/${id}/preview-loop`, { method: "DELETE", auth: true }),
   // The unveil that needs no season: the car, its cover and the film for this series.
   carEvent: () => request(`/admin/car-unveil${seriesQ()}`, { auth: true }),
   // The car under its cover: "covered", "unveiled" (now) or "off".

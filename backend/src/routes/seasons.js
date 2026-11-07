@@ -73,7 +73,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl / cardsEnabled
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -96,6 +96,7 @@ router.get("/", async (req, res, next) => {
           fastestLapPoints: parseFastestLapPoints(extra.fastestLapPoints),
           isPublic: extra.isPublic == null ? true : !!Number(extra.isPublic),
           heroImageUrl: extra.heroImageUrl || null,
+          previewLoopUrl: extra.previewLoopUrl || null,
           ...publicCar(extra),
           // Drives the "Cards" view switch in the driver standings and the
           // rating card on the driver page. Missing column (pre-migration

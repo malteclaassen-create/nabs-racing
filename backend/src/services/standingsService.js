@@ -4,6 +4,7 @@
 // totals are computed from the RaceResult rows, so the per-driver drop rule
 // (see below) can trace every team point back to the driver who scored it.
 // ---------------------------------------------------------------------------
+import { readQualiSheets, missedQuali } from "../lib/missedQuali.js";
 import {
   getDriverResultPoints,
   fastestLapBonusOf,
@@ -778,8 +779,17 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // sheet below: these are the season's numbers, not round four's.
   const manualPoints = partial ? new Map() : await readManualPoints(prisma, seasonId);
 
+  // The grid each cell carries is for the head-to-head on the driver page.
+  // A round whose qualifying the driver skipped carries none there: the slot
+  // is the back of the field, not a lap (lib/missedQuali.js). Points read the
+  // same rows, untouched.
+  const qualiSheets = await readQualiSheets(prisma, raceIds);
+  const cellResults = qualiSheets.size
+    ? appliedResults.map((r) => (r.grid != null && missedQuali(r, qualiSheets) ? { ...r, grid: null } : r))
+    : appliedResults;
+
   const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
-    const { perRace, pointsByRound } = buildDriverPerRace(appliedResults, driver.id, raceNumberById, table, sprintRaceIds);
+    const { perRace, pointsByRound } = buildDriverPerRace(cellResults, driver.id, raceNumberById, table, sprintRaceIds);
 
     // Season total drops each driver's N lowest rounds (unscored / not-yet-run
     // rounds count as 0 and are dropped first). The per-race grid still shows

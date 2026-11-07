@@ -25,6 +25,7 @@ import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
 import { useCarUnveil, CoverVisual, fmtCountdown, useNow, UnveilDevBar } from "../components/CarUnveil.jsx";
 import IdleFilm from "../components/IdleFilm.jsx";
+import EventFilm from "../components/EventFilm.jsx";
 import { useIdleFilm } from "../hooks/useIdleFilm.js";
 import { useSeries } from "../context/SeriesContext.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -1149,7 +1150,17 @@ export default function Home() {
           // hangs over the rounded corners, so nothing can be drawn past them.
           className="absolute inset-0 h-full w-full object-cover object-center"
         />
-        <IdleFilm film={film} />
+        {/* A season waiting for its opener can carry a loop of its own (Admin
+            Seasons > Main card loop): it plays from the start, round and round,
+            the way a special event's card does, and the text stays over it.
+            The series' idle film stands down meanwhile, so the card never has
+            two films fighting over it. Without moving pictures (reduced
+            motion, low effects, Save-Data) the loop holds its first frame. */}
+        {showComingSoonHero && season?.previewLoopUrl ? (
+          <EventFilm loop={season.previewLoopUrl} alt={`${season.name} preview`} />
+        ) : (
+          <IdleFilm film={film} />
+        )}
         {/* Backdrop scrim — white in light mode, dark in dark mode. The archive
             scrim reaches further across so the centred podium sits on solid
             ground. The light scrim runs slightly stronger: ink text needs more

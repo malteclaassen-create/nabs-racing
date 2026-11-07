@@ -5360,6 +5360,87 @@ function SeasonCar({ season, onSaved, onError }) {
   );
 }
 
+// The season's preview loop: a short film the "coming soon" main card plays,
+// muted and over and over, until the season's first result is in. The same
+// idea as a special event's main card loop, for a championship season before
+// it starts.
+function SeasonPreviewLoop({ season, onSaved, onError }) {
+  const ask = useAsk();
+  const fileRef = useRef(null);
+  const [progress, setProgress] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const off = busy || progress !== null;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setProgress(0);
+    try {
+      await api.uploadSeasonPreviewLoop(season.id, file, setProgress);
+      onSaved(`Main card loop uploaded for ${season.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function clear() {
+    if (
+      !(await ask({
+        title: `Remove ${season.name}'s main card loop?`,
+        body: "The coming-soon card shows its photo again.",
+        danger: true,
+        confirmLabel: "Remove loop",
+      }))
+    )
+      return;
+    setBusy(true);
+    try {
+      await api.clearSeasonPreviewLoop(season.id);
+      onSaved(`Main card loop removed from ${season.name}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-semibold text-light">Main card loop</span>
+      <input
+        aria-label={`Main card loop for ${season.name}`}
+        ref={fileRef}
+        type="file"
+        accept="video/mp4,video/webm"
+        className="hidden"
+        onChange={pick}
+      />
+      {progress !== null ? (
+        <span className="font-semibold text-medium">uploading… {progress}%</span>
+      ) : (
+        <>
+          <button type="button" className="btn-secondary px-3 py-1 text-xs" disabled={off}
+            onClick={() => fileRef.current?.click()}>
+            {season.previewLoopUrl ? "Replace" : "Upload"}
+          </button>
+          {season.previewLoopUrl && (
+            <button type="button" className="font-semibold text-light transition hover:text-rose-500" disabled={off}
+              onClick={clear}>
+              Remove
+            </button>
+          )}
+        </>
+      )}
+      <span className="text-light" title="MP4 or WebM, up to 300 MB. 1080p H.264 MP4 plays everywhere. Muted, so no sound needed.">
+        Plays on the coming-soon card until the first result is in
+      </span>
+    </div>
+  );
+}
+
 // The car under a cover until it is unveiled live, at the briefing
 // (components/CarUnveil.jsx, backend lib/carUnveil.js). While it is covered
 // the site shows a cover instead of the picture and hands the picture to
@@ -6308,6 +6389,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
                     onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  <SeasonPreviewLoop season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}
                     onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <AdminSeasonAwards season={s} onSaved={setMsg} onError={setError} />

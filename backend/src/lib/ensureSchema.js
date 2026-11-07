@@ -199,6 +199,9 @@ export async function ensureAppSchema(prisma) {
   // --- Admin-uploaded hero photo override for the Home/Welcome main card.
   // null = fall back to the static /heroes/s<number>.jpg drop-in convention.
   await addColumn(prisma, "Season", "heroImageUrl", "TEXT");
+  // --- A short film the "coming soon" main card plays over and over while the
+  // season waits for its opener. null = the photo, as before.
+  await addColumn(prisma, "Season", "previewLoopUrl", "TEXT");
 
   // --- Admin-uploaded car image for the "coming soon" hero panel (migration
   // season_car_image). null = the static /cars/s<number>.jpg convention; if
