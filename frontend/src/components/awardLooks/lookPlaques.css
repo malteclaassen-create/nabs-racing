@@ -71,7 +71,7 @@
     --aw-plaques-medal: 104px;
     --aw-plaques-hgap: 30px;
     --aw-plaques-side: 46px;
-    --aw-plaques-name-max: 30px;
+    --aw-plaques-name-max: 32px;
   }
 }
 
@@ -550,11 +550,11 @@
     font-size: 15px;
   }
 }
-/* Where a plate is wide (one across on a big phone or a small tablet, and two
-   across from 1024px) the inscription is centred under itself, as on a trophy
-   plate, and the note sits under the name rather than under the medallion.
-   On a phone, and two across below 1024px, the lines stay with the medallion
-   on their left: centred in a column that narrow they would drift apart. */
+/* From 480px the inscription is centred under itself, as on a trophy plate,
+   with the note under the name rather than under the medallion and the season
+   under the middle of both: left-aligned, the lines filled only the left part
+   of a wide plate. On a phone the column beside the medallion is too narrow
+   for that, so the lines stay with the medallion on their left. */
 @media (min-width: 480px) {
   .aw-plaques-text,
   .aw-plaques-note {
