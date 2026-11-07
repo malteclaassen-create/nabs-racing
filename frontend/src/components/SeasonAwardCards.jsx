@@ -57,7 +57,7 @@ function laurel(clasp) {
   const R = 42.5; // the stem's circle, in a 100 x 100 box (the ring is 34)
   const base = clasp ? 160 : 172; // degrees round from 12 o'clock
   const tip = 34;
-  const N = 10; // leaf pairs per branch, then the leaf at the tip
+  const N = 11; // leaf pairs per branch, then the leaf at the tip
   const stems = [];
   const leaves = [];
   for (const side of [1, -1]) {
@@ -83,14 +83,16 @@ function laurel(clasp) {
         transform: `translate(${r2(px)} ${r2(py)}) rotate(${r2(phi)})`,
       });
     };
-    const step = (base - tip) / (N + 0.6);
+    // One even step between pairs, and the same step from the last pair to
+    // the leaf at the tip, so no gap opens at the top.
+    const step = (base - tip) / (N + 0.35);
     for (let i = 0; i < N; i++) {
       const deg = base - (i + 0.35) * step;
       const size = 1 - 0.42 * (i / N);
       leaf(deg, 42, size, `${side}-o${i}`); // out
       leaf(deg, -14, size * 0.86, `${side}-i${i}`); // along the inside
     }
-    leaf(tip, 4, 0.55, `${side}-tip`);
+    leaf(tip, 4, 0.58, `${side}-tip`);
   }
   // Drawn from the tip down, so every leaf lies over the one above it.
   return { stems, leaves: leaves.reverse() };
