@@ -46,55 +46,54 @@ const WORDMARK = 3;
 const r2 = (v) => Math.round(v * 100) / 100;
 
 // The laurel round the portrait: two olive branches that rise from the foot
-// of the ring and stop short of the season tag at the top. Each is a stem
-// along a circle with slim leaves growing from it in pairs, one out and one
-// in, smaller toward the tip. Every leaf is
-// struck in two halves, a lit one and a shaded one either side of its vein,
-// so the wreath reads as embossed metal rather than flat gold cut-outs.
-// `clasp` leaves a gap at the foot for the flag pinned there.
+// of the ring and end in a single leaf short of the season tag at the top.
+// The leaves grow in true pairs, both from the same point on the stem, one
+// turned out and one running along the inside, every base sitting on the
+// stem, evenly spaced and smaller toward the tip, and all of them clear of
+// the ring. Every leaf is struck in two halves either side of its vein, a lit
+// one and a shaded one. `clasp` leaves a gap at the foot for the flag pinned
+// there.
 function laurel(clasp) {
-  const R = 42.5; // the stem's circle, in a 100 x 100 box
+  const R = 42.5; // the stem's circle, in a 100 x 100 box (the ring is 34)
   const base = clasp ? 160 : 172; // degrees round from 12 o'clock
-  const tip = 36;
-  const N = 9; // leaf pairs per branch, plus one leaf on the tip
+  const tip = 34;
+  const N = 10; // leaf pairs per branch, then the leaf at the tip
   const stems = [];
   const leaves = [];
   for (const side of [1, -1]) {
-    const at = (deg, r = R) => [50 + side * r * Math.sin((deg * Math.PI) / 180), 50 - r * Math.cos((deg * Math.PI) / 180)];
+    const at = (deg) => [50 + side * R * Math.sin((deg * Math.PI) / 180), 50 - R * Math.cos((deg * Math.PI) / 180)];
     const [x0, y0] = at(base);
-    const [x1, y1] = at(tip + 1);
+    const [x1, y1] = at(tip);
     stems.push(`M${r2(x0)} ${r2(y0)}A${R} ${R} 0 0 ${side > 0 ? 0 : 1} ${r2(x1)} ${r2(y1)}`);
     const leaf = (deg, lean, size, key) => {
-      const ry = 6 * size; // half the leaf's length
-      const w = 2.9 * size; // its curves' pull: a slim olive leaf
-      // Which way the leaf points, clockwise from 12 o'clock: along the stem
-      // toward the tip (deg - 90), turned out or in by `lean` degrees.
+      const L = 11.5 * size; // base to tip
+      const w = 2.7 * size; // half-width, widest a little below the middle
+      // Pointing, clockwise from 12 o'clock: along the stem toward its tip
+      // (deg - 90), turned out (+) or in (-) by `lean` degrees.
       const phi = side * (deg - 90 + lean);
-      const ux = Math.sin((phi * Math.PI) / 180);
-      const uy = -Math.cos((phi * Math.PI) / 180);
       const [px, py] = at(deg);
-      // Base at (0, ry) on the stem, tip at (0, -ry); the half facing the
-      // light (the outer side of each branch) is the bright one.
-      const half = (sx) =>
-        `M0 ${r2(ry)}C${r2(sx * w)} ${r2(ry * 0.5)} ${r2(sx * w)} ${r2(-ry * 0.4)} 0 ${r2(-ry)}Z`;
+      // Base at (0, 0), exactly on the stem; tip at (0, -L). The half on the
+      // outer side of the branch catches the light.
+      const half = (sx) => `M0 0C${r2(sx * w * 1.15)} ${r2(-L * 0.18)} ${r2(sx * w * 0.95)} ${r2(-L * 0.68)} 0 ${r2(-L)}Z`;
       leaves.push({
         key,
         lit: half(side),
         shade: half(-side),
-        vein: `M0 ${r2(ry * 0.9)}Q${r2(side * w * 0.12)} 0 0 ${r2(-ry * 0.82)}`,
-        transform: `translate(${r2(px + ux * ry * 0.9)} ${r2(py + uy * ry * 0.9)}) rotate(${r2(phi)})`,
+        vein: `M0 ${r2(-L * 0.04)}L0 ${r2(-L * 0.86)}`,
+        transform: `translate(${r2(px)} ${r2(py)}) rotate(${r2(phi)})`,
       });
     };
+    const step = (base - tip) / (N + 0.6);
     for (let i = 0; i < N; i++) {
-      const t = i / N; // 0 at the foot
-      const deg = base - t * (base - tip);
-      const size = 1 - 0.45 * t;
-      leaf(deg, 44, size, `${side}-o${i}`); // out
-      leaf(deg - (base - tip) / N / 2, -24, size * 0.9, `${side}-i${i}`); // in, half a step on
+      const deg = base - (i + 0.35) * step;
+      const size = 1 - 0.42 * (i / N);
+      leaf(deg, 42, size, `${side}-o${i}`); // out
+      leaf(deg, -14, size * 0.86, `${side}-i${i}`); // along the inside
     }
-    leaf(tip, 0, 0.5, `${side}-tip`);
+    leaf(tip, 4, 0.55, `${side}-tip`);
   }
-  return { stems, leaves };
+  // Drawn from the tip down, so every leaf lies over the one above it.
+  return { stems, leaves: leaves.reverse() };
 }
 const LAURELS = { clasp: laurel(true), full: laurel(false) };
 
@@ -116,7 +115,7 @@ function Laurel({ clasp }) {
           <stop offset="1" stopColor={GOLD_DEEP} />
         </linearGradient>
       </defs>
-      <g fill="none" stroke={GOLD_DEEP} strokeWidth={1.3} strokeLinecap="round">
+      <g fill="none" stroke={GOLD_DEEP} strokeWidth={1.1} strokeLinecap="round">
         {stems.map((d) => (
           <path key={d} d={d} />
         ))}
@@ -125,7 +124,7 @@ function Laurel({ clasp }) {
         <g key={l.key} transform={l.transform}>
           <path d={l.shade} fill={`url(#${id}-shade)`} />
           <path d={l.lit} fill={`url(#${id}-lit)`} />
-          <path d={l.vein} fill="none" stroke={GOLD_DEEP} strokeWidth={0.35} strokeOpacity={0.7} />
+          <path d={l.vein} fill="none" stroke={GOLD_DEEP} strokeWidth={0.3} strokeOpacity={0.75} strokeLinecap="round" />
         </g>
       ))}
     </svg>
