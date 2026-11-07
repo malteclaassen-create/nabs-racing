@@ -1,0 +1,532 @@
+/* ---------------------------------------------------------------------------
+   Season awards, look "gala" (LookGala.jsx). A dark stage in both themes: one
+   spotlight from above on the headline award, gold hairlines for everything
+   else. Every class here starts with aw-gala- so none of it reaches the rest
+   of the site.
+   --------------------------------------------------------------------------- */
+
+.aw-gala {
+  /* MEDAL[0] and two shades of it for the metal: the lit and the shaded edge. */
+  --aw-gold: 234 179 8;
+  --aw-gold-hi: 253 230 138;
+  --aw-gold-lo: 161 98 7;
+}
+
+/* --- The stage lights ------------------------------------------------------ */
+
+/* One cone of light from a lamp above the panel, landing on the headline
+   picture. The light is a faint gold fill; the mask cuts it to a cone (a
+   conic gradient with wide soft ramps either side, so it has no hard edge)
+   and lets it thin out on the way down instead of ending on a line. A pale
+   light over the navy comes out grey, so the fill is gold and kept low. */
+.aw-gala-beam {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1000px;
+  height: 480px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgb(var(--aw-gold-hi) / 0.15), rgb(var(--aw-gold) / 0.07));
+  -webkit-mask-image:
+    conic-gradient(from 160deg at 50% -230px, transparent 0deg, #000 12deg, #000 28deg, transparent 40deg, transparent 360deg),
+    linear-gradient(to bottom, #000 35%, transparent 88%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    conic-gradient(from 160deg at 50% -230px, transparent 0deg, #000 12deg, #000 28deg, transparent 40deg, transparent 360deg),
+    linear-gradient(to bottom, #000 35%, transparent 88%);
+  mask-composite: intersect;
+}
+/* On a phone the same cone would be as wide as the panel by the time it
+   reaches the picture and wash the whole top grey, so it is narrower there
+   (about 200px across at the picture, which sits lower under the switch). */
+@media (max-width: 639px) {
+  .aw-gala-beam {
+    width: 600px;
+    height: 440px;
+    -webkit-mask-image:
+      conic-gradient(from 166deg at 50% -150px, transparent 0deg, #000 9deg, #000 19deg, transparent 28deg, transparent 360deg),
+      linear-gradient(to bottom, #000 45%, transparent 92%);
+    mask-image:
+      conic-gradient(from 166deg at 50% -150px, transparent 0deg, #000 9deg, #000 19deg, transparent 28deg, transparent 360deg),
+      linear-gradient(to bottom, #000 45%, transparent 92%);
+  }
+}
+/* Where the light comes in: a bright hairline on the top edge with a soft
+   glow under it, gold like the other hairlines. */
+.aw-gala-lamp {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 240px;
+  height: 34px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgb(var(--aw-gold-hi) / 0.85), transparent) top / 100% 1px no-repeat,
+    radial-gradient(50% 100% at 50% 0%, rgb(var(--aw-gold-hi) / 0.26), transparent);
+}
+/* Darker corners, so the middle of the stage reads as the lit part. */
+.aw-gala-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% 18%, transparent 45%, rgb(0 0 0 / 0.32) 100%),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.02), transparent 30%);
+}
+/* The thin gold frame just inside the panel's edge. */
+.aw-gala-frame {
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgb(var(--aw-gold) / 0.16);
+  border-radius: var(--r-xl);
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .aw-gala-frame {
+    inset: 12px;
+  }
+}
+
+/* --- Medallions: the gold ring around every picture -------------------------- */
+
+.aw-gala-medal {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  padding: 2px;
+  background: linear-gradient(
+    145deg,
+    rgb(var(--aw-gold-hi)),
+    rgb(var(--aw-gold)) 34%,
+    rgb(var(--aw-gold-lo)) 62%,
+    rgb(var(--aw-gold)) 82%,
+    rgb(var(--aw-gold-hi))
+  );
+  box-shadow: 0 8px 22px -12px rgb(var(--aw-gold) / 0.55);
+}
+/* The dark gap between the ring and the picture. */
+.aw-gala-medal > .aw-gala-gap {
+  position: relative;
+  display: inline-flex;
+  border-radius: 9999px;
+  padding: 2px;
+  background: rgb(var(--c-ink));
+}
+/* The picture lit from above like everything else on the stage: a soft
+   highlight at the top, a little shade at the bottom. Over a photo too. */
+.aw-gala-medal > .aw-gala-gap::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 50% -8%, rgb(255 255 255 / 0.24), transparent 58%),
+    radial-gradient(120% 70% at 50% 112%, rgb(0 0 0 / 0.3), transparent 62%);
+}
+.aw-gala-medal-big {
+  padding: 4px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25), 0 18px 60px -18px rgb(var(--aw-gold) / 0.7);
+}
+.aw-gala-medal-big > .aw-gala-gap {
+  padding: 4px;
+}
+.aw-gala-medal-big > .aw-gala-gap::after {
+  inset: 4px;
+}
+/* Two hairline halos around the headline ring. */
+.aw-gala-medal-big::before,
+.aw-gala-medal-big::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.aw-gala-medal-big::before {
+  inset: -10px;
+  border: 1px solid rgb(var(--aw-gold) / 0.35);
+}
+.aw-gala-medal-big::after {
+  inset: -20px;
+  border: 1px solid rgb(var(--aw-gold) / 0.14);
+}
+/* Every picture without a photo sits on a dark disc of its own: a driver's
+   initials, a team logo, a circuit or the wreath, all in gold. The winner's
+   team colour (--aw-team, set for drivers and teams) shows as a faint glow
+   in the bottom third of the disc and a hairline just inside it. A disc of
+   solid team colour under the light read as a coin or a big button, and
+   fought the gold; a stronger, higher glow turned a yellow team colour
+   (Renault's) into an olive wash under the gold letters. */
+.aw-gala-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 30%, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.02) 70%),
+    radial-gradient(70% 45% at 50% 100%, color-mix(in srgb, var(--aw-team, transparent) 28%, transparent), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aw-team, transparent) 55%, transparent);
+  color: rgb(var(--aw-gold));
+}
+/* The box a team logo is fitted into (TeamMark in LookGala.jsx): 78% of the
+   disc across and 56% high, which still clears the circle at its corners.
+   The logo fills it as far as it can without being cut, so a square logo is
+   56% of the disc and a wide one (Toro Rosso's is about 5:1) spans most of
+   it rather than shrinking to a sliver in a square box. --aw-cap-w and
+   --aw-cap-h keep a small raster logo from being blown up much past its own
+   size. TeamLogo sizes its picture inline, hence the !important. */
+.aw-gala-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 78%;
+  height: 56%;
+}
+.aw-gala-logo > .aw-gala-team {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.aw-gala-logo img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: var(--aw-cap-w, 100%);
+  max-height: var(--aw-cap-h, 100%);
+  object-fit: contain;
+}
+
+/* The warm pool of light behind the headline picture. */
+.aw-gala-halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280%;
+  height: 210%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(var(--aw-gold-hi) / 0.3), rgb(var(--aw-gold) / 0.1) 48%, transparent);
+}
+
+/* --- Type ------------------------------------------------------------------ */
+
+/* Names are set as large as their --aw-max (by breakpoint and length, see
+   LookGala.jsx) but never so large that their longest unbroken piece (a word,
+   or a hyphenated word up to its hyphen; --aw-len letters) is wider than the
+   box: a long surname shrinks on a phone instead of breaking mid-word. 0.74em
+   is about the widest an average letter of Archivo Black in capitals runs.
+   The headline's floor (1rem) still fits a one-word name of about 22 letters
+   on a 360px phone; overflow-wrap: anywhere is the last resort past that. */
+.aw-gala-fit {
+  container-type: inline-size;
+}
+.aw-gala-hl-name {
+  font-size: var(--aw-max);
+  /* Room in the box for the marks above and below the capitals (Å, Ü, Ç,
+     Ș reach about 0.14em past this tight line box either way): the name is
+     painted through its own background (the shimmer, below), and that ends
+     at the box, so without it Ü came out as a bar and Ç lost its cedilla.
+     The negative margin keeps the layout where it was. */
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+.aw-gala-tile-name {
+  font-size: var(--aw-max);
+}
+@supports (width: 1cqi) {
+  /* 1.5rem: the side padding of the headline's link box. */
+  .aw-gala-hl-name {
+    font-size: clamp(1rem, (100cqi - 1.5rem) / (var(--aw-len) * 0.74), var(--aw-max));
+  }
+  /* A tile name also keeps room for the flag after its last word
+     (--aw-tail letters plus --aw-flag pixels on that line). */
+  .aw-gala-tile-name {
+    font-size: max(
+      0.8125rem,
+      min(
+        var(--aw-max),
+        100cqi / (var(--aw-len) * 0.74),
+        (100cqi - var(--aw-flag, 0px)) / (var(--aw-tail, 1) * 0.74)
+      )
+    );
+  }
+}
+
+/* The winner's name in the headline. At rest it is plain text colour; on
+   reveal a band of gold light runs through the letters once (see the
+   animation further down). The band is part of the text's own background, so
+   it can only ever touch the letters. */
+.aw-gala-name {
+  color: var(--c-text);
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .aw-gala-glint {
+    background-image: linear-gradient(
+      100deg,
+      var(--c-text) 0 40%,
+      rgb(var(--aw-gold-hi)) 46%,
+      #fffbeb 50%,
+      rgb(var(--aw-gold-hi)) 54%,
+      var(--c-text) 60% 100%
+    );
+    background-size: 300% 100%;
+    background-position: 0 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+/* Pointing at the headline turns its light up: the halos round the ring and
+   the glow behind it. The name keeps its colour, so the headline reads the
+   same whether or not a pointer happens to rest on it. Hover only where there
+   is a pointer: a tap on a phone leaves :hover stuck. */
+.aw-gala-medal-big::before,
+.aw-gala-medal-big::after,
+.aw-gala-halo {
+  transition:
+    border-color var(--t-base) var(--e-soft),
+    opacity var(--t-base) var(--e-soft);
+}
+.aw-gala-halo {
+  opacity: 0.85;
+}
+@media (hover: hover) {
+  .aw-gala-hl:hover .aw-gala-medal-big::before {
+    border-color: rgb(var(--aw-gold) / 0.75);
+  }
+  .aw-gala-hl:hover .aw-gala-medal-big::after {
+    border-color: rgb(var(--aw-gold) / 0.4);
+  }
+  .aw-gala-hl:hover .aw-gala-halo {
+    opacity: 1;
+  }
+}
+.aw-gala-hl:focus-visible .aw-gala-medal-big::before {
+  border-color: rgb(var(--aw-gold) / 0.75);
+}
+
+/* Short gold rules either side of a centred award title. */
+.aw-gala-rule {
+  height: 1px;
+  width: 28px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, transparent, rgb(var(--aw-gold) / 0.8));
+}
+.aw-gala-rule-r {
+  background: linear-gradient(270deg, transparent, rgb(var(--aw-gold) / 0.8));
+}
+@media (min-width: 640px) {
+  .aw-gala-rule {
+    width: 44px;
+  }
+}
+/* The small rules in a tile title give way before the title wraps: they
+   grow to 18px when there is room and shrink to 8px when there is not. */
+.aw-gala-rule.aw-gala-rule-sm {
+  flex: 1 1 0%;
+  width: auto;
+  min-width: 8px;
+  max-width: 18px;
+}
+/* From sm up the tiles stand side by side. All tile titles of a season share
+   one size: the one the season's longest title (--aw-tlen letters, set on the
+   grid) needs to stay on a line, down to 10px (a JetBrains Mono letter plus
+   the 0.22em tracking is 0.82em wide, and the two shortest rules with their
+   gaps take about 40px of the tile's inner width). A title longer than that
+   takes two lines, and then every title block of the tiles side by side is
+   as tall as the tallest one (--aw-title-h, measured in LookGala.jsx), so
+   the pictures still line up. The line height is fixed for the same reason. */
+.aw-gala-tile-title {
+  font-size: 10px;
+}
+@media (min-width: 640px) {
+  .aw-gala-tile {
+    container-type: inline-size;
+  }
+  .aw-gala-tile-title {
+    font-size: 11px;
+    line-height: 16px;
+  }
+  .aw-gala-tile-stack .aw-gala-tile-title {
+    min-height: var(--aw-title-h, 16px);
+  }
+  @supports (width: 1cqi) {
+    .aw-gala-tile-title {
+      font-size: clamp(10px, (100cqi - 40px) / ((var(--aw-tlen) + 0.3) * 0.82), 11px);
+    }
+  }
+}
+
+/* Between the headline and the other awards: two hairlines and a diamond. */
+.aw-gala-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.aw-gala-divider::before,
+.aw-gala-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--aw-gold) / 0.45));
+}
+.aw-gala-divider::after {
+  background: linear-gradient(270deg, transparent, rgb(var(--aw-gold) / 0.45));
+}
+.aw-gala-divider > span {
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border: 1px solid rgb(var(--aw-gold) / 0.9);
+}
+
+/* --- The other awards -------------------------------------------------------- */
+
+/* Rows are centred under the headline, so a short last row sits in the middle
+   of the stage rather than leaving a hole on the right. --aw-cols tiles to a
+   row: one on a phone, two from sm, and from lg two to four, whichever leaves
+   the fuller last row (worked out in LookGala.jsx). A tile that would be
+   alone on the last row spans it instead (.aw-gala-span, the wide layout). */
+.aw-gala-grid {
+  --aw-gap: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--aw-gap);
+}
+.aw-gala-grid > * {
+  width: calc((100% - (var(--aw-cols, 1) - 1) * var(--aw-gap)) / var(--aw-cols, 1));
+}
+.aw-gala-grid > .aw-gala-span {
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .aw-gala-grid {
+    --aw-gap: 1rem;
+  }
+}
+
+/* One tile: a gold frame that is brightest at the top, where the light falls,
+   a fainter second hairline just inside it and a little light of its own on
+   the title. The frame is the outermost background layer showing through a
+   transparent border, which keeps the rounded corners (border-image would
+   square them off); the ink layer under the light keeps it out of the middle. */
+.aw-gala-tile {
+  --aw-edge: 0.55;
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: var(--r-xl);
+  background:
+    radial-gradient(130% 55% at 50% 0%, rgb(var(--aw-gold) / 0.1), transparent 72%) padding-box,
+    linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.015)) padding-box,
+    linear-gradient(rgb(var(--c-ink)), rgb(var(--c-ink))) padding-box,
+    linear-gradient(
+        180deg,
+        rgb(var(--aw-gold) / var(--aw-edge)),
+        rgb(var(--aw-gold) / calc(var(--aw-edge) * 0.3)) 65%,
+        rgb(var(--aw-gold) / calc(var(--aw-edge) * 0.45))
+      )
+      border-box;
+}
+.aw-gala-tile::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid rgb(var(--aw-gold) / 0.09);
+  border-radius: var(--r);
+  pointer-events: none;
+  transition: border-color var(--t-base) var(--e-soft);
+}
+/* Pointing at a tile lights its frame (both hairlines); like the headline,
+   the name keeps its colour. */
+@media (hover: hover) {
+  a.aw-gala-tile:hover {
+    --aw-edge: 0.95;
+  }
+  a.aw-gala-tile:hover::before {
+    border-color: rgb(var(--aw-gold) / 0.3);
+  }
+}
+a.aw-gala-tile:focus-visible {
+  --aw-edge: 0.95;
+}
+
+/* The foot of a tile standing side by side with others: a small diamond
+   between two short gold rules, kept at the bottom of the tile (mt-auto), so
+   the room a short tile has left next to a fuller one sits above the mark,
+   inside the tile, and the tile still ends on something. */
+.aw-gala-end {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.aw-gala-end::before,
+.aw-gala-end::after {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--aw-gold) / 0.55));
+}
+.aw-gala-end::after {
+  background: linear-gradient(270deg, transparent, rgb(var(--aw-gold) / 0.55));
+}
+.aw-gala-end > span {
+  width: 5px;
+  height: 5px;
+  transform: rotate(45deg);
+  border: 1px solid rgb(var(--aw-gold) / 0.75);
+}
+
+/* --- Motion ------------------------------------------------------------------- */
+
+/* The lights come up as the section arrives (its own reveal). The gold band
+   runs once through the headline name when the name itself is on screen
+   (is-lit, set in LookGala.jsx): the section's top edge can arrive on page
+   load while the name is still below the fold. */
+@keyframes aw-gala-lights-up {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes aw-gala-glint {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+.reveal:not(.is-visible) .aw-gala-beam,
+.reveal:not(.is-visible) .aw-gala-lamp {
+  opacity: 0;
+}
+.reveal.is-visible .aw-gala-beam,
+.reveal.is-visible .aw-gala-lamp {
+  animation: aw-gala-lights-up 1.2s var(--e-soft) both;
+  animation-delay: calc(var(--reveal-delay, 0s) + 150ms);
+}
+.reveal.is-visible .aw-gala-glint.is-lit {
+  animation: aw-gala-glint 2s var(--e-soft) both;
+  animation-delay: calc(var(--reveal-delay, 0s) + 350ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .aw-gala-beam,
+  .aw-gala-lamp,
+  .aw-gala-glint {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .aw-gala-tile::before,
+  .aw-gala-medal-big::before,
+  .aw-gala-medal-big::after,
+  .aw-gala-halo {
+    transition: none;
+  }
+}
+.fx-lite .aw-gala-beam,
+.fx-lite .aw-gala-lamp,
+.fx-lite .aw-gala-glint {
+  animation: none !important;
+  opacity: 1 !important;
+}

@@ -543,6 +543,8 @@ export const api = {
   seasonRatings: (season) => request(`/standings/ratings${seasonParam(season)}`, { auth: true }),
   // All-time records of the viewed series (Hall of Fame page). Series-scoped.
   seriesRecords: () => request(`/standings/records${seriesQ()}`, { auth: true }),
+  // The awards the league handed out, every season of the viewed series (Hall of Fame).
+  seriesAwards: () => request(`/standings/awards${seriesQ()}`, { auth: true }),
   // Races of an EXPLICIT season (e.g. the next-season teaser), regardless of
   // the season the site is currently viewing (within the current series).
   racesFor: (n) => request(`/races${seasonParam(n)}`, { auth: true }),
@@ -1401,6 +1403,16 @@ export const api = {
   // seasons + teams (admin) — scoped to the series being edited
   adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),
   createSeason: (body) => request("/admin/seasons", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
+  // Season awards, typed in by hand (Seasons tab).
+  seasonAwards: (seasonId) => request(`/admin/seasons/${seasonId}/awards`, { auth: true }),
+  createSeasonAward: (seasonId, body) =>
+    request(`/admin/seasons/${seasonId}/awards`, { method: "POST", body, auth: true }),
+  updateSeasonAward: (seasonId, awardId, body) =>
+    request(`/admin/seasons/${seasonId}/awards/${awardId}`, { method: "PUT", body, auth: true }),
+  deleteSeasonAward: (seasonId, awardId) =>
+    request(`/admin/seasons/${seasonId}/awards/${awardId}`, { method: "DELETE", auth: true }),
+  orderSeasonAwards: (seasonId, ids) =>
+    request(`/admin/seasons/${seasonId}/awards/order`, { method: "PUT", body: { ids }, auth: true }),
   updateSeason: (id, body) => request(`/admin/seasons/${id}`, { method: "PUT", body, auth: true }),
   // Points the league sets by hand for a season: [{ driverId, adjust, override }].
   // The whole table goes in one call; a driver with both fields blank is cleared.

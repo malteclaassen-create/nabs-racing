@@ -1,0 +1,754 @@
+/* ---------------------------------------------------------------------------
+   Season awards look "plaques" (LookPlaques.jsx). Every class and keyframe here
+   starts with aw-plaques- so nothing leaks into the rest of the site.
+
+   A plate is three layers: the bevel (the plate's own edge, lit from the top
+   left), the face (brushed metal: the site's own brushed.png grain over a
+   gradient, see .rcard-frame[data-edition="titanium"] in index.css) and the
+   screws on top. Engraving is a dark line along the top of each cut and a lit
+   one along its bottom, the way light falls into a groove from above. The
+   plates are gunmetal on both themes: the wall carries the "dark" class, as the
+   WINS panel does, so the inks cut into them are the dark theme's. Only what
+   falls on the page around them, their shadow and the focus ring, follows the
+   page's theme.
+   --------------------------------------------------------------------------- */
+
+.aw-plaques {
+  /* Read here, outside the wall: inside it the dark class would hand the ring
+     the dark theme's pale pink, which is lost on the light page. */
+  --aw-plaques-ring: rgb(var(--c-accent));
+  --aw-plaques-edge: rgb(15 23 42 / 0.3);
+  --aw-plaques-drop: 0 1px 2px rgb(15 23 42 / 0.2), 0 14px 26px -14px rgb(15 23 42 / 0.5);
+  --aw-plaques-drop-up: 0 2px 4px rgb(15 23 42 / 0.22), 0 20px 34px -16px rgb(15 23 42 / 0.55);
+
+  /* Sizes per screen width: the medallion, the gap between the plates and
+     between the medallion and the text, the face's margins (the bottom one
+     holds the season stamp), how far in the frame is cut, and the largest a
+     winner's name is cut. */
+  --aw-plaques-medal: 62px;
+  --aw-plaques-gap: 14px;
+  --aw-plaques-hgap: 14px;
+  --aw-plaques-top: 28px;
+  --aw-plaques-bottom: 40px;
+  --aw-plaques-side: 25px;
+  --aw-plaques-inset: 15px;
+  --aw-plaques-name-max: 20px;
+}
+.dark .aw-plaques {
+  --aw-plaques-edge: rgb(0 0 0 / 0.6);
+  --aw-plaques-drop: 0 2px 3px rgb(0 0 0 / 0.45), 0 16px 30px -16px rgb(0 0 0 / 0.95);
+  --aw-plaques-drop-up: 0 3px 6px rgb(0 0 0 / 0.5), 0 24px 40px -18px rgb(0 0 0 / 1);
+}
+@media (min-width: 768px) {
+  .aw-plaques {
+    --aw-plaques-medal: 66px;
+    --aw-plaques-gap: 18px;
+  }
+}
+@media (min-width: 1024px) {
+  .aw-plaques {
+    --aw-plaques-medal: 80px;
+    --aw-plaques-gap: 22px;
+    --aw-plaques-hgap: 24px;
+    --aw-plaques-top: 32px;
+    --aw-plaques-bottom: 44px;
+    --aw-plaques-side: 36px;
+    --aw-plaques-inset: 17px;
+    --aw-plaques-name-max: 24px;
+  }
+}
+/* A plate two across a wide screen is long: the medallion and the name grow
+   with it, so the inscription fills the plate rather than a corner of it. */
+@media (min-width: 1280px) {
+  .aw-plaques {
+    --aw-plaques-medal: 96px;
+    --aw-plaques-hgap: 26px;
+    --aw-plaques-name-max: 28px;
+  }
+}
+@media (min-width: 1536px) {
+  .aw-plaques {
+    --aw-plaques-medal: 104px;
+    --aw-plaques-hgap: 30px;
+    --aw-plaques-side: 46px;
+    --aw-plaques-name-max: 32px;
+  }
+}
+
+/* The metal: gunmetal with some of the site's ink in it, the colour the WINS
+   panel is made of on either theme (navy on the classic design, neutral on
+   Carbon, warm on Paddock). */
+.aw-plaques-wall {
+  --aw-plaques-face-top: #2a3346;
+  --aw-plaques-face-bot: #192030;
+  --aw-plaques-sheen: rgb(255 255 255 / 0.045);
+  --aw-plaques-bevel: linear-gradient(158deg, #7a879b 0%, #3a4558 30%, #1d2431 64%, #0d1219 100%);
+  --aw-plaques-face-ring: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 0 0 1px rgb(0 0 0 / 0.35);
+  --aw-plaques-cut: 0 -1px 0 rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.07);
+  --aw-plaques-cut-soft: 0 -1px 0 rgb(0 0 0 / 0.5);
+  --aw-plaques-rule: linear-gradient(rgb(0 0 0 / 0.5) 0 1px, rgb(255 255 255 / 0.07) 1px 2px);
+  --aw-plaques-groove-dark: rgb(0 0 0 / 0.5);
+  --aw-plaques-groove-light: rgb(255 255 255 / 0.07);
+  --aw-plaques-well: rgb(0 0 0 / 0.28);
+  --aw-plaques-well-ring: inset 0 2px 3px rgb(0 0 0 / 0.6), 0 1px 0 rgb(255 255 255 / 0.07);
+  --aw-plaques-enamel: radial-gradient(circle at 50% 28%, #27324a, #0c111a 82%);
+  --aw-plaques-screw-sink: 0 0 0 1px rgb(0 0 0 / 0.35), 0 1px 1.5px rgb(0 0 0 / 0.6);
+  --aw-plaques-glint: rgb(255 255 255 / 0.13);
+  --aw-plaques-brass: #a77d1f;
+}
+/* Behind @supports rather than as a second declaration: a custom property
+   takes any value, so an unsupported color-mix would win over the plain
+   colour above and only fail where it is used, taking the whole face
+   background with it. */
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  .aw-plaques-wall {
+    --aw-plaques-face-top: color-mix(in srgb, rgb(var(--c-ink)) 45%, #3b4452);
+    --aw-plaques-face-bot: color-mix(in srgb, rgb(var(--c-ink)) 70%, #262c36);
+  }
+}
+
+/* --- The wall -------------------------------------------------------------
+   One grid for the whole wall, and each plate takes two of its rows: the head
+   (the medallion and the lines beside it) and the note. The slot, the plate
+   and the face pass those rows down (subgrid), so two plates side by side
+   share them and their rules and notes run level even when one has more to
+   say than the other. Four columns from 768px, two per plate, so an odd last
+   plate hangs in the middle under the others instead of leaving a hole on the
+   right. The space between rows of plates is each slot's bottom margin: a row
+   gap on the wall would also open between the rows inside every plate. */
+.aw-plaques-wall {
+  display: grid;
+  /* One plate across: no wider than a plate reads well, centred. */
+  grid-template-columns: minmax(0, 34rem);
+  justify-content: center;
+  column-gap: var(--aw-plaques-gap);
+  /* Takes back the last row's margin. */
+  margin: 0 0 calc(var(--aw-plaques-gap) * -1);
+  padding: 0;
+  list-style: none;
+}
+.aw-plaques-slot {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  margin-bottom: var(--aw-plaques-gap);
+}
+@media (min-width: 768px) {
+  .aw-plaques-wall {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .aw-plaques-slot {
+    grid-column: span 2;
+  }
+  .aw-plaques-slot:last-child:nth-child(odd) {
+    grid-column: 2 / span 2;
+  }
+}
+
+/* --- The plate --------------------------------------------------------------- */
+.aw-plaques-plate {
+  position: relative;
+  display: grid;
+  grid-row: 1 / -1;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  padding: 3px; /* the bevel */
+  border-radius: 7px;
+  background: var(--aw-plaques-bevel);
+  box-shadow: 0 0 0 1px var(--aw-plaques-edge), var(--aw-plaques-drop);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--t-base) var(--e-out),
+    box-shadow var(--t-base) var(--e-out);
+}
+.aw-plaques-plate-link:focus-visible {
+  outline: 2px solid var(--aw-plaques-ring);
+  outline-offset: 3px;
+}
+@media (hover: hover) {
+  .aw-plaques-plate-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 1px var(--aw-plaques-edge), var(--aw-plaques-drop-up);
+  }
+}
+/* No pointer to hover with: a tap presses the plate in a touch instead. */
+@media (hover: none) {
+  .aw-plaques-plate-link:active {
+    transform: translateY(1px);
+  }
+}
+
+/* Every face has something in both rows (a note, the rule on its own, or the
+   empty .aw-plaques-end): a subgrid's padding is carried by the items in its
+   first and last rows, so a row with nothing in it would drop the margin. */
+.aw-plaques-face {
+  position: relative;
+  display: grid;
+  grid-row: 1 / -1;
+  grid-template-columns: var(--aw-plaques-medal) minmax(0, 1fr);
+  /* Its own two rows where subgrid is missing: each plate then lines up with
+     itself only. */
+  grid-template-rows: auto 1fr;
+  grid-template-rows: subgrid;
+  column-gap: var(--aw-plaques-hgap);
+  min-width: 0;
+  /* clip, not hidden: hidden would make every face a sideways scroller for
+     the glint parked beside it. */
+  overflow: hidden;
+  overflow: clip;
+  padding: var(--aw-plaques-top) var(--aw-plaques-side) var(--aw-plaques-bottom);
+  border-radius: 4px;
+  background-image:
+    linear-gradient(104deg, transparent 18%, var(--aw-plaques-sheen) 42%, transparent 64%),
+    url("/textures/brushed.png"),
+    linear-gradient(180deg, var(--aw-plaques-face-top), var(--aw-plaques-face-bot));
+  background-size: 100% 100%, 256px 128px, 100% 100%;
+  background-blend-mode: normal, overlay, normal;
+  box-shadow: var(--aw-plaques-face-ring);
+}
+
+/* A fine border cut into the face inside the screws, as on an engraved plate:
+   the groove's upper wall in shadow, its lower edge catching the light. Its
+   bottom run is the season stamp's (.aw-plaques-hallmark), cut with a gap for
+   the season, so the frame itself stops at the corners there. */
+.aw-plaques-frame {
+  position: absolute;
+  inset: var(--aw-plaques-inset);
+  border: 1px solid var(--aw-plaques-groove-dark);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  box-shadow: inset 0 1px 0 var(--aw-plaques-groove-light);
+  pointer-events: none;
+}
+/* The season, stamped into the bottom groove of the frame, between two runs
+   of it: the row is 13px high and sits 6px under the frame's lower edge, so
+   its 1px line lands on the very pixel row the frame's sides end on. */
+.aw-plaques-hallmark {
+  position: absolute;
+  left: var(--aw-plaques-inset);
+  right: var(--aw-plaques-inset);
+  bottom: calc(var(--aw-plaques-inset) - 6px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 13px;
+  font-family: theme("fontFamily.mono");
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--c-text3);
+  text-shadow: var(--aw-plaques-cut-soft);
+  pointer-events: none;
+}
+.aw-plaques-hallmark::before,
+.aw-plaques-hallmark::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--aw-plaques-groove-dark);
+  box-shadow: 0 1px 0 var(--aw-plaques-groove-light);
+}
+/* The spacing after the last letter would push the season off centre. */
+.aw-plaques-hallmark > span {
+  margin-right: -0.22em;
+}
+@media (min-width: 1024px) {
+  .aw-plaques-hallmark {
+    gap: 12px;
+    font-size: 9.5px;
+  }
+}
+
+/* A light that runs across the metal: once as the plate arrives (::before)
+   and again under the pointer (::after). Two layers so the hover never fights
+   the entrance animation, which holds its end state. */
+.aw-plaques-face::before,
+.aw-plaques-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(104deg, transparent 38%, var(--aw-plaques-glint) 50%, transparent 62%);
+  transform: translateX(-115%);
+}
+.cascade.is-visible > * .aw-plaques-face::before {
+  animation: aw-plaques-glint var(--t-draw) var(--e-soft) both;
+  animation-delay: calc(var(--reveal-delay, 0s) + var(--i, 0) * 60ms + 420ms);
+}
+@keyframes aw-plaques-glint {
+  to {
+    transform: translateX(115%);
+  }
+}
+/* When the pointer leaves halfway, the light fades where it is and only then
+   goes back out of sight, instead of jumping off the plate. */
+.aw-plaques-face::after {
+  opacity: 0;
+  transition:
+    opacity var(--t-base) var(--e-soft),
+    transform 0s linear var(--t-base);
+}
+@media (hover: hover) {
+  .aw-plaques-plate-link:hover .aw-plaques-face::after {
+    opacity: 1;
+    transform: translateX(115%);
+    transition:
+      transform 900ms var(--e-soft),
+      opacity 0s;
+  }
+}
+
+/* --- Screws -------------------------------------------------------------------
+   Domed brass heads in a small countersink, each slot at its own angle. */
+.aw-plaques-screw {
+  position: absolute;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #fff4cc 0 10%, #e4c060 32%, var(--aw-plaques-brass) 66%, #5e430e 100%);
+  box-shadow: var(--aw-plaques-screw-sink);
+}
+.aw-plaques-screw::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 50%;
+  height: 1.3px;
+  margin-top: -0.65px;
+  border-radius: 1px;
+  background: rgb(58 38 4 / 0.85);
+  box-shadow: 0 0.6px 0 rgb(255 236 180 / 0.45);
+  transform: rotate(var(--aw-plaques-turn, 0deg));
+}
+.aw-plaques-screw-tl { top: 8px; left: 8px; }
+.aw-plaques-screw-tr { top: 8px; right: 8px; }
+.aw-plaques-screw-bl { bottom: 8px; left: 8px; }
+.aw-plaques-screw-br { bottom: 8px; right: 8px; }
+@media (min-width: 1024px) {
+  .aw-plaques-screw {
+    width: 9px;
+    height: 9px;
+  }
+  .aw-plaques-screw-tl { top: 9px; left: 9px; }
+  .aw-plaques-screw-tr { top: 9px; right: 9px; }
+  .aw-plaques-screw-bl { bottom: 9px; left: 9px; }
+  .aw-plaques-screw-br { bottom: 9px; right: 9px; }
+}
+
+/* --- The head ------------------------------------------------------------------
+   The medallion and the lines beside it, laid out as one piece and centred on
+   each other, whatever the plate beside it holds. It sits at the foot of the
+   plates' shared first row, so where the plate beside it has more to say, the
+   room opens above this head, not between its name and its rule. */
+.aw-plaques-head {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: end;
+  display: grid;
+  grid-template-columns: var(--aw-plaques-medal) minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--aw-plaques-hgap);
+  min-width: 0;
+}
+.aw-plaques-text {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* --- Engraved text ------------------------------------------------------------ */
+.aw-plaques-title {
+  margin: 0;
+  font-family: theme("fontFamily.mono");
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--medal-1);
+  text-shadow: var(--aw-plaques-cut);
+}
+/* The name and the line under it. Its width is what the name is sized to. */
+.aw-plaques-who {
+  min-width: 0;
+  margin-top: 5px;
+  container-type: inline-size;
+}
+.aw-plaques-name {
+  font-family: theme("fontFamily.display");
+  /* Without container units: a step down by the name's length on two lines
+     (--aw-plaques-fit, worked out in the JSX for the narrowest column). */
+  font-size: calc(var(--aw-plaques-name-max) * var(--aw-plaques-fit, 1));
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--c-text);
+  text-shadow: var(--aw-plaques-cut);
+  overflow-wrap: anywhere;
+}
+/* The size the name is cut at, from its widths in em (nameFit in the JSX): w1
+   on one line, w2 for the longer of two lines. The first term keeps it on one
+   line while that needs no more than 15% off the full size; the second fits
+   it on two lines, no smaller than 0.6 of full size, and the smaller of the
+   two wins. So a long name runs to two even lines (text-wrap: balance) at a
+   size its column takes, instead of three or four, and only a name that will
+   not fit at 0.6 breaks further. */
+@supports (width: 1cqi) {
+  .aw-plaques-name {
+    font-size: min(
+      clamp(
+        calc(var(--aw-plaques-name-max) * 0.85),
+        calc((100cqi - 4px) / var(--aw-plaques-w1, 8)),
+        var(--aw-plaques-name-max)
+      ),
+      max(calc(var(--aw-plaques-name-max) * 0.6), calc((100cqi - 4px) / var(--aw-plaques-w2, 8)))
+    );
+  }
+}
+.aw-plaques-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* As tall as the 14px logo it may carry, so an empty one matches. */
+  min-height: 15px;
+  margin-top: 6px;
+  font-family: theme("fontFamily.mono");
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text3);
+  text-shadow: var(--aw-plaques-cut-soft);
+}
+.aw-plaques-submark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.aw-plaques-sublogo {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+/* A team with no logo that reads this small: a dot of its colour, ringed so
+   that a white or a dark team still shows on the metal. */
+.aw-plaques-swatch {
+  width: 8px;
+  height: 8px;
+  margin: 0 3px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.22);
+}
+.aw-plaques-note {
+  position: relative;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: start;
+  margin: 16px 0 0;
+  padding-top: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  text-wrap: pretty;
+  color: var(--c-text2);
+  text-shadow: var(--aw-plaques-cut-soft);
+  overflow-wrap: anywhere;
+}
+/* The engraved line between the winner and the note. */
+.aw-plaques-note::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--aw-plaques-rule);
+}
+/* No note and none beside it: an empty item, there only to hold the row. */
+.aw-plaques-end {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+/* The room kept for what the plate beside this one has (see Plaque): an empty
+   line under the name, the rule with nothing under it. One plate across, there
+   is no plate beside it. */
+@media (max-width: 767px) {
+  .aw-plaques-sub.aw-plaques-blank {
+    display: none;
+  }
+  .aw-plaques-note.aw-plaques-blank {
+    margin: 0;
+    padding: 0;
+  }
+  .aw-plaques-note.aw-plaques-blank::before {
+    content: none;
+  }
+}
+/* On gunmetal the cut letters are bright metal, a shade darker at their top
+   where the wall of the cut throws its shadow, and gold for the award. The
+   fill sits on the inner span with box-decoration-break, so a name that wraps
+   is shaded line by line instead of once from its first line to its last.
+   The edges of the cut become drop-shadows: a text-shadow would be painted
+   over a fill clipped to the text. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .aw-plaques-title,
+  .aw-plaques-name {
+    text-shadow: none;
+    filter: drop-shadow(0 -1px 0 rgb(0 0 0 / 0.85)) drop-shadow(0 1px 0 rgb(255 255 255 / 0.14));
+  }
+  .aw-plaques-title > span,
+  .aw-plaques-name > span {
+    color: transparent;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  /* Starts no darker than #d3a10f: the top of the letters stays above 4.5:1
+     on the brightest streaks of the metal. */
+  .aw-plaques-title > span {
+    background-image: linear-gradient(180deg, #d3a10f 0%, var(--medal-1) 55%, #f7d25c 100%);
+  }
+  .aw-plaques-name > span {
+    background-image: linear-gradient(180deg, #aeb9c8 0%, #e9eef5 45%, #ffffff 100%);
+  }
+}
+@media (min-width: 1024px) {
+  .aw-plaques-title {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+  }
+  .aw-plaques-who {
+    margin-top: 6px;
+  }
+  .aw-plaques-sub {
+    margin-top: 8px;
+    font-size: 10.5px;
+  }
+  .aw-plaques-note {
+    font-size: 14px;
+  }
+}
+@media (min-width: 1280px) {
+  .aw-plaques-title {
+    font-size: 11.5px;
+  }
+  .aw-plaques-sub {
+    font-size: 11px;
+  }
+  .aw-plaques-note {
+    margin-top: 18px;
+    padding-top: 16px;
+    font-size: 15px;
+  }
+}
+/* From 480px the inscription is centred under itself, as on a trophy plate,
+   with the note under the name rather than under the medallion and the season
+   under the middle of both: left-aligned, the lines filled only the left part
+   of a wide plate. On a phone the column beside the medallion is too narrow
+   for that, so the lines stay with the medallion on their left. */
+@media (min-width: 480px) {
+  .aw-plaques-text,
+  .aw-plaques-note {
+    text-align: center;
+  }
+  .aw-plaques-sub {
+    justify-content: center;
+  }
+  .aw-plaques-note {
+    grid-column: 2;
+    text-wrap: balance;
+  }
+  /* The season under the middle of the inscription too: the groove's left
+     run is longer by the medallion and its gap, which moves the season right
+     by half of that. */
+  .aw-plaques-hallmark::before {
+    flex-basis: calc(var(--aw-plaques-medal) + var(--aw-plaques-hgap));
+  }
+}
+/* A name too long to cut at a fair size beside the medallion on a narrow
+   phone (a long gamer tag): the award stays beside the medallion and the name
+   takes the plate's whole width under them. */
+@media (max-width: 479px) {
+  .aw-plaques-long .aw-plaques-text {
+    display: contents;
+  }
+  .aw-plaques-long .aw-plaques-title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .aw-plaques-long .aw-plaques-who {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 14px;
+  }
+}
+
+/* --- The medallion -----------------------------------------------------------
+   A round recess in the plate, a turned brass rim in it, and under the rim a
+   disc behind glass: the portrait, the logo on enamel, the circuit engraved. */
+.aw-plaques-medal {
+  position: relative;
+  grid-column: 1;
+  width: var(--aw-plaques-medal);
+  height: var(--aw-plaques-medal);
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--aw-plaques-well);
+  box-shadow: var(--aw-plaques-well-ring);
+}
+.aw-plaques-bezel {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, #7c5a12, #f3d47a 14%, #b8891f 30%, #fdf0c2 46%, #9b7016 62%, #e8c45a 80%, #7c5a12);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+}
+.aw-plaques-disc {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--aw-plaques-enamel);
+  color: var(--medal-1);
+}
+/* The glass over the disc: a soft highlight up top and the rim's shadow
+   falling into it, and a dark hairline where the disc meets the brass, so a
+   gold or yellow team still reads as set into the rim. */
+.aw-plaques-disc::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(85% 62% at 32% 14%, rgb(255 255 255 / 0.3), transparent 58%),
+    radial-gradient(130% 130% at 50% 0%, transparent 50%, rgb(0 0 0 / 0.26) 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgb(0 0 0 / 0.5),
+    inset 0 2px 4px rgb(0 0 0 / 0.45),
+    inset 0 -1px 1px rgb(255 255 255 / 0.14);
+}
+.aw-plaques-photo,
+.aw-plaques-initials {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+.aw-plaques-photo {
+  object-fit: cover;
+}
+.aw-plaques-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: theme("fontFamily.display");
+  font-weight: 900;
+  font-size: calc((var(--aw-plaques-medal) - 12px) * 0.38);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+/* A team's logo on the enamel. The JSX places it by the part of the file
+   that is drawn; until then (and if it never is) it sits whole in a box two
+   thirds of the disc. No max-width: a logo with a wide empty margin is drawn
+   larger than the disc so that its drawn part has the right size. */
+.aw-plaques-crest {
+  position: absolute;
+  left: 17%;
+  top: 17%;
+  width: 66%;
+  height: 66%;
+  max-width: none;
+  object-fit: contain;
+}
+.aw-plaques-circuit {
+  width: 66%;
+  height: 66%;
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.35));
+}
+.aw-plaques-mark {
+  width: 84%;
+  height: 84%;
+}
+.aw-plaques-mark-icon {
+  width: 46%;
+  height: 46%;
+}
+
+/* The flag as a small round pin on the rim, lower right. */
+.aw-plaques-pin {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  z-index: 1;
+  display: block;
+  width: 22px;
+  height: 22px;
+  padding: 1.5px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, #7c5a12, #f3d47a 20%, var(--aw-plaques-brass) 45%, #fbe9b0 65%, #8c6516 85%, #7c5a12);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+.aw-plaques-pin img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-shadow: none;
+}
+@media (min-width: 1024px) {
+  .aw-plaques-pin {
+    width: 26px;
+    height: 26px;
+    right: -2px;
+    bottom: -1px;
+  }
+}
+@media (min-width: 1280px) {
+  .aw-plaques-pin {
+    width: 28px;
+    height: 28px;
+    right: -1px;
+    bottom: 0;
+  }
+}
+
+/* --- Motion off -------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .aw-plaques-plate {
+    transition: none;
+  }
+  .aw-plaques-plate-link:hover,
+  .aw-plaques-plate-link:active {
+    transform: none;
+  }
+  .aw-plaques-face::before,
+  .aw-plaques-face::after {
+    display: none;
+  }
+}
+.fx-lite .aw-plaques-plate {
+  transition: none;
+}
+.fx-lite .aw-plaques-plate-link:hover,
+.fx-lite .aw-plaques-plate-link:active {
+  transform: none;
+}
+.fx-lite .aw-plaques-face::before,
+.fx-lite .aw-plaques-face::after {
+  display: none;
+}

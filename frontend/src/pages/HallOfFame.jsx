@@ -9,6 +9,7 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import { countryFor } from "../data/driverCountries.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import SeasonAwardCards from "../components/SeasonAwardCards.jsx";
 
 // ---------------------------------------------------------------------------
 // /records — the Hall of Fame: the champions gallery (drivers ⇄ teams), the
@@ -514,6 +515,10 @@ function TopListPanel({ lists, teamLists, activeKey, onChange, seasons }) {
 export default function HallOfFame() {
   const { data, loading, error, reload } = useApi(useCallback(() => api.seriesRecords(), []));
   const wall = useApi(useCallback(() => api.tokenWall(), []));
+  // The league's own awards, read on their own so an older server without
+  // them leaves the rest of the page alone.
+  const awards = useApi(useCallback(() => api.seriesAwards().catch(() => ({ seasons: [] })), []));
+  const awardSeasons = awards.data?.seasons || [];
   const [champMode, setChampMode] = useState("drivers");
   const [listKey, setListKey] = useState(null);
   // The switch below fades its panel over instead of rebuilding it from blank;
@@ -584,6 +589,9 @@ export default function HallOfFame() {
           </div>
         </section>
       )}
+
+      {/* the awards the league handed out, one season at a time */}
+      {awardSeasons.length > 0 && <SeasonAwardCards seasons={awardSeasons} />}
 
       {/* single records — hairline band of golden numbers */}
       {data.records.length > 0 && (

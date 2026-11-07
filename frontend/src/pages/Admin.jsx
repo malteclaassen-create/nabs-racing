@@ -32,6 +32,7 @@ import QualiInput, { qualiPayload } from "../components/QualiInput.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
 import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
+import AdminSeasonAwards from "../components/AdminSeasonAwards.jsx";
 import TabNotice from "../components/TabNotice.jsx";
 import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
 import { HelpNote } from "../components/ui.jsx";
@@ -6391,6 +6392,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
                   <SeasonPreviewLoop season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
                   <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}
                     onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  <AdminSeasonAwards season={s} onSaved={setMsg} onError={setError} />
                   {/* clone teams (or the full roster) from another season */}
                   {(seasons || []).length > 1 && (
                     <div className="flex flex-wrap items-center gap-2">

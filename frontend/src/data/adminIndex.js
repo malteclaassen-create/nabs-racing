@@ -403,6 +403,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "seasons",
+    title: "Season awards",
+    hint: "The awards the league hands out at the end of a season: best rookie, race of the season and so on.",
+    keywords: "awards season award best rookie qualifier t1 t2 race of the season vote honours hall of fame",
+  },
+  {
+    tab: "seasons",
     title: "Racing series",
     hint: "A second championship with its own seasons, teams and standings.",
     keywords: "series championship second league primary slug colour logo",

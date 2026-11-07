@@ -183,7 +183,7 @@ function pad2(n) {
 // the driver's flag and team mark; team awards lead with the team's logo. The
 // award's headline figure (`stat`, with its small `note` underneath) is parked
 // big on the cell's right edge — every current and future award reads the same.
-function HonourCell({ label, to, name, stat, note, driverId, country, team, className = "", index = 0 }) {
+function HonourCell({ label, to, name, stat, note, sub, driverId, country, team, className = "", index = 0 }) {
   const flag = driverId ? countryFor(driverId, country) : null;
   const nameCls =
     "truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl lg:text-2xl";
@@ -222,6 +222,10 @@ function HonourCell({ label, to, name, stat, note, driverId, country, team, clas
             nameClassName="truncate text-sm text-light"
           />
         )}
+        {sub && <div className="mt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">{sub}</div>}
+        {/* An award without a figure (the league's own awards) carries its
+            reason line here, under the name. */}
+        {!stat && note && <p className="mt-2 text-sm leading-relaxed text-light">{note}</p>}
       </div>
       {stat && (
         <div className="shrink-0 text-right sm:text-left lg:text-right">
@@ -1349,6 +1353,43 @@ export default function Home() {
         const cells = [];
         // (No 2nd-place cell on purpose: the podium above already shows P2,
         // and without it the usual award set closes a clean 2×3 grid.)
+        // The league's own awards (typed in under Admin > Seasons) come first:
+        // they are the ones the drivers voted for. No figure on the right,
+        // the reason line sits under the name instead.
+        for (const a of honours.awards || []) {
+          const base = { key: `award-${a.id}`, label: a.title, note: a.note || null };
+          if (a.kind === "driver" && a.partner) {
+            // Shared by two drivers: both names, linking the first; the team
+            // mark only when they drove for the same team.
+            const sameTeam = a.driver.team && a.partner.team && a.driver.team.id === a.partner.team.id;
+            cells.push({
+              ...base,
+              to: `/drivers/${a.driver.driverId}`,
+              name: `${a.driver.name} & ${a.partner.name}`,
+              team: sameTeam ? a.driver.team : null,
+            });
+          } else if (a.kind === "driver") {
+            cells.push({
+              ...base,
+              to: `/drivers/${a.driver.driverId}`,
+              name: a.driver.name,
+              driverId: a.driver.driverId,
+              country: a.driver.country,
+              team: a.driver.team,
+            });
+          } else if (a.kind === "team") {
+            cells.push({ ...base, to: `/teams/${a.team.id}`, name: a.team.name, team: a.team });
+          } else if (a.kind === "race") {
+            cells.push({
+              ...base,
+              to: a.race.isCompleted ? `/races?race=${a.race.id}` : null,
+              name: a.race.track,
+              sub: a.race.round != null ? `Round ${a.race.round}` : null,
+            });
+          } else {
+            cells.push({ ...base, name: a.winnerText });
+          }
+        }
         for (const t of honours.teamChampions || []) {
           cells.push({
             key: `team${t.tier}`,

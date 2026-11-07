@@ -103,6 +103,7 @@ const RULES = [
   [/^\/seasons\/[^/]+\/activate/, "calendar", "Season activated"],
   [/^\/seasons\/[^/]+\/clone-/, "calendar", "Roster cloned from another season"],
   [/^\/seasons\/[^/]+\/(hero|car)/, "calendar", "Season picture changed"],
+  [/^\/seasons\/[^/]+\/awards/, "calendar", (m) => `Season award ${verb(m, saved)}`],
   [/^\/seasons/, "calendar", (m) => `Season ${verb(m, saved)}`],
   [/^\/series\/[^/]+\/activate/, "calendar", "Main series changed"],
   [/^\/series/, "calendar", (m) => `Series ${verb(m, saved)}`],
