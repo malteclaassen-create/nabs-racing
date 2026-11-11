@@ -4,7 +4,9 @@ import {
   getDriverStandings,
   getT1ConstructorStandings,
   getT2ConstructorStandings,
+  getDiv2ConstructorStandings,
 } from "../services/standingsService.js";
+import { seasonHasDivision2 } from "../lib/divisions.js";
 import { getSeasonHonours } from "../services/honoursService.js";
 import { getSeriesRecords } from "../services/recordsService.js";
 import { readSeasonAwards } from "../lib/seasonAwards.js";
@@ -51,10 +53,18 @@ function dropsParam(req) {
 router.get("/drivers", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
-    const result = await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) });
+    // ?division=2 -> the Division 2 table (lib/divisions.js).
+    const division = String(req.query.division) === "2" ? 2 : 1;
+    const result = await getDriverStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req), division });
     // Members who asked for their own lettering in the table get it here.
     const names = await readDriverNameStyles(prisma, result.standings.map((d) => d.driverId));
-    res.json({ ...result, standings: result.standings.map((d) => ({ ...d, nameStyle: names.get(d.driverId) || null })) });
+    res.json({
+      ...result,
+      // Whether this season runs a Division 2 at all, so the page knows to
+      // offer the switch.
+      hasDivision2: await seasonHasDivision2(prisma, seasonId),
+      standings: result.standings.map((d) => ({ ...d, nameStyle: names.get(d.driverId) || null })),
+    });
   } catch (e) {
     next(e);
   }
@@ -184,6 +194,16 @@ router.get("/constructors/t2", async (req, res, next) => {
   try {
     const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
     res.json(await getT2ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Division 2's own teams (tier 3), scored from that field's race.
+router.get("/constructors/div2", async (req, res, next) => {
+  try {
+    const seasonId = await resolveSeasonId(prisma, req.query.season, seasonOpts(req));
+    res.json(await getDiv2ConstructorStandings(prisma, seasonId, { upToRound: upToParam(req), projectDrops: dropsParam(req) }));
   } catch (e) {
     next(e);
   }

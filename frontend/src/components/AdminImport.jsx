@@ -294,7 +294,17 @@ export default function AdminImport({ onCommitted }) {
   const otherRaces = (seasonRaces.data || []).filter(
     (r) => (r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) !== "CHAMPIONSHIP"
   );
-  const isSprintWeekend = targetRace?.raceFormat === "SPRINT_FEATURE";
+  // Division 2 (a season can run a second field on the second server, at the
+  // same time as the main race): which of the two races this file is. Only
+  // asked for a championship round of a season that runs it.
+  const [targetDivision, setTargetDivision] = useState(1);
+  const offersDivision2 =
+    !!currentSeason?.division2 &&
+    !!targetRace &&
+    (targetRace.type || (targetRace.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP")) === "CHAMPIONSHIP";
+  const asDivision2 = offersDivision2 && targetDivision === 2;
+  // Division 2 runs no sprint: its file is always the one race of its night.
+  const isSprintWeekend = targetRace?.raceFormat === "SPRINT_FEATURE" && !asDivision2;
   const importBoth = isSprintWeekend && weekendMode === "BOTH";
   const asSprint = isSprintWeekend && targetSession === "SPRINT";
   // Where the result goes on save, in the shape the commit endpoint wants. On
@@ -303,7 +313,7 @@ export default function AdminImport({ onCommitted }) {
   // The live preview reads the same session, so a sprint is previewed as the
   // round's second classification rather than in place of the feature.
   const targetBody = targetRace
-    ? { raceId: targetRace.id, ...(asSprint ? { session: "SPRINT" } : {}) }
+    ? { raceId: targetRace.id, ...(asDivision2 ? { session: "DIV2" } : asSprint ? { session: "SPRINT" } : {}) }
     : { number: Number(newRoundNumber) };
 
   const [remoteId, setRemoteId] = useState("");
@@ -773,7 +783,7 @@ export default function AdminImport({ onCommitted }) {
         : "";
       const savedMsg =
         res.number != null
-          ? `Round ${res.number}${res.session === "SPRINT" ? " sprint" : ""} saved. Standings recalculated.${qualiMsg}${conflictNote}`
+          ? `Round ${res.number}${res.session === "SPRINT" ? " sprint" : res.session === "DIV2" ? " Division 2" : ""} saved. Standings recalculated.${qualiMsg}${conflictNote}`
           : `Training/event results saved (not scored).${qualiMsg}${conflictNote}`;
       setDone(savedMsg);
       setParsed(null);
@@ -895,6 +905,20 @@ export default function AdminImport({ onCommitted }) {
             />
           )}
         </div>
+        {offersDivision2 && (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold text-medium">This file is the race of</span>
+            <select
+              aria-label="Which division this result is"
+              className="input max-w-xs"
+              value={targetDivision}
+              onChange={(e) => setTargetDivision(Number(e.target.value))}
+            >
+              <option value={1}>Division 1 (main server)</option>
+              <option value={2}>Division 2 (second server)</option>
+            </select>
+          </div>
+        )}
         {isSprintWeekend && (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-3">
@@ -1435,7 +1459,7 @@ export default function AdminImport({ onCommitted }) {
                               {driver ? `Default · ${driver.team.name}` : "Map a driver first"}
                             </option>
                             {(teams || [])
-                              .filter((t) => t.tier === 1 || t.tier === 2)
+                              .filter((t) => (asDivision2 ? t.tier === 3 : t.tier === 1 || t.tier === 2))
                               .map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}

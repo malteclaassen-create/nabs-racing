@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 import { applyPenalties } from "./pointsCalculator.js";
 import { readParentIds } from "../lib/sprintRaces.js";
+import { readDivisionChildIds } from "../lib/divisions.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readPoleHolders } from "../lib/raceHonours.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -57,6 +58,8 @@ async function raceLink(prisma, race, origin) {
 // any ordinary race. Best-effort: a fake or pre-migration client answers null.
 async function sprintParent(prisma, raceId) {
   try {
+    // A Division 2 race (lib/divisions.js) is not a sprint.
+    if ((await readDivisionChildIds(prisma, [raceId])).has(raceId)) return null;
     const parentId = (await readParentIds(prisma, [raceId])).get(raceId);
     return parentId ? await prisma.race.findUnique({ where: { id: parentId } }) : null;
   } catch {

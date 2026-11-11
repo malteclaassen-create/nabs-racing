@@ -221,7 +221,7 @@ export function stashIncoming(json) {
 // (see roundFileName), under the EVENT's round number.
 export function archiveCommitted(
   archiveKey,
-  { season = null, seasonNumber = null, raceNumber, track, sprint = false } = {}
+  { season = null, seasonNumber = null, raceNumber, track, sprint = false, division = 1 } = {}
 ) {
   // The key is the UUID stashIncoming handed out and nothing else: it arrives
   // back from the browser, and a path in it would move any .json on the disk.
@@ -229,7 +229,11 @@ export function archiveCommitted(
   try {
     const src = join(INCOMING_DIR, `${archiveKey}.json`);
     if (!existsSync(src)) return null;
-    const dir = seasonDir(season || seasonNumber);
+    // Division 2's file goes into a folder of its own inside the season's
+    // (lib/divisions.js). Beside the round's own file it would read as a second
+    // file of the same race, and the stale-file sweep below would delete one
+    // of the two. Nothing reads that folder yet; it keeps the file for later.
+    const dir = division === 2 ? join(seasonDir(season || seasonNumber), "division2") : seasonDir(season || seasonNumber);
     ensureDir(dir);
     const name = roundFileName(raceNumber, track, sprint);
     const dest = join(dir, name);

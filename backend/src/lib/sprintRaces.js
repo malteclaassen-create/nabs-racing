@@ -25,6 +25,7 @@
 // ---------------------------------------------------------------------------
 import { writeRaceType } from "./raceTypes.js";
 import { readRaceFormat } from "./raceFormat.js";
+import { readDivisionChildIds } from "./divisions.js";
 
 // Map raceId -> parentRaceId for the given ids (only rows that HAVE a parent
 // appear). Empty map when the column doesn't exist yet.
@@ -56,6 +57,9 @@ export async function readParentIds(prisma, raceIds) {
 export async function readScoringSprintParents(prisma, raceIds) {
   const parents = await readParentIds(prisma, raceIds);
   if (!parents.size) return new Map();
+  // A Division 2 classification is a race of its own, not half of one.
+  for (const id of await readDivisionChildIds(prisma, [...parents.keys()])) parents.delete(id);
+  if (!parents.size) return new Map();
   const rows = await prisma.race.findMany({
     where: { id: { in: [...new Set(parents.values())] } },
     select: {
@@ -79,7 +83,10 @@ export async function readSprintChildren(prisma, raceIds) {
   try {
     const qs = ids.map(() => "?").join(",");
     const rows = await prisma.$queryRawUnsafe(
-      `SELECT "id", "parentRaceId" FROM "Race" WHERE "parentRaceId" IN (${qs})`,
+      // A Division 2 classification hangs off its round the same way
+      // (lib/divisions.js) and is not a sprint: leave it out, or a round with
+      // both would map to whichever row came last.
+      `SELECT "id", "parentRaceId" FROM "Race" WHERE "parentRaceId" IN (${qs}) AND "division" IS NULL`,
       ...ids
     );
     return new Map(rows.map((r) => [r.parentRaceId, r.id]));
@@ -164,7 +171,11 @@ export async function withSprintClassifications(prisma, rounds) {
 export async function withSprintRounds(prisma, races) {
   const rows = (races || []).filter(Boolean);
   const ids = rows.map((r) => r.id);
-  const [parentOf, childOf] = await Promise.all([readParentIds(prisma, ids), readSprintChildren(prisma, ids)]);
+  const [parentOf, childOf, divisionIds] = await Promise.all([
+    readParentIds(prisma, ids),
+    readSprintChildren(prisma, ids),
+    readDivisionChildIds(prisma, ids),
+  ]);
   const known = new Map(rows.map((r) => [r.id, r.number]));
   const missing = [...new Set([...parentOf.values()])].filter((id) => !known.has(id));
   if (missing.length) {
@@ -173,8 +184,12 @@ export async function withSprintRounds(prisma, races) {
       .catch(() => []);
     for (const p of parents) known.set(p.id, p.number);
   }
+  // A Division 2 classification files under its round's number like a sprint
+  // does, but it is the whole race of a second field, so it is not one.
   return rows.map((r) =>
-    parentOf.has(r.id)
+    divisionIds.has(r.id)
+      ? { ...r, number: known.get(parentOf.get(r.id)) ?? null, sprint: false, division: 2, hasSprint: false, roundId: parentOf.get(r.id) }
+      : parentOf.has(r.id)
       ? { ...r, number: known.get(parentOf.get(r.id)) ?? null, sprint: true, hasSprint: false, roundId: parentOf.get(r.id) }
       : { ...r, sprint: false, hasSprint: childOf.has(r.id), roundId: r.id }
   );

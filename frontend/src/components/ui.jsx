@@ -129,6 +129,8 @@ export function TierBadge({ tier }) {
     return <span className="pill bg-brand/20 text-dark" title="Scores in the Tier 1 constructors' table">T1</span>;
   if (tier === 2)
     return <span className="pill bg-link/10 text-link" title="Scores in the Tier 2 table (re-ranked among Tier-2 cars)">T2</span>;
+  if (tier === 3)
+    return <span className="pill bg-surface2 text-medium" title="Division 2: the second field, racing on the second server with its own standings">D2</span>;
   return <span className="pill bg-surface2 text-light" title="Reserve: scores only for the team it subs for">RES</span>;
 }
 

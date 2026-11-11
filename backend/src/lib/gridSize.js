@@ -62,3 +62,24 @@ export async function setGridSize(prisma, seriesSlug, size) {
   await prisma.setting.upsert({ where: { key: KEY }, create: { key: KEY, value }, update: { value } });
   return size;
 }
+
+// Division 2's grid (lib/divisions.js) is the second server's, and can be a
+// different size. Kept in the same blob under "<slug>#div2"; null = unset,
+// the round's own capacity then counts for both grids.
+const div2Key = (slug) => `${slug}#div2`;
+
+export async function div2GridSizeFor(prisma, seriesSlug) {
+  if (!seriesSlug) return null;
+  return (await readAll(prisma))[div2Key(String(seriesSlug))] ?? null;
+}
+
+export async function setDiv2GridSize(prisma, seriesSlug, size) {
+  const slug = String(seriesSlug || "");
+  if (!slug) return null;
+  const all = await readAll(prisma);
+  if (size == null) delete all[div2Key(slug)];
+  else all[div2Key(slug)] = size;
+  const value = JSON.stringify(all);
+  await prisma.setting.upsert({ where: { key: KEY }, update: { value }, create: { key: KEY, value } });
+  return size ?? null;
+}

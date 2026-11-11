@@ -19,6 +19,7 @@ import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
+import { seasonHasDivision2, readDivision2Drivers, readCapacity2 } from "../lib/divisions.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
@@ -160,13 +161,25 @@ router.get("/", async (req, res, next) => {
     // even though the offering driver is down as declined, which is the rule
     // lib/waitlist.js enforces — the page has to know it too, or Accept would
     // look available for a seat the server will refuse.
-    const openOffers = new Map();
-    for (const row of await prisma.seatOffer.groupBy({
-      by: ["raceId"],
+    //
+    // Division 2 (lib/divisions.js): a season running it has two grids on one
+    // evening, each with its own size, count and queue. `div2Of` names the
+    // Division 2 drivers of each such season; everybody else is Division 1.
+    const div2Of = new Map();
+    for (const sid of new Set(races.map((r) => r.seasonId).filter(Boolean))) {
+      if (await seasonHasDivision2(prisma, sid)) div2Of.set(sid, await readDivision2Drivers(prisma, sid));
+    }
+    const capacity2 = await readCapacity2(prisma, races.filter((r) => div2Of.has(r.seasonId)).map((r) => r.id));
+    const divisionIn = (race, driverId) => (div2Of.get(race.seasonId)?.has(driverId) ? 2 : 1);
+
+    const openOffers = new Map(); // `${raceId}:${division}` -> count
+    for (const row of await prisma.seatOffer.findMany({
       where: { raceId: { in: races.map((r) => r.id) }, status: "OPEN" },
-      _count: { _all: true },
+      select: { raceId: true, driverId: true },
     })) {
-      openOffers.set(row.raceId, row._count._all);
+      const race = races.find((r) => r.id === row.raceId);
+      const key = `${row.raceId}:${divisionIn(race, row.driverId)}`;
+      openOffers.set(key, (openOffers.get(key) || 0) + 1);
     }
 
     // Sign-up gating + which answer columns the page shows (admin-configured).
@@ -211,6 +224,8 @@ router.get("/", async (req, res, next) => {
         const swap = swaps.get(r.driverId) || null;
         (grouped[r.status] || (grouped[r.status] = [])).push({
           driverId: r.driverId,
+          // Which grid this answer is on (Division 2 runs on the second server).
+          division: divisionIn(race, r.driverId),
           name: r.driver.name,
           discordName: r.driver.discordName,
           // The driver's own racing number (self-set on /profile), for the
@@ -250,6 +265,27 @@ router.get("/", async (req, res, next) => {
       // The queue is an order, not a set: oldest answer first, which is the
       // order lib/waitlist.js promotes in.
       grouped[WAITLIST].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0));
+      // With Division 2 running, the round-level counts below are Division 1's
+      // grid, and `division2` carries the second one.
+      const hasDiv2 = div2Of.has(race.seasonId);
+      const inDiv = (d) => (list) => (hasDiv2 ? list.filter((e) => e.division === d) : list);
+      const grid = (d) => {
+        const only = inDiv(d);
+        const cap = d === 2 ? capacity2.get(race.id) || race.capacity || 40 : race.capacity || 40;
+        const reserved = openOffers.get(`${race.id}:${d}`) || 0;
+        return {
+          capacity: d === 2 ? cap : race.capacity,
+          gridFull: only(grouped.ACCEPTED).length + reserved >= cap,
+          reserved,
+          counts: {
+            ACCEPTED: only(grouped.ACCEPTED).length,
+            DECLINED: only(grouped.DECLINED).length,
+            TENTATIVE: only(grouped.TENTATIVE).length,
+            [WAITLIST]: only(grouped[WAITLIST]).length,
+          },
+        };
+      };
+      const div1 = hasDiv2 ? grid(1) : null;
       return {
         id: race.id,
         number: race.number,
@@ -296,19 +332,26 @@ router.get("/", async (req, res, next) => {
         // label: past it the Accept button becomes "join the waiting list".
         // Deliberately the server's verdict rather than a sum the page works
         // out for itself, so the button and the answer to pressing it agree.
-        gridFull:
-          grouped.ACCEPTED.length + (openOffers.get(race.id) || 0) >= (race.capacity || 40),
+        gridFull: hasDiv2
+          ? div1.gridFull
+          : grouped.ACCEPTED.length + (openOffers.get(`${race.id}:1`) || 0) >= (race.capacity || 40),
         // Cars mid-handover: declined by their owner, not going spare. Carried
         // as its own number so the admin's grid panel counts the round the same
         // way the server does — "43 of 42" there and the trim it offers have to
         // agree, and accepted alone is one short whenever an offer stands.
-        reserved: openOffers.get(race.id) || 0,
-        counts: {
-          ACCEPTED: grouped.ACCEPTED.length,
-          DECLINED: grouped.DECLINED.length,
-          TENTATIVE: grouped.TENTATIVE.length,
-          [WAITLIST]: grouped[WAITLIST].length,
-        },
+        reserved: hasDiv2 ? div1.reserved : openOffers.get(`${race.id}:1`) || 0,
+        counts: hasDiv2
+          ? div1.counts
+          : {
+              ACCEPTED: grouped.ACCEPTED.length,
+              DECLINED: grouped.DECLINED.length,
+              TENTATIVE: grouped.TENTATIVE.length,
+              [WAITLIST]: grouped[WAITLIST].length,
+            },
+        // Division 2's grid (null = the season runs no Division 2), plus who
+        // is in it, so the page can tell a signed-in driver which grid they
+        // would join before they have answered.
+        division2: hasDiv2 ? { ...grid(2), driverIds: [...div2Of.get(race.seasonId)] } : null,
         rsvps: grouped,
       };
     });

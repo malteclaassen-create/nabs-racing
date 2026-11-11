@@ -11,10 +11,10 @@ import {
   stampFastestLapBonus,
   stampRacePointsTable,
   applyPenalties,
-  calculateT1ConstructorContributions,
-  calculateT2ConstructorContributions,
+  contributionsForTier,
   DEFAULT_POINTS_TABLE,
 } from "./pointsCalculator.js";
+import { readDivisionChildren, readDivision2Drivers, DIV2_TIER } from "../lib/divisions.js";
 import { getSeasonScoring } from "./seasonService.js";
 import { resultTeamId } from "../lib/resultTeam.js";
 import { getNameOverrides, getIdentityOverrides, getPersonGroups } from "../lib/persons.js";
@@ -91,7 +91,20 @@ export async function roundPointsTables(prisma, raceIds) {
 // slot), each round's sprint child by round id, and the full list of race ids
 // whose results score. Shared with the admin preview so it prices a proposal
 // exactly as saving it would.
-export async function scoringRaces(prisma, rounds) {
+//
+// `division: 2` asks for the second field instead: each round's Division 2
+// classification (lib/divisions.js) under the round's number, and nothing
+// else. Division 2 runs no sprints of its own.
+export async function scoringRaces(prisma, rounds, { division = 1 } = {}) {
+  if (division === 2) {
+    const raceNumberById = new Map();
+    const byParent = await readDivisionChildren(prisma, rounds.map((r) => r.id));
+    for (const r of rounds) {
+      const childId = byParent.get(r.id);
+      if (childId) raceNumberById.set(childId, r.number);
+    }
+    return { raceNumberById, sprintRaceIds: new Set(), sprintChildOf: new Map(), raceIds: [...raceNumberById.keys()] };
+  }
   const raceNumberById = new Map(rounds.map((r) => [r.id, r.number]));
   const sprintRaceIds = new Set();
   const sprintChildOf = new Map();
@@ -214,7 +227,7 @@ export function computeDriverDropRounds(resultsByRound, raceNumbers, dropN, tabl
 export function buildConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, dropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
   const dropRounds = computeDriverDropRounds(resultsByRound, dropRoundNumbers, dropN, table);
   const contributionsFor =
-    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+    contributionsForTier(tier);
   const tierTeams = teams.filter((t) => t.tier === tier);
 
   const perTeam = new Map(
@@ -291,7 +304,7 @@ export function applyTeamDrop({ contributions, rosterSlots, roundNumbers, dropN 
 // drop). Pure / side-effect free.
 export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
   const contributionsFor =
-    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+    contributionsForTier(tier);
   const tierTeams = teams.filter((t) => t.tier === tier);
   const rosterSlots = new Map(
     tierTeams.map((t) => [t.id, Math.max(1, drivers.filter((d) => d.teamId === t.id && d.tier === tier).length)])
@@ -339,7 +352,7 @@ export function buildTeamDropConstructorRows({ tier, teams, drivers, raceNumbers
 // whole calendar; the late-season preview picks from the rounds already run).
 export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNumbers, resultsByRound, teamDropN, dropRoundNumbers = raceNumbers, table = DEFAULT_POINTS_TABLE }) {
   const contributionsFor =
-    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+    contributionsForTier(tier);
   const tierTeams = teams.filter((t) => t.tier === tier);
   const perRace = new Map(tierTeams.map((t) => [t.id, {}]));
 
@@ -381,7 +394,7 @@ export function buildTeamRoundDropConstructorRows({ tier, teams, drivers, raceNu
 // first. Pure / side-effect free.
 export function teamScorers({ tier, teams, drivers, raceNumbers, resultsByRound, table = DEFAULT_POINTS_TABLE }) {
   const contributionsFor =
-    tier === 1 ? calculateT1ConstructorContributions : calculateT2ConstructorContributions;
+    contributionsForTier(tier);
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const byTeam = new Map(teams.filter((t) => t.tier === tier).map((t) => [t.id, new Map()]));
   const entry = (teamId, driverId) => {
@@ -727,7 +740,13 @@ export function attachPrevPositions(rows, raceNumbers, dropN, manualOf = () => n
 // dropped yet. Capped at the season's own drop count; ignored on a frozen
 // mid-season view. Movement arrows are left off, since the previous round's
 // table was never ranked this way.
-export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, projectDrops = null, _depth = 1 } = {}) {
+//
+// `division: 2` builds the Division 2 table (lib/divisions.js): that field's
+// own classifications, and its drivers. Who sits in which table is decided by
+// the roster AND by the results: a driver promoted mid-season keeps a row in
+// the Division 2 table with what they scored there, and joins Division 1 with
+// what they score from then on.
+export async function getDriverStandings(prisma, seasonId, { extraResults = [], upToRound = null, projectDrops = null, division = 1, _depth = 1 } = {}) {
   const [drivers, allRaces, scoring, nameOverrides, identity] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     prisma.race.findMany({ where: { seasonId, isSpecialEvent: false }, orderBy: { number: "asc" } }),
@@ -746,11 +765,17 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // used to land in perRace keyed "undefined", which the head-to-head on a
   // driver profile then counted as a shared round, so a season whose only
   // completed session was a friendly showed records for whoever turned up.
-  const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, races);
-  const [results, { sprintRounds, customPoints }] = await Promise.all([
+  const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, races, { division });
+  const [results, { sprintRounds: roundSprints, customPoints }, div2Drivers] = await Promise.all([
     prisma.raceResult.findMany({ where: { raceId: { in: raceIds } } }),
     roundFormats(prisma, races),
+    readDivision2Drivers(prisma, seasonId),
   ]);
+  // Division 2 runs no sprints, so its columns never pay twice.
+  const sprintRounds = division === 2 ? [] : roundSprints;
+  const scoredHere = new Set(results.map((r) => r.driverId));
+  for (const r of extraResults) if (raceNumberById.has(r.raceId)) scoredHere.add(r.driverId);
+  const inThisTable = (d) => scoredHere.has(d.id) || (division === 2 ? div2Drivers.has(d.id) : !div2Drivers.has(d.id));
   const raceNumbers = races.map((r) => r.number);
   const appliedResults = await withScoringApplied(
     prisma,
@@ -788,7 +813,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     ? appliedResults.map((r) => (r.grid != null && missedQuali(r, qualiSheets) ? { ...r, grid: null } : r))
     : appliedResults;
 
-  const rows = drivers.filter((d) => !hidden.has(d.id)).map((driver) => {
+  const rows = drivers.filter((d) => !hidden.has(d.id) && inThisTable(d)).map((driver) => {
     const { perRace, pointsByRound } = buildDriverPerRace(cellResults, driver.id, raceNumberById, table, sprintRaceIds);
 
     // Season total drops each driver's N lowest rounds (unscored / not-yet-run
@@ -867,7 +892,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // for a mid-season view, though: the official sheet is where the season
   // ENDED, so stamping it onto "after round 4" would answer a question nobody
   // asked with numbers from eight rounds later.
-  if (!partial) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
+  if (!partial && division === 1) applyFinalStandings(rows, scoring.finalStandings?.drivers, "driverId");
 
   // Points the league set by hand — last, so they win over the computed total
   // and over an official sheet alike (see applyManualTotals).
@@ -879,11 +904,12 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
   // mid-season view, which is a question about the points as they stood.
   // The Hall of Fame, the honours and the seals read the table's first row,
   // so they follow without knowing the rule.
-  const championOverride = !partial ? applyChampionOverride(rows, scoring.championDriverId) : null;
+  const championOverride = !partial && division === 1 ? applyChampionOverride(rows, scoring.championDriverId) : null;
 
   // officialTotals tells the UI the totals come from the league's official
   // final sheet (not computed), so per-race sums may not add up exactly.
   return {
+    division,
     raceNumbers,
     // Rounds run as sprint+feature weekends: both races score, so these
     // columns can pay twice (the tables mark them, the title fight prices them).
@@ -898,7 +924,7 @@ export async function getDriverStandings(prisma, seasonId, { extraResults = [], 
     // Bonus the fastest race lap pays this season (0 = none), so the table
     // can footnote it and explain the cells that carry it.
     fastestLapPoints: scoring.fastestLapPoints || 0,
-    officialTotals: !partial && !!scoring.finalStandings?.drivers?.length,
+    officialTotals: !partial && division === 1 && !!scoring.finalStandings?.drivers?.length,
     // True when at least one row's total was set or nudged by hand, so the
     // table can footnote it (rows carry pointsAdjust / pointsOverride).
     manualPoints: rows.some((r) => r.pointsAdjust || r.pointsOverride != null),
@@ -939,10 +965,13 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   const races = partial ? allRaces.filter((r) => r.number <= upToRound) : allRaces;
 
   // Rounds and their sprint classifications, each under its round number.
-  const [{ raceNumberById }, { sprintRounds, customPoints }] = await Promise.all([
-    scoringRaces(prisma, races),
+  // Division 2 teams (tier 3) score from that field's own classifications.
+  const division = tier === DIV2_TIER ? 2 : 1;
+  const [{ raceNumberById }, { sprintRounds: roundSprints, customPoints }] = await Promise.all([
+    scoringRaces(prisma, races, { division }),
     roundFormats(prisma, races),
   ]);
+  const sprintRounds = division === 2 ? [] : roundSprints;
   const raceNumbers = races.map((r) => r.number);
 
   // Each race's penalties applied within its own classification, THEN grouped
@@ -965,7 +994,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   //   teamRounds — team drop counts whole team rounds (teamDropMode 'rounds',
   //                the official sheet's style);
   //   driver     — the legacy default: teams inherit each driver's own dropped rounds.
-  const dropMode = scoring.finalStandings?.teamPerRace
+  const dropMode = scoring.finalStandings?.teamPerRace && division === 1
     ? "official"
     : scoring.teamDropWorst != null
       ? scoring.teamDropMode === "rounds"
@@ -1066,7 +1095,7 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
   // Archived seasons: official team totals & order win (finalStandings.teams
   // holds every team; only this tier's rows exist here, so the rest are
   // ignored). Not for a mid-season view: that sheet is where the season ended.
-  if (!partial) applyFinalStandings(rows, scoring.finalStandings?.teams, "teamId");
+  if (!partial && division === 1) applyFinalStandings(rows, scoring.finalStandings?.teams, "teamId");
 
   return {
     tier,
@@ -1087,12 +1116,12 @@ async function getConstructorStandings(prisma, tier, seasonId, { extraResults = 
     // unrun round soaks up one), and how many the preview dropped (null = the
     // real table). projectedTeamDrops is what that came to under the team
     // rule, per team, for the footnote and the preview note.
-    previewDrops: previewable && !partial && !scoring.finalStandings?.teams?.length ? unitDrops : 0,
+    previewDrops: previewable && !partial && !(division === 1 && scoring.finalStandings?.teams?.length) ? unitDrops : 0,
     dropsNow: Math.max(0, unitDrops - (raceNumbers.length - runRounds.length)),
     projectedDrops: projectedN,
     projectedTeamDrops: projecting && dropMode === "team" ? dropN : null,
     fastestLapPoints: scoring.fastestLapPoints || 0,
-    officialTotals: !partial && !!scoring.finalStandings?.teams?.length,
+    officialTotals: !partial && division === 1 && !!scoring.finalStandings?.teams?.length,
     standings: rows,
   };
 }
@@ -1103,6 +1132,16 @@ export function getT1ConstructorStandings(prisma, seasonId, opts) {
 
 export function getT2ConstructorStandings(prisma, seasonId, opts) {
   return getConstructorStandings(prisma, 2, seasonId, opts);
+}
+
+// The constructor table a team of this tier sits in (1, 2 or Division 2's 3).
+export function getConstructorStandingsForTier(prisma, tier, seasonId, opts) {
+  return getConstructorStandings(prisma, tier === 1 ? 1 : tier === DIV2_TIER ? DIV2_TIER : 2, seasonId, opts);
+}
+
+// Division 2's teams (tier 3), scored from that field's own race.
+export function getDiv2ConstructorStandings(prisma, seasonId, opts) {
+  return getConstructorStandings(prisma, DIV2_TIER, seasonId, opts);
 }
 
 export { getRaceNumbers };

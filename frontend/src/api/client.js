@@ -532,10 +532,12 @@ export const api = {
   // standings posters. Omitted = the season as it stands now.
   // `drops` asks for the late-season preview: each driver's N worst results so
   // far dropped, as if the rounds still to come were all better.
-  driverStandings: (season, upTo = null, drops = null) => {
+  // `division` 2 = the Division 2 table (a season's second field).
+  driverStandings: (season, upTo = null, drops = null, division = 1) => {
     const base = `/standings/drivers${seasonParam(season)}${upToQ(season, upTo)}`;
     const dropsQ = drops == null ? "" : `${base.includes("?") ? "&" : "?"}drops=${drops}`;
-    return request(`${base}${dropsQ}`, { auth: true });
+    const divQ = division === 2 ? `${base.includes("?") || dropsQ ? "&" : "?"}division=2` : "";
+    return request(`${base}${dropsQ}${divQ}`, { auth: true });
   },
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
@@ -583,6 +585,8 @@ export const api = {
   // results dropped (never whole team rounds), see constructorStandings below.
   t1Standings: (season, upTo = null, drops = null) => constructorStandings("t1", season, upTo, drops),
   t2Standings: (season, upTo = null, drops = null) => constructorStandings("t2", season, upTo, drops),
+  // Division 2's own teams.
+  div2Standings: (season, upTo = null, drops = null) => constructorStandings("div2", season, upTo, drops),
   races: (season, { includeSprints } = {}) =>
     request(
       // includeSprints: also list the hidden sprint-classification rows of
