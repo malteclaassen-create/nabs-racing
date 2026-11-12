@@ -67,6 +67,7 @@ describe("decision reasons", () => {
   it("shows the reason only on a decision, and never N/A or Other", () => {
     assert.equal(reasonLabel({ status: "PENALTY", decisionReason: "UNSAFE_REJOIN" }), "Unsafe rejoin");
     assert.equal(reasonLabel({ status: "NO_PENALTY", decisionReason: "RACING_INCIDENT" }), "Racing incident");
+    assert.equal(reasonLabel({ status: "PENALTY", decisionReason: "BLUE_FLAGS" }), "Ignoring blue flags");
     assert.equal(reasonLabel({ status: "NO_PENALTY", decisionReason: "NA" }), null);
     assert.equal(reasonLabel({ status: "PENALTY", decisionReason: "OTHER" }), null);
     assert.equal(reasonLabel({ status: "REVIEWING", decisionReason: "UNSAFE_REJOIN" }), null);
