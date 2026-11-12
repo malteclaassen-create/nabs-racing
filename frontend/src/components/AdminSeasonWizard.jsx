@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
+import {
+  fieldStep,
+  formForSource,
+  groupBySeries,
+  initialForm,
+  otherChampionshipSeasons,
+  resolveSource,
+  scoringFrom,
+} from "./seasonWizard.mjs";
 
 // ---------------------------------------------------------------------------
 // "Prepare a new season", as four steps in one card (Seasons tab).
@@ -45,16 +54,6 @@ function writeWizard(v) {
   }
 }
 
-function parseTable(raw) {
-  if (Array.isArray(raw)) return raw;
-  try {
-    const v = JSON.parse(raw || "null");
-    return Array.isArray(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-
 function Step({ n, done, title, children }) {
   return (
     <li className="flex gap-3">
@@ -94,9 +93,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
     api
       .adminSeasonsAllSeries()
       .then((all) => {
-        if (!live) return;
-        const own = new Set(list.map((s) => s.id));
-        setOthers((all || []).filter((s) => !own.has(s.id) && s.seriesKind !== "event"));
+        if (live) setOthers(otherChampionshipSeasons(all, list));
       })
       .catch(() => live && setOthers([]));
     return () => {
@@ -106,39 +103,16 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, list.map((s) => s.id).join(",")]);
   const active = list.find((s) => s.isActive) || list[0] || null;
-  const nextNumber = list.reduce((m, s) => Math.max(m, s.number || 0), 0) + 1;
-  const [form, setForm] = useState({
-    fromId: active?.id || "",
-    number: String(nextNumber),
-    name: `Season ${nextNumber}`,
-    game: "",
-    keepScoring: true,
-  });
+  const [form, setForm] = useState(() => initialForm(list));
 
   const target = wizard ? list.find((s) => s.id === wizard.id) || null : null;
-  const sourceId = wizard?.fromId || form.fromId;
-  const source = list.find((s) => s.id === sourceId) || others.find((s) => s.id === sourceId) || null;
-  // Following on from another championship's season (a second division).
-  const crossSeries = !!source && !list.some((s) => s.id === source.id);
-  const sourceName = source ? (crossSeries ? `${source.seriesName || "Other series"} ${source.name}` : source.name) : "";
-  // Other championships' seasons for the picker, grouped by series, newest first.
-  const otherGroups = [];
-  for (const s of others) {
-    let g = otherGroups.find((x) => x.seriesId === s.seriesId);
-    if (!g) otherGroups.push((g = { seriesId: s.seriesId, name: s.seriesName || "Other series", seasons: [] }));
-    g.seasons.push(s);
-  }
+  // Following on from another championship's season (a second division) or
+  // from one of this series' own (seasonWizard.mjs).
+  const { source, crossSeries, sourceName } = resolveSource(list, others, wizard?.fromId || form.fromId);
+  const otherGroups = groupBySeries(others);
 
   function pickSource(id) {
-    const next = { ...form, fromId: id };
-    // A series with no seasons of its own yet (a new division) usually numbers
-    // its first season like the one it starts next to.
-    const picked = others.find((s) => s.id === id);
-    if (picked && !list.length) {
-      next.number = String(picked.number);
-      next.name = picked.name;
-    }
-    setForm(next);
+    setForm(formForSource(form, id, list, others));
   }
 
   async function run(fn, done) {
@@ -161,16 +135,14 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   function create(e) {
     e.preventDefault();
     run(async () => {
-      const body = { number: Number(form.number), name: form.name.trim(), game: form.game.trim() || null };
       // The league's rules usually carry over from one season to the next; the
       // Season settings below stay the place to change them.
-      if (form.keepScoring && source) {
-        body.dropWorst = source.dropWorst;
-        body.pointsTable = parseTable(source.pointsTable);
-        if (source.teamDropWorst != null) body.teamDropWorst = source.teamDropWorst;
-        if (source.teamDropMode) body.teamDropMode = source.teamDropMode;
-        if (source.fastestLapPoints) body.fastestLapPoints = source.fastestLapPoints;
-      }
+      const body = {
+        number: Number(form.number),
+        name: form.name.trim(),
+        game: form.game.trim() || null,
+        ...scoringFrom(source, form.keepScoring),
+      };
       const created = await api.createSeason(body);
       const next = { id: created.id, fromId: form.fromId || null };
       writeWizard(next);
@@ -186,6 +158,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   }
 
   const counts = target?._count || { teams: 0, drivers: 0, races: 0 };
+  const field = fieldStep({ teams: counts.teams, drivers: counts.drivers, source, crossSeries });
   const hasTeams = counts.teams > 0;
   // Teams alone are not a field: "Teams only" leaves the drivers still to come.
   const hasField = hasTeams && counts.drivers > 0;
@@ -341,7 +314,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   : "Bring the field over"
             }
           >
-            {!hasTeams && source && crossSeries ? (
+            {field === "teams-from-other" ? (
               <div className="space-y-2">
                 <button
                   type="button"
@@ -358,7 +331,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   afterwards.
                 </p>
               </div>
-            ) : !hasTeams && source ? (
+            ) : field === "copy-from-source" ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -385,7 +358,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   Teams only
                 </button>
               </div>
-            ) : !hasTeams ? (
+            ) : field === "teams-by-hand" ? (
               <button
                 type="button"
                 className="btn-secondary py-1.5 text-sm"
@@ -393,9 +366,9 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               >
                 Add teams by hand
               </button>
-            ) : !hasField ? (
+            ) : field === "drivers-from-source" || field === "drivers-by-hand" ? (
               <div className="flex flex-wrap gap-2">
-                {source && !crossSeries && (
+                {field === "drivers-from-source" && (
                   <button
                     type="button"
                     className="btn-primary py-1.5 text-sm"
