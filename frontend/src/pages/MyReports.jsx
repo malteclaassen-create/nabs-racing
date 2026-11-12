@@ -10,7 +10,9 @@ import { REPORTS_OPEN_TO_MEMBERS } from "../reportsAccess.js";
 import { fmtStamp } from "../utils/format.js";
 import ReportChat, { ReportComposer } from "../components/ReportChat.jsx";
 import ReplayAnchor, { hasReplayAnchor } from "../components/ReplayAnchor.jsx";
-import { penaltyLabel, penaltySummary } from "../components/reportDesk.mjs";
+import {
+  penaltyLabel, reasonLabel, withdrawText, isWithdrawn, WITHDRAW_REASONS,
+} from "../components/reportDesk.mjs";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { ChevronDown } from "lucide-react";
 
@@ -48,6 +50,95 @@ const STATUS_META = {
   NO_PENALTY: { label: "No penalty", cls: "bg-emerald-500/15 text-ok" },
   DISMISSED: { label: "Closed", cls: "bg-surface2 text-light" },
 };
+// Withdrawn is stored as closed, and shown as what it is.
+const WITHDRAWN_META = { label: "Withdrawn", cls: "bg-surface2 text-light" };
+const statusOf = (r) => (isWithdrawn(r) ? WITHDRAWN_META : STATUS_META[r.status] || STATUS_META.NEW);
+
+// The stewards' decision as the drivers read it: the reason and the penalty as
+// two short labels, their own words underneath. Null when nothing was decided.
+function Decision({ r }) {
+  const reason = reasonLabel(r);
+  const pen = penaltyLabel(r);
+  const words = (r.verdict || "").trim();
+  if (!reason && !pen && !words) return null;
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">The stewards</span>
+        {reason && <span className="pill bg-surface2 text-dark">{reason}</span>}
+        {pen && <span className="pill bg-red-500/15 text-bad">{pen}</span>}
+      </div>
+      {words && <p className="text-sm leading-relaxed text-medium">{words}</p>}
+    </div>
+  );
+}
+
+// Taking back a report you filed. Asks why, because the stewards and the other
+// driver read the answer instead of the report just going away. Nothing is
+// deleted: the thread stays, closed, with the reason at the top.
+function WithdrawPanel({ onWithdraw, busy }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const needsNote = reason === "OTHER";
+  const ready = !!reason && (!needsNote || note.trim().length > 0);
+
+  if (!open) {
+    return (
+      <button
+        className="text-xs font-semibold text-light transition hover:text-bad"
+        onClick={() => setOpen(true)}
+      >
+        Withdraw this report
+      </button>
+    );
+  }
+  return (
+    <div className="card space-y-3 p-5">
+      <div>
+        <div className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+          Withdraw this report
+        </div>
+        <p className="mt-1 text-sm leading-relaxed text-light">
+          The stewards and the driver you named will see that you took it back, and why.
+        </p>
+      </div>
+      <fieldset className="space-y-2">
+        <legend className="sr-only">Why are you withdrawing it?</legend>
+        {WITHDRAW_REASONS.map((x) => (
+          <label key={x.key} className="flex cursor-pointer items-center gap-2 text-sm text-medium">
+            <input
+              type="radio"
+              name="withdraw-reason"
+              value={x.key}
+              checked={reason === x.key}
+              disabled={busy}
+              onChange={() => setReason(x.key)}
+            />
+            {x.label}
+          </label>
+        ))}
+      </fieldset>
+      <textarea
+        aria-label="Anything to add"
+        className="input h-16 resize-none"
+        maxLength={500}
+        placeholder={needsNote ? "Say why you are taking it back" : "Anything to add (optional)"}
+        value={note}
+        disabled={busy}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-primary" disabled={busy || !ready} onClick={() => onWithdraw(reason, note)}>
+          {busy ? "Withdrawing…" : "Withdraw report"}
+        </button>
+        <button className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>
+          Keep it
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 
@@ -100,6 +191,20 @@ function Thread({ id, races, onBack, onChanged }) {
     }
   }
 
+  async function withdraw(reason, note) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.withdrawReport(id, reason, note);
+      setData((d) => ({ ...d, report: { ...d.report, ...res.report } }));
+      onChanged?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(body, files) {
     setBusy(true);
     setError(null);
@@ -122,9 +227,14 @@ function Thread({ id, races, onBack, onChanged }) {
   const needsAccused =
     !!r && !r.accusedDriverId && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
 
+  const mine = !!r && !!myDiscordId() && r.reporterDiscordId === myDiscordId();
+  // Yours, and the stewards have not decided yet.
+  const canWithdraw = mine && (r.status === "NEW" || r.status === "REVIEWING");
+
   if (error && !data) return <ErrorBox message={error} />;
   if (!data) return <Spinner />;
-  const s = STATUS_META[r.status] || STATUS_META.NEW;
+  const s = statusOf(r);
+  const withdrawn = withdrawText(r);
   const race = races.find((x) => x.id === r.raceId);
 
   return (
@@ -174,14 +284,24 @@ function Thread({ id, races, onBack, onChanged }) {
             after it, what the penalty was — seconds, a warning, a grid drop or
             a disqualification. Only THIS report's; a driver's season record is
             the stewards' to see. */}
-        {(r.verdict || penaltySummary(r)) && (
+        {!isWithdrawn(r) && <Decision r={r} />}
+        {/* Taken back by the driver who filed it, and why. */}
+        {isWithdrawn(r) && (
           <p className="mt-3 border-t border-border pt-3 text-sm leading-relaxed text-medium">
-            <span className="font-semibold text-dark">The stewards: </span>
-            {r.verdict}
-            {penaltySummary(r) && (r.verdict ? ` (${penaltySummary(r)})` : `${capitalise(penaltySummary(r))}.`)}
+            <span className="font-semibold text-dark">
+              Withdrawn by {mine ? "you" : r.reporterName || "the driver who filed it"}:{" "}
+            </span>
+            {withdrawn || "no reason given."}
           </p>
         )}
       </div>
+
+      {canWithdraw && (
+        <div>
+          <WithdrawPanel onWithdraw={withdraw} busy={busy} />
+          {error && !needsAccused && <p className="mt-2 text-sm text-bad">{error}</p>}
+        </div>
+      )}
 
       {needsAccused && (
         <div className="card space-y-3 border-amber-500/40 p-5">
@@ -224,7 +344,7 @@ function Thread({ id, races, onBack, onChanged }) {
         report={r}
         messages={data.messages}
         attachments={data.attachments}
-        mineIsReporter={!!myDiscordId() && r.reporterDiscordId === myDiscordId()}
+        mineIsReporter={mine}
       />
 
       <ReportComposer onSend={send} busy={busy} full />
@@ -872,7 +992,7 @@ function Section({ title, hint, rows, races, onOpen, empty, seriesTag }) {
 }
 
 function ReportRow({ r, onOpen }) {
-  const s = STATUS_META[r.status] || STATUS_META.NEW;
+  const s = statusOf(r);
   return (
     <li>
       <button

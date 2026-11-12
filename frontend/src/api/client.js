@@ -1709,7 +1709,10 @@ export const api = {
     for (const f of files) fd.append("files", f, f.name);
     return request(`/reports/${id}/messages`, { method: "POST", body: fd, userAuth: true, form: true });
   },
-  withdrawReport: (id) => request(`/reports/${id}`, { method: "DELETE", userAuth: true }),
+  // Taking back a report you filed, with the reason the stewards and the other
+  // driver will read. Closes it; nothing is deleted.
+  withdrawReport: (id, reason, note) =>
+    request(`/reports/${id}/withdraw`, { method: "POST", body: { reason, note }, userAuth: true }),
   // The contacts AC recorded for you in one round, to pin a report to.
   reportRounds: () => request("/reports/rounds"),
   myRaceContacts: (raceId) => request(`/reports/contacts?raceId=${encodeURIComponent(raceId)}`, { userAuth: true }),

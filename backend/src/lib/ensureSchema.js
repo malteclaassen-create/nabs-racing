@@ -645,6 +645,14 @@ export async function ensureAppSchema(prisma) {
   // points); the column stays so old databases and new ones agree.
   await addColumn(prisma, "Report", "penaltyKind", "TEXT");
   await addColumn(prisma, "Report", "licencePoints", "INTEGER");
+  // Why the stewards decided what they did, as a code from a short list
+  // (lib/reports.js DECISION_REASONS), beside the typed verdict.
+  await addColumn(prisma, "Report", "decisionReason", "TEXT");
+  // A report the driver who filed it took back: closed rather than deleted,
+  // with when and why, so it does not just disappear (dbWithdrawReport).
+  await addColumn(prisma, "Report", "withdrawnAt", "DATETIME");
+  await addColumn(prisma, "Report", "withdrawReason", "TEXT");
+  await addColumn(prisma, "Report", "withdrawNote", "TEXT");
   // Reports already filed by the in-game app carry a line quoting the app's own
   // wall clock, which was appended unconditionally. It is the same moment as
   // the report's timestamp seen from another timezone (the relaying machine

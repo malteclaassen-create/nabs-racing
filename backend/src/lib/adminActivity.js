@@ -277,6 +277,7 @@ export function diffReport(before, after) {
     Decision: r.status,
     "Penalty type": r.penaltyKind,
     "Penalty seconds": r.penaltySeconds,
+    Reason: r.decisionReason,
     Verdict: r.verdict,
   });
   const a = pick(before);

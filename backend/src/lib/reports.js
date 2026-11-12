@@ -41,7 +41,7 @@
 import { randomUUID } from "crypto";
 import { dbCreateNotification } from "./notifications.js";
 import { discordIdsForDrivers, getPersonGroups } from "./persons.js";
-import { isSteward } from "./stewards.js";
+import { isSteward, getStewardDiscordIds } from "./stewards.js";
 import { getAltMap, mainOf } from "./members.js";
 
 // The account a report's filer acts as now. Someone signing in through a second
@@ -68,6 +68,41 @@ export const REPORT_DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 export const MESSAGE_AUTHORS = ["REPORTER", "ACCUSED", "VIEWER", "STEWARD", "ADMIN"];
 // What a penalty IS. Only TIME feeds the results editor (penaltyTarget).
 export const PENALTY_KINDS = ["TIME", "WARNING", "GRID", "DSQ"];
+
+// WHY the stewards decided what they did, picked from a short list so the two
+// drivers get the same plain words every time. The typed verdict stays as the
+// note beside it, and "OTHER" is the one that needs that note to say anything.
+// NA is there for a decision with nothing to name, and is never shown.
+// Keep in step with frontend/src/components/reportDesk.mjs.
+export const DECISION_REASONS = {
+  AVOIDABLE_CONTACT: "Avoidable contact",
+  OFF_TRACK_OVERTAKE: "Overtaking off track",
+  SC_OVERTAKE: "Overtaking under safety car",
+  UNSAFE_REJOIN: "Unsafe rejoin",
+  RACING_INCIDENT: "Racing incident",
+  NA: "N/A",
+  OTHER: "Other",
+};
+
+// Why the driver who filed a report took it back. A withdrawn report is not
+// deleted: it is closed, and the reason is what the stewards and the other
+// driver read instead of a thread that just disappears.
+export const WITHDRAW_REASONS = {
+  SORTED: "Sorted it out with the driver",
+  MISTAKE: "Filed by mistake",
+  RACING_INCIDENT: "Watched it back, it was a racing incident",
+  OTHER: "Other",
+};
+const MAX_WITHDRAW_NOTE = 500;
+
+// A reason code from one of the lists above, or null for "none given". An
+// unknown one is refused, the same as an unknown penalty kind.
+function pickReason(list, code, what) {
+  if (code === undefined || code === null || code === "") return null;
+  const v = String(code).toUpperCase();
+  if (!Object.hasOwn(list, v)) throw Object.assign(new Error(`Unknown ${what}`), { status: 400 });
+  return v;
+}
 
 const MAX_BODY = 4000;
 const MIN_BODY = 5;
@@ -114,8 +149,12 @@ function shape(r) {
     incidentGroupId: r.incidentGroupId || null,
     status: r.status || "NEW",
     verdict: r.verdict || null,
+    decisionReason: r.decisionReason || null,
     penaltySeconds: r.penaltySeconds ?? null,
     penaltyKind: kindOf(r),
+    withdrawnAt: r.withdrawnAt || null,
+    withdrawReason: r.withdrawReason || null,
+    withdrawNote: r.withdrawNote || null,
     appliedSeconds: r.appliedSeconds ?? null,
     appliedAt: r.appliedAt || null,
     createdAt: r.createdAt,
@@ -548,7 +587,11 @@ export async function dbAddMessage(prisma, report, { author, discordId, name, bo
 
 // What a decision says, in the words the drivers' bell reads: the seconds for
 // a time penalty, the kind for the rest.
-export function penaltyOutcome({ status, penaltyKind, penaltySeconds }) {
+export function penaltyOutcome({ status, penaltyKind, penaltySeconds, decisionReason }) {
+  return withReason(outcomeOnly({ status, penaltyKind, penaltySeconds }), status, decisionReason);
+}
+
+function outcomeOnly({ status, penaltyKind, penaltySeconds }) {
   if (status === "NO_PENALTY") return "No penalty was given.";
   if (status !== "PENALTY") return "The report was closed without a decision.";
   const kind = penaltyKind || "TIME";
@@ -562,6 +605,14 @@ export function penaltyOutcome({ status, penaltyKind, penaltySeconds }) {
   return `Penalty: ${what}.`;
 }
 
+// "Penalty: 5 seconds. Reason: avoidable contact." Only on an actual decision,
+// and never for N/A or Other, which say nothing on their own.
+function withReason(text, status, code) {
+  if (status !== "PENALTY" && status !== "NO_PENALTY") return text;
+  if (!code || code === "NA" || code === "OTHER" || !DECISION_REASONS[code]) return text;
+  return `${text} Reason: ${DECISION_REASONS[code].toLowerCase()}.`;
+}
+
 // The admin's decision. Writes what was decided; it deliberately does not touch
 // the race result — see the note at the top of this file.
 //
@@ -572,21 +623,26 @@ export function penaltyOutcome({ status, penaltyKind, penaltySeconds }) {
 //
 // The "licencePoints" column is left alone: the league dropped licence points,
 // and old rows keep whatever they had without anything reading it.
-export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds, penaltyKind }) {
+export async function dbDecideReport(prisma, report, { status, verdict, penaltySeconds, penaltyKind, decisionReason }) {
   const decidedAt = new Date().toISOString();
   const s = sanitizeStatus(status);
   if (!s) throw Object.assign(new Error("Unknown status"), { status: 400 });
+  // A reason belongs to a penalty or a no-penalty. Anything else drops it, so
+  // a report sent back to "Looking at it" does not keep the old one showing.
+  const reason =
+    s === "PENALTY" || s === "NO_PENALTY" ? pickReason(DECISION_REASONS, decisionReason, "reason") : null;
   const kind = sanitizePenaltyKind(penaltyKind) || (s === "PENALTY" ? "TIME" : null);
   const secs =
     penaltySeconds === "" || penaltySeconds === null || penaltySeconds === undefined || (kind && kind !== "TIME")
       ? null
       : Math.max(0, Math.min(600, Math.round(Number(penaltySeconds) || 0)));
   await prisma.$executeRawUnsafe(
-    `UPDATE "Report" SET "status" = ?, "verdict" = ?, "penaltySeconds" = ?, "penaltyKind" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    `UPDATE "Report" SET "status" = ?, "verdict" = ?, "penaltySeconds" = ?, "penaltyKind" = ?, "decisionReason" = ?, "updatedAt" = ? WHERE "id" = ?`,
     s,
     clamp(verdict, MAX_BODY) || null,
     secs,
     kind,
+    reason,
     decidedAt,
     report.id
   );
@@ -620,6 +676,53 @@ export async function dbDecideReport(prisma, report, { status, verdict, penaltyS
   // never signed in with Discord, or which names nobody at all, has one person
   // on it or none.
   return { ...fresh, told };
+}
+
+// The driver who filed a report taking it back, with a reason.
+//
+// Nothing is deleted. The report is closed (DISMISSED, which every list
+// already treats as finished) and carries the reason, so the stewards and the
+// driver it named see why it ended instead of finding it gone. Only while no
+// decision has been made: once the stewards have decided, it is theirs.
+//
+// Whoever else is on the thread is told, and so are the appointed stewards,
+// who may be halfway through the replay.
+export async function dbWithdrawReport(prisma, report, { reason, note, discordId }) {
+  if (REPORT_DECIDED.includes(report.status)) {
+    throw Object.assign(new Error("The stewards have already decided this one"), { status: 409 });
+  }
+  const code = pickReason(WITHDRAW_REASONS, reason, "reason");
+  if (!code) throw Object.assign(new Error("Pick a reason for taking the report back"), { status: 400 });
+  const text = clamp(note, MAX_WITHDRAW_NOTE) || null;
+  if (code === "OTHER" && !text) throw Object.assign(new Error("Say why you are taking it back"), { status: 400 });
+  const at = new Date().toISOString();
+  await prisma.$executeRawUnsafe(
+    `UPDATE "Report" SET "status" = 'DISMISSED', "withdrawnAt" = ?, "withdrawReason" = ?, "withdrawNote" = ?, "updatedAt" = ? WHERE "id" = ?`,
+    at,
+    code,
+    text,
+    at,
+    report.id
+  );
+  const fresh = await dbGetReport(prisma, report.id);
+  const tell = await readersOf(prisma, fresh);
+  for (const id of await getStewardDiscordIds(prisma).catch(() => new Set())) tell.add(String(id));
+  tell.delete(String(discordId || ""));
+  tell.delete(String(fresh.reporterDiscordId || ""));
+  tell.delete(await reporterAccount(prisma, fresh));
+  const why = code === "OTHER" ? text : WITHDRAW_REASONS[code];
+  for (const rid of tell) {
+    if (!rid || rid === "null") continue;
+    await dbCreateNotification(prisma, {
+      type: "REPORT",
+      title: "An incident report was withdrawn",
+      body: `${fresh.reporterName || "The driver who filed it"} took the report back: ${why}`,
+      link: `/reports?id=${fresh.id}`,
+      recipientId: rid,
+      dedupeKey: `report_withdrawn:${fresh.id}:${rid}`,
+    }).catch(() => {});
+  }
+  return fresh;
 }
 
 // Name the driver a report is about, for the FIRST time.
@@ -920,6 +1023,8 @@ export function driverRecord(reports, driverIds, { races = [], currentId = null 
     penaltyKind: r.penaltyKind,
     penaltySeconds: r.penaltySeconds,
     verdict: r.verdict,
+    decisionReason: r.decisionReason || null,
+    withdrawnAt: r.withdrawnAt || null,
     createdAt: r.createdAt,
     counts: countsAsPenalty(r),
     current: r.id === currentId,
