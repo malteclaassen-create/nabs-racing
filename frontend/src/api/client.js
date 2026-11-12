@@ -1402,6 +1402,9 @@ export const api = {
 
   // seasons + teams (admin) — scoped to the series being edited
   adminSeasons: () => request(`/admin/seasons${seriesQ()}`, { auth: true }),
+  // Every series' seasons, each with its seriesId/seriesName: what a new
+  // division can start from (the season guide's "Follows on from").
+  adminSeasonsAllSeries: () => request("/admin/seasons", { auth: true }),
   createSeason: (body) => request("/admin/seasons", { method: "POST", body: { ...seriesBody(), ...body }, auth: true }),
   // Season awards, typed in by hand (Seasons tab).
   seasonAwards: (seasonId) => request(`/admin/seasons/${seasonId}/awards`, { auth: true }),

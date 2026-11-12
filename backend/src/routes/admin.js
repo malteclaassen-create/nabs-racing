@@ -116,6 +116,7 @@ import {
   newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
 } from "../lib/newcomers.js";
 import { uniqueDriverId as uniqueDriverIdFor } from "../lib/driverHandles.js";
+import { CloneError, freeTeamId, cloneTeams as cloneSeasonTeams, cloneRoster as cloneSeasonRoster } from "../lib/seasonClone.js";
 import { hotlapsShownFor, setHotlapsShown } from "../lib/attendanceHotlaps.js";
 import { applyTransfer, removeTransfer, readTransfers, syncRosterToTransfers, recordRosterMove } from "../services/driverTransfers.js";
 import { planMerge, mergeDrivers } from "../services/driverMerge.js";
@@ -6032,109 +6033,39 @@ router.post("/seasons/:id/activate", async (req, res, next) => {
 });
 
 // POST /api/admin/seasons/:id/clone-teams  { fromSeasonId }
-// Copies the teams of another season into this one as a starting point. New team
-// ids are suffixed with the target season number to keep them globally unique.
+// Copies the teams of another season into this one as a starting point. The
+// source may be in another series (a second division racing the same teams).
+// Safe to re-run: a team whose name this season already has is left alone.
+// The copying itself lives in lib/seasonClone.js.
 router.post("/seasons/:id/clone-teams", async (req, res, next) => {
   try {
-    const { fromSeasonId } = req.body || {};
     const target = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!target) return res.status(404).json({ error: "Target season not found" });
-    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
-    const sourceTeams = await prisma.team.findMany({ where: { seasonId: fromSeasonId } });
-    if (sourceTeams.length === 0) return res.status(400).json({ error: "Source season has no teams" });
-
-    let created = 0;
-    for (const t of sourceTeams) {
-      const newId = `${t.id}_s${target.number}`;
-      const exists = await prisma.team.findUnique({ where: { id: newId } });
-      if (exists) continue;
-      await prisma.team.create({
-        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
-      });
-      created++;
-    }
+    const { created } = await cloneSeasonTeams(prisma, target, req.body?.fromSeasonId);
     res.json({ ok: true, created });
   } catch (e) {
+    if (e instanceof CloneError) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
 
 // POST /api/admin/seasons/:id/clone-roster  { fromSeasonId }
 // Copies teams AND drivers of another season into this one — the one-click
-// starting point for a new season. Ids get a season suffix to stay globally
-// unique; drivers keep name/discord/country/photo but start with a clean
-// season (no results). Safe to re-run: existing ids are skipped.
+// starting point for a new season. Drivers keep name/discord/country/photo but
+// start with a clean season (no results), person-linked to the row they came
+// from. Safe to re-run. The copying itself lives in lib/seasonClone.js.
 router.post("/seasons/:id/clone-roster", async (req, res, next) => {
   try {
-    const { fromSeasonId } = req.body || {};
     const target = await prisma.season.findUnique({ where: { id: req.params.id } });
     if (!target) return res.status(404).json({ error: "Target season not found" });
-    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
-    if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
-    const [sourceTeams, sourceDrivers] = await Promise.all([
-      prisma.team.findMany({ where: { seasonId: fromSeasonId } }),
-      prisma.driver.findMany({ where: { seasonId: fromSeasonId } }),
-    ]);
-    if (sourceTeams.length === 0) return res.status(400).json({ error: "Source season has no teams" });
-
-    const suffix = `_s${target.number}`;
-    let teamsCreated = 0;
-    const teamIdMap = new Map(); // old id -> new id
-    for (const t of sourceTeams) {
-      const newId = `${t.id}${suffix}`;
-      teamIdMap.set(t.id, newId);
-      const exists = await prisma.team.findUnique({ where: { id: newId } });
-      if (exists) continue;
-      await prisma.team.create({
-        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
-      });
-      teamsCreated++;
-    }
-
-    let driversCreated = 0;
-    // Steam ids ride along (raw column, read the way the rest of this file does).
-    // Without them the cloned roster starts every season blind: the result
-    // import would fall back to matching display names until it re-captured a
-    // GUID per driver, which is exactly what the id is meant to avoid. No
-    // collision is possible, the target season is empty and the source already
-    // holds at most one row per id.
-    await attachSteamIds(sourceDrivers);
-    for (const d of sourceDrivers) {
-      const newId = `${d.id}${suffix}`;
-      const newTeamId = teamIdMap.get(d.teamId);
-      if (!newTeamId) continue; // driver of a team that wasn't cloned
-      const exists = await prisma.driver.findUnique({ where: { id: newId } });
-      if (exists) continue;
-      await prisma.driver.create({
-        data: {
-          id: newId,
-          name: d.name,
-          discordName: d.discordName,
-          teamId: newTeamId,
-          tier: d.tier,
-          isActive: d.isActive,
-          seasonId: target.id,
-          // Identity travels with the person; per-season stats start fresh.
-          country: d.country,
-          photoUrl: d.photoUrl,
-          discordAvatar: d.discordAvatar,
-          bio: d.bio,
-          number: d.number,
-          socials: d.socials,
-        },
-      });
-      if (d.steamId) {
-        await prisma
-          .$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, d.steamId, newId)
-          .catch(() => {});
-      }
-      // Same person as the source row, as clone-drivers links it: careers,
-      // the login's season hand-over and the token payouts go by these links.
-      await dbLinkDrivers(prisma, [d.id, newId]).catch(() => {});
-      driversCreated++;
-    }
+    const { teamsCreated, driversCreated } = await cloneSeasonRoster(prisma, target, req.body?.fromSeasonId, {
+      attachSteamIds,
+      linkDrivers: (ids) => dbLinkDrivers(prisma, ids),
+      uniqueDriverId,
+    });
     res.json({ ok: true, teamsCreated, driversCreated });
   } catch (e) {
+    if (e instanceof CloneError) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
@@ -6706,13 +6637,9 @@ router.post("/teams/import", async (req, res, next) => {
     });
     if (clash) return res.status(409).json({ error: `${source.name} is already in this season` });
 
-    // Strip any previous season suffix before adding this one, so a team
-    // travelling S6 -> S7 -> S8 does not end up as "mclaren_s7_s8".
-    const base = source.id.replace(/_s\d+$/i, "");
-    let newId = `${base}_s${target.number}`;
-    for (let n = 2; await prisma.team.findUnique({ where: { id: newId } }); n++) {
-      newId = `${base}_s${target.number}_${n}`;
-    }
+    // Same id scheme as the season copies (lib/seasonClone.js): the old season
+    // suffix goes, this season's comes on, a counter while it is taken.
+    const newId = await freeTeamId(prisma, source.id, target.number);
     const team = await prisma.team.create({
       data: {
         id: newId,
