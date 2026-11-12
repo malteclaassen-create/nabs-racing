@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
@@ -18,6 +18,12 @@ import { useAsk } from "./overlay.jsx";
 // actually is. Only WHICH season is being prepared is remembered, for this
 // browser tab (sessionStorage), because the calendar step switches the admin
 // to the new season and that remounts the page.
+//
+// A season can also follow on from one in ANOTHER championship: a second
+// division races the same teams under the same points as the first, with its
+// own drivers and its own standings. From there the teams and the scoring come
+// along; the drivers never do, so the roster and driver copies stay hidden
+// (they would also link each copied row to the other division's careers).
 // ---------------------------------------------------------------------------
 
 const KEY = "nabs_season_wizard";
@@ -79,6 +85,26 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   const [open, setOpen] = useState(!!wizard);
 
   const list = seasons || [];
+  // The seasons of the other championships (special events are one-offs,
+  // nothing to follow on from). Fetched once the guide is opened.
+  const [others, setOthers] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    api
+      .adminSeasonsAllSeries()
+      .then((all) => {
+        if (!live) return;
+        const own = new Set(list.map((s) => s.id));
+        setOthers((all || []).filter((s) => !own.has(s.id) && s.seriesKind !== "event"));
+      })
+      .catch(() => live && setOthers([]));
+    return () => {
+      live = false;
+    };
+    // `list` is a fresh array on every reload; which seasons are ours is what counts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, list.map((s) => s.id).join(",")]);
   const active = list.find((s) => s.isActive) || list[0] || null;
   const nextNumber = list.reduce((m, s) => Math.max(m, s.number || 0), 0) + 1;
   const [form, setForm] = useState({
@@ -90,7 +116,30 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   });
 
   const target = wizard ? list.find((s) => s.id === wizard.id) || null : null;
-  const source = list.find((s) => s.id === (wizard?.fromId || form.fromId)) || null;
+  const sourceId = wizard?.fromId || form.fromId;
+  const source = list.find((s) => s.id === sourceId) || others.find((s) => s.id === sourceId) || null;
+  // Following on from another championship's season (a second division).
+  const crossSeries = !!source && !list.some((s) => s.id === source.id);
+  const sourceName = source ? (crossSeries ? `${source.seriesName || "Other series"} ${source.name}` : source.name) : "";
+  // Other championships' seasons for the picker, grouped by series, newest first.
+  const otherGroups = [];
+  for (const s of others) {
+    let g = otherGroups.find((x) => x.seriesId === s.seriesId);
+    if (!g) otherGroups.push((g = { seriesId: s.seriesId, name: s.seriesName || "Other series", seasons: [] }));
+    g.seasons.push(s);
+  }
+
+  function pickSource(id) {
+    const next = { ...form, fromId: id };
+    // A series with no seasons of its own yet (a new division) usually numbers
+    // its first season like the one it starts next to.
+    const picked = others.find((s) => s.id === id);
+    if (picked && !list.length) {
+      next.number = String(picked.number);
+      next.name = picked.name;
+    }
+    setForm(next);
+  }
 
   async function run(fn, done) {
     setBusy(true);
@@ -193,7 +242,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               <select
                 className="input"
                 value={form.fromId}
-                onChange={(e) => setForm({ ...form, fromId: e.target.value })}
+                onChange={(e) => pickSource(e.target.value)}
               >
                 <option value="">Nothing (a fresh start)</option>
                 {list.map((s) => (
@@ -201,6 +250,16 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                     {s.name}
                     {s.isActive ? " (active)" : ""}
                   </option>
+                ))}
+                {otherGroups.map((g) => (
+                  <optgroup key={g.seriesId || g.name} label={g.name}>
+                    {g.seasons.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {g.name} {s.name}
+                        {s.isActive ? " (active)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </Field>
@@ -232,6 +291,12 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               />
             </Field>
           </div>
+          {crossSeries && (
+            <p className="text-sm text-light">
+              Starting next to {sourceName}: its teams and points rules can come along, its drivers and standings
+              don&rsquo;t. This season&rsquo;s drivers go in by hand.
+            </p>
+          )}
           {source && (
             <label className="flex items-center gap-2 text-sm text-medium">
               <input
@@ -239,7 +304,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                 checked={form.keepScoring}
                 onChange={(e) => setForm({ ...form, keepScoring: e.target.checked })}
               />
-              Keep the scoring rules of {source.name} (points table, dropped rounds)
+              Keep the scoring rules of {sourceName} (points table, dropped rounds)
             </label>
           )}
           <button className="btn-primary" disabled={busy || !form.name.trim() || !form.number}>
@@ -276,7 +341,24 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   : "Bring the field over"
             }
           >
-            {!hasTeams && source ? (
+            {!hasTeams && source && crossSeries ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="btn-primary py-1.5 text-sm"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() => api.cloneTeams(target.id, source.id), (r) => `Copied ${r.created} team(s) from ${sourceName}.`)
+                  }
+                >
+                  Teams from {sourceName}
+                </button>
+                <p className="text-xs text-light">
+                  Same names, colours and logos. The drivers are this season&rsquo;s own: add them on the Drivers tab
+                  afterwards.
+                </p>
+              </div>
+            ) : !hasTeams && source ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -313,7 +395,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               </button>
             ) : !hasField ? (
               <div className="flex flex-wrap gap-2">
-                {source && (
+                {source && !crossSeries && (
                   <button
                     type="button"
                     className="btn-primary py-1.5 text-sm"
