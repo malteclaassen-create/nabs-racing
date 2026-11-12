@@ -16,6 +16,63 @@ export const PENALTY_KINDS = [
   { key: "DSQ", label: "Disqualification" },
 ];
 
+// Why the stewards decided what they did, picked from a list so both drivers
+// read the same plain words. Keep in step with DECISION_REASONS in the
+// backend's lib/reports.js. N/A is never shown to the drivers; Other needs the
+// note beside it to say anything.
+export const DECISION_REASONS = [
+  { key: "AVOIDABLE_CONTACT", label: "Avoidable contact" },
+  { key: "OFF_TRACK_OVERTAKE", label: "Overtaking off track" },
+  { key: "SC_OVERTAKE", label: "Overtaking under safety car" },
+  { key: "UNSAFE_REJOIN", label: "Unsafe rejoin" },
+  { key: "RACING_INCIDENT", label: "Racing incident" },
+  { key: "NA", label: "N/A" },
+  { key: "OTHER", label: "Other" },
+];
+
+// Why the driver who filed a report took it back. Same as WITHDRAW_REASONS in
+// the backend's lib/reports.js.
+export const WITHDRAW_REASONS = [
+  { key: "SORTED", label: "Sorted it out with the driver" },
+  { key: "MISTAKE", label: "Filed by mistake" },
+  { key: "RACING_INCIDENT", label: "Watched it back, it was a racing incident" },
+  { key: "OTHER", label: "Other" },
+];
+
+// Does this outcome take a reason? Only an actual decision does.
+export const takesReason = (status) => status === "PENALTY" || status === "NO_PENALTY";
+
+// The reason as the drivers read it, or null when there is nothing to show.
+export function reasonLabel(r) {
+  if (!takesReason(r?.status) || !r?.decisionReason) return null;
+  if (r.decisionReason === "NA" || r.decisionReason === "OTHER") return null;
+  return DECISION_REASONS.find((x) => x.key === r.decisionReason)?.label || null;
+}
+
+// Why a withdrawn report was taken back, in words: the note for Other, the
+// reason with the note after it otherwise. Null for a report never withdrawn.
+export function withdrawText(r) {
+  if (!r?.withdrawnAt) return null;
+  const label = WITHDRAW_REASONS.find((x) => x.key === r.withdrawReason)?.label || null;
+  if (r.withdrawReason === "OTHER" || !label) return r.withdrawNote || label || null;
+  return r.withdrawNote ? `${label}. ${r.withdrawNote}` : label;
+}
+
+// Withdrawn is stored as closed (DISMISSED) so every list keeps treating it as
+// finished; this is what tells the two apart on screen.
+export const isWithdrawn = (r) => r?.status === "DISMISSED" && !!r?.withdrawnAt;
+
+// What a decision form may not be saved without: a reason on a penalty or a
+// no-penalty, and words when that reason is Other. Null when it is fine.
+export function decisionProblem(draft) {
+  if (!takesReason(draft?.status)) return null;
+  if (!draft.decisionReason) return "Pick a reason first.";
+  if (draft.decisionReason === "OTHER" && !String(draft.verdict || "").trim()) {
+    return "Other needs a line saying why.";
+  }
+  return null;
+}
+
 const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 
 // A decision already read by the server has its kind filled in; one saved

@@ -1,6 +1,8 @@
-import test from "node:test";
+import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { filterReports, penaltyLabel, penaltySummary, resultsGap } from "./reportDesk.mjs";
+import {
+  filterReports, penaltyLabel, penaltySummary, resultsGap, reasonLabel, decisionProblem, withdrawText, isWithdrawn,
+} from "./reportDesk.mjs";
 
 const rep = (over = {}) => ({
   id: "x",
@@ -59,4 +61,39 @@ test("the list filters combine", () => {
   assert.deepEqual(ids({ show: "all", q: "power" }), ["d"]);
   assert.deepEqual(ids({ show: "all", q: "STEVE" }), ["c"]);
   assert.deepEqual(ids({ show: "open", q: "mtim" }), ["a"]);
+});
+
+describe("decision reasons", () => {
+  it("shows the reason only on a decision, and never N/A or Other", () => {
+    assert.equal(reasonLabel({ status: "PENALTY", decisionReason: "UNSAFE_REJOIN" }), "Unsafe rejoin");
+    assert.equal(reasonLabel({ status: "NO_PENALTY", decisionReason: "RACING_INCIDENT" }), "Racing incident");
+    assert.equal(reasonLabel({ status: "NO_PENALTY", decisionReason: "NA" }), null);
+    assert.equal(reasonLabel({ status: "PENALTY", decisionReason: "OTHER" }), null);
+    assert.equal(reasonLabel({ status: "REVIEWING", decisionReason: "UNSAFE_REJOIN" }), null);
+  });
+
+  it("will not save a decision without a reason, or Other without words", () => {
+    assert.equal(decisionProblem({ status: "REVIEWING" }), null);
+    assert.equal(decisionProblem({ status: "PENALTY", decisionReason: "" }), "Pick a reason first.");
+    assert.equal(decisionProblem({ status: "NO_PENALTY", decisionReason: "OTHER", verdict: " " }), "Other needs a line saying why.");
+    assert.equal(decisionProblem({ status: "NO_PENALTY", decisionReason: "OTHER", verdict: "Lag" }), null);
+  });
+});
+
+describe("withdrawn reports", () => {
+  it("reads the reason with the note after it, or the note alone for Other", () => {
+    assert.equal(withdrawText({ withdrawnAt: "x", withdrawReason: "SORTED" }), "Sorted it out with the driver");
+    assert.equal(
+      withdrawText({ withdrawnAt: "x", withdrawReason: "MISTAKE", withdrawNote: "Wrong car" }),
+      "Filed by mistake. Wrong car"
+    );
+    assert.equal(withdrawText({ withdrawnAt: "x", withdrawReason: "OTHER", withdrawNote: "We spoke" }), "We spoke");
+    assert.equal(withdrawText({ withdrawReason: "SORTED" }), null);
+  });
+
+  it("is a closed report with a withdrawal date", () => {
+    assert.equal(isWithdrawn({ status: "DISMISSED", withdrawnAt: "x" }), true);
+    assert.equal(isWithdrawn({ status: "DISMISSED" }), false);
+    assert.equal(isWithdrawn({ status: "PENALTY", withdrawnAt: "x" }), false);
+  });
 });

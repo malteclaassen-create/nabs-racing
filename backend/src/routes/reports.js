@@ -2,10 +2,10 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, isAdminRequest } from "../middleware/auth.js";
 import {
-  dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead, dbDeleteReport,
+  dbCreateReport, dbGetReport, dbReportsFor, dbListReports, dbMessages, dbAddMessage, canRead, dbWithdrawReport,
   dbAttachments, roleOn, dbSetAccused, dbThreadVoices,
 } from "../lib/reports.js";
-import { serveAttachment, saveAttachment, attachmentUpload, removeAttachmentFiles } from "../lib/reportFiles.js";
+import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { selfMadeRowIds } from "../lib/members.js";
 import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
@@ -160,36 +160,28 @@ router.post("/", optionalUser, async (req, res, next) => {
   }
 });
 
-// DELETE /api/reports/:id — withdrawing one you filed by mistake.
+// POST /api/reports/:id/withdraw  { reason, note? } — taking back one you filed.
 //
-// Only the reporter, and only while nothing has happened to it: once the
-// stewards have opened it or answered, it is part of a conversation with other
-// people in it and taking it away silently is not the reporter's to do. They
-// can say so in the thread instead.
-router.delete("/:id", optionalUser, async (req, res, next) => {
+// It used to delete the report outright, and only while nobody had touched it.
+// Now it closes it with a reason (lib/reports.js dbWithdrawReport), so the
+// stewards and the driver it named see why it ended rather than finding it
+// gone. That makes it safe while the stewards are still looking at it too, up
+// to the moment they decide.
+router.post("/:id/withdraw", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
     const report = await dbGetReport(prisma, req.params.id);
     if (!report || !(await canRead(prisma, report, me.discordId, me.isAdmin))) {
       return res.status(404).json({ error: "Report not found" });
     }
-    if (String(report.reporterDiscordId || "") !== String(me.discordId || "")) {
+    if ((await roleOn(prisma, report, me.discordId)) !== "REPORTER") {
       return res.status(403).json({ error: "Only the driver who filed a report can withdraw it" });
     }
-    if (report.status !== "NEW") {
-      return res.status(409).json({ error: "The stewards have already picked this up. Say so in the thread instead." });
-    }
-    const messages = await dbMessages(prisma, report.id);
-    if (messages.length) {
-      return res.status(409).json({ error: "Somebody has answered this already. Say so in the thread instead." });
-    }
-    // The files go too. dbDeleteReport hands back what was on disk and this
-    // route used to drop that on the floor, so a withdrawn report left its
-    // pictures behind: rows gone, bytes still there, and nothing left pointing
-    // at them to ever clean them up. The admin delete has always done this.
-    removeAttachmentFiles(report.id, await dbDeleteReport(prisma, report.id));
-    res.json({ ok: true });
+    const b = req.body || {};
+    const fresh = await dbWithdrawReport(prisma, report, { reason: b.reason, note: b.note, discordId: me.discordId });
+    res.json({ ok: true, report: fresh });
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });

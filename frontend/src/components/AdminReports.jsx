@@ -9,7 +9,10 @@ import ReportChat, { ReportComposer } from "./ReportChat.jsx";
 import ReplayAnchor from "./ReplayAnchor.jsx";
 import { REPORTS_CHANGED_EVENT } from "../data/adminEvents.js";
 import AdminIncidentWatch from "./AdminIncidentWatch.jsx";
-import { PENALTY_KINDS, filterReports, penaltyLabel, resultsGap } from "./reportDesk.mjs";
+import {
+  PENALTY_KINDS, DECISION_REASONS, filterReports, penaltyLabel, resultsGap, takesReason, decisionProblem,
+  isWithdrawn, withdrawText,
+} from "./reportDesk.mjs";
 
 // ---------------------------------------------------------------------------
 // Admin → Reports: the stewarding desk.
@@ -40,6 +43,10 @@ const STATUS = [
 ];
 const DECIDED = ["PENALTY", "NO_PENALTY", "DISMISSED"];
 const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
+// A report the driver who filed it took back is stored as closed; the desk
+// shows it as withdrawn so it never reads as something the stewards closed.
+const WITHDRAWN_UI = { key: "DISMISSED", label: "Withdrawn", cls: "bg-surface2 text-light" };
+const pillOf = (r) => (isWithdrawn(r) ? WITHDRAWN_UI : uiOf(r.status));
 const when = (iso) => (iso ? fmtStamp(iso) : "");
 // "R5 Spa", "R5 Spa Sprint". The desk's races already carry their event's
 // round number and the sprint flag (routes/admin.js, withSprintRounds).
@@ -53,6 +60,7 @@ const draftOf = (rep) => ({
   status: rep.status,
   penaltyKind: rep.penaltyKind || "TIME",
   penaltySeconds: rep.penaltySeconds ?? "",
+  decisionReason: rep.decisionReason || "",
   verdict: rep.verdict || "",
 });
 
@@ -60,6 +68,7 @@ const draftDirty = (draft, rep) =>
   draft.status !== rep.status ||
   (draft.status === "PENALTY" && draft.penaltyKind !== (rep.penaltyKind || "TIME")) ||
   String(draft.penaltySeconds) !== String(rep.penaltySeconds ?? "") ||
+  (takesReason(draft.status) && draft.decisionReason !== (rep.decisionReason || "")) ||
   draft.verdict !== (rep.verdict || "");
 
 // What the server is sent. The kind only means something on a penalty, and the
@@ -69,6 +78,7 @@ const decisionBody = (draft) => ({
   status: draft.status,
   penaltyKind: draft.status === "PENALTY" ? draft.penaltyKind : null,
   penaltySeconds: draft.penaltySeconds === "" ? null : Number(draft.penaltySeconds),
+  decisionReason: takesReason(draft.status) ? draft.decisionReason || null : null,
   verdict: draft.verdict,
 });
 
@@ -119,6 +129,24 @@ function DecisionFields({ draft, setDraft, busy }) {
           </select>
         </Field>
       )}
+      {/* Why, from a short list, so both drivers read the same plain words.
+          The box below stays for anything the list does not cover, and
+          is what "Other" needs filled in. */}
+      {takesReason(draft.status) && (
+        <Field label="Reason" tone="plain">
+          <select
+            className="input py-1.5 text-sm"
+            value={draft.decisionReason}
+            disabled={busy}
+            onChange={(e) => setDraft({ ...draft, decisionReason: e.target.value })}
+          >
+            <option value="">Pick a reason…</option>
+            {DECISION_REASONS.map((x) => (
+              <option key={x.key} value={x.key}>{x.label}</option>
+            ))}
+          </select>
+        </Field>
+      )}
       {(!penalty || draft.penaltyKind === "TIME") && (
         <Field label="Seconds" tone="plain">
           <input
@@ -163,7 +191,7 @@ function DriverRecord({ record, races, onOpen }) {
         <ol className="space-y-1.5">
           {record.entries.map((e) => {
             const race = raceById.get(e.raceId);
-            const s = uiOf(e.status);
+            const s = pillOf(e);
             const label = penaltyLabel(e);
             const body = (
               <>
@@ -367,8 +395,9 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
   const [draft, setDraft] = useState(() => draftOf(linked));
   useEffect(() => {
     setDraft(draftOf(linked));
-  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.verdict]);
+  }, [linked.id, linked.status, linked.penaltySeconds, linked.penaltyKind, linked.decisionReason, linked.verdict]);
   const dirty = draftDirty(draft, linked);
+  const problem = decisionProblem(draft);
 
   return (
     <div className="rounded-lg border border-border p-4">
@@ -396,13 +425,13 @@ function LinkedDecision({ linked, busy, onSave, onRemove }) {
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <button
           className="btn-primary"
-          disabled={busy || !dirty}
+          disabled={busy || !dirty || !!problem}
           onClick={() => onSave(decisionBody(draft))}
         >
           {busy ? "Saving…" : "Save decision"}
         </button>
-        <p className="min-w-40 flex-1 text-xs text-light">
-          {decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
+        <p className={`min-w-40 flex-1 text-xs ${dirty && problem ? "text-warn" : "text-light"}`}>
+          {dirty && problem ? problem : decisionNote(draft, `${linked.accusedName || "them"} in their own thread`)}
         </p>
       </div>
     </div>
@@ -542,6 +571,16 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
           />
 
 
+      {/* Taken back by the driver who filed it. The decision box stays
+          underneath: the stewards can still decide it anyway. */}
+      {isWithdrawn(r) && (
+        <div className="rounded-lg border border-border bg-surface2/40 p-4 text-sm leading-relaxed text-medium">
+          <span className="font-semibold text-dark">Withdrawn by {r.reporterName || "the driver who filed it"}: </span>
+          {withdrawText(r) || "no reason given."}
+          <span className="ml-1 font-mono text-[10px] uppercase tracking-wider text-faint">{when(r.withdrawnAt)}</span>
+        </div>
+      )}
+
       {/* the decision */}
       <div className="rounded-lg border border-border p-4">
         <div className="mb-2 font-mono text-[11px] font-bold uppercase tracking-widest text-light">Decision</div>
@@ -557,7 +596,7 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             className="btn-primary"
-            disabled={busy || !dirty}
+            disabled={busy || !dirty || !!decisionProblem(draft)}
             onClick={() =>
               run(
                 () => api.decideReport(id, decisionBody(draft)),
@@ -586,7 +625,11 @@ function Thread({ id, drivers, races, onChanged, onDeleted, onOpen }) {
           )}
           {/* The one thing the controls do NOT say: saving sends a message to
               people, and these seconds never reach the classification. */}
-          <p className="min-w-40 flex-1 text-xs text-light">{decisionNote(draft)}</p>
+          {dirty && decisionProblem(draft) ? (
+            <p className="min-w-40 flex-1 text-xs text-warn">{decisionProblem(draft)}</p>
+          ) : (
+            <p className="min-w-40 flex-1 text-xs text-light">{decisionNote(draft)}</p>
+          )}
         </div>
         {/* Decided, and not in the classification yet. The editor fills the
             seconds in when the round is opened; until somebody does and
@@ -956,7 +999,7 @@ function ContactSuggestions({ report }) {
   // delete button inside a table cell — everything squeezed into what was left
   // of the width, and the rest of the list still shouting underneath.
   if (openReportRow) {
-    const s = uiOf(openReportRow.status);
+    const s = pillOf(openReportRow);
     return (
       <div className="space-y-4">
         <button
@@ -1213,7 +1256,7 @@ function ContactSuggestions({ report }) {
           />
           <ul className="divide-y divide-border">
             {g.reports.map((r) => {
-              const s = uiOf(r.status);
+              const s = pillOf(r);
               const on = picked.has(r.id);
               return (
                 <li key={r.id}>
