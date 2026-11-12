@@ -25,6 +25,7 @@ export const DECISION_REASONS = [
   { key: "OFF_TRACK_OVERTAKE", label: "Overtaking off track" },
   { key: "SC_OVERTAKE", label: "Overtaking under safety car" },
   { key: "UNSAFE_REJOIN", label: "Unsafe rejoin" },
+  { key: "BLUE_FLAGS", label: "Ignoring blue flags" },
   { key: "RACING_INCIDENT", label: "Racing incident" },
   { key: "NA", label: "N/A" },
   { key: "OTHER", label: "Other" },

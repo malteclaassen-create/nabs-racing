@@ -79,6 +79,7 @@ export const DECISION_REASONS = {
   OFF_TRACK_OVERTAKE: "Overtaking off track",
   SC_OVERTAKE: "Overtaking under safety car",
   UNSAFE_REJOIN: "Unsafe rejoin",
+  BLUE_FLAGS: "Ignoring blue flags",
   RACING_INCIDENT: "Racing incident",
   NA: "N/A",
   OTHER: "Other",

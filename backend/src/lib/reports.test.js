@@ -818,6 +818,12 @@ describe("the reason for a decision", () => {
     expect(back.decisionReason).toBe(null);
   });
 
+  it("knows blue flags", () => {
+    expect(penaltyOutcome({ status: "PENALTY", penaltyKind: "WARNING", decisionReason: "BLUE_FLAGS" })).toBe(
+      "Penalty: a warning. Reason: ignoring blue flags."
+    );
+  });
+
   it("says nothing extra for N/A or Other", () => {
     expect(penaltyOutcome({ status: "NO_PENALTY", decisionReason: "NA" })).toBe("No penalty was given.");
     expect(penaltyOutcome({ status: "NO_PENALTY", decisionReason: "OTHER" })).toBe("No penalty was given.");
