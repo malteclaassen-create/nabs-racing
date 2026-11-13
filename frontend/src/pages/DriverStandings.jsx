@@ -249,6 +249,15 @@ export default function DriverStandings() {
   // that runs it.
   const { current: seasonForDivision } = useSeason();
   const [divisionPick, setDivisionPick] = usePersistentState("nabs.standings.division", 1);
+  // The Division 2 standings post links here with `division=2`, and opens on
+  // that table.
+  // Once, on arrival: switching back to Division 1 afterwards must stick.
+  const divisionFromLink = useRef(false);
+  useEffect(() => {
+    if (divisionFromLink.current) return;
+    divisionFromLink.current = true;
+    if (new URLSearchParams(window.location.search).get("division") === "2") setDivisionPick(2);
+  });
   const division = seasonForDivision?.division2 && divisionPick === 2 ? 2 : 1;
   const { data: realData, loading, error, reload } = useApi(
     useCallback(() => api.driverStandings(undefined, null, null, division), [division])

@@ -87,7 +87,7 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
   // Division 2 races its rounds on the second server and gets a result poster
   // and a Discord post of its own, sent separately. A round that has one shows
   // a Division 1 / Division 2 switch, and the poster and the post then work
-  // from that division's race. The standings view stays the round's.
+  // from that division's race, and the standings from that division's tables.
   const [division, setDivision] = useState(1);
   const div2RaceId = selectedRace?.division2RaceId || null;
   const shownDivision = div2RaceId ? division : 1;
@@ -114,7 +114,7 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
                 </option>
               ))}
             </select>
-            {div2RaceId && view !== "standings" && (
+            {div2RaceId && (
               <SlidingTabs
                 items={[
                   { key: 1, label: "Division 1" },
@@ -157,13 +157,14 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
             {view === "standings" && (
               <AdminStandingsGraphic
                 race={selectedRace}
+                division={shownDivision}
                 artVersion={artVersion}
                 onArtChange={() => setArtVersion((v) => v + 1)}
               />
             )}
           </div>
           <div className={view === "post" ? "" : "hidden"}>
-            {raceId && <AdminDiscordPost raceId={resultRaceId} race={selectedRace} artVersion={artVersion} />}
+            {raceId && <AdminDiscordPost raceId={resultRaceId} race={selectedRace} division={shownDivision} artVersion={artVersion} />}
           </div>
         </>
       )}

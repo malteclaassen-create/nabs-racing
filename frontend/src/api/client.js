@@ -1342,6 +1342,8 @@ export const api = {
   getStandingsPost: (upTo = null, opts = {}) => {
     const q = [`origin=${encodeURIComponent(window.location.origin)}`];
     if (upTo) q.push(`upTo=${upTo}`);
+    // Division 2's own tables (a season's second field).
+    if (opts.division === 2) q.push("division=2");
     if (opts.of === "constructors") {
       q.push("of=constructors", `t1Rows=${opts.t1Rows || 5}`, `t2Rows=${opts.t2Rows || 8}`);
     } else {

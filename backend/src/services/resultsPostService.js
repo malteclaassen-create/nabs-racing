@@ -22,7 +22,7 @@ import { discordIdsForDrivers } from "../lib/persons.js";
 // The other posts this file makes: the two championship tables. See
 // buildStandingsPost and buildConstructorsPost at the bottom.
 import {
-  getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings,
+  getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings, getDiv2ConstructorStandings,
 } from "./standingsService.js";
 
 // 1:38.853 — same shape the site uses for lap times.
@@ -267,11 +267,14 @@ function pickRows(rows, tier, withoutStarts) {
 // about which week this is.
 // ---------------------------------------------------------------------------
 export async function buildStandingsPost(
-  prisma, seasonId, { upToRound = null, tier = "all", withoutStarts = false, origin = null, roleId = null } = {}
+  prisma, seasonId, { upToRound = null, tier = "all", withoutStarts = false, division = 1, origin = null, roleId = null } = {}
 ) {
   if (!seasonId) return null;
-  const table = await getDriverStandings(prisma, seasonId, { upToRound });
-  const rows = pickRows(table?.standings || [], tier, withoutStarts);
+  // Division 2 (lib/divisions.js) has a table of its own and one tier for
+  // everybody, so its post is always the whole of it.
+  const div2 = Number(division) === 2;
+  const table = await getDriverStandings(prisma, seasonId, { upToRound, division: div2 ? 2 : 1 });
+  const rows = pickRows(table?.standings || [], div2 ? "all" : tier, withoutStarts);
   if (!rows.length) return null;
 
   const discordIds = await discordIdsForDrivers(prisma, rows.map((r) => r.driverId));
@@ -288,10 +291,13 @@ export async function buildStandingsPost(
   // every season but the active one, or the link means "whichever season the
   // reader happens to be on" the moment the next one starts.
   const seasonQ = season && !season.isActive && season.number != null ? `?season=${season.number}` : "";
-  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/drivers${seasonQ}` : null;
+  // Division 2's link opens the standings page on its table.
+  const divQ = div2 ? `${seasonQ ? "&" : "?"}division=2` : "";
+  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/drivers${seasonQ}${divQ}` : null;
 
   const group =
-    String(tier) === "1" ? "TIER 1 STANDINGS"
+    div2 ? "DIVISION 2 STANDINGS"
+    : String(tier) === "1" ? "TIER 1 STANDINGS"
     : String(tier) === "2" ? "TIER 2 STANDINGS"
     : String(tier) === "0" ? "RESERVE STANDINGS"
     : "DRIVER STANDINGS";
@@ -332,14 +338,19 @@ export async function buildStandingsPost(
 // leader and a link.
 // ---------------------------------------------------------------------------
 export async function buildConstructorsPost(
-  prisma, seasonId, { upToRound = null, t1Rows = 5, t2Rows = 8, origin = null, roleId = null } = {}
+  prisma, seasonId, { upToRound = null, t1Rows = 5, t2Rows = 8, division = 1, origin = null, roleId = null } = {}
 ) {
   if (!seasonId) return null;
-  const [t1, t2] = await Promise.all([
-    getT1ConstructorStandings(prisma, seasonId, { upToRound }),
-    getT2ConstructorStandings(prisma, seasonId, { upToRound }),
-  ]);
-  const top1 = (t1?.standings || []).slice(0, t1Rows);
+  // Division 2's teams are one table of their own, every team on it (the
+  // poster that goes with it shows up to twelve).
+  const div2 = Number(division) === 2;
+  const [t1, t2] = div2
+    ? [await getDiv2ConstructorStandings(prisma, seasonId, { upToRound }), null]
+    : await Promise.all([
+        getT1ConstructorStandings(prisma, seasonId, { upToRound }),
+        getT2ConstructorStandings(prisma, seasonId, { upToRound }),
+      ]);
+  const top1 = (t1?.standings || []).slice(0, div2 ? 12 : t1Rows);
   const top2 = (t2?.standings || []).slice(0, t2Rows);
   if (!top1.length && !top2.length) return null;
 
@@ -348,9 +359,10 @@ export async function buildConstructorsPost(
     .catch(() => null);
   const slug = season?.series?.slug;
   const seasonQ = season && !season.isActive && season.number != null ? `?season=${season.number}` : "";
-  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/constructors${seasonQ}` : null;
+  // Division 2's block on the constructors page has its own anchor.
+  const link = origin ? `${origin}${slug ? `/s/${slug}` : ""}/constructors${seasonQ}${div2 ? "#division-2" : ""}` : null;
 
-  const heading = `**CONSTRUCTORS' STANDINGS${upToRound ? ` AFTER ROUND ${upToRound}` : ""}**`;
+  const heading = `**${div2 ? "DIVISION 2 CONSTRUCTORS" : "CONSTRUCTORS' STANDINGS"}${upToRound ? ` AFTER ROUND ${upToRound}` : ""}**`;
   const ping = roleId ? `<@&${roleId}>` : null;
   const MEDALS = ["🥇", "🥈", "🥉"];
   const badge = (r) => (r.position <= 3 ? MEDALS[r.position - 1] : `**${r.position}.**`);
@@ -362,13 +374,13 @@ export async function buildConstructorsPost(
     for (const r of rows) lines.push(`${badge(r)} **${r.name}** - ${r.total}`);
     lines.push("");
   };
-  block("TIER 1", top1);
+  block(div2 ? "DIVISION 2" : "TIER 1", top1);
   block("TIER 2", top2);
   if (link) lines.push(`[The full tables on the website](${link})`);
 
   const shortLines = ping ? [ping, heading, ""] : [heading, ""];
   const leader = (label, rows) => (rows.length ? `${label}: **${rows[0].name}** ${rows[0].total}` : null);
-  const leaders = [leader("Tier 1", top1), leader("Tier 2", top2)].filter(Boolean);
+  const leaders = (div2 ? [leader("Division 2", top1)] : [leader("Tier 1", top1), leader("Tier 2", top2)]).filter(Boolean);
   if (leaders.length) shortLines.push(leaders.join("   "), "");
   if (link) shortLines.push(`[The full tables on the website](${link})`);
 

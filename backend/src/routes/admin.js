@@ -4803,10 +4803,13 @@ router.get("/standings-post", async (req, res, next) => {
     // Which championship, and for the drivers' one which group and whether the
     // people who have not driven are on it — so the text is the same table the
     // sheets above it are.
+    // Division 2's own tables (a season's second field), when asked for.
+    const division = req.query.division === "2" ? 2 : 1;
     const post =
       req.query.of === "constructors"
         ? await buildConstructorsPost(prisma, seasonId, {
             upToRound,
+            division,
             t1Rows: spots(req.query.t1Rows, 5),
             t2Rows: spots(req.query.t2Rows, 8),
             origin,
@@ -4816,6 +4819,7 @@ router.get("/standings-post", async (req, res, next) => {
             upToRound,
             tier: ["all", "0", "1", "2"].includes(String(req.query.tier)) ? String(req.query.tier) : "all",
             withoutStarts: req.query.withoutStarts === "1",
+            division,
             origin,
             roleId,
           });
