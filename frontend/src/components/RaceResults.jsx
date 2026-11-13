@@ -602,6 +602,10 @@ export default function RaceResults({ race, results, quali = null, session = "ra
   // special event so nothing counts it as a round of its own, yet it pays the
   // same points as the feature race under that weekend's round.
   const scores = race.scores ?? (race.type || "CHAMPIONSHIP") === "CHAMPIONSHIP";
+  // A Division 2 race (the second field, on the second server) has one tier
+  // for everybody: no Tier 2 re-rank column, and its own legend.
+  const isDiv2 = race.division === 2;
+  const showT2 = scores && !isDiv2;
   const hasQuali = Array.isArray(quali) && quali.length > 0;
   // Which drivers' tyre strategies are folded open (rows with stint data from
   // the AC import are clickable; older rounds simply have none).
@@ -703,7 +707,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
               {detailed && hasTimes && <th className="hidden px-3 py-3 text-right md:table-cell">Time</th>}
               {detailed && hasLaps && <th className="hidden px-3 py-3 text-right md:table-cell">Best Lap</th>}
               {hasAnyStints && <th className="hidden px-3 py-3 lg:table-cell">Tyres</th>}
-              {detailed && scores && (
+              {detailed && showT2 && (
                 <th className="hidden px-3 py-3 text-center lg:table-cell">
                   <span className="inline-flex items-center">
                     Tier 2
@@ -733,7 +737,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                 (detailed && hasGrid ? 1 : 0) +
                 (detailed && hasTimes ? 1 : 0) +
                 (detailed && hasLaps ? 1 : 0) +
-                (detailed && scores ? 1 : 0) + // the Tier-2 column
+                (detailed && showT2 ? 1 : 0) + // the Tier-2 column
                 (hasAnyStints ? 1 : 0); // the tyre strip (lg+)
               return (
                 <Fragment key={r.driverId}>
@@ -895,7 +899,7 @@ export default function RaceResults({ race, results, quali = null, session = "ra
                     </td>
                   )}
 
-                  {detailed && scores && (
+                  {detailed && showT2 && (
                     <td className="hidden px-3 py-3.5 text-center lg:table-cell">
                       {r.t2 ? (
                         <span className="inline-flex items-center gap-2">
@@ -975,12 +979,20 @@ export default function RaceResults({ race, results, quali = null, session = "ra
       {detailed && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-border bg-surface2/60 px-4 py-3 text-[11px] text-light">
           <span className="font-bold uppercase tracking-wider text-medium">Legend</span>
-          <span className="flex items-center gap-1.5">
-            <TierBadge tier={1} /> Tier&nbsp;1
-          </span>
-          <span className="flex items-center gap-1.5">
-            <TierBadge tier={2} /> Tier&nbsp;2
-          </span>
+          {isDiv2 ? (
+            <span className="flex items-center gap-1.5">
+              <TierBadge tier={3} /> Division&nbsp;2
+            </span>
+          ) : (
+            <>
+              <span className="flex items-center gap-1.5">
+                <TierBadge tier={1} /> Tier&nbsp;1
+              </span>
+              <span className="flex items-center gap-1.5">
+                <TierBadge tier={2} /> Tier&nbsp;2
+              </span>
+            </>
+          )}
           <span className="flex items-center gap-1.5">
             <TierBadge tier={0} /> Reserve
           </span>
@@ -999,10 +1011,12 @@ export default function RaceResults({ race, results, quali = null, session = "ra
               <SafetyCarBadge compact /> Safety car driver
             </span>
           )}
-          <span>
-            <span className="font-semibold text-medium">Tier 2 column</span> = re-ranked position once Tier-1
-            drivers are removed → constructor points.
-          </span>
+          {!isDiv2 && (
+            <span>
+              <span className="font-semibold text-medium">Tier 2 column</span> = re-ranked position once Tier-1
+              drivers are removed → constructor points.
+            </span>
+          )}
         </div>
       )}
       {penaltyNote && <PenaltyNote text={penaltyNote} />}

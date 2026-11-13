@@ -21,6 +21,7 @@ import { getLinkedDriverIds, getPersonGroups, getNameOverrides, getIdentityOverr
 import { seasonSeriesMap, dbListSeries } from "../lib/series.js";
 import { driverHandle } from "../lib/driverHandles.js";
 import { readScoringSprintParents } from "../lib/sprintRaces.js";
+import { readDivisionChildIds, seasonHasDivision2 } from "../lib/divisions.js";
 import { readPoleHolders, readManualFastestLaps } from "../lib/raceHonours.js";
 import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
@@ -177,7 +178,13 @@ async function computeCareer(prisma, key, includePrivate) {
     counts.filter((r) => r.race.isSpecialEvent).map((r) => r.raceId)
   );
   const sprintRows = counts.filter((r) => publicSeasonIds.has(sprintParents.get(r.raceId)?.seasonId));
-  const raced = [...featureRows, ...sprintRows];
+  // Division 2 races (lib/divisions.js): whole races of the second field.
+  const div2Ids = await readDivisionChildIds(
+    prisma,
+    counts.filter((r) => r.race.isSpecialEvent).map((r) => r.raceId)
+  );
+  const div2Rows = counts.filter((r) => div2Ids.has(r.raceId));
+  const raced = [...featureRows, ...sprintRows, ...div2Rows];
 
   // Poles: the qualifying holder of every round the person entered.
   const poleByRace = await readPoleHolders(prisma, [...new Set(raced.map((r) => r.raceId))]);
@@ -186,7 +193,13 @@ async function computeCareer(prisma, key, includePrivate) {
   // --- season by season, grouped by league ----------------------------------
   const seasonIds = [...new Set(rows.map((r) => r.seasonId))];
   const standingsBySeason = new Map();
-  for (const id of seasonIds) standingsBySeason.set(id, await getDriverStandings(prisma, id));
+  // Division 2's table as well, for the seasons somebody spent there: their
+  // line is looked up in whichever of the two holds it.
+  for (const id of seasonIds) {
+    const main = await getDriverStandings(prisma, id);
+    const div2 = (await seasonHasDivision2(prisma, id)) ? await getDriverStandings(prisma, id, { division: 2 }) : null;
+    standingsBySeason.set(id, div2 ? { ...main, standings: [...main.standings, ...div2.standings.filter((r) => !main.standings.some((m) => m.driverId === r.driverId))] } : main);
+  }
 
   const activeBySeries = new Map();
   for (const s of allSeries) {

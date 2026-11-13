@@ -780,8 +780,9 @@ export const api = {
   // A grid that is over its number, back onto it: the last answers in move to
   // the waiting list, keeping their own sign-up time and so their place in the
   // queue. Nobody is promoted behind them.
-  adminTrimGrid: (raceId) =>
-    request(`/admin/attendance/${raceId}/trim`, { method: "POST", identityAuth: true }),
+  // `division` 2 trims Division 2's grid (a season's second field).
+  adminTrimGrid: (raceId, division = 1) =>
+    request(`/admin/attendance/${raceId}/trim`, { method: "POST", body: { division }, identityAuth: true }),
   // A logged-in account with no driver profile: { canJoin } says it signs
   // itself up with its first answer (or joinLeague below); { turnedAway } says
   // the admins said no once, and "I want to race" (requestRace) is what is
@@ -1890,8 +1891,14 @@ export const api = {
   // How many seats the sign-up counts up to, for this series. Saving it also
   // stamps every round that has not been run yet.
   attendanceGrid: () => request(`/admin/attendance-grid${seriesQ()}`, { auth: true }),
-  saveAttendanceGrid: (size) =>
-    request(`/admin/attendance-grid${seriesQ()}`, { method: "PUT", body: { size }, auth: true }),
+  // `size2` is Division 2's grid ("" = same as the main one); left out, it
+  // stays as it is.
+  saveAttendanceGrid: (size, size2) =>
+    request(`/admin/attendance-grid${seriesQ()}`, {
+      method: "PUT",
+      body: size2 === undefined ? { size } : { size, size2 },
+      auth: true,
+    }),
 
   // Race Info page content (public read + admin edit)
   // Per series: a special event has a Race Info page of its own.

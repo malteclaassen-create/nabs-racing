@@ -92,27 +92,36 @@ export default function AdminAttendanceGrid({ races = [], racesError = null, onR
   // same way rather than leaving the panel blank.
   const race = upcoming.find((r) => r.id === picked) || upcoming[0] || null;
   const raceId = race?.id || "";
+  // Division 2: a season running a second field has two grids on the
+  // evening, one per server. This panel works on one of them at a time.
+  const hasDiv2 = !!race?.division2;
+  const [divisionPick, setDivisionPick] = useState(1);
+  const division = hasDiv2 ? divisionPick : 1;
+  const mine = (list) => (hasDiv2 ? (list || []).filter((r) => (r.division || 1) === division) : list || []);
 
   // The grid, oldest answer first: the order people came in, which is the order
   // this panel is read in. The queue is the same sort and also its running
   // order — first in, first onto the grid.
   const accepted = useMemo(
-    () => [...(race?.rsvps?.ACCEPTED || [])].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0)),
-    [race]
+    () => [...mine(race?.rsvps?.ACCEPTED)].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [race, division]
   );
   const waiting = useMemo(
-    () => [...(race?.rsvps?.[WAITLIST] || [])].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0)),
-    [race]
+    () => [...mine(race?.rsvps?.[WAITLIST])].sort((a, b) => new Date(a.answeredAt || 0) - new Date(b.answeredAt || 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [race, division]
   );
   const others = useMemo(
-    () => [...(race?.rsvps?.DECLINED || []), ...(race?.rsvps?.TENTATIVE || [])],
-    [race]
+    () => [...mine(race?.rsvps?.DECLINED), ...mine(race?.rsvps?.TENTATIVE)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [race, division]
   );
 
-  const capacity = race?.capacity ?? 40;
+  const capacity = (division === 2 ? race?.division2?.capacity : race?.capacity) ?? 40;
   // Counted the way the server counts it, open Driver Market offers included,
   // so the number here and the trim it offers never disagree.
-  const reserved = race?.reserved || 0;
+  const reserved = (division === 2 ? race?.division2?.reserved : race?.reserved) || 0;
   const over = Math.max(0, accepted.length + reserved - capacity);
   // Who the trim would move, so the admin reads the names before pressing it
   // rather than after. Same rule as the server: newest answer first.
@@ -190,7 +199,7 @@ export default function AdminAttendanceGrid({ races = [], racesError = null, onR
       confirmLabel: over === 1 ? "Yes, move them" : `Yes, move all ${over}`,
     });
     if (!yes) return;
-    await run(() => api.adminTrimGrid(raceId), `${names} moved to the waiting list. The grid is on ${capacity}.`);
+    await run(() => api.adminTrimGrid(raceId, division), `${names} moved to the waiting list. The grid is on ${capacity}.`);
   }
 
   const gridActions = [
@@ -255,6 +264,12 @@ export default function AdminAttendanceGrid({ races = [], racesError = null, onR
               </option>
             ))}
           </select>
+          {hasDiv2 && (
+            <select aria-label="Which grid" className="input max-w-[12rem]" value={division} onChange={(e) => setDivisionPick(Number(e.target.value))}>
+              <option value={1}>Division 1 grid</option>
+              <option value={2}>Division 2 grid</option>
+            </select>
+          )}
         </div>
       )}
 
@@ -266,7 +281,7 @@ export default function AdminAttendanceGrid({ races = [], racesError = null, onR
           {/* The count, in the same words the sign-up card uses. */}
           <div className="rounded-xl border border-border bg-surface2/40 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-mono text-[11px] font-bold uppercase tracking-wider">
-              <span className="text-light">Grid</span>
+              <span className="text-light">{hasDiv2 ? `Division ${division} grid` : "Grid"}</span>
               <span className={`tabular-nums ${over ? "text-warn" : "text-medium"}`}>
                 {accepted.length + reserved}/{capacity} seats taken
                 {reserved > 0 && ` (${reserved} mid-handover)`} · {waiting.length} waiting

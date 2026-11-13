@@ -29,6 +29,7 @@ import { achievementMeta } from "../lib/achievements.js";
 import { hasRaced, finishesOf, startsOf } from "../lib/standingsRow.js";
 import { withClassifiedPositions } from "./penalisedResults.js";
 import { readSprintChildrenOf, readParentIds, readSprintChildren, readScoringSprintParents } from "../lib/sprintRaces.js";
+import { readDivisionChildIds, readDivisionParents, readDivision2Drivers } from "../lib/divisions.js";
 
 function avg(nums) {
   if (!nums.length) return null;
@@ -130,12 +131,16 @@ export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, sea
   const specialIds = results.filter((r) => eligible(r) && r.race.isSpecialEvent).map((r) => r.raceId);
   const sprintIds = await readScoringSprintParents(prisma, specialIds);
   const sprintRows = results.filter((r) => sprintIds.has(r.raceId));
+  // Division 2 races (lib/divisions.js) sit on hidden child rows too, and are
+  // whole races: they count like any other start.
+  const div2Ids = await readDivisionChildIds(prisma, specialIds);
+  const div2Rows = results.filter((r) => div2Ids.has(r.raceId));
 
   // EVERY race counts as a race: the feature races and the sprints of sprint
   // weekends alike (lib/standingsRow.js). Starts, finishes, retirements, the
   // top-N counters and the finishing averages all read this one list, so the
   // win rate is wins per race started and cannot contradict itself.
-  const raced = [...rows, ...sprintRows];
+  const raced = [...rows, ...sprintRows, ...div2Rows];
   const starts = raced.filter((r) => r.status !== "DNS");
   const finishes = starts.filter((r) => r.status === "FINISHED" && r.position != null);
   const finishPositions = finishes.map((r) => r.position);
@@ -162,7 +167,7 @@ export async function buildAllTimeStats(prisma, linkedIds, privateSeasonIds, sea
   }
   // Fastest laps of every classification the person drove: the feature races
   // and, on sprint weekends, the sprints (see sprintRows above).
-  const fastestLaps = await countFastestLaps(prisma, [...rows, ...sprintRows]);
+  const fastestLaps = await countFastestLaps(prisma, [...rows, ...sprintRows, ...div2Rows]);
   // Poles: the imported qualifying session's fastest driver, else grid slot 1
   // (lib/raceHonours.js) — the grid alone would credit a reverse-grid start.
   // A round with no pole on its feature race takes the sprint's grid-1 row
@@ -541,8 +546,19 @@ export async function getDriverProfile(prisma, driverId) {
 
   // A driver entry belongs to one season; their stats are scoped to it.
   const seasonId = driver.seasonId;
+  // Division 2 (lib/divisions.js): a driver of the second field has their
+  // season in that field's table, and their races on the rounds' hidden
+  // Division 2 rows. Those rows are read as the round's own below, so every
+  // per-round view of the profile shows them like any race.
+  const [ownRows, div2Drivers] = await Promise.all([
+    prisma.raceResult.findMany({ where: { driverId } }),
+    readDivision2Drivers(prisma, seasonId),
+  ]);
+  const div2Parent = await readDivisionParents(prisma, ownRows.map((r) => r.raceId));
+  const hasMainResults = ownRows.some((r) => !div2Parent.has(r.raceId));
+  const division = div2Drivers.has(driverId) || (div2Parent.size > 0 && !hasMainResults) ? 2 : 1;
   const [standings, races, allRounds, results, telemetry, nameOverrides, profileTiles, photoPos, identityOverrides] = await Promise.all([
-    getDriverStandings(prisma, seasonId),
+    getDriverStandings(prisma, seasonId, { division }),
     prisma.race.findMany({
       where: { seasonId, isSpecialEvent: false, isCompleted: true },
       orderBy: { number: "asc" },
@@ -559,7 +575,9 @@ export async function getDriverProfile(prisma, driverId) {
     }),
     // Classified, not raw: a car moved by a time penalty shows its new place
     // (the standings score it from there, so the points already say so).
-    prisma.raceResult.findMany({ where: { driverId } }).then((rows) => withClassifiedPositions(prisma, rows)),
+    withClassifiedPositions(prisma, ownRows).then((rows) =>
+      rows.map((r) => (div2Parent.has(r.raceId) ? { ...r, raceId: div2Parent.get(r.raceId), division: 2, ownRaceId: r.raceId } : r))
+    ),
     telemetryForDriver(prisma, driverId),
     getNameOverrides(prisma),
     readProfileTiles(prisma, driverId),
@@ -951,6 +969,8 @@ export async function getDriverProfile(prisma, driverId) {
       id: driver.id,
       name: nameOv?.displayName || driver.name,
       formerName: nameOv?.formerName || null,
+      // 2 = races in Division 2 this season (its standings, the second server).
+      division,
       // The season this row belongs to, so race links can steer the Races
       // page to the right season even when the visitor is viewing another one.
       seasonNumber: driver.season?.number ?? null,
