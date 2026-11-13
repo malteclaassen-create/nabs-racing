@@ -649,7 +649,9 @@ export default function Races() {
   // browsing qualifying results round by round shouldn't need re-flipping the
   // toggle every time. A round without quali simply falls back to the race
   // table (RaceResults handles that) until one with quali is picked again.
-  const [session, setSession] = useState("race");
+  // A link can open a tab directly: the Division 2 results post links to its
+  // round with `session=div2` (backend resultsPostService.js).
+  const [session, setSession] = useState(() => (searchParams.get("session") === "div2" ? "div2" : "race"));
   // Table or lap-by-lap chart — a view of the same classification, not another
   // section under it: the round panel is long enough already, so the chart
   // stands in the table's place. Resets to the table on every round change,

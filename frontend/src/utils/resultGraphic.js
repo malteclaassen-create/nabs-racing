@@ -1628,8 +1628,13 @@ export async function loadGraphicAssets({
   // of borrowing a number it does not have — and a special event is not a
   // practice session, which is what it used to be called up here.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  // Division 2's race of a round (its own poster) is named for that round.
   const roundLabel =
-    kind === "CHAMPIONSHIP" && race.number != null
+    race.division === 2
+      ? race.roundNumber != null
+        ? `Round ${race.roundNumber} Division 2`
+        : "Division 2"
+      : kind === "CHAMPIONSHIP" && race.number != null
       ? `Round ${race.number}`
       : kind === "SPECIAL"
         ? "Special event"

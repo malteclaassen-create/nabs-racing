@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 import { applyPenalties } from "./pointsCalculator.js";
 import { readParentIds } from "../lib/sprintRaces.js";
-import { readDivisionChildIds } from "../lib/divisions.js";
+import { readDivisionChildIds, readDivisionParents, readDivisionChildren } from "../lib/divisions.js";
 import { telemetryForRace } from "../lib/telemetryRead.js";
 import { readPoleHolders } from "../lib/raceHonours.js";
 import { discordIdsForDrivers } from "../lib/persons.js";
@@ -44,13 +44,17 @@ function fmtLap(ms) {
 // in the season it has loaded, does not find it, and quietly shows a different
 // round instead. That also happens to every link already posted, the moment the
 // next season goes active — which is exactly why the number has to be in there.
-async function raceLink(prisma, race, origin) {
+//
+// Division 2's race is a hidden row the races page does not list, so its link
+// is its ROUND's, with the Division 2 tab opened (`session=div2`).
+async function raceLink(prisma, race, origin, { div2Of = null } = {}) {
   if (!origin || !race?.seasonId) return null;
   const season = await prisma.season
     .findUnique({ where: { id: race.seasonId }, include: { series: true } })
     .catch(() => null);
   const slug = season?.series?.slug;
   const seasonQ = season && !season.isActive && season.number != null ? `season=${season.number}&` : "";
+  if (div2Of) return `${origin}${slug ? `/s/${slug}` : ""}/races?${seasonQ}race=${div2Of}&session=div2`;
   return `${origin}${slug ? `/s/${slug}` : ""}/races?${seasonQ}race=${race.id}`;
 }
 
@@ -108,11 +112,21 @@ export async function buildResultsPost(prisma, raceId, { origin = null, roleId =
   // is named for its round rather than as an event.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
   const sprintOf = await sprintParent(prisma, raceId);
+  // Division 2 (lib/divisions.js) gets a post of its own, named for its round;
+  // and once a round has one, the main race's post says it is Division 1's,
+  // so the two messages in the channel can't be mistaken for each other.
+  const div2Of = (await readDivisionParents(prisma, [raceId]).catch(() => new Map())).get(raceId) || null;
+  const div2Round = div2Of ? await prisma.race.findUnique({ where: { id: div2Of } }).catch(() => null) : null;
+  const hasDiv2 = !div2Of && (await readDivisionChildren(prisma, [raceId]).catch(() => new Map())).has(raceId);
   const what =
-    sprintOf?.number != null
+    div2Of
+      ? div2Round?.number != null
+        ? `ROUND ${div2Round.number} DIVISION 2`
+        : "DIVISION 2"
+      : sprintOf?.number != null
       ? `ROUND ${sprintOf.number} SPRINT`
       : kind === "CHAMPIONSHIP" && race.number != null
-        ? `ROUND ${race.number}`
+        ? `ROUND ${race.number}${hasDiv2 ? " DIVISION 1" : ""}`
         : kind === "SPECIAL"
           ? "SPECIAL EVENT"
           : kind === "TRAINING"
@@ -189,7 +203,7 @@ export async function buildResultsPost(prisma, raceId, { origin = null, roleId =
   // with it. The three medals sit on one line rather than three: as mention
   // chips they are wide, and stacked they read as the start of a list that then
   // stops after three.
-  const link = await raceLink(prisma, race, origin);
+  const link = await raceLink(prisma, race, origin, { div2Of });
   const podium = finishers
     .filter((r) => r.position <= 3)
     .map((r) => `${MEDALS[r.position - 1]} ${who(r)}`)

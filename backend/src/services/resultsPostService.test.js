@@ -151,3 +151,38 @@ describe("buildResultsPost", () => {
     expect(short.startsWith("**ROUND ? - HOCKENHEIM**")).toBe(true);
   });
 });
+
+// Division 2 (lib/divisions.js) gets a post of its own, sent separately: its
+// race is a hidden row under its round, told apart by "division" = 2.
+describe("buildResultsPost with Division 2", () => {
+  const ROUND = { ...RACE, id: "r1" };
+  const DIV2 = { id: "r1d", number: null, track: "Hockenheim", seasonId: "s8", isSpecialEvent: true, type: "SPECIAL" };
+  function withDivision2(raceId) {
+    const prisma = makePrisma({ race: raceId === "r1d" ? DIV2 : ROUND });
+    prisma.race.findUnique = async ({ where }) => (where.id === "r1d" ? DIV2 : ROUND);
+    prisma.$queryRawUnsafe = async (sql) => {
+      if (sql.includes('"division" = 2') && sql.includes('"parentRaceId" IN')) return [{ id: "r1d", parentRaceId: "r1" }];
+      if (sql.includes('"division" = 2') && sql.includes('"id" IN')) {
+        return raceId === "r1d" ? [{ id: "r1d", parentRaceId: "r1" }] : [];
+      }
+      return [{ driverOfTheDayId: null, driverOfTheDayBy: null }];
+    };
+    return prisma;
+  }
+
+  it("names Division 2's post for its round, not as a special event", async () => {
+    const { full } = await buildResultsPost(withDivision2("r1d"), "r1d");
+    expect(full).toContain("**ROUND 1 DIVISION 2 - HOCKENHEIM**");
+    expect(full).not.toContain("SPECIAL EVENT");
+  });
+
+  it("calls the main race's post Division 1 once the round has a Division 2", async () => {
+    const { full } = await buildResultsPost(withDivision2("r1"), "r1");
+    expect(full).toContain("**ROUND 1 DIVISION 1 - HOCKENHEIM**");
+  });
+
+  it("links Division 2's post at its round, with the Division 2 tab open", async () => {
+    const { short } = await buildResultsPost(withDivision2("r1d"), "r1d", { origin: "https://league.example" });
+    expect(short).toContain("https://league.example/s/friday-f1/races?race=r1&session=div2");
+  });
+});
