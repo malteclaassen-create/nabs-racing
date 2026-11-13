@@ -44,6 +44,7 @@ import { dropImpossibleSectors } from "../lib/impossibleSectors.js";
 import { repairCumulativeSplits } from "../lib/cumulativeSplits.js";
 import { notePracticeLap as noteTrainingLap, readLapMark, writeLapMark, lapsSinceMark } from "../lib/practiceTokens.js";
 import { blockedKeysForScopes, blockKey } from "../lib/liveLapBlocks.js";
+import { createCleanLapWatch } from "../lib/sessionCleanLaps.js";
 import { dbListSeries } from "../lib/series.js";
 import { resolveSeason } from "./seasonService.js";
 import { readLiveServerMap, serverAssignment } from "../lib/liveServers.js";
@@ -500,6 +501,10 @@ function createRelay(server) {
   // carries the same fact across a restart (liveResetKeep's notifiedAt).
   let lastResetAlertAt = 0;
   const practiceStampsByGuid = new Map(); // guid -> Set(seconds since epoch)
+  // Each driver's fastest clean lap of the practice session, as we saw them
+  // cross the line. What the board shows when the server's own best of theirs
+  // is a lap an admin removed (lib/sessionCleanLaps.js, applyRemovedLaps).
+  const cleanLaps = createCleanLapWatch(server.key);
   // The last lap of each driver handed to the training-points tally. Kept for
   // the life of the relay, not per session: lap stamps only ever go forwards.
   const tokenLapAtByGuid = new Map(); // guid -> seconds since epoch
@@ -937,12 +942,40 @@ function createRelay(server) {
       ...(status?.ConnectedDrivers?.Drivers || {}),
     };
     const out = [];
+    // A server best an admin removed is not what this session is worth to
+    // that driver any more: the fastest clean lap we watched them set since is
+    // (lib/sessionCleanLaps.js). Without it the reset would hand over the
+    // removed lap, the store would drop it, and their week would be gone.
+    const si = status?.SessionInfo || {};
+    const blocked = blockedKeysForScopes(
+      boardScopes(server.key),
+      baseTrackOf(trackKeyOf(si.Track || "", si.TrackConfig || ""))
+    );
     for (const [guid, d] of Object.entries(drivers)) {
       const ci = d?.CarInfo || {};
       if (ci.IsSpectator) continue;
       if (looksLikeSafetyCar(ci.CarSkin, ci.CarModel)) continue;
       const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
-      const lapTimeMs = car ? nsToMs(car.BestLap) : null;
+      const serverMs = car ? nsToMs(car.BestLap) : null;
+      if (serverMs && blocked.has(blockKey(guid, serverMs))) {
+        const own = cleanLaps.bestOf(guid);
+        if (!own || blocked.has(blockKey(guid, own.lapTimeMs))) continue;
+        out.push({
+          steamId: guid,
+          name: ci.DriverName || "",
+          car: ci.CarModel || "",
+          lapTimeMs: own.lapTimeMs,
+          sectorsMs: own.sectorsMs,
+          tyre: ci.Tyres || "",
+          bestSectorsMs: own.bestSectorsMs,
+          lapStamps: [...(practiceStampsByGuid.get(guid) || [])],
+          lastLapMs: nsToMs(car.LastLap),
+          lastAt: car.LastLapCompletedTime ? Math.round((Date.parse(car.LastLapCompletedTime) || 0) / 1000) : 0,
+          recordedAt: null,
+        });
+        continue;
+      }
+      const lapTimeMs = serverMs;
       if (!lapTimeMs) continue;
       const splits = sectorsOf(car.BestLapSplits).map((sp) => sp?.ms ?? null);
       const lastAt = car.LastLapCompletedTime ? Date.parse(car.LastLapCompletedTime) || 0 : 0;
@@ -975,6 +1008,7 @@ function createRelay(server) {
     const si = status?.SessionInfo || {};
     const laps = practiceBestLaps();
     practiceStampsByGuid.clear();
+    cleanLaps.clear();
     if (!laps.length) return;
     const side = (info) => ({
       track: info?.Track || "",
@@ -1056,7 +1090,10 @@ function createRelay(server) {
       if (ci.IsSpectator) continue;
       const car = (d.Cars && ci.CarModel && d.Cars[ci.CarModel]) || null;
       recordCrossing(guid, car);
-      if (si.Type === 1) notePracticeLap(guid, car, ci, si);
+      if (si.Type === 1) {
+        cleanLaps.note(guid, car);
+        notePracticeLap(guid, car, ci, si);
+      }
       const lap = Math.max(1, car?.NumLaps ?? d.TotalNumLaps ?? 1);
       const tyre = ci.Tyres || car?.TyreBestLap || "";
       const pits = d.NumPits ?? car?.NumPits ?? 0;
@@ -1267,6 +1304,7 @@ function createRelay(server) {
         practiceKey = key;
       }
       practiceElapsed = key ? Number(si.ElapsedMilliseconds) || 0 : 0;
+      cleanLaps.session(key, practiceElapsed > 0 ? Date.now() - practiceElapsed : null);
     }
     accumulateStints(status); // grow the per-driver tyre-stint history
     // Write pit-lane facts to disk while they exist — the stored result JSON
@@ -1686,15 +1724,24 @@ function createRelay(server) {
   // that was removed, and they are back on the board — which is exactly what
   // removing a lap is meant to mean.
   //
+  // Except the server only reports a different time once they BEAT the
+  // removed one, and after a change that made the car slower nobody can (F1
+  // Friday, Mugello, 2026-11-13: the whole field deleted their old times and
+  // sat on a dash all afternoon). So the row takes the fastest clean lap we
+  // watched them set in this session instead (lib/sessionCleanLaps.js), and
+  // stays blank only until they have finished one.
+  //
   // Practice only, like the carried laps themselves. A qualifying board or a
   // race classification is what happened in that session, and nothing an
   // admin does to the training board may quietly rewrite one.
   function applyRemovedLaps(byGuid, si) {
     const circuit = baseTrackOf(trackKeyOf(si.Track || "", si.TrackConfig || ""));
     const blocked = blockedKeysForScopes(boardScopes(server.key), circuit);
-    if (!blocked.size) return;
+    if (!blocked.size) return false;
+    let any = false;
     for (const [guid, e] of byGuid) {
       if (e.bestLapMs == null || !blocked.has(blockKey(guid, e.bestLapMs))) continue;
+      any = true;
       // Everything on the row that belongs to that lap goes with it, the best
       // sectors included: a lap set under conditions nobody else had has
       // sectors to match, and leaving them would put the removed lap back on
@@ -1704,7 +1751,18 @@ function createRelay(server) {
       e.bestSectors = [null, null, null];
       e.potentialMs = null;
       e.topSpeed = null;
+      const own = cleanLaps.bestOf(guid);
+      if (!own || blocked.has(blockKey(guid, own.lapTimeMs))) continue;
+      // Their best sectors are the ones of the laps we counted, not the
+      // server's: those are still the removed lap's, one third at a time.
+      e.bestLapMs = own.lapTimeMs;
+      e.sectors = carriedSectors(own.sectorsMs, own.bestSectorsMs);
+      e.bestSectors = carriedSectors(own.bestSectorsMs, own.bestSectorsMs);
+      e.potentialMs = potentialOfMs(own.bestSectorsMs);
     }
+    // Whether a row lost its lap: the server's session-wide best sectors may
+    // then be that lap's, and the colour pass below must not trust them.
+    return any;
   }
 
   // --- Imported training bests ---------------------------------------------
@@ -1948,8 +2006,9 @@ function createRelay(server) {
     // admin has removed come off first, so a carried lap can take the place of
     // a live one that was taken off the board.
     let carriedBestSectors = [null, null, null];
+    let serverBestsRemoved = false;
     if (si.Type === 1) {
-      applyRemovedLaps(byGuid, si);
+      serverBestsRemoved = applyRemovedLaps(byGuid, si);
       carriedBestSectors = applyImportedBests(byGuid, si);
     }
     // Best laps with their splits are what the lap comparison learns the
@@ -2071,10 +2130,13 @@ function createRelay(server) {
     // went purple while a quicker one sat two rows up in green.
     // A sector taken out above is no one's best, the session's included; the
     // quickest that is left on the board stands in for it.
+    //
+    // Same when a removed lap was taken off a row: the server's own session
+    // bests are very likely that lap's sectors, so the rows decide instead.
     const sessionBestSectors = splitsByIndex(status.BestSplits).map((sp, i) => {
       const keep = (ms) => (ms == null || droppedSectors[i].has(ms) ? null : ms);
-      const candidates = [keep(sp ? nsToMs(sp.SplitTime) : null), keep(carriedBestSectors[i])];
-      if (droppedSectors[i].size) for (const e of entries) candidates.push(e.bestSectors?.[i]?.ms ?? null);
+      const candidates = [serverBestsRemoved ? null : keep(sp ? nsToMs(sp.SplitTime) : null), keep(carriedBestSectors[i])];
+      if (droppedSectors[i].size || serverBestsRemoved) for (const e of entries) candidates.push(keep(e.bestSectors?.[i]?.ms ?? null));
       const known = candidates.filter((ms) => ms != null);
       return known.length ? Math.min(...known) : null;
     });
@@ -2385,6 +2447,7 @@ function createRelay(server) {
       practiceElapsed = 0;
       lastResetAlertAt = 0;
       practiceStampsByGuid.clear();
+      cleanLaps.session(null, null);
     },
   };
 }

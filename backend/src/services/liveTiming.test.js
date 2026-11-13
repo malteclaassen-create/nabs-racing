@@ -5,7 +5,7 @@ import { blockLap, unblockLap, blockKey, __clearCache as __clearBlockCache } fro
 import { seriesKeyOf } from "../lib/telemetryLaps.js";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { LIVE_RESET_KEEP_DIR, LIVE_LAP_BLOCKS_DIR } from "../lib/dataDirs.js";
+import { LIVE_RESET_KEEP_DIR, LIVE_LAP_BLOCKS_DIR, LIVE_CLEAN_LAPS_DIR } from "../lib/dataDirs.js";
 import { listPending, discard as discardPending } from "../lib/liveResetKeep.js";
 import { notifyAdminsServerReset } from "../lib/notifications.js";
 
@@ -1341,6 +1341,9 @@ describe("liveTiming carried training bests", () => {
     afterEach(() => {
       // This series' folder only: the other live tests run beside this one.
       rmSync(join(LIVE_LAP_BLOCKS_DIR, seriesKeyOf(SERIES)), { recursive: true, force: true });
+      // The laps the relay counted itself are saved per server, and the next
+      // case would otherwise find them as if the backend had restarted.
+      rmSync(LIVE_CLEAN_LAPS_DIR, { recursive: true, force: true });
       __clearBlockCache();
     });
 
@@ -1376,6 +1379,54 @@ describe("liveTiming carried training bests", () => {
       block(ALICE, 96_000);
       ingest(bestSnap({ type: 2, drivers: { [ALICE]: { name: "Alice", bestMs: 96_000 } } }));
       expect(row(getBoard(), "Alice").bestLapMs).toBe(96_000);
+    });
+
+    // Mugello, 2026-11-13: the car was made slower, the old times were all
+    // removed, and the server kept reporting them because nobody could beat
+    // them. The board showed a dash for everyone all afternoon.
+    describe("when the car got slower and nobody beats the removed lap", () => {
+      // Alice's server best stays the removed 1:36.000 throughout; what moves
+      // is her lap counter, last lap and the splits of the lap in progress.
+      function lapSnap(laps, lastMs, splits) {
+        const snap = bestSnap({ drivers: { [ALICE]: { name: "Alice", bestMs: 96_000, laps, inPits: false } } });
+        const c = snap.SessionInfo;
+        c.ElapsedMilliseconds = 3_600_000;
+        const car = snap.ConnectedDrivers.Drivers[ALICE].Cars.f;
+        car.LastLap = msToNs(lastMs);
+        car.CurrentLapSplits = Object.fromEntries(
+          splits.map(([ms, cuts = 0], i) => [i, { SplitIndex: i, SplitTime: msToNs(ms), Cuts: cuts }])
+        );
+        return snap;
+      }
+
+      it("shows the fastest clean lap they set since", () => {
+        block(ALICE, 96_000);
+        ingest(lapSnap(5, 99_000, [[31_000]]));
+        ingest(lapSnap(6, 98_200, [[31_000], [32_000], [35_200]]));
+        ingest(lapSnap(7, 97_900, [[30_900], [31_800], [35_200, 1]])); // cut: not counted
+
+        const alice = row(getBoard(), "Alice");
+        expect(alice.bestLapMs).toBe(98_200);
+        expect(alice.sectors.map((s) => s.ms)).toEqual([31_000, 32_000, 35_200]);
+        expect(alice.potentialMs).toBe(98_200);
+      });
+
+      it("is a dash until they have finished one", () => {
+        block(ALICE, 96_000);
+        ingest(lapSnap(5, 99_000, [[31_000]]));
+        expect(row(getBoard(), "Alice").bestLapMs).toBe(null);
+      });
+
+      it("purple comes from the board, not from the removed lap's sectors", () => {
+        block(ALICE, 96_000);
+        ingest(lapSnap(5, 99_000, [[31_000]]));
+        const snap = lapSnap(6, 98_200, [[31_000], [32_000], [35_200]]);
+        // The server's session bests are the removed lap's.
+        snap.BestSplits = { 0: { SplitIndex: 0, SplitTime: msToNs(30_000) }, 1: { SplitIndex: 1, SplitTime: msToNs(30_000) }, 2: { SplitIndex: 2, SplitTime: msToNs(36_000) } };
+        ingest(snap);
+        const alice = row(getBoard(), "Alice");
+        expect(alice.sectors.map((s) => s.best)).toEqual([true, true, true]);
+      });
     });
 
     it("put back, the lap is on the board again", () => {

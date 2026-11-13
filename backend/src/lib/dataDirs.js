@@ -69,3 +69,9 @@ export const LIVE_RESET_KEEP_DIR = join(DATA_ROOT, "live-reset-keep");
 // that is uploaded again, or off the race server, which is still holding it
 // as that driver's session best.
 export const LIVE_LAP_BLOCKS_DIR = join(DATA_ROOT, "live-lap-blocks");
+
+// The fastest clean lap of each driver in the practice session on air, as the
+// relay saw them cross the line (lib/sessionCleanLaps.js). Only read when the
+// server's own best of a driver is one an admin removed. On disk so a deploy
+// in the middle of a week-long session does not forget them.
+export const LIVE_CLEAN_LAPS_DIR = join(DATA_ROOT, "live-clean-laps");
