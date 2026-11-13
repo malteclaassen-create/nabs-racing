@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useJumpView } from "../hooks/useJumpView.js";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useSeason } from "../context/SeasonContext.jsx";
 import { ErrorBox, Notice, CardHead, HelpNote, Field } from "./ui.jsx";
 import SlidingTabs from "./SlidingTabs.jsx";
 import AdminAttendanceHistory from "./AdminAttendanceHistory.jsx";
@@ -49,6 +50,12 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
   // constant: a league that moves to a bigger server changes it here.
   const [grid, setGrid] = useState(null);
   const [gridInput, setGridInput] = useState("");
+  // Division 2's grid, for a season that runs one (the second server can hold
+  // a different number of cars). "" = same as the main grid.
+  const { current: attSeason } = useSeason();
+  const runsDiv2 = !!attSeason?.division2;
+  const [grid2, setGrid2] = useState(null);
+  const [grid2Input, setGrid2Input] = useState("");
   useEffect(() => {
     api.attendanceGates().then(setGates).catch((e) => setError(e.message));
     api.adminNotificationSettings().then((d) => setRule(d.settings || d)).catch(() => {});
@@ -56,6 +63,8 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       .then((d) => {
         setGrid(d.size);
         setGridInput(String(d.size));
+        setGrid2(d.size2 ?? null);
+        setGrid2Input(d.size2 == null ? "" : String(d.size2));
       })
       .catch(() => {});
   }, []);
@@ -67,13 +76,20 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
       setError("Grid size must be a whole number between 1 and 128.");
       return;
     }
+    const size2 = runsDiv2 ? grid2Input.trim() : undefined;
+    if (size2 && !(Number.isInteger(Number(size2)) && Number(size2) >= 1 && Number(size2) <= 128)) {
+      setError("The Division 2 grid must be a whole number between 1 and 128, or empty.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setMsg(null);
     try {
-      const res = await api.saveAttendanceGrid(size);
+      const res = await api.saveAttendanceGrid(size, size2 === undefined ? undefined : size2 === "" ? "" : Number(size2));
       setGrid(res.size);
       setGridInput(String(res.size));
+      setGrid2(res.size2 ?? null);
+      setGrid2Input(res.size2 == null ? "" : String(res.size2));
       await events.reload();
       setMsg(
         res.updated === 1
@@ -219,13 +235,37 @@ export default function AdminAttendance({ jumpView = null, jumpKey = null }) {
                 <button
                   type="submit"
                   className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-                  disabled={busy || grid === null || String(grid) === gridInput.trim()}
+                  disabled={
+                    busy ||
+                    grid === null ||
+                    (String(grid) === gridInput.trim() && (!runsDiv2 || (grid2 == null ? "" : String(grid2)) === grid2Input.trim()))
+                  }
                 >
                   Save
                 </button>
               </div>
             )}
           </Field>
+          {runsDiv2 && (
+            <Field
+              label="Seats on the Division 2 grid"
+              hint="The second server's grid. Leave it empty to use the same number as above."
+            >
+              {(props) => (
+                <input
+                  {...props}
+                  type="number"
+                  min="1"
+                  max="128"
+                  className="input w-24"
+                  placeholder={gridInput || "40"}
+                  value={grid2Input}
+                  disabled={busy || grid === null}
+                  onChange={(e) => setGrid2Input(e.target.value)}
+                />
+              )}
+            </Field>
+          )}
         </form>
 
         <HelpNote label="How the switches work">

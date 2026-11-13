@@ -48,6 +48,7 @@ function toState(defaults, saved) {
     pac: grp("pac"),
     rac: grp("rac"),
     aha: grp("aha"),
+    division2: String(saved?.division2?.weight ?? defaults.division2?.weight ?? 50),
     window: {
       seasons: String(saved?.window?.seasons ?? defaults.window.seasons),
       recency: listToText(saved?.window?.recency ?? defaults.window.recency),
@@ -85,6 +86,7 @@ function toWeights(f) {
     pac: f.pac,
     rac: f.rac,
     aha: f.aha,
+    division2: { weight: numOr(f.division2, undefined) },
     window: {
       seasons: numOr(f.window.seasons, undefined),
       recency: parseList(f.window.recency).nums,
@@ -278,6 +280,7 @@ export default function AdminRatings() {
   const setSplit = (k, v) => patch((f) => { f.exp.split[k] = v; return f; });
   const setExp = (k, v) => patch((f) => { f.exp[k] = v; return f; });
   const setWindow = (k, v) => patch((f) => { f.window[k] = v; return f; });
+  const setDivision2 = (v) => patch((f) => { f.division2 = v; return f; });
   const setBand = (k, v) => patch((f) => { f.band[k] = Number(v); return f; });
   const setStatBand = (stat, k, v) => patch((f) => { f.bands[stat][k] = v; return f; });
 
@@ -373,6 +376,13 @@ export default function AdminRatings() {
                 hint="Example: 25, 20, 20, 15, 10, 5, 5, where the latest season counts 25% and the oldest 5%."
               />
             </div>
+          </Section>
+
+          <Section
+            title="Division 2"
+            help="Division 2 counts toward the rating, but a result there is worth less than the same result in Division 1. Finishing places, places gained and podiums count at this share, and so does a Division 2 title in EXP. Starts, clean driving and lap times count in full. Lap times are held against the fastest lap of the whole evening, both divisions, because it is the same car on the same track. Division 1 ratings never change because of it."
+          >
+            <NumField label="A Division 2 result is worth" min="0" max="100" value={form.division2} onChange={setDivision2} suffix="% of Division 1" />
           </Section>
 
           <Section

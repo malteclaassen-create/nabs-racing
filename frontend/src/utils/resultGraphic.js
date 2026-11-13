@@ -1329,15 +1329,47 @@ export function pageCount(total, perPage) {
 //
 // The heading follows the group: a Tier 2 table under "Driver's standings"
 // would read as THE championship, with the leader in fourteenth.
-export function standingsTitle(tier = "all") {
+// Division 2 (a season's second field) has tables of its own; its posters say so.
+export function standingsTitle(tier = "all", division = 1) {
+  if (division === 2) return "Division 2 standings";
   if (String(tier) === "1") return "Tier 1 standings";
   if (String(tier) === "2") return "Tier 2 standings";
   if (String(tier) === "0") return "Reserve standings";
   return "Driver's standings";
 }
 
-export function constructorsTitle() {
+export function constructorsTitle(division = 1) {
+  if (division === 2) return "Division 2 constructors";
   return "Constructors' standings";
+}
+
+// The tables a standings poster of `division` is drawn from, fetched for the
+// round the table is frozen after. Division 1: the drivers' table and both
+// constructor tiers. Division 2: its own drivers' table and its own teams as
+// ONE table, every team on it (a poster holds up to CONSTRUCTOR_SPOTS.max).
+// One function for the Standings tab and the Discord post, so the picture on
+// screen and the one that goes out are the same table.
+export async function fetchStandingsTables(api, upTo, division = 1) {
+  if (division === 2) {
+    const [drivers, d2] = await Promise.all([
+      api.driverStandings(undefined, upTo, null, 2),
+      api.div2Standings(undefined, upTo).catch(() => null),
+    ]);
+    return { drivers, t1: d2?.standings || [], t2: [] };
+  }
+  const [drivers, t1, t2] = await Promise.all([
+    api.driverStandings(undefined, upTo),
+    api.t1Standings(undefined, upTo).catch(() => null),
+    api.t2Standings(undefined, upTo).catch(() => null),
+  ]);
+  return { drivers, t1: t1?.standings || [], t2: t2?.standings || [] };
+}
+
+// The constructors poster's options that depend on the division.
+export function constructorsFor(division, { t1Rows, t2Rows }) {
+  return division === 2
+    ? { t1Rows: CONSTRUCTOR_SPOTS.max, t2Rows: 0, t1Heading: "DIVISION 2", title: constructorsTitle(2) }
+    : { t1Rows, t2Rows, title: constructorsTitle(1) };
 }
 
 export function standingsSubtitle(upToRound) {
@@ -1416,6 +1448,8 @@ export const CONSTRUCTOR_SPOTS = { min: 3, max: 12, step: 1, t1: 5, t2: 8 };
 export async function loadConstructorsAssets({
   t1 = [], t2 = [], teamArt = {}, logoSrc, title, subtitle = null,
   t1Rows = CONSTRUCTOR_SPOTS.t1, t2Rows = CONSTRUCTOR_SPOTS.t2, framing = null,
+  // Division 2's poster is one table, headed for its division (constructorsFor).
+  t1Heading = "TIER 1", t2Heading = "TIER 2",
 }) {
   const markSrc = (r) => teamArt[r.teamId]?.mark || r.logoUrl || null;
   // A team's country is not in the database — teams have no nationality column
@@ -1451,8 +1485,8 @@ export async function loadConstructorsAssets({
     logo,
     framing: cleanFraming(framing),
     sections: [
-      { heading: "TIER 1", rows: shown1.map((r, i) => row(r, i, marks1, flags1)) },
-      { heading: "TIER 2", rows: shown2.map((r, i) => row(r, i, marks2, flags2)) },
+      { heading: t1Heading, rows: shown1.map((r, i) => row(r, i, marks1, flags1)) },
+      { heading: t2Heading, rows: shown2.map((r, i) => row(r, i, marks2, flags2)) },
     ].filter((s) => s.rows.length),
   };
 }
@@ -1628,8 +1662,13 @@ export async function loadGraphicAssets({
   // of borrowing a number it does not have — and a special event is not a
   // practice session, which is what it used to be called up here.
   const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
+  // Division 2's race of a round (its own poster) is named for that round.
   const roundLabel =
-    kind === "CHAMPIONSHIP" && race.number != null
+    race.division === 2
+      ? race.roundNumber != null
+        ? `Round ${race.roundNumber} Division 2`
+        : "Division 2"
+      : kind === "CHAMPIONSHIP" && race.number != null
       ? `Round ${race.number}`
       : kind === "SPECIAL"
         ? "Special event"

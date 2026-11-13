@@ -23,6 +23,12 @@
 //     gap to that race's pole time (min qualiTimeMs). Null everywhere until the
 //     quali files arrive, so the PAC pole component stays inert.
 //
+// Division 2 (lib/divisions.js) counts too, at cfg.division2.weight where it
+// is worth less than Division 1 (driverRatingsService's header): every start
+// is a start, a Division 2 title pays that share of a Division 1 title, its
+// grid is left out of the pace and its best laps are held against the fastest
+// lap of the whole evening.
+//
 // Pure read service; standings of finished seasons are cached in-memory for a
 // few minutes since they only change when an admin edits an archived result.
 // ---------------------------------------------------------------------------
@@ -30,7 +36,9 @@ import {
   getDriverStandings,
   getT1ConstructorStandings,
   getT2ConstructorStandings,
+  getDiv2ConstructorStandings,
 } from "./standingsService.js";
+import { withDivisionClassifications, seasonHasDivision2 } from "../lib/divisions.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { withSprintClassifications } from "../lib/sprintRaces.js";
 
@@ -98,10 +106,13 @@ async function seasonPositions(prisma, seasonId) {
   const hit = standingsCache.get(seasonId);
   if (hit && Date.now() - hit.at < STANDINGS_CACHE_MS) return hit.value;
 
-  const [drv, t1, t2] = await Promise.all([
+  const hasDiv2 = await seasonHasDivision2(prisma, seasonId);
+  const [drv, t1, t2, drv2, d2] = await Promise.all([
     getDriverStandings(prisma, seasonId),
     getT1ConstructorStandings(prisma, seasonId),
     getT2ConstructorStandings(prisma, seasonId),
+    hasDiv2 ? getDriverStandings(prisma, seasonId, { division: 2 }) : null,
+    hasDiv2 ? getDiv2ConstructorStandings(prisma, seasonId) : null,
   ]);
   const driverPos = new Map();
   for (const row of drv.standings || []) driverPos.set(row.driverId, row.position);
@@ -111,7 +122,15 @@ async function seasonPositions(prisma, seasonId) {
   for (const row of t1Rows) teamPos.set(row.teamId, { position: row.position, tier: 1, count: t1Rows.length });
   for (const row of t2Rows) teamPos.set(row.teamId, { position: row.position, tier: 2, count: t2Rows.length });
 
-  const value = { driverPos, teamPos, tiered: t2Rows.length > 0 };
+  // Division 2's own tables, kept apart: the same position there is worth
+  // less (see the championship score below).
+  const driverPos2 = new Map();
+  for (const row of drv2?.standings || []) driverPos2.set(row.driverId, row.position);
+  const teamPos2 = new Map();
+  const d2Rows = d2?.standings || [];
+  for (const row of d2Rows) teamPos2.set(row.teamId, { position: row.position, count: d2Rows.length });
+
+  const value = { driverPos, teamPos, tiered: t2Rows.length > 0, driverPos2, teamPos2 };
   standingsCache.set(seasonId, { at: Date.now(), value });
   return value;
 }
@@ -173,7 +192,13 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
     where: { seasonId: { in: windowIds }, isSpecialEvent: false, isCompleted: true },
     select: { id: true, number: true, seasonId: true, isCompleted: true },
   });
-  const { races: windowRaces, sprintIds, roundOf } = await withSprintClassifications(prisma, windowRounds);
+  const { races: sprintRaces, sprintIds, roundOf } = await withSprintClassifications(prisma, windowRounds);
+  // Division 2's race of each round: a start of its own, the same weekend.
+  const division2 = await withDivisionClassifications(prisma, windowRounds);
+  for (const [child, round] of division2.parentOf) roundOf.set(child, round);
+  const div2Ids = division2.div2Ids;
+  const div2Weight = cfg.division2?.weight ?? 0.5;
+  const windowRaces = [...sprintRaces, ...division2.races];
   const windowRaceIds = windowRaces.map((r) => r.id);
 
   // Every driver row of the window seasons (for team/tier + season mapping),
@@ -207,15 +232,27 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
   const raceIds = [...new Set(results.map((r) => r.raceId))];
   const raceMeta = new Map();
   if (raceIds.length) {
+    // A Division 2 race is measured against its round too (same car, same
+    // track, same night), so the round's laps are read alongside.
+    const rounds = raceIds.filter((id) => div2Ids.has(id)).map((id) => division2.parentOf.get(id));
+    const readIds = [...new Set([...raceIds, ...rounds])];
     const fieldRows = await prisma.raceResult.findMany({
-      where: { raceId: { in: raceIds } },
+      where: { raceId: { in: readIds } },
       select: { raceId: true, grid: true, bestLapMs: true },
     });
+    const fastestOf = (raceId) => {
+      const laps = fieldRows.filter((r) => r.raceId === raceId && r.bestLapMs != null).map((r) => r.bestLapMs);
+      return laps.length ? Math.min(...laps) : null;
+    };
     for (const raceId of raceIds) {
       const rs = fieldRows.filter((r) => r.raceId === raceId);
-      const laps = rs.map((r) => r.bestLapMs).filter((x) => x != null);
+      let fastestLap = fastestOf(raceId);
+      if (div2Ids.has(raceId)) {
+        const first = fastestOf(division2.parentOf.get(raceId));
+        if (first != null && (fastestLap == null || first < fastestLap)) fastestLap = first;
+      }
       raceMeta.set(raceId, {
-        fastestLap: laps.length ? Math.min(...laps) : null,
+        fastestLap,
         gridSize: rs.filter((r) => r.grid != null).length,
       });
     }
@@ -331,11 +368,24 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
       const rowId = linked.find((id) => rowSeason.get(id) === s.id);
       if (!rowId) return;
       const dPos = pos.driverPos.get(rowId);
-      const dVal = dPos != null ? curveValue(dPos, cfg.exp.driverCurve) : 0;
+      const dPos2 = pos.driverPos2?.get(rowId);
+      // A Division 2 place pays its share of the same place in Division 1.
+      const dVal =
+        dPos != null
+          ? curveValue(dPos, cfg.exp.driverCurve)
+          : dPos2 != null
+            ? curveValue(dPos2, cfg.exp.driverCurve) * div2Weight
+            : 0;
       let cVal = 0;
       const teamId = rowTeam.get(rowId);
       const tp = teamId != null ? pos.teamPos.get(teamId) : null;
-      if (tp) {
+      const tp2 = teamId != null ? pos.teamPos2?.get(teamId) : null;
+      if (tp2) {
+        // A Division 2 team is priced on the Division 1 table for its field
+        // size, at the division's share.
+        const table = constructorTableFor(cfg.exp.constructors.tier1, tp2.count) || cfg.exp.constructors.preTier;
+        cVal = table ? curveValue(tp2.position, table) * div2Weight : 0;
+      } else if (tp) {
         const table = pos.tiered
           ? tp.tier === 2
             ? constructorTableFor(cfg.exp.constructors.tier2, tp.count)
@@ -355,7 +405,7 @@ export async function getCareerInputs(prisma, ratedSeason, ratedDrivers, cfg) {
       if (!m) continue;
       // The grid skips the sprints (reversed or inherited, not a qualifying
       // result — lib/standingsRow.js); the best lap counts every race driven.
-      if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId)) {
+      if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId) && !div2Ids.has(r.raceId)) {
         gridNorms.push((r.grid - 1) / (m.gridSize - 1));
       }
       if (r.bestLapMs != null && m.fastestLap) lapGaps.push(r.bestLapMs / m.fastestLap - 1);

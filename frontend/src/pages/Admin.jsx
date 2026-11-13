@@ -2159,6 +2159,9 @@ const EMPTY_BASELINE = {
 
 function EditResults() {
   const ask = useAsk();
+  // A season running Division 2 has a second race per round (the second
+  // server's), edited here like a sprint is.
+  const { current: editSeason } = useSeason();
   // Sprints included: a sprint classification is edited (penalties, driver
   // swaps, deletion) exactly like any stored result, and this picker is the
   // one place in the admin that has to reach it.
@@ -2171,8 +2174,12 @@ function EditResults() {
   function raceLabel(race) {
     if (!race) return "this race";
     const kind = race.type || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-    const parent = race.sprintOf ? (races || []).find((p) => p.id === race.sprintOf) : null;
-    const what = race.sprintOf
+    const parent = race.sprintOf || race.division2Of
+      ? (races || []).find((p) => p.id === (race.sprintOf || race.division2Of))
+      : null;
+    const what = race.division2Of
+      ? parent?.number != null ? `Round ${parent.number} Division 2` : "Division 2"
+      : race.sprintOf
       ? parent?.number != null ? `Round ${parent.number} sprint` : "Sprint"
       : kind === "TRAINING" ? "Training"
       : kind === "SPECIAL" ? "Event"
@@ -2187,8 +2194,9 @@ function EditResults() {
   {
     const all = races || [];
     const childOf = new Map(all.filter((r) => r.sprintOf).map((r) => [r.sprintOf, r]));
+    const div2Of = new Map(all.filter((r) => r.division2Of).map((r) => [r.division2Of, r]));
     for (const r of all) {
-      if (r.sprintOf) continue;
+      if (r.sprintOf || r.division2Of) continue;
       const kind = r.type || (r.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
       // Championship rounds always; trainings/events join once they have
       // stored results (that's what there is to edit or delete).
@@ -2198,6 +2206,10 @@ function EditResults() {
       if (child) pickerEntries.push({ value: child.id, label: raceLabel(child) });
       else if (r.raceFormat === "SPRINT_FEATURE" && r.number != null)
         pickerEntries.push({ value: `sprint:${r.id}`, label: `Round ${r.number} sprint · ${r.track} (nothing stored yet)` });
+      const div2 = div2Of.get(r.id);
+      if (div2) pickerEntries.push({ value: div2.id, label: raceLabel(div2) });
+      else if (editSeason?.division2 && kind === "CHAMPIONSHIP" && r.number != null)
+        pickerEntries.push({ value: `div2:${r.id}`, label: `Round ${r.number} Division 2 · ${r.track} (nothing stored yet)` });
     }
   }
 
@@ -2212,14 +2224,22 @@ function EditResults() {
   // is shared as its event, the only one of the two the other tabs know.
   const [pick, pickRound, setPick] = useSharedRound(
     races ? pickerEntries.map((e) => e.value) : null,
-    latestPastRace((races || []).filter((r) => !r.sprintOf), { completedOnly: true })?.id
+    latestPastRace((races || []).filter((r) => !r.sprintOf && !r.division2Of), { completedOnly: true })?.id
   );
   const sharedIdOf = (value) => {
     if (value.startsWith("sprint:")) return value.slice("sprint:".length);
-    return (races || []).find((r) => r.id === value)?.sprintOf || value;
+    if (value.startsWith("div2:")) return value.slice("div2:".length);
+    const row = (races || []).find((r) => r.id === value);
+    return row?.sprintOf || row?.division2Of || value;
   };
   const pendingSprint = pick.startsWith("sprint:");
-  const raceId = pendingSprint ? pick.slice("sprint:".length) : pick;
+  // "div2:<roundId>": the round's Division 2 race before its first save, the
+  // same trick as a pending sprint (backend lib/divisions.js makes the row).
+  const pendingDiv2 = pick.startsWith("div2:");
+  const raceId = pendingSprint ? pick.slice("sprint:".length) : pendingDiv2 ? pick.slice("div2:".length) : pick;
+  const pendingChild = pendingSprint || pendingDiv2;
+  // Editing a Division 2 race (stored or about to be): its teams are tier 3.
+  const isDiv2 = pendingDiv2 || !!(races || []).find((r) => r.id === pick)?.division2Of;
   const [rows, setRows] = useState([]);
   // race details editor (raceFormat: SINGLE | SPRINT_FEATURE, see lib/raceFormat.js)
   const [meta, setMeta] = useState({ track: "", date: "", qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "" });
@@ -2289,7 +2309,7 @@ function EditResults() {
     if (!pick) return;
     // A sprint with nothing on file has no row to read: the table starts
     // empty and is filled in by hand below.
-    if (pick.startsWith("sprint:")) return;
+    if (pick.startsWith("sprint:") || pick.startsWith("div2:")) return;
     const raceId = pick;
     // Two quick changes of the picker race each other; without this guard the
     // slower FIRST response can land last and leave race B selected with race
@@ -2477,7 +2497,7 @@ function EditResults() {
   const unlisted = roster.filter((d) => !usedIds.has(d.id));
   // The regular grid: everyone in a Tier 1 or Tier 2 team. Reserves (tier 0)
   // are added one by one, because most of them were not in any given race.
-  const unlistedGrid = unlisted.filter((d) => d.tier === 1 || d.tier === 2);
+  const unlistedGrid = unlisted.filter((d) => (isDiv2 ? d.tier === 3 : d.tier === 1 || d.tier === 2));
   // Rows the round actually has stored — the Driver of the Day and honours
   // cards only offer those, since both are written against a stored result.
   const savedRows = rows.filter((r) => !r.isNew);
@@ -2694,11 +2714,17 @@ function EditResults() {
     // What is being sent, as the baseline it becomes once it is stored.
     const sentSnap = resultsSnap(rows.map((r) => ({ ...r, isNew: false })));
     try {
-      const saved = await api.editResults(raceId, toResults(rows), pendingSprint ? { session: "SPRINT" } : {});
-      if (pendingSprint && saved?.raceId) {
+      const saved = await api.editResults(
+        raceId,
+        toResults(rows),
+        pendingSprint ? { session: "SPRINT" } : pendingDiv2 ? { session: "DIV2" } : {}
+      );
+      if (pendingChild && saved?.raceId) {
         // The sprint has a row of its own now: move the picker onto it, so
         // the next edit (and the delete buttons) address the sprint itself.
-        msgAfterSwitch.current = "Sprint results saved and standings recalculated.";
+        msgAfterSwitch.current = pendingDiv2
+          ? "Division 2 results saved and standings recalculated."
+          : "Sprint results saved and standings recalculated.";
         reloadRaces();
         setPick(saved.raceId);
         return;
@@ -2943,7 +2969,7 @@ function EditResults() {
       {error && <ErrorBox message={error} />}
       {msg && <Notice kind="success">{msg}</Notice>}
 
-      {raceId && !pendingSprint && (
+      {raceId && !pendingChild && (
         <div className="card flex flex-wrap items-end gap-3 p-4">
           <Field label="Track name" tone="plain">
             <input className="input min-w-56" value={meta.track}
@@ -3099,7 +3125,11 @@ function EditResults() {
           {rows.length === 0 ? (
             <>
               <div className="text-sm font-bold text-dark">
-                {pendingSprint ? "No sprint results stored for this round" : "No results stored for this round"}
+                {pendingSprint
+                  ? "No sprint results stored for this round"
+                  : pendingDiv2
+                    ? "No Division 2 results stored for this round"
+                    : "No results stored for this round"}
               </div>
               <p className="text-xs text-light">
                 Nothing has been imported for it. If there is no result file to import (the race was run
@@ -3239,7 +3269,7 @@ function EditResults() {
                           {r.ownTeamName ? `Own team · ${r.ownTeamName}` : "Driver’s own team"}
                         </option>
                         {(teams || [])
-                          .filter((t) => t.tier === 1 || t.tier === 2)
+                          .filter((t) => (isDiv2 ? t.tier === 3 : t.tier === 1 || t.tier === 2))
                           .map((t) => (
                             <option key={t.id} value={t.id}>
                               {t.name}
@@ -3335,7 +3365,11 @@ function EditResults() {
               that never heard about them. */}
           <StewardPenalties data={penalties} rows={rows} prefilled={prefilled} onFill={fillPenalties} />
 
-          <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
+          {/* The preview prices a round's main classification; a Division 2
+              race is scored in its own table, which it does not know. */}
+          {!isDiv2 && (
+            <RacePreview request={{ raceId, results: toResults(rows), session: pendingSprint ? "SPRINT" : undefined }} />
+          )}
 
           {/* The save, pinned to the bottom of the screen for as long as the
               editor is. The table and the preview under it run to several
@@ -3376,7 +3410,7 @@ function EditResults() {
         </>
       )}
 
-      {raceId && !pendingSprint && (
+      {raceId && !pendingChild && (
         <div className="card divide-y divide-border border-red-500/40">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <div className="min-w-0">
@@ -3861,7 +3895,7 @@ function Drivers() {
   // Teams with their drivers — grouped by team, ordered Tier 1 → Tier 2 →
   // Reserve. (Tier values are 1, 2, 0, so we rank them explicitly to keep
   // Reserve last instead of first.)
-  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : 2);
+  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : tier === 3 ? 2 : 3);
   const teamGroups = [...(teams || [])].sort(
     (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
   );
@@ -3882,7 +3916,7 @@ function Drivers() {
   };
   const passes = (d) =>
     matches(d) &&
-    (tierFilter == null || d.tier === tierFilter) &&
+    (tierFilter == null || d.tier === tierFilter || (tierFilter === 3 && d.division === 2)) &&
     [...flags].every((f) => FLAG_TESTS[f](d));
   const filtering = !!q || tierFilter != null || flags.size > 0;
   const countWith = (test) => allDrivers.filter(test).length;
@@ -3949,6 +3983,7 @@ function Drivers() {
           <select aria-label="Tier" className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
             <option value={1}>Tier 1</option>
             <option value={2}>Tier 2</option>
+            <option value={3}>Division 2</option>
             <option value={0}>Reserve</option>
           </select>
         </div>
@@ -3991,12 +4026,13 @@ function Drivers() {
           {[
             [1, "Tier 1"],
             [2, "Tier 2"],
+            ...(countWith((d) => d.tier === 3 || d.division === 2) ? [[3, "Division 2"]] : []),
             [0, "Reserve"],
           ].map(([tier, label]) => (
             <FilterChip
               key={tier}
               on={tierFilter === tier}
-              count={countWith((d) => d.tier === tier)}
+              count={countWith((d) => d.tier === tier || (tier === 3 && d.tier !== 3 && d.division === 2))}
               onClick={() => setTierFilter(tierFilter === tier ? null : tier)}
             >
               {label}
@@ -4233,8 +4269,19 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
             onChange={(e) => onPatch({ tier: Number(e.target.value) })}>
             <option value={1}>T1</option>
             <option value={2}>T2</option>
+            <option value={3}>Div 2</option>
             <option value={0}>Res</option>
           </select>
+          {/* A reserve waits in one of two pools: Division 1's or Division 2's
+              (the newcomers' field on the second server). */}
+          {d.tier === 0 && (
+            <select aria-label={`Reserve pool of ${d.name}`} className="input w-24 shrink-0 py-1 text-xs" value={d.division === 2 ? 2 : 1} disabled={busy}
+              title="Which division this reserve signs up for and stands in for"
+              onChange={(e) => onPatch({ division: Number(e.target.value) })}>
+              <option value={1}>Div 1 pool</option>
+              <option value={2}>Div 2 pool</option>
+            </select>
+          )}
         </span>
         <IdMark
           platform="discord"
@@ -6143,6 +6190,23 @@ function Seasons({ gotoRaces, gotoInSeason }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
+  // Division 2: a second field for newcomers, racing the same evening on the
+  // second server with its own teams (tier "Division 2") and standings. ON
+  // splits the sign-up into two grids, adds the Division 2 tables and the
+  // Division 1 / Division 2 switch on the Live page.
+  async function toggleDivision2(s) {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      await api.updateSeason(s.id, { division2: !s.division2 });
+      setMsg(
+        s.division2
+          ? `${s.name} runs one division again.`
+          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them, or in the Division 2 reserve pool.`
+      );
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
   // "Coming up" strip on Home/Welcome: an announced upcoming season advertises
   // itself there (name, game, opener + car picture) even while still private.
   async function toggleAnnounce(s) {
@@ -6333,6 +6397,9 @@ function Seasons({ gotoRaces, gotoInSeason }) {
                   {s.cardsEnabled === false && (
                     <span className="ml-2 pill bg-amber-500/15 text-amber-600">no driver cards</span>
                   )}
+                  {s.division2 && (
+                    <span className="ml-2 pill bg-violet-500/15 text-violet-600">Division 2</span>
+                  )}
                   <div className="text-xs text-light">
                     {s.game || NO_VALUE} · {s._count.teams} teams · {s._count.drivers} drivers · {s._count.races} races
                   </div>
@@ -6358,6 +6425,13 @@ function Seasons({ gotoRaces, gotoInSeason }) {
                         ? "Show driver rating cards for this season again (Cards view in the standings, card on the driver page)"
                         : "Hide the driver rating cards for this season, for seasons raced without the data the ratings are built from"}>
                       {s.cardsEnabled === false ? "Enable driver cards" : "Disable driver cards"}
+                    </button>
+                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                      onClick={() => toggleDivision2(s)}
+                      title={s.division2
+                        ? "Back to one field: one grid on the sign-up, no Division 2 tables"
+                        : "A second field for newcomers, racing at the same time on the second server, with its own teams and standings"}>
+                      {s.division2 ? "Turn off Division 2" : "Run Division 2"}
                     </button>
                     {!s.isActive && (
                       <>
@@ -7018,7 +7092,9 @@ function SeriesPanel() {
 }
 
 // --- TEAMS -----------------------------------------------------------------
-const TIER_LABEL = { 0: "Reserve", 1: "Tier 1", 2: "Tier 2" };
+// 3 = a Division 2 team: the second field, racing the same evening on the
+// second server with its own standings (backend lib/divisions.js).
+const TIER_LABEL = { 0: "Reserve", 1: "Tier 1", 2: "Tier 2", 3: "Division 2" };
 
 // The seat boxes inside a Teams-tab row: every current driver as a filled
 // chip, plus dashed "Add driver" slots (two seats for a racing team, one
@@ -7533,8 +7609,8 @@ function Teams() {
     } finally { setBusy(false); }
   }
 
-  // Tier 1 → Tier 2 → Reserve at the very bottom (tier values are 1/2/0).
-  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : 2);
+  // Tier 1 → Tier 2 → Division 2 → Reserve at the very bottom.
+  const tierRank = (tier) => (tier === 1 ? 0 : tier === 2 ? 1 : tier === 3 ? 2 : 3);
   const sortedTeams = [...(teams || [])].sort(
     (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
   );
@@ -7562,10 +7638,11 @@ function Teams() {
             <input className="input" placeholder="e.g. mercedes_s8" value={form.id}
               onChange={(e) => setForm({ ...form, id: e.target.value })} required />
           </Field>
-          <Field label="Tier">
+          <Field label="Tier" hint="Division 2 teams race on the second server and have their own standings. Two teams may share a name (one per division), the ID must differ.">
             <select className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
               <option value={1}>Tier 1</option>
               <option value={2}>Tier 2</option>
+              <option value={3}>Division 2</option>
               <option value={0}>Reserve</option>
             </select>
           </Field>
@@ -7683,6 +7760,7 @@ function Teams() {
                     onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
                     <option value={1}>Tier 1</option>
                     <option value={2}>Tier 2</option>
+                    <option value={3}>Division 2</option>
                     <option value={0}>Reserve</option>
                   </select>
                   <label className="btn-secondary cursor-pointer whitespace-nowrap px-3 py-1.5 text-xs">

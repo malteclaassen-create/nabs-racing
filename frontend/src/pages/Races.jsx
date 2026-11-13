@@ -649,7 +649,9 @@ export default function Races() {
   // browsing qualifying results round by round shouldn't need re-flipping the
   // toggle every time. A round without quali simply falls back to the race
   // table (RaceResults handles that) until one with quali is picked again.
-  const [session, setSession] = useState("race");
+  // A link can open a tab directly: the Division 2 results post links to its
+  // round with `session=div2` (backend resultsPostService.js).
+  const [session, setSession] = useState(() => (searchParams.get("session") === "div2" ? "div2" : "race"));
   // Table or lap-by-lap chart — a view of the same classification, not another
   // section under it: the round panel is long enough already, so the chart
   // stands in the table's place. Resets to the table on every round change,
@@ -683,9 +685,29 @@ export default function Races() {
       alive = false;
     };
   }, [session, sprintRaceId]);
+  // Division 2: the round's second field, which raced at the same time on the
+  // second server. Its own hidden race row, fetched the same lazy way as the
+  // sprint once its tab is opened. The tab shows once the result is in.
+  const [div2, setDiv2] = useState({ raceId: null, data: null, loading: false, error: null });
+  const div2Asked = useRef(null);
+  const div2RaceId = detail?.race?.division2RaceId || null;
+  useEffect(() => {
+    if (session !== "div2" || !div2RaceId || div2Asked.current === div2RaceId) return;
+    div2Asked.current = div2RaceId;
+    let alive = true;
+    setDiv2({ raceId: div2RaceId, data: null, loading: true, error: null });
+    api
+      .raceResults(div2RaceId)
+      .then((d) => alive && setDiv2({ raceId: div2RaceId, data: d, loading: false, error: null }))
+      .catch((e) => alive && setDiv2({ raceId: div2RaceId, data: null, loading: false, error: e.message }));
+    return () => {
+      alive = false;
+    };
+  }, [session, div2RaceId]);
   // The choice is sticky across rounds (see above) — a round without a sprint
   // shows its race table instead of an empty Sprint view.
-  const shownSession = session === "sprint" && !sprintRaceId ? "race" : session;
+  const shownSession =
+    (session === "sprint" && !sprintRaceId) || (session === "div2" && !div2RaceId) ? "race" : session;
 
   // The lap-by-lap data, fetched only once somebody actually asks for that
   // view: it is a point per car per lap, which is a lot of numbers to send to
@@ -697,7 +719,7 @@ export default function Races() {
   // sprint's hidden race row. The endpoint answers for either — a sprint is
   // archived under the event's number with a "-sprint" suffix and the server
   // reads it back the same way — so the sprint has the same view as the race.
-  const lapsRaceId = shownSession === "sprint" ? sprintRaceId : selectedId;
+  const lapsRaceId = shownSession === "sprint" ? sprintRaceId : shownSession === "div2" ? div2RaceId : selectedId;
   const [laps, setLaps] = useState({ raceId: null, data: null, loading: false, error: null });
   // Which race the fetch above has already been started for. A ref, not the
   // state it writes: keeping it in the dependency list re-ran the effect the
@@ -903,12 +925,13 @@ export default function Races() {
   // offer: the session switch (feature / sprint / quali) and table ⇄ lap chart.
   // Worked out up here because the row holding them is left out on phones when
   // neither is there.
-  const hasSessionSwitch = !!detail && !detailIsStale && (detail.quali?.length > 0 || !!sprintRaceId);
+  const hasSessionSwitch = !!detail && !detailIsStale && (detail.quali?.length > 0 || !!sprintRaceId || !!div2RaceId);
   const hasLapSwitch =
     !!detail &&
     !detailIsStale &&
     ((shownSession === "race" && !!detail.race?.hasLapChart) ||
-      (shownSession === "sprint" && sprint.raceId === sprintRaceId && !!sprint.data?.race?.hasLapChart));
+      (shownSession === "sprint" && sprint.raceId === sprintRaceId && !!sprint.data?.race?.hasLapChart) ||
+      (shownSession === "div2" && div2.raceId === div2RaceId && !!div2.data?.race?.hasLapChart));
 
   // The round's highlights cut, if the admin pasted one. A YouTube link gets an
   // id and plays on the page; anything else keeps its link and opens in a tab.
@@ -1263,9 +1286,12 @@ export default function Races() {
                                   // With a sprint on file the evening has two
                                   // races, in the order the league runs them:
                                   // the feature first, then the sprint.
-                                  { key: "race", label: sprintRaceId ? "Feature" : "Race" },
+                                  { key: "race", label: sprintRaceId ? "Feature" : div2RaceId ? "Div 1" : "Race" },
                                   ...(sprintRaceId ? [{ key: "sprint", label: "Sprint" }] : []),
                                   ...(detail.quali?.length > 0 ? [{ key: "quali", label: "Quali" }] : []),
+                                  // The second field's race, with its own
+                                  // qualifying inside it.
+                                  ...(div2RaceId ? [{ key: "div2", label: "Div 2" }] : []),
                                 ]}
                                 value={shownSession}
                                 onChange={setSession}
@@ -1353,6 +1379,22 @@ export default function Races() {
                             The sprint classification hasn&apos;t been imported yet.
                           </div>
                         )
+                      ) : shownSession === "div2" ? (
+                        div2.loading || div2.raceId !== div2RaceId ? (
+                          <div className="px-5 py-10 text-center text-sm text-light">Reading Division 2…</div>
+                        ) : div2.error ? (
+                          <div className="px-5 py-10 text-center text-sm text-bad">{div2.error}</div>
+                        ) : div2.data?.results?.length ? (
+                          view === "chart" && div2.data.race?.hasLapChart ? (
+                            lapPanel
+                          ) : (
+                            <RaceResults race={div2.data.race} results={div2.data.results} quali={div2.data.quali} session="race" />
+                          )
+                        ) : (
+                          <div className="px-5 py-10 text-center text-sm text-light">
+                            The Division 2 result hasn&apos;t been imported yet.
+                          </div>
+                        )
                       ) : view === "chart" && shownSession === "race" && detail.race?.hasLapChart ? (
                         lapPanel
                       ) : (
@@ -1360,7 +1402,7 @@ export default function Races() {
                       )}
                       {/* The facts belong to the feature race — under the
                           sprint's table they would caption the wrong result. */}
-                      {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && (
+                      {!detailIsStale && detail.race.hasPositions && shownSession !== "sprint" && shownSession !== "div2" && (
                         <RaceFacts key={`facts-${detail.race.id}`} race={detail.race} results={detail.results} quali={detail.quali} />
                       )}
                       {/* What the news desk wrote about the round, between

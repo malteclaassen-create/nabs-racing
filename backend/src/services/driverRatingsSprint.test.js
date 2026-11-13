@@ -88,8 +88,12 @@ function fakePrisma({ sprintOnFile, sprintChildExists = sprintOnFile }) {
     raceResult: { findMany: async () => results },
     $queryRawUnsafe: async (sql, ...args) => {
       if (sql.includes('"parentRaceId" IN')) {
+        // The real query asks for one kind of child: a sprint ("division" IS
+        // NULL) or Division 2's race ("division" = 2).
+        const wantDiv2 = sql.includes('"division" = 2');
         return races
           .filter((r) => r.parentRaceId && args.includes(r.parentRaceId))
+          .filter((r) => (r.division === 2) === wantDiv2)
           .map((r) => ({ id: r.id, parentRaceId: r.parentRaceId }));
       }
       if (sql.includes('SUM(COALESCE(rr."contacts"')) return [];

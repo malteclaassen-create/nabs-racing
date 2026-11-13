@@ -8,7 +8,7 @@ import SlidingTabs from "./SlidingTabs.jsx";
 import {
   LAYOUT, THEMES, THEME_KEYS, renderStandingsTo, renderConstructorsTo, savedTheme, saveTheme,
   STANDINGS_PER_PAGE, savedStandingsSetup, saveStandingsSetup, pageCount,
-  standingsTitle, standingsSubtitle, constructorsTitle, upToRoundOf, filterStandings,
+  standingsTitle, standingsSubtitle, upToRoundOf, filterStandings, fetchStandingsTables, constructorsFor,
   standingsTiersPresent, CONSTRUCTOR_SPOTS, DEFAULT_FRAMING, FRAMING_LIMITS, cleanFraming,
 } from "../utils/resultGraphic.js";
 
@@ -38,7 +38,9 @@ const KINDS = [
 // in one message, not one picture with twenty tiny lines on it.
 // ---------------------------------------------------------------------------
 
-export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChange = null }) {
+// `division` 2 draws Division 2's tables (its drivers, its teams as one table);
+// the Content area's Division switch sets it.
+export default function AdminStandingsGraphic({ race, division = 1, artVersion = 0, onArtChange = null }) {
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const [art, setArt] = useState(null);
   const [table, setTable] = useState(null);
@@ -103,25 +105,22 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.driverStandings(undefined, upTo),
-      api.t1Standings(undefined, upTo).catch(() => null),
-      api.t2Standings(undefined, upTo).catch(() => null),
-    ])
-      .then(([drivers, t1, t2]) => {
+    fetchStandingsTables(api, upTo, division)
+      .then(({ drivers, t1, t2 }) => {
         setTable(drivers);
-        setTeamTables({ t1: t1?.standings || [], t2: t2?.standings || [] });
+        setTeamTables({ t1, t2 });
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [upTo]);
+  }, [upTo, division]);
 
   useEffect(load, [load, artVersion]);
 
   const all = useMemo(() => table?.standings || [], [table]);
   const tiers = useMemo(() => standingsTiersPresent(all), [all]);
-  // A group this season does not have cannot stay selected.
-  const activeTier = tiers.some((t) => t.key === tier) ? tier : "all";
+  // A group this season does not have cannot stay selected. Division 2 has
+  // one tier for everybody, so its table is always the whole of it.
+  const activeTier = division === 2 ? "all" : tiers.some((t) => t.key === tier) ? tier : "all";
   const standings = useMemo(
     () => filterStandings(all, activeTier, { withoutStarts }),
     [all, activeTier, withoutStarts]
@@ -147,10 +146,8 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
         t2: teamTables.t2,
         teamArt: art,
         logoSrc: "/logo-light.png",
-        title: constructorsTitle(),
         subtitle: standingsSubtitle(upTo),
-        t1Rows,
-        t2Rows,
+        ...constructorsFor(division, { t1Rows, t2Rows }),
         framing,
         theme,
       }).catch(fail);
@@ -161,7 +158,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
         teamArt: art,
         countryOf: (r) => countryFor(r.driverId, r.country),
         logoSrc: "/logo-light.png",
-        title: standingsTitle(activeTier),
+        title: standingsTitle(activeTier, division),
         subtitle: standingsSubtitle(upTo),
         rows: perPage,
         offset: (page - 1) * perPage,
@@ -172,7 +169,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
     return () => {
       alive = false;
     };
-  }, [isTeams, teamTables, standings, art, framing, theme, perPage, page, upTo, activeTier, t1Rows, t2Rows]);
+  }, [isTeams, teamTables, standings, art, framing, theme, perPage, page, upTo, activeTier, t1Rows, t2Rows, division]);
 
   const hidden = idle - standings.length;
 
@@ -226,13 +223,13 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
       if (id && !seen.has(id)) seen.set(id, byId.get(id) || { id, name: id });
     };
     if (isTeams) {
-      for (const r of (teamTables?.t1 || []).slice(0, t1Rows)) add(r.teamId);
+      for (const r of (teamTables?.t1 || []).slice(0, constructorsFor(division, { t1Rows, t2Rows }).t1Rows)) add(r.teamId);
       for (const r of (teamTables?.t2 || []).slice(0, t2Rows)) add(r.teamId);
     } else {
       for (const r of standings) add(r.team?.id);
     }
     return [...seen.values()];
-  }, [isTeams, teamTables, t1Rows, t2Rows, standings, teams]);
+  }, [isTeams, teamTables, t1Rows, t2Rows, standings, teams, division]);
 
   async function setCountry(driverId, code) {
     setBusy(true);
@@ -403,7 +400,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
             {/* How many teams of each tier. Steve's split: Tier 1 is a short
                 grid whose top five is the story, Tier 2 has more teams in it.
                 Both on one poster, one table above the other. */}
-            {isTeams && (
+            {isTeams && division === 1 && (
               <>
                 <label className="block">
                   <span className="mb-1.5 flex items-center justify-between font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
@@ -444,7 +441,7 @@ export default function AdminStandingsGraphic({ race, artVersion = 0, onArtChang
                 single-class season is not offered three buttons that empty the
                 poster. Picking one re-ranks it 1..n and retitles the poster,
                 the same way the standings page does. */}
-            {!isTeams && tiers.length > 1 && (
+            {!isTeams && division === 1 && tiers.length > 1 && (
               <label className="block">
                 <span className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
                   Who is on it

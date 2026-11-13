@@ -33,6 +33,7 @@ import { readRacePhotos, withUrls } from "../lib/racePhotos.js";
 import { publishedForRace } from "../lib/news.js";
 import { hasArchiveFor } from "../lib/cockpitArchive.js";
 import { resultTeamId } from "../lib/resultTeam.js";
+import { readDivisionChildren, readDivisionParents } from "../lib/divisions.js";
 
 export async function raceDetailPayload(prisma, race) {
   const [results, drivers, teams, scoring, nameOverrides, identity, telemetry] = await Promise.all([
@@ -271,10 +272,16 @@ export async function raceDetailPayload(prisma, race) {
   // typed SPECIAL (not a round of its own) but scores when its event is a
   // championship round, and the results table shows its points by that.
   const sprintRaceId = (await readSprintChildren(prisma, [race.id])).get(race.id) ?? null;
-  const sprintOf = (await readParentIds(prisma, [race.id])).get(race.id) ?? null;
-  const kinds = await readRaceTypes(prisma, [race.id, sprintOf].filter(Boolean));
+  // Division 2 (lib/divisions.js) hangs off its round the same way, but is a
+  // race of its own, not a sprint: a round names its Division 2 row, the row
+  // names its round.
+  const division2RaceId = (await readDivisionChildren(prisma, [race.id])).get(race.id) ?? null;
+  const division2Of = (await readDivisionParents(prisma, [race.id])).get(race.id) ?? null;
+  const sprintOf = division2Of ? null : (await readParentIds(prisma, [race.id])).get(race.id) ?? null;
+  const roundOf = sprintOf || division2Of;
+  const kinds = await readRaceTypes(prisma, [race.id, roundOf].filter(Boolean));
   const kind = kinds.get(race.id) || (race.isSpecialEvent ? "SPECIAL" : "CHAMPIONSHIP");
-  const scores = kind === "CHAMPIONSHIP" || (!!sprintOf && (kinds.get(sprintOf) || "CHAMPIONSHIP") === "CHAMPIONSHIP");
+  const scores = kind === "CHAMPIONSHIP" || (!!roundOf && (kinds.get(roundOf) || "CHAMPIONSHIP") === "CHAMPIONSHIP");
   // The round's photo gallery. It travels with the round rather than on its
   // own endpoint so the page opens complete, the same way the replay link and
   // the session format already do.
@@ -283,8 +290,8 @@ export async function raceDetailPayload(prisma, race) {
   // number with the sprint flag (lib/cockpitArchive.js), because the child row
   // carries no number of its own. Look for the lap-by-lap view there, or the
   // Sprint tab would never be offered one.
-  const filedNumber = sprintOf
-    ? (await prisma.race.findUnique({ where: { id: sprintOf }, select: { number: true } }).catch(() => null))?.number ?? null
+  const filedNumber = roundOf
+    ? (await prisma.race.findUnique({ where: { id: roundOf }, select: { number: true } }).catch(() => null))?.number ?? null
     : race.number;
   return {
     photos,
@@ -313,6 +320,14 @@ export async function raceDetailPayload(prisma, race) {
       // it through this same endpoint), a sprint row says whose it is.
       sprintRaceId,
       sprintOf,
+      // Division 2: the round's second-field race, or (on that row) its round,
+      // plus the round number it scores under. Its file sits in the season's
+      // division2/ folder under that number, which is where the lap chart
+      // looks for it.
+      division2RaceId,
+      division2Of,
+      division: division2Of ? 2 : 1,
+      roundNumber: filedNumber,
       replayDownloadId: replays.get(race.id) || null,
       // The round's highlights video, if the admin pasted one.
       highlightsUrl: (await readRaceHighlights(prisma, [race.id])).get(race.id) || null,
@@ -321,7 +336,7 @@ export async function raceDetailPayload(prisma, race) {
       // lap-by-lap view to switch the classification over to. A directory
       // listing, not a parse (lib/cockpitArchive.js) — the chart itself is
       // fetched only if somebody asks for it.
-      hasLapChart: hasArchiveFor(race.season, filedNumber, { sprint: !!sprintOf }),
+      hasLapChart: hasArchiveFor(race.season, filedNumber, { sprint: !!sprintOf, division: division2Of ? 2 : 1 }),
       // Championship round, training session or special event. The list
       // endpoint has always sent this; the detail one did not, so the results
       // table had no way to tell them apart and showed a points column for

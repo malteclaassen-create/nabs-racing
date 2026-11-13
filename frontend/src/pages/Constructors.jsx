@@ -47,7 +47,7 @@ function TierBlock({ id, tier, standings, teams, races, title, championTeamId, d
           champion team card below already say it. */}
       <SectionHeading
         eyebrow="Constructors' Championship"
-        title={title || `Tier ${tier}`}
+        title={title || (tier === 3 ? "Division 2" : `Tier ${tier}`)}
         right={
           lastRound != null && (
             <span className="hidden shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light sm:block">
@@ -197,7 +197,7 @@ function TeamCard({ team, row, index = 0, champion = false }) {
 
 // Quick anchor pills in the page header so Tier 2 is one tap away instead of a
 // long scroll past the whole Tier-1 block.
-function TierJump({ className = "" }) {
+function TierJump({ className = "", division2 = false }) {
   // Slightly tighter below sm so both pills fit beside the page title.
   const cls =
     "rounded-lg border border-border bg-card px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-medium transition hover:border-brand/50 hover:text-dark sm:px-3 sm:text-[11px]";
@@ -209,6 +209,11 @@ function TierJump({ className = "" }) {
       <a href="#tier-2" className={cls}>
         Tier 2
       </a>
+      {division2 && (
+        <a href="#division-2" className={cls}>
+          Div 2
+        </a>
+      )}
     </div>
   );
 }
@@ -219,6 +224,12 @@ export default function Constructors() {
   const t2 = useApi(useCallback(() => api.t2Standings(), []));
   const teams = useApi(useCallback(() => api.teams(), []));
   const races = useApi(useCallback(() => api.races(), []));
+  // Division 2's teams (tier 3): the second field, racing at the same time on
+  // the second server, scored in a table of its own. Only for a season that
+  // runs it (admin Seasons tab).
+  const { current: divSeason } = useSeason();
+  const runsDiv2 = !!divSeason?.division2;
+  const div2 = useApi(useCallback(() => (runsDiv2 ? api.div2Standings() : Promise.resolve(null)), [runsDiv2]));
   // The late-season "drop worst" preview, as on the driver standings: how many
   // worst results so far to take off, or null for the real table. It drops
   // by the season's own constructor rule: whole team rounds under the
@@ -274,6 +285,7 @@ export default function Constructors() {
 
   const t1Teams = teams.data.filter((t) => t.tier === 1);
   const t2Teams = teams.data.filter((t) => t.tier === 2);
+  const div2Teams = teams.data.filter((t) => t.tier === 3);
   // The reserve pool (tier 0), shown once, after the last tier's line-ups.
   const reserveTeam = teams.data.find((t) => t.tier === 0) || null;
   // Single-class seasons (archived S1–S5) have no Tier 2 at all: hide the split
@@ -314,7 +326,7 @@ export default function Constructors() {
         eyebrow="Championship"
         title={seasonHeading}
         rightInline
-        right={hasT2 ? <TierJump className="flex shrink-0" /> : null}
+        right={hasT2 ? <TierJump className="flex shrink-0" division2={runsDiv2} /> : null}
       />
 
       {dropChoices.length > 1 && (
@@ -378,6 +390,9 @@ export default function Constructors() {
 
       <TierBlock id="tier-1" tier={1} standings={t1Data} teams={t1Teams} races={races.data || []} title={hasT2 ? undefined : "Constructors"} championTeamId={champId(t1Data)} decided={seasonDecided} showMovement={showMovement} reserves={hasT2 ? null : reserveTeam} />
       {hasT2 && <TierBlock id="tier-2" tier={2} standings={t2Data} teams={t2Teams} races={races.data || []} championTeamId={champId(t2Data)} decided={seasonDecided} showMovement={showMovement} reserves={reserveTeam} />}
+      {runsDiv2 && div2.data && (div2.data.standings.length > 0 || div2Teams.length > 0) && (
+        <TierBlock id="division-2" tier={3} standings={div2.data} teams={div2Teams} races={races.data || []} championTeamId={champId(div2.data)} decided={seasonDecided} showMovement={showMovement} />
+      )}
     </div>
   );
 }

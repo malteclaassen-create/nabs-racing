@@ -11,7 +11,7 @@ import {
   renderConstructorsTo, renderConstructorsBlob,
   savedTheme, THEMES, THEME_KEYS,
   savedStandingsSetup, savedResultSetup, classifiedResults,
-  pageCount, standingsTitle, standingsSubtitle, constructorsTitle,
+  pageCount, standingsTitle, standingsSubtitle, constructorsTitle, fetchStandingsTables, constructorsFor,
   upToRoundOf, filterStandings,
 } from "../utils/resultGraphic.js";
 
@@ -58,7 +58,9 @@ const GRAPHICS = [...THEME_KEYS.map((k) => ({ key: k, label: THEMES[k].label }))
 // driver's flag is changed in the Graphic half. This half draws its OWN copy of
 // the poster, so without that signal it would keep sending the version from
 // before the fix.
-export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }) {
+// `division` 2 makes the standings mode Division 2's tables (the result mode
+// already gets Division 2's race as `raceId`); the Content area's switch sets it.
+export default function AdminDiscordPost({ raceId, race = null, division = 1, artVersion = 0 }) {
   const ask = useAsk();
   const { data: hook, reload: reloadHook } = useApi(useCallback(() => api.getResultsWebhook(), []));
   const { data: role, reload: reloadRole } = useApi(useCallback(() => api.getResultsRole(), []));
@@ -98,27 +100,26 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
   const upTo = upToRoundOf(race);
 
   const loadSource = useCallback(async () => {
-    const [r, teamArt, framing, standings, t1, t2] = await Promise.all([
+    const [r, teamArt, framing, tables] = await Promise.all([
       api.raceResults(raceId),
       api.teamArt(),
       api.posterFraming(),
       // Only for the standings mode, but fetched either way: they are small
       // reads, and having them in hand means switching modes redraws instead of
-      // showing an empty preview while the network catches up.
-      api.driverStandings(undefined, upTo).catch(() => null),
-      api.t1Standings(undefined, upTo).catch(() => null),
-      api.t2Standings(undefined, upTo).catch(() => null),
+      // showing an empty preview while the network catches up. The same
+      // function the Standings tab draws from, for the same division.
+      fetchStandingsTables(api, upTo, division).catch(() => null),
     ]);
     return {
       race: r.race,
       results: r.results,
       teamArt,
       framing,
-      standings: standings?.standings || [],
-      t1: t1?.standings || [],
-      t2: t2?.standings || [],
+      standings: tables?.drivers?.standings || [],
+      t1: tables?.t1 || [],
+      t2: tables?.t2 || [],
     };
-  }, [raceId, upTo]);
+  }, [raceId, upTo, division]);
 
   useEffect(() => {
     if (!raceId) return;
@@ -155,7 +156,9 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
   // picture, and read back from there. Two places to set them is two answers,
   // and the channel would get whichever one was touched last. Re-read on
   // `artVersion`, which the Standings half bumps whenever either changes.
-  const [{ kind: tableKind, perPage, tier, withoutStarts, t1Rows, t2Rows }, setSetup] = useState(savedStandingsSetup);
+  const [{ kind: tableKind, perPage, tier: savedTier, withoutStarts, t1Rows, t2Rows }, setSetup] = useState(savedStandingsSetup);
+  // Division 2 has one tier for everybody: its table is always all of it.
+  const tier = division === 2 ? "all" : savedTier;
   const teamsTable = tableKind === "constructors";
   useEffect(() => setSetup(savedStandingsSetup()), [artVersion]);
 
@@ -184,10 +187,8 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
           t2: src.t2,
           teamArt: src.teamArt,
           logoSrc: "/logo-light.png",
-          title: constructorsTitle(),
           subtitle: standingsSubtitle(upTo),
-          t1Rows,
-          t2Rows,
+          ...constructorsFor(division, { t1Rows, t2Rows }),
           framing: src.framing,
           theme: graphic,
         };
@@ -199,14 +200,14 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
             teamArt: src.teamArt,
             countryOf: (r) => countryFor(r.driverId, r.country),
             logoSrc: "/logo-light.png",
-            title: standingsTitle(tier),
+            title: standingsTitle(tier, division),
             subtitle: standingsSubtitle(upTo),
             framing: src.framing,
             theme: graphic,
           }
         : null;
     },
-    [graphic, upTo, tier, withoutStarts, teamsTable, t1Rows, t2Rows]
+    [graphic, upTo, tier, withoutStarts, teamsTable, t1Rows, t2Rows, division]
   );
 
   // How many sheets the thing being posted comes to. A result is cut the same
@@ -271,7 +272,7 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
           ? await api.getResultsPost(raceId)
           : await api.getStandingsPost(
               upTo,
-              teamsTable ? { of: "constructors", t1Rows, t2Rows } : { tier, withoutStarts }
+              teamsTable ? { of: "constructors", t1Rows, t2Rows, division } : { tier, withoutStarts, division }
             );
       setDrafts({ full: r.text || "", short: r.short || "" });
       setMentions(r.mentions || {});
@@ -368,7 +369,7 @@ export default function AdminDiscordPost({ raceId, race = null, artVersion = 0 }
           <p className="text-sm text-light">
             {kind === "result"
               ? "Built from the saved result, so save any open edits in Edit Results first."
-              : `Built from the ${(teamsTable ? constructorsTitle() : standingsTitle(tier)).toLowerCase()}${upTo ? ` as they stood after round ${upTo}` : ""}. Which table and who is on it are set under Standings.`}{" "}
+              : `Built from the ${(teamsTable ? constructorsTitle(division) : standingsTitle(tier, division)).toLowerCase()}${upTo ? ` as they stood after round ${upTo}` : ""}. Which table and who is on it are set under Standings.`}{" "}
             You get both lengths and a preview of the message as the channel will see it.
             {role?.roleId
               ? " The drivers' role is pinged on the first line; delete that line if a round should go out quietly."

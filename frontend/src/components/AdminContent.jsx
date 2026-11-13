@@ -84,6 +84,15 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
 
   const selectedRace = useMemo(() => finished.find((r) => r.id === raceId) || null, [finished, raceId]);
 
+  // Division 2 races its rounds on the second server and gets a result poster
+  // and a Discord post of its own, sent separately. A round that has one shows
+  // a Division 1 / Division 2 switch, and the poster and the post then work
+  // from that division's race, and the standings from that division's tables.
+  const [division, setDivision] = useState(1);
+  const div2RaceId = selectedRace?.division2RaceId || null;
+  const shownDivision = div2RaceId ? division : 1;
+  const resultRaceId = shownDivision === 2 ? div2RaceId : raceId;
+
   return (
     <div className="space-y-5">
       {error && <ErrorBox message={error} onRetry={reload} />}
@@ -92,18 +101,31 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
           bar so it always reads as one sentence. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {!OWN_PICKER.has(view) && finished.length > 0 ? (
-          <select
-            aria-label="Round"
-            className="input w-auto max-w-[18rem] py-2 text-sm font-semibold"
-            value={raceId}
-            onChange={(e) => setRaceId(e.target.value)}
-          >
-            {finished.map((r) => (
-              <option key={r.id} value={r.id}>
-                {roundOf(r)} {r.track} · {fmtDate(r.date)}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Round"
+              className="input w-auto max-w-[18rem] py-2 text-sm font-semibold"
+              value={raceId}
+              onChange={(e) => setRaceId(e.target.value)}
+            >
+              {finished.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {roundOf(r)} {r.track} · {fmtDate(r.date)}
+                </option>
+              ))}
+            </select>
+            {div2RaceId && (
+              <SlidingTabs
+                items={[
+                  { key: 1, label: "Division 1" },
+                  { key: 2, label: "Division 2" },
+                ]}
+                value={shownDivision}
+                onChange={setDivision}
+                btnClassName="px-3 py-1.5 text-xs"
+              />
+            )}
+          </div>
         ) : (
           <span />
         )}
@@ -122,7 +144,7 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
               spent five minutes editing. */}
           <div className={view === "graphic" ? "" : "hidden"}>
             <AdminResultGraphic
-              raceId={raceId}
+              raceId={resultRaceId}
               artVersion={artVersion}
               onArtChange={() => setArtVersion((v) => v + 1)}
             />
@@ -135,13 +157,14 @@ export default function AdminContent({ jumpView = null, jumpKey = null }) {
             {view === "standings" && (
               <AdminStandingsGraphic
                 race={selectedRace}
+                division={shownDivision}
                 artVersion={artVersion}
                 onArtChange={() => setArtVersion((v) => v + 1)}
               />
             )}
           </div>
           <div className={view === "post" ? "" : "hidden"}>
-            {raceId && <AdminDiscordPost raceId={raceId} race={selectedRace} artVersion={artVersion} />}
+            {raceId && <AdminDiscordPost raceId={resultRaceId} race={selectedRace} division={shownDivision} artVersion={artVersion} />}
           </div>
         </>
       )}

@@ -308,14 +308,34 @@ export default function RaceSignupCard({
       setStandingDown(false);
     }
   }
-  const capacity = ev.capacity ?? 40;
-  const accepted = ev.rsvps.ACCEPTED.length;
+  // Division 2: a season can run a second field on the second server at the
+  // same time, with a grid (and a queue) of its own. Every answer says which
+  // grid it is on; the viewer's own grid is the one their buttons count on.
+  const hasDiv2 = !!ev.division2;
+  const myDivision = hasDiv2 && (ev.division2.driverIds || []).some((id) => myIds.has(id)) ? 2 : 1;
+  const inDivision = (list, d) => (hasDiv2 ? list.filter((r) => (r.division || 1) === d) : list);
+  const capacity = myDivision === 2 ? ev.division2.capacity ?? 40 : ev.capacity ?? 40;
+  const accepted = inDivision(ev.rsvps.ACCEPTED, myDivision).length;
   // The queue, in join order (the server sorts it, and promotes in the same
   // order). `gridFull` is the server's verdict rather than a sum worked out
   // here, so the button and what happens when you press it always agree: a car
   // being handed over in the Driver Market still counts as taken.
-  const waiting = ev.rsvps[WAITLIST] || [];
-  const gridFull = !!ev.gridFull;
+  const allWaiting = ev.rsvps[WAITLIST] || [];
+  const waiting = inDivision(allWaiting, myDivision);
+  const gridFull = myDivision === 2 ? !!ev.division2.gridFull : !!ev.gridFull;
+  // The grid bars: one per division, or the one grid.
+  const gridBars = hasDiv2
+    ? [
+        { key: 1, label: "Division 1 grid", accepted: inDivision(ev.rsvps.ACCEPTED, 1).length, capacity: ev.capacity ?? 40, full: !!ev.gridFull },
+        { key: 2, label: "Division 2 grid", accepted: inDivision(ev.rsvps.ACCEPTED, 2).length, capacity: ev.division2.capacity ?? 40, full: !!ev.division2.gridFull },
+      ]
+    : [{ key: 1, label: "Grid", accepted, capacity, full: gridFull }];
+  // A list split by grid for showing: [{ division, rows }], one group without
+  // Division 2.
+  const byDivision = (list) =>
+    hasDiv2
+      ? [1, 2].map((d) => ({ division: d, rows: inDivision(list, d) })).filter((g) => g.rows.length)
+      : [{ division: null, rows: list }];
   const myWaitingPlace = waiting.findIndex((r) => myIds.has(r.driverId)) + 1;
 
   // Giving up a seat on a full grid is a one-way door, and it did not used to
@@ -638,21 +658,31 @@ export default function RaceSignupCard({
       {/* grid fill: how many of the available seats are taken */}
       {gridRow && (
       <div className="border-b border-border px-5 py-3">
-        <div className="flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-          <span>Grid</span>
-          <span className="flex items-center gap-2">
-            <span className={`tabular-nums ${gridFull ? "text-warn" : "text-medium"}`}>
-              {gridFull ? `Full · ${accepted}/${capacity} seats taken` : `${accepted}/${capacity} seats taken`}
-            </span>
-            {isAdmin && !notYetOpen && <SteamToggle on={adminView} onClick={toggleAdminView} />}
-          </span>
-        </div>
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">
-          <div
-            className={`h-full rounded-full transition-all ${gridFull ? "bg-amber-500" : "bg-green-600"}`}
-            style={{ width: `${Math.min(100, (accepted / capacity) * 100)}%` }}
-          />
-        </div>
+        {gridBars.map((bar, bi) => (
+          <div key={bar.key} className={bi > 0 ? "mt-2.5" : ""}>
+            <div className="flex items-center justify-between gap-3 font-mono text-[10px] font-bold uppercase tracking-wider text-light">
+              <span>{bar.label}</span>
+              <span className="flex items-center gap-2">
+                <span className={`tabular-nums ${bar.full ? "text-warn" : "text-medium"}`}>
+                  {bar.full ? `Full · ${bar.accepted}/${bar.capacity} seats taken` : `${bar.accepted}/${bar.capacity} seats taken`}
+                </span>
+                {bi === 0 && isAdmin && !notYetOpen && <SteamToggle on={adminView} onClick={toggleAdminView} />}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface2">
+              <div
+                className={`h-full rounded-full transition-all ${bar.full ? "bg-amber-500" : "bg-green-600"}`}
+                style={{ width: `${Math.min(100, (bar.accepted / bar.capacity) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+        {hasDiv2 && (
+          <p className="mt-2 text-xs text-light">
+            Briefing together, then Division 2 runs qualifying and the race on the second server.
+            {driverId ? ` You are in Division ${myDivision}.` : ""}
+          </p>
+        )}
         {adminView && (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-light">{steamError || "Tap an ID to copy it. Admins only."}</p>
@@ -689,7 +719,15 @@ export default function RaceSignupCard({
             {/* The grid filling up is the thing members come back to this page
                 for, so the names arrive one after another instead of as a block. */}
             <ul className="cascade space-y-1.5">
-              {ev.rsvps[status].map((r, i) => (
+              {byDivision(ev.rsvps[status]).flatMap((group) => [
+                ...(group.division
+                  ? [
+                      <li key={`div-${group.division}`} className="pt-1 font-mono text-[10px] font-bold uppercase tracking-wider text-faint">
+                        Division {group.division}
+                      </li>,
+                    ]
+                  : []),
+                ...group.rows.map((r, i) => (
                 <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
                   {/* Wraps rather than squeezes. With Tentative switched off the
                       admin's Steam id sits beside the name on one line; with
@@ -739,7 +777,8 @@ export default function RaceSignupCard({
                   )}
                   </div>
                 </li>
-              ))}
+              )),
+              ])}
               {ev.rsvps[status].length === 0 && <li className="text-sm text-faint"><NoData className="text-sm" /></li>}
             </ul>
           </div>
@@ -766,20 +805,20 @@ export default function RaceSignupCard({
           not a fourth answer, and a fourth narrow column of truncated names on
           a phone would have said neither. Numbered, because the number is the
           whole information — first in line is first onto the grid. */}
-      {!notYetOpen && waiting.length > 0 && (
-        <div className="border-t border-border px-4 py-4 sm:px-5">
+      {!notYetOpen && allWaiting.length > 0 && byDivision(allWaiting).map(({ division, rows: queue }) => (
+        <div key={division || "all"} className="border-t border-border px-4 py-4 sm:px-5">
           <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
               <Hourglass className="h-3.5 w-3.5 shrink-0 text-link" aria-hidden="true" />
-              Waiting list
-              <span className="text-light">({waiting.length})</span>
+              {division ? `Division ${division} waiting list` : "Waiting list"}
+              <span className="text-light">({queue.length})</span>
             </span>
             <span className="text-xs text-light">
               The grid is full. First in line moves up the moment a seat comes free.
             </span>
           </div>
           <ol className="cascade grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
-            {waiting.map((r, i) => (
+            {queue.map((r, i) => (
               <li key={r.driverId} style={{ "--i": i }} className="min-w-0 text-sm">
                 <div className={`flex min-w-0 ${adminView ? "flex-wrap" : "flex-nowrap"} items-center gap-x-1.5 gap-y-0.5 sm:gap-x-2`}>
                   <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-faint">{i + 1}.</span>
@@ -813,7 +852,7 @@ export default function RaceSignupCard({
             ))}
           </ol>
         </div>
-      )}
+      ))}
 
       {/* meHere is the market context of the RACE's season (a member can be
           full-time in one season and a reserve in the next), worked out at the

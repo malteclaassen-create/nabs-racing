@@ -532,10 +532,12 @@ export const api = {
   // standings posters. Omitted = the season as it stands now.
   // `drops` asks for the late-season preview: each driver's N worst results so
   // far dropped, as if the rounds still to come were all better.
-  driverStandings: (season, upTo = null, drops = null) => {
+  // `division` 2 = the Division 2 table (a season's second field).
+  driverStandings: (season, upTo = null, drops = null, division = 1) => {
     const base = `/standings/drivers${seasonParam(season)}${upToQ(season, upTo)}`;
     const dropsQ = drops == null ? "" : `${base.includes("?") ? "&" : "?"}drops=${drops}`;
-    return request(`${base}${dropsQ}`, { auth: true });
+    const divQ = division === 2 ? `${base.includes("?") || dropsQ ? "&" : "?"}division=2` : "";
+    return request(`${base}${dropsQ}${divQ}`, { auth: true });
   },
   // End-of-season honours (champion, awards) for the finished-season home hero.
   seasonHonours: (season) => request(`/standings/honours${seasonParam(season)}`, { auth: true }),
@@ -583,6 +585,8 @@ export const api = {
   // results dropped (never whole team rounds), see constructorStandings below.
   t1Standings: (season, upTo = null, drops = null) => constructorStandings("t1", season, upTo, drops),
   t2Standings: (season, upTo = null, drops = null) => constructorStandings("t2", season, upTo, drops),
+  // Division 2's own teams.
+  div2Standings: (season, upTo = null, drops = null) => constructorStandings("div2", season, upTo, drops),
   races: (season, { includeSprints } = {}) =>
     request(
       // includeSprints: also list the hidden sprint-classification rows of
@@ -776,8 +780,9 @@ export const api = {
   // A grid that is over its number, back onto it: the last answers in move to
   // the waiting list, keeping their own sign-up time and so their place in the
   // queue. Nobody is promoted behind them.
-  adminTrimGrid: (raceId) =>
-    request(`/admin/attendance/${raceId}/trim`, { method: "POST", identityAuth: true }),
+  // `division` 2 trims Division 2's grid (a season's second field).
+  adminTrimGrid: (raceId, division = 1) =>
+    request(`/admin/attendance/${raceId}/trim`, { method: "POST", body: { division }, identityAuth: true }),
   // A logged-in account with no driver profile: { canJoin } says it signs
   // itself up with its first answer (or joinLeague below); { turnedAway } says
   // the admins said no once, and "I want to race" (requestRace) is what is
@@ -1337,6 +1342,8 @@ export const api = {
   getStandingsPost: (upTo = null, opts = {}) => {
     const q = [`origin=${encodeURIComponent(window.location.origin)}`];
     if (upTo) q.push(`upTo=${upTo}`);
+    // Division 2's own tables (a season's second field).
+    if (opts.division === 2) q.push("division=2");
     if (opts.of === "constructors") {
       q.push("of=constructors", `t1Rows=${opts.t1Rows || 5}`, `t2Rows=${opts.t2Rows || 8}`);
     } else {
@@ -1895,8 +1902,14 @@ export const api = {
   // How many seats the sign-up counts up to, for this series. Saving it also
   // stamps every round that has not been run yet.
   attendanceGrid: () => request(`/admin/attendance-grid${seriesQ()}`, { auth: true }),
-  saveAttendanceGrid: (size) =>
-    request(`/admin/attendance-grid${seriesQ()}`, { method: "PUT", body: { size }, auth: true }),
+  // `size2` is Division 2's grid ("" = same as the main one); left out, it
+  // stays as it is.
+  saveAttendanceGrid: (size, size2) =>
+    request(`/admin/attendance-grid${seriesQ()}`, {
+      method: "PUT",
+      body: size2 === undefined ? { size } : { size, size2 },
+      auth: true,
+    }),
 
   // Race Info page content (public read + admin edit)
   // Per series: a special event has a Race Info page of its own.

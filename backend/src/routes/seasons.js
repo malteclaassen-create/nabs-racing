@@ -73,7 +73,7 @@ router.get("/", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / heroImageUrl / cardsEnabled
       // aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "isPublic", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled", "division2" FROM "Season"`).catch(() => []),
       getPrivateSeasonIds(prisma),
       seasonSeriesMap(prisma),
     ]);
@@ -102,6 +102,8 @@ router.get("/", async (req, res, next) => {
           // rating card on the driver page. Missing column (pre-migration
           // read) reads as ON, the behaviour every season had before.
           cardsEnabled: extra.cardsEnabled == null ? true : !!Number(extra.cardsEnabled),
+            // Division 2 runs this season (lib/divisions.js).
+            division2: !!Number(extra.division2),
         };
       })
     );

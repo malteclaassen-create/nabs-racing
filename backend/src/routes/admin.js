@@ -32,6 +32,7 @@ import { combineQualiSplit, parseFormatNumber, parseRaceFormat, parseRacePointsT
 import { parseLiveryClosesAt } from "../lib/eventCars.js";
 import { leagueDay } from "../lib/tokenRules.js";
 import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds, resultsBellRace } from "../lib/sprintRaces.js";
+import { ensureDivisionChild, writeDriverDivision, readDivisionChildren, writeCapacity2, DIV2_TIER } from "../lib/divisions.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -155,7 +156,7 @@ import {
 } from "../lib/socialFeed.js";
 import { ATTENDANCE_STATES, readAttendanceOverrides, writeAttendanceOverride, attendanceGate } from "../lib/attendanceGate.js";
 import { writeHiddenRace } from "../lib/attendanceHidden.js";
-import { gridSizeFor, setGridSize, parseGridSize } from "../lib/gridSize.js";
+import { gridSizeFor, setGridSize, parseGridSize, div2GridSizeFor, setDiv2GridSize } from "../lib/gridSize.js";
 import { MAX_PHOTOS, readRacePhotos, writeRacePhotos, racePhotoUrl } from "../lib/racePhotos.js";
 import { anchorReports, reporterGuids } from "../lib/reportAnchor.js";
 import { linkInGameReporters } from "../lib/reportReporter.js";
@@ -682,13 +683,26 @@ router.post("/races/commit", async (req, res, next) => {
     // lib/sprintRaces.js), so the event's own results stay the feature race and
     // one evening can hold both. Only meaningful against an existing race.
     const isSprint = req.body.session === "SPRINT";
+    // session:"DIV2" — this file is the Division 2 race of the round, run on
+    // the second server at the same time (lib/divisions.js). It goes onto the
+    // round's own hidden Division 2 row, the same way a sprint does.
+    const isDiv2 = req.body.session === "DIV2";
     // The event a sprint belongs to: the round number the sprint scores under
     // and the one the reply names (the child itself carries none).
     let sprintOf = null;
+    let div2Of = null;
     if (isSprint) {
       if (!race) return res.status(400).json({ error: "A sprint result needs an existing race (raceId)" });
       sprintOf = race;
       const child = await ensureSprintChild(prisma, race);
+      race = await prisma.race.findFirst({
+        where: { id: child.id },
+        include: { _count: { select: { results: true } } },
+      });
+    } else if (isDiv2) {
+      if (!race) return res.status(400).json({ error: "A Division 2 result needs an existing round (raceId)" });
+      div2Of = race;
+      const child = await ensureDivisionChild(prisma, race);
       race = await prisma.race.findFirst({
         where: { id: child.id },
         include: { _count: { select: { results: true } } },
@@ -700,6 +714,8 @@ router.post("/races/commit", async (req, res, next) => {
     if (race && race._count.results > 0 && !req.body.overwrite) {
       const what = isSprint
         ? `The round ${sprintOf.number ?? "?"} sprint`
+        : isDiv2
+        ? `The round ${div2Of.number ?? "?"} Division 2 race`
         : race.number != null
           ? `Round ${race.number}`
           : race.track;
@@ -719,7 +735,7 @@ router.post("/races/commit", async (req, res, next) => {
         },
       });
       await seedRaceCountry(prisma, race.id, race.track);
-    } else if (!isSprint) {
+    } else if (!isSprint && !isDiv2) {
       const renamed = track && track !== race.track;
       // The results file only knows the DAY. A round that already has its start
       // time on that day keeps it: overwriting it with a bare date put every
@@ -738,18 +754,19 @@ router.post("/races/commit", async (req, res, next) => {
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(
       prisma,
-      `before-import-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : race.number != null ? `r${race.number}` : "training"}`
+      `before-import-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : isDiv2 ? `r${div2Of.number ?? "x"}-div2` : race.number != null ? `r${race.number}` : "training"}`
     );
     const resultsBefore = await readResultRows(prisma, race.id);
     const saveSummary = await saveRaceResults(prisma, race.id, results);
     res.locals.activity = {
-      target: await raceTarget(prisma, race, sprintOf),
+      target: await raceTarget(prisma, race, sprintOf || div2Of, { division: isDiv2 ? 2 : 1 }),
       changes: diffResults(resultsBefore, await readResultRows(prisma, race.id)),
     };
     // Bell notification (deduped per race, so re-imports stay silent). On a
     // sprint weekend it waits until both races are in and then rings once, for
     // the event, with whichever save completed the pair.
-    if (results.length) {
+    // Division 2 stays quiet: the round's bell is the main race's.
+    if (results.length && !isDiv2) {
       resultsBellRace(prisma, race, sprintOf)
         .then((bell) => {
           if (!bell) return;
@@ -777,13 +794,18 @@ router.post("/races/commit", async (req, res, next) => {
       // archive's own doing (lib/resultsArchive.js), not a word tacked onto
       // the track name: that word was cut off long circuit names and the
       // sprint then overwrote the feature's file.
-      const roundNumber = isSprint ? sprintOf.number : race.number;
+      const roundNumber = isSprint ? sprintOf.number : isDiv2 ? div2Of.number : race.number;
       archiveCommitted(archiveKey, {
         season,
         raceNumber: roundNumber,
         track: race.track,
         sprint: isSprint,
+        division: isDiv2 ? 2 : 1,
       });
+    }
+    if (archiveKey && !isDiv2) {
+      const season = await prisma.season.findUnique({ where: { id: race.seasonId || targetSeasonId } });
+      const roundNumber = isSprint ? sprintOf.number : race.number;
       // The reports of this round anchor themselves to that file
       // (lib/reportAnchor.js); whatever the contact reader cached for the round
       // before the file existed, or for the file this one replaces, is stale now.
@@ -811,8 +833,8 @@ router.post("/races/commit", async (req, res, next) => {
     res.json({
       ok: true,
       raceId: race.id,
-      number: isSprint ? sprintOf.number : race.number,
-      session: isSprint ? "SPRINT" : "RACE",
+      number: isSprint ? sprintOf.number : isDiv2 ? div2Of.number : race.number,
+      session: isSprint ? "SPRINT" : isDiv2 ? "DIV2" : "RACE",
       steamIdConflicts: saveSummary?.steamIdConflicts || [],
     });
   } catch (e) {
@@ -1469,7 +1491,7 @@ router.post("/market", async (req, res, next) => {
     if (driver.seasonId !== race.seasonId) {
       return res.status(400).json({ error: "That driver belongs to another season's roster" });
     }
-    if (driver.team?.tier !== 1 && driver.team?.tier !== 2) {
+    if (driver.team?.tier !== 1 && driver.team?.tier !== 2 && driver.team?.tier !== DIV2_TIER) {
       return res.status(400).json({ error: "Only a full-time driver has a seat to give up" });
     }
 
@@ -1780,7 +1802,8 @@ router.post("/attendance/:raceId/trim", async (req, res, next) => {
     const { race, error, message } = await editableRace(req.params.raceId);
     if (error) return res.status(error).json({ error: message });
 
-    const state = await overCapacity(prisma, race);
+    // Which grid to trim: 2 = Division 2's (lib/divisions.js).
+    const state = await overCapacity(prisma, race, Number(req.body?.division) === 2 ? 2 : 1);
     if (!state.over) {
       return res.json({ ok: true, moved: [], ...state, tail: undefined });
     }
@@ -2714,33 +2737,36 @@ router.put("/races/:id/results", async (req, res, next) => {
     const { results } = req.body || {};
     if (!Array.isArray(results)) return res.status(400).json({ error: "results[] required" });
     const isSprint = req.body?.session === "SPRINT";
+    // session:"DIV2" — the round's Division 2 race, the same split
+    // (lib/divisions.js).
+    const isDiv2 = req.body?.session === "DIV2";
     let sprintOf = null;
-    if (isSprint) {
-      // Checked before the sprint row is made, or a refused list leaves an
+    if (isSprint || isDiv2) {
+      // Checked before the child row is made, or a refused list leaves an
       // empty sprint behind.
       await checkResultsForSeason(prisma, race.seasonId, results);
       sprintOf = race;
-      race = await ensureSprintChild(prisma, race);
+      race = isDiv2 ? await ensureDivisionChild(prisma, race) : await ensureSprintChild(prisma, race);
     }
     // Automatic pre-save snapshot: one file-copy away from undoing a mistake.
     await tryCreateBackup(
       prisma,
-      `before-edit-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : `r${race.number ?? "x"}`}`
+      `before-edit-${isSprint ? `r${sprintOf.number ?? "x"}-sprint` : isDiv2 ? `r${sprintOf.number ?? "x"}-div2` : `r${race.number ?? "x"}`}`
     );
     const resultsBefore = await readResultRows(prisma, race.id);
     await saveRaceResults(prisma, race.id, results);
     res.locals.activity = {
-      target: await raceTarget(prisma, race, sprintOf),
+      target: await raceTarget(prisma, race, sprintOf, { division: isDiv2 ? 2 : 1 }),
       changes: diffResults(resultsBefore, await readResultRows(prisma, race.id)),
     };
     // Bell notification (deduped per race: only the FIRST save of this round
     // pings the members, edits stay silent). A sprint child stays quiet, as
     // on import — the evening's bell rings once, with the feature.
-    if (results.length && !isSprint) notifyResultsSaved(prisma, race);
+    if (results.length && !isSprint && !isDiv2) notifyResultsSaved(prisma, race);
     // A round typed in by hand gets its race report too (at most once per round).
-    if (results.length && !isSprint) draftRaceReport(prisma, race);
+    if (results.length && !isSprint && !isDiv2) draftRaceReport(prisma, race);
     if (results.length) notifyCardUnlocksForSeason(prisma, race.seasonId);
-    res.json({ ok: true, raceId: race.id, session: isSprint ? "SPRINT" : "RACE" });
+    res.json({ ok: true, raceId: race.id, session: isSprint ? "SPRINT" : isDiv2 ? "DIV2" : "RACE" });
   } catch (e) {
     next(e);
   }
@@ -3225,7 +3251,7 @@ router.post("/drivers/from-db", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId, country } = req.body || {};
+    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId, country, division } = req.body || {};
     // Nationality is normally the driver's own to set, on their profile after a
     // Discord login. Drivers who have never logged in cannot, so they have no
     // flag anywhere on the site and none on the result poster either. This lets
@@ -3243,8 +3269,8 @@ router.put("/drivers/:id", async (req, res, next) => {
     // told the admin it failed while half of it had not.
     const current = await prisma.driver.findUnique({ where: { id: req.params.id }, select: { id: true, seasonId: true } });
     if (!current) return res.status(404).json({ error: "Driver not found" });
-    if (tier !== undefined && ![0, 1, 2].includes(Number(tier))) {
-      return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+    if (tier !== undefined && ![0, 1, 2, DIV2_TIER].includes(Number(tier))) {
+      return res.status(400).json({ error: "Tier must be 0 (Reserve), 1, 2 or 3 (Division 2)" });
     }
     if (teamId !== undefined) {
       const team = await prisma.team.findUnique({ where: { id: String(teamId) }, select: { seasonId: true, name: true } });
@@ -3365,6 +3391,12 @@ router.put("/drivers/:id", async (req, res, next) => {
     }
     if (role !== undefined) {
       driver.role = await writeDriverRole(prisma, driver.id, role);
+    }
+    // Which reserve pool a reserve sits in: 2 = Division 2 (lib/divisions.js).
+    // A driver on a team takes the team's division, this only matters while
+    // they are a reserve. Raw-SQL column like role.
+    if (division !== undefined) {
+      driver.division = await writeDriverDivision(prisma, driver.id, division);
     }
     // The Steam ID (SteamID64) the result import matches on. Normally captured
     // automatically from the first AC import, or carried over from the member's
@@ -4772,10 +4804,13 @@ router.get("/standings-post", async (req, res, next) => {
     // Which championship, and for the drivers' one which group and whether the
     // people who have not driven are on it — so the text is the same table the
     // sheets above it are.
+    // Division 2's own tables (a season's second field), when asked for.
+    const division = req.query.division === "2" ? 2 : 1;
     const post =
       req.query.of === "constructors"
         ? await buildConstructorsPost(prisma, seasonId, {
             upToRound,
+            division,
             t1Rows: spots(req.query.t1Rows, 5),
             t2Rows: spots(req.query.t2Rows, 8),
             origin,
@@ -4785,6 +4820,7 @@ router.get("/standings-post", async (req, res, next) => {
             upToRound,
             tier: ["all", "0", "1", "2"].includes(String(req.query.tier)) ? String(req.query.tier) : "all",
             withoutStarts: req.query.withoutStarts === "1",
+            division,
             origin,
             roleId,
           });
@@ -4987,6 +5023,9 @@ router.post("/events", async (req, res, next) => {
         info: extras.info ?? null,
       },
     });
+    // Division 2's grid size, when the series set one (lib/divisions.js).
+    const size2 = await div2GridSizeFor(prisma, seriesOfSeason?.slug || null);
+    if (size2) await writeCapacity2(prisma, race.id, size2);
     await seedRaceCountry(prisma, race.id, race.track);
     race.type = await writeRaceType(prisma, race.id, type);
     await writeRaceFormat(race.id, extras);
@@ -5132,7 +5171,9 @@ router.delete("/events/:id", async (req, res, next) => {
     // stored sprint results count against the delete guard exactly like the
     // event's own, so "no results" really means the whole evening is empty.
     const childId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
-    const childResults = childId ? await prisma.raceResult.count({ where: { raceId: childId } }) : 0;
+    // So does its Division 2 race (lib/divisions.js).
+    const div2Id = (await readDivisionChildren(prisma, [race.id])).get(race.id) || null;
+    const childResults = await prisma.raceResult.count({ where: { raceId: { in: [childId, div2Id].filter(Boolean) } } });
     const force = req.query.force === "1" || req.query.force === "true";
     if (race._count.results + childResults > 0 && !force) {
       return res.status(409).json({ error: "Race has results; edit them instead of deleting." });
@@ -5142,12 +5183,13 @@ router.delete("/events/:id", async (req, res, next) => {
     }
     // Raw column without a foreign key (see lib/downloads.js) — unlink by hand.
     // .catch: the Download table is created lazily and may not exist yet.
-    for (const id of [race.id, childId].filter(Boolean)) {
+    for (const id of [race.id, childId, div2Id].filter(Boolean)) {
       await prisma
         .$executeRawUnsafe(`UPDATE "Download" SET "raceId" = NULL WHERE "raceId" = ?`, id)
         .catch(() => {});
     }
     if (childId) await prisma.race.delete({ where: { id: childId } });
+    if (div2Id) await prisma.race.delete({ where: { id: div2Id } });
     await prisma.race.delete({ where: { id: race.id } });
     // The calendar changed, so "the next round" may have: the roster follows
     // the recorded transfers (driverTransfers.js).
@@ -5540,7 +5582,7 @@ router.get("/seasons", async (req, res, next) => {
       }),
       // teamDropWorst / teamDropMode / isPublic / isAnnounced / heroImageUrl /
       // cardsEnabled aren't in the generated client yet -> raw read.
-      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled" FROM "Season"`).catch(() => []),
+      prisma.$queryRawUnsafe(`SELECT "id", "teamDropWorst", "teamDropMode", "fastestLapPoints", "championDriverId", "isPublic", "isAnnounced", "heroImageUrl", "previewLoopUrl", ${CAR_COLUMNS}, "cardsEnabled", "division2" FROM "Season"`).catch(() => []),
       seasonSeriesMap(prisma),
       dbListSeries(prisma, { includePrivate: true }),
     ]);
@@ -5586,6 +5628,8 @@ router.get("/seasons", async (req, res, next) => {
             carCoverUrl: extra.carCoverUrl || null,
             carFilmAt: extra.carFilmAt || null,
             cardsEnabled: extra.cardsEnabled == null ? true : !!Number(extra.cardsEnabled),
+            // Division 2 runs this season (lib/divisions.js).
+            division2: !!Number(extra.division2),
           };
         })
     );
@@ -5667,6 +5711,7 @@ function parseSeasonRawFields(body) {
   if (body.isPublic !== undefined) out.isPublic = body.isPublic ? 1 : 0;
   if (body.isAnnounced !== undefined) out.isAnnounced = body.isAnnounced ? 1 : 0;
   if (body.cardsEnabled !== undefined) out.cardsEnabled = body.cardsEnabled ? 1 : 0;
+  if (body.division2 !== undefined) out.division2 = body.division2 ? 1 : 0;
   return out;
 }
 
@@ -5690,6 +5735,9 @@ async function writeSeasonRawFields(seasonId, raw) {
   }
   if (raw.isAnnounced !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "isAnnounced" = ? WHERE "id" = ?`, raw.isAnnounced, seasonId);
+  }
+  if (raw.division2 !== undefined) {
+    await prisma.$executeRawUnsafe(`UPDATE "Season" SET "division2" = ? WHERE "id" = ?`, raw.division2, seasonId);
   }
   if (raw.cardsEnabled !== undefined) {
     await prisma.$executeRawUnsafe(`UPDATE "Season" SET "cardsEnabled" = ? WHERE "id" = ?`, raw.cardsEnabled, seasonId);
@@ -6774,6 +6822,9 @@ router.post("/teams", async (req, res, next) => {
     if (!id || !name || tier === undefined || !color) {
       return res.status(400).json({ error: "id, name, tier, color required" });
     }
+    if (![0, 1, 2, DIV2_TIER].includes(Number(tier))) {
+      return res.status(400).json({ error: "Tier must be 0 (Reserve), 1, 2 or 3 (Division 2)" });
+    }
     // The id becomes the logo's file name later on, so keep it to plain
     // characters. Every existing team already fits this.
     if (!isSafeId(id)) {
@@ -6802,7 +6853,7 @@ router.put("/teams/:id", async (req, res, next) => {
     }
     if (tier !== undefined) {
       data.tier = Number(tier);
-      if (![0, 1, 2].includes(data.tier)) return res.status(400).json({ error: "Tier must be 0 (Reserve), 1 or 2" });
+      if (![0, 1, 2, DIV2_TIER].includes(data.tier)) return res.status(400).json({ error: "Tier must be 0 (Reserve), 1, 2 or 3 (Division 2)" });
     }
     if (color !== undefined) data.color = color;
     if (logoUrl !== undefined) data.logoUrl = logoUrl || null;
@@ -7773,7 +7824,12 @@ router.get("/attendance-gates", async (req, res, next) => {
 router.get("/attendance-grid", async (req, res, next) => {
   try {
     const series = await resolveSeries(prisma, req.query.series, { includePrivate: true });
-    res.json({ series: series?.slug || null, size: await gridSizeFor(prisma, series?.slug || null) });
+    res.json({
+      series: series?.slug || null,
+      size: await gridSizeFor(prisma, series?.slug || null),
+      // Division 2's grid, null = same as the main one (lib/divisions.js).
+      size2: await div2GridSizeFor(prisma, series?.slug || null),
+    });
   } catch (e) {
     next(e);
   }
@@ -7785,11 +7841,29 @@ router.put("/attendance-grid", async (req, res, next) => {
     if (!series) return res.status(404).json({ error: "Series not found" });
     const parsed = parseGridSize(req.body?.size);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
+    // size2: Division 2's grid. Optional; "" or null = same as the main grid.
+    let size2;
+    if (req.body?.size2 !== undefined) {
+      if (req.body.size2 === "" || req.body.size2 === null) size2 = null;
+      else {
+        const p2 = parseGridSize(req.body.size2);
+        if (p2.error) return res.status(400).json({ error: `Division 2: ${p2.error}` });
+        size2 = p2.value;
+      }
+    }
     const size = await setGridSize(prisma, series.slug, parsed.value);
     const { count } = await prisma.race.updateMany({
       where: { isCompleted: false, season: { seriesId: series.id } },
       data: { capacity: size },
     });
+    if (size2 !== undefined) {
+      await setDiv2GridSize(prisma, series.slug, size2);
+      const open = await prisma.race.findMany({
+        where: { isCompleted: false, season: { seriesId: series.id } },
+        select: { id: true },
+      });
+      for (const r of open) await writeCapacity2(prisma, r.id, size2);
+    }
     // A bigger grid is seats coming free: whoever is waiting for this series'
     // rounds moves up right away rather than on the next answer somebody gives.
     const affected = await prisma.race.findMany({
@@ -7804,7 +7878,7 @@ router.put("/attendance-grid", async (req, res, next) => {
       select: { id: true },
     });
     for (const r of announced) syncRaceToDiscord(prisma, r.id).catch(() => {});
-    res.json({ series: series.slug, size, updated: count });
+    res.json({ series: series.slug, size, size2: await div2GridSizeFor(prisma, series.slug), updated: count });
   } catch (e) {
     next(e);
   }

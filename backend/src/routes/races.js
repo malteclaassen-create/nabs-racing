@@ -8,6 +8,7 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, getIdentityOverrides } from "../lib/persons.js";
 import { readRaceFormat } from "../lib/raceFormat.js";
 import { readLiveryClose } from "../lib/eventCars.js";
+import { readDivisionChildIds, readDivisionChildren } from "../lib/divisions.js";
 import { readParentIds, readSprintChildren, withSprintRounds } from "../lib/sprintRaces.js";
 import { readRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHeroes } from "../lib/raceHero.js";
@@ -121,6 +122,12 @@ router.get("/", async (req, res, next) => {
     // "R1 Baku", the second race of the evening before the first.
     const races = includeSprints ? sprintsAfterTheirEvents(allRaces, parentOf) : allRaces.filter((r) => !parentOf.has(r.id));
     const sprintChildren = await readSprintChildren(prisma, races.map((r) => r.id));
+    // Division 2 rows hang off their round the same way (lib/divisions.js) and
+    // come along with the sprints, named by their own link instead.
+    const [div2Ids, div2Children] = await Promise.all([
+      readDivisionChildIds(prisma, races.map((r) => r.id)),
+      readDivisionChildren(prisma, races.map((r) => r.id)),
+    ]);
     // Session format + race type (raw-SQL columns) for the upcoming-race panel
     // and the calendar's grouping, and any published replay downloads so the
     // calendar can offer a Replay button.
@@ -179,8 +186,12 @@ router.get("/", async (req, res, next) => {
         // The event this row is the sprint classification of (only with
         // includeSprints), and the sprint child hanging off this event (so the
         // import page knows a sprint result is already in).
-        sprintOf: parentOf.get(r.id) ?? null,
+        sprintOf: div2Ids.has(r.id) ? null : parentOf.get(r.id) ?? null,
         sprintRaceId: sprintChildren.get(r.id) ?? null,
+        // The round this row is the Division 2 race of, and the Division 2
+        // race of this round.
+        division2Of: div2Ids.has(r.id) ? parentOf.get(r.id) ?? null : null,
+        division2RaceId: div2Children.get(r.id) ?? null,
         replayDownloadId: replays.get(r.id) || null,
         highlightsUrl: highlights.get(r.id) || null,
         heroImageUrl: heroes.get(r.id) || null,
@@ -332,7 +343,9 @@ router.get("/:id/laps", async (req, res, next) => {
     // row with no round number of its own: withSprintRounds hands it back
     // under its event's number and flagged, which is how its file is filed.
     const [filed] = await withSprintRounds(prisma, [race]);
-    const json = findArchiveForRace({ ...race, number: filed.number }, { sprint: filed.sprint });
+    // A Division 2 row comes back the same way, under its round's number, and
+    // its file is in the division's own folder.
+    const json = findArchiveForRace({ ...race, number: filed.number }, { sprint: filed.sprint, division: filed.division });
     const chart = json ? lapChartFrom(json) : null;
     if (!chart) return res.json({ available: false, maxLap: 0, drivers: [] });
 

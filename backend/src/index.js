@@ -47,6 +47,8 @@ import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
+import { seasonHasDivision2 } from "./lib/divisions.js";
+import { resolveSeasonId as resolveSeasonForLive } from "./services/seasonService.js";
 import { boardLiveryColors, boardSkins, getLivery } from "./lib/liveryPreview.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
@@ -287,13 +289,26 @@ app.get("/api/live/servers", async (req, res) => {
     const { key: defaultKey, only, off } = await serverConfigForSeries(prisma, req.query.series);
     // A series on no server has no board to switch between.
     if (off) return res.json({ defaultKey: null, noServer: true, servers: [] });
+    // Division 2 (lib/divisions.js) races on the other server at the same
+    // time. A season running it always offers both boards, named by division,
+    // whatever `only` says: the second one is not somebody else's race then.
+    const seasonId = await resolveSeasonForLive(prisma, undefined, { series: req.query.series }).catch(() => null);
+    const div2 = seasonId ? await seasonHasDivision2(prisma, seasonId) : false;
+    const div2Key = div2 ? LIVE_SERVERS.find((srv) => srv.key !== defaultKey)?.key || null : null;
+    const shown = div2
+      ? [LIVE_SERVERS.find((srv) => srv.key === defaultKey), LIVE_SERVERS.find((srv) => srv.key === div2Key)].filter(Boolean)
+      : only
+        ? LIVE_SERVERS.filter((srv) => srv.key === defaultKey)
+        : LIVE_SERVERS;
     res.json({
       defaultKey,
-      servers: (only ? LIVE_SERVERS.filter((srv) => srv.key === defaultKey) : LIVE_SERVERS).map((srv) => {
+      division2Key: div2Key,
+      servers: shown.map((srv) => {
         const board = getBoard(srv.key);
         return {
           key: srv.key,
-          name: srv.name,
+          name: div2 ? (srv.key === div2Key ? "Division 2" : "Division 1") : srv.name,
+          division: div2 ? (srv.key === div2Key ? 2 : 1) : null,
           isDefault: srv.key === defaultKey,
           // Same test the nav bar's dot uses: connected, not stale, and a
           // session actually loaded. A quiet server still reports in, so this
@@ -396,7 +411,15 @@ app.use("/api/race-control", raceControlRoutes);
 app.get("/api/live/championship", async (req, res, next) => {
   try {
     const simulate = req.query.simulate === "1" && isAdminRequest(req);
-    const board = getBoard(await resolveServerKey(prisma, { series: req.query.series, server: req.query.server }));
+    const serverKey = await resolveServerKey(prisma, { series: req.query.series, server: req.query.server });
+    // The Division 2 board (lib/divisions.js) is a field of its own: the
+    // projection reads the main race's standings, so it does not apply there.
+    const { key: mainKey } = await serverConfigForSeries(prisma, req.query.series);
+    if (serverKey !== mainKey) {
+      const seasonId = await resolveSeasonForLive(prisma, undefined, { series: req.query.series }).catch(() => null);
+      if (seasonId && (await seasonHasDivision2(prisma, seasonId))) return res.json({ active: false, reason: "division-2" });
+    }
+    const board = getBoard(serverKey);
     res.json(await buildLiveChampionship(prisma, board, { simulate }));
   } catch (e) {
     next(e);

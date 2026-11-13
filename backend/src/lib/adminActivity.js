@@ -291,20 +291,24 @@ export function diffReport(before, after) {
 // Reading the database for names
 // ---------------------------------------------------------------------------
 
-export function raceLabel(race, { sprint = false } = {}) {
+export function raceLabel(race, { sprint = false, division = 1 } = {}) {
   if (!race) return null;
   const round = race.number != null ? `R${race.number} ` : "";
   const season = race.season?.name ? ` (${race.season.name})` : "";
-  return `${round}${race.track}${sprint ? " sprint" : ""}${season}`;
+  return `${round}${race.track}${sprint ? " sprint" : ""}${division === 2 ? " Division 2" : ""}${season}`;
 }
 
 // The same label for a race row in hand. A sprint row has no round number of its
 // own, it goes by the event it belongs to.
-export async function raceTarget(prisma, race, sprintOf = null) {
+// A Division 2 row goes by its round the same way (`division: 2`).
+export async function raceTarget(prisma, race, sprintOf = null, { division = 1 } = {}) {
   const season = race.seasonId
     ? await prisma.season.findUnique({ where: { id: race.seasonId }, select: { name: true } }).catch(() => null)
     : null;
-  return raceLabel({ ...race, number: sprintOf?.number ?? race.number, season }, { sprint: !!sprintOf });
+  return raceLabel(
+    { ...race, number: sprintOf?.number ?? race.number, season },
+    { sprint: !!sprintOf && division !== 2, division }
+  );
 }
 
 export async function readResultRows(prisma, raceId) {

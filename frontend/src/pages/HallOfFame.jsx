@@ -92,8 +92,33 @@ function HallHeader({ data }) {
 
 // --- Champions -------------------------------------------------------------
 
+// Division 2's champion of one season, the small cell beside the main title.
+function Div2DriverCell({ entry, seasonNumber, className = "" }) {
+  if (!entry) return null;
+  const d = entry.driver;
+  return (
+    <Link
+      to={`/drivers/${d.driverId}?season=${seasonNumber}`}
+      className={`group flex min-w-0 items-center gap-2.5 ${className}`}
+    >
+      <DriverAvatar name={d.name} photoUrl={d.photoUrl} color={d.team?.color || MEDAL[0]} size={30} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-base font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
+          {d.name}
+        </span>
+        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Division 2</span>
+      </span>
+      <span className="shrink-0 font-display text-base font-black tabular-nums text-dark">
+        <CountUp end={entry.points} />
+        <span className="ml-1 font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
+      </span>
+    </Link>
+  );
+}
+
 function DriverChampions({ champions }) {
   const [latest, ...earlier] = champions;
+  const anyDiv2 = champions.some((c) => c.division2);
   return (
     <div className="card overflow-hidden">
       {/* reigning champion — the section's centrepiece */}
@@ -148,13 +173,24 @@ function DriverChampions({ champions }) {
         </div>
       </Link>
 
-      {/* the eras before — dealt in top to bottom */}
+      {/* Division 2's reigning champion, under the main one */}
+      {latest.division2 && (
+        <div className="border-b border-border bg-surface2/40 px-4 py-3 sm:px-8">
+          <Div2DriverCell entry={latest.division2} seasonNumber={latest.seasonNumber} className="sm:max-w-md" />
+        </div>
+      )}
+
+      {/* the eras before — dealt in top to bottom. With Division 2 in the
+          history its champion gets a column of its own on the right. */}
       <div className="cascade divide-y divide-border">
         {earlier.map((c, i) => (
-          <Link
+          <div
             key={c.seasonNumber}
-            to={`/drivers/${c.driver.driverId}?season=${c.seasonNumber}`}
             style={{ "--i": Math.min(i, 16) }}
+            className={anyDiv2 ? "grid items-center sm:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]" : ""}
+          >
+          <Link
+            to={`/drivers/${c.driver.driverId}?season=${c.seasonNumber}`}
             className="group flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 transition hover:bg-surface2 sm:gap-x-5 sm:px-8"
           >
             <span className="w-9 shrink-0 font-display text-xl font-black uppercase leading-none tracking-tight text-faint sm:w-16 sm:text-2xl">
@@ -174,6 +210,13 @@ function DriverChampions({ champions }) {
               <span className="ml-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-light">pts</span>
             </span>
           </Link>
+          {anyDiv2 &&
+            (c.division2 ? (
+              <Div2DriverCell entry={c.division2} seasonNumber={c.seasonNumber} className="px-4 pb-4 sm:px-6 sm:py-4" />
+            ) : (
+              <span className="hidden sm:block" />
+            ))}
+          </div>
         ))}
       </div>
     </div>
@@ -181,7 +224,11 @@ function DriverChampions({ champions }) {
 }
 
 function TeamChampions({ champions }) {
-  const rows = champions.filter((c) => c.teams.length > 0);
+  const rows = champions.filter((c) => c.teams.length > 0 || c.division2?.team);
+  // Division 2's team title sits in a third column, labelled like a tier.
+  const anyDiv2 = rows.some((c) => c.division2?.team);
+  const withDiv2 = (c) => [...c.teams, ...(c.division2?.team ? [{ ...c.division2.team, tier: "d2" }] : [])];
+  const tierLabel = (t) => (t.tier === "d2" ? "Division 2" : `Tier ${t.tier}`);
   if (!rows.length)
     return <div className="card p-8 text-center text-medium">No team championships recorded yet.</div>;
   const [latest, ...earlier] = rows;
@@ -196,8 +243,8 @@ function TeamChampions({ champions }) {
         <div className="relative font-mono text-[10px] font-bold uppercase tracking-widest sm:text-[11px] sm:tracking-[0.2em]" style={{ color: MEDAL_TEXT[0] }}>
           Reigning team champions · {latest.seasonName || `Season ${latest.seasonNumber}`}
         </div>
-        <div className="relative mt-4 grid gap-4 sm:grid-cols-2">
-          {latest.teams.map((t) => (
+        <div className={`relative mt-4 grid gap-4 ${anyDiv2 ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2"}`}>
+          {withDiv2(latest).map((t) => (
             <Link
               key={t.tier}
               to={`/teams/${t.teamId}?season=${latest.seasonNumber}`}
@@ -205,11 +252,11 @@ function TeamChampions({ champions }) {
             >
               <TeamLogo id={t.teamId} name={t.name} color={t.color} logoUrl={t.logoUrl} size={52} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-2xl font-black uppercase tracking-tight text-dark">
+                <span className={`block truncate font-display font-black uppercase tracking-tight text-dark ${anyDiv2 ? "text-xl" : "text-2xl"}`}>
                   {t.name}
                 </span>
                 <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">
-                  Tier {t.tier} champions
+                  {tierLabel(t)} champions
                 </span>
               </span>
               {t.points != null && (
@@ -237,7 +284,7 @@ function TeamChampions({ champions }) {
                   <span className="block truncate font-display text-lg font-extrabold uppercase tracking-tight text-dark transition group-hover:text-brand">
                     {t.name}
                   </span>
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Tier {t.tier}</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">{tierLabel(t)}</span>
                 </span>
                 {t.points != null && (
                   <span className="shrink-0 font-display text-xl font-black tabular-nums text-dark">
@@ -253,13 +300,14 @@ function TeamChampions({ champions }) {
             <div
               key={c.seasonNumber}
               style={{ "--i": Math.min(i, 16) }}
-              className="grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[4rem_1fr_1fr] sm:px-8"
+              className={`grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:px-8 ${anyDiv2 ? "sm:grid-cols-[4rem_1fr_1fr_1fr]" : "sm:grid-cols-[4rem_1fr_1fr]"}`}
             >
               <span className="font-display text-2xl font-black uppercase leading-none tracking-tight text-faint">
                 S{c.seasonNumber}
               </span>
               {cell(c.teams.find((t) => t.tier === 1))}
               {cell(c.teams.find((t) => t.tier === 2))}
+              {anyDiv2 && cell(c.division2?.team ? { ...c.division2.team, tier: "d2" } : null)}
             </div>
           );
         })}

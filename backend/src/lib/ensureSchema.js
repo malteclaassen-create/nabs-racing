@@ -130,6 +130,17 @@ export async function ensureAppSchema(prisma) {
   // points back at its event here (migration race_parent, lib/sprintRaces.js).
   await addColumn(prisma, "Race", "parentRaceId", "TEXT");
 
+  // --- Division 2 (migration division_two, lib/divisions.js). A second field
+  // racing the same evening on the second server, with teams of its own
+  // (Team.tier 3). Its classification lives on a hidden child row like the
+  // sprint's, told apart by `division` = 2. `capacity2` is that field's grid
+  // size (null = the round's own), Season.division2 switches the whole thing
+  // on, and Driver.division puts a reserve into the Division 2 pool.
+  await addColumn(prisma, "Race", "division", "INTEGER");
+  await addColumn(prisma, "Race", "capacity2", "INTEGER");
+  await addColumn(prisma, "Season", "division2", "BOOLEAN NOT NULL DEFAULT 0");
+  await addColumn(prisma, "Driver", "division", "INTEGER");
+
   // --- Highlights video of a finished round (migration race_highlights): one
   // pasted link, shown as the Highlights button on the race results. Any
   // http(s) address; see lib/raceHighlights.js.

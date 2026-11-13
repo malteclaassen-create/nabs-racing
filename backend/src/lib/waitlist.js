@@ -22,6 +22,7 @@ import { getPersonGroups } from "./persons.js";
 import { collapseByPerson, byNewestAnswer, personKey } from "./onePerPerson.js";
 import { DEFAULT_GRID_SIZE } from "./gridSize.js";
 import { notifyWaitlistPromoted } from "./notifications.js";
+import { activeDivision2Drivers as readDivision2Drivers, readCapacity2 } from "./divisions.js";
 
 export const WAITLIST = "WAITLIST";
 
@@ -29,13 +30,40 @@ const joinedAt = (r) => new Date(r.updatedAt || 0).getTime() || 0;
 
 // Everyone's answer for one race, one row per PERSON (lib/onePerPerson.js), so
 // a member with two roster rows in the season fills one seat and not two.
-async function answersFor(prisma, raceId) {
+//
+// DIVISIONS. A season running Division 2 (lib/divisions.js) has two grids on
+// the same evening, one per server, each with its own size and its own queue.
+// `division` keeps only that grid's people; omitted, everybody (which is the
+// same thing for a season without Division 2).
+async function answersFor(prisma, raceId, division = null) {
   const rows = await prisma.raceRsvp.findMany({
     where: { raceId },
-    include: { driver: { select: { id: true, name: true, discordUserId: true } } },
+    include: { driver: { select: { id: true, name: true, discordUserId: true, seasonId: true } } },
   });
   const people = await getPersonGroups(prisma).catch(() => ({ byDriver: new Map() }));
-  return { kept: collapseByPerson(rows, people.byDriver, byNewestAnswer).kept, byDriver: people.byDriver };
+  let kept = collapseByPerson(rows, people.byDriver, byNewestAnswer).kept;
+  if (division != null) {
+    const seasonId = rows[0]?.driver?.seasonId;
+    const div2 = seasonId ? await readDivision2Drivers(prisma, seasonId) : new Set();
+    kept = kept.filter((r) => (div2.has(r.driverId) ? 2 : 1) === division);
+  }
+  return { kept, byDriver: people.byDriver };
+}
+
+// Which grid a driver lines up on for this race: 1 or 2.
+export async function divisionForDriver(prisma, race, driverId) {
+  if (!driverId || !race?.seasonId) return 1;
+  const div2 = await readDivision2Drivers(prisma, race.seasonId);
+  return div2.has(driverId) ? 2 : 1;
+}
+
+// The size of one grid: Division 1 is the round's capacity, Division 2 its
+// capacity2, falling back to the round's when unset.
+export async function capacityFor(prisma, race, division = 1) {
+  const base = race?.capacity || DEFAULT_GRID_SIZE;
+  if (division !== 2) return base;
+  const own = (await readCapacity2(prisma, [race.id])).get(race.id);
+  return own || base;
 }
 
 // A car on the Driver Market is still somebody's seat.
@@ -45,19 +73,35 @@ async function answersFor(prisma, raceId) {
 // reserve. Counting open offers as taken is what keeps the two queues from
 // handing out the same seat: the waiting list does not eat it, and when the
 // reserve is picked the grid lands back on its number instead of one over.
-function openOffers(prisma, raceId) {
-  return prisma.seatOffer.count({ where: { raceId, status: "OPEN" } }).catch(() => 0);
+async function openOffers(prisma, raceId, division = null) {
+  if (division == null) return prisma.seatOffer.count({ where: { raceId, status: "OPEN" } }).catch(() => 0);
+  let offers = [];
+  try {
+    offers = await prisma.seatOffer.findMany({
+      where: { raceId, status: "OPEN" },
+      select: { driverId: true, driver: { select: { seasonId: true } } },
+    });
+  } catch {
+    return prisma.seatOffer.count({ where: { raceId, status: "OPEN" } }).catch(() => 0);
+  }
+  if (!offers.length) return 0;
+  const div2 = await readDivision2Drivers(prisma, offers[0].driver?.seasonId);
+  return offers.filter((o) => (div2.has(o.driverId) ? 2 : 1) === division).length;
 }
 
 // How the grid stands right now, from the caller's point of view.
 // `free` is what decides whether Accept is still on the table; `mine` is the
 // answer this driver already has, because somebody who is IN keeps their seat
 // no matter how full the round is.
-export async function seatsFor(prisma, race, driverId = null) {
-  const capacity = race?.capacity || DEFAULT_GRID_SIZE;
+//
+// With Division 2 running, the grid is the driver's own division's (with no
+// driver given: Division 1's).
+export async function seatsFor(prisma, race, driverId = null, { division: asked = null } = {}) {
+  const division = asked ?? (await divisionForDriver(prisma, race, driverId));
+  const capacity = await capacityFor(prisma, race, division);
   const [{ kept, byDriver }, reserved] = await Promise.all([
-    answersFor(prisma, race.id),
-    openOffers(prisma, race.id),
+    answersFor(prisma, race.id, division),
+    openOffers(prisma, race.id, division),
   ]);
   const accepted = kept.filter((r) => r.status === "ACCEPTED").length;
   // By person, not by row. A member with two roster rows in one season has one
@@ -67,6 +111,7 @@ export async function seatsFor(prisma, race, driverId = null) {
   const me = driverId ? personKey(driverId, byDriver) : null;
   const mine = me ? kept.find((r) => personKey(r.driverId, byDriver) === me)?.status || null : null;
   return {
+    division,
     capacity,
     accepted,
     reserved,
@@ -86,18 +131,23 @@ export async function promoteFromWaitlist(prisma, raceId) {
   try {
     const race = await prisma.race.findUnique({ where: { id: raceId } });
     if (!race || race.isCompleted) return [];
-    const capacity = race.capacity || DEFAULT_GRID_SIZE;
-    const [{ kept }, reserved] = await Promise.all([answersFor(prisma, race.id), openOffers(prisma, race.id)]);
-    let accepted = kept.filter((r) => r.status === "ACCEPTED").length + reserved;
-    if (accepted >= capacity) return [];
-    const queue = kept.filter((r) => r.status === WAITLIST).sort((a, b) => joinedAt(a) - joinedAt(b));
-
+    // Each division's queue moves onto its own grid only.
     const promoted = [];
-    for (const row of queue) {
-      if (accepted >= capacity) break;
-      await prisma.raceRsvp.update({ where: { id: row.id }, data: { status: "ACCEPTED" } });
-      accepted += 1;
-      promoted.push(row);
+    for (const division of [1, 2]) {
+      const capacity = await capacityFor(prisma, race, division);
+      const [{ kept }, reserved] = await Promise.all([
+        answersFor(prisma, race.id, division),
+        openOffers(prisma, race.id, division),
+      ]);
+      let accepted = kept.filter((r) => r.status === "ACCEPTED").length + reserved;
+      if (accepted >= capacity) continue;
+      const queue = kept.filter((r) => r.status === WAITLIST).sort((a, b) => joinedAt(a) - joinedAt(b));
+      for (const row of queue) {
+        if (accepted >= capacity) break;
+        await prisma.raceRsvp.update({ where: { id: row.id }, data: { status: "ACCEPTED" } });
+        accepted += 1;
+        promoted.push(row);
+      }
     }
     for (const row of promoted) {
       await notifyWaitlistPromoted(prisma, { race, driver: row.driver });
@@ -129,7 +179,8 @@ export async function promoteFromWaitlist(prisma, raceId) {
 // without a number is the start of a Discord conversation, not the end of one.
 export async function queuePlace(prisma, raceId, driverId) {
   try {
-    const { kept } = await answersFor(prisma, raceId);
+    const race = await prisma.race.findUnique({ where: { id: raceId } });
+    const { kept } = await answersFor(prisma, raceId, await divisionForDriver(prisma, race, driverId));
     const queue = kept.filter((r) => r.status === WAITLIST).sort((a, b) => joinedAt(a) - joinedAt(b));
     const i = queue.findIndex((r) => r.driverId === driverId);
     return i < 0 ? null : i + 1;
@@ -169,9 +220,9 @@ export async function moveToWaitlist(prisma, raceId, driverId) {
 // Counted the same way everything else here counts, open Driver Market offers
 // included, so the panel's "43 of 42" and the button's "move 1" never disagree
 // with the rule that refuses the 43rd Accept in the first place.
-export async function overCapacity(prisma, race) {
-  const capacity = race?.capacity || DEFAULT_GRID_SIZE;
-  const [{ kept }, reserved] = await Promise.all([answersFor(prisma, race.id), openOffers(prisma, race.id)]);
+export async function overCapacity(prisma, race, division = 1) {
+  const capacity = await capacityFor(prisma, race, division);
+  const [{ kept }, reserved] = await Promise.all([answersFor(prisma, race.id, division), openOffers(prisma, race.id, division)]);
   const accepted = kept.filter((r) => r.status === "ACCEPTED").sort((a, b) => joinedAt(b) - joinedAt(a));
   const over = accepted.length + reserved - capacity;
   return { capacity, accepted: accepted.length, reserved, over: Math.max(0, over), tail: accepted.slice(0, Math.max(0, over)) };

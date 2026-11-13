@@ -117,7 +117,7 @@ async function savedRounds(prisma, seasonId) {
   try {
     return await prisma.$queryRawUnsafe(
       `SELECT r."id", COALESCE(r."number", p."number") AS "number",
-              CASE WHEN r."parentRaceId" IS NULL THEN r."track" ELSE r."track" || ' (sprint)' END AS "track"
+              CASE WHEN r."parentRaceId" IS NULL THEN r."track" WHEN r."division" = 2 THEN r."track" || ' (Division 2)' ELSE r."track" || ' (sprint)' END AS "track"
          FROM "Race" r LEFT JOIN "Race" p ON p."id" = r."parentRaceId"
         WHERE r."seasonId" = ? AND r."isCompleted" = 1
           AND COALESCE(r."number", p."number") IS NOT NULL

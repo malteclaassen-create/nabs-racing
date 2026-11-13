@@ -251,6 +251,13 @@ const effectiveTeamId = resultTeamId;
 // for the team they drove for in those rounds).
 // ---------------------------------------------------------------------------
 export function calculateT1ConstructorContributions(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) {
+  return calculateSummedConstructorContributions(raceResults, drivers, teams, table, 1);
+}
+
+// The Tier 1 rule for any tier that races in a classification of its own: the
+// team gets what its drivers actually scored. Division 2 (tier 3) scores this
+// way too, since its race has nobody else in it to re-rank around.
+export function calculateSummedConstructorContributions(raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE, tier = 1) {
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const teamById = new Map(teams.map((t) => [t.id, t]));
   const contributions = [];
@@ -259,7 +266,7 @@ export function calculateT1ConstructorContributions(raceResults, drivers, teams,
     if (result.status === "DNS") continue;
     const teamId = effectiveTeamId(result, driverById);
     const team = teamById.get(teamId);
-    if (team?.tier !== 1) continue;
+    if (team?.tier !== tier) continue;
     contributions.push({ driverId: result.driverId, teamId, points: getDriverResultPoints(result, table) });
   }
   return contributions;
@@ -317,4 +324,13 @@ export function calculateT2ConstructorPoints(raceResults, drivers, teams, table 
     points[c.teamId] = (points[c.teamId] || 0) + c.points;
   }
   return points;
+}
+
+// The contribution rule each constructor table scores by: Tier 2 re-ranks its
+// cars among themselves, everyone else sums what their drivers scored.
+export function contributionsForTier(tier) {
+  if (tier === 2) return calculateT2ConstructorContributions;
+  if (tier === 1) return calculateT1ConstructorContributions;
+  return (raceResults, drivers, teams, table = DEFAULT_POINTS_TABLE) =>
+    calculateSummedConstructorContributions(raceResults, drivers, teams, table, tier);
 }

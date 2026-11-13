@@ -5,7 +5,8 @@ import { isAdminRequest } from "../middleware/auth.js";
 import { getNameOverrides, discordIdsForDrivers, getIdentityOverrides } from "../lib/persons.js";
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
-import { getT1ConstructorStandings, getT2ConstructorStandings } from "../services/standingsService.js";
+import { getConstructorStandingsForTier } from "../services/standingsService.js";
+import { DIV2_TIER, divisionOf, readDriverDivisions } from "../lib/divisions.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
@@ -43,6 +44,8 @@ router.get("/", async (req, res, next) => {
     // Special roles (raw-SQL column) for the role badge / admin role select.
     const allIds = teams.flatMap((t) => t.drivers.map((d) => d.id));
     const roles = await readDriverRoles(prisma, allIds);
+    // Reserve pool per reserve: 2 = Division 2's (lib/divisions.js).
+    const pools = await readDriverDivisions(prisma, allIds);
     // Standings-hidden flag (raw-SQL column) for the admin Drivers tab toggle.
     // .catch: fresh checkout before ensureAppSchema ran.
     let hiddenSet = new Set();
@@ -78,6 +81,9 @@ router.get("/", async (req, res, next) => {
         }
         d.role = roles.get(d.id) || null;
         d.hideFromStandings = hiddenSet.has(d.id);
+        // Which division they race in (a Division 2 team, or a reserve in
+        // Division 2's pool), 1 otherwise.
+        d.division = divisionOf({ ...d, division: pools.get(d.id) ?? null }, t);
         if (admin) {
           // Inherited from a linked season row (own column empty).
           const eff = effectiveDiscord.get(d.id) || null;
@@ -191,11 +197,11 @@ router.get("/:id/history", async (req, res, next) => {
       const t = bySeason.get(season.id);
       if (!t) continue;
       // Reserve rows (tier 0) have no constructors' table of their own.
-      if (t.tier !== 1 && t.tier !== 2) {
+      if (t.tier !== 1 && t.tier !== 2 && t.tier !== DIV2_TIER) {
         rows.push({ seasonId: season.id, seasonNumber: season.number, seasonName: season.name, teamId: t.id, name: t.name, tier: t.tier, position: null, points: null, of: null });
         continue;
       }
-      const table = await (t.tier === 1 ? getT1ConstructorStandings : getT2ConstructorStandings)(prisma, season.id);
+      const table = await getConstructorStandingsForTier(prisma, t.tier, season.id);
       const row = (table?.standings || []).find((x) => x.teamId === t.id);
       rows.push({
         seasonId: season.id,

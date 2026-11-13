@@ -244,7 +244,24 @@ export default function DriverStandings() {
   const seasonReplayed = useRef(false);
   const replayCancel = useRef(null);
   const replayNode = useRef(null);
-  const { data: realData, loading, error, reload } = useApi(useCallback(() => api.driverStandings(), []));
+  // Division 2 (a season's second field, racing at the same time on the
+  // second server) has a table of its own; the switch only shows for a season
+  // that runs it.
+  const { current: seasonForDivision } = useSeason();
+  const [divisionPick, setDivisionPick] = usePersistentState("nabs.standings.division", 1);
+  // The Division 2 standings post links here with `division=2`, and opens on
+  // that table.
+  // Once, on arrival: switching back to Division 1 afterwards must stick.
+  const divisionFromLink = useRef(false);
+  useEffect(() => {
+    if (divisionFromLink.current) return;
+    divisionFromLink.current = true;
+    if (new URLSearchParams(window.location.search).get("division") === "2") setDivisionPick(2);
+  });
+  const division = seasonForDivision?.division2 && divisionPick === 2 ? 2 : 1;
+  const { data: realData, loading, error, reload } = useApi(
+    useCallback(() => api.driverStandings(undefined, null, null, division), [division])
+  );
   // The late-season "drop worst" preview: how many of each driver's worst
   // results so far to take off, or null for the real table. The previewed
   // table is fetched on its own and swapped in once it arrives, so the board
@@ -253,14 +270,14 @@ export default function DriverStandings() {
   const [dropPick, setDropPick] = useState(null);
   const [projected, setProjected] = useState(null); // { n, data }
   useEffect(() => {
-    if (dropPick == null || projected?.n === dropPick) return undefined;
+    if (dropPick == null || (projected?.n === dropPick && projected?.division === division)) return undefined;
     let alive = true;
     api
-      .driverStandings(undefined, null, dropPick)
-      .then((d) => alive && setProjected({ n: dropPick, data: d }))
+      .driverStandings(undefined, null, dropPick, division)
+      .then((d) => alive && setProjected({ n: dropPick, division, data: d }))
       .catch(() => alive && setDropPick(null));
     return () => { alive = false; };
-  }, [dropPick, projected]);
+  }, [dropPick, projected, division]);
   const races = useApi(useCallback(() => api.races(), []));
   const { current: season, active } = useSeason();
   // The season belongs in the heading, not only in the switcher above it.
@@ -333,7 +350,7 @@ export default function DriverStandings() {
     );
 
   // The table on show: the preview once it has arrived, otherwise the real one.
-  const projecting = dropPick != null && projected?.n === dropPick;
+  const projecting = dropPick != null && projected?.n === dropPick && projected?.division === division;
   const data = projecting ? projected.data : realData;
   const all = data.standings;
   // Archived single-class seasons (S1–S5) have only one tier: hide the tier
@@ -614,6 +631,24 @@ export default function DriverStandings() {
           build (title, leaders, toolbar, rows) instead of riding the general
           page fade on its own clock, which let the rows overtake it. */}
       <div data-tour="standings-views" className="reveal mb-4" data-reveal-after="70">
+        {seasonForDivision?.division2 && (
+          <SlidingTabs
+            items={[
+              { key: 1, label: "Division 1" },
+              { key: 2, label: "Division 2" },
+            ]}
+            value={division}
+            onChange={(d) => {
+              setDivisionPick(d);
+              setDropPick(null);
+            }}
+            wrapClassName="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-surface2 p-1 sm:inline-grid"
+            btnClassName="px-4 py-1.5 text-sm font-semibold"
+            pillClassName="rounded-lg bg-card shadow-sm"
+            activeClassName="text-dark"
+            idleClassName="text-medium hover:text-dark"
+          />
+        )}
         <div className="card rounded-2xl p-2">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
             {multiTier && (
