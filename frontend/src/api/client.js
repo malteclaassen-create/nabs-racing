@@ -645,14 +645,7 @@ export const api = {
       { auth: true }
     ),
   // The next ANNOUNCED upcoming season for the "Coming up" strip (or null).
-  // auth: an admin gets the season's id with it, for the unveil buttons.
-  seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`, { auth: true }),
-  devUnveilCar: () => request(`/seasons/dev-unveil${seriesQ()}`),
-  devUnveil: (state) => request(`/seasons/dev-unveil${seriesQ()}`, { method: "POST", body: { state } }),
-  // Is the season's car still under its cover? Asked every few seconds while
-  // a page shows the cover (components/CarUnveil.jsx).
-  carUnveilState: (series, number) =>
-    request(`/seasons/car-unveil?series=${encodeURIComponent(series || "")}&number=${encodeURIComponent(number)}`),
+  seasonTeaser: () => request(`/seasons/teaser${seriesQ()}`),
   leagueStats: () => request("/settings/league-stats"),
   // Every season this team has raced and where it finished, for the team page's
   // career table and its constructor seals.
@@ -1455,24 +1448,6 @@ export const api = {
   uploadSeasonPreviewLoop: (id, file, onProgress) =>
     adminUploadWithProgress(`/admin/seasons/${id}/preview-loop`, file, onProgress),
   clearSeasonPreviewLoop: (id) => request(`/admin/seasons/${id}/preview-loop`, { method: "DELETE", auth: true }),
-  // The unveil that needs no season: the car, its cover and the film for this series.
-  carEvent: () => request(`/admin/car-unveil${seriesQ()}`, { auth: true }),
-  // The car under its cover: "covered", "unveiled" (now) or "off".
-  setCarUnveil: (id, state) =>
-    request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { state }, auth: true }),
-  // When the cover comes off by itself (ISO), or null for no set time.
-  setCarUnveilAt: (id, at) =>
-    request(`/admin/seasons/${id}/car-unveil`, { method: "PUT", body: { at }, auth: true }),
-  // The film played after the reveal (mp4/webm), with upload progress.
-  uploadSeasonCarVideo: (id, file, onProgress) => adminUploadWithProgress(`/admin/seasons/${id}/car-video`, file, onProgress),
-  clearSeasonCarVideo: (id) => request(`/admin/seasons/${id}/car-video`, { method: "DELETE", auth: true }),
-  // The league's photo of the car under its foil, shown while it is covered.
-  uploadSeasonCarCover: (id, file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    return request(`/admin/seasons/${id}/car-cover`, { method: "POST", body: fd, auth: true, form: true });
-  },
-  clearSeasonCarCover: (id) => request(`/admin/seasons/${id}/car-cover`, { method: "DELETE", auth: true }),
 
   // The round's own main-card photo: what the Home hero wears while this round
   // is the latest one. Cleared = back to the season photo. The public side

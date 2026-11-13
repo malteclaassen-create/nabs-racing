@@ -207,27 +207,14 @@ export async function ensureAppSchema(prisma) {
   // season_car_image). null = the static /cars/s<number>.jpg convention; if
   // that's missing too the panel disappears entirely (no placeholder).
   await addColumn(prisma, "Season", "carImageUrl", "TEXT");
-  // --- The car under a cover until it is unveiled (lib/carUnveil.js):
-  // null = shown as uploaded, "covered", or the ISO time it was unveiled.
+  // --- Left over from the car unveil, which is gone again: nothing reads or
+  // writes these any more. They stay because dropping columns in SQLite means
+  // rebuilding the table, and an empty column costs nothing.
   await addColumn(prisma, "Season", "carUnveil", "TEXT");
-  // When the cover comes off by itself (ISO), and the film played after it.
   await addColumn(prisma, "Season", "carUnveilAt", "TEXT");
   await addColumn(prisma, "Season", "carVideoUrl", "TEXT");
-  // The league's picture of the car under its foil, and when the film was
-  // released to everyone (ISO).
   await addColumn(prisma, "Season", "carCoverUrl", "TEXT");
   await addColumn(prisma, "Season", "carFilmAt", "TEXT");
-  // The same, for an unveil with no season behind it, one row per series.
-  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "CarUnveil" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "seriesId" TEXT NOT NULL,
-    "carImageUrl" TEXT,
-    "carUnveil" TEXT,
-    "carUnveilAt" TEXT,
-    "carVideoUrl" TEXT,
-    "carCoverUrl" TEXT,
-    "carFilmAt" TEXT
-  )`);
 
   // --- Driver rating cards per season (migration season_cards_enabled). The
   // ratings are distilled from race telemetry the early seasons never produced,

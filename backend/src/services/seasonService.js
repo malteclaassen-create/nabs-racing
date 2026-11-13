@@ -10,7 +10,6 @@
 // column (may not be in the generated client), read here with a short cache so
 // it costs about one query per 30s instead of one per request. The admin toggle
 // invalidates it so a publish/hide takes effect on the next request.
-import { publicCar, CAR_COLUMNS, readCarEvent, carEventId } from "../lib/carUnveil.js";
 import { getActiveSeries, resolveSeries, seasonSeriesMap } from "../lib/series.js";
 
 const PRIVATE_CACHE_MS = 30_000;
@@ -147,7 +146,7 @@ export async function getSeasonTeaser(prisma, seriesRow) {
         // panel's picture, so without it here the admin's upload had nowhere to
         // travel and the panel was stuck on the static /cars/s<n>.jpg drop-in.
         // Safe in the same statement as isAnnounced — ensureSchema adds both.
-        `SELECT "id","number","name","game",${CAR_COLUMNS} FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
+        `SELECT "id","number","name","game","carImageUrl" FROM "Season" WHERE "isAnnounced" = 1 ORDER BY "number" ASC`
       )
       .catch(() => []),
   ]);
@@ -170,22 +169,7 @@ export async function getSeasonTeaser(prisma, seriesRow) {
   const teased = rows.find(
     (r) => inSeries(r.id) && (activeNumber == null || Number(r.number) > Number(activeNumber))
   );
-  if (!teased) {
-    // No season announced, but the next car may be: an unveil on its own, named
-    // after the season that will follow the running one.
-    const event = await readCarEvent(prisma, seriesRow.id);
-    if (event?.carUnveil == null) return null;
-    const number = (activeNumber ?? 0) + 1;
-    return {
-      id: carEventId(seriesRow.id),
-      number,
-      name: `Season ${number}`,
-      game: null,
-      isEvent: true,
-      ...publicCar(event),
-      firstRace: null,
-    };
-  }
+  if (!teased) return null;
   const firstRace = await prisma.race.findFirst({
     where: { seasonId: teased.id, isSpecialEvent: false, number: { not: null }, isCompleted: false },
     orderBy: { number: "asc" },
@@ -196,9 +180,7 @@ export async function getSeasonTeaser(prisma, seriesRow) {
     number: Number(teased.number),
     name: teased.name,
     game: teased.game || null,
-    // No picture while the car is under its cover (lib/carUnveil.js): this
-    // also feeds the page's link preview.
-    ...publicCar(teased),
+    carImageUrl: teased.carImageUrl || null,
     firstRace: firstRace ? { track: firstRace.track, date: firstRace.date } : null,
   };
 }
