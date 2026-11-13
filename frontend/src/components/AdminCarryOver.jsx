@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { RotateCcw, ChevronDown, ChevronUp, CheckSquare, ArrowRightLeft, UserX } from "lucide-react";
 import { api } from "../api/client.js";
-import { DriverAvatar, TeamDot, Spinner, Notice } from "./ui.jsx";
+import { DriverAvatar, Spinner, Notice } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 
 // ---------------------------------------------------------------------------
 // "Who drives in the new season?" Step 2 of the season wizard.
@@ -167,7 +168,7 @@ export default function AdminCarryOver({ target, source, run, busy }) {
           return (
             <section key={t.id} className="rounded-xl border border-border bg-surface/40">
               <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-2">
-                <TeamDot color={t.color || "#64748b"} />
+                <TeamLogo id={t.id} name={t.name} color={t.color || "#64748b"} logoUrl={t.logoUrl} size={24} />
                 <span className="min-w-0 truncate font-semibold text-dark">{t.name}</span>
                 <span className="text-xs text-light">
                   {gone ? `${teamLabel(t.tier)}, not in ${target.name}` : teamLabel(t.tier)}

@@ -67,7 +67,7 @@ export function buildCarryOverList({ teams, drivers, starts, divisions, present 
   const takenNames = new Set(present.map((d) => norm(d.name)));
   const takenPersons = new Set(present.map((d) => byDriver.get(d.id)).filter(Boolean));
   const groups = new Map(
-    teams.map((t) => [t.id, { id: t.id, name: t.name, tier: t.tier, color: t.color, people: [] }])
+    teams.map((t) => [t.id, { id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl || null, people: [] }])
   );
   for (const d of drivers) {
     const team = groups.get(d.teamId);
@@ -197,7 +197,7 @@ export async function readCarryOver(prisma, { fromSeasonId, target }) {
   const matched = matchTeams(teams, targetTeams, `_s${target?.number ?? ""}`);
   for (const t of list) t.targetTeamId = matched.get(t.id)?.id || null;
   const shown = targetTeams
-    .map((t) => ({ id: t.id, name: t.name, tier: t.tier, color: t.color }))
+    .map((t) => ({ id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl || null }))
     .sort((a, b) => teamRank(a.tier) - teamRank(b.tier) || a.name.localeCompare(b.name));
   return { teams: list, targetTeams: shown, division2 };
 }

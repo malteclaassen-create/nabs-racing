@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { CheckSquare, Layers, Plus, X } from "lucide-react";
 import { api } from "../api/client.js";
-import { TeamDot, Spinner, Notice, CheckField } from "./ui.jsx";
+import { Spinner, Notice, CheckField } from "./ui.jsx";
+import TeamLogo from "./TeamLogo.jsx";
 
 // ---------------------------------------------------------------------------
 // "Which teams race?" Step 2 of the season wizard, before the drivers.
@@ -132,7 +133,7 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
                     checked={k.on}
                     onChange={(e) => setKeep((cur) => ({ ...cur, [t.id]: { ...k, on: e.target.checked } }))}
                   />
-                  <TeamDot color={t.color || "#64748b"} />
+                  <TeamLogo id={t.id} name={t.name} color={t.color || "#64748b"} logoUrl={t.logoUrl} size={28} />
                   <span className="min-w-0">
                     <span className={`block truncate text-sm font-semibold ${k.on ? "text-dark" : "text-light"}`}>{t.name}</span>
                     <span className="block text-xs text-light">
@@ -163,7 +164,7 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
           <ul className="divide-y divide-border">
             {added.map((n) => (
               <li key={n.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-                <TeamDot color={n.color} />
+                <TeamLogo name={n.name} color={n.color} size={28} />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{n.name}</span>
                 <div className="w-full sm:w-auto">
                   {tierSelect(
