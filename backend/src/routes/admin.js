@@ -111,6 +111,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
+import { readCarryOver, commitCarryOver, parsePicks } from "../lib/seasonCarryOver.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
 import {
   newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
@@ -6134,6 +6135,43 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
       driversCreated++;
     }
     res.json({ ok: true, teamsCreated, driversCreated });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/admin/seasons/:id/carry-over?from=<seasonId>
+// The wizard's "who comes back?" list: the source season's people per team,
+// with seat, starts and a default tick (lib/seasonCarryOver.js).
+router.get("/seasons/:id/carry-over", async (req, res, next) => {
+  try {
+    const fromSeasonId = String(req.query.from || "");
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (!fromSeasonId) return res.status(400).json({ error: "from required" });
+    if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
+    const source = await prisma.season.findUnique({ where: { id: fromSeasonId } });
+    if (!source) return res.status(404).json({ error: "Source season not found" });
+    res.json(await readCarryOver(prisma, { fromSeasonId, targetSeasonId: target.id }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/carry-over  { fromSeasonId, picks: [{ driverId, to: "team" | "reserve" }] }
+// Copies the teams as clone-roster does, then only the picked people, each
+// person-linked to the row they came from. Safe to re-run.
+router.post("/seasons/:id/carry-over", async (req, res, next) => {
+  try {
+    const { fromSeasonId } = req.body || {};
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (!fromSeasonId) return res.status(400).json({ error: "fromSeasonId required" });
+    if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
+    const teamCount = await prisma.team.count({ where: { seasonId: fromSeasonId } });
+    if (!teamCount) return res.status(400).json({ error: "Source season has no teams" });
+    const picks = parsePicks(req.body?.picks);
+    res.json({ ok: true, ...(await commitCarryOver(prisma, { target, fromSeasonId, picks })) });
   } catch (e) {
     next(e);
   }

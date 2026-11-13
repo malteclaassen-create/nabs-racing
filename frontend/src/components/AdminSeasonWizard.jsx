@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
+import AdminCarryOver from "./AdminCarryOver.jsx";
 
 // ---------------------------------------------------------------------------
 // "Prepare a new season", as four steps in one card (Seasons tab).
@@ -276,33 +277,19 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   : "Bring the field over"
             }
           >
-            {!hasTeams && source ? (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn-primary py-1.5 text-sm"
-                  disabled={busy}
-                  onClick={() =>
-                    run(
-                      () => api.cloneRoster(target.id, source.id),
-                      (r) =>
-                        `Copied ${r.teamsCreated} team(s) and ${r.driversCreated} driver(s) from ${source.name}, each linked to their earlier seasons.`
-                    )
-                  }
-                >
-                  Teams and drivers from {source.name}
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary py-1.5 text-sm"
-                  disabled={busy}
-                  onClick={() =>
-                    run(() => api.cloneTeams(target.id, source.id), (r) => `Copied ${r.created} team(s) from ${source.name}.`)
-                  }
-                >
-                  Teams only
-                </button>
-              </div>
+            {!hasField && source ? (
+              <>
+                <AdminCarryOver target={target} source={source} run={run} busy={busy} showTeamsOnly={!hasTeams} />
+                {hasTeams && (
+                  <button
+                    type="button"
+                    className="btn-secondary py-1.5 text-xs"
+                    onClick={() => gotoInSeason("drivers", target.number)}
+                  >
+                    Add drivers by hand
+                  </button>
+                )}
+              </>
             ) : !hasTeams ? (
               <button
                 type="button"
@@ -313,21 +300,6 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               </button>
             ) : !hasField ? (
               <div className="flex flex-wrap gap-2">
-                {source && (
-                  <button
-                    type="button"
-                    className="btn-primary py-1.5 text-sm"
-                    disabled={busy}
-                    onClick={() =>
-                      run(
-                        () => api.cloneDrivers(target.id, source.id),
-                        (r) => `Copied ${r.created} driver(s) from ${source.name} into the teams of the same name.`
-                      )
-                    }
-                  >
-                    Drivers from {source.name}
-                  </button>
-                )}
                 <button
                   type="button"
                   className="btn-secondary py-1.5 text-sm"

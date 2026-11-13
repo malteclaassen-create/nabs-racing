@@ -1425,6 +1425,12 @@ export const api = {
     request(`/admin/seasons/${id}/clone-teams`, { method: "POST", body: { fromSeasonId }, auth: true }),
   cloneRoster: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/clone-roster`, { method: "POST", body: { fromSeasonId }, auth: true }),
+  // The wizard's "who comes back?" list, and copying only the ticked people
+  // (picks: [{ driverId, to: "team" | "reserve" }]). Teams come along as a whole.
+  carryOverPreview: (id, fromSeasonId) =>
+    request(`/admin/seasons/${id}/carry-over?from=${encodeURIComponent(fromSeasonId)}`, { auth: true }),
+  carryOver: (id, fromSeasonId, picks) =>
+    request(`/admin/seasons/${id}/carry-over`, { method: "POST", body: { fromSeasonId, picks }, auth: true }),
   // Drivers into the teams THIS season already has, without touching the teams.
   // onlyActive: leave out whoever no longer races in the source season.
   cloneDrivers: (id, fromSeasonId, toReservePool = false, { onlyActive = false } = {}) =>
