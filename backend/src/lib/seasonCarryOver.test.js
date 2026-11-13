@@ -119,11 +119,19 @@ describe("pickedByDefault", () => {
 });
 
 describe("parsePicks", () => {
-  it("keeps driver ids and the two places, nothing else", () => {
-    const picks = parsePicks([{ driverId: "a" }, { driverId: "b", to: "reserve" }, { driverId: 3 }, null, { to: "team" }]);
+  it("keeps driver ids, the place and a team, nothing else", () => {
+    const picks = parsePicks([
+      { driverId: "a" },
+      { driverId: "b", to: "reserve", teamId: "x" },
+      { driverId: "c", to: "team", teamId: "ferrari_s8" },
+      { driverId: 3 },
+      null,
+      { to: "team" },
+    ]);
     expect([...picks]).toEqual([
-      ["a", "team"],
-      ["b", "reserve"],
+      ["a", { to: "team", teamId: null }],
+      ["b", { to: "reserve", teamId: null }],
+      ["c", { to: "team", teamId: "ferrari_s8" }],
     ]);
     expect(parsePicks("nope").size).toBe(0);
   });
@@ -233,6 +241,21 @@ describe("commitCarryOver", () => {
     const rookie = prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Rookie");
     expect(rookie).toMatchObject({ tier: 0, teamId: "reserve_s8_s9" });
     expect(prisma.state.division.get(rookie.id)).toBe(2);
+  });
+
+  it("moves a driver to another team, and gives a reserve a seat", async () => {
+    const prisma = season8();
+    const picks = parsePicks([
+      { driverId: "malte_s8", to: "team", teamId: "minardi_s8" },
+      { driverId: "sub_s8", to: "team", teamId: "ferrari_s8" },
+      { driverId: "rookie_s8", to: "team", teamId: "somewhere_else" },
+    ]);
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks });
+    const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
+    expect(by.Malte).toMatchObject({ teamId: "minardi_s8_s9", tier: 2 });
+    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
+    // A team id that is not in the source season: their own team, not the pool.
+    expect(by.Rookie).toMatchObject({ teamId: "redbull2_s8_s9", tier: 3 });
   });
 
   it("is safe to run twice and leaves people already there alone", async () => {

@@ -164,14 +164,19 @@ export async function readCarryOver(prisma, { fromSeasonId, targetSeasonId }) {
   return { teams: buildCarryOverList({ teams, drivers, starts, divisions, present, persons }) };
 }
 
-// Turn the request body's picks into a clean Map driverId -> "team" | "reserve".
+// Turn the request body's picks into a clean Map driverId -> { to, teamId }.
+// to "reserve" = the Reserve pool; to "team" = a team, `teamId` naming which
+// one of the SOURCE season's teams (its copy here is used), or none for the
+// driver's own team. That is how a driver changes team, or a reserve gets a
+// seat, in the same step.
 export function parsePicks(raw) {
   const out = new Map();
   if (!Array.isArray(raw)) return out;
   for (const p of raw) {
     const id = typeof p?.driverId === "string" ? p.driverId : null;
     if (!id) continue;
-    out.set(id, p.to === "reserve" ? "reserve" : "team");
+    const teamId = p.to !== "reserve" && typeof p.teamId === "string" && p.teamId ? p.teamId : null;
+    out.set(id, { to: p.to === "reserve" ? "reserve" : "team", teamId });
   }
   return out;
 }
@@ -244,15 +249,19 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
     }
     const fromTeam = sourceTeamById.get(d.teamId);
     const wasDiv2 = fromTeam?.tier === DIV2_TIER || (fromTeam?.tier === 0 && divisions.get(d.id) === 2);
+    const pick = picks.get(d.id);
+    // An unknown team id falls back to the driver's own team, never the pool.
+    const wantTeam =
+      pick.to === "reserve" ? null : sourceTeamById.get(pick.teamId) || sourceTeamById.get(d.teamId) || null;
     let team;
-    if (picks.get(d.id) === "reserve" || fromTeam?.tier === 0) {
+    if (!wantTeam || wantTeam.tier === 0) {
       pool = pool || (await ensureReservePool(prisma, target.id));
       team = pool;
     } else {
-      team = teamMap.get(d.teamId) || null;
+      team = teamMap.get(wantTeam.id) || null;
     }
     if (!team) {
-      skipped.push({ name: d.name, reason: `no team called "${fromTeam?.name || "?"}" in this season` });
+      skipped.push({ name: d.name, reason: `no team called "${wantTeam?.name || "?"}" in this season` });
       continue;
     }
 
