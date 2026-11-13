@@ -130,6 +130,25 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
     }, `${form.name.trim()} created. It stays private until the last step.`);
   }
 
+  // A season newer than the active one that is not live yet, made by hand in
+  // the Seasons list or by the guide in another browser. The guide picks that
+  // one up instead of asking for a second season with the same number (which
+  // the server refuses anyway).
+  const waiting = active
+    ? list
+        .filter((s) => !s.isActive && (s.number || 0) > (active.number || 0))
+        .sort((a, b) => (b.number || 0) - (a.number || 0))[0] || null
+    : null;
+
+  function carryOn(s) {
+    const next = { id: s.id, fromId: active?.id || null };
+    writeWizard(next);
+    setWizard(next);
+    setOpen(true);
+    setMsg(null);
+    setError(null);
+  }
+
   function stop() {
     writeWizard(null);
     setWizard(null);
@@ -165,8 +184,12 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
     <div className="card p-5">
       <CardHead eyebrow="Guided" title="Prepare a new season">
         {!open ? (
-          <button type="button" className="btn-secondary py-1.5 text-sm" onClick={() => setOpen(true)}>
-            Start
+          <button
+            type="button"
+            className="btn-secondary py-1.5 text-sm"
+            onClick={() => (waiting ? carryOn(waiting) : setOpen(true))}
+          >
+            {waiting ? `Carry on with ${waiting.name}` : "Start"}
           </button>
         ) : wizard ? (
           <button type="button" className="btn-secondary py-1.5 text-xs" onClick={stop} disabled={busy}>
@@ -180,8 +203,21 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
       </CardHead>
       {!open && (
         <p className="text-sm text-light">
-          Create the season, bring the field over, put the calendar in and switch over, in that order.
+          {waiting
+            ? `${waiting.name} is already created and not live yet. Carry on from there: bring the field over, put the calendar in and switch over.`
+            : "Create the season, bring the field over, put the calendar in and switch over, in that order."}
         </p>
+      )}
+
+      {open && !wizard && waiting && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface/40 p-3">
+          <p className="min-w-[12rem] flex-1 text-sm text-medium">
+            {waiting.name} is already there and not live yet. Carry on with it instead of creating another season.
+          </p>
+          <button type="button" className="btn-primary py-1.5 text-sm" onClick={() => carryOn(waiting)}>
+            Carry on with {waiting.name}
+          </button>
+        </div>
       )}
 
       {open && !wizard && (
