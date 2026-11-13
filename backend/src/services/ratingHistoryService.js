@@ -18,6 +18,7 @@ import { getDriverRatings } from "./driverRatingsService.js";
 import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { getLinkedDriverIds } from "../lib/persons.js";
 import { withSprintClassifications } from "../lib/sprintRaces.js";
+import { readDivisionChildren } from "../lib/divisions.js";
 
 const CACHE_MS = 5 * 60 * 1000;
 // Both caches hold the in-flight PROMISE, not the finished value, so that
@@ -215,7 +216,12 @@ async function computeDriverRatingHistory(prisma, driverId) {
 
   // This driver's own result rows plus per-race contacts (raw-SQL column).
   // Both halves of a sprint weekend, so the facts below can be built for each.
-  const raceIds = [...races.map((r) => r.id), ...sprintOfRound.values()];
+  // Division 2 races its rounds on the second server: a driver of that field
+  // has their facts on the round's Division 2 row, which stands in for the
+  // round below.
+  const div2OfRound = await readDivisionChildren(prisma, races.map((r) => r.id)); // round -> child
+
+  const raceIds = [...races.map((r) => r.id), ...sprintOfRound.values(), ...div2OfRound.values()];
   const myResults = raceIds.length
     ? await prisma.raceResult.findMany({ where: { driverId, raceId: { in: raceIds } } })
     : [];
@@ -242,6 +248,13 @@ async function computeDriverRatingHistory(prisma, driverId) {
   for (const r of fieldLaps) {
     const cur = fastestByRace.get(r.raceId);
     if (cur == null || r.bestLapMs < cur) fastestByRace.set(r.raceId, r.bestLapMs);
+  }
+  // Same car, same track, same night: a Division 2 lap is held against the
+  // fastest lap of both fields, as the rating itself does.
+  for (const [round, child] of div2OfRound) {
+    const a = fastestByRace.get(round);
+    const b = fastestByRace.get(child);
+    if (a != null && (b == null || a < b)) fastestByRace.set(child, a);
   }
 
   // What this driver did in ONE classification, in the shape the page reads.
@@ -292,6 +305,8 @@ async function computeDriverRatingHistory(prisma, driverId) {
 
     const sprintId = sprintOfRound.get(race.id) || null;
     const sprint = sprintId ? factsFor(sprintId) : null;
+    const div2Id = div2OfRound.get(race.id) || null;
+    const inDiv2 = !!div2Id && resultByRace.has(div2Id) && !resultByRace.has(race.id);
 
     points.push({
       raceId: race.id,
@@ -308,10 +323,12 @@ async function computeDriverRatingHistory(prisma, driverId) {
       // round, with the sprint (when the weekend ran one they drove) hanging
       // off it in the same shape. `raced` stays the FEATURE's, because that is
       // what "sat out" means on a race night.
-      race: {
-        ...factsFor(race.id),
-        sprint: sprint?.raced ? sprint : null,
-      },
+      race: inDiv2
+        ? { ...factsFor(div2Id), division: 2, sprint: null }
+        : {
+            ...factsFor(race.id),
+            sprint: sprint?.raced ? sprint : null,
+          },
     });
   }
 

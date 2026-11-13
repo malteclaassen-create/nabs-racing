@@ -222,3 +222,29 @@ export async function ensureDivisionChild(prisma, parent) {
   }
   return prisma.race.findUnique({ where: { id: child.id } });
 }
+
+// The Division 2 classifications of the given rounds, for the readers that
+// rate them beside the rounds (driverRatingsService, careerRatingService).
+// Completed children only, each wearing its round's number (so an "as of
+// round N" cut keeps it with its evening) and `div2Of` = the round's id.
+// Returns { races, div2Ids, parentOf } with only the Division 2 rows in
+// `races`; the caller adds them to its own list.
+export async function withDivisionClassifications(prisma, rounds) {
+  const list = (rounds || []).filter((r) => r?.id && !r.sprintOf);
+  const empty = { races: [], div2Ids: new Set(), parentOf: new Map() };
+  const childOf = await readDivisionChildren(prisma, list.map((r) => r.id)); // round -> child
+  if (!childOf.size) return empty;
+  const parentOf = new Map([...childOf].map(([round, child]) => [child, round]));
+  const children = await prisma.race.findMany({ where: { id: { in: [...parentOf.keys()] } } }).catch(() => []);
+  const byId = new Map(list.map((r) => [r.id, r]));
+  const races = [];
+  const div2Ids = new Set();
+  for (const child of children) {
+    if (!child.isCompleted) continue;
+    const round = byId.get(parentOf.get(child.id));
+    if (!round) continue;
+    div2Ids.add(child.id);
+    races.push({ ...child, number: round.number, div2Of: round.id });
+  }
+  return { races, div2Ids, parentOf };
+}

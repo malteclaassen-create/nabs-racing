@@ -23,6 +23,17 @@
 // pulled toward the field average ("shrinkage") so a single lucky/unlucky race
 // can't rocket them to 90 or sink them to 60; they are flagged `provisional`.
 //
+// DIVISION 2 (newcomers on the second server, same evening, same car) feeds
+// the rating too, so its drivers get a card that moves, but its results are
+// worth less than the same result in Division 1 (`division2.weight`, half by
+// default): a Division 2 finishing position, places gained and podiums are
+// pulled toward the back by that share, and a Division 2 title pays that share
+// of a Division 1 title in EXP. Pace is measured honestly instead: same car,
+// same track, same night, so the best lap is held against the fastest lap of
+// the whole evening, both divisions. Clean driving counts in full. The
+// regulars who set the scale are Division 1's only, so adding Division 2
+// moves no Division 1 rating.
+//
 // Pure read service in the style of standingsService / driverProfileService:
 // no DB writes, recomputes on every call, so it always reflects the latest
 // imported results.
@@ -31,6 +42,7 @@ import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { readRatingWeights } from "../lib/ratingWeights.js";
 import { getCareerInputs } from "./careerRatingService.js";
 import { withSprintClassifications } from "../lib/sprintRaces.js";
+import { withDivisionClassifications, activeDivision2Drivers } from "../lib/divisions.js";
 
 // --- tunables (kept together so the curve is easy to adjust) ----------------
 const BAND_LOW = 58; // worst-in-field maps here
@@ -62,6 +74,10 @@ const AHA_WEIGHTS = { finishRate: 0.25, dnf: 0.15, consistency: 0.25, contacts: 
 // The career window both EXP and PAC look at: the last N finished seasons of
 // the rated season's series, with recency weights (percent, newest first).
 const WINDOW_DEFAULTS = { seasons: 7, recency: [25, 20, 20, 15, 10, 5, 5] };
+
+// What a Division 2 result is worth next to the same result in Division 1,
+// in percent (see the header).
+const DIVISION2_DEFAULTS = { weight: 50 };
 
 // The EXP formula (admin's sheet). All percent values; weight groups are
 // normalised at read time, so partial edits stay safe.
@@ -129,6 +145,7 @@ export const RATING_DEFAULTS = {
     },
     progression: EXP_DEFAULTS.progression,
   },
+  division2: { ...DIVISION2_DEFAULTS },
   rtg: { ...RTG_WEIGHTS },
   pac: { ...PAC_WEIGHTS },
   rac: { ...RAC_WEIGHTS },
@@ -220,6 +237,10 @@ export function resolveConfig(opts = {}) {
     },
     window: { seasons: windowSeasons, recency },
     exp,
+    // Division 2's share as 0..1.
+    division2: {
+      weight: Math.max(0, Math.min(100, numOrNull(opts.division2?.weight) ?? DIVISION2_DEFAULTS.weight)) / 100,
+    },
     rtg: normalizeGroup(opts.rtg, RTG_WEIGHTS),
     pac: normalizeGroup(opts.pac, PAC_WEIGHTS),
     rac: normalizeGroup(opts.rac, RAC_WEIGHTS),
@@ -304,7 +325,12 @@ function clampRating(pct, band) {
 // drag an average grid somewhere meaningless. That is the site's standing rule
 // (lib/standingsRow.js, driverProfileService), and PAC's "grid slots" is
 // exactly the average it warns about.
-function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
+//
+// `div2` = { ids, weight }: the Division 2 classifications and what they are
+// worth. Their grid is left out like a sprint's (a slot in the second field
+// says nothing next to a slot in the first); finishing position, places gained
+// and podiums count at `weight`; the rest counts in full.
+function rawMetrics(driver, results, raceMeta, sprintIds = new Set(), div2 = { ids: new Set(), weight: 1 }) {
   // "started" = took part (anything that isn't an explicit DNS).
   const started = results.filter((r) => r.status !== "DNS");
   const finishes = started.filter((r) => r.status === "FINISHED" && r.position != null);
@@ -312,6 +338,9 @@ function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
 
   const starts = started.length;
   const podiums = finishes.filter((r) => r.position <= 3).length;
+  const isDiv2 = (r) => div2.ids.has(r.raceId);
+  // What the podium rate reads: a Division 2 podium is worth its share.
+  const podiumScore = finishes.filter((r) => r.position <= 3).reduce((a, r) => a + (isDiv2(r) ? div2.weight : 1), 0);
 
   // AWARENESS — seconds of time penalty the stewards handed out, summed over
   // the season. Unlike the in-game telemetry feed this exists for every round
@@ -326,7 +355,7 @@ function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
     const m = raceMeta.get(r.raceId);
     if (!m) continue;
     if (r.bestLapMs != null && m.fastestLap) lapGaps.push(r.bestLapMs / m.fastestLap - 1);
-    if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId)) {
+    if (r.grid != null && m.gridSize > 1 && !sprintIds.has(r.raceId) && !isDiv2(r)) {
       gridNorms.push((r.grid - 1) / (m.gridSize - 1));
     }
   }
@@ -344,8 +373,13 @@ function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
   const gained = [];
   for (const r of finishes) {
     const m = raceMeta.get(r.raceId);
-    if (m && m.fieldSize > 1) finishNorms.push((r.position - 1) / (m.fieldSize - 1));
-    if (r.grid != null) gained.push(r.grid - r.position);
+    if (m && m.fieldSize > 1) {
+      const norm = (r.position - 1) / (m.fieldSize - 1);
+      // Division 2: a win is pulled back toward the field by its share, so at
+      // half it reads like the middle of a Division 1 field.
+      finishNorms.push(isDiv2(r) ? 1 - div2.weight * (1 - norm) : norm);
+    }
+    if (r.grid != null) gained.push((r.grid - r.position) * (isDiv2(r) ? div2.weight : 1));
   }
 
   return {
@@ -365,7 +399,7 @@ function rawMetrics(driver, results, raceMeta, sprintIds = new Set()) {
     nGained: gained.length,
     finishRate: starts ? finishes.length / starts : null,
     dnfRate: starts ? dnfs.length / starts : null,
-    podiumRate: starts ? podiums / starts : null,
+    podiumRate: starts ? podiumScore / starts : null,
     stewardRate: starts ? stewardSeconds / starts : null,
     // consistency = spread of finishing positions (needs >= 2 finishes)
     finishSpread: finishNorms.length >= 2 ? stddev(finishNorms) : null,
@@ -404,6 +438,12 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // them, because ONE signal must not read them: see rawMetrics' grid.
   let sprintIds = new Set();
   ({ races, sprintIds } = await withSprintClassifications(prisma, races));
+  // Division 2's race of each round joins the same way, under its round's
+  // number (see the header for what it is worth).
+  const division2 = await withDivisionClassifications(prisma, races);
+  races = [...races, ...division2.races];
+  const div2 = { ids: division2.div2Ids, weight: cfg.division2.weight };
+  const div2Drivers = division2.div2Ids.size ? await activeDivision2Drivers(prisma, seasonId) : new Set();
 
   // "As of round N": the rating-history service replays the season round by
   // round by cutting the race list here. Everything downstream (results,
@@ -496,6 +536,15 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       gridSize: rs.filter((r) => r.grid != null).length,
     });
   }
+  // Division 2 drives the same car on the same track that evening: its best
+  // laps are measured against the fastest lap of BOTH fields. Division 1's
+  // own reference stays its own, so nothing there moves.
+  for (const race of races) {
+    if (!race.div2Of) continue;
+    const own = raceMeta.get(race.id);
+    const first = raceMeta.get(race.div2Of)?.fastestLap;
+    if (own && first && (own.fastestLap == null || first < own.fastestLap)) own.fastestLap = first;
+  }
 
   const resultsByDriver = new Map();
   for (const r of liveResults) {
@@ -505,7 +554,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
 
   // Raw metrics for everyone who has at least one outing this season.
   const raw = drivers
-    .map((d) => ({ driver: d, m: rawMetrics(d, resultsByDriver.get(d.id) || [], raceMeta, sprintIds) }))
+    .map((d) => ({ driver: d, m: rawMetrics(d, resultsByDriver.get(d.id) || [], raceMeta, sprintIds, div2) }))
     .filter((x) => x.m.starts >= 1);
 
   // Attach per-start telemetry rates (null when this driver has no backfilled
@@ -540,9 +589,12 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
   // The reference field = the regulars (>= MIN_STARTS_REF). Their distribution
   // sets both the shrinkage mean and the percentile scale that EVERYONE — even a
   // one-race reserve — is then measured against.
-  const ref = raw.filter((x) => x.m.starts >= MIN_STARTS_REF).map((x) => x.m);
+  // Division 1's regulars only: Division 2 is measured on their scale, and
+  // never moves it.
+  const firstField = raw.filter((x) => !div2Drivers.has(x.driver.id));
+  const ref = firstField.filter((x) => x.m.starts >= MIN_STARTS_REF).map((x) => x.m);
   // Fallback for a brand-new season with too few regulars: use the whole field.
-  const refField = ref.length >= 3 ? ref : raw.map((x) => x.m);
+  const refField = ref.length >= 3 ? ref : (firstField.length ? firstField : raw).map((x) => x.m);
 
   const refMean = {
     lapGap: mean(refField.map((m) => m.careerLapGap).filter((x) => x != null)),
@@ -667,6 +719,7 @@ export async function getDriverRatings(prisma, seasonId, opts = {}) {
       driverId: driver.id,
       name: driver.name,
       tier: driver.tier,
+      division: div2Drivers.has(driver.id) ? 2 : 1,
       team: { id: driver.team.id, name: driver.team.name, color: driver.team.color, tier: driver.team.tier },
       starts: m.starts,
       finishes: m.finishes,

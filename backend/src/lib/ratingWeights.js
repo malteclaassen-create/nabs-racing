@@ -83,6 +83,10 @@ export function sanitizeRatingWeights(input) {
   if (Object.keys(constructors).length) exp.constructors = constructors;
   if (Object.keys(exp).length) out.exp = exp;
 
+  // What a Division 2 result is worth next to Division 1, in percent.
+  const div2Weight = clampNum(input.division2?.weight, 0, 100);
+  if (div2Weight != null) out.division2 = { weight: div2Weight };
+
   const rtg = sanitizeGroup(input.rtg, ["rac", "pac", "aha", "exp"]);
   const pac = sanitizeGroup(input.pac, ["quali", "bestLap", "consistency", "poleGap"]);
   const rac = sanitizeGroup(input.rac, ["finish", "gained", "overtakes", "podium"]);

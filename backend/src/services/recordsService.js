@@ -9,7 +9,13 @@
 // (anything telemetry grows) are one entry in the arrays below, not a new page
 // layout.
 // ---------------------------------------------------------------------------
-import { getDriverStandings, getT1ConstructorStandings, getT2ConstructorStandings } from "./standingsService.js";
+import {
+  getDriverStandings,
+  getT1ConstructorStandings,
+  getT2ConstructorStandings,
+  getDiv2ConstructorStandings,
+} from "./standingsService.js";
+import { seasonHasDivision2 } from "../lib/divisions.js";
 import { getPersonGroups } from "../lib/persons.js";
 import { readManualFastestLaps, readPoleHolders } from "../lib/raceHonours.js";
 import { resolveSeries, getActiveSeries } from "../lib/series.js";
@@ -176,13 +182,19 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
   // --- per-season standings (official totals, drops, penalties applied) -----
   const perSeason = [];
   for (const season of seasons) {
-    const [standings, races, t1, t2] = await Promise.all([
+    // Division 2 (lib/divisions.js) keeps tables of its own: they feed the
+    // Division 2 column of the champions and its own top list, never the
+    // all-time numbers above, which stay the main field's.
+    const hasDiv2 = await seasonHasDivision2(prisma, season.id);
+    const [standings, races, t1, t2, div2, d2] = await Promise.all([
       getDriverStandings(prisma, season.id),
       prisma.race.findMany({ where: { seasonId: season.id, isSpecialEvent: false }, orderBy: { number: "asc" } }),
       getT1ConstructorStandings(prisma, season.id),
       getT2ConstructorStandings(prisma, season.id),
+      hasDiv2 ? getDriverStandings(prisma, season.id, { division: 2 }) : null,
+      hasDiv2 ? getDiv2ConstructorStandings(prisma, season.id) : null,
     ]);
-    perSeason.push({ season, standings, races, t1, t2 });
+    perSeason.push({ season, standings, races, t1, t2, div2, d2 });
   }
 
   // --- career aggregation, one bucket per PERSON -----------------------------
@@ -334,10 +346,32 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     }
   }
 
+  // --- Division 2 wins, a list of its own ------------------------------------
+  // A driver who only ever raced Division 2 still needs a face on that list,
+  // so their bucket is made here, without touching the main field's numbers.
+  for (const { season, div2 } of perSeason) {
+    for (const row of div2?.standings || []) {
+      const finished = finishesOf(Object.values(row.perRace || {}));
+      const b = bucketFor(personOf(row.driverId));
+      b.div2Wins = (b.div2Wins || 0) + finished.filter((r) => r.position === 1).length;
+      b.div2Podiums = (b.div2Podiums || 0) + finished.filter((r) => r.position <= 3).length;
+      if (!b.identity || season.number > b.newestSeason) {
+        b.newestSeason = Math.max(b.newestSeason, season.number);
+        b.identity = {
+          driverId: row.driverId,
+          name: row.name,
+          country: row.country || null,
+          photoUrl: row.photoUrl || null,
+          team: row.team ? { id: row.team.id, name: row.team.name, color: row.team.color, logoUrl: row.team.logoUrl } : null,
+        };
+      }
+    }
+  }
+
   // --- champions timeline (completed seasons only) ---------------------------
   const activeNumber = Math.max(...seasons.filter((s) => s.isActive).map((s) => s.number), -1);
   const champions = [];
-  for (const { season, standings, races, t1, t2 } of perSeason) {
+  for (const { season, standings, races, t1, t2, div2, d2 } of perSeason) {
     const concluded =
       (activeNumber >= 0 && season.number < activeNumber) || seasonCompleteFromRaces(races);
     if (!concluded) continue;
@@ -348,6 +382,21 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
       const t = data?.standings?.[0];
       if (t && (t.total ?? 0) > 0) teams.push({ tier, name: t.name, color: t.color, logoUrl: t.logoUrl, teamId: t.teamId, points: t.total });
     }
+    // Division 2's champions of that season, its driver and its team, shown
+    // in a column of their own.
+    const top2 = (div2?.standings || [])[0];
+    const team2 = d2?.standings?.[0];
+    const division2 =
+      top2 && top2.total > 0
+        ? {
+            driver: pickPerson({ driverId: top2.driverId, name: top2.name, country: top2.country, photoUrl: top2.photoUrl, team: top2.team }),
+            points: top2.total,
+            team:
+              team2 && (team2.total ?? 0) > 0
+                ? { name: team2.name, color: team2.color, logoUrl: team2.logoUrl, teamId: team2.teamId, points: team2.total }
+                : null,
+          }
+        : null;
     champions.push({
       seasonNumber: season.number,
       seasonName: season.name,
@@ -355,6 +404,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
       driver: pickPerson({ driverId: top.driverId, name: top.name, country: top.country, photoUrl: top.photoUrl, team: top.team }),
       points: top.total,
       teams,
+      division2,
     });
   }
   champions.sort((a, b) => b.seasonNumber - a.seasonNumber);
@@ -461,6 +511,7 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
     topList("overtakes", "Most overtakes", "on-track passes (telemetry seasons)", (b, id) => overtakes.get(id) || 0, { unit: "passes" }),
     topList("lapsLed", "Most laps led", "laps out front (telemetry seasons)", (b, id) => lapsLed.get(id) || 0, { unit: "laps" }),
     topList("contacts", "Most contacts", "car-to-car contacts (telemetry seasons)", (b, id) => contacts.get(id) || 0, { unit: "hits" }),
+    topList("div2Wins", "Most Division 2 wins", "races won in Division 2", (b) => b.div2Wins || 0, { unit: "wins" }),
   ].filter(Boolean);
 
   // Constructors' titles, both tiers, off the champions timeline below the
