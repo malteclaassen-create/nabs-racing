@@ -321,8 +321,9 @@ export async function raceDetailPayload(prisma, race) {
       sprintRaceId,
       sprintOf,
       // Division 2: the round's second-field race, or (on that row) its round,
-      // plus the round number it scores under. Its file is not in the lap
-      // chart archive, so it has no lap chart.
+      // plus the round number it scores under. Its file sits in the season's
+      // division2/ folder under that number, which is where the lap chart
+      // looks for it.
       division2RaceId,
       division2Of,
       division: division2Of ? 2 : 1,
@@ -335,7 +336,7 @@ export async function raceDetailPayload(prisma, race) {
       // lap-by-lap view to switch the classification over to. A directory
       // listing, not a parse (lib/cockpitArchive.js) — the chart itself is
       // fetched only if somebody asks for it.
-      hasLapChart: !division2Of && hasArchiveFor(race.season, filedNumber, { sprint: !!sprintOf }),
+      hasLapChart: hasArchiveFor(race.season, filedNumber, { sprint: !!sprintOf, division: division2Of ? 2 : 1 }),
       // Championship round, training session or special event. The list
       // endpoint has always sent this; the detail one did not, so the results
       // table had no way to tell them apart and showed a points column for

@@ -232,7 +232,7 @@ export function archiveCommitted(
     // Division 2's file goes into a folder of its own inside the season's
     // (lib/divisions.js). Beside the round's own file it would read as a second
     // file of the same race, and the stale-file sweep below would delete one
-    // of the two. Nothing reads that folder yet; it keeps the file for later.
+    // of the two. The lap chart reads it from there (lib/cockpitArchive.js).
     const dir = division === 2 ? join(seasonDir(season || seasonNumber), "division2") : seasonDir(season || seasonNumber);
     ensureDir(dir);
     const name = roundFileName(raceNumber, track, sprint);

@@ -717,7 +717,7 @@ export default function Races() {
   // sprint's hidden race row. The endpoint answers for either — a sprint is
   // archived under the event's number with a "-sprint" suffix and the server
   // reads it back the same way — so the sprint has the same view as the race.
-  const lapsRaceId = shownSession === "sprint" ? sprintRaceId : selectedId;
+  const lapsRaceId = shownSession === "sprint" ? sprintRaceId : shownSession === "div2" ? div2RaceId : selectedId;
   const [laps, setLaps] = useState({ raceId: null, data: null, loading: false, error: null });
   // Which race the fetch above has already been started for. A ref, not the
   // state it writes: keeping it in the dependency list re-ran the effect the
@@ -928,7 +928,8 @@ export default function Races() {
     !!detail &&
     !detailIsStale &&
     ((shownSession === "race" && !!detail.race?.hasLapChart) ||
-      (shownSession === "sprint" && sprint.raceId === sprintRaceId && !!sprint.data?.race?.hasLapChart));
+      (shownSession === "sprint" && sprint.raceId === sprintRaceId && !!sprint.data?.race?.hasLapChart) ||
+      (shownSession === "div2" && div2.raceId === div2RaceId && !!div2.data?.race?.hasLapChart));
 
   // The round's highlights cut, if the admin pasted one. A YouTube link gets an
   // id and plays on the page; anything else keeps its link and opens in a tab.
@@ -1382,7 +1383,11 @@ export default function Races() {
                         ) : div2.error ? (
                           <div className="px-5 py-10 text-center text-sm text-bad">{div2.error}</div>
                         ) : div2.data?.results?.length ? (
-                          <RaceResults race={div2.data.race} results={div2.data.results} quali={div2.data.quali} session="race" />
+                          view === "chart" && div2.data.race?.hasLapChart ? (
+                            lapPanel
+                          ) : (
+                            <RaceResults race={div2.data.race} results={div2.data.results} quali={div2.data.quali} session="race" />
+                          )
                         ) : (
                           <div className="px-5 py-10 text-center text-sm text-light">
                             The Division 2 result hasn&apos;t been imported yet.

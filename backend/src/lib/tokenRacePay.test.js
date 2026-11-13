@@ -6,12 +6,15 @@ import { saveTuning, resetTuning } from "./tokenTuning.js";
 // asks and records every ledger insert, so a test can see what was paid, what
 // it was filed under, and what happened the second time the same round is
 // saved (which is what a correction or a penalty fix does).
-function db({ results, rates = {}, earning = "1", discord = {}, series = "f1" }) {
+function db({ results, rates = {}, earning = "1", discord = {}, series = "f1", raceRow = null }) {
   const ledger = new Map(); // refKey -> row, the same uniqueness the real index has
   const rateRows = new Map(Object.entries(rates));
   const settings = new Map([["tokens_earning", earning]]);
 
   async function query(sql, ...args) {
+    // The saved race's own link: none for a round, a parent for a sprint or a
+    // Division 2 race.
+    if (/SELECT "parentRaceId", "division" FROM "Race"/.test(sql)) return raceRow ? [raceRow] : [];
     if (/FROM "TokenRaceRate"/.test(sql) && /LEFT JOIN/.test(sql) === false) return [];
     if (/SELECT r\."driverId" FROM "RaceResult"/.test(sql)) {
       // the ones with no rate yet
@@ -184,6 +187,32 @@ describe("paying a round when it is imported", () => {
     await payRace(d, "round5");
     expect(d.ledger.has("race:round5:ayrton_s8")).toBe(true);
     expect(d.ledger.has("clean:round5:ayrton_s8")).toBe(false);
+  });
+});
+
+describe("a race that hangs under a round", () => {
+  it("a sprint pays nothing on import: its main race pays the weekend", async () => {
+    const d = db({
+      results: [finisher("ayrton_s8")],
+      discord: { ayrton_s8: "111" },
+      raceRow: { parentRaceId: "round5", division: null },
+    });
+    const out = await payRace(d, "sprint5");
+    expect(out.paid).toBe(0);
+    expect(d.ledger.size).toBe(0);
+  });
+
+  it("Division 2 pays straight away, filed under the round like syncEarned files it", async () => {
+    const d = db({
+      results: [finisher("rookie_s8")],
+      discord: { rookie_s8: "333" },
+      raceRow: { parentRaceId: "round5", division: 2 },
+    });
+    const out = await payRace(d, "div2_round5");
+    expect(out.paid).toBe(1);
+    expect([...d.ledger.keys()].sort()).toEqual(["clean:round5:rookie_s8", "race:round5:rookie_s8"]);
+    // a second save of the same result pays nobody again
+    expect((await payRace(d, "div2_round5")).paid).toBe(0);
   });
 });
 

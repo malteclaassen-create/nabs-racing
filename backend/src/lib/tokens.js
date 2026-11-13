@@ -878,10 +878,16 @@ export async function payRace(prisma, raceId) {
   if (!(await isEarningOn(prisma))) return { stamped, paid: 0 };
   // A sprint pays through its main race (oneFinishPerWeekend): somebody who
   // only finished the sprint is picked up by syncEarned under the main race.
+  // Division 2's race is a child row too, but nobody drives both fields, so
+  // it is that driver's race of the evening and pays now. It is filed under
+  // the round's id, the same key syncEarned files it under, so the two can
+  // never both pay it.
   const parent = await prisma
-    .$queryRawUnsafe(`SELECT "parentRaceId" FROM "Race" WHERE "id" = ?`, raceId)
+    .$queryRawUnsafe(`SELECT "parentRaceId", "division" FROM "Race" WHERE "id" = ?`, raceId)
     .catch(() => []);
-  if (parent[0]?.parentRaceId) return { stamped, paid: 0 };
+  const roundId = parent[0]?.parentRaceId || null;
+  const isDivision2 = !!roundId && Number(parent[0]?.division) === 2;
+  if (roundId && !isDivision2) return { stamped, paid: 0 };
   const from = startOfStartDay();
   const rows = await prisma
     .$queryRawUnsafe(
@@ -900,6 +906,7 @@ export async function payRace(prisma, raceId) {
     )
     .catch(() => []);
   if (!rows.length) return { stamped, paid: 0 };
+  if (isDivision2) for (const r of rows) r.raceId = roundId;
   const accounts = await discordForDrivers(prisma, rows.map((r) => r.driverId));
   let paid = 0;
   for (const r of rows) {

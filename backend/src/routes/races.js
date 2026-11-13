@@ -343,7 +343,9 @@ router.get("/:id/laps", async (req, res, next) => {
     // row with no round number of its own: withSprintRounds hands it back
     // under its event's number and flagged, which is how its file is filed.
     const [filed] = await withSprintRounds(prisma, [race]);
-    const json = findArchiveForRace({ ...race, number: filed.number }, { sprint: filed.sprint });
+    // A Division 2 row comes back the same way, under its round's number, and
+    // its file is in the division's own folder.
+    const json = findArchiveForRace({ ...race, number: filed.number }, { sprint: filed.sprint, division: filed.division });
     const chart = json ? lapChartFrom(json) : null;
     if (!chart) return res.json({ available: false, maxLap: 0, drivers: [] });
 

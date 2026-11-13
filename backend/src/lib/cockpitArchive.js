@@ -104,8 +104,15 @@ function newestFirst(dir, names) {
     .map((x) => x.name);
 }
 
-export function findArchiveFor(season, raceNumber, { sprint = false } = {}) {
-  for (const dir of archiveDirsFor(season)) {
+// Division 2 files its round in a folder of its own inside the season's
+// (lib/resultsArchive.js archiveCommitted), under the round's number.
+function dirsFor(season, division) {
+  const dirs = archiveDirsFor(season);
+  return Number(division) === 2 ? dirs.map((d) => join(d, "division2")) : dirs;
+}
+
+export function findArchiveFor(season, raceNumber, { sprint = false, division = 1 } = {}) {
+  for (const dir of dirsFor(season, division)) {
     if (!existsSync(dir)) continue;
     const names = roundFiles(dir, raceNumber, sprint);
     if (!names.length) continue;
@@ -181,9 +188,9 @@ export function archiveFilesFor(season, raceNumber) {
 // findArchiveFor does. A sprint child row carries no round number of its own,
 // so a caller asking for one passes the event's number (lib/sprintRaces.js
 // withSprintRounds hands back exactly that row).
-export function findArchiveForRace(race, { sprint = false } = {}) {
+export function findArchiveForRace(race, { sprint = false, division = 1 } = {}) {
   const season = race?.season?.number != null ? race.season : { id: race?.seasonId ?? null, number: race?.seasonNumber };
-  const json = findArchiveFor(season, race?.number, { sprint });
+  const json = findArchiveFor(season, race?.number, { sprint, division });
   if (!json) return null;
   const fileDay = json.Date ? Date.parse(json.Date) : NaN;
   const raceDay = race?.date ? new Date(race.date).getTime() : NaN;
@@ -195,8 +202,8 @@ export function findArchiveForRace(race, { sprint = false } = {}) {
 // name check, no reading and no parsing — cheap enough to answer on every
 // results request, which is what lets the round page offer its lap-by-lap view
 // only where there is one to show.
-export function hasArchiveFor(season, raceNumber, { sprint = false } = {}) {
-  for (const dir of archiveDirsFor(season)) {
+export function hasArchiveFor(season, raceNumber, { sprint = false, division = 1 } = {}) {
+  for (const dir of dirsFor(season, division)) {
     try {
       if (existsSync(dir) && roundFiles(dir, raceNumber, sprint).length) return true;
     } catch {
