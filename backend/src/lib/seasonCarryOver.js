@@ -17,17 +17,20 @@
 // the teams as clone-roster always did and creates only the people the admin
 // kept, each into their old team or into the Reserve pool.
 //
-// Division 2 rides along without knowing about it: its teams are tier 3 and
-// copy like any other team, and its reserve pool is the Driver.division flag
-// on a reserve row, a raw column that only exists once Division 2 is in. Both
-// reads and writes of it are guarded, so on a database without the column the
-// carry over simply has one pool.
+// Before the people comes a teams step (parseTeamPlan / commitTeamPlan): which
+// of last season's teams carry on, in which division, which are new, and
+// whether the season runs Division 2 at all (lib/divisions.js). Division 2
+// teams are tier 3; its reserves sit in the same pool team with
+// Driver.division = 2. The people list then offers the new season's teams and
+// both sides of the pool. Without a teams step (a season with no teams yet)
+// the people step still copies every team, as clone-roster did.
 // ---------------------------------------------------------------------------
 import { ensureReservePool } from "./reservePool.js";
 import { dbLinkDrivers, getPersonGroups } from "./persons.js";
 import { uniqueDriverId } from "./driverHandles.js";
+import { DIV2_TIER, seasonHasDivision2, writeSeasonDivision2 } from "./divisions.js";
 
-export const DIV2_TIER = 3;
+export { DIV2_TIER };
 
 // A seat: a car in Division 1 (tier 1 or 2) or in Division 2 (tier 3).
 export function holdsSeat(tier) {
@@ -149,9 +152,36 @@ async function readSteamIds(prisma, ids) {
   return out;
 }
 
-// The preview: { teams: [{ id, name, tier, color, people: [...] }] }.
-export async function readCarryOver(prisma, { fromSeasonId, targetSeasonId }) {
-  const [teams, drivers, present, persons, starts, divisions] = await Promise.all([
+// Which team of the new season each team of the old one became: the copy by
+// id (`<id>_s<N>`), else the same name in the same tier, else the same name in
+// any tier (the teams step may have moved it, say into Division 2). The pool
+// maps to the pool. Map source team id -> target team row.
+export function matchTeams(sourceTeams, targetTeams, suffix) {
+  const out = new Map();
+  const byId = new Map(targetTeams.map((t) => [t.id, t]));
+  const pool = targetTeams.find((t) => t.tier === 0) || null;
+  for (const s of sourceTeams) {
+    let hit = null;
+    if (s.tier === 0) hit = pool;
+    else
+      hit =
+        byId.get(`${s.id}${suffix}`) ||
+        targetTeams.find((t) => t.tier === s.tier && norm(t.name) === norm(s.name)) ||
+        targetTeams.find((t) => t.tier !== 0 && norm(t.name) === norm(s.name)) ||
+        null;
+    if (hit) out.set(s.id, hit);
+  }
+  return out;
+}
+
+// The preview: { teams: [{ id, name, tier, color, targetTeamId, people }],
+// targetTeams, division2 }. `targetTeams` is what the new season already has
+// (filled by the teams step), `targetTeamId` the team of the new season the
+// old team's drivers go to by default, `division2` whether the new season runs
+// Division 2 (then the Reserve pool has a Division 2 side).
+export async function readCarryOver(prisma, { fromSeasonId, target }) {
+  const targetSeasonId = target?.id || null;
+  const [teams, drivers, present, persons, starts, divisions, targetTeams, division2] = await Promise.all([
     prisma.team.findMany({ where: { seasonId: fromSeasonId } }),
     prisma.driver.findMany({ where: { seasonId: fromSeasonId } }),
     targetSeasonId
@@ -160,30 +190,133 @@ export async function readCarryOver(prisma, { fromSeasonId, targetSeasonId }) {
     getPersonGroups(prisma),
     readSeasonStarts(prisma, fromSeasonId),
     readPoolDivisions(prisma, fromSeasonId),
+    targetSeasonId ? prisma.team.findMany({ where: { seasonId: targetSeasonId } }) : [],
+    seasonHasDivision2(prisma, targetSeasonId),
   ]);
-  return { teams: buildCarryOverList({ teams, drivers, starts, divisions, present, persons }) };
+  const list = buildCarryOverList({ teams, drivers, starts, divisions, present, persons });
+  const matched = matchTeams(teams, targetTeams, `_s${target?.number ?? ""}`);
+  for (const t of list) t.targetTeamId = matched.get(t.id)?.id || null;
+  const shown = targetTeams
+    .map((t) => ({ id: t.id, name: t.name, tier: t.tier, color: t.color }))
+    .sort((a, b) => teamRank(a.tier) - teamRank(b.tier) || a.name.localeCompare(b.name));
+  return { teams: list, targetTeams: shown, division2 };
 }
 
-// Turn the request body's picks into a clean Map driverId -> { to, teamId }.
-// to "reserve" = the Reserve pool; to "team" = a team, `teamId` naming which
-// one of the SOURCE season's teams (its copy here is used), or none for the
-// driver's own team. That is how a driver changes team, or a reserve gets a
-// seat, in the same step.
+// A team id for a new team: its name in id form plus the season, `_2`, `_3`
+// on the end when taken. Kept to letters, digits and _ (the id becomes the
+// logo's file name).
+async function freshTeamId(prisma, name, suffix) {
+  const base =
+    String(name || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "team";
+  let id = `${base}${suffix}`;
+  for (let i = 2; await prisma.team.findUnique({ where: { id } }); i++) id = `${base}${suffix}_${i}`;
+  return id;
+}
+
+const TEAM_TIERS = new Set([1, 2, DIV2_TIER]);
+const HEX = /^#[0-9a-f]{6}$/i;
+
+// The teams step: body { teams: [{ sourceId, tier }], newTeams: [{ name, tier,
+// color }], division2 } -> clean lists, or { error }.
+export function parseTeamPlan(body) {
+  const division2 = !!body?.division2;
+  const teams = [];
+  for (const t of Array.isArray(body?.teams) ? body.teams : []) {
+    if (typeof t?.sourceId !== "string" || !t.sourceId) continue;
+    const tier = Number(t.tier);
+    if (!TEAM_TIERS.has(tier)) return { error: "Each team needs Tier 1, Tier 2 or Division 2" };
+    teams.push({ sourceId: t.sourceId, tier });
+  }
+  const newTeams = [];
+  for (const t of Array.isArray(body?.newTeams) ? body.newTeams : []) {
+    const name = String(t?.name || "").trim().slice(0, 60);
+    if (!name) continue;
+    const tier = Number(t.tier);
+    if (!TEAM_TIERS.has(tier)) return { error: `${name} needs Tier 1, Tier 2 or Division 2` };
+    newTeams.push({ name, tier, color: HEX.test(t?.color || "") ? t.color : "#64748b" });
+  }
+  if (!division2 && [...teams, ...newTeams].some((t) => t.tier === DIV2_TIER)) {
+    return { error: "Switch Division 2 on for this season before giving it Division 2 teams" };
+  }
+  return { teams, newTeams, division2 };
+}
+
+// Create the new season's teams from the plan: the kept old teams (in the tier
+// picked for them), the new ones, and the Reserve pool. A team the season has
+// already (same name and tier) is left as it is. Also switches Division 2 on
+// or off for the season. Returns { teamsCreated }.
+export async function commitTeamPlan(prisma, { target, fromSeasonId, plan }) {
+  const suffix = `_s${target.number}`;
+  const [sourceTeams, targetTeams] = await Promise.all([
+    fromSeasonId ? prisma.team.findMany({ where: { seasonId: fromSeasonId } }) : [],
+    prisma.team.findMany({ where: { seasonId: target.id } }),
+  ]);
+  const have = (name, tier) => targetTeams.some((t) => t.tier === tier && norm(t.name) === norm(name));
+  const sourceById = new Map(sourceTeams.map((t) => [t.id, t]));
+  let teamsCreated = 0;
+  const add = async (data) => {
+    const row = await prisma.team.create({ data: { ...data, seasonId: target.id } });
+    targetTeams.push(row);
+    teamsCreated++;
+  };
+  for (const k of plan.teams) {
+    const s = sourceById.get(k.sourceId);
+    if (!s || s.tier === 0 || have(s.name, k.tier)) continue;
+    const id = (await prisma.team.findUnique({ where: { id: `${s.id}${suffix}` } }))
+      ? await freshTeamId(prisma, s.name, suffix)
+      : `${s.id}${suffix}`;
+    await add({ id, name: s.name, tier: k.tier, color: s.color, logoUrl: s.logoUrl });
+  }
+  for (const n of plan.newTeams) {
+    if (have(n.name, n.tier)) continue;
+    await add({ id: await freshTeamId(prisma, n.name, suffix), name: n.name, tier: n.tier, color: n.color });
+  }
+  // The pool: last season's, copied, so it keeps its name and colour.
+  if (!targetTeams.some((t) => t.tier === 0)) {
+    const oldPool = sourceTeams.find((t) => t.tier === 0);
+    if (oldPool && !(await prisma.team.findUnique({ where: { id: `${oldPool.id}${suffix}` } }))) {
+      await add({ id: `${oldPool.id}${suffix}`, name: oldPool.name, tier: 0, color: oldPool.color, logoUrl: oldPool.logoUrl });
+    } else {
+      await ensureReservePool(prisma, target.id);
+    }
+  }
+  await writeSeasonDivision2(prisma, target.id, plan.division2).catch(() => {});
+  return { teamsCreated };
+}
+
+// Turn the request body's picks into a clean Map driverId -> { to, teamId,
+// targetTeamId, division }.
+//   to "reserve": the Reserve pool; `division` 2 = its Division 2 side, 1 =
+//     Division 1's, none = wherever the driver came from.
+//   to "team": `targetTeamId` names a team of the NEW season (what the wizard
+//     sends once the teams step has made them); `teamId` one of the OLD
+//     season's teams (its copy is used); neither = the driver's own team.
 export function parsePicks(raw) {
   const out = new Map();
   if (!Array.isArray(raw)) return out;
+  const str = (v) => (typeof v === "string" && v ? v : null);
   for (const p of raw) {
-    const id = typeof p?.driverId === "string" ? p.driverId : null;
+    const id = str(p?.driverId);
     if (!id) continue;
-    const teamId = p.to !== "reserve" && typeof p.teamId === "string" && p.teamId ? p.teamId : null;
-    out.set(id, { to: p.to === "reserve" ? "reserve" : "team", teamId });
+    if (p.to === "reserve") {
+      const division = Number(p.division) === 2 ? 2 : Number(p.division) === 1 ? 1 : null;
+      out.set(id, { to: "reserve", teamId: null, targetTeamId: null, division });
+    } else {
+      out.set(id, { to: "team", teamId: str(p.teamId), targetTeamId: str(p.targetTeamId), division: null });
+    }
   }
   return out;
 }
 
-// Copy the teams (all of them, as clone-roster does) and create the picked
-// people. `target` is the season row ({ id, number }). Returns
-// { teamsCreated, driversCreated, drivers: [{ name, teamName }], skipped }.
+// Create the picked people in the new season. When the season has no teams
+// yet (no teams step), all of last season's teams are copied first, as
+// clone-roster always did. `target` is the season row ({ id, number }).
+// Returns { teamsCreated, driversCreated, drivers: [{ name, teamName }], skipped }.
 export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
   const suffix = `_s${target.number}`;
   const [sourceTeams, sourceDrivers, targetTeams, present, persons, divisions] = await Promise.all([
@@ -195,40 +328,29 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
     readPoolDivisions(prisma, fromSeasonId),
   ]);
 
-  // Teams. A team already here (an earlier run, "Teams only", the same name
-  // and tier entered by hand) is used as it is rather than doubled.
-  const teamMap = new Map(); // source team id -> target team row
-  const byNameTier = new Map(targetTeams.map((t) => [`${t.tier}|${norm(t.name)}`, t]));
-  const byId = new Map(targetTeams.map((t) => [t.id, t]));
   let teamsCreated = 0;
-  for (const t of sourceTeams) {
-    const newId = `${t.id}${suffix}`;
-    let row = byId.get(newId) || byNameTier.get(`${t.tier}|${norm(t.name)}`) || null;
-    if (!row) {
+  if (!targetTeams.some((t) => t.tier !== 0)) {
+    // No teams step: every team comes along as it was.
+    for (const t of sourceTeams) {
+      const newId = `${t.id}${suffix}`;
+      if (targetTeams.some((x) => x.id === newId || (x.tier === t.tier && norm(x.name) === norm(t.name)))) continue;
       // The id belongs to another season already (a deleted and recreated
       // season of the same number): a fresh one rather than no team.
       const id = (await prisma.team.findUnique({ where: { id: newId } })) ? `${newId}_${Date.now().toString(36)}` : newId;
-      row = await prisma.team.create({
+      const row = await prisma.team.create({
         data: { id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
       });
-      byNameTier.set(`${t.tier}|${norm(t.name)}`, row);
+      targetTeams.push(row);
       teamsCreated++;
     }
-    teamMap.set(t.id, row);
+    // Division 2 runs in the new season when it ran in the old one.
+    if (sourceTeams.some((t) => t.tier === DIV2_TIER) && (await seasonHasDivision2(prisma, fromSeasonId))) {
+      await writeSeasonDivision2(prisma, target.id, true).catch(() => {});
+    }
   }
-  let pool = [...teamMap.values()].find((t) => t.tier === 0) || targetTeams.find((t) => t.tier === 0) || null;
-
-  // Division 2 runs in the new season when it ran in the old one and its teams
-  // came along. Guarded: no column, nothing to switch.
-  if (sourceTeams.some((t) => t.tier === DIV2_TIER)) {
-    await prisma
-      .$executeRawUnsafe(
-        `UPDATE "Season" SET "division2" = (SELECT "division2" FROM "Season" WHERE "id" = ?) WHERE "id" = ?`,
-        fromSeasonId,
-        target.id
-      )
-      .catch(() => {});
-  }
+  const teamMap = matchTeams(sourceTeams, targetTeams, suffix); // old team id -> new team row
+  const targetById = new Map(targetTeams.map((t) => [t.id, t]));
+  let pool = targetTeams.find((t) => t.tier === 0) || null;
 
   const takenNames = new Set(present.map((d) => norm(d.name)));
   const takenPersons = new Set(present.map((d) => persons.byDriver.get(d.id)).filter(Boolean));
@@ -250,20 +372,21 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
     const fromTeam = sourceTeamById.get(d.teamId);
     const wasDiv2 = fromTeam?.tier === DIV2_TIER || (fromTeam?.tier === 0 && divisions.get(d.id) === 2);
     const pick = picks.get(d.id);
-    // An unknown team id falls back to the driver's own team, never the pool.
-    const wantTeam =
-      pick.to === "reserve" ? null : sourceTeamById.get(pick.teamId) || sourceTeamById.get(d.teamId) || null;
-    let team;
-    if (!wantTeam || wantTeam.tier === 0) {
+    let team = null;
+    if (pick.to === "team") {
+      // A team of the new season by id; else the copy of the old team asked
+      // for; an unknown id falls back to the driver's own team.
+      const asked = pick.targetTeamId ? targetById.get(pick.targetTeamId) : null;
+      const fromOld = sourceTeamById.get(pick.teamId) || fromTeam || null;
+      team = asked || (fromOld ? teamMap.get(fromOld.id) : null) || null;
+    }
+    // The pool: asked for, a reserve staying a reserve, or a team that did not
+    // carry on (they wait in the pool rather than being left out).
+    if (!team || team.tier === 0) {
       pool = pool || (await ensureReservePool(prisma, target.id));
       team = pool;
-    } else {
-      team = teamMap.get(wantTeam.id) || null;
     }
-    if (!team) {
-      skipped.push({ name: d.name, reason: `no team called "${wantTeam?.name || "?"}" in this season` });
-      continue;
-    }
+    const poolDivision = pick.division || (wasDiv2 ? 2 : 1);
 
     let id = `${d.id.replace(/(_s\d+)+$/, "")}${suffix}`;
     if (await prisma.driver.findUnique({ where: { id } })) id = await uniqueDriverId(prisma, d.name);
@@ -292,8 +415,8 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
     if (steamId) {
       await prisma.$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, steamId, id).catch(() => {});
     }
-    // A Division 2 driver moved to the pool waits in the Division 2 pool.
-    if (team.tier === 0 && wasDiv2) {
+    // The Division 2 side of the pool: picked, or where they came from.
+    if (team.tier === 0 && poolDivision === 2) {
       await prisma.$executeRawUnsafe(`UPDATE "Driver" SET "division" = 2 WHERE "id" = ?`, id).catch(() => {});
     }
     await dbLinkDrivers(prisma, [d.id, id]).catch(() => {});

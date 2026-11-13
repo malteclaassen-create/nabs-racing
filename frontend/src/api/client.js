@@ -1436,6 +1436,9 @@ export const api = {
   // (picks: [{ driverId, to: "team" | "reserve" }]). Teams come along as a whole.
   carryOverPreview: (id, fromSeasonId) =>
     request(`/admin/seasons/${id}/carry-over?from=${encodeURIComponent(fromSeasonId)}`, { auth: true }),
+  // The teams step: { teams: [{ sourceId, tier }], newTeams: [{ name, tier, color }], division2 }.
+  carryOverTeams: (id, fromSeasonId, plan) =>
+    request(`/admin/seasons/${id}/carry-over/teams`, { method: "POST", body: { fromSeasonId, ...plan }, auth: true }),
   carryOver: (id, fromSeasonId, picks) =>
     request(`/admin/seasons/${id}/carry-over`, { method: "POST", body: { fromSeasonId, picks }, auth: true }),
   // Drivers into the teams THIS season already has, without touching the teams.

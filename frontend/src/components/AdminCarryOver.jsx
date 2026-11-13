@@ -15,11 +15,14 @@ import { DriverAvatar, TeamDot, Spinner, Notice } from "./ui.jsx";
 // Ticked to start with: everybody who held a seat, and reserves who raced at
 // least once. Reserves who never drove start unticked and folded away; the
 // attendance sign-up puts them back into the Reserve pool the first time they
-// answer. The teams themselves are always copied whole, empty or not.
+// answer. The teams come from the step before (AdminCarryOverTeams): "Drives
+// for" lists the NEW season's teams by division, and the Reserve pool, with a
+// Division 2 side when the season runs Division 2. A driver whose team did
+// not carry on starts out in the pool.
 // ---------------------------------------------------------------------------
 
-const POOL = "reserve";
-const OWN = "own";
+// A place is "t:<team id of the new season>" or "pool:1" / "pool:2".
+const poolPlace = (division, division2) => `pool:${division === 2 && division2 ? 2 : 1}`;
 
 function teamLabel(tier) {
   if (tier === 1) return "Tier 1";
@@ -40,15 +43,23 @@ function isQuiet(p) {
   return !p.seat && !p.starts && !p.already;
 }
 
-function suggested(teams) {
+// Where each person goes unless the admin says otherwise: the new season's
+// copy of their team, else the pool (their own side of it).
+function defaultPlace(team, p, division2) {
+  if (team.tier !== 0 && team.targetTeamId) return `t:${team.targetTeamId}`;
+  return poolPlace(p.division, division2);
+}
+
+function suggested(data) {
   const out = {};
-  for (const t of teams) for (const p of t.people) out[p.driverId] = { on: p.picked, place: OWN };
+  for (const t of data.teams)
+    for (const p of t.people) out[p.driverId] = { on: p.picked, place: defaultPlace(t, p, data.division2) };
   return out;
 }
 
 // `run(fn, doneMessage)` is the wizard's runner (busy flag, errors, reload).
-export default function AdminCarryOver({ target, source, run, busy, showTeamsOnly }) {
-  const [teams, setTeams] = useState(null);
+export default function AdminCarryOver({ target, source, run, busy }) {
+  const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [picks, setPicks] = useState({});
   // Per team: also list the reserves who never drove (folded away by default,
@@ -57,14 +68,15 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
 
   useEffect(() => {
     let live = true;
-    setTeams(null);
+    setData(null);
     setLoadError(null);
     api
       .carryOverPreview(target.id, source.id)
       .then((r) => {
         if (!live) return;
-        setTeams(r.teams || []);
-        setPicks(suggested(r.teams || []));
+        const d = { teams: r.teams || [], targetTeams: r.targetTeams || [], division2: !!r.division2 };
+        setData(d);
+        setPicks(suggested(d));
       })
       .catch((err) => live && setLoadError(err.message));
     return () => {
@@ -72,36 +84,37 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
     };
   }, [target.id, source.id]);
 
+  const teams = data?.teams || null;
   const people = useMemo(() => (teams || []).flatMap((t) => t.people), [teams]);
-  // The teams a driver can be put into, in list order (the pool is its own option).
-  const seats = useMemo(() => (teams || []).filter((t) => t.tier !== 0), [teams]);
+  // The new season's teams a driver can be put into, by division.
+  const div1Teams = (data?.targetTeams || []).filter((t) => t.tier === 1 || t.tier === 2);
+  const div2Teams = (data?.targetTeams || []).filter((t) => t.tier === 3);
   const chosen = people.filter((p) => !p.already && picks[p.driverId]?.on);
   const leftOut = people.filter((p) => !p.already && !picks[p.driverId]?.on).length;
 
   function set(id, patch) {
-    setPicks((cur) => ({ ...cur, [id]: { ...(cur[id] || { on: false, place: OWN }), ...patch } }));
+    setPicks((cur) => ({ ...cur, [id]: { ...cur[id], ...patch } }));
   }
 
   function setTeam(team, on) {
     setPicks((cur) => {
       const next = { ...cur };
-      for (const p of team.people) if (!p.already) next[p.driverId] = { ...(cur[p.driverId] || { place: OWN }), on };
+      for (const p of team.people) if (!p.already) next[p.driverId] = { ...cur[p.driverId], on };
       return next;
     });
   }
 
   function bringBack() {
     const body = chosen.map((p) => {
-      const place = picks[p.driverId]?.place || OWN;
-      if (place === POOL) return { driverId: p.driverId, to: "reserve" };
-      if (place === OWN) return { driverId: p.driverId, to: p.seat ? "team" : "reserve" };
-      return { driverId: p.driverId, to: "team", teamId: place };
+      const place = picks[p.driverId]?.place || "pool:1";
+      if (place.startsWith("t:")) return { driverId: p.driverId, to: "team", targetTeamId: place.slice(2) };
+      return { driverId: p.driverId, to: "reserve", division: place === "pool:2" ? 2 : 1 };
     });
     run(
       () => api.carryOver(target.id, source.id, body),
       (r) => {
         const skipped = r.skipped?.length ? ` Left alone: ${r.skipped.map((s) => s.name).join(", ")} (already in ${target.name}).` : "";
-        return `${r.driversCreated} driver(s) and ${r.teamsCreated} team(s) copied to ${target.name}, each driver linked to their earlier seasons.${skipped}`;
+        return `${r.driversCreated} driver(s) copied to ${target.name}, each linked to their earlier seasons.${skipped}`;
       }
     );
   }
@@ -110,9 +123,11 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
   if (!teams) return <Spinner label={`Reading ${source.name}…`} />;
   if (!teams.length) return <p className="text-sm text-light">{source.name} has no teams to bring over.</p>;
 
-  const fresh = suggested(teams);
+  const fresh = suggested(data);
   const changed = people.some(
-    (p) => !p.already && (!!picks[p.driverId]?.on !== fresh[p.driverId].on || (picks[p.driverId]?.place || OWN) !== OWN)
+    (p) =>
+      !p.already &&
+      (!!picks[p.driverId]?.on !== fresh[p.driverId].on || picks[p.driverId]?.place !== fresh[p.driverId].place)
   );
 
   return (
@@ -128,8 +143,8 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
         <li className="flex items-start gap-2">
           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
           <span>
-            <b className="text-dark">Drives for</b> says where they go: their old team, another team (a transfer, or a
-            reserve getting a seat) or the Reserve pool.
+            <b className="text-dark">Drives for</b> says where they go: their old team, another team of {target.name} (a
+            transfer, a reserve getting a seat, a move between Division 1 and Division 2) or the Reserve pool.
           </span>
         </li>
         <li className="flex items-start gap-2">
@@ -148,12 +163,15 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
           const quiet = t.people.filter((p) => isQuiet(p));
           const quietOn = quiet.filter((p) => picks[p.driverId]?.on).length;
           const isPool = t.tier === 0;
+          const gone = !isPool && !t.targetTeamId;
           return (
             <section key={t.id} className="rounded-xl border border-border bg-surface/40">
               <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-2">
                 <TeamDot color={t.color || "#64748b"} />
                 <span className="min-w-0 truncate font-semibold text-dark">{t.name}</span>
-                <span className="text-xs text-light">{teamLabel(t.tier)}</span>
+                <span className="text-xs text-light">
+                  {gone ? `${teamLabel(t.tier)}, not in ${target.name}` : teamLabel(t.tier)}
+                </span>
                 <span className="ml-auto text-xs text-light">
                   {open.length ? `${on} of ${open.length} in ${target.name}` : "Team is copied"}
                 </span>
@@ -172,9 +190,9 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
               ) : (
                 <ul className="divide-y divide-border">
                   {t.people.filter((p) => showAll[t.id] || !isQuiet(p)).map((p) => {
-                    const pick = picks[p.driverId] || { on: false, place: OWN };
+                    const pick = picks[p.driverId] || { on: false, place: "pool:1" };
                     const id = `co-${p.driverId}`;
-                    const ownLabel = p.seat ? `${t.name} (same team)` : "Reserve pool (same as now)";
+                    const own = fresh[p.driverId]?.place;
                     return (
                       <li key={p.driverId} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
                         <label htmlFor={id} className="flex min-w-[12rem] flex-1 cursor-pointer items-center gap-3">
@@ -192,7 +210,7 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
                               {p.name}
                             </span>
                             <span className="block text-xs text-light">
-                              {[startsLabel(p.starts), !p.isActive && "inactive at the end", p.tier === 0 && p.division === 2 && "Division 2 pool"]
+                              {[startsLabel(p.starts), gone && pick.on && `${t.name} is not in ${target.name}`, !p.isActive && "inactive at the end", p.tier === 0 && p.division === 2 && "Division 2 pool"]
                                 .filter(Boolean)
                                 .join(" · ")}
                             </span>
@@ -204,19 +222,32 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
                           <label className="ml-auto flex w-full items-center gap-2 text-xs text-light sm:w-auto">
                             <span className="shrink-0">Drives for</span>
                             <select
-                              className="input min-w-0 flex-1 py-1.5 text-sm sm:w-56 sm:flex-none"
+                              className="input min-w-0 flex-1 py-1.5 text-sm sm:w-60 sm:flex-none"
                               value={pick.place}
                               onChange={(e) => set(p.driverId, { place: e.target.value })}
                             >
-                              <option value={OWN}>{ownLabel}</option>
-                              {seats
-                                .filter((s) => s.id !== t.id)
-                                .map((s) => (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name} ({teamLabel(s.tier)})
-                                  </option>
-                                ))}
-                              {!isPool && <option value={POOL}>Reserve pool</option>}
+                              {div1Teams.length > 0 && (
+                                <optgroup label={data.division2 ? "Division 1" : "Teams"}>
+                                  {div1Teams.map((x) => (
+                                    <option key={x.id} value={`t:${x.id}`}>
+                                      {x.name} ({teamLabel(x.tier)}){own === `t:${x.id}` ? ", same team" : ""}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {div2Teams.length > 0 && (
+                                <optgroup label="Division 2">
+                                  {div2Teams.map((x) => (
+                                    <option key={x.id} value={`t:${x.id}`}>
+                                      {x.name} (Division 2){own === `t:${x.id}` ? ", same team" : ""}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              <optgroup label="No seat">
+                                <option value="pool:1">{data.division2 ? "Reserve pool, Division 1" : "Reserve pool"}</option>
+                                {data.division2 && <option value="pool:2">Reserve pool, Division 2</option>}
+                              </optgroup>
                             </select>
                           </label>
                         ) : (
@@ -260,32 +291,17 @@ export default function AdminCarryOver({ target, source, run, busy, showTeamsOnl
               , <b className="text-dark">{leftOut}</b> {leftOut === 1 ? "is" : "are"} not copied
             </>
           ) : null}
-          .{" "}
-          {showTeamsOnly
-            ? `All ${teams.length} teams are copied too.`
-            : `Teams ${target.name} already has are kept, the missing ones are copied.`}
+          .
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="btn-primary py-1.5 text-sm" disabled={busy} onClick={bringBack}>
             Copy to {target.name}
           </button>
-          {showTeamsOnly && (
-            <button
-              type="button"
-              className="btn-secondary py-1.5 text-sm"
-              disabled={busy}
-              onClick={() =>
-                run(() => api.cloneTeams(target.id, source.id), (r) => `Copied ${r.created} team(s) from ${source.name}.`)
-              }
-            >
-              Only the teams, no drivers
-            </button>
-          )}
           {changed && (
             <button
               type="button"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-medium hover:text-dark"
-              onClick={() => setPicks(suggested(teams))}
+              onClick={() => setPicks(suggested(data))}
               disabled={busy}
             >
               <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />

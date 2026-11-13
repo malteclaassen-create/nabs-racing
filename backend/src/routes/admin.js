@@ -112,7 +112,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
-import { readCarryOver, commitCarryOver, parsePicks } from "../lib/seasonCarryOver.js";
+import { readCarryOver, commitCarryOver, parsePicks, parseTeamPlan, commitTeamPlan } from "../lib/seasonCarryOver.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
 import {
   newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
@@ -6200,7 +6200,27 @@ router.get("/seasons/:id/carry-over", async (req, res, next) => {
     if (fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
     const source = await prisma.season.findUnique({ where: { id: fromSeasonId } });
     if (!source) return res.status(404).json({ error: "Source season not found" });
-    res.json(await readCarryOver(prisma, { fromSeasonId, targetSeasonId: target.id }));
+    res.json(await readCarryOver(prisma, { fromSeasonId, target }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/seasons/:id/carry-over/teams
+//   { fromSeasonId, teams: [{ sourceId, tier }], newTeams: [{ name, tier, color }], division2 }
+// The wizard's teams step: which of last season's teams carry on and in which
+// division, which teams are new, and whether the season runs Division 2. The
+// Reserve pool comes along by itself (lib/seasonCarryOver.js).
+router.post("/seasons/:id/carry-over/teams", async (req, res, next) => {
+  try {
+    const { fromSeasonId } = req.body || {};
+    const target = await prisma.season.findUnique({ where: { id: req.params.id } });
+    if (!target) return res.status(404).json({ error: "Target season not found" });
+    if (fromSeasonId && fromSeasonId === target.id) return res.status(400).json({ error: "Source and target season are the same" });
+    const plan = parseTeamPlan(req.body);
+    if (plan.error) return res.status(400).json({ error: plan.error });
+    if (!plan.teams.length && !plan.newTeams.length) return res.status(400).json({ error: "Pick at least one team" });
+    res.json({ ok: true, ...(await commitTeamPlan(prisma, { target, fromSeasonId: fromSeasonId || null, plan })) });
   } catch (e) {
     next(e);
   }

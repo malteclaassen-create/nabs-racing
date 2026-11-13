@@ -3,9 +3,10 @@ import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
 import AdminCarryOver from "./AdminCarryOver.jsx";
+import AdminCarryOverTeams from "./AdminCarryOverTeams.jsx";
 
 // ---------------------------------------------------------------------------
-// "Prepare a new season", as four steps in one card (Seasons tab).
+// "Prepare a new season", as five steps in one card (Seasons tab).
 //
 // The season change was spread over three tabs and a handful of buttons whose
 // order mattered: create the season, copy the field over (the copy that also
@@ -204,8 +205,8 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
       {!open && (
         <p className="text-sm text-light">
           {waiting
-            ? `${waiting.name} is already created and not live yet. Carry on from there: bring the field over, put the calendar in and switch over.`
-            : "Create the season, bring the field over, put the calendar in and switch over, in that order."}
+            ? `${waiting.name} is already created and not live yet. Carry on from there: teams, drivers, calendar, then switch over.`
+            : "Create the season, pick the teams and the drivers, put the calendar in and switch over, in that order."}
         </p>
       )}
 
@@ -223,7 +224,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
       {open && !wizard && (
         <form onSubmit={create} className="space-y-3">
           <p className="text-sm text-light">
-            Step 1 of 4. The new season is created private: nobody sees it until the last step.
+            Step 1 of 5. The new season is created private: nobody sees it until the last step.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Follows on from" tone="plain">
@@ -298,34 +299,17 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
         <ol className="space-y-4">
           <Step n={1} done title={`${target.name} created`}>
             <p className="text-sm text-light">
-              {target.isPublic ? "Public." : "Private: hidden from the site until step 4."}
+              {target.isPublic ? "Public." : "Private: hidden from the site until step 5."}
             </p>
           </Step>
 
           <Step
             n={2}
-            done={hasField}
-            title={
-              hasField
-                ? `${counts.teams} team(s) and ${counts.drivers} driver(s)`
-                : hasTeams
-                  ? `${counts.teams} team(s), no drivers yet`
-                  : "Bring the field over"
-            }
+            done={hasTeams}
+            title={hasTeams ? `${counts.teams} team(s), Reserve pool included` : "Which teams race"}
           >
-            {!hasField && source ? (
-              <>
-                <AdminCarryOver target={target} source={source} run={run} busy={busy} showTeamsOnly={!hasTeams} />
-                {hasTeams && (
-                  <button
-                    type="button"
-                    className="btn-secondary py-1.5 text-xs"
-                    onClick={() => gotoInSeason("drivers", target.number)}
-                  >
-                    Add drivers by hand
-                  </button>
-                )}
-              </>
+            {!hasTeams && source ? (
+              <AdminCarryOverTeams target={target} source={source} run={run} busy={busy} />
             ) : !hasTeams ? (
               <button
                 type="button"
@@ -334,18 +318,8 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
               >
                 Add teams by hand
               </button>
-            ) : !hasField ? (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary py-1.5 text-sm"
-                  onClick={() => gotoInSeason("drivers", target.number)}
-                >
-                  Add drivers by hand
-                </button>
-              </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   className="btn-secondary py-1.5 text-xs"
@@ -353,19 +327,52 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                 >
                   Check the teams
                 </button>
-                <button
-                  type="button"
-                  className="btn-secondary py-1.5 text-xs"
-                  onClick={() => gotoInSeason("drivers", target.number)}
-                >
-                  Check the drivers
-                </button>
+                <span className="text-xs text-light">
+                  {target.division2 ? "Division 2 runs this season." : "One field, no Division 2."}
+                </span>
               </div>
             )}
           </Step>
 
           <Step
             n={3}
+            done={hasField}
+            title={hasField ? `${counts.drivers} driver(s)` : "Who drives"}
+          >
+            {!hasTeams ? (
+              <p className="text-sm text-light">Comes after the teams.</p>
+            ) : !hasField && source ? (
+              <>
+                <AdminCarryOver target={target} source={source} run={run} busy={busy} />
+                <button
+                  type="button"
+                  className="btn-secondary py-1.5 text-xs"
+                  onClick={() => gotoInSeason("drivers", target.number)}
+                >
+                  Add drivers by hand instead
+                </button>
+              </>
+            ) : !hasField ? (
+              <button
+                type="button"
+                className="btn-secondary py-1.5 text-sm"
+                onClick={() => gotoInSeason("drivers", target.number)}
+              >
+                Add drivers by hand
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary py-1.5 text-xs"
+                onClick={() => gotoInSeason("drivers", target.number)}
+              >
+                Check the drivers
+              </button>
+            )}
+          </Step>
+
+          <Step
+            n={4}
             done={hasCalendar}
             title={hasCalendar ? `${counts.races} race(s) on the calendar` : "Put the calendar in"}
           >
@@ -383,7 +390,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
             )}
           </Step>
 
-          <Step n={4} done={target.isActive} title="Announce and switch over">
+          <Step n={5} done={target.isActive} title="Announce and switch over">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -405,7 +412,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                 className="btn-primary py-1.5 text-sm"
                 disabled={busy || target.isActive || !hasField}
                 onClick={goLive}
-                title={!hasField ? "Bring the field over first" : undefined}
+                title={!hasField ? "Put the drivers in first" : undefined}
               >
                 Make it the active season
               </button>
