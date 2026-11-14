@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Armchair, Bug, CalendarClock, Hand, RotateCcw, UserMinus, UserRoundPlus, UserRoundX } from "lucide-react";
+import { Armchair, Bug, CalendarClock, ChevronDown, ChevronUp, Hand, RotateCcw, UserMinus, UserRoundPlus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
 import { api, getToken, setToken } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -4814,6 +4814,12 @@ function DiscordEvents({ onJump }) {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  // How races are added: a whole run of rounds at once (what an empty season
+  // needs) or one race or event. null = the default for the season as it is.
+  const [addMode, setAddMode] = useState(null);
+  // The rarely used fields of a single race (own points table, announcement
+  // text) stay folded until asked for.
+  const [moreOptions, setMoreOptions] = useState(false);
   const [event, setEvent] = useState({
     number: "", track: "", date: "", type: "CHAMPIONSHIP",
     qualiMinutes: "", qualiT2Minutes: "", qualiT1Minutes: "", raceFormat: "SINGLE", sprintLaps: "", raceLaps: "", pointsTable: "", info: "",
@@ -4858,6 +4864,9 @@ function DiscordEvents({ onJump }) {
   // events used to sit on top of round 1 because they have no number, and a
   // round moved to another week stayed where its number put it. Undated
   // entries go last, in round order.
+  // Championship rounds already in: decides which way of adding opens first.
+  const hasRounds = (races || []).some((r) => r.number != null && !r.isSpecialEvent);
+  const mode = addMode ?? (hasRounds ? "one" : "many");
   const calendar = [...(races || [])].sort((a, b) => {
     const ta = a.date ? Date.parse(a.date) : NaN;
     const tb = b.date ? Date.parse(b.date) : NaN;
@@ -4952,19 +4961,6 @@ function DiscordEvents({ onJump }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface2 px-4 py-2.5 text-sm">
-        <span>
-          Discord announcements:{" "}
-          {hook?.configured ? (
-            <span className="font-semibold text-ok">connected</span>
-          ) : (
-            <span className="font-semibold text-bad">not connected, nothing is posted</span>
-          )}
-        </span>
-        <button type="button" className="btn-secondary py-1 text-xs" onClick={() => onJump?.("system", "discord")}>
-          {hook?.configured ? "Change in System → Discord" : "Connect in System → Discord"}
-        </button>
-      </div>
       {error && <Notice kind="error">{error}</Notice>}
       {msg && <Notice kind="success">{msg}</Notice>}
     <div className="grid items-start gap-6 lg:grid-cols-2">
@@ -4972,9 +4968,21 @@ function DiscordEvents({ onJump }) {
       <div className="contents">
         {/* The two ways to add to the calendar share the left column, so the
             second does not start below the (long) calendar on the right. */}
-        <div className="space-y-6">
+        <div className={`space-y-3 ${hasRounds ? "order-2 lg:order-none" : ""}`}>
+        {/* One card, two ways in: an empty season gets its calendar in one
+            go; a race added later is the other tab. */}
+        <SlidingTabs
+          items={[
+            { key: "many", label: "Several rounds" },
+            { key: "one", label: "One race or event" },
+          ]}
+          value={mode}
+          onChange={setAddMode}
+          btnClassName="px-3.5 py-1.5 text-sm"
+        />
+        {mode === "one" && (
         <form onSubmit={createEvent} className="card space-y-3 p-5">
-          <CardHead eyebrow="Schedule" title="Create race / event" />
+          <CardHead eyebrow="Schedule" title="Add one race or event" />
           <Field label="Type" tone="plain">
             <select className="input" value={event.type}
               onChange={(e) => setEvent({ ...event, type: e.target.value })}>
@@ -5027,11 +5035,6 @@ function DiscordEvents({ onJump }) {
               <option value="SPRINT_FEATURE">Feature + sprint race</option>
             </select>
           </Field>
-          {event.type === "CHAMPIONSHIP" && (
-            <Field label="Custom points for this round (optional)" tone="plain">
-              <RacePointsInput value={event.pointsTable} onChange={(v) => setEvent({ ...event, pointsTable: v })} />
-            </Field>
-          )}
           {/* Labelled rather than placeholder-only: a sprint day puts three bare
               numbers in a row, and "15 12 20" says nothing once they're typed. */}
           <div className={`grid gap-3 ${event.raceFormat === "SPRINT_FEATURE" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
@@ -5050,12 +5053,35 @@ function DiscordEvents({ onJump }) {
               </Field>
             )}
           </div>
-          <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
-            value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-medium hover:text-dark"
+            onClick={() => setMoreOptions((v) => !v)}
+            aria-expanded={moreOptions}
+          >
+            {moreOptions ? (
+              <ChevronUp className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            )}
+            More options: own points table, text for the announcement
+          </button>
+          {moreOptions && (
+            <>
+              {event.type === "CHAMPIONSHIP" && (
+                <Field label="Custom points for this round (optional)" tone="plain">
+                  <RacePointsInput value={event.pointsTable} onChange={(v) => setEvent({ ...event, pointsTable: v })} />
+                </Field>
+              )}
+              <textarea aria-label="Details for the announcement & website: rules, mods, links… (optional)" className="input min-h-20" placeholder="Details for the announcement & website: rules, mods, links… (optional)"
+                value={event.info} onChange={(e) => setEvent({ ...event, info: e.target.value })} />
+            </>
+          )}
           <button className="btn-primary w-full" disabled={busy}>Create</button>
         </form>
+        )}
 
-        <AddSeveralRounds races={races} seasonId={current?.id} onCreated={calendarChanged} />
+        {mode === "many" && <AddSeveralRounds races={races} seasonId={current?.id} onCreated={calendarChanged} />}
         </div>
 
         <div className="card p-5">
@@ -5081,7 +5107,7 @@ function DiscordEvents({ onJump }) {
                         <span className="pill bg-surface2 font-mono text-[10px] font-bold uppercase text-light">done</span>
                       ) : r.type !== "SPECIAL" && r.announced ? (
                         <span className="pill bg-emerald-500/15 font-mono text-[10px] font-bold uppercase text-ok">Announced</span>
-                      ) : r.type !== "SPECIAL" ? (
+                      ) : r.type !== "SPECIAL" && canPost ? (
                         <span className="pill bg-amber-500/15 font-mono text-[10px] font-bold uppercase text-warn">Not announced yet</span>
                       ) : null}
                     </span>
@@ -5094,15 +5120,15 @@ function DiscordEvents({ onJump }) {
                     {/* Rounds AND training sessions get the RSVP post; specials stay site-only.
                         The title sits on a wrapper too: a disabled button shows
                         no tooltip of its own in most browsers. */}
-                    {r.type !== "SPECIAL" && !r.isCompleted && (
-                      <span title={canPost ? undefined : "Discord announcements are not connected. Connect the events webhook in System → Discord first."}>
-                        <button className="transition text-xs font-semibold text-link hover:underline disabled:cursor-not-allowed disabled:text-faint disabled:no-underline"
-                          disabled={busy || !canPost}
-                          title={canPost ? (r.announced ? "Posts the round again, or updates the post that is up" : "Posts the RSVP message to the events channel") : "Discord announcements are not connected"}
-                          onClick={() => announce(r.id)}>
-                          Post to Discord
-                        </button>
-                      </span>
+                    {/* Only where posting works: without the events webhook
+                        (System → Discord) the link is left out, not greyed. */}
+                    {r.type !== "SPECIAL" && !r.isCompleted && canPost && (
+                      <button className="transition text-xs font-semibold text-link hover:underline"
+                        disabled={busy}
+                        title={r.announced ? "Posts the round again, or updates the post that is up" : "Posts the RSVP message to the events channel"}
+                        onClick={() => announce(r.id)}>
+                        Post to Discord
+                      </button>
                     )}
                     {r.resultCount === 0 && (
                       <button className="transition text-xs font-semibold text-rose-500 hover:underline"
@@ -5220,7 +5246,11 @@ function DiscordEvents({ onJump }) {
                 )}
               </li>
             ))}
-            {(races || []).length === 0 && <li className="py-2 text-sm text-light">No races in this season yet.</li>}
+            {(races || []).length === 0 && (
+              <li className="py-2 text-sm text-light">
+                No races in this season yet. Put the whole calendar in with <b className="text-medium">Several rounds</b>.
+              </li>
+            )}
           </ul>
         </div>
       </div>
