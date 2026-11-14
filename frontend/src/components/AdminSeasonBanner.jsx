@@ -64,7 +64,12 @@ export default function AdminSeasonBanner({ onOpen }) {
   }
 
   return (
-    <section className="card flex flex-wrap items-center gap-x-4 gap-y-3 border-2 border-brand/50 p-4 sm:p-5">
+    // Same card, same gap below (mb-4) as the search above and the To do card
+    // under it; a thin bar in the brand colour on the left is the only accent.
+    <section
+      className="card mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 p-4 sm:px-5"
+      style={{ boxShadow: "inset 3px 0 0 rgb(var(--c-brand))" }}
+    >
       <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/15 text-brand">
         <CalendarPlus className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
       </span>
