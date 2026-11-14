@@ -10,7 +10,7 @@ import { DIV2_TIER, divisionOf, readDriverDivisions } from "../lib/divisions.js"
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
-import { sameTeamBySeason, readTeamLinkMap } from "../lib/teamLineage.js";
+import { sameTeamBySeason, readTeamLinkMap, teamDivision } from "../lib/teamLineage.js";
 import { readTransfers, byDriver, nextRoundNumber } from "../services/driverTransfers.js";
 
 const router = Router();
@@ -184,7 +184,10 @@ router.get("/:id/history", async (req, res, next) => {
     const bySeason = sameTeamBySeason(
       await prisma.team.findMany({ where: { seasonId: { in: seasons.map((s) => s.id) } } }),
       team.name,
-      await readTeamLinkMap(prisma)
+      await readTeamLinkMap(prisma),
+      // A Division 2 team's history is Division 2's, not the same name's in
+      // Division 1 (lib/teamLineage.js).
+      teamDivision(team)
     );
 
     // "Is this season's table final?" — see the note on `concluded` below.
@@ -228,7 +231,7 @@ router.get("/:id/history", async (req, res, next) => {
       .filter((r) => r.concluded && r.position != null && r.position >= 1 && r.position <= 3)
       .map((r) => ({ position: r.position, seasonNumber: r.seasonNumber, tier: r.tier }));
 
-    res.json({ name: team.name, seasons: rows, badges });
+    res.json({ name: team.name, division: teamDivision(team), seasons: rows, badges });
   } catch (e) {
     next(e);
   }

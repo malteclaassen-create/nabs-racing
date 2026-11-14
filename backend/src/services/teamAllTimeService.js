@@ -32,7 +32,7 @@ import { seasonPointsBeforeDrop } from "./recordsService.js";
 import { parsePointsTable } from "./seasonService.js";
 import { DEFAULT_POINTS_TABLE, getPointsForPosition } from "./pointsCalculator.js";
 import { getPersonGroups } from "../lib/persons.js";
-import { sameTeamBySeason, teamLineageKey, readTeamLinkMap } from "../lib/teamLineage.js";
+import { sameTeamBySeason, teamLineageKey, readTeamLinkMap, teamDivision } from "../lib/teamLineage.js";
 
 // Walks every season of the series, so one answer is kept for a few minutes
 // per team name, the way the Hall of Fame keeps its own. A results import
@@ -160,7 +160,8 @@ export function teamTotalsList(totals) {
 // visible seasons of its series. Returns { name, seasons, scale, drivers }.
 export async function getTeamAllTime(prisma, team, seasons, { includePrivate = false } = {}) {
   const links = await readTeamLinkMap(prisma);
-  const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name, links)}|${includePrivate ? 1 : 0}`;
+  // Per division: Division 2's Red Bull is a team of its own (lib/teamLineage.js).
+  const key = `${team.season?.seriesId ?? ""}|${teamLineageKey(team.name, links)}|d${teamDivision(team)}|${includePrivate ? 1 : 0}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.promise;
   const promise = computeTeamAllTime(prisma, team, seasons, links);
@@ -172,13 +173,15 @@ export async function getTeamAllTime(prisma, team, seasons, { includePrivate = f
 }
 
 async function computeTeamAllTime(prisma, team, seasons, links) {
+  const division = teamDivision(team);
   const siblings = sameTeamBySeason(
     await prisma.team.findMany({
       where: { seasonId: { in: seasons.map((s) => s.id) } },
-      select: { id: true, seasonId: true, name: true },
+      select: { id: true, seasonId: true, name: true, tier: true },
     }),
     team.name,
-    links
+    links,
+    division
   );
   const teamBySeason = new Map([...siblings].map(([seasonId, t]) => [seasonId, t.id]));
   const { byDriver } = await getPersonGroups(prisma);
@@ -191,9 +194,10 @@ async function computeTeamAllTime(prisma, team, seasons, links) {
     const teamId = teamBySeason.get(season.id);
     if (!teamId) continue;
     const rounds = await prisma.race.findMany({ where: { seasonId: season.id, isSpecialEvent: false } });
-    const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, rounds);
+    // A Division 2 team raced Division 2's classifications, in its own table.
+    const { raceNumberById, sprintRaceIds, raceIds } = await scoringRaces(prisma, rounds, { division });
     const [standings, stamps] = await Promise.all([
-      getDriverStandings(prisma, season.id),
+      getDriverStandings(prisma, season.id, { division }),
       prisma.raceResult.findMany({
         where: { raceId: { in: raceIds } },
         select: { driverId: true, raceId: true, teamId: true, subForTeamId: true },

@@ -21,7 +21,8 @@ import { DriverAvatar, EmptyState } from "./ui.jsx";
 //   expected  the mark, faded: nothing recorded, their team today
 // ---------------------------------------------------------------------------
 
-const TIER_RANK = { 1: 0, 2: 1, 0: 2 };
+// Division 1 tiers, then Division 2 (tier 3), then the Reserve pool.
+const TIER_RANK = { 1: 0, 2: 1, 3: 2, 0: 3 };
 const tierRank = (t) => TIER_RANK[t] ?? 3;
 
 // A translucent wash of the team colour behind its mark, when the colour is a
@@ -240,6 +241,7 @@ export default function TeamHistoryGrid({ data, driverHref = null, teamHref = nu
           {teams.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
+              {t.tier === 3 ? " (Division 2)" : ""}
             </option>
           ))}
         </select>

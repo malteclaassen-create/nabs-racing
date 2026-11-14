@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useCallback, useEffect, useRef } from "react";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { FlagCheckered, Hash, Podium, TrendingUp, Trophy } from "../components/icons/filled.jsx";
 import { api } from "../api/client.js";
@@ -13,13 +13,27 @@ import Flag from "../components/Flag.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import TeamMarginChart from "../components/TeamMarginChart.jsx";
 import TeamAllTimeDrivers from "../components/TeamAllTimeDrivers.jsx";
+import SlidingTabs from "../components/SlidingTabs.jsx";
+import { useAuth } from "../hooks/useAuth.js";
 import { flagFor } from "../data/circuits.js";
 import { countryFor } from "../data/driverCountries.js";
 import { NO_VALUE } from "../utils/format.js";
 import { isIdleReserve, finishesOf, roundsOf } from "../utils/standingsRow.js";
 import { cumulativeTotals } from "../utils/cumulativePoints.js";
 
-const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
+const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2", 0: "Reserve" };
+
+// Division 1 (tiers 1 and 2) or Division 2 (tier 3).
+const divisionOf = (team) => (team?.tier === 3 ? 2 : 1);
+const sameName = (a, b) => String(a || "").toLowerCase().replace(/[^a-z0-9]/g, "") === String(b || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// A season that runs Division 2 has a team of the same name in each division:
+// two teams in the data (own results, line-up, table, history), ONE team to a
+// visitor. This finds the other one, so the page can switch between them.
+function twinOf(team, teams) {
+  if (!team || team.tier === 0) return null;
+  return teams.find((t) => t.id !== team.id && t.tier !== 0 && divisionOf(t) !== divisionOf(team) && sameName(t.name, team.name)) || null;
+}
 
 // A team colour at a given strength over whatever sits behind it (any colour
 // string the admin typed, not only six-digit hex).
@@ -260,12 +274,51 @@ export default function TeamProfile() {
   useSeasonParam(); // honour ?season=N (team pages are season-scoped)
   const { id } = useParams();
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Division 2's tables come along: a season without Division 2 answers them
+  // empty, and an older backend not at all, which must not break the page.
+  const empty = { standings: [], raceNumbers: [] };
   const { data, loading, error } = useApi(
     useCallback(
-      () => Promise.all([api.teams(), api.t1Standings(), api.t2Standings(), api.driverStandings(), api.races()]),
+      () =>
+        Promise.all([
+          api.teams(),
+          api.t1Standings(),
+          api.t2Standings(),
+          api.driverStandings(),
+          api.races(),
+          api.div2Standings().catch(() => empty),
+          api.driverStandings(undefined, null, null, 2).catch(() => empty),
+        ]),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       []
     )
   );
+
+  // The other division's team of the same name, and the address of its page.
+  const twin = data ? twinOf((data[0] || []).find((t) => t.id === id), data[0] || []) : null;
+  const pathFor = (teamId) => `${location.pathname.replace(/[^/]+$/, teamId)}${location.search}`;
+
+  // A driver who opens the team they race for lands on THEIR division's side
+  // of it: a Division 2 driver following a "Red Bull" link from the search or
+  // the Hall of Fame (which point at Division 1) sees Division 2's Red Bull.
+  // Once per team page; a switch by hand is never undone. The page can be
+  // rebuilt on the way (a ref would forget), so the hand choice travels with
+  // the navigation itself (location.state.pickedDivision).
+  const autoSwitched = useRef(null);
+  useEffect(() => {
+    if (!twin || !user?.driverId || autoSwitched.current === id || location.state?.pickedDivision) return;
+    autoSwitched.current = id;
+    const mine = (t) => (t.drivers || []).some((d) => d.id === user.driverId);
+    const here = (data[0] || []).find((t) => t.id === id);
+    if (here && !mine(here) && mine(twin)) {
+      autoSwitched.current = twin.id;
+      navigate(pathFor(twin.id), { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twin?.id, id, user?.driverId]);
 
   // The team is what this page is about, so the tab and the search result say the
   // team, not just the season. Same wording as the server ships for this address
@@ -288,13 +341,15 @@ export default function TeamProfile() {
     );
   if (error) return <ErrorBox message={error} />;
 
-  const [teams, t1, t2, driverStandings, races] = data;
+  const [teams, t1, t2, div1Drivers, races, div2, div2Drivers] = data;
   const team = teams.find((t) => t.id === id);
   if (!team) return <ErrorBox message="Team not found." />;
 
   const color = team.color;
   const dark = theme === "dark";
-  const standingsSet = team.tier === 1 ? t1 : team.tier === 2 ? t2 : null;
+  const standingsSet = team.tier === 1 ? t1 : team.tier === 2 ? t2 : team.tier === 3 ? div2 : null;
+  // A Division 2 team's drivers are in Division 2's drivers' table.
+  const driverStandings = team.tier === 3 ? div2Drivers || empty : div1Drivers;
   const tierRows = standingsSet?.standings || [];
   const teamRow = tierRows.find((r) => r.teamId === id) || null;
   const raceNumbers = standingsSet?.raceNumbers || [];
@@ -372,7 +427,11 @@ export default function TeamProfile() {
             className="relative inline-flex items-center gap-1.5 self-start text-xs font-semibold text-link hover:underline sm:absolute sm:left-8 sm:top-5"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            {hasT2 && (team.tier === 1 || team.tier === 2) ? `Constructors · Tier ${team.tier}` : "Constructors"}
+            {team.tier === 3
+              ? "Constructors · Division 2"
+              : hasT2 && (team.tier === 1 || team.tier === 2)
+                ? `Constructors · Tier ${team.tier}`
+                : "Constructors"}
           </Link>
           <span
             className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl sm:mt-6 sm:h-32 sm:w-32"
@@ -393,6 +452,25 @@ export default function TeamProfile() {
             <h1 className="mt-2 break-words font-display text-4xl font-black uppercase tracking-tight text-dark sm:text-6xl">
               {team.name}
             </h1>
+            {/* The same team races in both divisions this season: one page,
+                a switch between its two sides. */}
+            {twin && (
+              <SlidingTabs
+                className="mt-3"
+                items={[
+                  { key: 1, label: "Division 1" },
+                  { key: 2, label: "Division 2" },
+                ]}
+                value={divisionOf(team)}
+                onChange={(d) => {
+                  if (d === divisionOf(team)) return;
+                  // A choice by hand: the own-division jump must not undo it.
+                  autoSwitched.current = twin.id;
+                  navigate(pathFor(twin.id), { state: { pickedDivision: d } });
+                }}
+                btnClassName="px-3 py-1.5 text-xs"
+              />
+            )}
             {line && <p className="mt-2 text-sm text-medium sm:text-base">{line}</p>}
           </div>
           {teamRow && (
@@ -593,13 +671,14 @@ function TeamHistory({ teamId, teamName, currentSeasonId, color }) {
             {badges.map((b, i) => (
               <span
                 key={i}
-                title={`${b.position === 1 ? "Constructors' champion" : b.position === 2 ? "Runner-up" : "Third"} in Season ${b.seasonNumber}${b.tier === 2 ? " (Tier 2)" : ""}`}
+                title={`${b.position === 1 ? "Constructors' champion" : b.position === 2 ? "Runner-up" : "Third"} in Season ${b.seasonNumber}${b.tier === 2 ? " (Tier 2)" : b.tier === 3 ? " (Division 2)" : ""}`}
                 className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider"
                 style={{ backgroundColor: `${MEDAL[b.position - 1]}22`, color: `var(--medal-${b.position})` }}
               >
                 <Trophy className="h-3 w-3" strokeWidth={2.4} aria-hidden="true" />
                 S{b.seasonNumber}
                 {b.tier === 2 && " T2"}
+                {b.tier === 3 && " D2"}
               </span>
             ))}
           </span>
@@ -619,7 +698,7 @@ function TeamHistory({ teamId, teamName, currentSeasonId, color }) {
             >
               <span className="font-mono text-xs font-bold uppercase text-light">S{r.seasonNumber}</span>
               <span className="min-w-0 truncate text-sm text-medium">
-                {r.tier === 0 ? "Reserve" : `Tier ${r.tier}`}
+                {TIER_LABEL[r.tier] ?? `Tier ${r.tier}`}
                 {/* Raced under another name that season (lib/teamLineage.js). */}
                 {r.name && r.name !== teamName && <span className="text-light"> · as {r.name}</span>}
                 {here && <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-light">this page</span>}

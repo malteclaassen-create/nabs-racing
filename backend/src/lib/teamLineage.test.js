@@ -77,3 +77,27 @@ describe("admin team links", () => {
     expect(suggestTeamLinks(["BMW Sauber", "BMW", "Sauber"])).toEqual([]);
   });
 });
+
+describe("sameTeamBySeason per division", () => {
+  // Season 9 runs Division 2: a Red Bull in each division.
+  const rows = [
+    { id: "rb7", seasonId: "s7", name: "Red Bull", tier: 2 },
+    { id: "rb8", seasonId: "s8", name: "Red Bull", tier: 2 },
+    { id: "rb9", seasonId: "s9", name: "Red Bull", tier: 1 },
+    { id: "rb9d2", seasonId: "s9", name: "Red Bull", tier: 3 },
+  ];
+
+  it("Division 1's line never picks up the Division 2 team", () => {
+    const line = sameTeamBySeason(rows, "Red Bull", undefined, 1);
+    expect([...line.values()].map((t) => t.id)).toEqual(["rb7", "rb8", "rb9"]);
+  });
+
+  it("Division 2's line is only Division 2's seasons", () => {
+    const line = sameTeamBySeason(rows, "Red Bull", undefined, 2);
+    expect([...line.values()].map((t) => t.id)).toEqual(["rb9d2"]);
+  });
+
+  it("without a division it behaves as before", () => {
+    expect(sameTeamBySeason(rows, "Red Bull").size).toBe(3);
+  });
+});

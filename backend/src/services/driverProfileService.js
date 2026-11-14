@@ -289,8 +289,20 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
   }
   for (const ld of linkedDrivers) {
     if (!ld.seasonId || privateSeasonIds.has(ld.seasonId)) continue;
-    const st = ld.seasonId === ownSeasonId ? ownStandings : await getDriverStandings(prisma, ld.seasonId);
-    const row = st.standings.find((r) => r.driverId === ld.id);
+    let st = ld.seasonId === ownSeasonId ? ownStandings : await getDriverStandings(prisma, ld.seasonId);
+    let row = st.standings.find((r) => r.driverId === ld.id);
+    // A season raced in Division 2 is in that field's own table, not the main
+    // one (lib/divisions.js). Without this the season vanished from the career.
+    let division = row ? (ld.team?.tier === 3 ? 2 : 1) : 1;
+    if (!row) {
+      const st2 = await getDriverStandings(prisma, ld.seasonId, { division: 2 }).catch(() => null);
+      const row2 = st2?.standings?.find((r) => r.driverId === ld.id);
+      if (row2) {
+        st = st2;
+        row = row2;
+        division = 2;
+      }
+    }
     if (!row) continue;
     // That season's championship place, counted among the people who STARTED a
     // round of it — the same rule as the headline "P4 of 19" above, so the
@@ -308,6 +320,8 @@ async function buildCareer(prisma, driverId, ownSeasonId, ownStandings) {
       isCurrent: ld.seasonId === ownSeasonId,
       teamName: ld.team?.name ?? null,
       teamColor: ld.team?.color ?? null,
+      // 2 = raced in Division 2 that season (the career table says so).
+      division,
       position: seasonRank > 0 ? seasonRank : null,
       points: row.total ?? 0,
       starts: startsOf(rounds).length,
@@ -435,7 +449,9 @@ async function buildTeammateHistory(prisma, { driver, seasonId, privateSeasonIds
       const num = r.season?.number;
       if (num == null) continue;
       if (!bySeasonNum.has(num)) bySeasonNum.set(num, new Set());
-      bySeasonNum.get(num).add(normTeamName(r.team.name));
+      // Same name AND same division: a Division 1 and a Division 2 Red Bull
+      // driver of one season raced in different championships, not together.
+      bySeasonNum.get(num).add(`${normTeamName(r.team.name)}|${r.team.tier === 3 ? 2 : 1}`);
     }
     return bySeasonNum;
   };

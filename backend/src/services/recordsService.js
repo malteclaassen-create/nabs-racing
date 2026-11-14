@@ -423,7 +423,10 @@ async function computeSeriesRecords(prisma, series, includePrivate) {
       where: { seasonId: { in: seasonIds } },
       select: { id: true, name: true, tier: true, color: true, logoUrl: true, seasonId: true },
     })
-  ).filter((t) => t.tier > 0);
+    // Division 1 teams only: the team records count Division 1's tables, and a
+    // season with Division 2 has a second team of the same name (tier 3) that
+    // must not become the face (or the link) of the Division 1 line.
+  ).filter((t) => t.tier === 1 || t.tier === 2);
   const seasonNumberById = new Map(seasons.map((s) => [s.id, s.number]));
   const links = await readTeamLinkMap(prisma);
   const teamKeyById = new Map(teamRows.map((t) => [t.id, teamLineageKey(t.name, links)]));

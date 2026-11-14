@@ -6287,7 +6287,10 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
 
     const norm = (v) =>
       String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
-    const teamByName = new Map(targetTeams.filter((t) => t.tier !== 0).map((t) => [norm(t.name), t]));
+    // By name AND division: a season with Division 2 has a team of the same
+    // name in each, and a Division 1 driver must not land in the Division 2 one.
+    const divOf = (t) => (t?.tier === 3 ? 2 : 1);
+    const teamByName = new Map(targetTeams.filter((t) => t.tier !== 0).map((t) => [`${norm(t.name)}|${divOf(t)}`, t]));
     // Who is on this season's roster already, by person and by name — the same
     // two tests the single-driver import uses, so both agree about "already here".
     const takenNames = new Set(present.map((d) => norm(d.name)));
@@ -6311,7 +6314,7 @@ router.post("/seasons/:id/clone-drivers", async (req, res, next) => {
         pool = pool || (await ensureReservePool(prisma, target.id));
         team = pool;
       } else {
-        team = teamByName.get(norm(d.team?.name));
+        team = teamByName.get(`${norm(d.team?.name)}|${divOf(d.team)}`);
       }
       if (!team) {
         skipped.push({ name: d.name, reason: `no team called "${d.team?.name || "?"}" in this season` });

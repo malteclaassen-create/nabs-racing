@@ -31,7 +31,7 @@ import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
 import { isIdleReserve, finishesOf } from "../utils/standingsRow.js";
 
-const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 0: "Reserve" };
+const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2", 0: "Reserve" };
 
 // Public driver page layout switch:
 //   "card"    → the rating-card–led design (no dark hero banner, no rating
@@ -399,6 +399,7 @@ function CareerBlock({ career, otherSeries, careerKey, gameOf }) {
                     <span className="flex items-center gap-2">
                       <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: s.teamColor || "#64748b" }} />
                       <span className="text-medium">{s.teamName || NO_VALUE}</span>
+                      {s.division === 2 && <span className="pill bg-surface2 text-light">Division 2</span>}
                     </span>
                   </td>
                   <td className="px-2 py-3 text-center"><CareerPos position={posOf(s)} /></td>
@@ -449,7 +450,8 @@ function CareerBlock({ career, otherSeries, careerKey, gameOf }) {
                       {game && <span className="ml-1.5 font-mono text-[11px] font-normal text-light">{game}</span>}
                     </span>
                     <span className="block truncate text-xs text-light">
-                      {s.teamName || NO_VALUE} · {plural(s.starts, "start")} · {s.wins}W {s.podiums}P
+                      {s.teamName || NO_VALUE}
+                      {s.division === 2 ? " (Division 2)" : ""} · {plural(s.starts, "start")} · {s.wins}W {s.podiums}P
                     </span>
                   </span>
                   <CareerPos position={posOf(s)} />
@@ -1193,7 +1195,9 @@ function TeamPanel({ driver, standings, career, teammateHistory = [] }) {
           ? api.t1Standings(driver.seasonNumber)
           : driver.team.tier === 2
             ? api.t2Standings(driver.seasonNumber)
-            : Promise.resolve(null),
+            : driver.team.tier === 3
+              ? api.div2Standings(driver.seasonNumber)
+              : Promise.resolve(null),
       [driver.team.id, driver.team.tier, driver.seasonNumber]
     )
   );

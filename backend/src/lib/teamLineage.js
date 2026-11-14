@@ -50,14 +50,26 @@ export function teamLineageKey(name, links = DEFAULT_MAP) {
   return key;
 }
 
+// Which championship a team row races in: 2 = Division 2 (tier 3), else 1.
+export function teamDivision(team) {
+  return Number(team?.tier) === 3 ? 2 : 1;
+}
+
 // From the team rows of several seasons, the one row per season that is the
 // same team as `name`: Map<seasonId, team>. Should a season hold two rows of
 // the same team, the one spelled exactly like `name` wins.
-export function sameTeamBySeason(teams, name, links = DEFAULT_MAP) {
+//
+// `division` (1 or 2) keeps the line inside one championship. A season that
+// runs Division 2 has a Red Bull in each division: two teams of the same name,
+// each with its own results, line-up and history. Without it the Division 2
+// Red Bull's page picked up the Division 1 Red Bull's eight seasons and titles.
+// The rows then need `tier`. Omitted = every row of the name, as before.
+export function sameTeamBySeason(teams, name, links = DEFAULT_MAP, division = null) {
   const key = teamLineageKey(name, links);
   const out = new Map();
   for (const t of teams) {
     if (teamLineageKey(t.name, links) !== key) continue;
+    if (division != null && teamDivision(t) !== division) continue;
     const have = out.get(t.seasonId);
     if (!have || (have.name !== name && t.name === name)) out.set(t.seasonId, t);
   }

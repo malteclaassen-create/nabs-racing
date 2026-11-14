@@ -192,7 +192,9 @@ router.get("/", async (req, res, next) => {
       if (!sr) continue;
       const num = numberOf(t.seasonId);
       // Rows in the active season outrank every other row, then newest wins.
-      const rank = (num || 0) + (activeSeasonIds.has(t.seasonId) ? 1000 : 0);
+      // Within one season the Division 1 row wins over its Division 2 twin of
+      // the same name: one hit per team, and its page switches between the two.
+      const rank = (num || 0) + (activeSeasonIds.has(t.seasonId) ? 1000 : 0) + (t.tier === 3 ? 0 : 0.5);
       const key = `${sr.id}|${norm(t.name)}`;
       const prev = teamBest.get(key);
       if (!prev || rank > prev.num) {
