@@ -7,7 +7,7 @@ import { useApi } from "../hooks/useApi.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
-import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton } from "../components/ui.jsx";
+import { PageHeader, ErrorBox, Notice, CardHead, DriverAvatar, Field, SafetyCarBadge, Skeleton, CheckField } from "../components/ui.jsx";
 import { useAsk, Modal } from "../components/overlay.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import { useJumpView } from "../hooks/useJumpView.js";
@@ -5654,6 +5654,20 @@ function SeasonManualPoints({ season, standings, onSaved, onError, onReload }) {
 
 // Per-season scoring editor: how many worst rounds are dropped (0 = none) and
 // the points-per-position table (empty = league default).
+// One scoring rule: a label, its field(s), and a line saying what it does and
+// what the default is.
+function ScoringRow({ label, hint, children }) {
+  return (
+    <div className="grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      <div className="pt-1.5 text-xs font-semibold text-medium">{label}</div>
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+        {hint && <p className="text-[11px] leading-relaxed text-light">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
 function SeasonScoring({ season, onSaved, onError }) {
   const stored = season.pointsTable ? JSON.parse(season.pointsTable).join(", ") : "";
   const storedTeamDrop = season.teamDropWorst == null ? "" : String(season.teamDropWorst);
@@ -5717,48 +5731,62 @@ function SeasonScoring({ season, onSaved, onError }) {
       : "Drops each team's N lowest single-driver round scores, however they're spread across the drivers.";
 
   return (
-    <div className="space-y-1.5 rounded-lg bg-surface2/60 p-2.5">
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Read as two sentences: "Drivers drop their [3] worst rounds",
-            "Teams drop their [3] worst [whole rounds]". */}
-        <label className="flex items-center gap-1.5 text-xs text-light">
-          Drivers drop
-          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="10"
-            value={drop} onChange={(e) => setDrop(e.target.value)} title="How many of each driver's lowest-scoring rounds don't count in the driver standings (0 = every round counts)" />
-          worst rounds
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-light">
-          Teams drop
-          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="24" placeholder={NO_VALUE}
-            value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} title="How many the constructor standings drop per team, counted the way the choice next to this says. Leave blank and teams simply lose whatever their drivers drop." />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-light">
-          worst
-          <select className="input py-1 text-xs" value={teamMode} onChange={(e) => setTeamMode(e.target.value)}
-            disabled={teamDrop.trim() === ""} title={teamModeHint}>
-            <option value="rounds">whole rounds (both drivers added up)</option>
-            <option value="results">single driver results</option>
-          </select>
-        </label>
-        <input aria-label="Points per finishing position" className="input min-w-40 flex-1 py-1 font-mono text-xs" placeholder={`Points P1, P2, … (default: ${DEFAULT_POINTS_HINT})`}
+    <div className="space-y-3">
+      {/* One line per rule: what it is, the field, and what the league does
+          when it is left as it comes (the default), so nobody has to guess. */}
+      <ScoringRow label="Points table" hint={
+        points.trim()
+          ? <>This season pays its own table. Empty it to go back to the league default ({DEFAULT_POINTS_HINT}).</>
+          : <>Empty = the league default: <span className="font-mono text-medium">{DEFAULT_POINTS_HINT}</span> (P1 to P18).</>
+      }>
+        <input aria-label="Points per finishing position" className="input min-w-0 flex-1 py-1.5 font-mono text-xs"
+          placeholder="League default"
           value={points} onChange={(e) => setPoints(e.target.value)} title="Points per finishing position, starting at P1. Leave empty for the league default." />
-        <label className="flex items-center gap-1.5 text-xs text-light">
-          Fastest lap
-          <input className="input w-14 py-1 text-center text-xs" type="number" min="0" max="100"
-            value={flPoints} onChange={(e) => setFlPoints(e.target.value)}
-            title="Bonus points for the fastest race lap, on top of the finishing points. Goes to the driver who set the race's best lap, only if they finished the race (a DNF gets nothing). 0 = no bonus. On a sprint weekend the feature race and the sprint each pay it." />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-light">
-          Champion
-          <select className="input max-w-44 py-1 text-xs" value={champion} onChange={(e) => setChampion(e.target.value)}
-            title="Only when the league decided the title by a rule the points do not express (e.g. whoever finished ahead in the finale). That driver goes to the top of the final table with a footnote; the Hall of Fame and the seals follow.">
-            <option value="">Most points</option>
-            {(drivers.data?.standings || []).map((d) => (
-              <option key={d.driverId} value={d.driverId}>P{d.position} · {d.name}</option>
-            ))}
-          </select>
-        </label>
-        <button className="btn-secondary px-3 py-1 text-xs" disabled={saving || !dirty} onClick={save}>
+        {!points.trim() && (
+          <button type="button" className="btn-secondary shrink-0 px-2.5 py-1 text-xs" onClick={() => setPoints(DEFAULT_POINTS_HINT)}>
+            Fill in the default
+          </button>
+        )}
+      </ScoringRow>
+
+      <ScoringRow label="Drivers drop" hint="How many of each driver's worst rounds don't count. League default: 3. 0 = every round counts.">
+        <input className="input w-16 py-1.5 text-center text-xs" type="number" min="0" max="10" aria-label="Rounds each driver drops"
+          value={drop} onChange={(e) => setDrop(e.target.value)} />
+        <span className="text-xs text-light">worst rounds</span>
+      </ScoringRow>
+
+      <ScoringRow label="Teams drop" hint={
+        teamDrop.trim() === ""
+          ? "Empty (the default) = a team loses whatever its drivers drop. Set a number for the team table's own rule."
+          : teamModeHint
+      }>
+        <input className="input w-16 py-1.5 text-center text-xs" type="number" min="0" max="24" placeholder={NO_VALUE} aria-label="Rounds each team drops"
+          value={teamDrop} onChange={(e) => setTeamDrop(e.target.value)} />
+        <span className="text-xs text-light">worst</span>
+        <select className="input min-w-0 py-1.5 text-xs" value={teamMode} onChange={(e) => setTeamMode(e.target.value)}
+          disabled={teamDrop.trim() === ""} aria-label="How a team's dropped rounds are counted">
+          <option value="rounds">whole rounds (both drivers added up)</option>
+          <option value="results">single driver results</option>
+        </select>
+      </ScoringRow>
+
+      <ScoringRow label="Fastest lap" hint="Bonus points for the fastest race lap, only if that driver finishes. Default: 0, no bonus.">
+        <input className="input w-16 py-1.5 text-center text-xs" type="number" min="0" max="100" aria-label="Fastest lap bonus points"
+          value={flPoints} onChange={(e) => setFlPoints(e.target.value)} />
+        <span className="text-xs text-light">points</span>
+      </ScoringRow>
+
+      <ScoringRow label="Champion" hint="Default: whoever has the most points. Pick a driver only when the league decided the title by another rule.">
+        <select className="input min-w-0 max-w-xs flex-1 py-1.5 text-xs" value={champion} onChange={(e) => setChampion(e.target.value)} aria-label="Champion">
+          <option value="">Most points (default)</option>
+          {(drivers.data?.standings || []).map((d) => (
+            <option key={d.driverId} value={d.driverId}>P{d.position} · {d.name}</option>
+          ))}
+        </select>
+      </ScoringRow>
+
+      <div className="flex justify-end">
+        <button className="btn-primary px-4 py-1.5 text-sm" disabled={saving || !dirty} onClick={save}>
           {saving ? "Saving…" : "Save scoring"}
         </button>
       </div>
@@ -5878,6 +5906,33 @@ function SeasonIdentity({ season, onSaved, onError }) {
         {saving ? "Saving…" : "Save name"}
       </button>
     </div>
+  );
+}
+
+// One labelled part of a season's settings. `summary` is what a folded
+// section says about itself, so the season can be read without opening
+// everything; `open` is whether it starts open.
+function SeasonSection({ title, summary, open: startOpen = false, children }) {
+  const [open, setOpen] = useState(startOpen);
+  return (
+    <section className="rounded-xl border border-border bg-surface/40">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">{title}</span>
+        {!open && summary && <span className="min-w-0 flex-1 truncate text-xs text-light">{summary}</span>}
+        {open && <span className="flex-1" />}
+        {open ? (
+          <ChevronUp className="h-4 w-4 shrink-0 text-light" strokeWidth={2} aria-hidden="true" />
+        ) : (
+          <ChevronDown className="h-4 w-4 shrink-0 text-light" strokeWidth={2} aria-hidden="true" />
+        )}
+      </button>
+      {open && <div className="space-y-3 border-t border-border px-3 py-3">{children}</div>}
+    </section>
   );
 }
 
@@ -6076,7 +6131,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
     <div className="space-y-6">
     {seasons && !isEvent && <AdminSeasonWizard seasons={seasons} reload={reload} gotoInSeason={gotoInSeason} />}
     <SeriesPanel />
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {isEvent ? (
         <div className="card space-y-4 p-5">
           <CardHead eyebrow="Special event" title={(seasons || []).length ? "The event is set up" : "Set up the event"} />
@@ -6182,81 +6237,139 @@ function Seasons({ gotoRaces, gotoInSeason }) {
               </button>
               {open && (
                 <div className="space-y-2 pb-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                      onClick={() => gotoRaces?.(s)}
-                      title="Switch to this season and open the race calendar">
-                      Schedule races →
-                    </button>
-                    {/* Deliberately outside the !isActive block: the running
-                        season may want its cards switched off just as much. */}
-                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                      onClick={() => toggleCards(s)}
-                      title={s.cardsEnabled === false
-                        ? "Show driver rating cards for this season again (Cards view in the standings, card on the driver page)"
-                        : "Hide the driver rating cards for this season, for seasons raced without the data the ratings are built from"}>
-                      {s.cardsEnabled === false ? "Enable driver cards" : "Disable driver cards"}
-                    </button>
-                    <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                      onClick={() => toggleDivision2(s)}
-                      title={s.division2
-                        ? "Back to one field: one grid on the sign-up, no Division 2 tables"
-                        : "A second field for newcomers, racing at the same time on the second server, with its own teams and standings"}>
-                      {s.division2 ? "Turn off Division 2" : "Run Division 2"}
-                    </button>
-                    {!s.isActive && (
-                      <>
-                        <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
+                  {/* Where the season stands and the steps that change it. */}
+                  <SeasonSection
+                    title="Status"
+                    open
+                    summary={s.isActive ? "Active" : s.isPublic ? "Public" : "Private"}
+                  >
+                    <p className="text-sm text-medium">
+                      {s.isActive
+                        ? "The active season: public, and what the site shows by default."
+                        : s.isPublic
+                          ? "Public: visitors can open it in the season switcher. Not the default."
+                          : "Private: hidden from visitors until you make it public or active."}
+                      {!s.isActive && s.isAnnounced && " Announced on the home page as coming up."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {!s.isActive && (
+                        <button className="btn-primary px-3 py-1.5 text-sm" disabled={busy} onClick={() => activate(s.id)}>
+                          Make it the active season
+                        </button>
+                      )}
+                      {!s.isActive && (
+                        <button className="btn-secondary px-3 py-1.5 text-sm" disabled={busy}
                           onClick={() => togglePublic(s)}
                           title={s.isPublic ? "Hide this season from the public" : "Publish this season to the public"}>
                           {s.isPublic ? "Make private" : "Make public"}
                         </button>
-                        {/* only an UPCOMING season can advertise itself */}
-                        {s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
-                          <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                            onClick={() => toggleAnnounce(s)}
-                            title={s.isAnnounced
-                              ? "Remove the 'Coming up' strip from the home page"
-                              : "Show a 'Coming up' strip on the home page (name, game and opener only), even while the season is private"}>
-                            {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
-                          </button>
-                        )}
-                        <button className="transition text-xs font-semibold text-link hover:underline" disabled={busy}
-                          onClick={() => activate(s.id)}>Make active</button>
-                        {/* any non-active season is deletable; a filled one requires
-                            typing its name and is backed up first (server-enforced) */}
-                        <button className="text-xs font-semibold text-light transition hover:text-link" disabled={busy}
-                          onClick={() => remove(s)}>Delete</button>
-                      </>
-                    )}
-                  </div>
-                  <SeasonIdentity key={`${s.id}-${s.number}-${s.name}-${s.game || ""}`} season={s}
-                    onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonPreviewLoop season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}
-                    onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
-                  <AdminSeasonAwards season={s} onSaved={setMsg} onError={setError} />
-                  {/* clone teams (or the full roster) from another season */}
+                      )}
+                      {/* only an UPCOMING season can advertise itself */}
+                      {!s.isActive && s.number > ((seasons || []).find((o) => o.isActive)?.number ?? -Infinity) && (
+                        <button className="btn-secondary px-3 py-1.5 text-sm" disabled={busy}
+                          onClick={() => toggleAnnounce(s)}
+                          title={s.isAnnounced
+                            ? "Remove the 'Coming up' strip from the home page"
+                            : "Show a 'Coming up' strip on the home page (name, game and opener only), even while the season is private"}>
+                          {s.isAnnounced ? "Stop announcing" : "Announce on Home"}
+                        </button>
+                      )}
+                      <button className="btn-secondary px-3 py-1.5 text-sm" disabled={busy}
+                        onClick={() => gotoRaces?.(s)}
+                        title="Switch to this season and open the race calendar">
+                        Open the calendar
+                      </button>
+                    </div>
+                  </SeasonSection>
+
+                  <SeasonSection title="Name and game" open summary={`${s.name} · No. ${s.number} · ${s.game || "no game set"}`}>
+                    <SeasonIdentity key={`${s.id}-${s.number}-${s.name}-${s.game || ""}`} season={s}
+                      onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  </SeasonSection>
+
+                  <SeasonSection
+                    title="Features"
+                    summary={`Division 2 ${s.division2 ? "on" : "off"} · driver cards ${s.cardsEnabled === false ? "off" : "on"}`}
+                  >
+                    <CheckField
+                      checked={!!s.division2}
+                      disabled={busy}
+                      onChange={() => toggleDivision2(s)}
+                      label="Run Division 2"
+                      hint="A second field for newcomers, racing at the same time on the second server, with its own teams and standings."
+                    />
+                    {/* Also for the running season: it may want its cards off just as much. */}
+                    <CheckField
+                      checked={s.cardsEnabled !== false}
+                      disabled={busy}
+                      onChange={() => toggleCards(s)}
+                      label="Show driver rating cards"
+                      hint="The Cards view in the standings and the card on the driver page. Off for seasons raced without the data the ratings are built from."
+                    />
+                  </SeasonSection>
+
+                  <SeasonSection
+                    title="Pictures"
+                    summary={[
+                      s.heroImageUrl ? "own main-card photo" : "default main-card photo",
+                      s.carImageUrl ? "car image" : null,
+                      s.previewLoopUrl ? "main card loop" : null,
+                    ].filter(Boolean).join(" · ")}
+                  >
+                    <SeasonHero season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                    <SeasonCar season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                    <SeasonPreviewLoop season={s} onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  </SeasonSection>
+
+                  <SeasonSection
+                    title="Scoring"
+                    summary={[
+                      s.dropWorst ? `${s.dropWorst} worst rounds dropped` : "every round counts",
+                      s.pointsTable ? "own points table" : "league default points",
+                      s.fastestLapPoints ? `${s.fastestLapPoints} for fastest lap` : null,
+                    ].filter(Boolean).join(" · ")}
+                  >
+                    <SeasonScoring key={`${s.id}-${s.dropWorst}-${s.teamDropWorst ?? "x"}-${s.teamDropMode ?? "x"}-${s.fastestLapPoints || 0}-${s.championDriverId || ""}-${s.pointsTable || ""}`} season={s}
+                      onSaved={(m) => { setMsg(m); reload(); }} onError={setError} />
+                  </SeasonSection>
+
+                  <SeasonSection title="Awards" summary="The league's own awards, shown in the Hall of Fame">
+                    <AdminSeasonAwards season={s} onSaved={setMsg} onError={setError} />
+                  </SeasonSection>
+
                   {(seasons || []).length > 1 && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select aria-label={`Season to copy teams and drivers into ${s.name} from`} className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
-                        onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
-                        <option value="">Copy from…</option>
-                        {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
-                          <option key={o.id} value={o.id}>{o.name} ({o._count.teams} teams, {o._count.drivers} drivers)</option>
-                        ))}
-                      </select>
-                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                        onClick={() => clone(s.id, "teams")}>Teams only</button>
-                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                        onClick={() => clone(s.id, "drivers")}
-                        title="Copies only the drivers, into the teams this season already has (matched by team name). Creates no teams; anyone whose team isn't here is listed instead.">
-                        Drivers only</button>
-                      <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
-                        onClick={() => clone(s.id, "roster")} title="Copies teams AND drivers as the new season's starting roster">
-                        Teams + drivers</button>
+                    <SeasonSection title="Teams and drivers" summary={`${s._count.teams} teams · ${s._count.drivers} drivers · copy from another season`}>
+                      <p className="text-xs text-light">
+                        For a new season the guide at the top of this tab does this step by step. Here: copy from another
+                        season in one go.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select aria-label={`Season to copy teams and drivers into ${s.name} from`} className="input py-1 text-xs" value={cloneFrom[s.id] || ""}
+                          onChange={(e) => setCloneFrom({ ...cloneFrom, [s.id]: e.target.value })}>
+                          <option value="">Copy from…</option>
+                          {(seasons || []).filter((o) => o.id !== s.id && o._count.teams > 0).map((o) => (
+                            <option key={o.id} value={o.id}>{o.name} ({o._count.teams} teams, {o._count.drivers} drivers)</option>
+                          ))}
+                        </select>
+                        <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                          onClick={() => clone(s.id, "teams")}>Teams only</button>
+                        <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                          onClick={() => clone(s.id, "drivers")}
+                          title="Copies only the drivers, into the teams this season already has (matched by team name). Creates no teams; anyone whose team isn't here is listed instead.">
+                          Drivers only</button>
+                        <button className="btn-secondary px-3 py-1 text-xs" disabled={busy || !cloneFrom[s.id]}
+                          onClick={() => clone(s.id, "roster")} title="Copies teams AND drivers as the new season's starting roster">
+                          Teams + drivers</button>
+                      </div>
+                    </SeasonSection>
+                  )}
+
+                  {/* any non-active season is deletable; a filled one requires
+                      typing its name and is backed up first (server-enforced) */}
+                  {!s.isActive && (
+                    <div className="flex justify-end pt-1">
+                      <button className="text-xs font-semibold text-light transition hover:text-bad" disabled={busy}
+                        onClick={() => remove(s)}>Delete this season</button>
                     </div>
                   )}
                 </div>
