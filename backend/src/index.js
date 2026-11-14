@@ -47,12 +47,13 @@ import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
-import { seasonHasDivision2 } from "./lib/divisions.js";
+import { seasonHasDivision2, readDivision2Drivers } from "./lib/divisions.js";
+import { getLinkedDriverIds } from "./lib/persons.js";
 import { resolveSeasonId as resolveSeasonForLive } from "./services/seasonService.js";
 import { boardLiveryColors, boardSkins, getLivery } from "./lib/liveryPreview.js";
 import { recordHit } from "./lib/traffic.js";
 import { buildLiveChampionship } from "./services/liveChampionshipService.js";
-import { isAdminRequest, resolveAdminContext, optionalUser } from "./middleware/auth.js";
+import { isAdminRequest, resolveAdminContext, optionalUser, resolveDriverId } from "./middleware/auth.js";
 import {
   buildPageMeta,
   applyPageMeta,
@@ -389,14 +390,34 @@ app.get("/api/live/track-line", async (req, res) => {
 // car by itself. Only ever their own ids, and only to them: the real Steam
 // ids stay here. Signed out (or no Steam id on file) is an empty list, not a
 // 401, so a visitor's page never treats it as a dead session.
+//
+// `division` is the field they race in this season when it runs Division 2
+// (lib/divisions.js): 2 sends a Division 2 driver to their own race's board
+// when they open the page, instead of Division 1's. null when the season has
+// one field or they race in none.
 app.get("/api/live/me", optionalUser, async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  let guids = [];
   try {
-    const ids = await ownSteamIds(prisma, req.user);
-    res.setHeader("Cache-Control", "private, no-store");
-    res.json({ guids: ids.map((id) => publicDriverId(id)) });
+    guids = (await ownSteamIds(prisma, req.user)).map((id) => publicDriverId(id));
   } catch {
-    res.json({ guids: [] });
+    /* no Steam ids: no own cars */
   }
+  let division = null;
+  try {
+    const driverId = req.user ? await resolveDriverId(prisma, req.user) : null;
+    const seasonId = driverId
+      ? await resolveSeasonForLive(prisma, undefined, { series: req.query.series }).catch(() => null)
+      : null;
+    if (seasonId && (await seasonHasDivision2(prisma, seasonId))) {
+      const [mine, div2] = await Promise.all([getLinkedDriverIds(prisma, driverId), readDivision2Drivers(prisma, seasonId)]);
+      const rows = await prisma.driver.findMany({ where: { id: { in: mine }, seasonId }, select: { id: true } });
+      if (rows.length) division = rows.some((r) => div2.has(r.id)) ? 2 : 1;
+    }
+  } catch {
+    /* unknown: the page opens on the series' own board, as before */
+  }
+  res.json({ guids, division });
 });
 
 // Race control: incidents (collisions, stopped cars) for stewards.

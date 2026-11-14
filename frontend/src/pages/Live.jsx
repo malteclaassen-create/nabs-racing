@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
+import { getUserToken } from "../hooks/useAuth.js";
 import { api } from "../api/client.js";
 import { raceKickoff, fmtRaceTime, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { useApi } from "../hooks/useApi.js";
@@ -3641,6 +3642,22 @@ export default function Live() {
   // Polled once here and handed to both pieces of the server switch: the
   // control in the header and the "cars are out over there" line under it.
   const liveServers = useLiveServers();
+  // A Division 2 driver opens the page on THEIR race: the series' own board is
+  // Division 1's, and they used to have to find the switch first. Once per
+  // visit, and only while the viewer has not picked a board themselves
+  // (serverKey stays null until they do), so a switch by hand always wins.
+  const myDivisionAsked = useRef(false);
+  useEffect(() => {
+    const d2Key = liveServers?.division2Key;
+    if (!d2Key || serverKey || myDivisionAsked.current || !getUserToken()) return;
+    myDivisionAsked.current = true;
+    api
+      .liveMe()
+      .then((me) => {
+        if (me?.division === 2) setServer(d2Key);
+      })
+      .catch(() => {});
+  }, [liveServers?.division2Key, serverKey, setServer]);
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const rosterMatch = useMemo(() => makeDriverMatcher(teams), [teams]);
