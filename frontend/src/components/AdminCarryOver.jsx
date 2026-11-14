@@ -14,15 +14,17 @@ import TeamLogo from "./TeamLogo.jsx";
 // them to "Not in <season>" at the bottom. What you see is what gets copied.
 //
 // Where people start: the new season's copy of last season's team; the pool
-// for reserves and for drivers whose team did not carry on. Ticked to start
+// for reserves and for drivers whose team did not carry on. There is one
+// Reserve pool for both divisions: a reserve gets into a Division 2 race by
+// taking over a Division 2 seat on the Driver Market. Ticked to start
 // with: everybody who held a seat, and reserves who raced at least once.
 // Reserves who never drove start unticked and folded away at the bottom; the
 // attendance sign-up puts them back into the Reserve pool the first time they
 // answer anyway.
 // ---------------------------------------------------------------------------
 
-// A place is "t:<team id of the new season>" or "pool:1" / "pool:2".
-const poolPlace = (division, division2) => `pool:${division === 2 && division2 ? 2 : 1}`;
+// A place is "t:<team id of the new season>" or "pool" (the Reserve pool).
+const POOL = "pool";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2" };
 
@@ -33,7 +35,7 @@ function startsLabel(n) {
 
 function defaultPlace(team, p, division2) {
   if (team.tier !== 0 && team.targetTeamId) return `t:${team.targetTeamId}`;
-  return poolPlace(p.division, division2);
+  return POOL;
 }
 
 function suggested(data) {
@@ -111,8 +113,7 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   const teamsOf = (tier) => data.targetTeams.filter((t) => t.tier === tier);
   const div2Teams = teamsOf(3);
   const placeName = (place) => {
-    if (place === "pool:2") return "Reserve pool, Division 2";
-    if (place?.startsWith("pool")) return data.division2 ? "Reserve pool, Division 1" : "Reserve pool";
+    if (place === POOL) return "Reserve pool";
     const t = data.targetTeams.find((x) => `t:${x.id}` === place);
     return t ? `${t.name} (${TIER_LABEL[t.tier]})` : "?";
   };
@@ -131,9 +132,9 @@ export default function AdminCarryOver({ target, source, run, busy }) {
 
   function bringBack() {
     const body = ticked.map((p) => {
-      const place = picks[p.driverId]?.place || "pool:1";
+      const place = picks[p.driverId]?.place || POOL;
       if (place.startsWith("t:")) return { driverId: p.driverId, to: "team", targetTeamId: place.slice(2) };
-      return { driverId: p.driverId, to: "reserve", division: place === "pool:2" ? 2 : 1 };
+      return { driverId: p.driverId, to: "reserve" };
     });
     run(
       () => api.carryOver(target.id, source.id, body),
@@ -171,8 +172,7 @@ export default function AdminCarryOver({ target, source, run, busy }) {
           </optgroup>
         )}
         <optgroup label="No seat">
-          <option value="pool:1">{data.division2 ? "Reserve pool, Division 1" : "Reserve pool"}</option>
-          {data.division2 && <option value="pool:2">Reserve pool, Division 2</option>}
+          <option value={POOL}>Reserve pool</option>
         </optgroup>
       </select>
     </label>
@@ -315,10 +315,8 @@ export default function AdminCarryOver({ target, source, run, busy }) {
       {box(
         "pool",
         "Reserve pool",
-        "can stand in for a team",
-        data.division2
-          ? [poolSide("pool:1", "Division 1 side"), poolSide("pool:2", "Division 2 side")]
-          : poolSide("pool:1", null)
+        "one pool for both divisions",
+        poolSide(POOL, null)
       )}
 
       {box(

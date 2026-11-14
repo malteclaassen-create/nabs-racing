@@ -142,11 +142,10 @@ describe("parsePicks", () => {
       { to: "team" },
     ]);
     expect([...picks]).toEqual([
-      ["a", { to: "team", teamId: null, targetTeamId: null, division: null }],
-      ["b", { to: "reserve", teamId: null, targetTeamId: null, division: null }],
-      ["c", { to: "team", teamId: "ferrari_s8", targetTeamId: null, division: null }],
+      ["a", { to: "team", teamId: null, targetTeamId: null }],
+      ["b", { to: "reserve", teamId: null, targetTeamId: null }],
+      ["c", { to: "team", teamId: "ferrari_s8", targetTeamId: null }],
     ]);
-    expect(parsePicks([{ driverId: "d", to: "reserve", division: 2 }]).get("d").division).toBe(2);
     expect(parsePicks([{ driverId: "e", targetTeamId: "x_s9" }]).get("e").targetTeamId).toBe("x_s9");
     expect(parsePicks("nope").size).toBe(0);
   });
@@ -167,7 +166,6 @@ describe("buildCarryOverList", () => {
         { id: "c", name: "C", teamId: "d2" },
       ],
       starts: new Map(),
-      divisions: new Map(),
     });
     expect(list.map((t) => t.name)).toEqual(["Ferrari", "Minardi", "Red Bull", "Reserve"]);
     expect(list[2].people[0]).toMatchObject({ name: "C", seat: true, division: 2, picked: true });
@@ -183,7 +181,6 @@ describe("buildCarryOverList", () => {
         { id: "c8", name: "Carl", teamId: "t1" },
       ],
       starts: new Map(),
-      divisions: new Map(),
       present: [
         { id: "a9", name: "Anna R." },
         { id: "x9", name: "ben" },
@@ -198,7 +195,7 @@ describe("buildCarryOverList", () => {
 });
 
 describe("readCarryOver", () => {
-  it("lists last season with starts, seats and the Division 2 pool", async () => {
+  it("lists last season with starts and seats; reserves are in the one pool", async () => {
     const prisma = season8();
     const { teams } = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
     const people = Object.fromEntries(teams.flatMap((t) => t.people).map((p) => [p.name, p]));
@@ -207,7 +204,8 @@ describe("readCarryOver", () => {
     expect(people.Rookie).toMatchObject({ seat: true, starts: 0, picked: true, division: 2 });
     expect(people["Sub Driver"]).toMatchObject({ seat: false, starts: 2, picked: true });
     expect(people.Ghost).toMatchObject({ seat: false, starts: 0, picked: false, division: 1 });
-    expect(people.Newbie).toMatchObject({ seat: false, starts: 0, picked: false, division: 2 });
+    // An old Division 2 flag on a reserve is ignored: one Reserve pool.
+    expect(people.Newbie).toMatchObject({ seat: false, starts: 0, picked: false, division: 1 });
   });
 });
 
@@ -238,7 +236,8 @@ describe("commitCarryOver", () => {
 
     // Steam id rides along, and the Division 2 reserve stays in its pool.
     expect(prisma.state.steam.get("malte_s9")).toBe("7656119");
-    expect(prisma.state.division.get("newbie_s9")).toBe(2);
+    // One Reserve pool: nobody gets a Division 2 pool flag.
+    expect(prisma.state.division.has("newbie_s9")).toBe(false);
     expect(prisma.state.division.has("sub_s9")).toBe(false);
 
     // Person links: Steve joins his existing person, the others get one each.
@@ -250,12 +249,12 @@ describe("commitCarryOver", () => {
     expect(prisma.state.seasonDiv2.get("s9")).toBe(1);
   });
 
-  it("a Division 2 driver sent to the pool waits in the Division 2 pool", async () => {
+  it("a Division 2 driver sent to the pool joins the one Reserve pool", async () => {
     const prisma = season8();
     await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "rookie_s8", to: "reserve" }]) });
     const rookie = prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Rookie");
     expect(rookie).toMatchObject({ tier: 0, teamId: "reserve_s8_s9" });
-    expect(prisma.state.division.get(rookie.id)).toBe(2);
+    expect(prisma.state.division.has(rookie.id)).toBe(false);
   });
 
   it("moves a driver to another team, and gives a reserve a seat", async () => {
@@ -384,7 +383,7 @@ describe("teams step, then people", () => {
         { driverId: "steve_s7_s8" }, // own team, Minardi, now in Division 2
         { driverId: "rookie_s8" }, // Red Bull did not carry on: the pool, Division 2 side
         { driverId: "sub_s8", to: "team", targetTeamId: "jordan_s9" },
-        { driverId: "ghost_s8", to: "reserve", division: 2 },
+        { driverId: "ghost_s8", to: "reserve" },
       ]),
     });
     expect(out.teamsCreated).toBe(0);
@@ -392,10 +391,10 @@ describe("teams step, then people", () => {
     expect(by.Malte).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
     expect(by.Steve).toMatchObject({ teamId: "minardi_s8_d2_s9", tier: 3 });
     expect(by.Rookie).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
-    expect(prisma.state.division.get(by.Rookie.id)).toBe(2);
+    expect(prisma.state.division.has(by.Rookie.id)).toBe(false);
     expect(by["Sub Driver"]).toMatchObject({ teamId: "jordan_s9", tier: 3 });
     expect(by.Ghost).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
-    expect(prisma.state.division.get(by.Ghost.id)).toBe(2);
+    expect(prisma.state.division.has(by.Ghost.id)).toBe(false);
   });
 });
 

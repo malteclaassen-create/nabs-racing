@@ -135,7 +135,8 @@ export async function ensureAppSchema(prisma) {
   // (Team.tier 3). Its classification lives on a hidden child row like the
   // sprint's, told apart by `division` = 2. `capacity2` is that field's grid
   // size (null = the round's own), Season.division2 switches the whole thing
-  // on, and Driver.division puts a reserve into the Division 2 pool.
+  // on. Driver.division (a Division 2 side of the Reserve pool) is no longer
+  // read: one pool for both divisions (lib/divisions.js).
   await addColumn(prisma, "Race", "division", "INTEGER");
   await addColumn(prisma, "Race", "capacity2", "INTEGER");
   await addColumn(prisma, "Season", "division2", "BOOLEAN NOT NULL DEFAULT 0");

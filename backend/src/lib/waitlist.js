@@ -22,7 +22,7 @@ import { getPersonGroups } from "./persons.js";
 import { collapseByPerson, byNewestAnswer, personKey } from "./onePerPerson.js";
 import { DEFAULT_GRID_SIZE } from "./gridSize.js";
 import { notifyWaitlistPromoted } from "./notifications.js";
-import { activeDivision2Drivers as readDivision2Drivers, readCapacity2 } from "./divisions.js";
+import { activeDivision2Drivers as readDivision2Drivers, readCapacity2, filledDivision2Seats } from "./divisions.js";
 
 export const WAITLIST = "WAITLIST";
 
@@ -45,6 +45,8 @@ async function answersFor(prisma, raceId, division = null) {
   if (division != null) {
     const seasonId = rows[0]?.driver?.seasonId;
     const div2 = seasonId ? await readDivision2Drivers(prisma, seasonId) : new Set();
+    // A reserve who took over a Division 2 seat tonight races on its grid.
+    if (div2.size) for (const id of await filledDivision2Seats(prisma, raceId)) div2.add(id);
     kept = kept.filter((r) => (div2.has(r.driverId) ? 2 : 1) === division);
   }
   return { kept, byDriver: people.byDriver };
@@ -54,7 +56,10 @@ async function answersFor(prisma, raceId, division = null) {
 export async function divisionForDriver(prisma, race, driverId) {
   if (!driverId || !race?.seasonId) return 1;
   const div2 = await readDivision2Drivers(prisma, race.seasonId);
-  return div2.has(driverId) ? 2 : 1;
+  if (div2.has(driverId)) return 2;
+  // One Reserve pool: a reserve is on Division 2's grid only for a race where
+  // they took over a Division 2 seat.
+  return div2.size && (await filledDivision2Seats(prisma, race.id)).has(driverId) ? 2 : 1;
 }
 
 // The size of one grid: Division 1 is the round's capacity, Division 2 its

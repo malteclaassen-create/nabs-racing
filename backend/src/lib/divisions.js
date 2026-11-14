@@ -12,8 +12,12 @@
 //     tier 1 or tier 2 therefore never sees one, and the Division 1 tables
 //     stay exactly what they were.
 //   * A driver is in Division 2 when their team is (Driver.tier follows the
-//     team, so 3 as well), or when they are a reserve (tier 0) with
-//     Driver.division = 2: the Division 2 reserve pool.
+//     team, so 3 as well). There is ONE Reserve pool for both divisions: a
+//     reserve signs up on Division 1's grid and gets into a Division 2 race
+//     only by taking over a Division 2 driver's seat on the Driver Market;
+//     for that race they then count on Division 2's grid
+//     (filledDivision2Seats). The old Driver.division column (a Division 2
+//     side of the pool) is no longer read.
 //   * The Division 2 classification of a round sits on a hidden CHILD race row
 //     like a sprint's (Race.parentRaceId), told apart by Race.division = 2.
 //     The child is SPECIAL-typed and isSpecialEvent, so nothing that counts
@@ -29,14 +33,12 @@ import { writeRaceType } from "./raceTypes.js";
 
 export const DIV2_TIER = 3;
 
-// Which division a driver races in: 1 or 2. `driver` needs tier, and
-// `division` when it was read (reserves only); `team` is optional and wins when
-// given, because a driver row's tier can lag a team that was just re-tiered.
+// Which division a driver races in: 1 or 2. `driver` needs tier; `team` is
+// optional and wins when given, because a driver row's tier can lag a team
+// that was just re-tiered. Reserves are Division 1 (one pool, see above).
 export function divisionOf(driver, team = driver?.team) {
   const tier = team?.tier ?? driver?.tier;
-  if (tier === DIV2_TIER) return 2;
-  if ((driver?.tier ?? tier) === 0 && Number(driver?.division) === 2) return 2;
-  return 1;
+  return tier === DIV2_TIER ? 2 : 1;
 }
 
 // Driver id -> division for every driver of a season (only Division 2 rows
@@ -45,7 +47,7 @@ export async function readDivision2Drivers(prisma, seasonId) {
   try {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT d."id" FROM "Driver" d LEFT JOIN "Team" t ON t."id" = d."teamId"
-        WHERE d."seasonId" = ? AND (t."tier" = ? OR d."tier" = ? OR (d."tier" = 0 AND d."division" = 2))`,
+        WHERE d."seasonId" = ? AND (t."tier" = ? OR d."tier" = ?)`,
       seasonId,
       DIV2_TIER,
       DIV2_TIER
@@ -63,8 +65,25 @@ export async function activeDivision2Drivers(prisma, seasonId) {
   return readDivision2Drivers(prisma, seasonId);
 }
 
+// Who took over a Division 2 seat for this race on the Driver Market (a
+// filled offer from a Division 2 team): the reserves who race in Division 2
+// that night and count on its grid. Set of driver ids; empty on any error.
+export async function filledDivision2Seats(prisma, raceId) {
+  if (!raceId) return new Set();
+  try {
+    const rows = await prisma.seatOffer.findMany({
+      where: { raceId, status: "FILLED", filledById: { not: null } },
+      select: { filledById: true, team: { select: { tier: true } } },
+    });
+    return new Set(rows.filter((r) => r.team?.tier === DIV2_TIER).map((r) => r.filledById));
+  } catch {
+    return new Set();
+  }
+}
+
 // The reserve-pool flag of the given drivers: Map driverId -> 2 (only the
-// Division 2 pool appears).
+// Division 2 pool appears). No longer used to place anybody (one pool); kept
+// for old rows.
 export async function readDriverDivisions(prisma, driverIds) {
   const ids = [...new Set(driverIds || [])].filter(Boolean);
   if (!ids.length) return new Map();

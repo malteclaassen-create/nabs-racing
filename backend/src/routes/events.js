@@ -170,7 +170,13 @@ router.get("/", async (req, res, next) => {
       if (await seasonHasDivision2(prisma, sid)) div2Of.set(sid, await readDivision2Drivers(prisma, sid));
     }
     const capacity2 = await readCapacity2(prisma, races.filter((r) => div2Of.has(r.seasonId)).map((r) => r.id));
-    const divisionIn = (race, driverId) => (div2Of.get(race.seasonId)?.has(driverId) ? 2 : 1);
+    // One Reserve pool: a reserve is on Division 2's grid only for a race where
+    // they took over a Division 2 team's seat (a filled offer, loaded with the
+    // race below).
+    const filledDiv2 = (race) =>
+      new Set((race.seatOffers || []).filter((o) => o.team?.tier === 3).map((o) => o.filledById));
+    const divisionIn = (race, driverId) =>
+      div2Of.get(race.seasonId)?.has(driverId) || (div2Of.has(race.seasonId) && filledDiv2(race).has(driverId)) ? 2 : 1;
 
     const openOffers = new Map(); // `${raceId}:${division}` -> count
     for (const row of await prisma.seatOffer.findMany({
@@ -351,7 +357,7 @@ router.get("/", async (req, res, next) => {
         // Division 2's grid (null = the season runs no Division 2), plus who
         // is in it, so the page can tell a signed-in driver which grid they
         // would join before they have answered.
-        division2: hasDiv2 ? { ...grid(2), driverIds: [...div2Of.get(race.seasonId)] } : null,
+        division2: hasDiv2 ? { ...grid(2), driverIds: [...div2Of.get(race.seasonId), ...filledDiv2(race)] } : null,
         rsvps: grouped,
       };
     });

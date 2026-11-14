@@ -6,7 +6,7 @@ import { getNameOverrides, discordIdsForDrivers, getIdentityOverrides } from "..
 import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getConstructorStandingsForTier } from "../services/standingsService.js";
-import { DIV2_TIER, divisionOf, readDriverDivisions } from "../lib/divisions.js";
+import { DIV2_TIER, divisionOf } from "../lib/divisions.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
@@ -44,8 +44,6 @@ router.get("/", async (req, res, next) => {
     // Special roles (raw-SQL column) for the role badge / admin role select.
     const allIds = teams.flatMap((t) => t.drivers.map((d) => d.id));
     const roles = await readDriverRoles(prisma, allIds);
-    // Reserve pool per reserve: 2 = Division 2's (lib/divisions.js).
-    const pools = await readDriverDivisions(prisma, allIds);
     // Standings-hidden flag (raw-SQL column) for the admin Drivers tab toggle.
     // .catch: fresh checkout before ensureAppSchema ran.
     let hiddenSet = new Set();
@@ -83,7 +81,7 @@ router.get("/", async (req, res, next) => {
         d.hideFromStandings = hiddenSet.has(d.id);
         // Which division they race in (a Division 2 team, or a reserve in
         // Division 2's pool), 1 otherwise.
-        d.division = divisionOf({ ...d, division: pools.get(d.id) ?? null }, t);
+        d.division = divisionOf(d, t);
         if (admin) {
           // Inherited from a linked season row (own column empty).
           const eff = effectiveDiscord.get(d.id) || null;

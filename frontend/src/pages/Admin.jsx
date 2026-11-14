@@ -4271,16 +4271,6 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
             <option value={3}>Div 2</option>
             <option value={0}>Res</option>
           </select>
-          {/* A reserve waits in one of two pools: Division 1's or Division 2's
-              (the newcomers' field on the second server). */}
-          {d.tier === 0 && (
-            <select aria-label={`Reserve pool of ${d.name}`} className="input w-24 shrink-0 py-1 text-xs" value={d.division === 2 ? 2 : 1} disabled={busy}
-              title="Which division this reserve signs up for and stands in for"
-              onChange={(e) => onPatch({ division: Number(e.target.value) })}>
-              <option value={1}>Div 1 pool</option>
-              <option value={2}>Div 2 pool</option>
-            </select>
-          )}
         </span>
         <IdMark
           platform="discord"
@@ -5939,7 +5929,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
       setMsg(
         s.division2
           ? `${s.name} runs one division again.`
-          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them, or in the Division 2 reserve pool.`
+          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them. Reserves stay in the one Reserve pool and race in Division 2 by taking over a seat on the Driver Market.`
       );
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
