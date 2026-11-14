@@ -41,7 +41,9 @@ function fakeDb({ teams = [], drivers = [], starts = {}, links = {}, steam = {},
     },
     driver: {
       findMany: async ({ where, select }) =>
-        state.drivers.filter((d) => d.seasonId === where.seasonId).map((d) => pick(d, select)),
+        state.drivers
+          .filter((d) => (where.id?.in ? where.id.in.includes(d.id) : d.seasonId === where.seasonId))
+          .map((d) => pick(d, select)),
       findUnique: async ({ where }) => state.drivers.find((d) => d.id === where.id) || null,
       create: async ({ data }) => {
         if (state.drivers.some((d) => d.id === data.id)) throw new Error(`driver ${data.id} exists`);
@@ -299,11 +301,12 @@ describe("commitCarryOver", () => {
     expect(steve.tier).toBe(0);
   });
 
-  it("ignores picks that are not in the source season", async () => {
+  it("a pick from an older season with no team given waits in the Reserve pool", async () => {
     const prisma = season8();
-    prisma.state.drivers.push({ id: "other_s3", name: "Other", teamId: "x", tier: 1, seasonId: "s3" });
+    prisma.state.drivers.push({ id: "other_s3", name: "Other", discordName: "o", teamId: "x", tier: 1, seasonId: "s3" });
     const out = await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "other_s3" }]) });
-    expect(out.driversCreated).toBe(0);
+    expect(out.driversCreated).toBe(1);
+    expect(prisma.state.drivers.find((d) => d.id === "other_s9")).toMatchObject({ tier: 0 });
   });
 });
 
@@ -460,5 +463,40 @@ describe("team search", () => {
     });
     const jordan = prisma.state.teams.find((t) => t.seasonId === "s9" && t.name === "Jordan");
     expect(jordan).toMatchObject({ id: "jordan_s3_d2_s9", tier: 3, color: "#ff0", logoUrl: "/j.png" });
+  });
+});
+
+describe("drivers picked from the driver database", () => {
+  it("brings in a driver from an older season, linked to them, into the team picked", async () => {
+    const prisma = season8();
+    prisma.state.drivers.push({
+      id: "oldie_s5", name: "Oldie", discordName: "oldie", teamId: "x_s5", tier: 1, seasonId: "s5", country: "fi",
+    });
+    prisma.state.links.set("oldie_s5", "p-oldie");
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: false, teams: [{ sourceId: "ferrari_s8", tier: 1 }] }),
+    });
+    const out = await commitCarryOver(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      picks: parsePicks([
+        { driverId: "malte_s8" },
+        { driverId: "oldie_s5", to: "team", targetTeamId: "ferrari_s8_s9" },
+      ]),
+    });
+    expect(out.driversCreated).toBe(2);
+    const oldie = prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Oldie");
+    expect(oldie).toMatchObject({ id: "oldie_s9", teamId: "ferrari_s8_s9", tier: 1, country: "fi" });
+    expect(prisma.state.links.get("oldie_s9")).toBe("p-oldie");
+  });
+
+  it("never copies a row that is already in the new season", async () => {
+    const prisma = season8();
+    prisma.state.drivers.push({ id: "here_s9", name: "Here", discordName: "here", teamId: "t", tier: 1, seasonId: "s9" });
+    const out = await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "here_s9" }]) });
+    expect(out.driversCreated).toBe(0);
+    expect(prisma.state.drivers.filter((d) => d.name === "Here")).toHaveLength(1);
   });
 });

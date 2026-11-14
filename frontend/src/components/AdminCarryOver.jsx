@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, ChevronDown, ChevronUp, CheckSquare, ArrowRightLeft, UserX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcw, ChevronDown, ChevronUp, CheckSquare, ArrowRightLeft, UserX, Search } from "lucide-react";
 import { api } from "../api/client.js";
+import { useApi } from "../hooks/useApi.js";
 import { DriverAvatar, Spinner, Notice } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 
@@ -45,6 +46,71 @@ function suggested(data) {
   return out;
 }
 
+// Type a name: everybody the league has had (the driver database, one line
+// per person). Picking somebody who is in the list already moves them here;
+// anybody else comes in from the season they last raced.
+function DriverDbSearch({ entries, placeholder, hide, inList, onPick }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const query = q.trim().toLowerCase();
+  const hits = query && entries
+    ? entries.filter((e) => e.name.toLowerCase().includes(query) && !hide(e)).slice(0, 6)
+    : [];
+  return (
+    <div className="relative px-3 py-2">
+      <Search className="pointer-events-none absolute left-5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-light" strokeWidth={2} aria-hidden="true" />
+      <input
+        className="input w-full py-1.5 pl-8 text-xs"
+        placeholder={placeholder}
+        aria-label={placeholder}
+        value={q}
+        disabled={!entries}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && query && entries && (
+        <div className="absolute inset-x-3 top-full z-20 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          {hits.length ? (
+            <ul>
+              {hits.map((e) => (
+                <li key={e.key}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-surface2"
+                    onMouseDown={(ev) => ev.preventDefault()}
+                    onClick={() => {
+                      onPick(e);
+                      setQ("");
+                      setOpen(false);
+                    }}
+                  >
+                    <DriverAvatar name={e.name} photoUrl={e.photoUrl} size={24} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{e.name}</span>
+                    <span className="shrink-0 text-xs text-light">
+                      {inList(e)
+                        ? "in the list, moves here"
+                        : `${e.lastTeamName ? `${e.lastTeamName}, ` : ""}Season ${e.lastSeasonNumber} · ${e.starts} starts`}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-3 py-2 text-xs text-light">
+              Nobody in the driver database matches, or they are here already. A brand new driver is added in the
+              Drivers tab.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const bySeat = (a, b) => Number(b.seat) - Number(a.seat) || b.starts - a.starts || a.name.localeCompare(b.name);
 
 // `run(fn, doneMessage)` is the wizard's runner (busy flag, errors, reload).
@@ -53,6 +119,10 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   const [loadError, setLoadError] = useState(null);
   const [picks, setPicks] = useState({});
   const [showQuiet, setShowQuiet] = useState(false);
+  // People picked from the driver database who were not in last season's
+  // field: driverId (their newest row) -> what the list shows of them.
+  const [extra, setExtra] = useState({});
+  const db = useApi(useCallback(() => api.adminDriverDb(), []));
   // The driver who just moved, lit up for a moment where they landed.
   const [flash, setFlash] = useState(null);
   const flashTimer = useRef(null);
@@ -87,11 +157,24 @@ export default function AdminCarryOver({ target, source, run, busy }) {
 
   // Every person once, with the team they came from.
   const people = useMemo(
-    () =>
-      (data?.teams || []).flatMap((t) =>
+    () => [
+      ...(data?.teams || []).flatMap((t) =>
         t.people.map((p) => ({ ...p, from: { id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl } }))
       ),
-    [data]
+      ...Object.values(extra).map((e) => ({
+        driverId: e.driverId,
+        name: e.name,
+        photoUrl: e.photoUrl,
+        seat: false,
+        starts: 0,
+        isActive: true,
+        already: false,
+        picked: true,
+        extra: true,
+        from: { name: `${e.lastTeamName ? `${e.lastTeamName}, ` : ""}Season ${e.seasonNumber}`, tier: null, color: "#64748b" },
+      })),
+    ],
+    [data, extra]
   );
 
   if (loadError) return <Notice kind="error">{loadError}</Notice>;
@@ -99,6 +182,9 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   if (!data.teams.length) return <p className="text-sm text-light">{source.name} has nobody to bring over.</p>;
 
   const fresh = suggested(data);
+  // A person picked from the database had no suggestion: everything about
+  // them is a change.
+  const freshOf = (id) => fresh[id] || { on: false, place: null };
   const open = people.filter((p) => !p.already);
   const already = people.filter((p) => p.already);
   const ticked = open.filter((p) => picks[p.driverId]?.on);
@@ -106,9 +192,11 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   // Unticked reserves who never drove: the long sign-up tail, folded away.
   const quiet = out.filter((p) => !p.seat && !p.starts);
   const outShown = out.filter((p) => p.seat || p.starts);
-  const changed = open.some(
-    (p) => !!picks[p.driverId]?.on !== fresh[p.driverId].on || picks[p.driverId]?.place !== fresh[p.driverId].place
-  );
+  const changed =
+    Object.keys(extra).length > 0 ||
+    open.some(
+      (p) => !!picks[p.driverId]?.on !== freshOf(p.driverId).on || picks[p.driverId]?.place !== freshOf(p.driverId).place
+    );
   const at = (place) => ticked.filter((p) => picks[p.driverId]?.place === place).sort(bySeat);
   const teamsOf = (tier) => data.targetTeams.filter((t) => t.tier === tier);
   const div2Teams = teamsOf(3);
@@ -126,9 +214,52 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   }
 
   function set(id, patch, { scroll = false } = {}) {
+    // Unticking somebody picked from the database takes them out again: they
+    // were never part of last season's field.
+    if (patch.on === false && extra[id]) {
+      setExtra((cur) => {
+        const next = { ...cur };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
     setPicks((cur) => ({ ...cur, [id]: { ...cur[id], ...patch } }));
     lightUp(id, scroll);
   }
+
+  // The driver database search: who is in this wizard's list already (by any
+  // of their rows), and who is in the new season already (hidden).
+  const listed = new Map(people.map((p) => [p.driverId, p]));
+  const personInList = (e) => (e.rows || []).map((r) => listed.get(r.driverId)).find(Boolean) || null;
+  const inNewSeason = (e) => (e.rows || []).some((r) => r.seasonNumber === target.number);
+  function addFromDb(e, place) {
+    const inList = personInList(e);
+    if (inList) {
+      set(inList.driverId, { on: true, place }, { scroll: true });
+      return;
+    }
+    const id = e.sourceDriverId;
+    setExtra((cur) => ({
+      ...cur,
+      [id]: { driverId: id, name: e.name, photoUrl: e.photoUrl, lastTeamName: e.lastTeamName, seasonNumber: e.lastSeasonNumber },
+    }));
+    setPicks((cur) => ({ ...cur, [id]: { on: true, place } }));
+    lightUp(id, true);
+  }
+  const dbSearch = (place, label) => (
+    <DriverDbSearch
+      entries={db.data?.entries}
+      placeholder={`Add a driver to ${label}: search the driver database`}
+      hide={(e) => {
+        if (inNewSeason(e)) return true;
+        const p = personInList(e);
+        return !!p && !!picks[p.driverId]?.on && picks[p.driverId]?.place === place;
+      }}
+      inList={(e) => !!personInList(e)}
+      onPick={(e) => addFromDb(e, place)}
+    />
+  );
 
   function bringBack() {
     const body = ticked.map((p) => {
@@ -182,9 +313,15 @@ export default function AdminCarryOver({ target, source, run, busy }) {
   const row = (p, inGrid) => {
     const id = `co-${p.driverId}`;
     const place = picks[p.driverId]?.place;
-    const moved = place !== fresh[p.driverId].place;
-    const fromName = p.from.tier === 0 ? "Reserve pool" : `${p.from.name} (${TIER_LABEL[p.from.tier] || ""})`;
-    const sub = [startsLabel(p.starts), `${moved || !inGrid ? "was" : "from"} ${fromName}`, !p.isActive && "inactive at the end"]
+    const moved = place !== freshOf(p.driverId).place;
+    const fromName = p.extra
+      ? p.from.name
+      : p.from.tier === 0
+        ? "Reserve pool"
+        : `${p.from.name} (${TIER_LABEL[p.from.tier] || ""})`;
+    const sub = (p.extra
+      ? ["from the driver database", `last ${fromName}`]
+      : [startsLabel(p.starts), `${moved || !inGrid ? "was" : "from"} ${fromName}`, !p.isActive && "inactive at the end"])
       .filter(Boolean)
       .join(" · ");
     return (
@@ -232,6 +369,7 @@ export default function AdminCarryOver({ target, source, run, busy }) {
           </span>
         </div>
         {here.length > 0 && <ul className="divide-y divide-border">{here.map((p) => row(p, true))}</ul>}
+        {dbSearch(`t:${team.id}`, team.name)}
       </div>
     );
   };
@@ -256,6 +394,7 @@ export default function AdminCarryOver({ target, source, run, busy }) {
         ) : (
           <p className="px-3 py-2 text-xs text-light">Nobody here.</p>
         )}
+        {dbSearch(place, "the Reserve pool")}
       </div>
     );
   };
@@ -282,7 +421,9 @@ export default function AdminCarryOver({ target, source, run, busy }) {
           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
           <span>
             Change <b className="text-dark">Drives for</b> and the driver moves to that team: a transfer, a reserve
-            getting a seat, a move between Division 1 and Division 2, or into the Reserve pool.
+            getting a seat, a move between Division 1 and Division 2, or into the Reserve pool. Under every team you
+            can also search the <b className="text-dark">driver database</b> for anybody who raced in the league
+            before.
           </span>
         </li>
         <li className="flex items-start gap-2">
@@ -368,7 +509,10 @@ export default function AdminCarryOver({ target, source, run, busy }) {
             <button
               type="button"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-medium hover:text-dark"
-              onClick={() => setPicks(suggested(data))}
+              onClick={() => {
+                setPicks(suggested(data));
+                setExtra({});
+              }}
               disabled={busy}
             >
               <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />

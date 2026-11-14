@@ -366,7 +366,16 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
 
   const takenNames = new Set(present.map((d) => norm(d.name)));
   const takenPersons = new Set(present.map((d) => persons.byDriver.get(d.id)).filter(Boolean));
-  const chosen = sourceDrivers.filter((d) => picks.has(d.id));
+  // Last season's people, plus anybody picked from the driver database: a row
+  // of any earlier season of the league (the wizard's search). Those come in
+  // the same way, person-linked to the row they were picked by. A row of the
+  // new season itself is never "brought over".
+  const sourceIds = new Set(sourceDrivers.map((d) => d.id));
+  const extraIds = [...picks.keys()].filter((id) => !sourceIds.has(id));
+  const extras = extraIds.length
+    ? (await prisma.driver.findMany({ where: { id: { in: extraIds } } })).filter((d) => d.seasonId !== target.id)
+    : [];
+  const chosen = [...sourceDrivers.filter((d) => picks.has(d.id)), ...extras];
   const steamIds = await readSteamIds(
     prisma,
     chosen.map((d) => d.id)
