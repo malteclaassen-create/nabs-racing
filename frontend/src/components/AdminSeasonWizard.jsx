@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
@@ -30,6 +30,18 @@ function readWizard() {
     return JSON.parse(sessionStorage.getItem(KEY) || "null");
   } catch {
     return null;
+  }
+}
+
+// Set by the banner at the top of the admin area (AdminSeasonBanner): open the
+// guide right away and bring it into view. Read once, then cleared.
+function takeOpenRequest() {
+  try {
+    const asked = sessionStorage.getItem("nabs_season_wizard_open") === "1";
+    sessionStorage.removeItem("nabs_season_wizard_open");
+    return asked;
+  } catch {
+    return false;
   }
 }
 
@@ -79,7 +91,12 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [msg, setMsg] = useState(null);
-  const [open, setOpen] = useState(!!wizard);
+  const [openAsked] = useState(takeOpenRequest);
+  const [open, setOpen] = useState(() => !!wizard || openAsked);
+  const cardRef = useRef(null);
+  useEffect(() => {
+    if (openAsked) cardRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [openAsked]);
 
   const list = seasons || [];
   const active = list.find((s) => s.isActive) || list[0] || null;
@@ -183,7 +200,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
   }
 
   return (
-    <div className="card p-5">
+    <div ref={cardRef} className="card scroll-mt-24 p-5">
       <CardHead eyebrow="Guided" title="Prepare a new season">
         {!open ? (
           <button

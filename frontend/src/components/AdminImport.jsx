@@ -5,6 +5,7 @@ import { useSharedRound } from "../hooks/useSharedRound.js";
 import { latestPastRace } from "../utils/sharedRound.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Notice, CardHead, Field } from "./ui.jsx";
+import SlidingTabs from "./SlidingTabs.jsx";
 import RacePreview from "./RacePreview.jsx";
 import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
@@ -44,9 +45,11 @@ function raceLabel(r) {
 }
 
 // What the picker says about a race without the admin having to open it.
-function raceState(r) {
-  if (!r.resultCount) return "nothing imported yet";
-  return r.hasQuali ? "race + qualifying" : "race only, no qualifying";
+function raceState(r, division2 = false) {
+  const main = !r.resultCount ? "nothing imported yet" : r.hasQuali ? "race + qualifying" : "race only, no qualifying";
+  // A season with Division 2 has a second race per round: say whether it is in.
+  if (!division2 || r.number == null) return main;
+  return `${main} · Division 2 ${r.division2RaceId ? "in" : "not yet"}`;
 }
 
 // Does `name` contain `token` as a whole word? The guard that lets a three
@@ -298,6 +301,14 @@ export default function AdminImport({ onCommitted }) {
   // same time as the main race): which of the two races this file is. Only
   // asked for a championship round of a season that runs it.
   const [targetDivision, setTargetDivision] = useState(1);
+  // Which race server each division runs on: the series' own is Division 1's,
+  // the other one Division 2's (GET /live/servers). Used to find each
+  // division's session on the server by itself.
+  const liveServers = useApi(useCallback(() => api.liveServers(), []));
+  const mainServer = liveServers.data?.defaultKey || null;
+  const div2Server = liveServers.data?.division2Key || null;
+  // After Division 1's race is saved: offer Division 2's straight away.
+  const [div2Next, setDiv2Next] = useState(null); // { roundNumber } | null
   const offersDivision2 =
     !!currentSeason?.division2 &&
     !!targetRace &&
@@ -329,6 +340,35 @@ export default function AdminImport({ onCommitted }) {
   const [qualiBusy, setQualiBusy] = useState(false);
   const [qualiNote, setQualiNote] = useState(null);
 
+  // A season with Division 2 races on both servers the same night: each
+  // division's session is looked for on its own server only, or Division 2's
+  // import would happily pick Division 1's race of the same circuit.
+  function sessionsOfDivision(list, div2) {
+    const key = div2 ? div2Server : mainServer;
+    if (!offersDivision2 || !key) return list;
+    return (list || []).filter((x) => !x.server || x.server === key);
+  }
+
+  // Division 1 is saved, Division 2 is next: switch over and load its race
+  // from the second server when it is there, so the second half of the round
+  // is one more check and save, not a hunt for the right file.
+  async function continueWithDivision2() {
+    setDiv2Next(null);
+    setTargetDivision(2);
+    setDone(null);
+    const night = nightSessions(sessionsOfDivision(remote.data?.results, true), targetTrack, targetDate);
+    const pick = pickNightSession(night, { sprintWeekend: false, session: "RACE" });
+    if (pick) {
+      setRemoteId(pick.id);
+      setRemoteAuto(true);
+      await loadRemote(pick.id, null);
+    } else {
+      setRemoteId("");
+      setRemoteAuto(false);
+      setDone("Division 2 is selected. No Division 2 race was found on the second server for this night: pick it in the list below or upload its file.");
+    }
+  }
+
   // Picking the round pre-selects its session on the race server: same circuit,
   // same race night. Keyed on the plain values rather than the race object so a
   // background refresh of the calendar doesn't quietly re-pick.
@@ -338,7 +378,7 @@ export default function AdminImport({ onCommitted }) {
     // Mid-walk the sessions were settled when it began; a calendar refresh
     // after the feature's save must not re-pick them under the sprint.
     if (weekendStep) return;
-    const night = nightSessions(remote.data?.results, targetTrack, targetDate);
+    const night = nightSessions(sessionsOfDivision(remote.data?.results, asDivision2), targetTrack, targetDate);
     const pick = pickNightSession(night, {
       sprintWeekend: isSprintWeekend,
       session: importBoth ? "RACE" : targetSession,
@@ -352,7 +392,8 @@ export default function AdminImport({ onCommitted }) {
     const sprintPick = second && second.id !== pick?.id ? second : null;
     setSprintRemoteId(sprintPick?.id || "");
     setSprintRemoteAuto(!!sprintPick);
-  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep, asDivision2, mainServer, div2Server]);
 
   // The standalone attach's server pick, same idea. Here a circuit-only match
   // is an acceptable fallback for dateless archive rounds: a wrong qualifying
@@ -788,6 +829,17 @@ export default function AdminImport({ onCommitted }) {
       setDone(savedMsg);
       setParsed(null);
       setRows([]);
+      // Division 1's race is in and the round has a Division 2 race to come:
+      // the next step is that one (after a sprint weekend's walk is through).
+      const walkGoesOn = weekendStep === "FEATURE" && sprintRemoteId;
+      if (offersDivision2 && !asDivision2 && !walkGoesOn && res.number != null) {
+        setDiv2Next({ roundNumber: res.number });
+      } else {
+        setDiv2Next(null);
+      }
+      if (asDivision2 && res.number != null) {
+        setDone(`Round ${res.number} Division 2 saved. Standings recalculated. Both divisions of this round are in.${qualiMsg}${conflictNote}`);
+      }
       // The two-race walk: the feature is in, the sprint is next. It loads
       // on its own from the session picked beside the feature's, so the
       // second half of the weekend is one more "save" and not a second visit.
@@ -875,7 +927,7 @@ export default function AdminImport({ onCommitted }) {
               <optgroup label="Championship rounds">
                 {champRaces.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {`${raceLabel(r)} · ${raceState(r)}`}
+                    {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
                   </option>
                 ))}
               </optgroup>
@@ -884,7 +936,7 @@ export default function AdminImport({ onCommitted }) {
               <optgroup label="Training and events">
                 {otherRaces.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {`${raceLabel(r)} · ${raceState(r)}`}
+                    {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
                   </option>
                 ))}
               </optgroup>
@@ -906,17 +958,29 @@ export default function AdminImport({ onCommitted }) {
           )}
         </div>
         {offersDivision2 && (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-semibold text-medium">This file is the race of</span>
-            <select
-              aria-label="Which division this result is"
-              className="input max-w-xs"
-              value={targetDivision}
-              onChange={(e) => setTargetDivision(Number(e.target.value))}
-            >
-              <option value={1}>Division 1 (main server)</option>
-              <option value={2}>Division 2 (second server)</option>
-            </select>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-medium">This round ran two races. Import</span>
+              <SlidingTabs
+                items={[
+                  { key: 1, label: `Division 1 race${targetRace?.resultCount ? " (in)" : ""}` },
+                  { key: 2, label: `Division 2 race${targetRace?.division2RaceId ? " (in)" : ""}` },
+                ]}
+                value={targetDivision}
+                onChange={(d) => {
+                  setTargetDivision(d);
+                  setDiv2Next(null);
+                  setDone(null);
+                  setParsed(null);
+                  setRows([]);
+                }}
+                btnClassName="px-3 py-1.5 text-sm"
+              />
+            </div>
+            <p className="text-xs text-light">
+              Division 1 first, then Division 2: after saving Division 1 the page offers Division 2 by itself.
+              Division 1&rsquo;s race is looked for on the main server, Division 2&rsquo;s on the second server.
+            </p>
           </div>
         )}
         {isSprintWeekend && (
@@ -1256,6 +1320,24 @@ export default function AdminImport({ onCommitted }) {
       {busy && !parsed && <p className="text-sm text-light">Working…</p>}
       {error && <Notice kind="error">{error}</Notice>}
       {done && <Notice kind="success">{done}</Notice>}
+      {div2Next && (
+        <div className="card flex flex-wrap items-center gap-3 border-2 border-brand/60 p-4">
+          <div className="min-w-[12rem] flex-1">
+            <div className="font-display text-sm font-bold uppercase tracking-tight text-dark">
+              Next: Round {div2Next.roundNumber}, Division 2
+            </div>
+            <p className="text-sm text-light">
+              The same night&rsquo;s race on the second server. It loads by itself; check the drivers and save.
+            </p>
+          </div>
+          <button type="button" className="btn-primary" onClick={continueWithDivision2} disabled={busy}>
+            Import the Division 2 race
+          </button>
+          <button type="button" className="text-sm font-semibold text-medium underline" onClick={() => setDiv2Next(null)}>
+            Later
+          </button>
+        </div>
+      )}
 
       {parsed && (
         <div className="space-y-4">

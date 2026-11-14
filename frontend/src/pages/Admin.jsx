@@ -31,6 +31,7 @@ import QualiInput, { qualiPayload } from "../components/QualiInput.jsx";
 import StewardPenalties from "../components/StewardPenalties.jsx";
 import TransferDialog from "../components/TransferDialog.jsx";
 import AdminSeasonWizard from "../components/AdminSeasonWizard.jsx";
+import AdminSeasonBanner from "../components/AdminSeasonBanner.jsx";
 import AdminSeasonAwards from "../components/AdminSeasonAwards.jsx";
 import TabNotice from "../components/TabNotice.jsx";
 import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
@@ -558,6 +559,19 @@ export default function Admin() {
           already know which of the five menus below holds the thing they came
           for. */}
       <AdminSearch onGo={goTo} onGoData={gotoInSeason} />
+
+      {/* The season change, the moment there is one to do: straight into the
+          guide (Seasons tab), remounted so it opens on the step it is at. */}
+      {editingSeries?.kind !== "event" && (
+        <AdminSeasonBanner
+          onOpen={() =>
+            leaveThen(() => {
+              setTab("seasons");
+              setPanelKey((k) => k + 1);
+            })
+          }
+        />
+      )}
 
       <TodoCard
         onPick={openTab}
