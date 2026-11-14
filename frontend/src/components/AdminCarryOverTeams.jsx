@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckSquare, Layers, Plus, X } from "lucide-react";
+import { CheckSquare, Layers, Plus, X, Search } from "lucide-react";
 import { api } from "../api/client.js";
 import { Spinner, Notice, CheckField } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
@@ -7,34 +7,124 @@ import TeamLogo from "./TeamLogo.jsx";
 // ---------------------------------------------------------------------------
 // "Which teams race?" Step 2 of the season wizard, before the drivers.
 //
-// One box per place a team can race: Tier 1, Tier 2 and, when the season runs
-// it, Division 2. Last season's teams start in the box of their old tier with
-// a tick (ticked = it races in the new season). "Races in" moves a team, and
-// it jumps into the other box right away, lit up for a moment so the eye can
-// follow it. New teams are added straight into a box. One switch says
-// whether the season runs Division 2 at all; the Reserve pool always comes
-// along. The drivers step then offers exactly these teams under "Drives for".
+// Two separate parts, because they are separate championships:
+//   * Division 1, with a box for Tier 1 and one for Tier 2. Last season's
+//     teams start in the box of their old tier. "Races in" switches a team
+//     between Tier 1 and Tier 2, and it jumps into the other box right away,
+//     lit up for a moment.
+//   * Division 2, its own box. It has the same teams as Division 1 (two Red
+//     Bulls, one per division, each a team of its own), so it starts as a copy
+//     of Division 1's list; untick the ones that do not race there. A season
+//     that ran Division 2 already starts with its Division 2 teams instead.
+// Every box has a team search over every team the league ever had (logo and
+// colour come along), and a name nobody had before makes a new team.
+// The Reserve pool always comes along. The drivers step then offers exactly
+// these teams under "Drives for".
 // ---------------------------------------------------------------------------
 
-const TIERS = [
-  { value: 1, label: "Tier 1", group: "Division 1" },
-  { value: 2, label: "Tier 2", group: "Division 1" },
-  { value: 3, label: "Division 2", group: "Division 2" },
-];
-
-const tierName = (v) => TIERS.find((t) => t.value === Number(v))?.label || "Tier 1";
+const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2" };
 const byName = (a, b) => a.name.localeCompare(b.name);
+const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+let keySeq = 0;
+const nextKey = () => `k${++keySeq}`;
+
+// Type a name: matching teams from earlier seasons, or a new team.
+function TeamSearch({ pastTeams, taken, placeholder, onPick, onCreate }) {
+  const [q, setQ] = useState("");
+  const [color, setColor] = useState("#64748b");
+  const [open, setOpen] = useState(false);
+  const query = q.trim();
+  const hits = query
+    ? pastTeams.filter((t) => norm(t.name).includes(norm(query)) && !taken.has(norm(t.name))).slice(0, 6)
+    : [];
+  const exact = hits.find((t) => norm(t.name) === norm(query));
+  const isTaken = query && taken.has(norm(query));
+
+  function pick(t) {
+    onPick(t);
+    setQ("");
+    setOpen(false);
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!query || isTaken) return;
+    if (exact) return pick(exact);
+    onCreate(query, color);
+    setQ("");
+    setColor("#64748b");
+    setOpen(false);
+  }
+
+  return (
+    <form onSubmit={submit} className="relative px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-light" strokeWidth={2} aria-hidden="true" />
+          <input
+            className="input w-full py-1.5 pl-8 text-sm"
+            placeholder={placeholder}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+          />
+        </div>
+        {query && !exact && !hits.length && !isTaken && (
+          <input
+            type="color"
+            className="h-9 w-9 shrink-0 cursor-pointer rounded border border-border bg-transparent"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            aria-label="Colour of the new team"
+            title="Colour of the new team"
+          />
+        )}
+        <button type="submit" className="btn-secondary inline-flex items-center gap-1.5 py-1.5 text-sm" disabled={!query || isTaken}>
+          <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          {exact || !query ? "Add" : hits.length ? "Add as new team" : "Add new team"}
+        </button>
+      </div>
+      {isTaken && <p className="mt-1 text-xs text-light">{query} is in this box already.</p>}
+      {open && query && hits.length > 0 && (
+        <ul className="absolute left-3 right-3 z-20 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          {hits.map((t) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-surface2"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(t)}
+              >
+                <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={24} />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-dark">{t.name}</span>
+                <span className="text-xs text-light">last in Season {t.seasonNumber}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </form>
+  );
+}
 
 export default function AdminCarryOverTeams({ target, source, run, busy }) {
-  const [teams, setTeams] = useState(null);
+  const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [keep, setKeep] = useState({}); // source team id -> { on, tier }
-  const [added, setAdded] = useState([]); // [{ key, name, tier, color }]
-  const [drafts, setDrafts] = useState({}); // tier -> { name, color }
-  const [division2, setDivision2] = useState(!!(target.division2 || source.division2));
-  // The team that just changed box, lit up for a moment where it landed.
+  // Division 1 rows: last season's teams and teams added by search.
+  // { key, sourceId?, name, color, logoUrl, tier (1|2), on, was?, from?, isNew? }
+  const [d1, setD1] = useState([]);
+  // Division 2 rows, same shape (tier 3).
+  const [d2, setD2] = useState([]);
+  // On to start with, as the league wants it for new seasons. One click
+  // turns it off for a season with a single field.
+  const [division2, setDivision2] = useState(true);
   const [flash, setFlash] = useState(null);
   const flashTimer = useRef(null);
+  const scrollTo = useRef(null);
   const rowRefs = useRef({});
 
   useEffect(() => {
@@ -43,9 +133,23 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
       .carryOverPreview(target.id, source.id)
       .then((r) => {
         if (!live) return;
-        const list = (r.teams || []).filter((t) => t.tier !== 0);
-        setTeams(list);
-        setKeep(Object.fromEntries(list.map((t) => [t.id, { on: true, tier: t.tier }])));
+        const old = (r.teams || []).filter((t) => t.tier !== 0);
+        const row = (t, extra) => ({
+          key: nextKey(),
+          sourceId: t.id,
+          name: t.name,
+          color: t.color,
+          logoUrl: t.logoUrl,
+          drivers: t.people?.length ?? null,
+          on: true,
+          ...extra,
+        });
+        const one = old.filter((t) => t.tier === 1 || t.tier === 2);
+        const two = old.filter((t) => t.tier === 3);
+        setD1(one.map((t) => row(t, { tier: t.tier, was: t.tier })));
+        // Division 2 starts as last season's Division 2, or a copy of Division 1.
+        setD2((two.length ? two : one).map((t) => row(t, { tier: 3, drivers: two.length ? t.people.length : null })));
+        setData({ pastTeams: r.pastTeams || [] });
       })
       .catch((err) => live && setLoadError(err.message));
     return () => {
@@ -54,80 +158,150 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
     };
   }, [target.id, source.id]);
 
-  // Bring the moved team into view in its new box (it may have jumped far).
   useEffect(() => {
-    if (!flash) return;
-    rowRefs.current[flash]?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-  }, [flash]);
+    if (!scrollTo.current) return;
+    rowRefs.current[scrollTo.current]?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    scrollTo.current = null;
+  });
 
   if (loadError) return <Notice kind="error">{loadError}</Notice>;
-  if (!teams) return <Spinner label={`Reading ${source.name}…`} />;
+  if (!data) return <Spinner label={`Reading ${source.name}…`} />;
 
-  const kept = teams.filter((t) => keep[t.id]?.on);
-  const all = [...kept.map((t) => ({ name: t.name, tier: keep[t.id].tier })), ...added];
-  const div2 = all.filter((t) => t.tier === 3).length;
-  const stuck = !division2 && div2 > 0;
+  const racing1 = d1.filter((t) => t.on);
+  const racing2 = division2 ? d2.filter((t) => t.on) : [];
+  const total = racing1.length + racing2.length;
 
-  function lightUp(key) {
+  function lightUp(key, scroll) {
     clearTimeout(flashTimer.current);
     setFlash(key);
+    if (scroll) scrollTo.current = key;
     flashTimer.current = setTimeout(() => setFlash(null), 1600);
   }
 
-  function moveOld(t, tier) {
-    setKeep((cur) => ({ ...cur, [t.id]: { ...cur[t.id], tier } }));
-    lightUp(t.id);
-  }
+  const patch = (setter, key, p) => setter((cur) => cur.map((x) => (x.key === key ? { ...x, ...p } : x)));
 
-  function moveNew(n, tier) {
-    setAdded((cur) => cur.map((x) => (x.key === n.key ? { ...x, tier } : x)));
-    lightUp(n.key);
-  }
-
-  function addTeam(e, tier) {
-    e.preventDefault();
-    const d = drafts[tier] || {};
-    const name = (d.name || "").trim();
-    if (!name) return;
-    const key = `new-${Date.now()}`;
-    setAdded((cur) => [...cur, { key, name, tier, color: d.color || "#64748b" }]);
-    setDrafts((cur) => ({ ...cur, [tier]: { name: "", color: "#64748b" } }));
-    lightUp(key);
+  function addTo(setter, tier, t) {
+    const key = nextKey();
+    setter((cur) => [
+      ...cur,
+      t.isNew
+        ? { key, name: t.name, color: t.color, tier, on: true, isNew: true }
+        : { key, sourceId: t.id, name: t.name, color: t.color, logoUrl: t.logoUrl, tier, on: true, from: t.seasonNumber },
+    ]);
+    lightUp(key, true);
   }
 
   function save() {
+    const asPlan = (list, tier) => list.filter((t) => t.on && !t.isNew).map((t) => ({ sourceId: t.sourceId, tier: tier ?? t.tier }));
+    const asNew = (list, tier) => list.filter((t) => t.on && t.isNew).map((t) => ({ name: t.name, tier: tier ?? t.tier, color: t.color }));
     run(
       () =>
         api.carryOverTeams(target.id, source.id, {
           division2,
-          teams: kept.map((t) => ({ sourceId: t.id, tier: keep[t.id].tier })),
-          newTeams: added.map(({ name, tier, color }) => ({ name, tier, color })),
+          teams: [...asPlan(d1), ...(division2 ? asPlan(d2, 3) : [])],
+          newTeams: [...asNew(d1), ...(division2 ? asNew(d2, 3) : [])],
         }),
       (r) => `${r.teamsCreated} team(s) created in ${target.name}, Reserve pool included. Now the drivers.`
     );
   }
 
-  const tierSelect = (value, onChange, label) => (
-    <label className="flex w-full items-center gap-2 text-xs text-light sm:w-auto">
-      <span className="shrink-0">Races in</span>
-      <select className="input min-w-0 flex-1 py-1.5 text-sm sm:w-36 sm:flex-none" value={value} onChange={onChange} aria-label={label}>
-        {TIERS.map((t) => (
-          <option key={t.value} value={t.value} disabled={t.value === 3 && !division2}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-    </label>
+  const rowClass = (key) =>
+    `flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 transition-colors duration-700 ${flash === key ? "bg-brand/15" : ""}`;
+
+  // One team line. `setter` is the list it lives in; `tierPick` shows the
+  // Tier 1 / Tier 2 switch (Division 1 only).
+  const teamRow = (t, setter, tierPick) => {
+    const id = `ct-${t.key}`;
+    const sub = t.isNew
+      ? "New team"
+      : t.from
+        ? `Back from Season ${t.from}`
+        : t.was && t.was !== t.tier
+          ? `Was ${TIER_LABEL[t.was]} in ${source.name}`
+          : t.drivers != null
+            ? `${t.drivers} driver${t.drivers === 1 ? "" : "s"} in ${source.name}`
+            : "Same team as in Division 1";
+    return (
+      <li key={t.key} ref={(el) => (rowRefs.current[t.key] = el)} className={rowClass(t.key)}>
+        <label htmlFor={id} className="flex min-w-[12rem] flex-1 cursor-pointer items-center gap-3">
+          <input
+            id={id}
+            type="checkbox"
+            className="h-5 w-5 shrink-0 accent-[var(--c-primary)]"
+            checked={t.on}
+            onChange={(e) => patch(setter, t.key, { on: e.target.checked })}
+          />
+          <TeamLogo id={t.sourceId} name={t.name} color={t.color || "#64748b"} logoUrl={t.logoUrl} size={28} />
+          <span className="min-w-0">
+            <span className={`block truncate text-sm font-semibold ${t.on ? "text-dark" : "text-light"}`}>{t.name}</span>
+            <span className="block text-xs text-light">{sub}</span>
+          </span>
+        </label>
+        {!t.on ? (
+          <span className="ml-auto text-xs text-light">Not copied</span>
+        ) : tierPick ? (
+          <label className="ml-auto flex w-full items-center gap-2 text-xs text-light sm:w-auto">
+            <span className="shrink-0">Races in</span>
+            <select
+              className="input min-w-0 flex-1 py-1.5 text-sm sm:w-32 sm:flex-none"
+              value={t.tier}
+              onChange={(e) => {
+                patch(setter, t.key, { tier: Number(e.target.value) });
+                lightUp(t.key, true);
+              }}
+              aria-label={`Where ${t.name} races`}
+            >
+              <option value={1}>Tier 1</option>
+              <option value={2}>Tier 2</option>
+            </select>
+          </label>
+        ) : null}
+        {(t.isNew || t.from) && (
+          <button
+            type="button"
+            className="text-light hover:text-dark"
+            onClick={() => setter((cur) => cur.filter((x) => x.key !== t.key))}
+            aria-label={`Remove ${t.name}`}
+          >
+            <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+      </li>
+    );
+  };
+
+  const box = (title, sub, rows, search) => (
+    <section className="rounded-xl border border-border bg-surface/40">
+      <header className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-surface2/50 px-3 py-2">
+        <span className="font-semibold text-dark">{title}</span>
+        <span className="ml-auto text-xs text-light">{sub}</span>
+      </header>
+      <ul className="divide-y divide-border">
+        {rows}
+        {!rows.length && <li className="px-3 py-2 text-xs text-light">No team here yet. Search for one below.</li>}
+        <li>{search}</li>
+      </ul>
+    </section>
   );
 
-  const rowClass = (key) =>
-    `flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 transition-colors duration-700 ${
-      flash === key ? "bg-brand/15" : ""
-    }`;
+  const count = (n) => `${n} team${n === 1 ? "" : "s"} in ${target.name}`;
+  const takenIn = (list) => new Set(list.filter((t) => t.on).map((t) => norm(t.name)));
+  const searchFor = (setter, tier, taken, label) => (
+    <TeamSearch
+      pastTeams={data.pastTeams}
+      taken={taken}
+      placeholder={`Add a ${label} team: search old teams or type a new name`}
+      onPick={(t) => addTo(setter, tier, t)}
+      onCreate={(name, color) => addTo(setter, tier, { isNew: true, name, color })}
+    />
+  );
 
-  // The boxes: Tier 1 and Tier 2 always, Division 2 when it runs (or when a
-  // team still sits there, so it is never hidden from view).
-  const boxes = TIERS.filter((b) => b.value !== 3 || division2 || all.some((t) => t.tier === 3) || added.some((t) => t.tier === 3));
+  const partHead = (title, text) => (
+    <div className="pt-2">
+      <h3 className="font-display text-base font-black uppercase tracking-wide text-dark">{title}</h3>
+      {text && <p className="text-xs text-light">{text}</p>}
+    </div>
+  );
 
   return (
     <div className="space-y-3">
@@ -142,14 +316,9 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
         <li className="flex items-start gap-2">
           <Layers className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
           <span>
-            Each box is one place to race: <b className="text-dark">Tier 1</b>, <b className="text-dark">Tier 2</b>
-            {division2 ? (
-              <>
-                {" "}and <b className="text-dark">Division 2</b>
-              </>
-            ) : null}
-            . Change <b className="text-dark">Races in</b> and the team moves to that box. The Reserve pool comes
-            along by itself. Drivers come in the next step.
+            <b className="text-dark">Division 1</b> has Tier 1 and Tier 2: <b className="text-dark">Races in</b>{" "}
+            moves a team between them. <b className="text-dark">Division 2</b> is a separate championship with its own
+            copy of the teams. The Reserve pool comes along by itself. Drivers come in the next step.
           </span>
         </li>
       </ul>
@@ -161,121 +330,43 @@ export default function AdminCarryOverTeams({ target, source, run, busy }) {
         hint="A second field for newcomers on the second server, the same evening, with its own teams and standings."
       />
 
-      {boxes.map((box) => {
-        const oldHere = teams.filter((t) => (keep[t.id]?.tier ?? t.tier) === box.value).sort(byName);
-        const newHere = added.filter((n) => n.tier === box.value).sort(byName);
-        const racing = oldHere.filter((t) => keep[t.id]?.on).length + newHere.length;
-        const d = drafts[box.value] || { name: "", color: "#64748b" };
-        const offBox = box.value === 3 && !division2;
+      {partHead("Division 1", null)}
+      {[1, 2].map((tier) => {
+        const here = d1.filter((t) => t.tier === tier).sort(byName);
         return (
-          <section key={box.value} className={`rounded-xl border bg-surface/40 ${offBox ? "border-red-500/60" : "border-border"}`}>
-            <header className="flex flex-wrap items-baseline gap-x-2 border-b border-border px-3 py-2">
-              <span className="font-semibold text-dark">{box.label}</span>
-              {box.value !== 3 && division2 && <span className="text-xs text-light">Division 1</span>}
-              <span className="ml-auto text-xs text-light">
-                {racing} team{racing === 1 ? "" : "s"} in {target.name}
-              </span>
-            </header>
-            <ul className="divide-y divide-border">
-              {oldHere.map((t) => {
-                const k = keep[t.id] || { on: false, tier: t.tier };
-                const id = `ct-${t.id}`;
-                return (
-                  <li key={t.id} ref={(el) => (rowRefs.current[t.id] = el)} className={rowClass(t.id)}>
-                    <label htmlFor={id} className="flex min-w-[12rem] flex-1 cursor-pointer items-center gap-3">
-                      <input
-                        id={id}
-                        type="checkbox"
-                        className="h-5 w-5 shrink-0 accent-[var(--c-primary)]"
-                        checked={k.on}
-                        onChange={(e) => setKeep((cur) => ({ ...cur, [t.id]: { ...k, on: e.target.checked } }))}
-                      />
-                      <TeamLogo id={t.id} name={t.name} color={t.color || "#64748b"} logoUrl={t.logoUrl} size={28} />
-                      <span className="min-w-0">
-                        <span className={`block truncate text-sm font-semibold ${k.on ? "text-dark" : "text-light"}`}>{t.name}</span>
-                        <span className="block text-xs text-light">
-                          {k.tier !== t.tier ? `Was ${tierName(t.tier)}` : `${tierName(t.tier)} in ${source.name}`} ·{" "}
-                          {t.people.length} driver{t.people.length === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                    </label>
-                    {k.on ? (
-                      tierSelect(k.tier, (e) => moveOld(t, Number(e.target.value)), `Where ${t.name} races`)
-                    ) : (
-                      <span className="ml-auto text-xs text-light">Not copied</span>
-                    )}
-                  </li>
-                );
-              })}
-              {newHere.map((n) => (
-                <li key={n.key} ref={(el) => (rowRefs.current[n.key] = el)} className={rowClass(n.key)}>
-                  <div className="flex min-w-[12rem] flex-1 items-center gap-3">
-                    <span className="h-5 w-5 shrink-0" aria-hidden="true" />
-                    <TeamLogo name={n.name} color={n.color} size={28} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-dark">{n.name}</span>
-                      <span className="block text-xs text-light">New team</span>
-                    </span>
-                  </div>
-                  {tierSelect(n.tier, (e) => moveNew(n, Number(e.target.value)), `Where ${n.name} races`)}
-                  <button
-                    type="button"
-                    className="text-light hover:text-dark"
-                    onClick={() => setAdded((cur) => cur.filter((x) => x.key !== n.key))}
-                    aria-label={`Remove ${n.name}`}
-                  >
-                    <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-              {!oldHere.length && !newHere.length && (
-                <li className="px-3 py-2 text-xs text-light">
-                  No team here yet. Move one in with &ldquo;Races in&rdquo;, or add a new one below.
-                </li>
-              )}
-              <li>
-                <form onSubmit={(e) => addTeam(e, box.value)} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                  <input
-                    type="color"
-                    className="h-9 w-9 shrink-0 cursor-pointer rounded border border-border bg-transparent"
-                    value={d.color || "#64748b"}
-                    onChange={(e) => setDrafts((cur) => ({ ...cur, [box.value]: { ...d, color: e.target.value } }))}
-                    aria-label={`Colour of the new ${box.label} team`}
-                  />
-                  <input
-                    className="input min-w-[10rem] flex-1 py-1.5 text-sm"
-                    placeholder={`New ${box.label} team`}
-                    value={d.name || ""}
-                    onChange={(e) => setDrafts((cur) => ({ ...cur, [box.value]: { ...d, name: e.target.value } }))}
-                  />
-                  <button
-                    type="submit"
-                    className="btn-secondary inline-flex items-center gap-1.5 py-1.5 text-sm"
-                    disabled={!(d.name || "").trim() || offBox}
-                  >
-                    <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                    Add
-                  </button>
-                </form>
-              </li>
-            </ul>
-          </section>
+          <div key={tier}>
+            {box(
+              TIER_LABEL[tier],
+              count(here.filter((t) => t.on).length),
+              here.map((t) => teamRow(t, setD1, true)),
+              searchFor(setD1, tier, takenIn(d1), TIER_LABEL[tier])
+            )}
+          </div>
         );
       })}
 
+      {division2 && (
+        <>
+          {partHead(
+            "Division 2",
+            "Starts with the same teams as Division 1, each a team of its own here. Untick the ones that do not race in Division 2."
+          )}
+          {box(
+            "Division 2",
+            count(racing2.length),
+            [...d2].sort(byName).map((t) => teamRow(t, setD2, false)),
+            searchFor(setD2, 3, takenIn(d2), "Division 2")
+          )}
+        </>
+      )}
+
       <div className="space-y-2 rounded-xl border border-border bg-surface/40 p-3">
         <p className="text-sm text-medium">
-          <b className="text-dark">{all.length}</b> team{all.length === 1 ? "" : "s"} race in {target.name}:{" "}
-          {all.filter((t) => t.tier === 1).length} in Tier 1, {all.filter((t) => t.tier === 2).length} in Tier 2
-          {division2 ? `, ${div2} in Division 2` : ""}. Plus the Reserve pool.
-          {division2 && !div2 ? " Division 2 has no team yet." : ""}
+          <b className="text-dark">{total}</b> team{total === 1 ? "" : "s"} race in {target.name}:{" "}
+          {racing1.filter((t) => t.tier === 1).length} in Tier 1, {racing1.filter((t) => t.tier === 2).length} in Tier 2
+          {division2 ? `, ${racing2.length} in Division 2` : ""}. Plus the Reserve pool.
         </p>
-        {stuck && (
-          <p className="text-sm text-bad">
-            Some teams are in Division 2 while Division 2 is off. Switch it on, or move them to Tier 1 or Tier 2.
-          </p>
-        )}
-        <button type="button" className="btn-primary py-1.5 text-sm" disabled={busy || stuck || !all.length} onClick={save}>
+        <button type="button" className="btn-primary py-1.5 text-sm" disabled={busy || !total} onClick={save}>
           Create these teams
         </button>
       </div>

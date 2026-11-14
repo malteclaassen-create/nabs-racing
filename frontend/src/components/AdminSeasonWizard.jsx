@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { api } from "../api/client.js";
 import { CardHead, Notice, Field } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
@@ -60,7 +61,7 @@ function Step({ n, done, title, children }) {
         }`}
         aria-label={done ? "done" : `step ${n}`}
       >
-        {done ? "✓" : n}
+        {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" /> : n}
       </span>
       <div className="min-w-0 flex-1 space-y-2">
         <div className={`font-semibold ${done ? "text-medium" : "text-dark"}`}>{title}</div>
@@ -405,7 +406,7 @@ export default function AdminSeasonWizard({ seasons, reload, gotoInSeason }) {
                   )
                 }
               >
-                {target.isAnnounced ? "Announced on the home page ✓" : "Announce on the home page"}
+                {target.isAnnounced ? "Announced on the home page, click to take it back" : "Announce on the home page"}
               </button>
               <button
                 type="button"

@@ -194,12 +194,37 @@ export async function readCarryOver(prisma, { fromSeasonId, target }) {
     seasonHasDivision2(prisma, targetSeasonId),
   ]);
   const list = buildCarryOverList({ teams, drivers, starts, divisions, present, persons });
+  const pastTeams = await readPastTeams(prisma, target);
   const matched = matchTeams(teams, targetTeams, `_s${target?.number ?? ""}`);
   for (const t of list) t.targetTeamId = matched.get(t.id)?.id || null;
   const shown = targetTeams
     .map((t) => ({ id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl || null }))
     .sort((a, b) => teamRank(a.tier) - teamRank(b.tier) || a.name.localeCompare(b.name));
-  return { teams: list, targetTeams: shown, division2 };
+  return { teams: list, targetTeams: shown, division2, pastTeams };
+}
+
+// Every team the league has had (all seasons of the target's series), once
+// per name, newest season first: what the teams step's search offers, with
+// logo and colour, so an old team comes back looking like itself.
+export async function readPastTeams(prisma, target) {
+  if (!target?.seriesId || !prisma.season.findMany) return [];
+  const seasons = await prisma.season.findMany({ where: { seriesId: target.seriesId }, select: { id: true, number: true } });
+  const numberOf = new Map(seasons.map((x) => [x.id, x.number ?? 0]));
+  const ids = seasons.map((x) => x.id).filter((id) => id !== target.id);
+  if (!ids.length) return [];
+  const rows = await prisma.team.findMany({ where: { seasonId: { in: ids } } });
+  const best = new Map();
+  for (const t of rows) {
+    if (t.tier === 0) continue;
+    const key = norm(t.name);
+    const n = numberOf.get(t.seasonId) ?? 0;
+    const have = best.get(key);
+    // Newest season wins; within a season the Division 1 row (lower tier).
+    if (!have || n > have.seasonNumber || (n === have.seasonNumber && t.tier < have.tier)) {
+      best.set(key, { id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl || null, seasonNumber: n });
+    }
+  }
+  return [...best.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // A team id for a new team: its name in id form plus the season, `_2`, `_3`
@@ -257,7 +282,11 @@ export async function commitTeamPlan(prisma, { target, fromSeasonId, plan }) {
     prisma.team.findMany({ where: { seasonId: target.id } }),
   ]);
   const have = (name, tier) => targetTeams.some((t) => t.tier === tier && norm(t.name) === norm(name));
-  const sourceById = new Map(sourceTeams.map((t) => [t.id, t]));
+  // The plan may name any earlier team of the league (the team search), not
+  // only last season's, so they are read by id.
+  const wanted = [...new Set(plan.teams.map((k) => k.sourceId))];
+  const picked = wanted.length ? await prisma.team.findMany({ where: { id: { in: wanted } } }) : [];
+  const sourceById = new Map([...sourceTeams, ...picked].map((t) => [t.id, t]));
   let teamsCreated = 0;
   const add = async (data) => {
     const row = await prisma.team.create({ data: { ...data, seasonId: target.id } });
@@ -267,9 +296,10 @@ export async function commitTeamPlan(prisma, { target, fromSeasonId, plan }) {
   for (const k of plan.teams) {
     const s = sourceById.get(k.sourceId);
     if (!s || s.tier === 0 || have(s.name, k.tier)) continue;
-    const id = (await prisma.team.findUnique({ where: { id: `${s.id}${suffix}` } }))
-      ? await freshTeamId(prisma, s.name, suffix)
-      : `${s.id}${suffix}`;
+    // Division 2 has teams of the same name as Division 1: its copy gets an
+    // id of its own, so both can come from the same old team.
+    const want = k.tier === DIV2_TIER ? `${s.id}_d2${suffix}` : `${s.id}${suffix}`;
+    const id = (await prisma.team.findUnique({ where: { id: want } })) ? await freshTeamId(prisma, s.name, suffix) : want;
     await add({ id, name: s.name, tier: k.tier, color: s.color, logoUrl: s.logoUrl });
   }
   for (const n of plan.newTeams) {

@@ -22,9 +22,15 @@ function fakeDb({ teams = [], drivers = [], starts = {}, links = {}, steam = {},
     state,
     season: {
       findUnique: async ({ where }) => state.seasons.find((s) => s.id === where.id) || null,
+      findMany: async ({ where }) => state.seasons.filter((s) => s.seriesId === where.seriesId).map((s) => ({ ...s })),
     },
     team: {
-      findMany: async ({ where }) => state.teams.filter((t) => t.seasonId === where.seasonId).map((t) => ({ ...t })),
+      findMany: async ({ where }) =>
+        state.teams
+          .filter((t) =>
+            where.id?.in ? where.id.in.includes(t.id) : where.seasonId?.in ? where.seasonId.in.includes(t.seasonId) : t.seasonId === where.seasonId
+          )
+          .map((t) => ({ ...t })),
       findUnique: async ({ where }) => state.teams.find((t) => t.id === where.id) || null,
       findFirst: async ({ where }) => state.teams.find((t) => t.seasonId === where.seasonId && t.tier === where.tier) || null,
       create: async ({ data }) => {
@@ -89,8 +95,8 @@ function fakeDb({ teams = [], drivers = [], starts = {}, links = {}, steam = {},
   return prisma;
 }
 
-const S8 = { id: "s8", number: 8, division2: true };
-const S9 = { id: "s9", number: 9 };
+const S8 = { id: "s8", number: 8, division2: true, seriesId: "f1" };
+const S9 = { id: "s9", number: 9, seriesId: "f1" };
 
 function season8() {
   return fakeDb({
@@ -342,7 +348,7 @@ describe("teams step, then people", () => {
     expect(s9.map((t) => [t.id, t.tier]).sort()).toEqual([
       ["ferrari_s8_s9", 1],
       ["jordan_s9", 3],
-      ["minardi_s8_s9", 3],
+      ["minardi_s8_d2_s9", 3],
       ["reserve_s8_s9", 0],
     ]);
     expect(prisma.state.seasonDiv2.get("s9")).toBe(1);
@@ -364,7 +370,7 @@ describe("teams step, then people", () => {
     const preview = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
     const byName = Object.fromEntries(preview.teams.map((t) => [t.name, t]));
     expect(byName.Ferrari.targetTeamId).toBe("ferrari_s8_s9");
-    expect(byName.Minardi.targetTeamId).toBe("minardi_s8_s9");
+    expect(byName.Minardi.targetTeamId).toBe("minardi_s8_d2_s9");
     expect(byName["Red Bull"].targetTeamId).toBe(null);
     expect(byName.Reserve.targetTeamId).toBe("reserve_s8_s9");
     expect(preview.targetTeams.map((t) => t.name)).toEqual(["Ferrari", "Jordan", "Minardi", "Reserve"]);
@@ -384,11 +390,76 @@ describe("teams step, then people", () => {
     expect(out.teamsCreated).toBe(0);
     const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
     expect(by.Malte).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
-    expect(by.Steve).toMatchObject({ teamId: "minardi_s8_s9", tier: 3 });
+    expect(by.Steve).toMatchObject({ teamId: "minardi_s8_d2_s9", tier: 3 });
     expect(by.Rookie).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
     expect(prisma.state.division.get(by.Rookie.id)).toBe(2);
     expect(by["Sub Driver"]).toMatchObject({ teamId: "jordan_s9", tier: 3 });
     expect(by.Ghost).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
     expect(prisma.state.division.get(by.Ghost.id)).toBe(2);
+  });
+});
+
+describe("Division 2 has the same teams as Division 1, kept apart", () => {
+  it("one old team becomes two teams, and drivers go to the right one", async () => {
+    const prisma = season8();
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({
+        division2: true,
+        teams: [
+          { sourceId: "ferrari_s8", tier: 1 },
+          { sourceId: "ferrari_s8", tier: 3 },
+          { sourceId: "minardi_s8", tier: 1 }, // Tier 2 last season, Tier 1 now
+        ],
+      }),
+    });
+    const s9 = prisma.state.teams.filter((t) => t.seasonId === "s9");
+    expect(s9.filter((t) => t.name === "Ferrari").map((t) => [t.id, t.tier]).sort()).toEqual([
+      ["ferrari_s8_d2_s9", 3],
+      ["ferrari_s8_s9", 1],
+    ]);
+    expect(s9.find((t) => t.name === "Minardi").tier).toBe(1);
+
+    const pv = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
+    // Last season's Ferrari maps to the Division 1 Ferrari, not the Division 2 copy.
+    expect(pv.teams.find((t) => t.name === "Ferrari").targetTeamId).toBe("ferrari_s8_s9");
+    expect(pv.teams.find((t) => t.name === "Minardi").targetTeamId).toBe("minardi_s8_s9");
+
+    await commitCarryOver(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      picks: parsePicks([{ driverId: "malte_s8" }, { driverId: "sub_s8", to: "team", targetTeamId: "ferrari_s8_d2_s9" }]),
+    });
+    const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
+    expect(by.Malte).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
+    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_s8_d2_s9", tier: 3 });
+  });
+});
+
+describe("team search", () => {
+  it("offers every team the league ever had, once, newest season first", async () => {
+    const prisma = season8();
+    prisma.state.seasons.push({ id: "s3", number: 3, seriesId: "f1" }, { id: "x1", number: 1, seriesId: "other" });
+    prisma.state.teams.push(
+      { id: "jordan_s3", name: "Jordan", tier: 1, color: "#ff0", logoUrl: "/j.png", seasonId: "s3" },
+      { id: "ferrari_s3", name: "Ferrari", tier: 1, color: "#a00", seasonId: "s3" },
+      { id: "elsewhere", name: "Elsewhere", tier: 1, color: "#000", seasonId: "x1" }
+    );
+    const { pastTeams } = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
+    const by = Object.fromEntries(pastTeams.map((t) => [t.name, t]));
+    expect(by.Jordan).toMatchObject({ id: "jordan_s3", seasonNumber: 3, logoUrl: "/j.png" });
+    expect(by.Ferrari).toMatchObject({ id: "ferrari_s8", seasonNumber: 8 });
+    expect(by.Elsewhere).toBeUndefined();
+    expect(by.Reserve).toBeUndefined();
+
+    // Picking an old team brings it back with its look.
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: true, teams: [{ sourceId: "jordan_s3", tier: 3 }] }),
+    });
+    const jordan = prisma.state.teams.find((t) => t.seasonId === "s9" && t.name === "Jordan");
+    expect(jordan).toMatchObject({ id: "jordan_s3_d2_s9", tier: 3, color: "#ff0", logoUrl: "/j.png" });
   });
 });

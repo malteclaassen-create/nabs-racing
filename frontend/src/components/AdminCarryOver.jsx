@@ -1,51 +1,36 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, ChevronDown, ChevronUp, CheckSquare, ArrowRightLeft, UserX } from "lucide-react";
 import { api } from "../api/client.js";
 import { DriverAvatar, Spinner, Notice } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 
 // ---------------------------------------------------------------------------
-// "Who drives in the new season?" Step 2 of the season wizard.
+// "Who drives?" Step 3 of the season wizard, after the teams.
 //
-// Last season's field per team. One question per person, asked twice:
-//   * the tick: is this person in the new season at all? Unticked people are
-//     simply not copied. Nothing is deleted, and they can be added later.
-//   * "Drives for": where they go. Their old team by default, any other team
-//     of the season (a transfer, a reserve getting a seat) or the Reserve pool.
+// The list is the NEW season's grid as it will be: Division 1 (Tier 1 and
+// Tier 2), Division 2 and the Reserve pool, the teams of the new season inside,
+// and every driver under the team they will drive for. Changing "Drives for"
+// moves the driver to that team at once, lit up for a moment; unticking moves
+// them to "Not in <season>" at the bottom. What you see is what gets copied.
 //
-// Ticked to start with: everybody who held a seat, and reserves who raced at
-// least once. Reserves who never drove start unticked and folded away; the
+// Where people start: the new season's copy of last season's team; the pool
+// for reserves and for drivers whose team did not carry on. Ticked to start
+// with: everybody who held a seat, and reserves who raced at least once.
+// Reserves who never drove start unticked and folded away at the bottom; the
 // attendance sign-up puts them back into the Reserve pool the first time they
-// answer. The teams come from the step before (AdminCarryOverTeams): "Drives
-// for" lists the NEW season's teams by division, and the Reserve pool, with a
-// Division 2 side when the season runs Division 2. A driver whose team did
-// not carry on starts out in the pool.
+// answer anyway.
 // ---------------------------------------------------------------------------
 
 // A place is "t:<team id of the new season>" or "pool:1" / "pool:2".
 const poolPlace = (division, division2) => `pool:${division === 2 && division2 ? 2 : 1}`;
 
-function teamLabel(tier) {
-  if (tier === 1) return "Tier 1";
-  if (tier === 2) return "Tier 2";
-  if (tier === 3) return "Division 2";
-  return "Reserve pool";
-}
+const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2" };
 
 function startsLabel(n) {
   if (!n) return "No starts";
   return n === 1 ? "1 start" : `${n} starts`;
 }
 
-// A reserve who never drove: folded away until asked for. Decided by the
-// person alone, never by the tick, so a row never vanishes under the finger
-// that just unticked it.
-function isQuiet(p) {
-  return !p.seat && !p.starts && !p.already;
-}
-
-// Where each person goes unless the admin says otherwise: the new season's
-// copy of their team, else the pool (their own side of it).
 function defaultPlace(team, p, division2) {
   if (team.tier !== 0 && team.targetTeamId) return `t:${team.targetTeamId}`;
   return poolPlace(p.division, division2);
@@ -58,14 +43,19 @@ function suggested(data) {
   return out;
 }
 
+const bySeat = (a, b) => Number(b.seat) - Number(a.seat) || b.starts - a.starts || a.name.localeCompare(b.name);
+
 // `run(fn, doneMessage)` is the wizard's runner (busy flag, errors, reload).
 export default function AdminCarryOver({ target, source, run, busy }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [picks, setPicks] = useState({});
-  // Per team: also list the reserves who never drove (folded away by default,
-  // the pool holds a long sign-up list and most of it is this).
-  const [showAll, setShowAll] = useState({});
+  const [showQuiet, setShowQuiet] = useState(false);
+  // The driver who just moved, lit up for a moment where they landed.
+  const [flash, setFlash] = useState(null);
+  const flashTimer = useRef(null);
+  const scrollTo = useRef(null);
+  const rowRefs = useRef({});
 
   useEffect(() => {
     let live = true;
@@ -82,31 +72,65 @@ export default function AdminCarryOver({ target, source, run, busy }) {
       .catch((err) => live && setLoadError(err.message));
     return () => {
       live = false;
+      clearTimeout(flashTimer.current);
     };
   }, [target.id, source.id]);
 
-  const teams = data?.teams || null;
-  const people = useMemo(() => (teams || []).flatMap((t) => t.people), [teams]);
-  // The new season's teams a driver can be put into, by division.
-  const div1Teams = (data?.targetTeams || []).filter((t) => t.tier === 1 || t.tier === 2);
-  const div2Teams = (data?.targetTeams || []).filter((t) => t.tier === 3);
-  const chosen = people.filter((p) => !p.already && picks[p.driverId]?.on);
-  const leftOut = people.filter((p) => !p.already && !picks[p.driverId]?.on).length;
+  // After a "Drives for" change, bring the driver into view where they landed.
+  useEffect(() => {
+    if (!scrollTo.current) return;
+    rowRefs.current[scrollTo.current]?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    scrollTo.current = null;
+  });
 
-  function set(id, patch) {
-    setPicks((cur) => ({ ...cur, [id]: { ...cur[id], ...patch } }));
+  // Every person once, with the team they came from.
+  const people = useMemo(
+    () =>
+      (data?.teams || []).flatMap((t) =>
+        t.people.map((p) => ({ ...p, from: { id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl } }))
+      ),
+    [data]
+  );
+
+  if (loadError) return <Notice kind="error">{loadError}</Notice>;
+  if (!data) return <Spinner label={`Reading ${source.name}…`} />;
+  if (!data.teams.length) return <p className="text-sm text-light">{source.name} has nobody to bring over.</p>;
+
+  const fresh = suggested(data);
+  const open = people.filter((p) => !p.already);
+  const already = people.filter((p) => p.already);
+  const ticked = open.filter((p) => picks[p.driverId]?.on);
+  const out = open.filter((p) => !picks[p.driverId]?.on);
+  // Unticked reserves who never drove: the long sign-up tail, folded away.
+  const quiet = out.filter((p) => !p.seat && !p.starts);
+  const outShown = out.filter((p) => p.seat || p.starts);
+  const changed = open.some(
+    (p) => !!picks[p.driverId]?.on !== fresh[p.driverId].on || picks[p.driverId]?.place !== fresh[p.driverId].place
+  );
+  const at = (place) => ticked.filter((p) => picks[p.driverId]?.place === place).sort(bySeat);
+  const teamsOf = (tier) => data.targetTeams.filter((t) => t.tier === tier);
+  const div2Teams = teamsOf(3);
+  const placeName = (place) => {
+    if (place === "pool:2") return "Reserve pool, Division 2";
+    if (place?.startsWith("pool")) return data.division2 ? "Reserve pool, Division 1" : "Reserve pool";
+    const t = data.targetTeams.find((x) => `t:${x.id}` === place);
+    return t ? `${t.name} (${TIER_LABEL[t.tier]})` : "?";
+  };
+
+  function lightUp(id, scroll) {
+    clearTimeout(flashTimer.current);
+    setFlash(id);
+    if (scroll) scrollTo.current = id;
+    flashTimer.current = setTimeout(() => setFlash(null), 1600);
   }
 
-  function setTeam(team, on) {
-    setPicks((cur) => {
-      const next = { ...cur };
-      for (const p of team.people) if (!p.already) next[p.driverId] = { ...cur[p.driverId], on };
-      return next;
-    });
+  function set(id, patch, { scroll = false } = {}) {
+    setPicks((cur) => ({ ...cur, [id]: { ...cur[id], ...patch } }));
+    lightUp(id, scroll);
   }
 
   function bringBack() {
-    const body = chosen.map((p) => {
+    const body = ticked.map((p) => {
       const place = picks[p.driverId]?.place || "pool:1";
       if (place.startsWith("t:")) return { driverId: p.driverId, to: "team", targetTeamId: place.slice(2) };
       return { driverId: p.driverId, to: "reserve", division: place === "pool:2" ? 2 : 1 };
@@ -115,21 +139,134 @@ export default function AdminCarryOver({ target, source, run, busy }) {
       () => api.carryOver(target.id, source.id, body),
       (r) => {
         const skipped = r.skipped?.length ? ` Left alone: ${r.skipped.map((s) => s.name).join(", ")} (already in ${target.name}).` : "";
-        return `${r.driversCreated} driver(s) copied to ${target.name}, each linked to their earlier seasons.${skipped}`;
+        return `${r.driversCreated} driver(s) copied to ${target.name}, each linked to their earlier seasons. You can still move people in the Drivers tab.${skipped}`;
       }
     );
   }
 
-  if (loadError) return <Notice kind="error">{loadError}</Notice>;
-  if (!teams) return <Spinner label={`Reading ${source.name}…`} />;
-  if (!teams.length) return <p className="text-sm text-light">{source.name} has no teams to bring over.</p>;
-
-  const fresh = suggested(data);
-  const changed = people.some(
-    (p) =>
-      !p.already &&
-      (!!picks[p.driverId]?.on !== fresh[p.driverId].on || picks[p.driverId]?.place !== fresh[p.driverId].place)
+  const select = (p) => (
+    <label className="ml-auto flex w-full items-center gap-2 text-xs text-light sm:w-auto">
+      <span className="shrink-0">Drives for</span>
+      <select
+        className="input min-w-0 flex-1 py-1.5 text-sm sm:w-60 sm:flex-none"
+        value={picks[p.driverId]?.place}
+        onChange={(e) => set(p.driverId, { place: e.target.value }, { scroll: true })}
+      >
+        {teamsOf(1).length + teamsOf(2).length > 0 && (
+          <optgroup label="Division 1">
+            {[...teamsOf(1), ...teamsOf(2)].map((x) => (
+              <option key={x.id} value={`t:${x.id}`}>
+                {x.name} ({TIER_LABEL[x.tier]})
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {div2Teams.length > 0 && (
+          <optgroup label="Division 2">
+            {div2Teams.map((x) => (
+              <option key={x.id} value={`t:${x.id}`}>
+                {x.name} (Division 2)
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="No seat">
+          <option value="pool:1">{data.division2 ? "Reserve pool, Division 1" : "Reserve pool"}</option>
+          {data.division2 && <option value="pool:2">Reserve pool, Division 2</option>}
+        </optgroup>
+      </select>
+    </label>
   );
+
+  // One driver line. `inGrid`: ticked, sitting under their team.
+  const row = (p, inGrid) => {
+    const id = `co-${p.driverId}`;
+    const place = picks[p.driverId]?.place;
+    const moved = place !== fresh[p.driverId].place;
+    const fromName = p.from.tier === 0 ? "Reserve pool" : `${p.from.name} (${TIER_LABEL[p.from.tier] || ""})`;
+    const sub = [startsLabel(p.starts), `${moved || !inGrid ? "was" : "from"} ${fromName}`, !p.isActive && "inactive at the end"]
+      .filter(Boolean)
+      .join(" · ");
+    return (
+      <li
+        key={p.driverId}
+        ref={(el) => (rowRefs.current[p.driverId] = el)}
+        className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 transition-colors duration-700 ${
+          flash === p.driverId ? "bg-brand/15" : ""
+        }`}
+      >
+        <label htmlFor={id} className="flex min-w-[12rem] flex-1 cursor-pointer items-center gap-3">
+          <input
+            id={id}
+            type="checkbox"
+            className="h-5 w-5 shrink-0 accent-[var(--c-primary)]"
+            checked={inGrid}
+            onChange={(e) => set(p.driverId, { on: e.target.checked })}
+          />
+          <DriverAvatar name={p.name} photoUrl={p.photoUrl} color={p.from.color || "#64748b"} size={28} />
+          <span className="min-w-0">
+            <span className={`block truncate text-sm font-semibold ${inGrid ? "text-dark" : "text-light"}`}>{p.name}</span>
+            <span className="block text-xs text-light">{sub}</span>
+          </span>
+        </label>
+        {inGrid ? (
+          select(p)
+        ) : (
+          <span className="ml-auto text-xs text-light">Tick to bring back to {placeName(place)}</span>
+        )}
+      </li>
+    );
+  };
+
+  const teamBlock = (team) => {
+    const here = at(`t:${team.id}`);
+    return (
+      <div key={team.id} className="border-t border-border first:border-t-0">
+        <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
+          <TeamLogo id={team.id} name={team.name} color={team.color || "#64748b"} logoUrl={team.logoUrl} size={22} />
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-dark">{team.name}</span>
+          {/* An empty Division 1 team is worth a look; Division 2 fills up with
+              newcomers later, so empty is normal there. */}
+          <span className={`text-xs ${here.length || team.tier === 3 ? "text-light" : "font-semibold text-warn"}`}>
+            {here.length ? `${here.length} driver${here.length === 1 ? "" : "s"}` : "No driver yet"}
+          </span>
+        </div>
+        {here.length > 0 && <ul className="divide-y divide-border">{here.map((p) => row(p, true))}</ul>}
+      </div>
+    );
+  };
+
+  const box = (key, title, sub, children) => (
+    <section key={key} className="overflow-hidden rounded-xl border border-border bg-surface/40">
+      <header className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-surface2/50 px-3 py-2">
+        <span className="font-semibold text-dark">{title}</span>
+        {sub && <span className="ml-auto text-xs text-light">{sub}</span>}
+      </header>
+      {children}
+    </section>
+  );
+
+  const poolSide = (place, label) => {
+    const here = at(place);
+    return (
+      <div key={place} className="border-t border-border first:border-t-0">
+        {label && <div className="px-3 pb-1 pt-2.5 text-sm font-bold text-dark">{label}</div>}
+        {here.length ? (
+          <ul className="divide-y divide-border">{here.map((p) => row(p, true))}</ul>
+        ) : (
+          <p className="px-3 py-2 text-xs text-light">Nobody here.</p>
+        )}
+      </div>
+    );
+  };
+
+  const partHead = (title) => (
+    <h3 className="pt-2 font-display text-base font-black uppercase tracking-wide text-dark">{title}</h3>
+  );
+  const count = (tier) => {
+    const n = teamsOf(tier).reduce((s, t) => s + at(`t:${t.id}`).length, 0);
+    return `${n} driver${n === 1 ? "" : "s"}`;
+  };
 
   return (
     <div className="space-y-3">
@@ -137,165 +274,96 @@ export default function AdminCarryOver({ target, source, run, busy }) {
         <li className="flex items-start gap-2">
           <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
           <span>
-            <b className="text-dark">Ticked</b> means this person is in {target.name}. We ticked everybody with a seat
-            and every reserve who raced in {source.name}.
+            This is the grid of {target.name} as it will be. Everybody <b className="text-dark">ticked</b> sits under
+            the team they drive for. We ticked everybody with a seat and every reserve who raced in {source.name}.
           </span>
         </li>
         <li className="flex items-start gap-2">
           <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2} aria-hidden="true" />
           <span>
-            <b className="text-dark">Drives for</b> says where they go: their old team, another team of {target.name} (a
-            transfer, a reserve getting a seat, a move between Division 1 and Division 2) or the Reserve pool.
+            Change <b className="text-dark">Drives for</b> and the driver moves to that team: a transfer, a reserve
+            getting a seat, a move between Division 1 and Division 2, or into the Reserve pool.
           </span>
         </li>
         <li className="flex items-start gap-2">
           <UserX className="mt-0.5 h-4 w-4 shrink-0 text-light" strokeWidth={2} aria-hidden="true" />
           <span>
-            <b className="text-dark">Not ticked</b> means not copied. Nothing is deleted: you can add them later in the
-            Drivers tab, and reserves come back on their own when they sign up for a race.
+            Untick someone and they move to <b className="text-dark">Not in {target.name}</b> at the bottom: not
+            copied, nothing deleted. Reserves who never drove wait there too and come back on their own when they sign
+            up for a race.
           </span>
         </li>
       </ul>
 
-      <div className="space-y-3">
-        {teams.map((t) => {
-          const open = t.people.filter((p) => !p.already);
-          const on = open.filter((p) => picks[p.driverId]?.on).length;
-          const quiet = t.people.filter((p) => isQuiet(p));
-          const quietOn = quiet.filter((p) => picks[p.driverId]?.on).length;
-          const isPool = t.tier === 0;
-          const gone = !isPool && !t.targetTeamId;
-          return (
-            <section key={t.id} className="rounded-xl border border-border bg-surface/40">
-              <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3 py-2">
-                <TeamLogo id={t.id} name={t.name} color={t.color || "#64748b"} logoUrl={t.logoUrl} size={24} />
-                <span className="min-w-0 truncate font-semibold text-dark">{t.name}</span>
-                <span className="text-xs text-light">
-                  {gone ? `${teamLabel(t.tier)}, not in ${target.name}` : teamLabel(t.tier)}
-                </span>
-                <span className="ml-auto text-xs text-light">
-                  {open.length ? `${on} of ${open.length} in ${target.name}` : "Team is copied"}
-                </span>
-                {open.length > 1 && !isPool && (
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-link hover:underline"
-                    onClick={() => setTeam(t, on < open.length)}
-                  >
-                    {on < open.length ? "Tick all" : "Untick all"}
-                  </button>
-                )}
-              </header>
-              {t.people.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-light">Nobody drove for this team. It is copied anyway.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {t.people.filter((p) => showAll[t.id] || !isQuiet(p)).map((p) => {
-                    const pick = picks[p.driverId] || { on: false, place: "pool:1" };
-                    const id = `co-${p.driverId}`;
-                    const own = fresh[p.driverId]?.place;
-                    return (
-                      <li key={p.driverId} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2">
-                        <label htmlFor={id} className="flex min-w-[12rem] flex-1 cursor-pointer items-center gap-3">
-                          <input
-                            id={id}
-                            type="checkbox"
-                            className="h-5 w-5 shrink-0 accent-[var(--c-primary)] disabled:opacity-40"
-                            checked={!p.already && pick.on}
-                            disabled={p.already}
-                            onChange={(e) => set(p.driverId, { on: e.target.checked })}
-                          />
-                          <DriverAvatar name={p.name} photoUrl={p.photoUrl} color={t.color || "#64748b"} size={28} />
-                          <span className="min-w-0">
-                            <span className={`block truncate text-sm font-semibold ${p.already || !pick.on ? "text-light" : "text-dark"}`}>
-                              {p.name}
-                            </span>
-                            <span className="block text-xs text-light">
-                              {[startsLabel(p.starts), gone && pick.on && `${t.name} is not in ${target.name}`, !p.isActive && "inactive at the end", p.tier === 0 && p.division === 2 && "Division 2 pool"]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          </span>
-                        </label>
-                        {p.already ? (
-                          <span className="ml-auto text-xs font-semibold text-light">Already in {target.name}</span>
-                        ) : pick.on ? (
-                          <label className="ml-auto flex w-full items-center gap-2 text-xs text-light sm:w-auto">
-                            <span className="shrink-0">Drives for</span>
-                            <select
-                              className="input min-w-0 flex-1 py-1.5 text-sm sm:w-60 sm:flex-none"
-                              value={pick.place}
-                              onChange={(e) => set(p.driverId, { place: e.target.value })}
-                            >
-                              {div1Teams.length > 0 && (
-                                <optgroup label={data.division2 ? "Division 1" : "Teams"}>
-                                  {div1Teams.map((x) => (
-                                    <option key={x.id} value={`t:${x.id}`}>
-                                      {x.name} ({teamLabel(x.tier)}){own === `t:${x.id}` ? ", same team" : ""}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              {div2Teams.length > 0 && (
-                                <optgroup label="Division 2">
-                                  {div2Teams.map((x) => (
-                                    <option key={x.id} value={`t:${x.id}`}>
-                                      {x.name} (Division 2){own === `t:${x.id}` ? ", same team" : ""}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              <optgroup label="No seat">
-                                <option value="pool:1">{data.division2 ? "Reserve pool, Division 1" : "Reserve pool"}</option>
-                                {data.division2 && <option value="pool:2">Reserve pool, Division 2</option>}
-                              </optgroup>
-                            </select>
-                          </label>
-                        ) : (
-                          <span className="ml-auto text-xs text-light">Not copied</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                  {quiet.length > 0 && (
-                    <li>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-medium hover:text-dark"
-                        onClick={() => setShowAll((cur) => ({ ...cur, [t.id]: !cur[t.id] }))}
-                        aria-expanded={!!showAll[t.id]}
-                      >
-                        {showAll[t.id] ? (
-                          <ChevronUp className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                        )}
-                        {showAll[t.id]
-                          ? `Hide the ${quiet.length} who never drove`
-                          : `Show ${quiet.length} more who signed up but never drove${quietOn ? ` (${quietOn} ticked)` : ""}`}
-                      </button>
-                    </li>
+      {already.length > 0 && (
+        <p className="rounded-xl border border-border bg-surface/40 px-3 py-2 text-xs text-light">
+          Already in {target.name}, left as they are: {already.map((p) => p.name).join(", ")}.
+        </p>
+      )}
+
+      {teamsOf(1).length + teamsOf(2).length > 0 && partHead(data.division2 ? "Division 1" : "Teams")}
+      {[1, 2].map((tier) => (teamsOf(tier).length ? box(`t${tier}`, TIER_LABEL[tier], count(tier), teamsOf(tier).map(teamBlock)) : null))}
+
+      {div2Teams.length > 0 && (
+        <>
+          {partHead("Division 2")}
+          {box("d2", "Division 2", count(3), div2Teams.map(teamBlock))}
+        </>
+      )}
+
+      {partHead("No seat")}
+      {box(
+        "pool",
+        "Reserve pool",
+        "can stand in for a team",
+        data.division2
+          ? [poolSide("pool:1", "Division 1 side"), poolSide("pool:2", "Division 2 side")]
+          : poolSide("pool:1", null)
+      )}
+
+      {box(
+        "out",
+        `Not in ${target.name}`,
+        "not copied, nothing deleted",
+        <ul className="divide-y divide-border">
+          {[...outShown].sort(bySeat).map((p) => row(p, false))}
+          {!outShown.length && !quiet.length && <li className="px-3 py-2 text-xs text-light">Nobody. Everybody comes along.</li>}
+          {quiet.length > 0 && (
+            <>
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-medium hover:text-dark"
+                  onClick={() => setShowQuiet((v) => !v)}
+                  aria-expanded={showQuiet}
+                >
+                  {showQuiet ? (
+                    <ChevronUp className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                   )}
-                </ul>
-              )}
-            </section>
-          );
-        })}
-      </div>
+                  {showQuiet ? `Hide the ${quiet.length} who never drove` : `Show ${quiet.length} who signed up but never drove`}
+                </button>
+              </li>
+              {showQuiet && [...quiet].sort(bySeat).map((p) => row(p, false))}
+            </>
+          )}
+        </ul>
+      )}
 
       <div className="space-y-2 rounded-xl border border-border bg-surface/40 p-3">
         <p className="text-sm text-medium">
-          <b className="text-dark">{chosen.length}</b> {chosen.length === 1 ? "person goes" : "people go"} into{" "}
+          <b className="text-dark">{ticked.length}</b> {ticked.length === 1 ? "person goes" : "people go"} into{" "}
           {target.name}
-          {leftOut ? (
+          {out.length ? (
             <>
-              , <b className="text-dark">{leftOut}</b> {leftOut === 1 ? "is" : "are"} not copied
+              , <b className="text-dark">{out.length}</b> {out.length === 1 ? "is" : "are"} not copied
             </>
           ) : null}
           .
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn-primary py-1.5 text-sm" disabled={busy} onClick={bringBack}>
+          <button type="button" className="btn-primary py-1.5 text-sm" disabled={busy || !ticked.length} onClick={bringBack}>
             Copy to {target.name}
           </button>
           {changed && (
