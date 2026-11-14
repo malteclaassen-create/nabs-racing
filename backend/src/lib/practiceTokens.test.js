@@ -249,6 +249,23 @@ describe("training laps", () => {
     expect((await currentPeriod(prisma, "nabs", now + 2 * 3600_000)).key).toMatch(/^week:/);
   });
 
+  it("turns the week over a week after the last round when the next one is further off", async () => {
+    const now = Date.now();
+    const day = 864e5;
+    const prisma = db({
+      races: [
+        { id: "last", track: "Abu Dhabi", number: 12, date: now - 8 * day, isCompleted: 1 },
+        { id: "next", track: "Bahrain", number: 1, date: now + 20 * day, isCompleted: 0 },
+      ],
+    });
+    const p = await currentPeriod(prisma, "nabs", now);
+    expect(p.key).toMatch(/^week:/);
+    expect(p.raceId).toBe(null);
+    __clearCaches();
+    // In the last week before the round, the week is the round's again.
+    expect((await currentPeriod(prisma, "nabs", now + 15 * day)).key).toBe("race:next");
+  });
+
   it("says whether the feature is out in the open, which the live page waits for", async () => {
     const prisma = db();
     await drive(prisma, 5);

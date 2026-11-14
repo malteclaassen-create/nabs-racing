@@ -34,6 +34,7 @@
 import { randomUUID, randomInt, timingSafeEqual, createHash } from "crypto";
 import { IS_DEPLOYED } from "./deployment.js";
 import { raceKickoff } from "./raceKickoff.js";
+import { weeklyTurnovers } from "./weeklyTurnover.js";
 import { catalogueFor, isBuyableDesign, ownedDesigns, priceOf, CARD_DESIGN_BY_KEY } from "./cardShop.js";
 import { overrides, ensureTuning, saveTuning } from "./tokenTuning.js";
 import { STUDIO_BY_ID, studioPriceOf, ownedStudioItems } from "./profileStudio.js";
@@ -1130,6 +1131,14 @@ async function loadRoundStarts(prisma) {
       byDay.set(key, [...(byDay.get(key) || []), start.getTime()]);
       const primary = Number(r.primary) === 1 || r.primary === true;
       if (!r.parentRaceId && (primary || !anyPrimary)) briefings.add(start.getTime());
+    }
+    // Weeks with no F1 round on the calendar (a training race nobody entered,
+    // a free Friday, the break after the season) still turn over at the usual
+    // time, a week after the last real briefing. See lib/weeklyTurnover.js.
+    for (const t of weeklyTurnovers([...briefings], { until: Date.now() + 8 * 24 * 3600_000 })) {
+      briefings.add(t);
+      const key = leagueDay(t);
+      byDay.set(key, [...(byDay.get(key) || []), t]);
     }
     roundStarts = { at: Date.now(), byDay, briefings: [...briefings].sort((a, b) => a - b) };
   }

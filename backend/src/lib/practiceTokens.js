@@ -43,6 +43,7 @@ import {
 import { leagueDay } from "./tokenRules.js";
 import { ensureTuning } from "./tokenTuning.js";
 import { raceKickoff } from "./raceKickoff.js";
+import { weeklyTurnovers } from "./weeklyTurnover.js";
 import { groupKeyFor, trackKeyFor } from "./trackKeys.js";
 import { LIVE_SERVERS, readLiveServerMap, serverAssignment } from "./liveServers.js";
 import { boardScopes } from "./liveBestLaps.js";
@@ -97,21 +98,35 @@ export async function currentPeriod(prisma, series, now = Date.now()) {
     // The week ends when the round starts (the briefing, 19:30 on a Friday),
     // not when somebody gets round to importing the results. A round whose
     // start has passed is over for training whether it is marked done or not.
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT ra."id", ra."track", ra."number", ra."date", ra."isCompleted"
+    // Every season of the series: the weekly turnover below counts on from the
+    // last race that happened, which after a season's end is in the old one.
+    const all = await prisma.$queryRawUnsafe(
+      `SELECT ra."id", ra."track", ra."number", ra."date", ra."isCompleted", s."isActive" AS "active"
          FROM "Race" ra
          JOIN "Season" s ON s."id" = ra."seasonId"
          JOIN "Series" se ON se."id" = s."seriesId"
-        WHERE se."slug" = ? AND s."isActive" = 1 AND ra."isSpecialEvent" = 0
+        WHERE se."slug" = ? AND ra."isSpecialEvent" = 0
         ORDER BY (ra."date" IS NULL), ra."date" ASC, ra."number" ASC`,
       slug
     );
+    const rows = all.filter((row) => row.active == null || Number(row.active) === 1 || row.active === true);
     const r = rows.find((row) => {
       if (row.date == null) return !Number(row.isCompleted);
       const start = raceKickoff(new Date(Number(row.date)));
       return start && start.getTime() > now;
     });
-    if (r?.id) {
+    // A week with no round on the calendar (a training race nobody entered, a
+    // free Friday, the break after the season) still turns over at the usual
+    // time, a week after the last race that is on it.
+    const starts = all
+      .map((row) => (row.date == null ? null : raceKickoff(new Date(Number(row.date)))?.getTime()))
+      .filter((t) => Number.isFinite(t));
+    const raceStart = r?.date == null ? null : raceKickoff(new Date(Number(r.date)))?.getTime() ?? null;
+    const standIn = weeklyTurnovers(starts, { from: now + 1, until: now + 8 * 24 * 3600_000 })[0] ?? null;
+    if (standIn != null && (raceStart == null || standIn < raceStart)) {
+      turnsAt = standIn;
+      period = { key: `week:${leagueDay(standIn)}`, label: "This week", raceId: null, track: null, date: null };
+    } else if (r?.id) {
       const start = r.date == null ? null : raceKickoff(new Date(Number(r.date)));
       turnsAt = start ? start.getTime() : null;
       period = {
