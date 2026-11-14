@@ -309,6 +309,10 @@ export default function AdminImport({ onCommitted }) {
   const div2Server = liveServers.data?.division2Key || null;
   // After Division 1's race is saved: offer Division 2's straight away.
   const [div2Next, setDiv2Next] = useState(null); // { roundNumber } | null
+  // Division 2's race of the round, found on the second server beside
+  // Division 1's, the way a sprint weekend's two races are found side by side.
+  const [div2RemoteId, setDiv2RemoteId] = useState("");
+  const [div2RemoteAuto, setDiv2RemoteAuto] = useState(false);
   const offersDivision2 =
     !!currentSeason?.division2 &&
     !!targetRace &&
@@ -357,16 +361,29 @@ export default function AdminImport({ onCommitted }) {
     setTargetDivision(2);
     setDone(null);
     const night = nightSessions(sessionsOfDivision(remote.data?.results, true), targetTrack, targetDate);
-    const pick = pickNightSession(night, { sprintWeekend: false, session: "RACE" });
+    const found = pickNightSession(night, { sprintWeekend: false, session: "RACE" });
+    const pick = div2RemoteId ? { id: div2RemoteId } : found;
     if (pick) {
       setRemoteId(pick.id);
-      setRemoteAuto(true);
+      setRemoteAuto(div2RemoteId ? div2RemoteAuto : true);
       await loadRemote(pick.id, null);
     } else {
       setRemoteId("");
       setRemoteAuto(false);
       setDone("Division 2 is selected. No Division 2 race was found on the second server for this night: pick it in the list below or upload its file.");
     }
+  }
+
+  // "Load Division 2 only": switch to Division 2 and load the race picked
+  // beside Division 1's.
+  async function loadDivision2() {
+    if (!div2RemoteId) return;
+    const id = div2RemoteId;
+    setDiv2Next(null);
+    setTargetDivision(2);
+    setRemoteId(id);
+    setRemoteAuto(div2RemoteAuto);
+    await loadRemote(id, null);
   }
 
   // Picking the round pre-selects its session on the race server: same circuit,
@@ -392,8 +409,19 @@ export default function AdminImport({ onCommitted }) {
     const sprintPick = second && second.id !== pick?.id ? second : null;
     setSprintRemoteId(sprintPick?.id || "");
     setSprintRemoteAuto(!!sprintPick);
+    // Division 2's race, from the second server only. Without knowing which
+    // server that is, nothing is guessed: Division 1's race would be the pick.
+    if (offersDivision2 && !asDivision2 && div2Server) {
+      const night2 = nightSessions(sessionsOfDivision(remote.data?.results, true), targetTrack, targetDate);
+      const d2 = pickNightSession(night2, { sprintWeekend: false, session: "RACE" });
+      setDiv2RemoteId(d2?.id || "");
+      setDiv2RemoteAuto(!!d2);
+    } else if (!asDivision2) {
+      setDiv2RemoteId("");
+      setDiv2RemoteAuto(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep, asDivision2, mainServer, div2Server]);
+  }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep, asDivision2, mainServer, div2Server, offersDivision2]);
 
   // The standalone attach's server pick, same idea. Here a circuit-only match
   // is an acceptable fallback for dateless archive rounds: a wrong qualifying
@@ -406,7 +434,9 @@ export default function AdminImport({ onCommitted }) {
       setQualiAttachAuto(false);
       return;
     }
-    const list = remoteQuali.data?.results || [];
+    // A round's own qualifying is Division 1's (the round row holds it): with
+    // Division 2 running, only the main server's sessions are looked at.
+    const list = sessionsOfDivision(remoteQuali.data?.results || [], false);
     const pick =
       sessionForRace(list, targetTrack, targetDate) ||
       (targetDate
@@ -415,7 +445,8 @@ export default function AdminImport({ onCommitted }) {
       null;
     setQualiAttachRemoteId(pick?.id || "");
     setQualiAttachAuto(!!pick);
-  }, [targetTrack, targetDate, remoteQuali.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetTrack, targetDate, remoteQuali.data, mainServer, offersDivision2]);
 
   async function attachRemoteQuali() {
     if (!targetRace || !qualiAttachRemoteId) return;
@@ -1088,7 +1119,9 @@ export default function AdminImport({ onCommitted }) {
           <CardHead
             eyebrow="Step 2"
             title={
-              importBoth
+              asDivision2
+                ? "Import the Division 2 race"
+                : importBoth
                 ? weekendStep === "SPRINT"
                   ? "Import the sprint (2 of 2)"
                   : "Import the feature race and the sprint"
@@ -1126,6 +1159,9 @@ export default function AdminImport({ onCommitted }) {
                 )}
                 <div className="flex flex-wrap items-center gap-2">
                   {importBoth && <span className="w-24 text-sm font-semibold text-medium">Feature race</span>}
+                  {offersDivision2 && !importBoth && (
+                    <span className="w-24 text-sm font-semibold text-medium">{asDivision2 ? "Division 2" : "Division 1"}</span>
+                  )}
                   <select
                     aria-label={importBoth ? "Feature race on the server" : "Race on the server"}
                     className="input max-w-sm"
@@ -1193,6 +1229,36 @@ export default function AdminImport({ onCommitted }) {
                         Start the weekend over
                       </button>
                     )}
+                  </div>
+                )}
+                {/* Division 2's race of the same night, found on the second
+                    server beside Division 1's. Saving Division 1 offers it next
+                    (the "Next" card); the button loads it on its own. */}
+                {offersDivision2 && !asDivision2 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-24 text-sm font-semibold text-medium">Division 2</span>
+                    <select
+                      aria-label="Division 2 race on the second server"
+                      className="input max-w-sm"
+                      value={div2RemoteId}
+                      onChange={(e) => { setDiv2RemoteId(e.target.value); setDiv2RemoteAuto(false); }}
+                      disabled={remote.loading || busy}
+                    >
+                      <option value="">
+                        {remote.loading
+                          ? "Loading sessions…"
+                          : div2Server
+                            ? "No Division 2 race found for this night yet. Choose one…"
+                            : "Choose the Division 2 race…"}
+                      </option>
+                      <SessionOptions sessions={sessionsOfDivision(filteredRemote, true)} track={targetTrack} />
+                    </select>
+                    {div2RemoteAuto && div2RemoteId && (
+                      <span className="pill bg-emerald-500/15 text-ok">found on the second server</span>
+                    )}
+                    <button className="btn-secondary" onClick={loadDivision2} disabled={!div2RemoteId || busy}>
+                      Load Division 2 only
+                    </button>
                   </div>
                 )}
                 {/* second row: the qualifying session, auto-found for the picked
