@@ -40,6 +40,18 @@ export function podiumsOf(rounds) {
   return out;
 }
 
+// The season's five best results, feature races and sprints, as a Wrapped
+// ranks its top five: best place first, then the most points, then the
+// earlier round.
+export function topResults(rounds, n = 5) {
+  const all = [];
+  for (const r of rounds || []) {
+    if (r.status === "FINISHED" && r.position != null) all.push({ round: r.round, track: r.track, position: r.position, points: (r.points || 0) - (r.sprint?.points || 0), sprint: false });
+    if (r.sprint && r.sprint.status === "FINISHED" && r.sprint.position != null) all.push({ round: r.round, track: r.track, position: r.sprint.position, points: r.sprint.points || 0, sprint: true });
+  }
+  return all.sort((a, b) => a.position - b.position || b.points - a.points || a.round - b.round).slice(0, n);
+}
+
 // The team-mate the season is best told against: the one shared the most
 // races with.
 function mainMate(review) {
@@ -69,6 +81,9 @@ export function storySlides(review) {
     unit: `of ${plural(rounds.length, "round")}`,
     line: [`${stats.finishes} finished`, stats.dnf ? `${stats.dnf} retired` : null, missed ? `${missed} missed` : null].filter(Boolean).join(", ") + ".",
   });
+
+  const top = topResults(rounds);
+  if (top.length >= 3) slides.push({ key: "top", eyebrow: "Top results", list: top });
 
   if (review.best) {
     slides.push({
@@ -155,6 +170,7 @@ export function storySlides(review) {
     points: c?.points ?? 0,
     line: resultLine(review),
     grid: summaryGrid(review, mate),
+    top,
   });
   return slides;
 }
@@ -180,3 +196,20 @@ export function summaryGrid(review, mate = mainMate(review), { skip = [] } = {})
 }
 
 export { nth, roundName };
+
+// The season column of the summary card: the figure and its word, in the
+// singular where it is one.
+export function seasonList(slide, review) {
+  const s = review.stats;
+  const one = (n, a, b) => (n === 1 ? a : b);
+  const out = [
+    { k: "wins", value: s.wins, label: one(s.wins, "win", "wins") },
+    { k: "podiums", value: s.podiums, label: one(s.podiums, "podium", "podiums") },
+    s.poles > 0 ? { k: "poles", value: s.poles, label: one(s.poles, "pole", "poles") } : null,
+    s.fastestLaps > 0 ? { k: "fl", value: s.fastestLaps, label: one(s.fastestLaps, "fastest lap", "fastest laps") } : null,
+    s.overtakes > 0 ? { k: "ot", value: s.overtakes, label: one(s.overtakes, "overtake", "overtakes") } : null,
+    s.lapsLed > 0 ? { k: "led", value: s.lapsLed, label: one(s.lapsLed, "lap led", "laps led") } : null,
+    { k: "fin", value: `${s.finishes}/${s.starts}`, label: "finished" },
+  ].filter(Boolean);
+  return out.slice(0, 5);
+}

@@ -13,11 +13,7 @@ import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
 import { motionOff } from "../../hooks/motion.js";
 import StorySlide from "./StorySlide.jsx";
-import { livery, groundVars, GROUND_OF } from "./livery.js";
-import "@fontsource/big-shoulders-display/800";
-import "@fontsource/big-shoulders-display/900";
-import "@fontsource/saira-condensed/500";
-import "@fontsource/saira-condensed/700";
+import { slideColours } from "./wrapPalette.js";
 import "./story.css";
 
 // How long a slide stays before the next one, in ms. Longer where there is
@@ -129,8 +125,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
     }
   };
 
-  const paint = livery(review.driver.team?.color);
-  const ground = paint.grounds[GROUND_OF[slide.key] || "team"];
+  const colours = slideColours(slide.key, review.driver.team?.color);
   // Portalled to <body>, like the site's Modal: a fixed overlay inside a
   // transformed ancestor (the page's own entrance) would land in the wrong
   // place, under the menu.
@@ -147,8 +142,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
       <div
         ref={frameRef}
         className={`st-frame ${paused ? "st-paused" : ""}`}
-        style={{ ...groundVars(ground), "--lv-team": paint.team }}
-        data-ground={GROUND_OF[slide.key] || "team"}
+        style={colours}
         onPointerDown={down}
         onPointerUp={up}
         onPointerLeave={cancel}

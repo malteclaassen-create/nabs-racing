@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -35,7 +35,7 @@ const review = (over = {}) => ({
 });
 
 test("a full season runs intro to final, one moment per slide", () => {
-  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "best", "climb", "podiums", "field", "journey", "team", "contact", "final"]);
+  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "best", "climb", "podiums", "field", "journey", "team", "contact", "final"]);
 });
 
 test("slides whose moment the season does not have are left out", () => {
@@ -86,4 +86,9 @@ test("a running season says so", () => {
   assert.equal(run[0].eyebrow, "Season review · Season 8 so far");
   assert.equal(run[0].line, "Williams · 9 of 12 rounds run");
   assert.ok(s.length > 0);
+});
+
+test("the top results rank best place first, sprints included", () => {
+  const t = topResults(review().rounds);
+  assert.deepEqual(t.map((x) => [x.round, x.position, x.sprint]), [[6, 1, false], [2, 2, false], [2, 3, true], [7, 9, false]]);
 });
