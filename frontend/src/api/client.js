@@ -556,6 +556,10 @@ export const api = {
   career: (key) => request(`/career/${key}`, { auth: true }),
   driverProfile: (id) => request(`/drivers/${id}/profile`, { auth: true }),
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
+  // One driver row's season told in chapters (backend services/seasonReviewService.js).
+  driverSeasonReview: (id) => request(`/drivers/${encodeURIComponent(id)}/season-review`, { auth: true }),
+  adminSeasonReview: () => request("/admin/season-review", { auth: true }),
+  setSeasonReviewMode: (mode) => request("/admin/season-review", { method: "PUT", body: { mode }, auth: true }),
   // The public profile page: `id` may be the person's handle (name in url
   // form) instead of a row id. The backend resolves it within the viewed
   // series and the season given (null = the selected one) to the right row.
