@@ -162,6 +162,49 @@ describe("cleanSides", () => {
   });
 });
 
+describe("roadFromAi at the apexes", () => {
+  // A 300 m straight, a left-hand semicircle of radius 40 m, another
+  // straight and another semicircle: a stadium. The AI line is `inside` m
+  // from the inside edge through the bends and the road is 12 m wide.
+  const stadium = (inside) => {
+    const pts = [];
+    const add = (x, z) => pts.push([x, z]);
+    for (let x = 0; x < 300; x += 1.5) add(x, 0);
+    for (let a = -Math.PI / 2; a < Math.PI / 2; a += 1.5 / 40) add(300 + 40 * Math.cos(a), 40 + 40 * Math.sin(a));
+    for (let x = 300; x > 0; x -= 1.5) add(x, 80);
+    for (let a = Math.PI / 2; a < (3 * Math.PI) / 2; a += 1.5 / 40) add(40 * Math.cos(a), 40 + 40 * Math.sin(a));
+    return pts.map(([x, z], i) => {
+      const bend = (x > 300 || x < 0) && i > 0;
+      return [x, z, bend ? 12 - inside : 6, bend ? inside : 6];
+    });
+  };
+  // Distance from the circle centre of each edge point in the right-hand bend.
+  const insideGap = (road) => {
+    const gaps = [];
+    for (const edge of [road.left, road.right]) {
+      for (const [x, z] of edge) if (x > 320) gaps.push(40 - Math.hypot(x - 300, z - 40));
+    }
+    return gaps;
+  };
+
+  it("leaves a line that takes the apex where it is", () => {
+    const road = roadFromAi(stadium(1.5));
+    const g = insideGap(road).filter((v) => v > 0);
+    expect(Math.min(...g)).toBeGreaterThan(1.2);
+    expect(Math.min(...g)).toBeLessThan(1.8);
+  });
+
+  it("slides the road over when the file has the line far from the apex, keeping its width", () => {
+    const pts = stadium(10);
+    const road = roadFromAi(pts);
+    const g = insideGap(road).filter((v) => v > 0);
+    expect(Math.min(...g)).toBeLessThan(2);
+    const widths = road.left.map(([x, z], i) => Math.hypot(x - road.right[i][0], z - road.right[i][1]));
+    expect(Math.min(...widths)).toBeGreaterThan(11);
+    expect(Math.max(...widths)).toBeLessThan(13);
+  });
+});
+
 describe("lapLine", () => {
   it("follows the AI line itself, not the middle of the road, from the start of the lap", () => {
     // 4 m of road one side, 6 m the other: the middle of the tarmac is 1 m off

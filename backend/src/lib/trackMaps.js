@@ -328,8 +328,100 @@ export function cleanSides(points, closed = true) {
     left = left.map((s, i) => Math.min(s, total[i]));
   }
 
-  // 4. A last soft pass.
-  return { left: mean(left, SMOOTH_M), right: mean(left.map((v, i) => total[i] - v), SMOOTH_M) };
+  // 4. The apexes.
+  let right2 = left.map((v, i) => total[i] - v);
+  if (closed) [left, right2] = apexShift(points, gap, left, right2);
+
+  // 5. A last soft pass.
+  return { left: mean(left, SMOOTH_M), right: mean(right2, SMOOTH_M) };
+}
+
+// The AI line takes the apex: on a well-made track it passes 1-2 m from the
+// inside edge at every proper corner (Monza, Imola, Jeddah: never more than
+// 1.8 m; Spa, Suzuka, Silverstone: never more than 4 m). Some files put the
+// road somewhere else there: Bahrain's has the line 11-13 m from the inside
+// at T1, T2, T10 and T14, counting the paved run-off inside those corners as
+// road and drawing the cars far from an apex they really took. Where the gap
+// at a corner's apex is that big, the road is slid across (same width) until
+// the apex is APEX_M from the line, easing back over APEX_EASE_M either side.
+const APEX_TURN = 0.12; // rad of heading change over APEX_SPAN_M either way: a proper corner
+const APEX_SPAN_M = 9;
+const APEX_MIN_LEN_M = 30; // shorter runs are the bend between two corners
+const APEX_FAR_M = 5; // gaps up to this are left as they are
+const APEX_M = 1.2;
+const APEX_EASE_M = 50;
+
+function apexShift(points, gap, left, right) {
+  const n = points.length;
+  const step = gap.reduce((s, g) => s + g, 0) / n || 1;
+  const k = Math.max(1, Math.round(APEX_SPAN_M / step));
+  if (n < 4 * k) return [left, right];
+  // +1: a left-hander as the edges are laid out (the inside is `left`),
+  // -1: a right-hander, 0: not a corner.
+  const turn = points.map((b, i) => {
+    const a = points[(i - k + n) % n], c = points[(i + k) % n];
+    const d1x = b[0] - a[0], d1z = b[1] - a[1], d2x = c[0] - b[0], d2z = c[1] - b[1];
+    const len = Math.hypot(d1x, d1z) * Math.hypot(d2x, d2z) || 1;
+    const angle = Math.asin(Math.max(-1, Math.min(1, (d1x * d2z - d1z * d2x) / len)));
+    if (Math.abs(angle) < APEX_TURN) return 0;
+    // The bend points to the inside; roadFromAi pushes `left` along (dz, -dx).
+    const ax = a[0] + c[0] - 2 * b[0], az = a[1] + c[1] - 2 * b[1];
+    return ax * (c[1] - a[1]) - az * (c[0] - a[0]) > 0 ? 1 : -1;
+  });
+  if (turn.every((t) => t !== 0) || turn.every((t) => t === 0)) return [left, right];
+
+  // Corners as runs of one sign, begun just after a straight bit.
+  const start = (turn.findIndex((t) => t === 0) + 1) % n;
+  // Metres to move the road towards the left (toLeft) and the right
+  // (toRight). Kept apart and added at the end: where a left-hander's slide
+  // eases out into a right-hander's, the two blend instead of meeting in a
+  // step.
+  const toLeft = new Array(n).fill(0), toRight = new Array(n).fill(0);
+  const put = (i, sign, v) => {
+    const arr = sign > 0 ? toLeft : toRight;
+    if (v > arr[i]) arr[i] = v;
+  };
+  const ease = (from, to, sign, amount) => {
+    for (let i = from, j = 0; j < n; j++) {
+      put(i, sign, amount);
+      if (i === to) break;
+      i = (i + 1) % n;
+    }
+    for (const dir of [-1, 1]) {
+      let i = dir < 0 ? from : to, d = 0;
+      for (let j = 0; j < n; j++) {
+        const next = (i + dir + n) % n;
+        d += gap[dir < 0 ? next : i];
+        if (d >= APEX_EASE_M) break;
+        i = next;
+        put(i, sign, amount * (1 - d / APEX_EASE_M));
+      }
+    }
+  };
+  for (let s = 0; s < n; ) {
+    const i = (start + s) % n;
+    if (!turn[i]) { s++; continue; }
+    let len = 0, apex = i, e = s;
+    while (e + 1 < n && turn[(start + e + 1) % n] === turn[i]) {
+      len += gap[(start + e) % n];
+      e++;
+      const j = (start + e) % n;
+      if ((turn[i] > 0 ? left[j] : right[j]) < (turn[i] > 0 ? left[apex] : right[apex])) apex = j;
+    }
+    const inside = turn[i] > 0 ? left[apex] : right[apex];
+    if (len >= APEX_MIN_LEN_M && inside > APEX_FAR_M) ease(i, (start + e) % n, turn[i], inside - APEX_M);
+    s = e + 1;
+  }
+  // Slide: what one side loses the other gains, and no side goes below 0.3 m.
+  const outL = left.slice(), outR = right.slice();
+  for (let i = 0; i < n; i++) {
+    const want = toLeft[i] - toRight[i];
+    if (!want) continue;
+    const moved = want > 0 ? Math.min(want, Math.max(0, left[i] - 0.3)) : -Math.min(-want, Math.max(0, right[i] - 0.3));
+    outL[i] = left[i] - moved;
+    outR[i] = right[i] + moved;
+  }
+  return [outL, outR];
 }
 
 // The two edges of the tarmac, as polylines in world metres. Each AI point is
