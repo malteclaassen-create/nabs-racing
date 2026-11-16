@@ -28,13 +28,42 @@
 // suggested or pinned at all, which proved worse than a longer list.
 // ---------------------------------------------------------------------------
 import { findArchiveFor } from "./cockpitArchive.js";
-import { CONTACT_DEFAULTS } from "../services/telemetryExtractor.js";
+import { CONTACT_DEFAULTS, ENV_CONTACT_DEFAULTS } from "../services/telemetryExtractor.js";
 
 // AC writes timestamps as unix seconds on events and laps alike.
 const tsOf = (x) => {
   const n = Number(x?.Timestamp);
   return Number.isFinite(n) && n > 0 ? n : null;
 };
+
+// Where on the circuit an event happened, as [x, z] in world metres (the
+// overhead plane the track maps are drawn in; y is height and not needed).
+// Rounded to 10 cm, which is far finer than any map can show. null when the
+// file has no position for it.
+function worldXZ(e) {
+  const p = e?.WorldPosition || e?.WorldPos || null;
+  if (!p) return null;
+  const x = Number(p.X ?? p.x);
+  const z = Number(p.Z ?? p.z);
+  if (!Number.isFinite(x) || !Number.isFinite(z) || (x === 0 && z === 0)) return null;
+  return [Math.round(x * 10) / 10, Math.round(z * 10) / 10];
+}
+
+// The pace car and the broadcast car of the round, by the same two signs the
+// live page goes by (services/liveTiming.js looksLikeSafetyCar): "safety" in
+// the skin or a skin called just "sc", or one of the models the league has run
+// as a pace car. Their contacts are not part of the race.
+const PACE_CAR_MODELS = new Set(["lotus_exige_240", "mercedes_sls", "mercedes_sls_gt3", "drf_audi_rs5_dtm_2019"]);
+function paceCarGuids(data) {
+  const out = new Set();
+  for (const c of data.Cars || []) {
+    const guid = c?.Driver?.Guid;
+    if (!guid) continue;
+    const skin = String(c.Skin || "").trim();
+    if (/safety/i.test(skin) || /^sc$/i.test(skin) || PACE_CAR_MODELS.has(String(c.Model || "").trim().toLowerCase())) out.add(String(guid));
+  }
+  return out;
+}
 
 // The way names are compared everywhere reports touch them (reportAnchor.js,
 // reportSuggest.js, the ingest): case and punctuation dropped.
@@ -217,7 +246,12 @@ function buildRound(season, raceNumber, sprint) {
     return { archived: false, start: null, contacts: [], names: new Map() };
   }
   if (!data) return { archived: false, start: null, contacts: [], names: new Map() };
+  return reduceRound(data);
+}
 
+// The parts of one result file the readers below need, from the parsed JSON.
+// Its own function so the tests can hand it a file without a disk.
+export function reduceRound(data) {
   const start = sessionStart(data);
   const names = nameGuids(data);
 
@@ -290,11 +324,60 @@ function buildRound(season, raceNumber, sprint) {
       // for the callers that only want one number.
       lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at),
       kph: Math.round(Number(e.ImpactSpeed) || 0),
+      // Where it happened (the contact map in the race recap, lib/contactMap.js).
+      pos: worldXZ(e),
       a: { guid: String(e.Driver.Guid), name: e.Driver.Name || "", lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at) },
       b: { guid: String(e.OtherDriver.Guid), name: e.OtherDriver.Name || "", lap: lapAt(lapsByGuid.get(e.OtherDriver.Guid) || [], at) },
     });
   }
-  return { archived: true, start, end, contacts: out, names };
+
+  // Hits on the scenery, counted the way the stored figure counts them
+  // (services/telemetryExtractor.js, RaceResult.envContacts): from the same
+  // impact speed up, one per driver inside the merge window, nothing after the
+  // flag. So the recap's "3 with the scenery" and the three marks on its map
+  // are the same three.
+  const walls = [];
+  const lastWall = new Map();
+  const envRaw = (data.Events || [])
+    .filter(
+      (e) =>
+        e?.Type === "COLLISION_WITH_ENV" &&
+        !e.AfterSessionEnd &&
+        e.Driver?.Guid &&
+        tsOf(e) &&
+        (Number(e.ImpactSpeed) || 0) >= ENV_CONTACT_DEFAULTS.impactThreshold
+    )
+    .sort((x, y) => tsOf(x) - tsOf(y));
+  for (const e of envRaw) {
+    const at = tsOf(e);
+    const guid = String(e.Driver.Guid);
+    const last = lastWall.get(guid);
+    lastWall.set(guid, at);
+    if (last != null && at - last <= ENV_CONTACT_DEFAULTS.mergeWindowMs / 1000) continue;
+    walls.push({ guid, at, lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at), kph: Math.round(Number(e.ImpactSpeed) || 0), pos: worldXZ(e) });
+  }
+
+  return {
+    archived: true,
+    start,
+    end,
+    contacts: out,
+    names,
+    walls,
+    // The AC track and layout folder, exactly as the game spells them: what the
+    // circuit's line is fetched under (lib/trackMaps.js).
+    track: data.TrackName ? { name: String(data.TrackName), layout: data.TrackConfig ? String(data.TrackConfig) : "" } : null,
+    paceCars: [...paceCarGuids(data)],
+  };
+}
+
+// The whole round as the contact map reads it: every contact and every wall
+// hit with where it happened, the circuit it was on and who the pace car was.
+// Null when the round has no archived file.
+export function contactSceneForRound(season, raceNumber, sprint = false) {
+  const round = contactsForRound(season, raceNumber, sprint);
+  if (!round.archived) return null;
+  return { contacts: round.contacts, walls: round.walls || [], track: round.track || null, paceCars: new Set(round.paceCars || []) };
 }
 
 // Whether the round's result file is on disk at all. An empty contact list means
