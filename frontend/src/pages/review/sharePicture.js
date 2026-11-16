@@ -101,9 +101,9 @@ export async function drawSharePicture(review, slide) {
   // The cover and the name.
   const cs = 300;
   roundRect(ctx, L, cy + P, cs, cs, 14);
-  ctx.fillStyle = bg;
+  ctx.fillStyle = vars["--g-mark"];
   ctx.fill();
-  if (review.best) outline(ctx, review.best.track, L + 40, cy + P + 40, cs - 80, cs - 80, ink);
+  if (review.best) outline(ctx, review.best.track, L + 40, cy + P + 40, cs - 80, cs - 80, vars["--g-mark-fg"]);
   const tx = L + cs + 40;
   const tw = R - tx;
   ctx.fillStyle = bg;

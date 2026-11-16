@@ -1,23 +1,12 @@
-// The story's colours, the way a Wrapped is coloured: every slide one flat,
-// full colour with one strong colour on it, a different pairing per slide.
-// The first and the last slide are the driver's own: the team colour.
-import { readableInkOn } from "../../components/ui.jsx";
+// The story's colours: three for the whole story, the way Wrapped 2025 kept
+// to black and white and let colour come only from what mattered. Black and
+// white, and the driver's team colour as the one accent; a few slides are
+// painted in the team colour itself.
+import { readableInkOn, readableAccent } from "../../components/ui.jsx";
 
-const INK = "#121212";
-const PAPER = "#FFFFFF";
-
-const PAIRS = {
-  rounds: ["#1E3264", "#FFC864"],
-  top: ["#AF2896", "#CDF564"],
-  best: [INK, PAPER],
-  climb: ["#E91429", "#FFF3E3"],
-  podiums: ["#27856A", PAPER],
-  field: ["#B49BC8", INK],
-  journey: ["#509BF5", INK],
-  team: [INK, PAPER],
-  contact: ["#FFC864", "#1E3264"],
-  honours: ["#E8115B", PAPER],
-};
+const INK = "#0b0b0c";
+const PAPER = "#f6f5f1";
+const ON_TEAM = new Set(["intro", "best", "honours"]);
 
 const alpha = (hex, a) => {
   const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
@@ -26,17 +15,12 @@ const alpha = (hex, a) => {
 
 export function slideColours(key, teamColor) {
   const team = /^#[0-9a-f]{6}$/i.test(String(teamColor || "")) ? teamColor : "#F4AFC6";
-  const [bg, fg] = PAIRS[key] || [team, readableInkOn(team) === "#fff" ? PAPER : INK];
-  // The second colour of a dark slide is the team's, so the driver's colour
-  // runs through the story.
-  const pop = bg === INK ? team : fg;
-  return {
-    "--g-bg": bg,
-    "--g-fg": fg,
-    "--g-mute": alpha(fg, 0.72),
-    "--g-faint": alpha(fg, 0.16),
-    "--g-pop": pop,
-    "--g-pop-fg": readableInkOn(pop) === "#fff" ? PAPER : INK,
-    "--lv-team": team,
-  };
+  if (ON_TEAM.has(key)) {
+    const fg = readableInkOn(team) === "#fff" ? PAPER : INK;
+    const other = fg === PAPER ? INK : PAPER;
+    return { "--g-bg": team, "--g-fg": fg, "--g-mute": alpha(fg, 0.72), "--g-faint": alpha(fg, 0.18), "--g-pop": other, "--g-pop-fg": fg === PAPER ? PAPER : INK, "--g-mark": other, "--g-mark-fg": fg === PAPER ? PAPER : INK, "--lv-team": team };
+  }
+  const accent = readableAccent(team, { dark: true });
+  const markFg = readableInkOn(team) === "#fff" ? PAPER : INK;
+  return { "--g-bg": INK, "--g-fg": PAPER, "--g-mute": alpha(PAPER, 0.66), "--g-faint": alpha(PAPER, 0.14), "--g-pop": accent, "--g-pop-fg": readableInkOn(accent) === "#fff" ? PAPER : INK, "--g-mark": team, "--g-mark-fg": markFg, "--lv-team": team };
 }
