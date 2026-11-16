@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseFastLane, roadFromAi, parseMapIni, lapLine } from "./trackMaps.js";
+import { parseFastLane, roadFromAi, cleanSides, parseMapIni, lapLine } from "./trackMaps.js";
 
 // An AI file for a circle of radius r: `count` points anticlockwise in x/z,
 // 4 m of road to the left of the line and 6 m to the right.
@@ -89,6 +89,119 @@ describe("roadFromAi", () => {
   it("gives up on nothing", () => {
     expect(roadFromAi(null)).toBeNull();
     expect(roadFromAi([[0, 0, 1, 1]])).toBeNull();
+  });
+});
+
+describe("cleanSides", () => {
+  // A circle of radius 300 m (~1.9 km), a point every ~1.5 m, 4 m left and
+  // 8 m right, with `edit(i, point)` changing some of them.
+  const lap = (edit = () => {}) => {
+    const pts = parseFastLane(circleAi(300, 1250, 4, 8));
+    pts.forEach((p, i) => edit(i, p));
+    return pts;
+  };
+
+  it("leaves a road with steady edges as it is", () => {
+    const { left, right } = cleanSides(lap());
+    expect(left.every((v) => Math.abs(v - 4) < 0.01)).toBe(true);
+    expect(right.every((v) => Math.abs(v - 8) < 0.01)).toBe(true);
+  });
+
+  it("takes out a spike either way", () => {
+    const { left, right } = cleanSides(lap((i, p) => {
+      if (i >= 100 && i < 103) p[2] = 19;
+      if (i >= 500 && i < 503) p[3] = 0;
+    }));
+    expect(Math.max(...left)).toBeLessThan(4.1);
+    expect(Math.min(...right)).toBeGreaterThan(7.9);
+  });
+
+  it("brings a stretch measured into a run-off back to the road (Bahrain T10)", () => {
+    // ~75 m where the left reads 25 m and the right grows to 15 m.
+    const { left, right } = cleanSides(lap((i, p) => {
+      if (i >= 600 && i < 650) {
+        p[2] = 25;
+        p[3] = 8 + 7 * Math.sin(((i - 600) / 50) * Math.PI);
+      }
+    }));
+    for (let i = 590; i < 660; i++) {
+      expect(left[i]).toBeGreaterThan(3.5);
+      expect(left[i]).toBeLessThan(4.5);
+      expect(right[i]).toBeGreaterThan(7.5);
+      expect(right[i]).toBeLessThan(8.5);
+    }
+  });
+
+  it("keeps the side the file still has right and trims the other", () => {
+    // The line moves across the road (left 2 -> 10 m) while the right side
+    // runs out 12 m too far for 90 m: the left is kept as it is.
+    const { left, right } = cleanSides(lap((i, p) => {
+      const t = Math.min(1, Math.max(0, (i - 400) / 300));
+      p[2] = 2 + 8 * t;
+      p[3] = 10 - 8 * t + (i >= 520 && i < 580 ? 12 : 0);
+    }));
+    for (let i = 520; i < 580; i++) {
+      expect(Math.abs(left[i] - (2 + 8 * ((i - 400) / 300)))).toBeLessThan(0.3);
+      expect(Math.abs(left[i] + right[i] - 12)).toBeLessThan(0.8);
+    }
+  });
+
+  it("keeps the road its real width through bursts of run-off on either side", () => {
+    // The real sides wander gently (and meet up again at the start of the
+    // lap); now and then one reads 10-15 m too far.
+    const turn = (i, k) => (2 * Math.PI * k * i) / 1250;
+    const realLeft = (i) => 4 + 2 * Math.sin(turn(i, 5)), realRight = (i) => 7 - 2 * Math.sin(turn(i, 5)) + Math.cos(turn(i, 3));
+    const { left, right } = cleanSides(lap((i, p) => {
+      p[2] = realLeft(i) + (i % 297 < 40 ? 15 : 0);
+      p[3] = realRight(i) + ((i + 150) % 331 < 50 ? 10 : 0);
+    }));
+    left.forEach((l, i) => {
+      expect(Math.abs(l - realLeft(i))).toBeLessThan(1.2);
+      expect(Math.abs(right[i] - realRight(i))).toBeLessThan(1.2);
+    });
+  });
+});
+
+describe("roadFromAi at the apexes", () => {
+  // A 300 m straight, a left-hand semicircle of radius 40 m, another
+  // straight and another semicircle: a stadium. The AI line is `inside` m
+  // from the inside edge through the bends and the road is 12 m wide.
+  const stadium = (inside) => {
+    const pts = [];
+    const add = (x, z) => pts.push([x, z]);
+    for (let x = 0; x < 300; x += 1.5) add(x, 0);
+    for (let a = -Math.PI / 2; a < Math.PI / 2; a += 1.5 / 40) add(300 + 40 * Math.cos(a), 40 + 40 * Math.sin(a));
+    for (let x = 300; x > 0; x -= 1.5) add(x, 80);
+    for (let a = Math.PI / 2; a < (3 * Math.PI) / 2; a += 1.5 / 40) add(40 * Math.cos(a), 40 + 40 * Math.sin(a));
+    return pts.map(([x, z], i) => {
+      const bend = (x > 300 || x < 0) && i > 0;
+      return [x, z, bend ? 12 - inside : 6, bend ? inside : 6];
+    });
+  };
+  // Distance from the circle centre of each edge point in the right-hand bend.
+  const insideGap = (road) => {
+    const gaps = [];
+    for (const edge of [road.left, road.right]) {
+      for (const [x, z] of edge) if (x > 320) gaps.push(40 - Math.hypot(x - 300, z - 40));
+    }
+    return gaps;
+  };
+
+  it("leaves a line that takes the apex where it is", () => {
+    const road = roadFromAi(stadium(1.5));
+    const g = insideGap(road).filter((v) => v > 0);
+    expect(Math.min(...g)).toBeGreaterThan(1.2);
+    expect(Math.min(...g)).toBeLessThan(1.8);
+  });
+
+  it("slides the road over when the file has the line far from the apex, keeping its width", () => {
+    const pts = stadium(10);
+    const road = roadFromAi(pts);
+    const g = insideGap(road).filter((v) => v > 0);
+    expect(Math.min(...g)).toBeLessThan(2);
+    const widths = road.left.map(([x, z], i) => Math.hypot(x - road.right[i][0], z - road.right[i][1]));
+    expect(Math.min(...widths)).toBeGreaterThan(11);
+    expect(Math.max(...widths)).toBeLessThan(13);
   });
 });
 

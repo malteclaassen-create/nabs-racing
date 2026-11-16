@@ -29,6 +29,7 @@ import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { DATA_ROOT } from "./dataDirs.js";
 import { LIVE_SERVERS } from "./liveServers.js";
+import { realRoad } from "./realTracks.js";
 
 // ---------------------------------------------------------------------------
 // The map.png is NOT the road. Assetto Corsa renders it from the track's AI
@@ -175,6 +176,10 @@ const AI_HEADER = 16, AI_POINT = 20, AI_EXTRA = 72;
 // edges bend gently enough that 3 m loses nothing a screen can show, and it
 // keeps a 7 km circuit under 40 KB.
 const ROAD_STEP_M = 3;
+// Bumped when the road is built differently, so a road.json kept from before
+// is built again rather than served (2: edges cleaned up, see cleanSides;
+// 3: the real circuit where there is one, see lib/realTracks.js).
+const ROAD_VERSION = 3;
 // The widest half-road worth believing. Some AI files measure the edge into
 // a run-off or a paddock for a stretch (Singapore: 90 m a side for 200 m),
 // which would draw a fin the size of the circuit's infield.
@@ -203,6 +208,224 @@ export function parseFastLane(buf) {
   return points;
 }
 
+// The edge distances as the AI file has them are not always the tarmac. For a
+// stretch they can measure out into a run-off instead (Bahrain T10: the road
+// is 14 m wide, then up to 42 m for 70 m, then 14 m again), a single point can
+// read 0 m or 85 m, and they step by a metre or two from one point to the
+// next. Drawn as they are, the road grows fins, notches and wobbles. So:
+//   1. short spikes either way are taken out (median over a few metres);
+//   2. the road's usual width around each point is worked out (a low share of
+//      the widths within 200 m, so a long run-off does not count as road);
+//   3. no side is wider than that whole road, and the road no wider than a
+//      little over it. Where the file reads wider than that, the road keeps
+//      the width it has just before and after the stretch, and the line its
+//      place across it, with neither side further out than the file says:
+//      the side that ran into the run-off is the one that comes in;
+//   4. what is left is smoothed a little, so steps become gentle ramps.
+// No step has a hard threshold for a point to flicker across, which would put
+// back the wobble this takes out.
+const SPIKE_M = 10; // either way: shorter spikes are taken out
+const USUAL_REACH_M = 200; // either way: what "around there" spans
+const USUAL_SHARE = 0.3; // which quantile of the widths around counts as usual
+const WIDER_BY = 1.15, WIDER_SLACK_M = 1; // how much wider than usual the road may be
+const SMOOTH_M = 6; // either way, the last soft pass
+
+function quantile(values, share) {
+  const s = [...values].sort((a, b) => a - b);
+  return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * share))] : 0;
+}
+
+export function cleanSides(points, closed = true) {
+  const n = points.length;
+  // gap[i]: metres from point i to the next one (none past the end of a lane).
+  const gap = points.map((p, i) => {
+    if (!closed && i === n - 1) return Infinity;
+    const q = points[(i + 1) % n];
+    return Math.hypot(q[0] - p[0], q[1] - p[1]);
+  });
+  // The points within `reach` metres of point i along the line, i included.
+  const half = Math.floor((n - 1) / 2);
+  const near = new Map();
+  const around = (reach) => {
+    if (near.has(reach)) return near.get(reach);
+    const all = points.map((_, i) => {
+      const out = [i];
+      for (let j = i, d = 0, k = 0; k < half && (closed || j < n - 1); k++) {
+        d += gap[j];
+        if (d > reach) break;
+        j = (j + 1) % n;
+        out.push(j);
+      }
+      for (let j = i, d = 0, k = 0; k < half && (closed || j > 0); k++) {
+        const b = (j - 1 + n) % n;
+        d += gap[b];
+        if (d > reach) break;
+        j = b;
+        out.push(j);
+      }
+      return out;
+    });
+    near.set(reach, all);
+    return all;
+  };
+  const rank = (v, reach, share) => around(reach).map((js) => quantile(js.map((j) => v[j]), share));
+  const mean = (v, reach) => around(reach).map((js) => js.reduce((s, j) => s + v[j], 0) / js.length);
+
+  // 1. Spikes.
+  let left = rank(points.map((p) => Math.min(MAX_SIDE_M, p[2])), SPIKE_M, 0.5);
+  let right = rank(points.map((p) => Math.min(MAX_SIDE_M, p[3])), SPIKE_M, 0.5);
+
+  // 2. The usual width, changing gently along the lap.
+  const width = left.map((l, i) => l + right[i]);
+  const overall = quantile(width, 0.5);
+  const usual = mean(rank(width, USUAL_REACH_M, USUAL_SHARE).map((w) => Math.min(1.5 * overall, w)), 50);
+
+  // 3. No side wider than the road; the road no wider than a little over usual.
+  left = left.map((s, i) => Math.min(s, usual[i] + WIDER_SLACK_M));
+  right = right.map((s, i) => Math.min(s, usual[i] + WIDER_SLACK_M));
+  // How wide to draw it: the middle of the nearby widths, so a run-off that
+  // comes and goes every few metres does not make the road breathe.
+  const total = mean(
+    rank(left.map((s, i) => Math.min(s + right[i], usual[i] * WIDER_BY + WIDER_SLACK_M)), 30, 0.5),
+    15,
+  ).map((t, i) => Math.min(t, left[i] + right[i]));
+  // Where the file was believed as it is ("pinned"), and for every other
+  // point the nearest pinned points before and after it.
+  const pinned = total.map((t, i) => width[i] - t < 0.5);
+  if (pinned.some(Boolean) && !pinned.every(Boolean)) {
+    const share = left.map((s, i) => (total[i] > 0 ? Math.min(1, s / total[i]) : 0.5));
+    const lerp = (v, p, q, t) => v[p] + (v[q] - v[p]) * t;
+    const want = [];
+    for (let i = 0; i < n; i++) {
+      if (pinned[i]) continue;
+      let p = i, dp = 0;
+      while (p != null && !pinned[p]) {
+        if (!closed && p === 0) p = null;
+        else { p = (p - 1 + n) % n; dp += gap[p]; }
+      }
+      let q = i, dq = 0;
+      while (q != null && !pinned[q]) {
+        if (!closed && q === n - 1) q = null;
+        else { dq += gap[q]; q = (q + 1) % n; }
+      }
+      if (p == null) { p = q; dp = 0; dq = 1; }
+      if (q == null) { q = p; dq = 0; dp = 1; }
+      const t = dp / (dp + dq || 1);
+      want.push([i, lerp(total, p, q, t), lerp(share, p, q, t)]);
+    }
+    // Across such a stretch the road keeps the width it has either side
+    // (a little more is fine), and the line its place across it.
+    for (const [i, w] of want) total[i] = Math.min(total[i], w + WIDER_SLACK_M / 2);
+    // The left side may be anywhere from (total - right) to left: both sides
+    // within what the file says. Start from the line's place across the road
+    // and smooth within those bounds.
+    const lo = total.map((t, i) => Math.max(0, t - right[i]));
+    const hi = total.map((t, i) => Math.min(left[i], t));
+    const clamp = (v, i) => Math.min(hi[i], Math.max(lo[i], v));
+    let x = left.map(clamp);
+    for (const [i, , f] of want) x[i] = clamp(f * total[i], i);
+    for (let k = 0; k < 20; k++) x = mean(x, 15).map(clamp);
+    left = x;
+  } else {
+    left = left.map((s, i) => Math.min(s, total[i]));
+  }
+
+  // 4. The apexes.
+  let right2 = left.map((v, i) => total[i] - v);
+  if (closed) [left, right2] = apexShift(points, gap, left, right2);
+
+  // 5. A last soft pass.
+  return { left: mean(left, SMOOTH_M), right: mean(right2, SMOOTH_M) };
+}
+
+// The AI line takes the apex: on a well-made track it passes 1-2 m from the
+// inside edge at every proper corner (Monza, Imola, Jeddah: never more than
+// 1.8 m; Spa, Suzuka, Silverstone: never more than 4 m). Some files put the
+// road somewhere else there: Bahrain's has the line 11-13 m from the inside
+// at T1, T2, T10 and T14, counting the paved run-off inside those corners as
+// road and drawing the cars far from an apex they really took. Where the gap
+// at a corner's apex is that big, the road is slid across (same width) until
+// the apex is APEX_M from the line, easing back over APEX_EASE_M either side.
+const APEX_TURN = 0.12; // rad of heading change over APEX_SPAN_M either way: a proper corner
+const APEX_SPAN_M = 9;
+const APEX_MIN_LEN_M = 30; // shorter runs are the bend between two corners
+const APEX_FAR_M = 5; // gaps up to this are left as they are
+const APEX_M = 1.2;
+const APEX_EASE_M = 50;
+
+function apexShift(points, gap, left, right) {
+  const n = points.length;
+  const step = gap.reduce((s, g) => s + g, 0) / n || 1;
+  const k = Math.max(1, Math.round(APEX_SPAN_M / step));
+  if (n < 4 * k) return [left, right];
+  // +1: a left-hander as the edges are laid out (the inside is `left`),
+  // -1: a right-hander, 0: not a corner.
+  const turn = points.map((b, i) => {
+    const a = points[(i - k + n) % n], c = points[(i + k) % n];
+    const d1x = b[0] - a[0], d1z = b[1] - a[1], d2x = c[0] - b[0], d2z = c[1] - b[1];
+    const len = Math.hypot(d1x, d1z) * Math.hypot(d2x, d2z) || 1;
+    const angle = Math.asin(Math.max(-1, Math.min(1, (d1x * d2z - d1z * d2x) / len)));
+    if (Math.abs(angle) < APEX_TURN) return 0;
+    // The bend points to the inside; roadFromAi pushes `left` along (dz, -dx).
+    const ax = a[0] + c[0] - 2 * b[0], az = a[1] + c[1] - 2 * b[1];
+    return ax * (c[1] - a[1]) - az * (c[0] - a[0]) > 0 ? 1 : -1;
+  });
+  if (turn.every((t) => t !== 0) || turn.every((t) => t === 0)) return [left, right];
+
+  // Corners as runs of one sign, begun just after a straight bit.
+  const start = (turn.findIndex((t) => t === 0) + 1) % n;
+  // Metres to move the road towards the left (toLeft) and the right
+  // (toRight). Kept apart and added at the end: where a left-hander's slide
+  // eases out into a right-hander's, the two blend instead of meeting in a
+  // step.
+  const toLeft = new Array(n).fill(0), toRight = new Array(n).fill(0);
+  const put = (i, sign, v) => {
+    const arr = sign > 0 ? toLeft : toRight;
+    if (v > arr[i]) arr[i] = v;
+  };
+  const ease = (from, to, sign, amount) => {
+    for (let i = from, j = 0; j < n; j++) {
+      put(i, sign, amount);
+      if (i === to) break;
+      i = (i + 1) % n;
+    }
+    for (const dir of [-1, 1]) {
+      let i = dir < 0 ? from : to, d = 0;
+      for (let j = 0; j < n; j++) {
+        const next = (i + dir + n) % n;
+        d += gap[dir < 0 ? next : i];
+        if (d >= APEX_EASE_M) break;
+        i = next;
+        put(i, sign, amount * (1 - d / APEX_EASE_M));
+      }
+    }
+  };
+  for (let s = 0; s < n; ) {
+    const i = (start + s) % n;
+    if (!turn[i]) { s++; continue; }
+    let len = 0, apex = i, e = s;
+    while (e + 1 < n && turn[(start + e + 1) % n] === turn[i]) {
+      len += gap[(start + e) % n];
+      e++;
+      const j = (start + e) % n;
+      if ((turn[i] > 0 ? left[j] : right[j]) < (turn[i] > 0 ? left[apex] : right[apex])) apex = j;
+    }
+    const inside = turn[i] > 0 ? left[apex] : right[apex];
+    if (len >= APEX_MIN_LEN_M && inside > APEX_FAR_M) ease(i, (start + e) % n, turn[i], inside - APEX_M);
+    s = e + 1;
+  }
+  // Slide: what one side loses the other gains, and no side goes below 0.3 m.
+  const outL = left.slice(), outR = right.slice();
+  for (let i = 0; i < n; i++) {
+    const want = toLeft[i] - toRight[i];
+    if (!want) continue;
+    const moved = want > 0 ? Math.min(want, Math.max(0, left[i] - 0.3)) : -Math.min(-want, Math.max(0, right[i] - 0.3));
+    outL[i] = left[i] - moved;
+    outR[i] = right[i] + moved;
+  }
+  return [outL, outR];
+}
+
 // The two edges of the tarmac, as polylines in world metres. Each AI point is
 // pushed sideways by its two edge distances; which way is "left" was settled
 // against real laps (every recorded position of two Spa laps stays between the
@@ -219,12 +442,14 @@ export function roadFromAi(points, { closed = true, step = ROAD_STEP_M, fallback
   const blank = points.every((p) => p[2] + p[3] < 0.5);
   if (blank && !fallbackHalfWidth) return null;
   const n = points.length;
+  const sides = blank
+    ? { left: new Array(n).fill(fallbackHalfWidth), right: new Array(n).fill(fallbackHalfWidth) }
+    : cleanSides(points, closed);
   const left = [], right = [];
   let since = Infinity;
   for (let i = 0; i < n; i++) {
     const [x, z] = points[i];
-    const sl = Math.min(MAX_SIDE_M, blank ? fallbackHalfWidth : points[i][2]);
-    const sr = Math.min(MAX_SIDE_M, blank ? fallbackHalfWidth : points[i][3]);
+    const sl = sides.left[i], sr = sides.right[i];
     const prev = points[i === 0 ? (closed ? n - 1 : 0) : i - 1];
     const next = points[i === n - 1 ? (closed ? 0 : n - 1) : i + 1];
     if (i > 0) since += Math.hypot(x - prev[0], z - prev[1]);
@@ -243,12 +468,14 @@ export function roadFromAi(points, { closed = true, step = ROAD_STEP_M, fallback
 
 const round1 = (v) => Math.round(v * 10) / 10;
 
-export function readTrackRoad(track, layout) {
+// `stale`: a road.json built the old way will do too (when the server cannot be
+// reached to build it again).
+export function readTrackRoad(track, layout, { stale = false } = {}) {
   const file = join(dirFor(track, layout), "road.json");
   if (!existsSync(file)) return null;
   try {
     const road = JSON.parse(readFileSync(file, "utf8"));
-    return road?.track?.left?.length ? road : null;
+    return (stale || road?.v === ROAD_VERSION) && road?.track?.left?.length ? road : null;
   } catch {
     return null;
   }
@@ -264,17 +491,20 @@ export async function ensureTrackRoad(track, layout) {
 
   const key = `road:${track}|${layout || ""}`;
   const missedAt = misses.get(key);
-  if (missedAt && Date.now() - missedAt < MISS_TTL_MS) return null;
+  if (missedAt && Date.now() - missedAt < MISS_TTL_MS) return readTrackRoad(track, layout, { stale: true });
 
   const enc = encodeURIComponent;
   for (const server of LIVE_SERVERS) {
     const base = `${String(server.origin).replace(/\/+$/, "")}/content/tracks`;
     const folders = layout ? [`${base}/${enc(track)}/${enc(layout)}`, `${base}/${enc(track)}`] : [`${base}/${enc(track)}`];
     for (const folder of folders) {
-      const lane = roadFromAi(parseFastLane(await get(`${folder}/ai/fast_lane.ai`, "buf")));
+      const points = parseFastLane(await get(`${folder}/ai/fast_lane.ai`, "buf"));
+      // The real circuit when there is one that fits (lib/realTracks.js),
+      // else the edges from the AI file.
+      const lane = realRoad(points) || roadFromAi(points);
       if (!lane) continue;
       const pit = roadFromAi(parseFastLane(await get(`${folder}/ai/pit_lane.ai`, "buf")), { closed: false, fallbackHalfWidth: 3 });
-      const road = { track: lane, pit };
+      const road = { v: ROAD_VERSION, track: lane, pit };
       const dir = dirFor(track, layout);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "road.json"), JSON.stringify(road));
@@ -284,7 +514,7 @@ export async function ensureTrackRoad(track, layout) {
   }
 
   misses.set(key, Date.now());
-  return null;
+  return readTrackRoad(track, layout, { stale: true });
 }
 
 // ---- The lap as a line, for the live map -------------------------------------
