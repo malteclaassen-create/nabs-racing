@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseFastLane, roadFromAi, parseMapIni, lapLine } from "./trackMaps.js";
+import { parseFastLane, roadFromAi, cleanSides, parseMapIni, lapLine } from "./trackMaps.js";
 
 // An AI file for a circle of radius r: `count` points anticlockwise in x/z,
 // 4 m of road to the left of the line and 6 m to the right.
@@ -89,6 +89,76 @@ describe("roadFromAi", () => {
   it("gives up on nothing", () => {
     expect(roadFromAi(null)).toBeNull();
     expect(roadFromAi([[0, 0, 1, 1]])).toBeNull();
+  });
+});
+
+describe("cleanSides", () => {
+  // A circle of radius 300 m (~1.9 km), a point every ~1.5 m, 4 m left and
+  // 8 m right, with `edit(i, point)` changing some of them.
+  const lap = (edit = () => {}) => {
+    const pts = parseFastLane(circleAi(300, 1250, 4, 8));
+    pts.forEach((p, i) => edit(i, p));
+    return pts;
+  };
+
+  it("leaves a road with steady edges as it is", () => {
+    const { left, right } = cleanSides(lap());
+    expect(left.every((v) => Math.abs(v - 4) < 0.01)).toBe(true);
+    expect(right.every((v) => Math.abs(v - 8) < 0.01)).toBe(true);
+  });
+
+  it("takes out a spike either way", () => {
+    const { left, right } = cleanSides(lap((i, p) => {
+      if (i >= 100 && i < 103) p[2] = 19;
+      if (i >= 500 && i < 503) p[3] = 0;
+    }));
+    expect(Math.max(...left)).toBeLessThan(4.1);
+    expect(Math.min(...right)).toBeGreaterThan(7.9);
+  });
+
+  it("brings a stretch measured into a run-off back to the road (Bahrain T10)", () => {
+    // ~75 m where the left reads 25 m and the right grows to 15 m.
+    const { left, right } = cleanSides(lap((i, p) => {
+      if (i >= 600 && i < 650) {
+        p[2] = 25;
+        p[3] = 8 + 7 * Math.sin(((i - 600) / 50) * Math.PI);
+      }
+    }));
+    for (let i = 590; i < 660; i++) {
+      expect(left[i]).toBeGreaterThan(3.5);
+      expect(left[i]).toBeLessThan(4.5);
+      expect(right[i]).toBeGreaterThan(7.5);
+      expect(right[i]).toBeLessThan(8.5);
+    }
+  });
+
+  it("keeps the side the file still has right and trims the other", () => {
+    // The line moves across the road (left 2 -> 10 m) while the right side
+    // runs out 12 m too far for 90 m: the left is kept as it is.
+    const { left, right } = cleanSides(lap((i, p) => {
+      const t = Math.min(1, Math.max(0, (i - 400) / 300));
+      p[2] = 2 + 8 * t;
+      p[3] = 10 - 8 * t + (i >= 520 && i < 580 ? 12 : 0);
+    }));
+    for (let i = 520; i < 580; i++) {
+      expect(Math.abs(left[i] - (2 + 8 * ((i - 400) / 300)))).toBeLessThan(0.3);
+      expect(Math.abs(left[i] + right[i] - 12)).toBeLessThan(0.8);
+    }
+  });
+
+  it("keeps the road its real width through bursts of run-off on either side", () => {
+    // The real sides wander gently (and meet up again at the start of the
+    // lap); now and then one reads 10-15 m too far.
+    const turn = (i, k) => (2 * Math.PI * k * i) / 1250;
+    const realLeft = (i) => 4 + 2 * Math.sin(turn(i, 5)), realRight = (i) => 7 - 2 * Math.sin(turn(i, 5)) + Math.cos(turn(i, 3));
+    const { left, right } = cleanSides(lap((i, p) => {
+      p[2] = realLeft(i) + (i % 297 < 40 ? 15 : 0);
+      p[3] = realRight(i) + ((i + 150) % 331 < 50 ? 10 : 0);
+    }));
+    left.forEach((l, i) => {
+      expect(Math.abs(l - realLeft(i))).toBeLessThan(1.2);
+      expect(Math.abs(right[i] - realRight(i))).toBeLessThan(1.2);
+    });
   });
 });
 
