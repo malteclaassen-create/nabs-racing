@@ -97,3 +97,46 @@ describe("honoursFor", () => {
     expect(h[0].detail).toBeNull();
   });
 });
+
+import { trainingFor, tyreMix } from "./seasonReviewService.js";
+
+describe("tyreMix", () => {
+  it("adds up the laps per tyre over the season, most first, with shares", () => {
+    const rounds = [{ stints: [{ tyre: "M", laps: 20 }, { tyre: "H", laps: 10 }] }, { stints: [{ tyre: "M", laps: 10 }] }, { stints: null }];
+    expect(tyreMix(rounds)).toEqual([
+      { tyre: "M", laps: 30, share: 75 },
+      { tyre: "H", laps: 10, share: 25 },
+    ]);
+    expect(tyreMix([{ stints: [] }])).toBeNull();
+  });
+});
+
+describe("trainingFor", () => {
+  const prisma = {
+    tokenPractice: {
+      findMany: async () => [
+        { steamId: "s1", period: "race:r1", laps: 40 },
+        { steamId: "s1", period: "race:r2", laps: 60 },
+        { steamId: "s2", period: "race:r1", laps: 150 },
+        { steamId: "s3", period: "race:r1", laps: 10 },
+        { steamId: "nobody", period: "race:r1", laps: 999 },
+      ],
+    },
+    driver: { findMany: async () => [{ id: "a", steamId: "s1" }, { id: "b", steamId: "s2" }, { id: "c", steamId: "s3" }] },
+  };
+  const names = new Map([["a", "Alpha"], ["b", "Bravo"], ["c", "Charlie"]]);
+  it("sums each driver's training laps over the season's race weeks and ranks them", async () => {
+    const t = await trainingFor(prisma, { series: "f1", seasonId: "s", raceIds: ["r1", "r2"], driverId: "a", names });
+    expect(t.laps).toBe(100);
+    expect(t.weeks).toBe(2);
+    expect(t.rank).toEqual({ rank: 2, of: 3, shared: false });
+    expect(t.board.rows.map((r) => [r.name, r.value, r.you])).toEqual([
+      ["Bravo", 150, false],
+      ["Alpha", 100, true],
+      ["Charlie", 10, false],
+    ]);
+  });
+  it("nothing without a series or any laps", async () => {
+    expect(await trainingFor(prisma, { series: null, seasonId: "s", raceIds: ["r1"], driverId: "a", names })).toBeNull();
+  });
+});

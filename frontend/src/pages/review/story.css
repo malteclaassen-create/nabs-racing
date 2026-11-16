@@ -199,6 +199,7 @@
   padding: 0.02em 0.22em 0.06em;
   background: var(--g-mark);
   color: var(--g-mark-fg);
+  white-space: nowrap;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }

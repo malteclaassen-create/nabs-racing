@@ -92,3 +92,9 @@ test("the top results rank best place first, sprints included", () => {
   const t = topResults(review().rounds);
   assert.deepEqual(t.map((x) => [x.round, x.position, x.sprint]), [[6, 1, false], [2, 2, false], [2, 3, true], [7, 9, false]]);
 });
+
+test("training, the fastest lap, tyres and track limits join when the season has them", () => {
+  const r = { ...review(), training: { laps: 900, weeks: 10, rank: { rank: 1, of: 40 } }, boards: { training: { of: 40, rows: [] } }, tyres: [{ tyre: "M", laps: 90, share: 60 }], limits: { cuts: 12, penalties: 3, races: 6 } };
+  r.stats = { ...r.stats, bestLap: { bestLapMs: 92000, track: "Monza", number: 4 } };
+  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "best", "climb", "fastest", "podiums", "field", "tyres", "journey", "team", "contact", "limits", "final"]);
+});

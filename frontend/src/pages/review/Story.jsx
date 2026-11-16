@@ -13,12 +13,12 @@ import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
 import { motionOff } from "../../hooks/motion.js";
 import StorySlide from "./StorySlide.jsx";
-import { slideColours } from "./wrapPalette.js";
+import { slideColours, storyColour } from "./wrapPalette.js";
 import "./story.css";
 
 // How long a slide stays before the next one, in ms. Longer where there is
 // more to read.
-const DURATION = { intro: 5200, field: 8000, journey: 8000, team: 8000, honours: 7500, podiums: 7000 };
+const DURATION = { intro: 5200, rounds: 7500, training: 8500, field: 8500, journey: 8000, team: 8000, honours: 7500, podiums: 7000, tyres: 7500, limits: 7500 };
 const durationOf = (slide) => DURATION[slide.key] || 6500;
 const HOLD_MS = 200;
 
@@ -125,7 +125,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
     }
   };
 
-  const colours = slideColours(slide.key, review.driver.team?.color);
+  const colours = slideColours(slide.key, storyColour(review));
   // Portalled to <body>, like the site's Modal: a fixed overlay inside a
   // transformed ancestor (the page's own entrance) would land in the wrong
   // place, under the menu.

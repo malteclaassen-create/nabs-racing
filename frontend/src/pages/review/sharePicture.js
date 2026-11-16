@@ -8,7 +8,7 @@
 // Plain on purpose, like the page: one card, hairlines, the team colour as
 // the one accent, the season's real circuit outline of the best round.
 import { circuitFor } from "../../data/circuits.js";
-import { slideColours } from "./wrapPalette.js";
+import { slideColours, storyColour } from "./wrapPalette.js";
 import { seasonList } from "./storySlides.mjs";
 
 const W = 1080;
@@ -75,7 +75,7 @@ function outline(ctx, track, x, y, w, h, color) {
 // best result's circuit, two lists side by side, the two big numbers.
 export async function drawSharePicture(review, slide) {
   await fontsReady();
-  const vars = slideColours("final", review.driver.team?.color);
+  const vars = slideColours("final", storyColour(review));
   const bg = vars["--g-bg"];
   const ink = vars["--g-fg"];
   const canvas = document.createElement("canvas");
