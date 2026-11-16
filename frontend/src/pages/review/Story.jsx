@@ -3,7 +3,7 @@
 // picture on the right), one moment per slide, the way a Wrapped runs. Tap
 // the right side (or the right arrow, or space) for the next slide, the left side for
 // the one before; hold to stop the clock; Escape or the cross closes it and
-// leaves the full page underneath. Each slide runs for a few seconds and the
+// goes back to where it was opened from. Each slide runs for a few seconds and the
 // last one stays until it is closed.
 //
 // It is drawn in the site's own look on purpose (review/story.css): every
@@ -23,7 +23,7 @@ const DURATION = { quiz: 15000, intro: 5200, rounds: 7500, training: 8500, field
 const durationOf = (slide) => (DURATION[slide.key] || 6500) + (hasTease(slide.key) && !motionOff() ? TEASE_MS : 0);
 const HOLD_MS = 200;
 
-export default function Story({ review, slides, onClose, onSheet }) {
+export default function Story({ review, slides, onClose }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
   const frameRef = useRef(null);
@@ -182,7 +182,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
         </div>
         <div key={slide.key} className="relative z-[1] flex min-h-0 flex-1 flex-col">
           <Wide.Provider value={wide}>
-            <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} onNext={next} />
+            <StorySlide slide={slide} review={review} onReplay={() => go(0)} onNext={next} />
           </Wide.Provider>
         </div>
       </div>

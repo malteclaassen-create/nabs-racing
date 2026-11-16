@@ -935,7 +935,7 @@ const nameFit = (name) => {
 // The last slide: the summary card, the way Wrapped ends. A cover on top,
 // two lists side by side, the two big numbers at the foot. The picture that
 // "Save picture" makes is this card.
-function Final({ slide, review, onReplay, onSheet }) {
+function Final({ slide, review, onReplay }) {
   const wide = useContext(Wide);
   const [state, setState] = useState(null);
   const save = async () => {
@@ -1038,9 +1038,6 @@ function Final({ slide, review, onReplay, onSheet }) {
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={save} disabled={state === "busy"} className="lv-btn lv-btn-solid">
             {state === "busy" ? "Drawing it" : "Save picture"}
-          </button>
-          <button type="button" onClick={onSheet} className="lv-btn lv-btn-line">
-            Every round
           </button>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
@@ -1186,11 +1183,11 @@ const SLIDES = {
   final: Final,
 };
 
-export default function StorySlide({ slide, review, onReplay, onSheet, onNext }) {
+export default function StorySlide({ slide, review, onReplay, onNext }) {
   const Comp = SLIDES[slide.key];
   if (!Comp) return null;
   const tease = teaseOf(slide.key, review);
-  const body = <Comp slide={slide} review={review} onReplay={onReplay} onSheet={onSheet} onNext={onNext} />;
+  const body = <Comp slide={slide} review={review} onReplay={onReplay} onNext={onNext} />;
   if (!tease) return body;
   return (
     <Offset.Provider value={TEASE_MS}>

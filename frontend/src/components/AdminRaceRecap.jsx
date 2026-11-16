@@ -22,13 +22,13 @@ const MODE_TEXT = {
   all: "Everyone. After each saved round, every member with a seat gets their recap once, the next time they open the site.",
 };
 
-// The season review (pages/SeasonReview.jsx): a driver's whole season in the
-// recap's chapters, opened from the driver page. Public figures only, so once
+// The season Wrapped (pages/SeasonReview.jsx): a driver's whole season in the
+// form of a story, opened from the driver page. Public figures only, so once
 // it is on it is there for anyone who can see the driver.
 const REVIEW_TEXT = {
-  off: "Off. No driver page offers the season review.",
-  admins: "Admins only. League admins see the Season in review link on every driver page; members see nothing yet.",
-  all: "Everyone. Every driver page with two or more rounds run offers its season review.",
+  off: "Off. No driver page offers the season Wrapped.",
+  admins: "Admins only. League admins see the Season Wrapped link on every driver page; members see nothing yet.",
+  all: "Everyone. Every driver page with two or more rounds run offers its season Wrapped.",
 };
 
 function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT }) {
@@ -115,7 +115,7 @@ export default function AdminRaceRecap() {
     setDone(null);
     try {
       await api.setSeasonReviewMode(mode);
-      setDone(mode === "all" ? "The season review is on for everyone." : mode === "admins" ? "The season review is on for admins only." : "The season review is off.");
+      setDone(mode === "all" ? "The season Wrapped is on for everyone." : mode === "admins" ? "The season Wrapped is on for admins only." : "The season Wrapped is off.");
       reloadReview();
     } catch (e) {
       setError(e.message);
@@ -138,7 +138,7 @@ export default function AdminRaceRecap() {
       {done && <Notice kind="success">{done}</Notice>}
 
       <ModeSwitch mode={data.mode} busy={busy} onChange={setMode} />
-      {review && <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season review" texts={REVIEW_TEXT} />}
+      {review && <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season Wrapped" texts={REVIEW_TEXT} />}
 
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="What members get" title="How the recap works" />
@@ -193,10 +193,10 @@ export default function AdminRaceRecap() {
           ) : (
             <span className="btn-primary pointer-events-none opacity-50">Open preview</span>
           )}
-          {/* That driver's season review, while it is not off. */}
+          {/* That driver's season Wrapped, while it is not off. */}
           {driverId && review && review.mode !== "off" && (
             <a href={seriesPath(`/drivers/${encodeURIComponent(driverId)}/review`)} target="_blank" rel="noreferrer" className="btn-secondary">
-              Season review
+              Season Wrapped
             </a>
           )}
         </div>

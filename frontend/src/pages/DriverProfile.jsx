@@ -1627,14 +1627,14 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                   Career record
                   <span aria-hidden="true">↗</span>
                 </Link>
-                {/* This row's season told in chapters (SeasonReview.jsx), once
+                {/* This row's season as a Wrapped story (SeasonReview.jsx), once
                     the league has it switched on. */}
                 {seasonReview && driver.seasonNumber != null && (
                   <Link
                     to={driver.seriesSlug ? `/s/${driver.seriesSlug}/drivers/${driver.id}/review` : `/drivers/${driver.id}/review`}
                     className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
                   >
-                    Season {driver.seasonNumber} {seasonReview.complete ? "in review" : "so far"}
+                    Season {driver.seasonNumber} {seasonReview.complete ? "Wrapped" : "so far"}
                     <span aria-hidden="true">↗</span>
                   </Link>
                 )}
