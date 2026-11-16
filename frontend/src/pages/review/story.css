@@ -182,3 +182,36 @@
   .st-frame { transition: none; }
 }
 .fx-lite .st-in, .fx-lite .st-land, .fx-lite .st-draw, .fx-lite .st-grow-x, .fx-lite .st-grow-y, .fx-lite .wr-pattern > div { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
+
+/* ------------------------------------------------------------- type play */
+/* A poster line: capitals stretched to the frame's full width (an SVG
+   text with a set length), the way a poster sets its headline edge to edge. */
+.wr-fill { display: block; width: 100%; overflow: visible; }
+.wr-fill text { font-family: "Montserrat", sans-serif; font-weight: 900; fill: currentColor; }
+/* Outlined: the stroke is painted first and the slide's own colour filled
+   over it, so the seams where a letter's shapes overlap stay hidden and only
+   the outer edge shows. */
+.wr-fill.is-outline text { fill: var(--g-bg); stroke: currentColor; stroke-width: 7px; paint-order: stroke; stroke-linejoin: round; }
+
+/* A word picked out with a marker: a block of the accent behind it. */
+.wr-mark {
+  display: inline;
+  padding: 0.02em 0.22em 0.06em;
+  background: var(--g-mark);
+  color: var(--g-mark-fg);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* The hero figure with outlined echoes stepped out behind it. */
+.wr-echo { position: relative; display: inline-block; }
+.wr-echo > span { display: block; }
+.wr-echo > .wr-ghost {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--g-pop);
+}
+@keyframes wr-step { from { transform: translate(0, 0); opacity: 0; } to { transform: translate(var(--sx), var(--sy)); opacity: 1; } }
+.wr-echo > .wr-ghost { animation: wr-step 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0ms); transform: translate(var(--sx), var(--sy)); }
+@media (prefers-reduced-motion: reduce) { .wr-echo > .wr-ghost { animation: none; } }
