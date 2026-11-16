@@ -1,6 +1,7 @@
 // The season review as a story: full screen on a phone, a tall frame on a
-// wide screen, one moment per slide, the way a Wrapped runs. Tap the right
-// side (or the right arrow, or space) for the next slide, the left side for
+// tablet, a wide frame on a laptop or desktop (words on the left, the
+// picture on the right), one moment per slide, the way a Wrapped runs. Tap
+// the right side (or the right arrow, or space) for the next slide, the left side for
 // the one before; hold to stop the clock; Escape or the cross closes it and
 // leaves the full page underneath. Each slide runs for a few seconds and the
 // last one stays until it is closed.
@@ -12,7 +13,7 @@ import { createPortal } from "react-dom";
 import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
 import { motionOff } from "../../hooks/motion.js";
-import StorySlide, { hasTease, TEASE_MS } from "./StorySlide.jsx";
+import StorySlide, { hasTease, TEASE_MS, Wide, useWideStory } from "./StorySlide.jsx";
 import { slideColours, storyColour } from "./wrapPalette.js";
 import "./story.css";
 
@@ -31,6 +32,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
   const hold = useRef({ timer: 0, held: false, x: 0, t: 0 });
   const last = slides.length - 1;
   const slide = slides[i];
+  const wide = useWideStory();
   useScrollLock(true);
   useFocusTrap(true, frameRef);
 
@@ -141,7 +143,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
       </button>
       <div
         ref={frameRef}
-        className={`st-frame ${paused ? "st-paused" : ""}`}
+        className={`st-frame ${wide ? "st-frame-wide" : ""} ${paused ? "st-paused" : ""}`}
         style={colours}
         onPointerDown={down}
         onPointerUp={up}
@@ -179,7 +181,9 @@ export default function Story({ review, slides, onClose, onSheet }) {
           </div>
         </div>
         <div key={slide.key} className="relative z-[1] flex min-h-0 flex-1 flex-col">
-          <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} onNext={next} />
+          <Wide.Provider value={wide}>
+            <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} onNext={next} />
+          </Wide.Provider>
         </div>
       </div>
       <button type="button" className="st-side" onClick={next} disabled={i === last} aria-label="Next slide">

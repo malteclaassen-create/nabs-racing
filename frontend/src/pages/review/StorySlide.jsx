@@ -8,7 +8,7 @@
 // When the person looking is not the driver, the same lines carry the
 // driver's name instead of "you" (review.own, from the backend). Every
 // figure is real (review/storySlides.mjs, review/copy.mjs).
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { Children, createContext, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MEDAL, readableInkOn } from "../../components/ui.jsx";
 import CircuitMap from "../../components/CircuitMap.jsx";
@@ -48,6 +48,9 @@ export function voiceOf(review) {
 // looking stretched (a single figure) keeps its own width instead.
 function Fill({ text, d = 0, outline = false, className = "", maxHeight = 520, align = "left", style }) {
   const t = String(text ?? "").toUpperCase();
+  // A wide column is wider than it is tall next to the rest of the slide, so
+  // a short word may not grow as tall as it would in a phone frame.
+  if (useContext(Wide)) maxHeight = Math.min(maxHeight, 230);
   const n = Math.max(
     1,
     [...t].reduce((w, ch) => w + (ch === " " ? 0.32 : /[I1.,:']/.test(ch) ? 0.42 : 0.78), 0),
@@ -154,7 +157,42 @@ function Outline({ track, className = "", d = 250, stroke = "currentColor", widt
   );
 }
 
+// On a laptop or desktop screen the story is a wide frame instead of a tall
+// one (review/story.css). A slide then sets its words in the left column and
+// its picture, list or chart in the right one; on a phone the same two parts
+// simply follow each other down the frame, as they always did.
+export const WIDE_QUERY = "(min-width: 1024px) and (min-height: 600px)";
+export const Wide = createContext(false);
+export function useWideStory() {
+  const get = () => typeof window !== "undefined" && !!window.matchMedia?.(WIDE_QUERY).matches;
+  const [wide, setWide] = useState(get);
+  useEffect(() => {
+    const m = window.matchMedia?.(WIDE_QUERY);
+    if (!m) return undefined;
+    const on = () => setWide(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
+// The part of a slide that goes to the right column on a wide screen. On a
+// phone it stays exactly where it is written.
+const Aside = ({ children }) => children;
+
 function Card({ children, className = "" }) {
+  const wide = useContext(Wide);
+  if (wide) {
+    const kids = Children.toArray(children);
+    const right = kids.filter((k) => k?.type === Aside);
+    const left = kids.filter((k) => k?.type !== Aside);
+    return (
+      <div className={`st-wide relative z-10 grid min-h-0 flex-1 ${right.length ? "" : "st-wide-one"} ${className}`}>
+        <div className="st-col flex min-h-0 flex-col justify-center">{left}</div>
+        {right.length > 0 && <div className="st-col st-aside flex min-h-0 flex-col justify-center">{right}</div>}
+      </div>
+    );
+  }
   return <div className={`relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-[5.2rem] sm:px-7 ${className}`}>{children}</div>;
 }
 
@@ -237,6 +275,7 @@ function Intro({ review }) {
       <Kicker d={100}>{review.own ? "This was your" : `This was ${v.your}`}</Kicker>
       <Fill text={head} d={250} className="mt-3" />
       {num && <Echo value={num} d={500} size="min(92cqi, 52cqh)" className="-mt-2" />}
+      <Aside>
       <div className="mt-auto">
         {driver.team && driver.team.tier !== 0 && (
           <div className="st-land mb-4" style={{ "--d": "1100ms" }}>
@@ -252,6 +291,7 @@ function Intro({ review }) {
           {season.complete ? "" : " · so far"}
         </Kicker>
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -292,6 +332,7 @@ function Rounds({ review }) {
       <Fill text={`${v.You} started`} d={100} />
       <Echo value={s.starts} d={350} className="mt-3" />
       <Fill text={`of ${n} rounds`} d={800} outline />
+      <Aside>
       <div className="mt-auto">
         <div className="grid grid-cols-6 gap-1.5">
           {review.rounds.map((r, k) => (
@@ -316,6 +357,7 @@ function Rounds({ review }) {
           </Kicker>
         )}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -339,6 +381,7 @@ function Training({ slide, review }) {
       <Line d={1000} className="mt-3" size="min(5.4cqi, 3cqh)">
         Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
       </Line>
+      <Aside>
       <div className="relative mt-auto">
         {!first && topShare(slide.rank) <= 25 && (
           <Stamp d={1500} className="-top-24 right-0">
@@ -361,6 +404,7 @@ function Training({ slide, review }) {
           slide.rank && <Line d={1200}>{rankWords(slide.rank, "training laps")}</Line>
         )}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -372,11 +416,13 @@ function Fastest({ slide, review }) {
   return (
     <Card>
       <Kicker d={100}>{v.Your} quickest lap</Kicker>
-      <div className="relative mt-3 min-h-0 flex-1">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Outline track={slide.track} className="h-full w-full" d={300} width={3} stroke="var(--g-pop)" />
+      <Aside>
+        <div className="st-fill relative mt-3 min-h-0 flex-1">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Outline track={slide.track} className="h-full w-full" d={300} width={3} stroke="var(--g-pop)" />
+          </div>
         </div>
-      </div>
+      </Aside>
       <Fill text={lapTime(slide.ms)} d={1000} className="mt-4 wr-num" />
       <Line d={1300} className="mt-4" size="min(5.6cqi, 3cqh)">
         <Mark>{slide.track}</Mark>
@@ -405,6 +451,7 @@ function Tyres({ slide, review }) {
       <Line d={900} size="min(5.4cqi, 3cqh)">
         of them, <Mark>{plural(top.laps, "lap")}</Mark>.
       </Line>
+      <Aside>
       <div className="mt-auto flex items-end justify-between gap-2">
         {shown.map((t, k) => {
           const c = tyreCompound(t.tyre);
@@ -426,6 +473,7 @@ function Tyres({ slide, review }) {
           );
         })}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -456,6 +504,7 @@ function Limits({ slide, review }) {
           <span key={k} className="st-land block h-5 w-5 rounded-[4px]" style={{ "--d": `${1000 + k * 35}ms`, background: "var(--g-mark)" }} />
         ))}
       </div>
+      <Aside>
       <div className="mt-auto space-y-3">
         <Kicker d={1500} className="lv-mute">
           Cuts a race
@@ -488,6 +537,7 @@ function Limits({ slide, review }) {
           )}
         </Line>
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -498,6 +548,7 @@ function Top({ slide, review }) {
     <Card>
       <Fill text={`${v.Your} top`} d={100} />
       <Fill text="results" d={250} outline />
+      <Aside>
       <ol className="mt-auto space-y-4 pb-1">
         {slide.list.map((t, k) => (
           <li key={`${t.round}-${t.sprint}`} className="st-in flex items-center gap-4" style={{ "--d": `${550 + k * 170}ms` }}>
@@ -527,6 +578,7 @@ function Top({ slide, review }) {
           </li>
         ))}
       </ol>
+      </Aside>
     </Card>
   );
 }
@@ -534,15 +586,28 @@ function Top({ slide, review }) {
 function Best({ review }) {
   const v = voiceOf(review);
   const b = review.best;
+  const wide = useContext(Wide);
+  const picture = b.heroImageUrl ? <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-md object-cover" /> : <Outline track={b.track} className={`h-full w-full ${wide ? "" : "opacity-40"}`} d={300} width={wide ? 3 : 2.4} stroke={wide ? "var(--g-pop)" : "currentColor"} />;
   return (
     <Card>
       <Kicker d={100}>{v.Your} best race</Kicker>
-      <div className="relative mt-4 flex-1">
-        <div className="absolute inset-0 flex items-center justify-center opacity-90">{b.heroImageUrl ? <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-md object-cover" /> : <Outline track={b.track} className="h-full w-full opacity-40" d={300} width={2.4} />}</div>
-        <div className="absolute bottom-0 left-0">
-          <Echo value={`P${b.position}`} d={900} size="min(48cqi, 26cqh)" />
+      {wide ? (
+        <Echo value={`P${b.position}`} d={900} size="min(48cqi, 26cqh)" className="mt-4" />
+      ) : (
+        <div className="relative mt-4 flex-1">
+          <div className="absolute inset-0 flex items-center justify-center opacity-90">{picture}</div>
+          <div className="absolute bottom-0 left-0">
+            <Echo value={`P${b.position}`} d={900} size="min(48cqi, 26cqh)" />
+          </div>
         </div>
-      </div>
+      )}
+      {wide && (
+        <Aside>
+          <div className="st-fill relative min-h-0 flex-1">
+            <div className="absolute inset-0 flex items-center justify-center">{picture}</div>
+          </div>
+        </Aside>
+      )}
       <Fill text={b.track} d={1300} className="mt-3" />
       <Line d={1550} className="mt-3" size="min(5.6cqi, 3cqh)">
         {b.grid > 0 ? (
@@ -560,16 +625,36 @@ function Best({ review }) {
 function Climb({ review }) {
   const v = voiceOf(review);
   const c = review.climb;
+  const wide = useContext(Wide);
+  const line = (
+    <Line d={1400}>
+      In one race: <Mark>{c.track}</Mark>, from P{c.grid} to P{c.position}.
+    </Line>
+  );
   return (
     <Card>
       <Fill text={`${v.You} made up`} d={100} />
       <Echo value={`+${c.gained}`} d={350} className="mt-4" />
       <Fill text="places" d={800} className="mt-4" outline />
-      <div className="mt-auto">
-        <Line d={1400}>
-          In one race: <Mark>{c.track}</Mark>, from P{c.grid} to P{c.position}.
-        </Line>
-      </div>
+      {wide ? (
+        <div className="mt-6">{line}</div>
+      ) : (
+        <div className="mt-auto">{line}</div>
+      )}
+      {wide && (
+        <Aside>
+          <div className="st-fill relative min-h-0 flex-1">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Outline track={c.track} className="h-full w-full" d={500} width={3} stroke="var(--g-pop)" />
+            </div>
+          </div>
+          <div className="st-in mt-4 flex items-baseline justify-center gap-4 wr-big wr-num" style={{ "--d": "1100ms", fontSize: "min(14cqi, 9cqh)" }}>
+            <span className="lv-mute">P{c.grid}</span>
+            <span className="text-[0.6em]">to</span>
+            <span style={{ color: "var(--g-mark)" }}>P{c.position}</span>
+          </div>
+        </Aside>
+      )}
     </Card>
   );
 }
@@ -587,7 +672,8 @@ function Podiums({ slide, review }) {
           {n === 1 ? "time." : "times."}
         </Line>
       </div>
-      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-3">
+      <Aside>
+      <div className="st-medals mt-auto flex flex-wrap gap-x-3 gap-y-3">
         {slide.podiums.slice(0, 8).map((p, k) => (
           <div key={`${p.round}-${p.sprint}`} className="st-land flex w-[4.2rem] flex-col items-center text-center" style={{ "--d": `${1200 + k * 120}ms` }}>
             <span
@@ -605,6 +691,7 @@ function Podiums({ slide, review }) {
           </div>
         ))}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -643,6 +730,7 @@ function Field({ slide, review }) {
       <Line d={1150}>
         out of <Mark>{rank.of} drivers</Mark>.
       </Line>
+      <Aside>
       {slide.board?.rows?.length > 1 ? (
         <div className="mt-auto">
           <Board board={slide.board} review={review} d={1500} />
@@ -664,6 +752,7 @@ function Field({ slide, review }) {
           ))}
         </div>
       )}
+      </Aside>
     </Card>
   );
 }
@@ -690,6 +779,7 @@ function Journey({ slide, review }) {
       <Kicker d={100}>{done ? `${v.You} finished the season` : `After round ${last.round}, ${v.you} ${v.are}`}</Kicker>
       <Echo value={slide.value} d={300} className="mt-3" />
       <Fill text="in the championship" d={750} className="mt-4" outline />
+      <Aside>
       <div className="st-in mt-auto" style={{ "--d": "1100ms" }}>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Place in the championship after each round">
           <path d={line} pathLength="1" className="st-draw" style={{ "--d": "1200ms" }} fill="none" stroke="var(--g-mark)" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" />
@@ -701,6 +791,7 @@ function Journey({ slide, review }) {
           ))}
         </svg>
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -730,6 +821,7 @@ function Team({ slide, review }) {
           </Line>
         </div>
       )}
+      <Aside>
       <div className="mt-auto space-y-2.5">
         {rest.map((l, k) => (
           <div key={l.key} className="st-in flex items-baseline justify-between gap-3 border-t border-[color:var(--g-faint)] pt-2" style={{ "--d": `${1300 + k * 220}ms` }}>
@@ -745,6 +837,7 @@ function Team({ slide, review }) {
           </Kicker>
         )}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -752,6 +845,7 @@ function Team({ slide, review }) {
 function Contact({ review }) {
   const v = voiceOf(review);
   const k = review.contact;
+  const wide = useContext(Wide);
   return (
     <Card>
       <Fill text={`${v.You} kept it`} d={100} />
@@ -760,8 +854,9 @@ function Contact({ review }) {
       <Line d={900} className="mt-3">
         <Mark>{k.clean === 1 ? "round" : "rounds"}</Mark> without touching another car.
       </Line>
+      <Aside>
       <div className="mt-auto">
-        <div className="flex h-20 items-end gap-1.5">
+        <div className={`flex ${wide ? "h-40" : "h-20"} items-end gap-1.5`}>
           {review.rounds.map((r, n) => {
             const known = r.contacts != null;
             const cars = r.contacts || 0;
@@ -787,15 +882,25 @@ function Contact({ review }) {
           Contact with other cars, round by round: {k.cars} in all.
         </Kicker>
       </div>
+      </Aside>
     </Card>
   );
 }
 
 function Honours({ slide, review }) {
   const v = voiceOf(review);
+  const wide = useContext(Wide);
   return (
     <Card>
-      <Kicker d={100}>And {v.you} took home</Kicker>
+      {wide ? (
+        <>
+          <Fill text={`And ${v.you}`} d={100} />
+          <Fill text="took home" d={200} outline />
+        </>
+      ) : (
+        <Kicker d={100}>And {v.you} took home</Kicker>
+      )}
+      <Aside>
       <div className="mt-auto space-y-3">
         {slide.honours.map((h, k) => (
           <div key={h.key}>
@@ -808,6 +913,7 @@ function Honours({ slide, review }) {
           </div>
         ))}
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -830,6 +936,7 @@ const nameFit = (name) => {
 // two lists side by side, the two big numbers at the foot. The picture that
 // "Save picture" makes is this card.
 function Final({ slide, review, onReplay, onSheet }) {
+  const wide = useContext(Wide);
   const [state, setState] = useState(null);
   const save = async () => {
     setState("busy");
@@ -849,8 +956,7 @@ function Final({ slide, review, onReplay, onSheet }) {
   };
   const c = review.championship;
   const top = slide.top || [];
-  return (
-    <div data-st-keep className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pb-5 pt-[4.4rem] sm:px-6">
+  const card = (
       <div
         className="st-land flex min-h-0 flex-1 flex-col rounded-xl p-4"
         style={{
@@ -926,6 +1032,8 @@ function Final({ slide, review, onReplay, onSheet }) {
           NABS Racing League · {review.season.label}
         </div>
       </div>
+  );
+  const actions = (
       <div className="st-in pt-4" style={{ "--d": "700ms" }}>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={save} disabled={state === "busy"} className="lv-btn lv-btn-solid">
@@ -949,6 +1057,23 @@ function Final({ slide, review, onReplay, onSheet }) {
         {state === "failed" && <p className="wr-small mt-2">The picture could not be made in this browser.</p>}
         {state === "saved" && <p className="wr-small lv-mute mt-2">Saved to your downloads.</p>}
       </div>
+  );
+  if (wide) {
+    return (
+      <div data-st-keep className="st-wide st-wide-final relative z-10 grid min-h-0 flex-1">
+        <div className="st-col flex min-h-0 flex-col">{card}</div>
+        <div className="st-col flex min-h-0 flex-col justify-center">
+          <Fill text={review.own ? "That was your" : `That was ${voiceOf(review).your}`} d={300} />
+          <Fill text={review.season.label} d={450} outline />
+          <div className="mt-6">{actions}</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div data-st-keep className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pb-5 pt-[4.4rem] sm:px-6">
+      {card}
+      {actions}
     </div>
   );
 }
@@ -972,6 +1097,7 @@ function Quiz({ slide, review, onNext }) {
       <Kicker d={100}>Quick question</Kicker>
       <Fill text={review.own ? "Guess your" : `Guess ${v.your}`} d={250} className="mt-3" />
       <Fill text="best race" d={400} outline />
+      <Aside>
       <div data-st-keep className="mt-auto space-y-2.5">
         {slide.options.map((t, k) => {
           const right = pick && t === answer;
@@ -1004,6 +1130,7 @@ function Quiz({ slide, review, onNext }) {
           )}
         </div>
       </div>
+      </Aside>
     </Card>
   );
 }
@@ -1029,9 +1156,10 @@ function teaseOf(key, review) {
 }
 
 function Tease({ text }) {
+  const wide = useContext(Wide);
   return (
-    <div className="st-tease pointer-events-none absolute inset-0 z-20 flex items-center px-6 sm:px-7" aria-hidden="true">
-      <p className="wr-big" style={{ fontSize: "min(11cqi, 6cqh)", lineHeight: 1 }}>
+    <div className={`st-tease pointer-events-none absolute inset-0 z-20 flex items-center ${wide ? "px-[6cqi]" : "px-6 sm:px-7"}`} aria-hidden="true">
+      <p className="wr-big" style={wide ? { fontSize: "min(6.4cqi, 11cqh)", lineHeight: 1, maxWidth: "15em" } : { fontSize: "min(11cqi, 6cqh)", lineHeight: 1 }}>
         {text}
       </p>
     </div>

@@ -228,3 +228,31 @@
 @keyframes wr-step { from { transform: translate(0, 0); opacity: 0; } to { transform: translate(var(--sx), var(--sy)); opacity: 1; } }
 .wr-echo > .wr-ghost { animation: wr-step 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); transform: translate(var(--sx), var(--sy)); }
 @media (prefers-reduced-motion: reduce) { .wr-echo > .wr-ghost { animation: none; } }
+
+/* ------------------------------------------------------------ wide screen */
+/* On a laptop or desktop the frame lies down: words on the left, the
+   picture, list or chart on the right (StorySlide's Card and Aside). The
+   media query is the one in StorySlide (WIDE_QUERY). */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .st-frame {
+    width: min(1240px, calc(100vw - 150px));
+    height: min(760px, 90dvh);
+    border-radius: 22px;
+  }
+}
+.st-wide {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  column-gap: clamp(40px, 5.5cqi, 84px);
+  padding: 5.4rem clamp(40px, 5cqi, 72px) 3rem;
+}
+.st-wide.st-wide-one { grid-template-columns: minmax(0, 1fr); }
+.st-wide.st-wide-final { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr); }
+/* Each column measures its own type: a poster line or a hero figure is as
+   big as its column, not the whole frame. */
+.st-col { container-type: inline-size; }
+/* The right column holds what sat at the foot of the tall slide; here it is
+   centred instead of pushed down, and the small type in it is set larger. */
+.st-aside > .mt-auto, .st-aside > .st-in.mt-auto { margin-top: 0; }
+.st-aside { zoom: 1.22; }
+.st-aside > .st-fill { flex: 1 1 auto; min-height: 0; margin-top: 0; }
+.st-aside > .st-medals { zoom: 1.5; }
