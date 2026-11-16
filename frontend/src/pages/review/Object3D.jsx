@@ -159,7 +159,7 @@ function trackThing({ scene, camera, pal, data }) {
 
   const group = new THREE.Group();
   scene.add(group);
-  const geo = ribbonGeometry(curve, 900, 0.1, 0.05);
+  const geo = ribbonGeometry(curve, 1200, 0.038, 0.022);
   const band = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: pal.pop, roughness: 0.42, metalness: 0.05, side: THREE.DoubleSide }));
   band.castShadow = true;
   group.add(band);
@@ -169,7 +169,7 @@ function trackThing({ scene, camera, pal, data }) {
   // The dot and a thin trail behind it that fades out.
   const trail = Array.from({ length: 12 }, (_, k) => {
     const mat = k === 0 ? carMat : new THREE.MeshBasicMaterial({ color: pal.fg, transparent: true, opacity: 0.55 * (1 - k / 12) });
-    const m = new THREE.Mesh(new THREE.SphereGeometry(k === 0 ? 0.062 : 0.03, 20, 14), mat);
+    const m = new THREE.Mesh(new THREE.SphereGeometry(k === 0 ? 0.04 : 0.018, 20, 14), mat);
     m.castShadow = k === 0;
     m.visible = false;
     group.add(m);
@@ -198,7 +198,7 @@ function trackThing({ scene, camera, pal, data }) {
     trail.forEach((m, k) => {
       m.visible = t > 1.6;
       curve.getPointAt((lap - k * 0.007 + 1) % 1, p);
-      m.position.set(p.x, k === 0 ? 0.11 : 0.07, p.z);
+      m.position.set(p.x, k === 0 ? 0.06 : 0.04, p.z);
     });
   };
   return { fit, update, still: 6 };
