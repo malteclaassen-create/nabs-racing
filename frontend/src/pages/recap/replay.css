@@ -372,3 +372,21 @@
 }
 .fx-lite .rr .recap-reveal { translate: none !important; }
 .fx-lite .rr-sweep-layer { animation: none !important; transform: translateX(var(--to)) !important; }
+
+/* ------------------------------------------------------------ contact map */
+/* recap/ContactMap.jsx. The circuit draws itself round from the start line
+   (.chart-line, as the other lines of the recap), then the field's dots come
+   up, then the driver's own numbers. Hovering a line of the list grows its
+   number on the map. */
+.rr .rr-cm-marker { transition: transform var(--t-base) var(--e-out), opacity var(--t-base) var(--e-out); }
+.recap-reveal .rr-cm-field,
+.recap-reveal .rr-cm-mine { opacity: 0; }
+.recap-reveal.is-visible .rr-cm-field { animation: recap-tag var(--t-tell) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 1200ms); }
+.recap-reveal.is-visible .rr-cm-mine { animation: recap-tag var(--t-slow) var(--e-out) both; animation-delay: calc(var(--reveal-delay, 0s) + 1550ms); }
+@media (prefers-reduced-motion: reduce) {
+  .recap-reveal .rr-cm-field,
+  .recap-reveal .rr-cm-mine { animation: none !important; opacity: 1; }
+  .rr .rr-cm-marker { transition: none; }
+}
+.fx-lite .recap-reveal .rr-cm-field,
+.fx-lite .recap-reveal .rr-cm-mine { animation: none !important; opacity: 1; }

@@ -45,6 +45,7 @@ import { findArchiveForRace, analyzeRaceFor, raceInsightsFor, fieldPaceTable, ha
 import { readParentIds, readSprintChildren } from "./sprintRaces.js";
 import { readRaceFormat } from "./raceFormat.js";
 import { contactsForDriver } from "./raceContacts.js";
+import { contactMapForRace } from "./contactMap.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
 import { cardCatalogueFor } from "./tokens.js";
@@ -312,7 +313,10 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false
   } catch {
     return null;
   }
-  const guids = [...new Set(list.map((c) => c.other?.guid).filter(Boolean))];
+  // Where they happened, on the circuit (lib/contactMap.js). Optional: without
+  // the circuit's line the list below is the whole story, as it always was.
+  const map = await contactMapForRace(prisma, race, { steamId, sprint }).catch(() => null);
+  const guids = [...new Set([...list.map((c) => c.other?.guid), ...(map?.mine || []).map((m) => m.other?.guid)].filter(Boolean))];
   const named = guids.length
     ? await prisma.driver.findMany({ where: { seasonId: race.seasonId, steamId: { in: guids } }, select: { id: true, name: true, steamId: true } })
     : [];
@@ -323,6 +327,29 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false
       return { lap: c.lap ?? null, kph: c.kph ?? null, name: d?.name || c.other?.name || "another car", driverId: d?.id || null };
     }),
     envContacts: ownRow?.envContacts ?? null,
+    map: map && {
+      line: map.line,
+      lapM: map.lapM,
+      field: map.field,
+      fieldCount: map.fieldCount,
+      busiest: map.busiest,
+      byCorner: map.byCorner,
+      labels: map.labels,
+      // The other car by the league's name, never by its Steam id.
+      mine: map.mine.map((m) => {
+        const d = m.other ? byGuid.get(String(m.other.guid)) : null;
+        return {
+          n: m.n,
+          kind: m.kind,
+          lap: m.lap,
+          kph: m.kph,
+          pos: m.pos,
+          corner: m.corner,
+          name: m.kind === "car" ? d?.name || m.other?.name || "another car" : null,
+          driverId: m.kind === "car" ? d?.id || null : null,
+        };
+      }),
+    },
   };
 }
 
