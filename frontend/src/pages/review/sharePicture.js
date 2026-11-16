@@ -9,43 +9,24 @@
 // the one accent, the season's real circuit outline of the best round.
 import { circuitFor } from "../../data/circuits.js";
 import { summaryGrid } from "./storySlides.mjs";
+import { livery } from "./livery.js";
 
 const W = 1080;
 const H = 1350;
-const M = 72;
-
-// The theme's colours as the page has them right now.
-function palette() {
-  const css = getComputedStyle(document.documentElement);
-  const v = (name, fallback) => (css.getPropertyValue(name) || "").trim() || fallback;
-  const triple = (name, fallback) => {
-    const t = v(name, fallback);
-    return /^\d/.test(t) ? `rgb(${t.split(/\s+/).slice(0, 3).join(",")})` : t;
-  };
-  return {
-    bg: v("--c-bg", "#080d18"),
-    card: v("--c-card", "#131c2e"),
-    border: v("--c-border", "#243248"),
-    text: v("--c-text", "#e8eef7"),
-    text2: v("--c-text2", "#aebacd"),
-    text3: v("--c-text3", "#9aa8be"),
-    faint: v("--c-faint", "#78859a"),
-    eyebrow: v("--c-eyebrow", "#f4afc6"),
-    accent: triple("--c-accent", "244 175 198"),
-  };
-}
+const M = 76;
 
 async function fontsReady() {
   if (!document.fonts?.load) return;
   await Promise.all([
-    document.fonts.load('900 120px "Archivo"'),
-    document.fonts.load('800 40px "Archivo"'),
-    document.fonts.load('500 28px "Inter"'),
-    document.fonts.load('700 22px "JetBrains Mono"'),
+    document.fonts.load('900 200px "Big Shoulders Display"'),
+    document.fonts.load('700 26px "Saira Condensed"'),
+    document.fonts.load('500 26px "Saira Condensed"'),
   ]).catch(() => {});
 }
 
-const font = (weight, size, family) => `${weight} ${size}px ${family === "display" ? '"Archivo", "Inter", sans-serif' : family === "mono" ? '"JetBrains Mono", ui-monospace, monospace' : '"Inter", system-ui, sans-serif'}`;
+const DISPLAY = '"Big Shoulders Display", "Archivo", sans-serif';
+const LABEL = '"Saira Condensed", "Inter", sans-serif';
+const font = (weight, size, family) => `${weight} ${size}px ${family}`;
 
 // The largest size up to `max` at which `text` fits `width`.
 function fit(ctx, text, width, max, weight, family) {
@@ -58,23 +39,14 @@ function fit(ctx, text, width, max, weight, family) {
   return size;
 }
 
-function spaced(ctx, text, x, y, tracking) {
-  let at = x;
-  for (const ch of text) {
+function spaced(ctx, text, x, y, tracking, align = "left") {
+  const chars = [...text];
+  const width = chars.reduce((w, ch) => w + ctx.measureText(ch).width + tracking, -tracking);
+  let at = align === "right" ? x - width : x;
+  for (const ch of chars) {
     ctx.fillText(ch, at, y);
     at += ctx.measureText(ch).width + tracking;
   }
-  return at;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
 
 // The circuit's outline from the site's own data, fitted into the box.
@@ -87,7 +59,7 @@ function outline(ctx, track, x, y, w, h, color) {
   ctx.translate(x + (w - bw * s) / 2 - bx * s, y + (h - bh * s) / 2 - by * s);
   ctx.scale(s, s);
   ctx.strokeStyle = color;
-  ctx.lineWidth = 3.2 / s;
+  ctx.lineWidth = 5 / s;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.stroke(new Path2D(c.path));
@@ -95,135 +67,140 @@ function outline(ctx, track, x, y, w, h, color) {
   return true;
 }
 
+// A fine grain over the paint, as on the story's slides.
+function grain(ctx, alpha) {
+  const g = document.createElement("canvas");
+  g.width = 180;
+  g.height = 180;
+  const gx = g.getContext("2d");
+  const img = gx.createImageData(180, 180);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  gx.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = "overlay";
+  ctx.fillStyle = ctx.createPattern(g, "repeat");
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
 export async function drawSharePicture(review, slide) {
   await fontsReady();
-  const p = palette();
-  const team = review.driver.team?.color || p.text;
+  const paint = livery(review.driver.team?.color).grounds.team;
+  const ink = paint.fg;
+  const mute = paint.mute;
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d");
   ctx.textBaseline = "alphabetic";
-
-  ctx.fillStyle = p.bg;
+  ctx.fillStyle = paint.bg;
   ctx.fillRect(0, 0, W, H);
-  roundRect(ctx, 40, 40, W - 80, H - 80, 14);
-  ctx.fillStyle = p.card;
-  ctx.fill();
-  ctx.strokeStyle = p.border;
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  grain(ctx, 0.12);
+  const R = W - M;
 
-  // The eyebrow: the team-colour tab and the label, then the league top right.
-  ctx.fillStyle = team;
-  roundRect(ctx, M + 8, 118, 34, 7, 3);
-  ctx.fill();
-  ctx.fillStyle = p.eyebrow;
-  ctx.font = font(700, 22, "mono");
-  spaced(ctx, "SEASON REVIEW", M + 56, 128, 4);
-  ctx.fillStyle = p.faint;
-  ctx.textAlign = "right";
-  ctx.font = font(700, 22, "mono");
-  ctx.fillText(slide.eyebrow.toUpperCase(), W - M - 8, 128);
-  ctx.textAlign = "left";
+  // The label on its rule.
+  ctx.fillStyle = ink;
+  ctx.font = font(700, 26, LABEL);
+  spaced(ctx, "SEASON REVIEW", M, 104, 2);
+  ctx.fillStyle = mute;
+  spaced(ctx, slide.eyebrow.toUpperCase(), R, 104, 2, "right");
+  ctx.fillStyle = ink;
+  ctx.fillRect(M, 122, R - M, 6);
 
-  // The name, as big as it fits, and the team.
-  const name = review.driver.name.toUpperCase();
-  const size = fit(ctx, name, W - 2 * M - 16, 118, 900, "display");
-  ctx.fillStyle = p.text;
-  ctx.font = font(900, size, "display");
-  ctx.fillText(name, M + 8, 170 + size * 0.86);
-  let y = 170 + size + 24;
+  // The name, a word a line, as big as the width takes.
+  let y = 150;
+  const words = String(review.driver.name || "").toUpperCase().split(/\s+/).filter(Boolean).slice(0, 3);
+  for (const w of words) {
+    const size = fit(ctx, w, R - M, 250, 900, DISPLAY);
+    ctx.fillStyle = ink;
+    ctx.font = font(900, size, DISPLAY);
+    ctx.fillText(w, M - size * 0.02, y + size * 0.8);
+    y += size * 0.84;
+  }
   if (review.driver.team?.name) {
-    ctx.fillStyle = team;
-    ctx.fillRect(M + 8, y - 22, 5, 26);
-    ctx.fillStyle = p.text3;
-    ctx.font = font(500, 30, "sans");
-    ctx.fillText(review.driver.team.name, M + 26, y);
-    y += 30;
+    ctx.fillStyle = ink;
+    ctx.font = font(700, 30, LABEL);
+    spaced(ctx, review.driver.team.name.toUpperCase(), M, y + 44, 2);
+    y += 44;
   }
 
-  // The hairline, then the place and the points.
-  y += 30;
-  ctx.fillStyle = p.border;
-  ctx.fillRect(M + 8, y, W - 2 * M - 16, 2);
+  // The place and the points.
   y += 34;
+  ctx.fillStyle = ink;
+  ctx.fillRect(M, y, R - M, 6);
   const c = review.championship;
   if (c.position) {
-    ctx.fillStyle = p.text3;
-    ctx.font = font(900, 96, "display");
-    ctx.fillText("P", M + 8, y + 96);
-    const pw = ctx.measureText("P").width;
-    ctx.fillStyle = p.text;
-    ctx.font = font(900, 250, "display");
-    ctx.fillText(String(c.position), M + 8 + pw + 6, y + 212);
+    ctx.font = font(900, 330, DISPLAY);
+    ctx.fillText(`P${c.position}`, M - 8, y + 300);
   }
   ctx.textAlign = "right";
-  ctx.fillStyle = p.text3;
-  ctx.font = font(700, 26, "mono");
-  if (slide.unit) ctx.fillText(slide.unit, W - M - 8, y + 70);
-  ctx.fillStyle = p.accent;
-  ctx.font = font(900, 92, "display");
-  ctx.fillText(String(slide.points), W - M - 70, y + 176);
-  ctx.fillStyle = p.text3;
-  ctx.font = font(700, 26, "mono");
-  ctx.fillText("pts", W - M - 8, y + 176);
+  ctx.font = font(900, 150, DISPLAY);
+  ctx.fillText(String(slide.points), R, y + 170);
   ctx.textAlign = "left";
+  ctx.font = font(700, 28, LABEL);
+  spaced(ctx, "POINTS", R, y + 210, 2, "right");
+  ctx.fillStyle = mute;
+  ctx.font = font(500, 26, LABEL);
+  if (slide.unit) spaced(ctx, slide.unit, R, y + 250, 0.5, "right");
 
-  // The six numbers in a hairline grid.
-  y += 262;
-  const gx = M + 8;
-  const gw = W - 2 * M - 16;
-  const cw = gw / 3;
-  const ch = 148;
-  ctx.strokeStyle = p.border;
-  ctx.lineWidth = 2;
-  roundRect(ctx, gx, y, gw, ch * 2, 10);
-  ctx.stroke();
-  ctx.fillStyle = p.border;
-  ctx.fillRect(gx, y + ch - 1, gw, 2);
-  ctx.fillRect(gx + cw - 1, y, 2, ch * 2);
-  ctx.fillRect(gx + 2 * cw - 1, y, 2, ch * 2);
-  // The best result has its own line under the grid, with its circuit, so
-  // the grid takes the next figure instead of saying it twice.
+  // Six numbers under a rule, hairlines between.
+  y += 330;
+  ctx.fillStyle = ink;
+  ctx.fillRect(M, y, R - M, 6);
   const grid = review.best ? summaryGrid(review, undefined, { skip: ["best"] }) : slide.grid;
+  const cw = (R - M) / 3;
+  const ch = 150;
+  ctx.globalAlpha = 0.45;
+  ctx.fillRect(M, y + ch + 6, R - M, 2);
+  ctx.fillRect(M + cw - 14, y + 18, 2, ch * 2 - 20);
+  ctx.fillRect(M + 2 * cw - 14, y + 18, 2, ch * 2 - 20);
+  ctx.globalAlpha = 1;
   grid.forEach((g, k) => {
-    const cx = gx + (k % 3) * cw + 26;
-    const cy = y + Math.floor(k / 3) * ch;
-    ctx.fillStyle = p.text3;
-    ctx.font = font(700, 20, "mono");
-    spaced(ctx, g.label.toUpperCase().slice(0, 18), cx, cy + 40, 2.5);
-    ctx.fillStyle = p.text;
-    ctx.font = font(900, 62, "display");
-    ctx.fillText(g.value, cx, cy + 100);
+    const cx = M + (k % 3) * cw + (k % 3 ? 6 : 0);
+    const cy = y + 6 + Math.floor(k / 3) * ch;
+    ctx.fillStyle = mute;
+    ctx.font = font(700, 22, LABEL);
+    spaced(ctx, g.label.toUpperCase().slice(0, 16), cx, cy + 44, 1.5);
+    ctx.fillStyle = ink;
+    ctx.font = font(900, 92, DISPLAY);
+    ctx.fillText(g.value, cx - 2, cy + 122);
     if (g.sub) {
-      ctx.fillStyle = p.faint;
-      ctx.font = font(500, 20, "mono");
-      ctx.fillText(g.sub.slice(0, 20), cx, cy + 127);
+      ctx.fillStyle = mute;
+      ctx.font = font(700, 20, LABEL);
+      spaced(ctx, g.sub.toUpperCase().slice(0, 18), cx, cy + 146, 1.2);
     }
   });
 
-  // The best round: its circuit in the team colour, and the line.
-  y += ch * 2 + 46;
+  // The best result, with its circuit.
+  y += ch * 2 + 34;
   const best = review.best;
-  if (best) {
-    const drew = outline(ctx, best.track, M + 8, y, 150, 130, team);
-    const tx = drew ? M + 190 : M + 8;
-    ctx.fillStyle = p.text3;
-    ctx.font = font(700, 20, "mono");
-    spaced(ctx, "BEST RESULT", tx, y + 34, 3);
-    ctx.fillStyle = p.text;
-    ctx.font = font(900, 46, "display");
-    ctx.fillText(`P${best.position} ${String(best.track).toUpperCase()}`, tx, y + 88);
-    ctx.fillStyle = p.text3;
-    ctx.font = font(500, 26, "sans");
-    ctx.fillText(`Round ${best.round}${best.grid > 0 ? `, from P${best.grid}` : ""}`, tx, y + 126);
+  if (best && y + 150 < H - 90) {
+    const drew = outline(ctx, best.track, M, y, 150, 140, ink);
+    const tx = drew ? M + 186 : M;
+    ctx.fillStyle = mute;
+    ctx.font = font(700, 22, LABEL);
+    spaced(ctx, "BEST RESULT", tx, y + 32, 1.5);
+    ctx.fillStyle = ink;
+    ctx.font = font(900, 84, DISPLAY);
+    ctx.fillText(`P${best.position} ${String(best.track).toUpperCase()}`, tx, y + 104);
+    ctx.fillStyle = mute;
+    ctx.font = font(700, 24, LABEL);
+    spaced(ctx, `ROUND ${best.round}${best.grid > 0 ? `, FROM P${best.grid}` : ""}`, tx, y + 138, 1.5);
   }
 
-  // The address at the foot.
-  ctx.fillStyle = p.faint;
-  ctx.font = font(500, 22, "mono");
-  ctx.fillText(`${window.location.host}${window.location.pathname}`.slice(0, 64), M + 8, H - 84);
+  // The league and the address at the foot.
+  ctx.fillStyle = ink;
+  ctx.fillRect(M, H - 104, R - M, 3);
+  ctx.font = font(700, 24, LABEL);
+  spaced(ctx, "NABS RACING LEAGUE", M, H - 62, 2);
+  ctx.fillStyle = mute;
+  ctx.font = font(500, 22, LABEL);
+  spaced(ctx, `${window.location.host}${window.location.pathname}`.slice(0, 60), R, H - 62, 0.5, "right");
 
   return new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error("no picture"))), "image/png"));
 }

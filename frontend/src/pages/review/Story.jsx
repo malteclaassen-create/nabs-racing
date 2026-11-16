@@ -11,9 +11,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
-import { readableInkOn } from "../../components/ui.jsx";
 import { motionOff } from "../../hooks/motion.js";
 import StorySlide from "./StorySlide.jsx";
+import { livery, groundVars, GROUND_OF } from "./livery.js";
+import "@fontsource/big-shoulders-display/800";
+import "@fontsource/big-shoulders-display/900";
+import "@fontsource/saira-condensed/500";
+import "@fontsource/saira-condensed/700";
 import "./story.css";
 
 // How long a slide stays before the next one, in ms. Longer where there is
@@ -125,17 +129,17 @@ export default function Story({ review, slides, onClose, onSheet }) {
     }
   };
 
-  const team = review.driver.team?.color || null;
+  const paint = livery(review.driver.team?.color);
+  const ground = paint.grounds[GROUND_OF[slide.key] || "team"];
   // Portalled to <body>, like the site's Modal: a fixed overlay inside a
   // transformed ancestor (the page's own entrance) would land in the wrong
   // place, under the menu.
   return createPortal(
     <div
-      className="rr st-overlay z-overlay"
+      className="st-overlay z-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={`${review.season.label} in review, ${review.driver.name}`}
-      style={{ "--recap-team": team || "var(--c-text)", "--recap-ink": team ? readableInkOn(team) : "var(--c-card)" }}
     >
       <button type="button" className="st-side" onClick={prev} disabled={i === 0} aria-label="Previous slide">
         <ChevronLeft size={20} strokeWidth={2.25} />
@@ -143,6 +147,8 @@ export default function Story({ review, slides, onClose, onSheet }) {
       <div
         ref={frameRef}
         className={`st-frame ${paused ? "st-paused" : ""}`}
+        style={{ ...groundVars(ground), "--lv-team": paint.team }}
+        data-ground={GROUND_OF[slide.key] || "team"}
         onPointerDown={down}
         onPointerUp={up}
         onPointerLeave={cancel}
@@ -158,27 +164,27 @@ export default function Story({ review, slides, onClose, onSheet }) {
             ))}
           </div>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
-              {review.season.label} · {i + 1}/{slides.length}
+            <span className="lv-label truncate lv-mute">
+              NABS Racing League · {review.season.label}
             </span>
             <span className="flex items-center gap-1">
               {i < last && (
                 <button
                   type="button"
                   onClick={() => setPaused((p) => !p)}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-light transition hover:text-dark"
+                  className="flex h-9 w-9 items-center justify-center rounded-full opacity-75 transition hover:opacity-100"
                   aria-label={paused ? "Play" : "Pause"}
                 >
                   {paused ? <Play size={17} strokeWidth={2.25} /> : <Pause size={17} strokeWidth={2.25} />}
                 </button>
               )}
-              <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-light transition hover:text-dark" aria-label="Close the story">
+              <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full opacity-75 transition hover:opacity-100" aria-label="Close the story">
                 <X size={19} strokeWidth={2.25} />
               </button>
             </span>
           </div>
         </div>
-        <div key={slide.key} className="recap-reveal is-visible flex min-h-0 flex-1 flex-col">
+        <div key={slide.key} className="relative z-[1] flex min-h-0 flex-1 flex-col">
           <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} />
         </div>
       </div>

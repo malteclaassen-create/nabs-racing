@@ -134,7 +134,7 @@ export function storySlides(review) {
       key: "contact",
       eyebrow: "Contact",
       value: k.clean,
-      unit: `of ${plural(k.rounds ?? k.races, "round")} on file without touching a car`,
+      unit: `without touching a car, of ${plural(k.rounds ?? k.races, "round")} on file`,
       line: contactLine(k, rounds),
     });
   }
