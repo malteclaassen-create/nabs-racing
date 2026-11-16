@@ -276,8 +276,10 @@ function Intro({ review }) {
       <Aside>
       <div className="mt-auto">
         {driver.team && driver.team.tier !== 0 && (
-          <div className="st-land mb-4" style={{ "--d": "1100ms" }}>
-            <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={72} />
+          // The logo on its own light tile: a team logo in the team colour
+          // would vanish on a slide painted in that same colour.
+          <div className="st-land mb-4 inline-flex items-center justify-center rounded-2xl p-3" style={{ "--d": "1100ms", background: "#f6f5f1", boxShadow: "0 1px 0 rgba(0,0,0,0.08)" }}>
+            <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={64} />
           </div>
         )}
         <Line d={1300}>

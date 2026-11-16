@@ -23,9 +23,23 @@ const DURATION = { quiz: 15000, intro: 5200, rounds: 7500, training: 8500, field
 const durationOf = (slide) => (DURATION[slide.key] || 6500) + (hasTease(slide.key) && !motionOff() ? TEASE_MS : 0);
 const HOLD_MS = 200;
 
+// How one slide hands over to the next. They take turns, so no two moves in
+// a row look the same; going back always slides the earlier slide back in
+// from the left. Each is a pair of classes in review/story.css: one for the
+// slide coming in, one for the slide going out underneath it.
+const TRANSITIONS = ["wipe", "circle", "push", "slash", "rise", "zoom"];
+const TRANSITION_MS = 720;
+const transitionInto = (n, back) => (back ? "back" : TRANSITIONS[(n - 1 + TRANSITIONS.length) % TRANSITIONS.length]);
+
 export default function Story({ review, slides, onClose }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
+  // The slide being left, kept on screen under the new one while the move
+  // runs: { i, tr }.
+  const [from, setFrom] = useState(null);
+  const fromTimer = useRef(0);
+  const origin = useRef({ x: "50%", y: "50%" });
+  useEffect(() => () => clearTimeout(fromTimer.current), []);
   const frameRef = useRef(null);
   const barRef = useRef(null);
   const progress = useRef(0);
@@ -40,9 +54,14 @@ export default function Story({ review, slides, onClose }) {
     (to) => {
       const n = Math.max(0, Math.min(last, to));
       progress.current = 0;
+      if (n !== i && !motionOff()) {
+        setFrom({ i, tr: transitionInto(n, n < i) });
+        clearTimeout(fromTimer.current);
+        fromTimer.current = setTimeout(() => setFrom(null), TRANSITION_MS + 60);
+      }
       setI(n);
     },
-    [last]
+    [last, i]
   );
   const next = useCallback(() => (i < last ? go(i + 1) : null), [i, last, go]);
   const prev = useCallback(() => go(i - 1), [i, go]);
@@ -115,6 +134,8 @@ export default function Story({ review, slides, onClose }) {
     }
     const box = frameRef.current?.getBoundingClientRect();
     if (!box) return;
+    // The circle opens where the frame was tapped.
+    origin.current = { x: `${Math.round(e.clientX - box.left)}px`, y: `${Math.round(e.clientY - box.top)}px` };
     if (e.clientX - box.left < box.width / 3) prev();
     else next();
   };
@@ -128,6 +149,9 @@ export default function Story({ review, slides, onClose }) {
   };
 
   const colours = slideColours(slide.key, storyColour(review));
+  // Every slide carries its own colours, so the one going out keeps its look
+  // while the next one comes in over it.
+  const layerStyle = (s) => slideColours(s.key, storyColour(review));
   // Portalled to <body>, like the site's Modal: a fixed overlay inside a
   // transformed ancestor (the page's own entrance) would land in the wrong
   // place, under the menu.
@@ -180,11 +204,23 @@ export default function Story({ review, slides, onClose }) {
             </span>
           </div>
         </div>
-        <div key={slide.key} className="relative z-[1] flex min-h-0 flex-1 flex-col">
-          <Wide.Provider value={wide}>
-            <StorySlide slide={slide} review={review} onReplay={() => go(0)} onNext={next} />
-          </Wide.Provider>
-        </div>
+        <Wide.Provider value={wide}>
+          {/* One keyed list, so the slide going out stays mounted as it is
+              (its animations do not start over) while the new one joins. */}
+          {[
+            ...(from && slides[from.i] && from.i !== i ? [{ s: slides[from.i], cls: `st-out-${from.tr}`, out: true }] : []),
+            { s: slide, cls: from ? `st-in-${from.tr}` : "", out: false },
+          ].map(({ s, cls, out }) => (
+            <div
+              key={s.key}
+              className={`st-layer ${cls}`}
+              style={{ ...layerStyle(s), "--ox": origin.current.x, "--oy": origin.current.y }}
+              aria-hidden={out || undefined}
+            >
+              <StorySlide slide={s} review={review} onReplay={() => go(0)} onNext={next} />
+            </div>
+          ))}
+        </Wide.Provider>
       </div>
       <button type="button" className="st-side" onClick={next} disabled={i === last} aria-label="Next slide">
         <ChevronRight size={20} strokeWidth={2.25} />

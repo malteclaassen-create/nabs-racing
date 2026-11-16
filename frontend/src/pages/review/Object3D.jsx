@@ -110,7 +110,14 @@ function keyLight(scene, at = [1.6, 4, 2.2], span = 1.8) {
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.radius = 4;
-  Object.assign(key.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 0.5, far: 12 });
+  Object.assign(key.shadow.camera, {
+    left: -span,
+    right: span,
+    top: span,
+    bottom: -span,
+    near: 0.5,
+    far: 12,
+  });
   scene.add(key);
   return key;
 }
@@ -150,8 +157,8 @@ function ribbonGeometry(curve, n, w, h) {
   return geo;
 }
 
-// The circuit as a thick band lying in space: it draws itself, a dot in the
-// slide's accent laps it with a short trail, and the whole thing turns.
+// The circuit as a thin band lying in space: it draws itself from the start
+// line round, then sways gently.
 function trackThing({ scene, camera, pal, data }) {
   const curve = circuitCurve(data?.track);
   if (!curve) return null;
@@ -161,21 +168,18 @@ function trackThing({ scene, camera, pal, data }) {
   const group = new THREE.Group();
   scene.add(group);
   const geo = ribbonGeometry(curve, 1200, 0.038, 0.022);
-  const band = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: pal.pop, roughness: 0.42, metalness: 0.05, side: THREE.DoubleSide }));
+  const band = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({
+      color: pal.pop,
+      roughness: 0.42,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    }),
+  );
   band.castShadow = true;
   group.add(band);
   const total = geo.index.count;
-
-  const carMat = new THREE.MeshStandardMaterial({ color: pal.fg, emissive: pal.fg, emissiveIntensity: 0.25, roughness: 0.3 });
-  // The dot and a thin trail behind it that fades out.
-  const trail = Array.from({ length: 12 }, (_, k) => {
-    const mat = k === 0 ? carMat : new THREE.MeshBasicMaterial({ color: pal.fg, transparent: true, opacity: 0.55 * (1 - k / 12) });
-    const m = new THREE.Mesh(new THREE.SphereGeometry(k === 0 ? 0.04 : 0.018, 20, 14), mat);
-    m.castShadow = k === 0;
-    m.visible = false;
-    group.add(m);
-    return m;
-  });
 
   const ELEV = 0.9;
   const fit = (cam, aspect) => {
@@ -186,7 +190,6 @@ function trackThing({ scene, camera, pal, data }) {
     cam.position.set(0, Math.sin(ELEV) * d, Math.cos(ELEV) * d);
     cam.lookAt(0, -0.02, 0);
   };
-  const p = new THREE.Vector3();
   const update = (t) => {
     const draw = easeOut(t / 1.8);
     geo.setDrawRange(0, Math.max(0, Math.floor((total * draw) / 18) * 18));
@@ -195,12 +198,6 @@ function trackThing({ scene, camera, pal, data }) {
     group.rotation.z = Math.sin(t * 0.21) * 0.05;
     const s = 0.9 + 0.1 * easeOut(t / 1.2);
     group.scale.setScalar(s);
-    const lap = t > 1.6 ? ((t - 1.6) * 0.075) % 1 : 0;
-    trail.forEach((m, k) => {
-      m.visible = t > 1.6;
-      curve.getPointAt((lap - k * 0.007 + 1) % 1, p);
-      m.position.set(p.x, k === 0 ? 0.06 : 0.04, p.z);
-    });
   };
   return { fit, update, still: 6 };
 }
@@ -256,8 +253,16 @@ function medalsThing({ scene, data, setCamera }) {
   const coins = places.map((pos, k) => {
     const metal = MEDAL_METAL[pos - 1] ?? GOLD;
     const face = medalFace(metal, `P${pos}`);
-    const side = new THREE.MeshStandardMaterial({ color: metal, metalness: 1, roughness: 0.26 });
-    const front = new THREE.MeshStandardMaterial({ map: face, metalness: 0.9, roughness: 0.3 });
+    const side = new THREE.MeshStandardMaterial({
+      color: metal,
+      metalness: 1,
+      roughness: 0.26,
+    });
+    const front = new THREE.MeshStandardMaterial({
+      map: face,
+      metalness: 0.9,
+      roughness: 0.3,
+    });
     const geo = new THREE.CylinderGeometry(1, 1, 0.16, 72);
     const m = new THREE.Mesh(geo, [side, front, front]);
     m.rotation.x = Math.PI / 2;
@@ -271,7 +276,12 @@ function medalsThing({ scene, data, setCamera }) {
   const fit = (_c, aspect) => {
     const w = cols;
     const h = w / aspect;
-    Object.assign(cam, { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 });
+    Object.assign(cam, {
+      left: -w / 2,
+      right: w / 2,
+      top: h / 2,
+      bottom: -h / 2,
+    });
     cam.updateProjectionMatrix();
     cell = h / rows;
     const r = Math.min(0.4, cell * 0.42);
@@ -319,10 +329,22 @@ function trophyThing({ scene }) {
         o.geometry = smooth;
       }
       o.material = n.includes("cup")
-        ? new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.16 })
+        ? new THREE.MeshStandardMaterial({
+            color: GOLD,
+            metalness: 1,
+            roughness: 0.16,
+          })
         : n.includes("plate")
-          ? new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.25 })
-          : new THREE.MeshStandardMaterial({ color: 0x141416, metalness: 0.1, roughness: 0.55 });
+          ? new THREE.MeshStandardMaterial({
+              color: SILVER,
+              metalness: 1,
+              roughness: 0.25,
+            })
+          : new THREE.MeshStandardMaterial({
+              color: 0x141416,
+              metalness: 0.1,
+              roughness: 0.55,
+            });
     });
     group.add(gltf.scene);
   });
@@ -350,106 +372,130 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
 
   useEffect(() => {
     if (failed) return undefined;
-    const el = box.current;
-    if (!el) return undefined;
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch {
-      setFailed(true);
-      return undefined;
-    }
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // Neutral keeps the slide colours as they are; ACES washed them out.
-    renderer.toneMapping = THREE.NeutralToneMapping;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    const canvas = renderer.domElement;
-    canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block";
-    el.appendChild(canvas);
-
-    const css = getComputedStyle(el);
-    const colour = (name, fb) => {
-      const v = css.getPropertyValue(name).trim();
-      return new THREE.Color(/^#[0-9a-f]{3,8}$/i.test(v) ? v.slice(0, 7) : fb);
-    };
-    const pal = { fg: colour("--g-fg", "#f6f5f1"), bg: colour("--g-bg", "#0b0b0c"), pop: colour("--g-pop", "#f4afc6"), mark: colour("--g-mark", "#f4afc6") };
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
-    const env = pmrem.fromScene(room, 0.04).texture;
-    const scene = new THREE.Scene();
-    scene.environment = env;
-    let camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-    const thing = THINGS[kind]?.({ scene, camera, pal, data: JSON.parse(key), setCamera: (c) => (camera = c) });
-    const textures = [];
-    // Nothing to draw (a circuit without an outline on file): the flat
-    // drawing instead.
-    if (!thing) {
-      env.dispose();
-      pmrem.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      canvas.remove();
-      setFailed(true);
-      return undefined;
-    }
-
-    const still = motionOff();
-    let raf = 0;
-    let t = 0;
-    let last = performance.now();
-    const start = last + delay;
-    const draw = (time) => {
-      thing?.update(time);
-      renderer.render(scene, camera);
-    };
-    const size = () => {
-      const r = el.getBoundingClientRect();
-      const w = Math.max(1, r.width);
-      const h = Math.max(1, r.height);
-      renderer.setSize(w, h, false);
-      if (camera.isPerspectiveCamera) {
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
+    // The scene is built once the slide has nearly finished coming in, so
+    // setting it up does not make the transition stutter on a slow phone.
+    const SETTLE_MS = 420;
+    const start = () => {
+      const el = box.current;
+      if (!el) return undefined;
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      } catch {
+        setFailed(true);
+        return undefined;
       }
-      thing?.fit?.(camera, w / h);
-      if (still) draw(thing?.still ?? 6);
-    };
-    size();
-    const ro = new ResizeObserver(size);
-    ro.observe(el);
-    const frame = (now) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      if (now >= start && !el.closest(".st-paused")) t += dt;
-      draw(t);
-      raf = requestAnimationFrame(frame);
-    };
-    if (still) draw(thing?.still ?? 6);
-    else raf = requestAnimationFrame(frame);
-    let gone = false;
-    thing?.ready?.then(() => !gone && still && draw(thing.still ?? 6)).catch(() => {});
+      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      // Neutral keeps the slide colours as they are; ACES washed them out.
+      renderer.toneMapping = THREE.NeutralToneMapping;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      const canvas = renderer.domElement;
+      canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block";
+      el.appendChild(canvas);
 
-    return () => {
-      gone = true;
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      scene.traverse((o) => {
-        o.geometry?.dispose();
-        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-        for (const m of mats) {
-          if (m.map) textures.push(m.map);
-          m.dispose();
-        }
+      const css = getComputedStyle(el);
+      const colour = (name, fb) => {
+        const v = css.getPropertyValue(name).trim();
+        return new THREE.Color(/^#[0-9a-f]{3,8}$/i.test(v) ? v.slice(0, 7) : fb);
+      };
+      const pal = {
+        fg: colour("--g-fg", "#f6f5f1"),
+        bg: colour("--g-bg", "#0b0b0c"),
+        pop: colour("--g-pop", "#f4afc6"),
+        mark: colour("--g-mark", "#f4afc6"),
+      };
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const room = new RoomEnvironment();
+      const env = pmrem.fromScene(room, 0.04).texture;
+      const scene = new THREE.Scene();
+      scene.environment = env;
+      let camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+      const thing = THINGS[kind]?.({
+        scene,
+        camera,
+        pal,
+        data: JSON.parse(key),
+        setCamera: (c) => (camera = c),
       });
-      textures.forEach((x) => x.dispose());
-      env.dispose();
-      pmrem.dispose();
-      room.dispose?.();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      canvas.remove();
+      const textures = [];
+      // Nothing to draw (a circuit without an outline on file): the flat
+      // drawing instead.
+      if (!thing) {
+        env.dispose();
+        pmrem.dispose();
+        renderer.dispose();
+        renderer.forceContextLoss();
+        canvas.remove();
+        setFailed(true);
+        return undefined;
+      }
+
+      const still = motionOff();
+      let raf = 0;
+      let t = 0;
+      let last = performance.now();
+      const begin = last + Math.max(0, delay - SETTLE_MS);
+      const draw = (time) => {
+        thing?.update(time);
+        renderer.render(scene, camera);
+      };
+      const size = () => {
+        const r = el.getBoundingClientRect();
+        const w = Math.max(1, r.width);
+        const h = Math.max(1, r.height);
+        renderer.setSize(w, h, false);
+        if (camera.isPerspectiveCamera) {
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+        }
+        thing?.fit?.(camera, w / h);
+        if (still) draw(thing?.still ?? 6);
+      };
+      size();
+      const ro = new ResizeObserver(size);
+      ro.observe(el);
+      const frame = (now) => {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (now >= begin && !el.closest(".st-paused")) t += dt;
+        draw(t);
+        raf = requestAnimationFrame(frame);
+      };
+      if (still) draw(thing?.still ?? 6);
+      else raf = requestAnimationFrame(frame);
+      let gone = false;
+      thing?.ready?.then(() => !gone && still && draw(thing.still ?? 6)).catch(() => {});
+
+      return () => {
+        gone = true;
+        cancelAnimationFrame(raf);
+        ro.disconnect();
+        scene.traverse((o) => {
+          o.geometry?.dispose();
+          const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+          for (const m of mats) {
+            if (m.map) textures.push(m.map);
+            m.dispose();
+          }
+        });
+        textures.forEach((x) => x.dispose());
+        env.dispose();
+        pmrem.dispose();
+        room.dispose?.();
+        renderer.dispose();
+        renderer.forceContextLoss();
+        canvas.remove();
+      };
+    };
+    let cleanup;
+    const wait = setTimeout(() => {
+      cleanup = start();
+    }, SETTLE_MS);
+    return () => {
+      clearTimeout(wait);
+      cleanup?.();
     };
   }, [kind, key, delay, failed]);
 

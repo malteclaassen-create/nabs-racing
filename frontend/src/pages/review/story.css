@@ -277,3 +277,73 @@
 :where(.wr-line) + :where(.wr-line) { margin-top: var(--gap-xs); }
 :where(.wr-line, .wr-echo, .st-say) + :where(.wr-echo, .st-say),
 :where(.wr-echo, .st-say) + :where(.wr-line) { margin-top: var(--gap-m); }
+
+/* ----------------------------------------------------------- transitions */
+/* Each slide is a layer with its own colours (review/Story.jsx). The new
+   one comes in over the old one in one of six ways, taking turns. */
+.st-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--g-bg);
+  color: var(--g-fg);
+}
+.st-layer[aria-hidden="true"] { pointer-events: none; }
+.st-layer[class*="st-in-"] { z-index: 2; }
+.st-in-wipe, .st-in-circle, .st-in-push, .st-in-slash, .st-in-rise, .st-in-zoom, .st-in-back,
+.st-out-wipe, .st-out-circle, .st-out-push, .st-out-slash, .st-out-rise, .st-out-zoom, .st-out-back {
+  animation-duration: 720ms;
+  animation-timing-function: cubic-bezier(0.76, 0, 0.18, 1);
+  animation-fill-mode: both;
+}
+
+/* A hard edge sweeping across from the right. */
+@keyframes st-in-wipe { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+@keyframes st-out-wipe { to { transform: translateX(-14%); } }
+.st-in-wipe { animation-name: st-in-wipe; }
+.st-out-wipe { animation-name: st-out-wipe; }
+
+/* A circle opening from where the frame was tapped. */
+@keyframes st-in-circle { from { clip-path: circle(0 at var(--ox) var(--oy)); } to { clip-path: circle(150% at var(--ox) var(--oy)); } }
+@keyframes st-out-circle { to { transform: scale(0.94); } }
+.st-in-circle { animation-name: st-in-circle; animation-duration: 820ms; }
+.st-out-circle { animation-name: st-out-circle; animation-duration: 820ms; }
+
+/* The new slide pushes the old one out to the left. */
+@keyframes st-in-push { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes st-out-push { to { transform: translateX(-100%); } }
+.st-in-push { animation-name: st-in-push; }
+.st-out-push { animation-name: st-out-push; }
+
+/* A slanted edge cutting across, like a sign being swapped. */
+@keyframes st-in-slash { from { clip-path: polygon(0 0, 0 0, -40% 100%, -40% 100%); } to { clip-path: polygon(0 0, 140% 0, 100% 100%, -40% 100%); } }
+@keyframes st-out-slash { to { transform: translateX(-8%); } }
+.st-in-slash { animation-name: st-in-slash; }
+.st-out-slash { animation-name: st-out-slash; }
+
+/* Up from below, with the old slide sinking back. */
+@keyframes st-in-rise { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes st-out-rise { to { transform: scale(0.9); opacity: 0.35; } }
+.st-in-rise { animation-name: st-in-rise; }
+.st-out-rise { animation-name: st-out-rise; }
+
+/* In from close up while the old one falls away. */
+@keyframes st-in-zoom { from { transform: scale(1.35); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes st-out-zoom { to { transform: scale(0.8); opacity: 0; } }
+.st-in-zoom { animation-name: st-in-zoom; }
+.st-out-zoom { animation-name: st-out-zoom; }
+
+/* Back: the earlier slide slides in from the left. */
+@keyframes st-in-back { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes st-out-back { to { transform: translateX(30%); } }
+.st-in-back { animation-name: st-in-back; animation-duration: 520ms; }
+.st-out-back { animation-name: st-out-back; animation-duration: 520ms; }
+
+/* Holding the frame does not freeze a move half way. */
+.st-paused .st-layer { animation-play-state: running !important; }
+@media (prefers-reduced-motion: reduce) {
+  .st-layer { animation: none !important; }
+}
+.fx-lite .st-layer { animation: none !important; }
