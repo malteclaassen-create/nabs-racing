@@ -8,7 +8,7 @@
 // When the person looking is not the driver, the same lines carry the
 // driver's name instead of "you" (review.own, from the backend). Every
 // figure is real (review/storySlides.mjs, review/copy.mjs).
-import { useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MEDAL, readableInkOn } from "../../components/ui.jsx";
 import CircuitMap from "../../components/CircuitMap.jsx";
@@ -18,6 +18,12 @@ import { circuitFor } from "../../data/circuits.js";
 import { nth } from "./copy.mjs";
 import { seasonList } from "./storySlides.mjs";
 import { saveSharePicture } from "./sharePicture.js";
+import { motionOff } from "../../hooks/motion.js";
+
+// How long a slide's opening line holds the frame before the slide itself
+// comes in (review/story.css shifts every animation by it).
+export const TEASE_MS = 2100;
+const Offset = createContext(0);
 
 const MEDAL_INK = MEDAL.map((m) => readableInkOn(m));
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -69,6 +75,7 @@ function Echo({ value, d = 300, size, className = "" }) {
   // figures run about 0.72 em), leaving room for the echoes.
   const ems = [...v].reduce((w, ch) => w + (/[,.]/.test(ch) ? 0.3 : ch === "%" ? 1.05 : /[A-Z]/.test(ch) ? 0.8 : 0.74), 0);
   if (!size) size = `min(56cqi, ${(80 / Math.max(0.74, ems)).toFixed(1)}cqi, 30cqh)`;
+  const shown = useCountUp(v, d + useContext(Offset));
   return (
     <div
       className={`wr-echo wr-big wr-num st-land whitespace-nowrap ${className}`}
@@ -80,15 +87,46 @@ function Echo({ value, d = 300, size, className = "" }) {
       }}
     >
       <span className="wr-ghost" style={{ "--sx": "0.09em", "--sy": "0.07em", "--d": `${d + 350}ms` }} aria-hidden="true">
-        {v}
+        {shown}
       </span>
       <span className="wr-ghost" style={{ "--sx": "0.045em", "--sy": "0.035em", "--d": `${d + 250}ms` }} aria-hidden="true">
-        {v}
+        {shown}
       </span>
-      <span className="relative">{v}</span>
+      <span className="relative" aria-label={v}>
+        {shown}
+      </span>
     </div>
   );
 }
+
+// A figure counts up to its value as it lands, the way Wrapped runs up a
+// total. Only a single number of two digits or more ("1,092", "+33", "58%");
+// "5-3" or "1st" are shown as they are.
+function useCountUp(v, delay) {
+  const m = /^([^\d]*)([\d,]+)([^\d]*)$/.exec(v);
+  const target = m ? Number(m[2].replace(/,/g, "")) : null;
+  const counts = target != null && target >= 10 && !motionOff();
+  const [n, setN] = useState(counts ? 0 : target);
+  useEffect(() => {
+    if (!counts) return undefined;
+    let raf = 0;
+    const t0 = performance.now() + delay;
+    const dur = Math.min(1500, 650 + target * 4);
+    const tick = (t) => {
+      const p = Math.max(0, Math.min(1, (t - t0) / dur));
+      setN(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [counts, target, delay]);
+  if (!m || !counts) return v;
+  const body = m[2].includes(",") ? n.toLocaleString("en-GB") : String(n);
+  return `${m[1]}${body}${m[3]}`;
+}
+
+// "Top 2%", as Wrapped puts a listener among all the others.
+export const topShare = (rank) => (rank ? Math.max(1, Math.ceil((rank.rank / rank.of) * 100)) : null);
 
 // A small label, the quiet voice set against the loud one.
 const Kicker = ({ d = 0, className = "", children }) => (
@@ -274,7 +312,7 @@ function Rounds({ review }) {
         </Line>
         {laps?.rank && (
           <Kicker d={1500 + n * 70} className="mt-2 lv-mute normal-case tracking-normal">
-            {rankWords(laps.rank, "race laps")}
+            {topShare(laps.rank) <= 25 ? `That put ${v.you} in the top ${topShare(laps.rank)}% of the league for race laps.` : rankWords(laps.rank, "race laps")}
           </Kicker>
         )}
       </div>
@@ -302,6 +340,11 @@ function Training({ slide, review }) {
         Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
       </Line>
       <div className="relative mt-auto">
+        {!first && topShare(slide.rank) <= 25 && (
+          <Stamp d={1500} className="-top-24 right-0">
+            Top {topShare(slide.rank)}% of the league
+          </Stamp>
+        )}
         {first && (
           <Stamp d={1500} className="-top-24 right-0">
             {slide.rank.shared ? "Joint most" : "Most"} in the league
@@ -910,7 +953,93 @@ function Final({ slide, review, onReplay, onSheet }) {
   );
 }
 
+// "Guess your best race": four circuits, one of them right. Tapping one shows
+// the answer and moves on to the slide that tells it; left alone, the clock
+// runs out and the story moves on all the same.
+function Quiz({ slide, review, onNext }) {
+  const v = voiceOf(review);
+  const [pick, setPick] = useState(null);
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const answer = slide.answer;
+  const choose = (t) => {
+    if (pick) return;
+    setPick(t);
+    timer.current = setTimeout(() => onNext?.(), 1900);
+  };
+  return (
+    <Card>
+      <Kicker d={100}>Quick question</Kicker>
+      <Fill text={review.own ? "Guess your" : `Guess ${v.your}`} d={250} className="mt-3" />
+      <Fill text="best race" d={400} outline />
+      <div data-st-keep className="mt-auto space-y-2.5">
+        {slide.options.map((t, k) => {
+          const right = pick && t === answer;
+          const wrong = pick === t && t !== answer;
+          return (
+            <div key={t} className="st-in" style={{ "--d": `${700 + k * 140}ms` }}>
+              <button
+                type="button"
+                onClick={() => choose(t)}
+                className="flex w-full items-center gap-3 rounded-full py-2 pl-2 pr-5 text-left transition-[background,color,opacity] duration-300"
+                style={{
+                  ...(right ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : { boxShadow: "inset 0 0 0 2px var(--g-fg)" }),
+                  ...(pick && !right ? { opacity: wrong ? 0.6 : 0.25 } : null),
+                }}
+              >
+                <span className="wr-cover w-11 shrink-0 rounded-full" style={right ? { background: "var(--g-mark-fg)", color: "var(--g-mark)" } : undefined}>
+                  <Outline track={t} className="h-[66%] w-[66%]" draw={false} width={8} />
+                </span>
+                <span className={`wr-big min-w-0 flex-1 truncate text-[1.25rem] uppercase ${wrong ? "line-through decoration-[3px]" : ""}`}>{t}</span>
+                {pick && (right || wrong) && <span className="wr-big shrink-0 text-[1.1rem]">{right ? "P" + slide.position : "X"}</span>}
+              </button>
+            </div>
+          );
+        })}
+        <div className="h-8 pt-1">
+          {pick && (
+            <Line d={0} size="min(5.6cqi, 3cqh)">
+              {pick === answer ? <Mark>Right.</Mark> : <>Not quite.</>}
+            </Line>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// The line a slide opens on, alone on the frame, before the figure comes:
+// Wrapped's "but who did you play the most?" beat.
+function teaseOf(key, review) {
+  const v = voiceOf(review);
+  switch (key) {
+    case "training":
+      return `${v.You} did not only drive on race nights.`;
+    case "fastest":
+      return "One lap stood out above the rest.";
+    case "field":
+      return `So how did ${v.you} compare with everyone else?`;
+    case "tyres":
+      return `Which tyre did ${v.you} trust the most?`;
+    case "journey":
+      return "And the championship?";
+    default:
+      return null;
+  }
+}
+
+function Tease({ text }) {
+  return (
+    <div className="st-tease pointer-events-none absolute inset-0 z-20 flex items-center px-6 sm:px-7" aria-hidden="true">
+      <p className="wr-big" style={{ fontSize: "min(11cqi, 6cqh)", lineHeight: 1 }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
 const SLIDES = {
+  quiz: Quiz,
   intro: Intro,
   rounds: Rounds,
   training: Training,
@@ -929,7 +1058,20 @@ const SLIDES = {
   final: Final,
 };
 
-export default function StorySlide({ slide, review, onReplay, onSheet }) {
+export default function StorySlide({ slide, review, onReplay, onSheet, onNext }) {
   const Comp = SLIDES[slide.key];
-  return Comp ? <Comp slide={slide} review={review} onReplay={onReplay} onSheet={onSheet} /> : null;
+  if (!Comp) return null;
+  const tease = teaseOf(slide.key, review);
+  const body = <Comp slide={slide} review={review} onReplay={onReplay} onSheet={onSheet} onNext={onNext} />;
+  if (!tease) return body;
+  return (
+    <Offset.Provider value={TEASE_MS}>
+      <Tease text={tease} />
+      <div className="relative flex min-h-0 flex-1 flex-col" style={{ "--d0": `${TEASE_MS}ms` }}>
+        {body}
+      </div>
+    </Offset.Provider>
+  );
 }
+
+export const hasTease = (key) => ["training", "fastest", "field", "tyres", "journey"].includes(key);

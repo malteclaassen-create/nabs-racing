@@ -12,14 +12,14 @@ import { createPortal } from "react-dom";
 import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
 import { motionOff } from "../../hooks/motion.js";
-import StorySlide from "./StorySlide.jsx";
+import StorySlide, { hasTease, TEASE_MS } from "./StorySlide.jsx";
 import { slideColours, storyColour } from "./wrapPalette.js";
 import "./story.css";
 
 // How long a slide stays before the next one, in ms. Longer where there is
 // more to read.
-const DURATION = { intro: 5200, rounds: 7500, training: 8500, field: 8500, journey: 8000, team: 8000, honours: 7500, podiums: 7000, tyres: 7500, limits: 7500 };
-const durationOf = (slide) => DURATION[slide.key] || 6500;
+const DURATION = { quiz: 15000, intro: 5200, rounds: 7500, training: 8500, field: 8500, journey: 8000, team: 8000, honours: 7500, podiums: 7000, tyres: 7500, limits: 7500 };
+const durationOf = (slide) => (DURATION[slide.key] || 6500) + (hasTease(slide.key) && !motionOff() ? TEASE_MS : 0);
 const HOLD_MS = 200;
 
 export default function Story({ review, slides, onClose, onSheet }) {
@@ -179,7 +179,7 @@ export default function Story({ review, slides, onClose, onSheet }) {
           </div>
         </div>
         <div key={slide.key} className="relative z-[1] flex min-h-0 flex-1 flex-col">
-          <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} />
+          <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} onNext={next} />
         </div>
       </div>
       <button type="button" className="st-side" onClick={next} disabled={i === last} aria-label="Next slide">
