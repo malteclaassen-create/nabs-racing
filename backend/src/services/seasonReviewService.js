@@ -218,9 +218,10 @@ export function rankAmong(values, mine, { more = true } = {}) {
 export function honoursFor(honours, { driverId, teamId = null, position = null, complete = false }) {
   const out = [];
   if (!complete || !honours) return out;
-  if (position === 1) out.push({ key: "champion", title: "Champion", detail: honours.seasonName || null });
-  else if (position === 2) out.push({ key: "vice", title: "Runner-up", detail: "Second in the championship" });
-  else if (position === 3) out.push({ key: "third", title: "Third overall", detail: "Third in the championship" });
+  // A title says it all on its own: no detail that only repeats it.
+  if (position === 1) out.push({ key: "champion", title: "Champion", detail: null });
+  else if (position === 2) out.push({ key: "vice", title: "Runner-up", detail: null });
+  else if (position === 3) out.push({ key: "third", title: "Third in the championship", detail: null });
   for (const t of honours.teamChampions || []) {
     if (teamId && t.teamId === teamId) out.push({ key: "team", title: "Team champions", detail: `${t.name}, Tier ${t.tier}` });
   }
@@ -322,12 +323,12 @@ async function seasonFacts(prisma, seasonId) {
   const sprintIdOf = await readSprintChildren(prisma, [...run.map((r) => r.id), ...[...div2Of.values()].map((r) => r.id)]).catch(() => new Map());
   const byId = new Map(all.map((r) => [r.id, r]));
 
-  // Pole is per round, and only the feature race has one (a sprint grid is
-  // not a qualifying result).
+  // Pole is per round: the feature race's holder, else the sprint's (the
+  // site's one rule for it, driverProfileService / recordsService).
   const featureIds = [...run.map((r) => r.id), ...[...div2Of.values()].map((r) => r.id)];
   const raceIds = [...featureIds, ...sprintIdOf.values()];
   const [poles, fastest] = await Promise.all([
-    readPoleHolders(prisma, featureIds).catch(() => new Map()),
+    readPoleHolders(prisma, raceIds).catch(() => new Map()),
     fastestLapHolders(prisma, raceIds),
   ]);
   const dotd = new Map();
@@ -337,6 +338,9 @@ async function seasonFacts(prisma, seasonId) {
   }
   return { rounds, run, complete, div2Of, sprintIdOf, poles, fastest, dotd };
 }
+
+// The round's pole sitter: the feature race's, else its sprint's.
+const poleOf = (facts, fid) => (fid ? facts.poles.get(fid) ?? facts.poles.get(facts.sprintIdOf.get(fid)) ?? null : null);
 
 // Each driver's season totals the profile cannot rank on its own, for every
 // driver of the table at once: wins and podiums from the table's own cells,
@@ -351,6 +355,8 @@ function fieldTallies(rows, facts, tel, division) {
       points: row.total ?? 0,
       wins: fin.filter((c) => c.position === 1).length,
       podiums: fin.filter((c) => c.position <= 3).length,
+      finishes: fin.length,
+      avgFinish: avg(fin.map((c) => c.position)),
       poles: 0,
       fastestLaps: 0,
       dotd: 0,
@@ -361,11 +367,15 @@ function fieldTallies(rows, facts, tel, division) {
       telemetryStarts: 0,
     });
   }
+  // The championship's own races, so the stored figures are summed over the
+  // same races the table is (no special events, no other division).
+  const champ = new Set();
   for (const round of facts.run) {
     const fid = featureOf(round);
     if (!fid) continue;
     const ids = [fid, facts.sprintIdOf.get(fid)].filter(Boolean);
-    const pole = facts.poles.get(fid);
+    ids.forEach((id) => champ.add(id));
+    const pole = poleOf(facts, fid);
     if (pole && out.has(pole)) out.get(pole).poles += 1;
     for (const id of ids) {
       for (const d of facts.fastest.get(id) || []) if (out.has(d)) out.get(d).fastestLaps += 1;
@@ -374,8 +384,9 @@ function fieldTallies(rows, facts, tel, division) {
     }
   }
   for (const [key, t] of tel) {
-    const driverId = key.slice(key.indexOf("|") + 1);
-    const o = out.get(driverId);
+    const cut = key.indexOf("|");
+    if (!champ.has(key.slice(0, cut))) continue;
+    const o = out.get(key.slice(cut + 1));
     if (!o || t.contacts == null) continue;
     o.overtakes = (o.overtakes || 0) + (t.overtakes || 0);
     o.lapsLed = (o.lapsLed || 0) + (t.lapsLed || 0);
@@ -458,7 +469,9 @@ async function buildSeasonReview(prisma, driverId) {
   const after = journeyTables(
     { rows: table, raceNumbers: profile.season?.raceNumbers || facts.rounds.map((r) => r.number), dropWorst: profile.season?.dropWorst || 0 },
     facts.run.map((r) => r.number),
-    facts.complete && !profile.season?.officialTotals ? rows : null
+    // The table as it stands IS the table after the latest round (hand-set
+    // points and the champion rule included), so the line ends on it.
+    !profile.season?.officialTotals ? rows : null
   );
   const journey = (after.get(driverId) || []).map((j) => ({ ...j, track: trackOf.get(j.round) || null }));
   // Seasons scored off the league's own sheet (officialTotals) do not add up
@@ -466,27 +479,22 @@ async function buildSeasonReview(prisma, driverId) {
   const showJourney = !profile.season?.officialTotals && journey.length >= MIN_ROUNDS;
   const peak = showJourney ? journey.reduce((best, j) => (!best || j.position < best.position ? j : best), null) : null;
 
-  // Everybody's season, for the ranks.
-  const tallies = fieldTallies(rows, facts, tel, division);
-  const mine = tallies.get(driverId) || {};
-  const all = (key) => [...tallies.values()].map((t) => t[key]);
-  const telStarts = mine.telemetryStarts || 0;
-  // Contact per race, fewest first, among drivers who raced a fair share of
-  // the rounds the figures exist for (two races and a clean sheet is luck).
-  const minTel = Math.max(3, Math.ceil(Math.max(...all("telemetryStarts"), 0) / 2));
-  const perRaceContact = [...tallies.values()].filter((t) => t.telemetryStarts >= minTel).map((t) => t.contacts / t.telemetryStarts);
-  const ranks = {
-    wins: rankAmong(all("wins"), mine.wins),
-    podiums: rankAmong(all("podiums"), mine.podiums),
-    poles: rankAmong(all("poles"), mine.poles),
-    fastestLaps: rankAmong(all("fastestLaps"), mine.fastestLaps),
-    overtakes: rankAmong(all("overtakes"), mine.overtakes),
-    lapsLed: rankAmong(all("lapsLed"), mine.lapsLed),
-    contactPerRace: telStarts >= minTel ? rankAmong(perRaceContact, mine.contacts / telStarts, { more: false }) : null,
+  // Every round as a line of the sheet, read off the race the driver really
+  // drove that night: a driver can race in both divisions in one season (a
+  // promotion, a reserve taking a Division 2 seat), and the profile files a
+  // Division 2 result under its round.
+  const ownRaceIds = new Set((await prisma.raceResult.findMany({ where: { driverId }, select: { raceId: true } }).catch(() => [])).map((r) => r.raceId));
+  const featureOf = (raceId) => {
+    const child = facts.div2Of.get(raceId)?.id;
+    if (child && ownRaceIds.has(child)) return child;
+    return division === 2 && child ? child : raceId;
   };
-
-  // Every round as a line of the sheet.
-  const featureOf = (raceId) => (division === 2 ? facts.div2Of.get(raceId)?.id : raceId);
+  const telOf = (...ids) => {
+    const got = ids.filter(Boolean).map((id) => tel.get(`${id}|${driverId}`)).filter((t) => t && t.contacts != null);
+    if (!got.length) return null;
+    const sum = (k) => got.reduce((n, t) => n + (t[k] || 0), 0);
+    return { contacts: sum("contacts"), envContacts: sum("envContacts"), overtakes: sum("overtakes"), lapsLed: sum("lapsLed"), races: got.length };
+  };
   const best = bestResult(profile.perRace);
   const climb = biggestClimb(profile.perRace);
   const afterByRound = new Map(journey.map((j) => [j.round, j.position]));
@@ -494,6 +502,7 @@ async function buildSeasonReview(prisma, driverId) {
     const fid = featureOf(r.raceId);
     const sid = fid ? facts.sprintIdOf.get(fid) : null;
     const flHeld = (id) => !!id && (facts.fastest.get(id)?.has(driverId) || false);
+    const t = r.status === "DNS" && !r.sprint ? null : telOf(fid, sid);
     return {
       round: r.number,
       raceId: r.raceId,
@@ -503,17 +512,57 @@ async function buildSeasonReview(prisma, driverId) {
       grid: r.grid ?? null,
       points: r.points || 0,
       sprint: r.sprint ? { position: r.sprint.position ?? null, status: r.sprint.status, points: r.sprint.points || 0 } : null,
-      pole: !!fid && facts.poles.get(fid) === driverId,
+      pole: poleOf(facts, fid) === driverId,
       fastestLap: flHeld(fid) || flHeld(sid),
       dotd: [fid, sid].some((id) => id && facts.dotd.get(id) === driverId),
-      contacts: r.contacts ?? null,
-      envContacts: r.envContacts ?? null,
+      contacts: t ? t.contacts : null,
+      envContacts: t ? t.envContacts : null,
+      overtakes: t ? t.overtakes : null,
+      lapsLed: t ? t.lapsLed : null,
+      telemetryRaces: t ? t.races : 0,
       after: showJourney ? afterByRound.get(r.number) ?? null : null,
-      // Struck out under the season's drop rule (the table's own reading).
-      dropped: (me?.droppedRounds || []).includes(r.number),
+      // Struck out under the season's drop rule. Only once the season is
+      // over: until then the rule drops the rounds still to come first, and a
+      // round that paid nothing is nothing to strike out.
+      dropped: facts.complete && (r.points || 0) > 0 && (me?.droppedRounds || []).includes(r.number),
       best: !!best && best.round === r.number,
     };
   });
+
+  // Everybody's season, for the ranks. The driver's own line is the one the
+  // rounds above were read from, so the page and its ranks say the same.
+  const tallies = fieldTallies(rows, facts, tel, division);
+  const mine = { ...(tallies.get(driverId) || {}) };
+  const ownTel = rounds.filter((r) => r.contacts != null);
+  mine.poles = rounds.filter((r) => r.pole).length;
+  mine.fastestLaps = rounds.filter((r) => r.fastestLap).length;
+  mine.dotd = rounds.filter((r) => r.dotd).length;
+  mine.overtakes = ownTel.length ? ownTel.reduce((n, r) => n + (r.overtakes || 0), 0) : null;
+  mine.lapsLed = ownTel.length ? ownTel.reduce((n, r) => n + (r.lapsLed || 0), 0) : null;
+  mine.contacts = ownTel.length ? ownTel.reduce((n, r) => n + r.contacts, 0) : null;
+  mine.telemetryStarts = ownTel.reduce((n, r) => n + r.telemetryRaces, 0);
+  tallies.set(driverId, mine);
+  const others = [...tallies.values()];
+  const all = (key) => others.map((t) => t[key]);
+  // Average finish among drivers with a fair share of finishes (two races
+  // and a podium is not an average).
+  const minFin = Math.max(2, Math.ceil(Math.max(...all("finishes"), 0) / 2));
+  const ranks = {
+    wins: rankAmong(all("wins"), mine.wins),
+    podiums: rankAmong(all("podiums"), mine.podiums),
+    poles: rankAmong(all("poles"), mine.poles),
+    fastestLaps: rankAmong(all("fastestLaps"), mine.fastestLaps),
+    overtakes: rankAmong(all("overtakes"), mine.overtakes),
+    lapsLed: rankAmong(all("lapsLed"), mine.lapsLed),
+    avgFinish: mine.finishes >= minFin ? rankAmong(others.filter((t) => t.finishes >= minFin).map((t) => t.avgFinish), mine.avgFinish, { more: false }) : null,
+  };
+  // How many drivers had the server's figures at all: the field the passes
+  // and laps led are ranked in.
+  const telField = others.filter((t) => t.telemetryStarts > 0).length;
+  // Contact per race against the field's, among drivers who raced a fair
+  // share of the races on file. A comparison, not a public ranking.
+  const minTel = Math.max(3, Math.ceil(Math.max(...all("telemetryStarts"), 0) / 2));
+  const fieldRates = others.filter((t) => t.telemetryStarts >= minTel).map((t) => t.contacts / t.telemetryStarts);
 
   // Team-mates: the other drivers of the same roster team who raced. The
   // reserve pool is no team, so a reserve gets no team-mate.
@@ -532,13 +581,18 @@ async function buildSeasonReview(prisma, driverId) {
 
   // The contact race by race, where the figures exist.
   const withTel = rounds.filter((r) => r.contacts != null);
+  const races = withTel.reduce((n, r) => n + r.telemetryRaces, 0);
+  const cars = withTel.reduce((n, r) => n + r.contacts, 0);
+  const round1 = (v) => Math.round(v * 10) / 10;
   const contact = withTel.length
     ? {
-        races: withTel.length,
-        cars: withTel.reduce((n, r) => n + r.contacts, 0),
+        races,
+        cars,
         scenery: withTel.reduce((n, r) => n + (r.envContacts || 0), 0),
-        clean: withTel.filter((r) => r.contacts === 0 && r.status !== "DNS").length,
-        rank: ranks.contactPerRace,
+        clean: withTel.filter((r) => r.contacts === 0).length,
+        rounds: withTel.length,
+        perRace: races ? round1(cars / races) : null,
+        fieldPerRace: fieldRates.length >= 3 ? round1(fieldRates.reduce((a, b) => a + b, 0) / fieldRates.length) : null,
       }
     : null;
 
@@ -549,6 +603,10 @@ async function buildSeasonReview(prisma, driverId) {
     startersOf(prisma, [best, climb].filter(Boolean).map((c) => (c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId))).catch(() => new Map()),
   ]);
   const fieldOf = (c) => starters.get(c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId) ?? null;
+  // A climb from a grid slot behind the field (a placeholder slot, a pit
+  // lane start) is no climb to tell.
+  const climbField = climb ? fieldOf(climb) : null;
+  const climbOk = climb && (climbField == null || climb.grid <= climbField);
   const myAwards = facts.complete
     ? (awards.get(row.seasonId) || [])
         .filter((a) => a.driver?.driverId === driverId || a.partner?.driverId === driverId)
@@ -590,11 +648,11 @@ async function buildSeasonReview(prisma, driverId) {
       podiums: stats.podiums,
       top10: stats.top10,
       pointsFinishes: stats.pointsFinishes,
-      poles: mine.poles ?? stats.polePositions ?? 0,
-      fastestLaps: mine.fastestLaps ?? stats.fastestLaps ?? 0,
+      poles: mine.poles,
+      fastestLaps: mine.fastestLaps,
       dnf: stats.dnf,
       bestFinish: stats.bestFinish,
-      avgFinish: avg(finishes),
+      avgFinish: mine.avgFinish ?? avg(finishes),
       positionsGained: stats.positionsGained,
       overtakes: mine.overtakes ?? null,
       lapsLed: mine.lapsLed ?? null,
@@ -602,8 +660,11 @@ async function buildSeasonReview(prisma, driverId) {
       bestLap: stats.fastestLap || null,
     },
     ranks,
+    // The fields the ranks are taken in: everybody who raced, and those of
+    // them with the race server's figures (passes, laps led).
+    fields: { all: others.length, telemetry: telField },
     best: best ? { ...best, starters: fieldOf(best), heroImageUrl: heroes.get(best.raceId) || null } : null,
-    climb: climb ? { ...climb, starters: fieldOf(climb) } : null,
+    climb: climbOk ? { ...climb, starters: climbField } : null,
     teammates,
     contact,
     honours: honoursFor(honours, { driverId, teamId: team?.id || null, position, complete: facts.complete }),

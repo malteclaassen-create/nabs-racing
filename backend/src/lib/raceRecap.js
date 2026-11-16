@@ -334,6 +334,7 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false
       fieldCount: map.fieldCount,
       busiest: map.busiest,
       byCorner: map.byCorner,
+      elsewhere: map.elsewhere,
       labels: map.labels,
       // The other car by the league's name, never by its Steam id.
       mine: map.mine.map((m) => {
@@ -343,6 +344,7 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false
           kind: m.kind,
           lap: m.lap,
           kph: m.kph,
+          counted: m.counted,
           pos: m.pos,
           corner: m.corner,
           name: m.kind === "car" ? d?.name || m.other?.name || "another car" : null,

@@ -121,5 +121,3 @@ export function useCardDepth(...deps) {
   }, deps);
   return ref;
 }
-
-const teamOf = (row) => row?.effectiveTeam || row?.team || null;

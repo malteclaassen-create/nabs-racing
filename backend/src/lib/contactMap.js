@@ -187,7 +187,10 @@ export function buildContactMap({ scene, guid, line, corners = [] }) {
       const lap = (c.a.guid === me ? c.a.lap : c.b.lap) ?? c.lap ?? null;
       // Light taps stay in the driver's own list, as they always have in the
       // recap: it is their race and they may well remember that one.
-      mine.push({ kind: "car", at: c.at, lap, kph: c.kph ?? null, pos: at.pos, corner: at.corner, other: { guid: other.guid, name: other.name }, c: at.c });
+      // `counted`: at or over the impact speed the stored contact figures count
+      // from. A lighter tap stays in the list, marked as such, so the recap's
+      // count and the season's figures agree.
+      mine.push({ kind: "car", at: c.at, lap, kph: c.kph ?? null, counted: (c.kph ?? 0) >= floor && !paceCar, pos: at.pos, corner: at.corner, other: { guid: other.guid, name: other.name }, c: at.c });
       if ((c.kph ?? 0) >= floor && !paceCar) counted.push(at.c);
       continue;
     }
@@ -199,7 +202,7 @@ export function buildContactMap({ scene, guid, line, corners = [] }) {
     for (const w of scene.walls || []) {
       if (w.guid !== me) continue;
       const at = place(w.pos);
-      mine.push({ kind: "wall", at: w.at, lap: w.lap ?? null, kph: w.kph ?? null, pos: at.pos, corner: at.corner, other: null, c: at.c });
+      mine.push({ kind: "wall", at: w.at, lap: w.lap ?? null, kph: w.kph ?? null, counted: true, pos: at.pos, corner: at.corner, other: null, c: at.c });
     }
   }
   mine.sort((x, y) => x.at - y.at);
@@ -230,23 +233,42 @@ export function buildContactMap({ scene, guid, line, corners = [] }) {
     .filter((l) => l.text);
   for (const m of mine) delete m.c;
 
-  return { line: geom.line, lapM: Math.round(geom.total), field, mine, busiest, byCorner, labels, fieldCount: counted.length };
+  // Contacts away from any named corner (a straight, or a circuit with no
+  // corner list), so the table under the list adds up to the total.
+  const elsewhere = counted.filter((c) => !c).length;
+  return { line: geom.line, lapM: Math.round(geom.total), field, mine, busiest, byCorner, elsewhere, labels, fieldCount: counted.length };
 }
 
-// The circuit's line, from disk when it is there (the live page and the lap
-// comparison keep it), else from the league's servers, waiting only so long.
-async function lineFor(track) {
-  if (!track?.name) return null;
-  const job = liveCentreLine(track.name, track.layout || "").catch(() => null);
-  const line = await Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), LINE_WAIT_MS))]);
-  if (line) return line;
-  // The lap comparison keeps the road's two edges rather than the line; the
-  // middle of the two follows the same points in the same order.
+// The middle of the road's two edges (kept on disk by the lap comparison):
+// the same points in the same order as the line, so as good as the line.
+function lineFromRoad(track) {
   const road = readTrackRoad(track.name, track.layout || "");
   const l = road?.track?.left;
   const r = road?.track?.right;
   if (!Array.isArray(l) || !Array.isArray(r) || l.length !== r.length || l.length < 3) return null;
   return l.map((p, i) => [Math.round(((p[0] + r[i][0]) / 2) * 10) / 10, Math.round(((p[1] + r[i][1]) / 2) * 10) / 10]);
+}
+
+// The circuit's line: from memory or disk when it is there (the live page
+// keeps it), else from the league's servers, waiting only so long. With the
+// road's edges on disk there is no need to wait at all. One wait per circuit
+// however many maps ask at once: a sprint weekend's two races, two members
+// opening their recap together.
+const waits = new Map(); // "track|layout" -> Promise<line | null>
+function lineFor(track) {
+  if (!track?.name) return Promise.resolve(null);
+  const key = `${track.name}|${track.layout || ""}`;
+  const pending = waits.get(key);
+  if (pending) return pending;
+  const job = liveCentreLine(track.name, track.layout || "").catch(() => null);
+  const road = lineFromRoad(track);
+  const wait = road ? 250 : LINE_WAIT_MS;
+  const p = Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), wait))]).then((line) => line || road || null);
+  waits.set(key, p);
+  // Forgotten a minute later: by then the line is in memory or on disk, or
+  // the miss is remembered by lib/trackMaps.js.
+  p.finally(() => setTimeout(() => waits.delete(key), 60_000).unref?.());
+  return p;
 }
 
 // The corner names the site knows for this circuit and layout.

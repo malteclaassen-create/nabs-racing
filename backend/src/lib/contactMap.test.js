@@ -162,6 +162,7 @@ describe("buildContactMap", () => {
       [3, "car", "T3"],
     ]);
     expect(map.mine[0].other).toEqual({ guid: RIVAL, name: RIVAL });
+    expect(map.mine.map((m) => m.counted)).toEqual([true, true, false]); // the 6 km/h tap is listed, not counted
     expect(map.mine[0].lap).toBe(2); // lap 1 ended at 1060
     expect(map.mine[2].lap).toBe(3);
   });
@@ -205,6 +206,7 @@ describe("buildContactMap", () => {
       { corner: "T1", count: 1 },
     ]);
     expect(map.fieldCount).toBe(4);
+    expect(map.elsewhere).toBe(0);
     expect(map.labels.map((l) => l.text).sort()).toEqual(["T1", "T3"]);
 
     const level = scene(file({ events: [carHit(OTHER_A, OTHER_B, 1070, 25, 10, 100), carHit(OTHER_A, OTHER_B, 1100, 25, 95, 0)] }));

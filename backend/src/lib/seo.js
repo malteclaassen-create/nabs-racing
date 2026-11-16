@@ -193,9 +193,12 @@ export function isKnownRoute(path) {
     if (parts.length === 2) return true; // the series home
     if (parts.length === 3 && SERIES_ONLY_SEGMENTS.has(parts[2])) return true;
     if (parts.length === 3 || parts.length === 4) return SERIES_SEGMENTS.has(parts[2]);
+    // A driver's season review (pages/SeasonReview.jsx).
+    if (parts.length === 5 && parts[2] === "drivers" && parts[4] === "review") return true;
     return false;
   }
   const first = parts[0];
+  if (first === "drivers" && parts.length === 3 && parts[2] === "review") return true;
   if (ALIASES[first] || SERIES_SEGMENTS.has(first)) return parts.length <= 2;
   if (GLOBAL_SEGMENTS.has(first)) return true; // these have their own sub-paths
   if (first === "signup" || first === "rennen") return parts.length === 1;

@@ -2817,6 +2817,7 @@ router.put("/races/:id/driver-of-the-day", async (req, res, next) => {
       by,
       race.id
     );
+    invalidateSeasonReviewCache();
     res.json({ ok: true, driverOfTheDayId: driverId || null, driverOfTheDayBy: by });
   } catch (e) {
     next(e);
@@ -5872,6 +5873,7 @@ router.post("/seasons/:id/awards", async (req, res, next) => {
     }
     const made = await createAward(prisma, season.id, input.value);
     if (made.error) return res.status(400).json({ error: made.error });
+    invalidateSeasonReviewCache();
     res.json({ ok: true, id: made.id });
   } catch (e) {
     next(e);
@@ -5882,6 +5884,7 @@ router.post("/seasons/:id/awards", async (req, res, next) => {
 router.put("/seasons/:id/awards/order", async (req, res, next) => {
   try {
     await reorderAwards(prisma, req.params.id, req.body?.ids);
+    invalidateSeasonReviewCache();
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -5900,6 +5903,7 @@ router.put("/seasons/:id/awards/:awardId", async (req, res, next) => {
       return res.status(400).json({ error: "The winner must be from this season" });
     }
     await updateAward(prisma, row.id, input.value);
+    invalidateSeasonReviewCache();
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -5913,6 +5917,7 @@ router.delete("/seasons/:id/awards/:awardId", async (req, res, next) => {
     const row = await readAwardRow(prisma, req.params.awardId);
     if (!row || row.seasonId !== req.params.id) return res.status(404).json({ error: "Award not found" });
     await deleteAward(prisma, row.id);
+    invalidateSeasonReviewCache();
     res.json({ ok: true });
   } catch (e) {
     next(e);
@@ -5954,6 +5959,7 @@ router.put("/seasons/:id", async (req, res, next) => {
     }
     const season = await prisma.season.update({ where: { id: req.params.id }, data });
     await writeSeasonRawFields(season.id, raw);
+    invalidateSeasonReviewCache();
     res.json(season);
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "A season with that number already exists in this series" });

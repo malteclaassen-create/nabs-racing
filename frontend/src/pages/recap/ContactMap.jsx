@@ -34,6 +34,17 @@ function frame(line) {
   return { x: minX - pad, y: minZ - pad, w: maxX - minX + pad * 2, h: maxZ - minZ + pad * 2, span };
 }
 
+// How far a point is from the line (to its nearest point; the line has one
+// every few metres, which is close enough for placing a word).
+function distToLine(line, p) {
+  let best = Infinity;
+  for (const q of line) {
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 // Which way is "outside" at a point of the line: away from the middle of the
 // circuit's box. A corner's name is written there, clear of the track.
 function outward(line, pos, box) {
@@ -146,12 +157,28 @@ function TrackSvg({ map, active, onActive }) {
   const names = useMemo(
     () =>
       labels.map((l) => {
-        // On the inside of the track: the outside is where the numbers go.
+        // On the inside of the track first (the outside is where the numbers
+        // go), unless that lands on another part of the road, as it does in
+        // a hairpin; then further in, then the outside.
         const [ox, oz] = outward(line, l.pos, box);
-        const nx = -ox;
-        const nz = -oz;
-        const off = road * 1.1 + font * 0.9;
-        return { ...l, x: l.pos[0] + nx * off, y: l.pos[1] + nz * off + font * 0.35 };
+        const base = road * 1.1 + font * 0.9;
+        const clearOf = road * 0.6 + font * 0.6;
+        const tries = [
+          [-ox, -oz, base],
+          [-ox, -oz, base * 1.7],
+          [ox, oz, base],
+          [ox, oz, base * 1.7],
+        ];
+        let at = null;
+        for (const [nx, nz, off] of tries) {
+          const p = [l.pos[0] + nx * off, l.pos[1] + nz * off];
+          if (distToLine(line, p) >= clearOf) {
+            at = p;
+            break;
+          }
+        }
+        if (!at) at = [l.pos[0] - ox * base, l.pos[1] - oz * base];
+        return { ...l, x: at[0], y: at[1] + font * 0.35 };
       }),
     [labels, line, box, road, font]
   );
@@ -257,8 +284,10 @@ function TrackSvg({ map, active, onActive }) {
 
 // The whole field's contacts by corner, most first: where the race went
 // wrong for people, which the map shows as clusters and this says in numbers.
-function ByCorner({ rows, total }) {
-  if (!rows?.length) return null;
+function ByCorner({ rows: cornerRows, total, elsewhere = 0 }) {
+  if (!cornerRows?.length) return null;
+  // Contacts away from any named corner close the table, so it adds up.
+  const rows = elsewhere > 0 ? [...cornerRows, { corner: "Away from a corner", count: elsewhere }] : cornerRows;
   const max = Math.max(...rows.map((r) => r.count), 1);
   return (
     <div className="mt-5 border-t border-border pt-4">
@@ -293,7 +322,7 @@ function Key({ mineCars, mineWalls, field }) {
       {mineWalls > 0 && (
         <span className="inline-flex items-center gap-1.5">
           <span className={`${sw} h-2.5 w-2.5 rounded-[3px]`} style={{ background: "var(--recap-team)", boxShadow: "0 0 0 1px rgb(15 23 42 / 0.2)" }} />
-          You, the scenery
+          You, with the scenery
         </span>
       )}
       {field > 0 && (
@@ -313,14 +342,17 @@ function Key({ mineCars, mineWalls, field }) {
 // One line of the list: the number that finds it on the map, the lap and the
 // corner, the other car (or the scenery), how hard.
 function Line({ m, active, onActive, index }) {
+  // Only a line with a spot on the map lights one up.
+  const on = m.pos ? () => onActive(m.n) : undefined;
+  const off = m.pos ? () => onActive(null) : undefined;
   return (
     <li
       className={`flex items-stretch overflow-hidden rounded-lg border bg-surface2/60 transition-colors ${active ? "border-[color:var(--recap-team)]" : "border-border"}`}
       style={{ "--i": index }}
-      onMouseEnter={() => onActive(m.n)}
-      onMouseLeave={() => onActive(null)}
-      onFocus={() => onActive(m.n)}
-      onBlur={() => onActive(null)}
+      onMouseEnter={on}
+      onMouseLeave={off}
+      onFocus={on}
+      onBlur={off}
       tabIndex={m.pos ? 0 : -1}
     >
       <span className="flex w-11 shrink-0 items-center justify-center">
@@ -336,6 +368,7 @@ function Line({ m, active, onActive, index }) {
         <span className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-light">
           Lap {m.lap ?? "?"}
           {m.corner ? ` · ${m.corner}` : ""}
+          {m.counted === false && <span className="ml-1.5 normal-case tracking-normal text-faint">light tap, not counted</span>}
         </span>
         <span className="truncate font-display text-base font-extrabold uppercase leading-tight tracking-tight text-dark">
           {m.kind === "wall" ? (
@@ -373,7 +406,10 @@ function fieldLine(map) {
 export default function ContactMapCard({ incidents, you }) {
   const map = incidents.map;
   const [active, setActive] = useState(null);
-  const cars = map.mine.filter((m) => m.kind === "car").length;
+  // The count the season's figures use: from 10 km/h. Lighter taps are in
+  // the list, marked, and said apart here.
+  const cars = map.mine.filter((m) => m.kind === "car" && m.counted !== false).length;
+  const taps = map.mine.filter((m) => m.kind === "car" && m.counted === false).length;
   const walls = map.mine.filter((m) => m.kind === "wall").length;
 
   return (
@@ -383,13 +419,12 @@ export default function ContactMapCard({ incidents, you }) {
         <span className="font-mono text-[11px] text-light">
           {cars} car contact{cars === 1 ? "" : "s"}
           {walls > 0 ? ` · ${walls} with the scenery` : ""}
+          {taps > 0 ? ` · ${taps} light tap${taps === 1 ? "" : "s"}` : ""}
         </span>
       </div>
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.35fr,1fr] lg:items-start">
         <figure className="min-w-0">
-          <div className="rounded-xl border border-border bg-surface2/40 p-2 sm:p-3">
-            <TrackSvg map={map} active={active} onActive={setActive} />
-          </div>
+          <TrackSvg map={map} active={active} onActive={setActive} />
           <figcaption className="mt-2.5">
             <Key mineCars={cars} mineWalls={walls} field={map.field.length} />
           </figcaption>
@@ -408,7 +443,7 @@ export default function ContactMapCard({ incidents, you }) {
             <p>{stewardLine(you, cars)}</p>
             {fieldLine(map) && <p>{fieldLine(map)}</p>}
           </div>
-          <ByCorner rows={map.byCorner} total={map.fieldCount} />
+          <ByCorner rows={map.byCorner} total={map.fieldCount} elsewhere={map.elsewhere || 0} />
         </div>
       </div>
     </Card>
