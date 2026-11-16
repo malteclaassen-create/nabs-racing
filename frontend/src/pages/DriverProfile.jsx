@@ -1497,7 +1497,7 @@ function AchievementBadge({ name, tagline, cat }) {
   );
 }
 
-function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true }) {
+function CardHeader({ driver, rating, championship, color, stats, allTime, career, badges, teamBadges, pinnedAchievements, cardsEnabled = true, seasonReview = null }) {
   // Season ⇄ All-time switch for the headline numbers. Only offered when the
   // driver actually spans several seasons (allTime comes with the career).
   const [scope, setScope] = useState("season");
@@ -1619,7 +1619,7 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
               <SocialLinks links={driver.socials} baseClass="text-light" className="mt-3.5 justify-center lg:justify-start" />
               {/* Out to the page that has no season and no league: everything
                   this person has ever done, in one place. */}
-              <div className="mt-3.5 flex justify-center lg:justify-start">
+              <div className="mt-3.5 flex flex-wrap justify-center gap-2 lg:justify-start">
                 <Link
                   to={`/career/${driver.handle || driver.id}`}
                   className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
@@ -1627,6 +1627,17 @@ function CardHeader({ driver, rating, championship, color, stats, allTime, caree
                   Career record
                   <span aria-hidden="true">↗</span>
                 </Link>
+                {/* This row's season told in chapters (SeasonReview.jsx), once
+                    the league has it switched on. */}
+                {seasonReview && driver.seasonNumber != null && (
+                  <Link
+                    to={driver.seriesSlug ? `/s/${driver.seriesSlug}/drivers/${driver.id}/review` : `/drivers/${driver.id}/review`}
+                    className="transition inline-flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-light hover:border-brand hover:text-dark"
+                  >
+                    Season {driver.seasonNumber} {seasonReview.complete ? "in review" : "so far"}
+                    <span aria-hidden="true">↗</span>
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -2087,6 +2098,7 @@ export default function DriverProfile({ previewId, preview }) {
           teamBadges={p.teamBadges}
           pinnedAchievements={p.pinnedAchievements}
           cardsEnabled={cardsEnabled}
+          seasonReview={p.seasonReview || null}
         />
       )}
 

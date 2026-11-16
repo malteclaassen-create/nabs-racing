@@ -179,6 +179,7 @@ import {
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
+import { reviewMode, setReviewMode, invalidateSeasonReviewCache } from "../services/seasonReviewService.js";
 import { draftRaceReport } from "../lib/newsRaceReport.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { activityLogger, readActivity, readResultRows, diffResults, diffReport, raceTarget } from "../lib/adminActivity.js";
@@ -1127,6 +1128,29 @@ router.get("/race-recap/preview", async (req, res, next) => {
     const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId, req, demo: true });
     if (!recap) return res.status(404).json({ error: "That round has no result yet" });
     res.json({ recap });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// THE SEASON REVIEW (services/seasonReviewService.js): its switch. Off,
+// admins first (the default, so the office sees it on the live site before
+// anyone else), everyone.
+// GET /api/admin/season-review -> { mode }
+router.get("/season-review", async (req, res, next) => {
+  try {
+    res.json({ mode: await reviewMode(prisma) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/season-review { mode: off | admins | all }
+router.put("/season-review", async (req, res, next) => {
+  try {
+    const mode = await setReviewMode(prisma, req.body?.mode);
+    invalidateSeasonReviewCache();
+    res.json({ ok: true, mode });
   } catch (e) {
     next(e);
   }
@@ -2927,6 +2951,7 @@ router.put("/races/:id/honours", async (req, res, next) => {
     // a first pole can unlock card editions and achievements.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateSeasonReviewCache();
     invalidateTeamAllTimeCache();
     invalidateTrackStrengthCache();
     invalidateRatingHistoryCache();
@@ -5969,6 +5994,7 @@ router.put("/seasons/:id/manual-points", async (req, res, next) => {
     // The Hall of Fame caches its walk over every season for a few minutes.
     invalidateRecordsCache();
     invalidateCareerCache();
+    invalidateSeasonReviewCache();
     invalidateTeamAllTimeCache();
     invalidateTrackStrengthCache();
     res.json({ saved: parsed.length });

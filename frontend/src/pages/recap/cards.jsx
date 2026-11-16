@@ -260,7 +260,7 @@ export function StandingsTower({ standings: s, team, season, you }) {
 // Cumulative points, round by round, uncovered left to right by a curtain
 // with a feathered edge that eases in and out; each round's mark settles in
 // as the edge reaches it, with what that round paid above it.
-function useNarrow() {
+export function useNarrow() {
   const q = "(max-width: 639px)";
   const get = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia(q).matches;
   const [narrow, setNarrow] = useState(get);
