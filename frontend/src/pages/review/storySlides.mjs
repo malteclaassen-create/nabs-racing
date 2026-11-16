@@ -82,6 +82,10 @@ export function storySlides(review) {
     line: [`${stats.finishes} finished`, stats.dnf ? `${stats.dnf} retired` : null, missed ? `${missed} missed` : null].filter(Boolean).join(", ") + ".",
   });
 
+  if (review.training?.laps > 0) {
+    slides.push({ key: "training", value: review.training.laps, weeks: review.training.weeks, rank: review.training.rank, board: review.boards?.training || null });
+  }
+
   const top = topResults(rounds);
   if (top.length >= 3) slides.push({ key: "top", eyebrow: "Top results", list: top });
 
@@ -99,6 +103,10 @@ export function storySlides(review) {
   const climb = review.climb;
   if (climb && climb.gained >= 3 && !(review.best && climb.raceId === review.best.raceId && climb.sprint === review.best.sprint)) {
     slides.push({ key: "climb", eyebrow: "Biggest climb", value: `+${climb.gained}`, title: climb.track, line: climbLine(climb) });
+  }
+
+  if (stats.bestLap?.bestLapMs > 0) {
+    slides.push({ key: "fastest", ms: stats.bestLap.bestLapMs, track: stats.bestLap.track, round: stats.bestLap.number ?? null });
   }
 
   const podiums = podiumsOf(rounds);
@@ -120,9 +128,12 @@ export function storySlides(review) {
       key: "field",
       eyebrow: "Against the field",
       figures: figures.map((f) => ({ ...f, rankText: rankText(f.rank) })),
+      board: review.boards?.[figures[0].k] || null,
       line: `Among the drivers who raced in this table.`,
     });
   }
+
+  if (review.tyres?.length) slides.push({ key: "tyres", tyres: review.tyres });
 
   if ((c?.journey?.length || 0) >= 3) {
     const last = c.journey[c.journey.length - 1];
@@ -153,6 +164,8 @@ export function storySlides(review) {
       line: contactLine(k, rounds),
     });
   }
+
+  if (review.limits && review.limits.races >= 2) slides.push({ key: "limits", ...review.limits });
 
   const honours = [
     ...(review.honours || []).map((h) => ({ key: h.key, title: h.title, detail: h.detail || null })),

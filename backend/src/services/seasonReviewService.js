@@ -352,6 +352,8 @@ function fieldTallies(rows, facts, tel, division) {
   for (const row of rows) {
     const fin = finishesOf(roundsOf(row));
     out.set(row.driverId, {
+      driverId: row.driverId,
+      name: row.name,
       points: row.total ?? 0,
       wins: fin.filter((c) => c.position === 1).length,
       podiums: fin.filter((c) => c.position <= 3).length,
@@ -365,6 +367,8 @@ function fieldTallies(rows, facts, tel, division) {
       contacts: null,
       envContacts: null,
       telemetryStarts: 0,
+      lapsRaced: null,
+      cuts: null,
     });
   }
   // The championship's own races, so the stored figures are summed over the
@@ -392,6 +396,8 @@ function fieldTallies(rows, facts, tel, division) {
     o.lapsLed = (o.lapsLed || 0) + (t.lapsLed || 0);
     o.contacts = (o.contacts || 0) + (t.contacts || 0);
     o.envContacts = (o.envContacts || 0) + (t.envContacts || 0);
+    o.lapsRaced = (o.lapsRaced || 0) + (t.laps || 0);
+    o.cuts = (o.cuts || 0) + (t.cuts || 0);
     o.telemetryStarts += 1;
   }
   return out;
@@ -405,6 +411,54 @@ async function startersOf(prisma, raceIds) {
   if (!ids.length) return new Map();
   const rows = await prisma.raceResult.groupBy({ by: ["raceId"], where: { raceId: { in: ids }, status: { not: "DNS" } }, _count: { _all: true } });
   return new Map(rows.map((r) => [r.raceId, r._count._all]));
+}
+
+// The laps driven on the practice servers in the weeks before each round of
+// the season, per driver: the figure the NABS Tokens count training by
+// (lib/practiceTokens.js, TokenPractice), kept per Steam id and race week.
+// A driver's laps are found through the Steam id on their row.
+export async function trainingFor(prisma, { series, seasonId, raceIds, driverId, names }) {
+  if (!series || !raceIds.length) return null;
+  const periods = raceIds.map((id) => `race:${id}`);
+  const [laps, drivers] = await Promise.all([
+    prisma.tokenPractice.findMany({ where: { series, period: { in: periods } }, select: { steamId: true, period: true, laps: true } }),
+    prisma.driver.findMany({ where: { seasonId, steamId: { not: null } }, select: { id: true, steamId: true } }),
+  ]);
+  if (!laps.length) return null;
+  const rowOf = new Map(drivers.map((d) => [String(d.steamId), d.id]));
+  const total = new Map();
+  const weeks = new Map();
+  for (const l of laps) {
+    const id = rowOf.get(String(l.steamId));
+    if (!id || !names.has(id) || !(l.laps > 0)) continue;
+    total.set(id, (total.get(id) || 0) + l.laps);
+    if (!weeks.has(id)) weeks.set(id, new Set());
+    weeks.get(id).add(l.period);
+  }
+  if (!total.size) return null;
+  const list = [...total].map(([id, n]) => ({ driverId: id, name: names.get(id), training: n }));
+  const sorted = list.sort((a, b) => b.training - a.training || String(a.name).localeCompare(String(b.name)));
+  const mineN = total.get(driverId) || 0;
+  const row = (t) => ({ name: t.name, value: t.training, you: t.driverId === driverId, rank: 1 + sorted.filter((x) => x.training > t.training).length });
+  const top = sorted.slice(0, 5).map(row);
+  const at = sorted.findIndex((t) => t.driverId === driverId);
+  if (at >= 5) top.push(row(sorted[at]));
+  return {
+    laps: mineN,
+    weeks: weeks.get(driverId)?.size || 0,
+    rank: mineN > 0 ? rankAmong(sorted.map((t) => t.training), mineN) : null,
+    board: { of: sorted.length, rows: top },
+  };
+}
+
+// The laps on each tyre over the season, most first, from the stints the
+// race files record.
+export function tyreMix(rounds) {
+  const by = new Map();
+  for (const r of rounds) for (const st of r.stints || []) if (st.tyre && st.laps > 0) by.set(st.tyre, (by.get(st.tyre) || 0) + st.laps);
+  if (!by.size) return null;
+  const total = [...by.values()].reduce((a, b) => a + b, 0);
+  return [...by].sort((a, b) => b[1] - a[1]).map(([tyre, laps]) => ({ tyre, laps, share: Math.round((laps / total) * 100) }));
 }
 
 const seasonLabelOf = (season) => {
@@ -493,7 +547,17 @@ async function buildSeasonReview(prisma, driverId) {
     const got = ids.filter(Boolean).map((id) => tel.get(`${id}|${driverId}`)).filter((t) => t && t.contacts != null);
     if (!got.length) return null;
     const sum = (k) => got.reduce((n, t) => n + (t[k] || 0), 0);
-    return { contacts: sum("contacts"), envContacts: sum("envContacts"), overtakes: sum("overtakes"), lapsLed: sum("lapsLed"), races: got.length };
+    return {
+      contacts: sum("contacts"),
+      envContacts: sum("envContacts"),
+      overtakes: sum("overtakes"),
+      lapsLed: sum("lapsLed"),
+      laps: sum("laps"),
+      cuts: sum("cuts"),
+      gamePenalties: sum("gamePenalties"),
+      stints: got.flatMap((t) => (Array.isArray(t.stints) ? t.stints : [])),
+      races: got.length,
+    };
   };
   const best = bestResult(profile.perRace);
   const climb = biggestClimb(profile.perRace);
@@ -518,6 +582,10 @@ async function buildSeasonReview(prisma, driverId) {
       contacts: t ? t.contacts : null,
       envContacts: t ? t.envContacts : null,
       overtakes: t ? t.overtakes : null,
+      lapsRaced: t ? t.laps : null,
+      cuts: t ? t.cuts : null,
+      gamePenalties: t ? t.gamePenalties : null,
+      stints: t ? t.stints.map((st) => ({ tyre: st.tyre || st.compound || null, laps: Number(st.laps) || 0 })) : null,
       lapsLed: t ? t.lapsLed : null,
       telemetryRaces: t ? t.races : 0,
       after: showJourney ? afterByRound.get(r.number) ?? null : null,
@@ -541,6 +609,8 @@ async function buildSeasonReview(prisma, driverId) {
   mine.lapsLed = ownTel.length ? ownTel.reduce((n, r) => n + (r.lapsLed || 0), 0) : null;
   mine.contacts = ownTel.length ? ownTel.reduce((n, r) => n + r.contacts, 0) : null;
   mine.telemetryStarts = ownTel.reduce((n, r) => n + r.telemetryRaces, 0);
+  mine.lapsRaced = ownTel.length ? ownTel.reduce((n, r) => n + (r.lapsRaced || 0), 0) : null;
+  mine.cuts = ownTel.length ? ownTel.reduce((n, r) => n + (r.cuts || 0), 0) : null;
   tallies.set(driverId, mine);
   const others = [...tallies.values()];
   const all = (key) => others.map((t) => t[key]);
@@ -555,6 +625,17 @@ async function buildSeasonReview(prisma, driverId) {
     overtakes: rankAmong(all("overtakes"), mine.overtakes),
     lapsLed: rankAmong(all("lapsLed"), mine.lapsLed),
     avgFinish: mine.finishes >= minFin ? rankAmong(others.filter((t) => t.finishes >= minFin).map((t) => t.avgFinish), mine.avgFinish, { more: false }) : null,
+  };
+  // The leaderboard of one figure: the top five by name, and the driver
+  // under them with their own place when they are further back.
+  const board = (key, list = others) => {
+    const sorted = list.filter((t) => t[key] > 0).sort((a, b) => b[key] - a[key] || String(a.name).localeCompare(String(b.name)));
+    if (!sorted.length) return null;
+    const row = (t) => ({ name: t.name, value: t[key], you: t.driverId === driverId, rank: 1 + sorted.filter((x) => x[key] > t[key]).length });
+    const top = sorted.slice(0, 5).map(row);
+    const at = sorted.findIndex((t) => t.driverId === driverId);
+    if (at >= 5) top.push(row(sorted[at]));
+    return { of: sorted.length, rows: top };
   };
   // How many drivers had the server's figures at all: the field the passes
   // and laps led are ranked in.
@@ -595,6 +676,14 @@ async function buildSeasonReview(prisma, driverId) {
         fieldPerRace: fieldRates.length >= 3 ? round1(fieldRates.reduce((a, b) => a + b, 0) / fieldRates.length) : null,
       }
     : null;
+
+  const training = await trainingFor(prisma, {
+    series: profile.driver.seriesSlug,
+    seasonId: row.seasonId,
+    raceIds: [...facts.rounds.map((r) => r.id), ...[...facts.div2Of.values()].map((r) => r.id)],
+    driverId,
+    names: new Map(rows.map((r) => [r.driverId, r.name])),
+  }).catch(() => null);
 
   const [honours, awards, heroes, starters] = await Promise.all([
     facts.complete ? getSeasonHonours(prisma, row.seasonId).catch(() => null) : null,
@@ -663,6 +752,32 @@ async function buildSeasonReview(prisma, driverId) {
     // The fields the ranks are taken in: everybody who raced, and those of
     // them with the race server's figures (passes, laps led).
     fields: { all: others.length, telemetry: telField },
+    // Leaderboards with names, for the story's "where you sit" slides.
+    boards: {
+      overtakes: board("overtakes"),
+      lapsLed: board("lapsLed"),
+      fastestLaps: board("fastestLaps"),
+      poles: board("poles"),
+      wins: board("wins"),
+      podiums: board("podiums"),
+      lapsRaced: board("lapsRaced"),
+      training: training ? training.board : null,
+    },
+    training: training ? { laps: training.laps, weeks: training.weeks, rank: training.rank } : null,
+    racing: mine.lapsRaced ? { laps: mine.lapsRaced, rank: rankAmong(all("lapsRaced"), mine.lapsRaced) } : null,
+    tyres: tyreMix(rounds),
+    limits:
+      mine.cuts != null
+        ? {
+            cuts: mine.cuts,
+            penalties: rounds.reduce((n, r) => n + (r.gamePenalties || 0), 0),
+            races: mine.telemetryStarts,
+            fieldPerRace: (() => {
+              const f = others.filter((t) => t.telemetryStarts >= 3 && t.cuts != null).map((t) => t.cuts / t.telemetryStarts);
+              return f.length >= 3 ? Math.round((f.reduce((a, b) => a + b, 0) / f.length) * 10) / 10 : null;
+            })(),
+          }
+        : null,
     best: best ? { ...best, starters: fieldOf(best), heroImageUrl: heroes.get(best.raceId) || null } : null,
     climb: climbOk ? { ...climb, starters: climbField } : null,
     teammates,

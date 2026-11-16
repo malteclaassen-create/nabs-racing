@@ -12,6 +12,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MEDAL, readableInkOn } from "../../components/ui.jsx";
 import CircuitMap from "../../components/CircuitMap.jsx";
+import TeamLogo from "../../components/TeamLogo.jsx";
+import { tyreCompound } from "../../data/liveTiming.js";
 import { circuitFor } from "../../data/circuits.js";
 import { nth } from "./copy.mjs";
 import { seasonList } from "./storySlides.mjs";
@@ -20,13 +22,17 @@ import { saveSharePicture } from "./sharePicture.js";
 const MEDAL_INK = MEDAL.map((m) => readableInkOn(m));
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const times = (n) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`);
+const fmt = (n) => Number(n || 0).toLocaleString("en-GB");
+const lapTime = (ms) => {
+  const m = Math.floor(ms / 60000);
+  const sec = ((ms % 60000) / 1000).toFixed(3).padStart(6, "0");
+  return m ? `${m}:${sec}` : sec;
+};
 
 // "You" for the driver, the name for everyone else.
 export function voiceOf(review) {
   const name = review.driver?.name || "This driver";
-  return review.own
-    ? { You: "You", you: "you", Your: "Your", your: "your", are: "are" }
-    : { You: name, you: name, Your: `${name}'s`, your: `${name}'s`, are: "is" };
+  return review.own ? { You: "You", you: "you", Your: "Your", your: "your", are: "are" } : { You: name, you: name, Your: `${name}'s`, your: `${name}'s`, are: "is" };
 }
 
 // --- type ----------------------------------------------------------------------------
@@ -36,7 +42,10 @@ export function voiceOf(review) {
 // looking stretched (a single figure) keeps its own width instead.
 function Fill({ text, d = 0, outline = false, className = "", maxHeight = 520, align = "left", style }) {
   const t = String(text ?? "").toUpperCase();
-  const n = Math.max(1, [...t].reduce((w, ch) => w + (ch === " " ? 0.32 : /[I1.,:']/.test(ch) ? 0.42 : 0.78), 0));
+  const n = Math.max(
+    1,
+    [...t].reduce((w, ch) => w + (ch === " " ? 0.32 : /[I1.,:']/.test(ch) ? 0.42 : 0.78), 0),
+  );
   const size = Math.min(1000 / n, maxHeight);
   const natural = size * n;
   const stretch = natural >= 820;
@@ -58,9 +67,18 @@ function Echo({ value, d = 300, size, className = "" }) {
   const v = String(value ?? "");
   // As big as the frame takes for the figure's length (Montserrat Black
   // figures run about 0.72 em), leaving room for the echoes.
-  if (!size) size = `min(56cqi, ${(84 / (Math.max(1, v.length) * 0.74)).toFixed(1)}cqi, 30cqh)`;
+  const ems = [...v].reduce((w, ch) => w + (/[,.]/.test(ch) ? 0.3 : ch === "%" ? 1.05 : /[A-Z]/.test(ch) ? 0.8 : 0.74), 0);
+  if (!size) size = `min(56cqi, ${(80 / Math.max(0.74, ems)).toFixed(1)}cqi, 30cqh)`;
   return (
-    <div className={`wr-echo wr-big wr-num st-land whitespace-nowrap ${className}`} style={{ "--d": `${d}ms`, fontSize: size, lineHeight: 0.82 }}>
+    <div
+      className={`wr-echo wr-big wr-num st-land whitespace-nowrap ${className}`}
+      style={{
+        "--d": `${d}ms`,
+        fontSize: size,
+        lineHeight: 0.82,
+        marginBottom: "0.1em",
+      }}
+    >
       <span className="wr-ghost" style={{ "--sx": "0.09em", "--sy": "0.07em", "--d": `${d + 350}ms` }} aria-hidden="true">
         {v}
       </span>
@@ -102,6 +120,73 @@ function Card({ children, className = "" }) {
   return <div className={`relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-[5.2rem] sm:px-7 ${className}`}>{children}</div>;
 }
 
+// A leaderboard the way Wrapped lists a top five: the place, the name, a bar
+// for the figure, the driver's own row in the team colour. When the driver
+// is further back, their row follows after a gap.
+function Board({ board, review, d = 0 }) {
+  const max = Math.max(1, ...board.rows.map((r) => r.value));
+  return (
+    <ol className="space-y-1">
+      {board.rows.map((r, k) => {
+        const gap = k > 0 && r.rank > board.rows[k - 1].rank + 1 && r.you;
+        return (
+          <li key={`${r.name}-${k}`}>
+            {gap && (
+              <div className="st-in py-0.5 pl-9 text-[13px] font-extrabold leading-none opacity-50" style={{ "--d": `${d + k * 110}ms` }}>
+                ...
+              </div>
+            )}
+            <div
+              className="st-in flex items-center gap-2.5 rounded-md px-2 py-1.5"
+              style={{
+                "--d": `${d + k * 110}ms`,
+                ...(r.you ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : null),
+              }}
+            >
+              <span className="wr-big wr-num w-7 shrink-0 text-right text-[1.3rem] leading-none">{r.rank}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-[14px] font-extrabold uppercase leading-tight">{r.you && review.own ? "You" : r.name}</span>
+                  <span className="wr-num shrink-0 text-[14px] font-extrabold leading-tight">{fmt(r.value)}</span>
+                </span>
+                <span
+                  className="mt-1 block h-[5px] overflow-hidden rounded-full"
+                  style={{
+                    background: "color-mix(in srgb, currentColor 16%, transparent)",
+                  }}
+                >
+                  <span
+                    className="st-grow-x block h-full rounded-full"
+                    style={{
+                      "--d": `${d + 200 + k * 110}ms`,
+                      width: `${Math.max(3, (r.value / max) * 100)}%`,
+                      background: "currentColor",
+                    }}
+                  />
+                </span>
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// A round sticker in the team colour, set at a slant over the slide.
+const Stamp = ({ d = 0, className = "", children }) => (
+  <div
+    className={`st-land absolute flex h-[6.6rem] w-[6.6rem] items-center justify-center rounded-full text-center ${className}`}
+    style={{
+      "--d": `${d}ms`,
+      background: "var(--g-mark)",
+      color: "var(--g-mark-fg)",
+    }}
+  >
+    <span className="wr-big block rotate-[-12deg] px-2 text-[0.95rem] uppercase leading-[1.02]">{children}</span>
+  </div>
+);
+
 // --- the slides --------------------------------------------------------------------------
 
 function Intro({ review }) {
@@ -115,11 +200,17 @@ function Intro({ review }) {
       <Fill text={head} d={250} className="mt-3" />
       {num && <Echo value={num} d={500} size="min(92cqi, 52cqh)" className="-mt-2" />}
       <div className="mt-auto">
+        {driver.team && driver.team.tier !== 0 && (
+          <div className="st-land mb-4" style={{ "--d": "1100ms" }}>
+            <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={72} />
+          </div>
+        )}
         <Line d={1300}>
           <Mark>{driver.name}</Mark>
         </Line>
         <Kicker d={1500} className="mt-3 lv-mute">
-          {season.roundsRun} rounds{driver.team?.name ? ` · ${driver.team.name}` : ""}
+          {season.roundsRun} rounds
+          {driver.team?.name ? ` · ${driver.team.name}` : ""}
           {season.complete ? "" : " · so far"}
         </Kicker>
       </div>
@@ -127,17 +218,232 @@ function Intro({ review }) {
   );
 }
 
+// One tile a round: the place at the flag, or why there is none.
+function RoundTile({ r, d }) {
+  const fin = r.status === "FINISHED" && r.position != null;
+  const podium = fin && r.position <= 3;
+  const style = podium
+    ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" }
+    : fin
+      ? { background: "var(--g-fg)", color: "var(--g-bg)" }
+      : r.status === "DNS"
+        ? {
+            boxShadow: "inset 0 0 0 1.5px var(--g-mute)",
+            color: "var(--g-mute)",
+          }
+        : { boxShadow: "inset 0 0 0 2px var(--g-fg)" };
+  return (
+    <div className="st-land relative flex aspect-square flex-col justify-between rounded-md p-1.5" style={{ "--d": `${d}ms`, ...style }}>
+      <span className="text-[10px] font-bold leading-none opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+        R{r.round}
+      </span>
+      <span className="wr-big wr-num text-right leading-none" style={{ fontSize: fin ? "1.35rem" : "0.9rem" }}>
+        {fin ? `P${r.position}` : r.status === "DNS" ? "DNS" : r.status === "DSQ" ? "DSQ" : "DNF"}
+      </span>
+    </div>
+  );
+}
+
 function Rounds({ review }) {
   const v = voiceOf(review);
   const s = review.stats;
   const n = review.rounds.length;
+  const laps = review.racing;
   return (
     <Card>
       <Fill text={`${v.You} started`} d={100} />
-      <Echo value={s.starts} d={350} className="mt-4" />
-      <Fill text={`of ${n} rounds`} d={800} className="mt-4" outline />
+      <Echo value={s.starts} d={350} className="mt-3" />
+      <Fill text={`of ${n} rounds`} d={800} outline />
       <div className="mt-auto">
-        <Line d={1400}>{s.finishes === s.starts ? <>And finished <Mark>every single one</Mark>.</> : <>And saw the flag in <Mark>{plural(s.finishes, "race")}</Mark>.</>}</Line>
+        <div className="grid grid-cols-6 gap-1.5">
+          {review.rounds.map((r, k) => (
+            <RoundTile key={r.round} r={r} d={1100 + k * 70} />
+          ))}
+        </div>
+        <Line d={1300 + n * 70} className="mt-4" size="min(5.6cqi, 3cqh)">
+          {s.finishes === s.starts ? (
+            <>
+              Finished <Mark>every one</Mark>
+            </>
+          ) : (
+            <>
+              Saw the flag in <Mark>{plural(s.finishes, "race")}</Mark>
+            </>
+          )}
+          {laps?.laps > 0 ? <>, {fmt(laps.laps)} laps in all.</> : "."}
+        </Line>
+        {laps?.rank && (
+          <Kicker d={1500 + n * 70} className="mt-2 lv-mute normal-case tracking-normal">
+            {rankWords(laps.rank, "race laps")}
+          </Kicker>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// "The most race laps of 64 drivers", "7th most of 64 (shared)".
+function rankWords(rank, what) {
+  if (!rank) return null;
+  const joint = rank.shared ? "joint " : "";
+  return rank.rank === 1 ? `The ${joint}most ${what} of ${rank.of} drivers.` : `The ${joint}${nth(rank.rank)} most ${what} of ${rank.of} drivers.`;
+}
+
+// Training laps on the league's practice servers between the rounds.
+function Training({ slide, review }) {
+  const v = voiceOf(review);
+  const first = slide.rank?.rank === 1;
+  return (
+    <Card>
+      <Kicker d={100}>Between the races, {v.you} put in</Kicker>
+      <Echo value={fmt(slide.value)} d={300} className="mt-3" />
+      <Fill text="training laps" d={750} outline />
+      <Line d={1000} className="mt-3" size="min(5.4cqi, 3cqh)">
+        Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
+      </Line>
+      <div className="relative mt-auto">
+        {first && (
+          <Stamp d={1500} className="-top-24 right-0">
+            {slide.rank.shared ? "Joint most" : "Most"} in the league
+          </Stamp>
+        )}
+        {slide.board?.rows?.length > 1 ? (
+          <>
+            <Kicker d={1200} className="mb-2 lv-mute">
+              Most training laps
+            </Kicker>
+            <Board board={slide.board} review={review} d={1300} />
+          </>
+        ) : (
+          slide.rank && <Line d={1200}>{rankWords(slide.rank, "training laps")}</Line>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// The quickest lap of the season, set across the frame like a lap timer.
+function Fastest({ slide, review }) {
+  const v = voiceOf(review);
+  const season = (review.honours || []).some((h) => h.key === "fastest-lap");
+  return (
+    <Card>
+      <Kicker d={100}>{v.Your} quickest lap</Kicker>
+      <div className="relative mt-3 min-h-0 flex-1">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Outline track={slide.track} className="h-full w-full" d={300} width={3} stroke="var(--g-pop)" />
+        </div>
+      </div>
+      <Fill text={lapTime(slide.ms)} d={1000} className="mt-4 wr-num" />
+      <Line d={1300} className="mt-4" size="min(5.6cqi, 3cqh)">
+        <Mark>{slide.track}</Mark>
+        {slide.round ? `, round ${slide.round}.` : "."}
+      </Line>
+      {season && (
+        <Kicker d={1600} className="mt-3 lv-mute normal-case tracking-normal">
+          Nobody went quicker all season.
+        </Kicker>
+      )}
+    </Card>
+  );
+}
+
+// The tyres the race laps were done on: a ring a compound, as big as its share.
+function Tyres({ slide, review }) {
+  const v = voiceOf(review);
+  const [top] = slide.tyres;
+  const name = tyreCompound(top.tyre).name;
+  const shown = slide.tyres.slice(0, 4);
+  return (
+    <Card>
+      <Kicker d={100}>{v.You} spent most race laps on</Kicker>
+      <Fill text={`${name}s`} d={250} className="mt-3" />
+      <Echo value={`${top.share}%`} d={500} className="mt-3" />
+      <Line d={900} size="min(5.4cqi, 3cqh)">
+        of them, <Mark>{plural(top.laps, "lap")}</Mark>.
+      </Line>
+      <div className="mt-auto flex items-end justify-between gap-2">
+        {shown.map((t, k) => {
+          const c = tyreCompound(t.tyre);
+          const size = `${(3.4 + (t.share / 100) * 5.2).toFixed(2)}rem`;
+          return (
+            <div key={t.tyre} className="st-land flex min-w-0 flex-col items-center" style={{ "--d": `${1200 + k * 160}ms` }}>
+              <svg viewBox="0 0 100 100" style={{ width: size, height: size }} aria-hidden="true">
+                <circle cx="50" cy="50" r="44" fill="#16161a" />
+                <circle cx="50" cy="50" r="33" fill="none" stroke={c.color} strokeWidth="9" />
+                <text x="50" y="50" dy="0.35em" textAnchor="middle" fill="#f6f5f1" style={{ font: "900 28px Montserrat, sans-serif" }}>
+                  {c.label}
+                </text>
+              </svg>
+              <span className="mt-2 text-[13px] font-extrabold uppercase">{c.name}</span>
+              <span className="wr-num text-[12px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+                {fmt(t.laps)} laps · {t.share}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// Track limits: every cut as a square, then the rate against the field's.
+function Limits({ slide, review }) {
+  const v = voiceOf(review);
+  const mine = slide.cuts / Math.max(1, slide.races);
+  const field = slide.fieldPerRace;
+  const max = Math.max(mine, field || 0, 0.1);
+  const one = (n) => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  const rows = [
+    {
+      k: "me",
+      label: review.own ? "You" : review.driver.name,
+      value: mine,
+      you: true,
+    },
+    field != null ? { k: "field", label: "The field", value: field } : null,
+  ].filter(Boolean);
+  return (
+    <Card>
+      <Fill text={`${v.You} cut the track`} d={100} />
+      <Echo value={slide.cuts} d={350} className="mt-3" size="min(44cqi, 22cqh)" />
+      <Fill text={slide.cuts === 1 ? "time" : "times"} d={750} outline maxHeight={170} />
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {Array.from({ length: Math.min(slide.cuts, 60) }, (_, k) => (
+          <span key={k} className="st-land block h-5 w-5 rounded-[4px]" style={{ "--d": `${1000 + k * 35}ms`, background: "var(--g-mark)" }} />
+        ))}
+      </div>
+      <div className="mt-auto space-y-3">
+        <Kicker d={1500} className="lv-mute">
+          Cuts a race
+        </Kicker>
+        {rows.map((r, k) => (
+          <div key={r.k} className="st-in" style={{ "--d": `${1600 + k * 200}ms` }}>
+            <div className="flex items-baseline justify-between text-[14px] font-extrabold uppercase">
+              <span className="truncate">{r.label}</span>
+              <span className="wr-num">{one(r.value)}</span>
+            </div>
+            <div className="mt-1 h-3 overflow-hidden rounded-full" style={{ background: "var(--g-faint)" }}>
+              <span
+                className="st-grow-x block h-full rounded-full"
+                style={{
+                  "--d": `${1700 + k * 200}ms`,
+                  width: `${Math.max(3, (r.value / max) * 100)}%`,
+                  background: r.you ? "var(--g-mark)" : "var(--g-fg)",
+                }}
+              />
+            </div>
+          </div>
+        ))}
+        <Line d={2100} className="pt-1" size="min(5cqi, 2.8cqh)">
+          {slide.penalties > 0 ? (
+            <>
+              The game handed out <Mark>{plural(slide.penalties, "penalty", "penalties")}</Mark>.
+            </>
+          ) : (
+            <>Not one penalty from the game.</>
+          )}
+        </Line>
       </div>
     </Card>
   );
@@ -152,7 +458,17 @@ function Top({ slide, review }) {
       <ol className="mt-auto space-y-4 pb-1">
         {slide.list.map((t, k) => (
           <li key={`${t.round}-${t.sprint}`} className="st-in flex items-center gap-4" style={{ "--d": `${550 + k * 170}ms` }}>
-            <span className="wr-big wr-num w-8 shrink-0 text-[2.6rem] leading-none" style={k === 0 ? { color: "var(--g-mark)" } : { color: "transparent", WebkitTextStroke: "1.5px var(--g-fg)" }}>
+            <span
+              className="wr-big wr-num w-8 shrink-0 text-[2.6rem] leading-none"
+              style={
+                k === 0
+                  ? { color: "var(--g-mark)" }
+                  : {
+                      color: "transparent",
+                      WebkitTextStroke: "1.5px var(--g-fg)",
+                    }
+              }
+            >
               {k + 1}
             </span>
             <span className="wr-cover w-[3.4rem] shrink-0" style={k === 0 ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : undefined}>
@@ -179,9 +495,7 @@ function Best({ review }) {
     <Card>
       <Kicker d={100}>{v.Your} best race</Kicker>
       <div className="relative mt-4 flex-1">
-        <div className="absolute inset-0 flex items-center justify-center opacity-90">
-          {b.heroImageUrl ? <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-md object-cover" /> : <Outline track={b.track} className="h-full w-full opacity-40" d={300} width={2.4} />}
-        </div>
+        <div className="absolute inset-0 flex items-center justify-center opacity-90">{b.heroImageUrl ? <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-md object-cover" /> : <Outline track={b.track} className="h-full w-full opacity-40" d={300} width={2.4} />}</div>
         <div className="absolute bottom-0 left-0">
           <Echo value={`P${b.position}`} d={900} size="min(48cqi, 26cqh)" />
         </div>
@@ -233,7 +547,13 @@ function Podiums({ slide, review }) {
       <div className="mt-auto flex flex-wrap gap-x-3 gap-y-3">
         {slide.podiums.slice(0, 8).map((p, k) => (
           <div key={`${p.round}-${p.sprint}`} className="st-land flex w-[4.2rem] flex-col items-center text-center" style={{ "--d": `${1200 + k * 120}ms` }}>
-            <span className="wr-big flex h-12 w-12 items-center justify-center rounded-full text-[1.25rem]" style={{ background: MEDAL[p.position - 1], color: MEDAL_INK[p.position - 1] }}>
+            <span
+              className="wr-big flex h-12 w-12 items-center justify-center rounded-full text-[1.25rem]"
+              style={{
+                background: MEDAL[p.position - 1],
+                color: MEDAL_INK[p.position - 1],
+              }}
+            >
               P{p.position}
             </span>
             <span className="mt-1 w-full truncate text-[11px] font-bold uppercase" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -275,21 +595,32 @@ function Field({ slide, review }) {
       <Kicker d={450} className="mt-6 lv-mute">
         That made {v.you}
       </Kicker>
-      {rank.shared && <Fill text="joint" d={600} className="mt-2" outline />}
-      <Echo value={nth(rank.rank)} d={750} size="min(54cqi, 28cqh)" className="mt-1" />
-      <Line d={1150} className="mt-3">
+      {rank.shared && <Fill text="joint" d={600} className="mt-2" outline maxHeight={150} />}
+      <Echo value={nth(rank.rank)} d={750} size={slide.board ? "min(40cqi, 18cqh)" : "min(54cqi, 28cqh)"} className="mt-1" />
+      <Line d={1150}>
         out of <Mark>{rank.of} drivers</Mark>.
       </Line>
-      <div className="mt-auto space-y-2.5">
-        {rest.map((f, k) => (
-          <div key={f.k} className="st-in flex items-baseline justify-between gap-3 border-t border-[color:var(--g-faint)] pt-2" style={{ "--d": `${1600 + k * 220}ms` }}>
-            <span className="text-[15px] font-extrabold">{figureLine(f, v)}</span>
-            <span className="shrink-0 text-[13px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
-              {f.rankText}
-            </span>
-          </div>
-        ))}
-      </div>
+      {slide.board?.rows?.length > 1 ? (
+        <div className="mt-auto">
+          <Board board={slide.board} review={review} d={1500} />
+          {rest.length > 0 && (
+            <Kicker d={2300} className="mt-3 lv-mute normal-case tracking-normal">
+              {rest.map((f) => `${f.label}: ${f.value}, ${f.rankText}`).join(" · ")}
+            </Kicker>
+          )}
+        </div>
+      ) : (
+        <div className="mt-auto space-y-2.5">
+          {rest.map((f, k) => (
+            <div key={f.k} className="st-in flex items-baseline justify-between gap-3 border-t border-[color:var(--g-faint)] pt-2" style={{ "--d": `${1600 + k * 220}ms` }}>
+              <span className="text-[15px] font-extrabold">{figureLine(f, v)}</span>
+              <span className="shrink-0 text-[13px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+                {f.rankText}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
@@ -396,7 +727,11 @@ function Contact({ review }) {
                 {known ? (
                   <span
                     className="st-grow-y block w-full rounded-t-[3px]"
-                    style={{ "--d": `${1300 + n * 60}ms`, height: cars ? `${Math.min(100, 18 + cars * 16)}%` : "5px", background: cars ? "var(--g-fg)" : "var(--g-mark)" }}
+                    style={{
+                      "--d": `${1300 + n * 60}ms`,
+                      height: cars ? `${Math.min(100, 18 + cars * 16)}%` : "5px",
+                      background: cars ? "var(--g-fg)" : "var(--g-mark)",
+                    }}
                   />
                 ) : (
                   <span className="block h-[5px] w-full rounded-full" style={{ boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
@@ -437,8 +772,15 @@ function Honours({ slide, review }) {
 // A name set as big as the card's text column takes, never broken inside a
 // word (Montserrat Black runs about 0.68 em a letter).
 const nameFit = (name) => {
-  const n = Math.max(4, ...String(name || "").split(/\s+/).map((w) => w.length));
-  return { fontSize: `min(9cqi, 4.6cqh, calc(46cqi / ${(n * 0.68).toFixed(2)}))` };
+  const n = Math.max(
+    4,
+    ...String(name || "")
+      .split(/\s+/)
+      .map((w) => w.length),
+  );
+  return {
+    fontSize: `min(9cqi, 4.6cqh, calc(46cqi / ${(n * 0.68).toFixed(2)}))`,
+  };
 };
 
 // The last slide: the summary card, the way Wrapped ends. A cover on top,
@@ -466,7 +808,14 @@ function Final({ slide, review, onReplay, onSheet }) {
   const top = slide.top || [];
   return (
     <div data-st-keep className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pb-5 pt-[4.4rem] sm:px-6">
-      <div className="st-land flex min-h-0 flex-1 flex-col rounded-xl p-4" style={{ "--d": "100ms", background: "var(--g-fg)", color: "var(--g-bg)" }}>
+      <div
+        className="st-land flex min-h-0 flex-1 flex-col rounded-xl p-4"
+        style={{
+          "--d": "100ms",
+          background: "var(--g-fg)",
+          color: "var(--g-bg)",
+        }}
+      >
         <div className="flex items-center gap-3">
           <div className="wr-cover w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
             {review.best ? <Outline track={review.best.track} className="h-[74%] w-[74%]" d={400} width={6} /> : null}
@@ -479,8 +828,9 @@ function Final({ slide, review, onReplay, onSheet }) {
               {review.driver.name}
             </div>
             {review.driver.team?.name && (
-              <div className="mt-0.5 text-[13px] font-bold opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
-                {review.driver.team.name}
+              <div className="mt-1 flex items-center gap-1.5 text-[13px] font-bold" style={{ fontFamily: "Inter, sans-serif" }}>
+                {review.driver.team.tier !== 0 && <TeamLogo id={review.driver.team.id} name={review.driver.team.name} color={review.driver.team.color} logoUrl={review.driver.team.logoUrl} size={18} />}
+                <span className="truncate opacity-60">{review.driver.team.name}</span>
               </div>
             )}
           </div>
@@ -560,7 +910,24 @@ function Final({ slide, review, onReplay, onSheet }) {
   );
 }
 
-const SLIDES = { intro: Intro, rounds: Rounds, top: Top, best: Best, climb: Climb, podiums: Podiums, field: Field, journey: Journey, team: Team, contact: Contact, honours: Honours, final: Final };
+const SLIDES = {
+  intro: Intro,
+  rounds: Rounds,
+  training: Training,
+  fastest: Fastest,
+  tyres: Tyres,
+  limits: Limits,
+  top: Top,
+  best: Best,
+  climb: Climb,
+  podiums: Podiums,
+  field: Field,
+  journey: Journey,
+  team: Team,
+  contact: Contact,
+  honours: Honours,
+  final: Final,
+};
 
 export default function StorySlide({ slide, review, onReplay, onSheet }) {
   const Comp = SLIDES[slide.key];
