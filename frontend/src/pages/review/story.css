@@ -255,4 +255,7 @@
 .st-aside > .mt-auto, .st-aside > .st-in.mt-auto { margin-top: 0; }
 .st-aside { zoom: 1.22; }
 .st-aside > .st-fill { flex: 1 1 auto; min-height: 0; margin-top: 0; }
-.st-aside > .st-medals { zoom: 1.5; }
+
+/* A 3D object (review/Object3D.jsx) in the right column is drawn at its
+   real size: its canvas measures the box it sits in. */
+.st-aside:has(.st-3d) { zoom: 1; }

@@ -125,9 +125,8 @@ export function storySlides(review) {
     slides.push({ key: "climb", eyebrow: "Biggest climb", value: `+${climb.gained}`, title: climb.track, line: climbLine(climb) });
   }
 
-  if (stats.bestLap?.bestLapMs > 0) {
-    slides.push({ key: "fastest", ms: stats.bestLap.bestLapMs, track: stats.bestLap.track, round: stats.bestLap.number ?? null });
-  }
+  // No "quickest lap" slide: the quickest lap of a season is on the shortest
+  // circuit for nearly everyone, so it said the same thing in every story.
 
   const podiums = podiumsOf(rounds);
   if (podiums.length) {
