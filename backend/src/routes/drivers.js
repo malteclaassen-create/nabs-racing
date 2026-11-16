@@ -3,10 +3,10 @@ import prisma from "../lib/prisma.js";
 import { getDriverProfile } from "../services/driverProfileService.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
-import { isAdminRequest } from "../middleware/auth.js";
+import { isAdminRequest, optionalUser, resolveDriverId } from "../middleware/auth.js";
 import { resolveDriverRow } from "../lib/driverHandles.js";
 import { tokensPublic, flairsFor } from "../lib/tokens.js";
-import { discordIdsForDrivers } from "../lib/persons.js";
+import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { getTrackStrengths } from "../services/trackStrengthService.js";
 import { getSeasonReview, reviewVisibleTo, MIN_ROUNDS } from "../services/seasonReviewService.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
@@ -71,7 +71,7 @@ router.get("/:id/profile", async (req, res, next) => {
 // GET /api/drivers/:id/season-review -> this row's season, told in chapters
 // (services/seasonReviewService.js). Public data only, open to whoever may
 // see the profile, once the league has switched it on (admins first).
-router.get("/:id/season-review", async (req, res, next) => {
+router.get("/:id/season-review", optionalUser, async (req, res, next) => {
   try {
     if (!(await reviewVisibleTo(prisma, req))) return res.status(404).json({ error: "Not available" });
     const rowId = await rowFor(req);
@@ -80,8 +80,17 @@ router.get("/:id/season-review", async (req, res, next) => {
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
     const review = await getSeasonReview(prisma, rowId);
     if (!review) return res.status(404).json({ error: "Driver not found" });
+    // Whether the person looking is the driver themselves: the story then
+    // speaks to them ("you"), as a Wrapped does; anyone else reads the name.
+    let own = false;
+    try {
+      const mine = req.user ? await resolveDriverId(prisma, req.user) : null;
+      own = !!mine && (mine === rowId || (await getLinkedDriverIds(prisma, mine)).includes(rowId));
+    } catch {
+      own = false;
+    }
     res.setHeader("Cache-Control", "private, max-age=60");
-    res.json({ review });
+    res.json({ review: { ...review, own } });
   } catch (e) {
     next(e);
   }

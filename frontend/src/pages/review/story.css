@@ -1,9 +1,9 @@
-/* The season story (review/Story.jsx) in a look of its own: the driver's
-   livery. One colour for the whole story, the team's, with black and white
-   grounds between it the way a car is painted; a tall condensed motorsport
-   face for the big type; numbers so big they run off the edge; the circuits
-   drawn as thick white lines. Each slide sets its ground (data-ground) and
-   everything on it reads --g-bg / --g-fg / --g-mute / --g-accent. */
+/* The season story (review/Story.jsx), set the way a Spotify Wrapped story is:
+   one flat colour per slide with one strong colour on it (review/
+   wrapPalette.js), statements in very big, very heavy type, a figure as the
+   hero of a slide, a ranked top five with "covers" (here: the circuits),
+   numbers repeated as a moving pattern, and a summary card at the end. The
+   heavy face is Montserrat 900, which the site already ships. */
 
 .st-overlay {
   position: fixed;
@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: center;
   gap: 18px;
-  background: #0c0d10;
+  background: #000;
 }
 
 .st-frame {
@@ -24,95 +24,82 @@
   overflow: hidden;
   background: var(--g-bg);
   color: var(--g-fg);
-  transition: background-color 380ms cubic-bezier(0.22, 0.61, 0.24, 1), color 380ms cubic-bezier(0.22, 0.61, 0.24, 1);
-  /* Sizes inside a slide follow the frame, not the screen (cqi/cqh). */
+  transition: background-color 420ms cubic-bezier(0.22, 0.61, 0.24, 1), color 420ms cubic-bezier(0.22, 0.61, 0.24, 1);
   container-type: size;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  font-family: "Saira Condensed", "Inter", system-ui, sans-serif;
+  font-family: "Montserrat", "Inter", system-ui, sans-serif;
 }
 @media (min-width: 640px) {
   .st-frame {
     width: min(450px, 92vw);
     height: min(880px, 94dvh);
-    border-radius: 14px;
+    border-radius: 18px;
   }
-}
-/* A fine grain over the paint, so a flat colour reads as painted rather
-   than as a screen fill. */
-.st-frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.16;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1.4 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 /* The faces. */
-.lv-display {
-  font-family: "Big Shoulders Display", "Archivo", sans-serif;
+.wr-big {
+  font-family: "Montserrat", "Inter", sans-serif;
   font-weight: 900;
-  text-transform: uppercase;
-  line-height: 0.84;
-  letter-spacing: -0.005em;
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+}
+.wr-say {
+  font-family: "Montserrat", "Inter", sans-serif;
+  font-weight: 900;
+  font-size: min(8.6cqi, 4.6cqh);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+.wr-small {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.3;
 }
 .lv-label {
-  font-family: "Saira Condensed", "Inter", sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 13px;
-  line-height: 1.15;
-}
-.lv-text {
-  font-family: "Saira Condensed", "Inter", sans-serif;
-  font-weight: 500;
-  font-size: 19px;
-  line-height: 1.25;
+  font-size: 12px;
+  letter-spacing: 0.01em;
 }
 .lv-mute { color: var(--g-mute); }
-.lv-accent { color: var(--g-accent); }
-.lv-num { font-variant-numeric: tabular-nums; }
+.wr-num { font-variant-numeric: tabular-nums; }
 
-/* A rule in the ground's ink: the tape the labels sit on. */
-.lv-rule { height: 3px; background: var(--g-fg); }
-.lv-rule-thin { height: 1.5px; background: var(--g-fg); opacity: 0.35; }
-
-/* The driver's number on a white plate, as on the car. */
-.lv-plate {
-  display: inline-flex;
+/* A "cover": a square tile in the slide's strong colour with the circuit
+   drawn on it in the slide's own colour, as an album cover sits in a list. */
+.wr-cover {
+  position: relative;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 3.4em;
-  padding: 0.12em 0.3em 0;
-  background: #f4f3ef;
-  color: #0c0d10;
+  aspect-ratio: 1;
+  background: var(--g-fg);
+  color: var(--g-bg);
   border-radius: 6px;
+  overflow: hidden;
 }
 
-/* Buttons of the last slide. */
+/* The buttons of the last slide. */
 .lv-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 46px;
-  padding: 0 18px;
+  height: 48px;
+  padding: 0 22px;
   border-radius: 999px;
-  font-family: "Saira Condensed", sans-serif;
-  font-weight: 700;
+  font-family: "Montserrat", sans-serif;
+  font-weight: 800;
   font-size: 15px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  transition: transform 140ms ease, opacity 140ms ease;
+  transition: transform 140ms ease;
 }
-.lv-btn:active { transform: scale(0.97); }
+.lv-btn:active { transform: scale(0.96); }
 .lv-btn-solid { background: var(--g-fg); color: var(--g-bg); }
 .lv-btn-line { box-shadow: inset 0 0 0 2px var(--g-fg); color: var(--g-fg); }
-.lv-link { font-family: "Saira Condensed", sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
+.lv-link { font-family: "Inter", sans-serif; font-weight: 700; font-size: 14px; opacity: 0.8; }
 .lv-link:hover { opacity: 1; }
 
 /* The progress bars along the top, one per slide. */
@@ -123,7 +110,7 @@
   height: 3px;
   overflow: hidden;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--g-fg) 25%, transparent);
+  background: color-mix(in srgb, var(--g-fg) 30%, transparent);
 }
 .st-bar > i {
   position: absolute;
@@ -133,36 +120,41 @@
   transform: scaleX(var(--p, 0));
 }
 
-/* A slide's parts come in one after another. The big type slides in from
-   the side it runs off; the rest rises a little. */
+/* Lines come in one after another from below, the way Wrapped sets its
+   statements; a hero figure lands with a small overshoot. */
 @keyframes st-rise {
-  from { opacity: 0; transform: translateY(18px); }
+  from { opacity: 0; transform: translateY(26px); }
   to { opacity: 1; transform: none; }
 }
-@keyframes st-slide {
-  from { opacity: 0; transform: translateX(var(--from, -12%)); }
-  to { opacity: 1; transform: none; }
+@keyframes st-land {
+  0% { opacity: 0; transform: translateY(18%) scale(0.86); }
+  65% { opacity: 1; transform: translateY(-2%) scale(1.03); }
+  100% { opacity: 1; transform: none; }
 }
-@keyframes st-wipe {
-  from { clip-path: inset(0 100% 0 0); }
-  to { clip-path: inset(0 0 0 0); }
-}
-.st-in { animation: st-rise 520ms cubic-bezier(0.22, 0.61, 0.24, 1) both; animation-delay: var(--d, 0ms); }
-.st-slide { animation: st-slide 700ms cubic-bezier(0.16, 0.84, 0.24, 1) both; animation-delay: var(--d, 0ms); }
-.st-wipe { animation: st-wipe 650ms cubic-bezier(0.65, 0, 0.35, 1) both; animation-delay: var(--d, 0ms); }
+.st-in { animation: st-rise 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+.st-land { animation: st-land 760ms cubic-bezier(0.3, 1.25, 0.5, 1) both; animation-delay: var(--d, 0ms); }
 
 /* A line draws itself once, from its start. */
 @keyframes st-draw {
   from { stroke-dashoffset: 1; }
   to { stroke-dashoffset: 0; }
 }
-.st-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1500ms cubic-bezier(0.33, 0.1, 0.25, 1) forwards; animation-delay: var(--d, 250ms); }
+.st-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1400ms cubic-bezier(0.33, 0.1, 0.25, 1) forwards; animation-delay: var(--d, 250ms); }
 
-/* A bar grows from its foot or its start. */
-@keyframes st-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* Bars grow from their start. */
 @keyframes st-grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.st-grow-y { transform-origin: bottom; animation: st-grow-y 600ms cubic-bezier(0.22, 0.61, 0.24, 1) both; animation-delay: var(--d, 0ms); }
+@keyframes st-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 .st-grow-x { transform-origin: left; animation: st-grow-x 900ms cubic-bezier(0.33, 0.1, 0.25, 1) both; animation-delay: var(--d, 0ms); }
+.st-grow-y { transform-origin: bottom; animation: st-grow-y 700ms cubic-bezier(0.22, 0.61, 0.24, 1) both; animation-delay: var(--d, 0ms); }
+
+/* The figure as a pattern: rows of it sliding past, one row each way, as
+   Wrapped turns the year into a texture. */
+@keyframes wr-run-l { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes wr-run-r { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+.wr-pattern { position: absolute; inset: 0; overflow: hidden; pointer-events: none; display: flex; flex-direction: column; justify-content: center; }
+.wr-pattern > div { white-space: nowrap; width: max-content; }
+.wr-pattern > div:nth-child(odd) { animation: wr-run-l 26s linear infinite; }
+.wr-pattern > div:nth-child(even) { animation: wr-run-r 30s linear infinite; }
 
 /* Holding the frame stops the clock and everything moving with it. */
 .st-paused * { animation-play-state: paused !important; }
@@ -177,16 +169,16 @@
     align-items: center;
     justify-content: center;
     border-radius: 9999px;
-    border: 1px solid rgba(244, 243, 239, 0.18);
-    color: rgba(244, 243, 239, 0.7);
-    transition: color 140ms, border-color 140ms;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.75);
+    transition: color 140ms, background 140ms;
   }
-  .st-side:hover:not(:disabled) { color: #f4f3ef; border-color: rgba(244, 243, 239, 0.5); }
+  .st-side:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.16); }
   .st-side:disabled { opacity: 0.3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-in, .st-slide, .st-wipe, .st-draw, .st-grow-x, .st-grow-y { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; clip-path: none; }
+  .st-in, .st-land, .st-draw, .st-grow-x, .st-grow-y, .wr-pattern > div { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
   .st-frame { transition: none; }
 }
-.fx-lite .st-in, .fx-lite .st-slide, .fx-lite .st-wipe, .fx-lite .st-draw, .fx-lite .st-grow-x, .fx-lite .st-grow-y { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; clip-path: none; }
+.fx-lite .st-in, .fx-lite .st-land, .fx-lite .st-draw, .fx-lite .st-grow-x, .fx-lite .st-grow-y, .fx-lite .wr-pattern > div { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
