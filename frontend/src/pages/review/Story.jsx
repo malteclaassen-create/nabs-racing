@@ -1,0 +1,191 @@
+// The season review as a story: full screen on a phone, a tall frame on a
+// wide screen, one moment per slide, the way a Wrapped runs. Tap the right
+// side (or the right arrow, or space) for the next slide, the left side for
+// the one before; hold to stop the clock; Escape or the cross closes it and
+// leaves the full page underneath. Each slide runs for a few seconds and the
+// last one stays until it is closed.
+//
+// It is drawn in the site's own look on purpose (review/story.css): every
+// earlier "Wrapped" was turned down for its neon slides, 3D and confetti.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
+import { readableInkOn } from "../../components/ui.jsx";
+import { motionOff } from "../../hooks/motion.js";
+import StorySlide from "./StorySlide.jsx";
+import "./story.css";
+
+// How long a slide stays before the next one, in ms. Longer where there is
+// more to read.
+const DURATION = { intro: 5200, field: 8000, journey: 8000, team: 8000, honours: 7500, podiums: 7000 };
+const durationOf = (slide) => DURATION[slide.key] || 6500;
+const HOLD_MS = 200;
+
+export default function Story({ review, slides, onClose, onSheet }) {
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const frameRef = useRef(null);
+  const barRef = useRef(null);
+  const progress = useRef(0);
+  const hold = useRef({ timer: 0, held: false, x: 0, t: 0 });
+  const last = slides.length - 1;
+  const slide = slides[i];
+  useScrollLock(true);
+  useFocusTrap(true, frameRef);
+
+  const go = useCallback(
+    (to) => {
+      const n = Math.max(0, Math.min(last, to));
+      progress.current = 0;
+      setI(n);
+    },
+    [last]
+  );
+  const next = useCallback(() => (i < last ? go(i + 1) : null), [i, last, go]);
+  const prev = useCallback(() => go(i - 1), [i, go]);
+
+  // The clock of the slide on show: fills its bar, then moves on. The bar is
+  // set straight on the element, so the slide itself does not redraw sixty
+  // times a second.
+  useEffect(() => {
+    const bar = barRef.current;
+    if (i === last) {
+      if (bar) bar.style.setProperty("--p", "1");
+      return undefined;
+    }
+    if (paused) return undefined;
+    const dur = durationOf(slide) * (motionOff() ? 1.3 : 1);
+    const t0 = performance.now() - progress.current * dur;
+    let raf = 0;
+    const tick = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      progress.current = p;
+      if (bar) bar.style.setProperty("--p", String(p));
+      if (p >= 1) {
+        next();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [i, paused, last, slide, next]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || (e.key === " " && !e.target.closest?.("button,a"))) {
+        e.preventDefault();
+        next();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [next, prev, onClose]);
+
+  // Taps and holds on the frame. Buttons and links inside a slide keep their
+  // own clicks.
+  const down = (e) => {
+    if (e.target.closest("button,a,[data-st-keep]")) return;
+    const h = hold.current;
+    h.x = e.clientX;
+    h.t = performance.now();
+    h.held = false;
+    clearTimeout(h.timer);
+    h.timer = setTimeout(() => {
+      h.held = true;
+      setPaused(true);
+    }, HOLD_MS);
+  };
+  const up = (e) => {
+    if (e.target.closest("button,a,[data-st-keep]")) return;
+    const h = hold.current;
+    clearTimeout(h.timer);
+    if (h.held) {
+      h.held = false;
+      setPaused(false);
+      return;
+    }
+    const box = frameRef.current?.getBoundingClientRect();
+    if (!box) return;
+    if (e.clientX - box.left < box.width / 3) prev();
+    else next();
+  };
+  const cancel = () => {
+    const h = hold.current;
+    clearTimeout(h.timer);
+    if (h.held) {
+      h.held = false;
+      setPaused(false);
+    }
+  };
+
+  const team = review.driver.team?.color || null;
+  // Portalled to <body>, like the site's Modal: a fixed overlay inside a
+  // transformed ancestor (the page's own entrance) would land in the wrong
+  // place, under the menu.
+  return createPortal(
+    <div
+      className="rr st-overlay z-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${review.season.label} in review, ${review.driver.name}`}
+      style={{ "--recap-team": team || "var(--c-text)", "--recap-ink": team ? readableInkOn(team) : "var(--c-card)" }}
+    >
+      <button type="button" className="st-side" onClick={prev} disabled={i === 0} aria-label="Previous slide">
+        <ChevronLeft size={20} strokeWidth={2.25} />
+      </button>
+      <div
+        ref={frameRef}
+        className={`st-frame ${paused ? "st-paused" : ""}`}
+        onPointerDown={down}
+        onPointerUp={up}
+        onPointerLeave={cancel}
+        onPointerCancel={cancel}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <div className="absolute inset-x-0 top-0 z-10 px-3.5 pt-3">
+          <div className="st-bars" aria-hidden="true">
+            {slides.map((s, k) => (
+              <span key={s.key} className="st-bar">
+                <i ref={k === i ? barRef : undefined} style={{ "--p": k < i ? 1 : k > i ? 0 : undefined }} />
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="truncate font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">
+              {review.season.label} · {i + 1}/{slides.length}
+            </span>
+            <span className="flex items-center gap-1">
+              {i < last && (
+                <button
+                  type="button"
+                  onClick={() => setPaused((p) => !p)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-light transition hover:text-dark"
+                  aria-label={paused ? "Play" : "Pause"}
+                >
+                  {paused ? <Play size={17} strokeWidth={2.25} /> : <Pause size={17} strokeWidth={2.25} />}
+                </button>
+              )}
+              <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-light transition hover:text-dark" aria-label="Close the story">
+                <X size={19} strokeWidth={2.25} />
+              </button>
+            </span>
+          </div>
+        </div>
+        <div key={slide.key} className="recap-reveal is-visible flex min-h-0 flex-1 flex-col">
+          <StorySlide slide={slide} review={review} onReplay={() => go(0)} onSheet={onSheet} />
+        </div>
+      </div>
+      <button type="button" className="st-side" onClick={next} disabled={i === last} aria-label="Next slide">
+        <ChevronRight size={20} strokeWidth={2.25} />
+      </button>
+    </div>,
+    document.body
+  );
+}

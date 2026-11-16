@@ -1,0 +1,104 @@
+/* The season story (review/Story.jsx): a Wrapped-style run of slides in the
+   site's own look. The page's background round the frame, the card colour in
+   it, the team colour as the one accent; the motion is the recap's own (each
+   slide body is a .recap-reveal that is visible from the start, so the cards,
+   lines, bars and the grid-to-flag track move exactly as they do there). */
+
+.st-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--c-bg);
+}
+
+.st-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--c-card);
+  /* Sizes inside a slide follow the frame, not the screen (cqi units). */
+  container-type: inline-size;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+@media (min-width: 640px) {
+  .st-frame {
+    width: min(440px, 92vw);
+    height: min(860px, 94dvh);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-3xl, 10px);
+    box-shadow: var(--c-shadow-lift);
+  }
+}
+
+/* The progress bars along the top, one per slide. */
+.st-bars { display: flex; gap: 4px; }
+.st-bar {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-text) 16%, transparent);
+}
+.st-bar > i {
+  position: absolute;
+  inset: 0;
+  background: var(--c-text);
+  transform-origin: left center;
+  transform: scaleX(var(--p, 0));
+}
+
+/* A slide's parts come in one after another, each rising a little. */
+@keyframes st-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+.st-in { animation: st-rise var(--t-slow) var(--e-out) both; animation-delay: var(--d, 0ms); }
+
+/* A circuit outline draws itself once, from the start line round. */
+@keyframes st-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.st-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1500ms var(--e-draw) forwards; animation-delay: var(--d, 250ms); }
+
+/* Holding the frame stops the clock and everything moving with it. */
+.st-paused .st-in,
+.st-paused .st-draw,
+.st-paused .recap-reveal,
+.st-paused .recap-reveal * { animation-play-state: paused !important; }
+
+/* The side buttons beside the frame on a wide screen. */
+.st-side {
+  display: none;
+}
+@media (min-width: 640px) {
+  .st-side {
+    display: inline-flex;
+    height: 44px;
+    width: 44px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid var(--c-border);
+    background: var(--c-card);
+    color: var(--c-text3);
+    transition: color var(--t-quick), border-color var(--t-quick);
+  }
+  .st-side:hover:not(:disabled) { color: var(--c-text); border-color: var(--c-text3); }
+  .st-side:disabled { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-in, .st-draw { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
+}
+.fx-lite .st-in, .fx-lite .st-draw { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }

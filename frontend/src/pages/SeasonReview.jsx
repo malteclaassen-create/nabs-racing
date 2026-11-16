@@ -20,7 +20,8 @@
 // stays continuous.
 // ---------------------------------------------------------------------------
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Play } from "lucide-react";
 import { api } from "../api/client.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton, CardsSkeleton, MEDAL, readableInkOn } from "../components/ui.jsx";
@@ -38,7 +39,6 @@ import { sineInOutInverse } from "./recap/spring.js";
 import {
   rankText,
   roundName,
-  resultLine,
   resultHeadline,
   journeyLine,
   neighbourLine,
@@ -49,17 +49,37 @@ import {
   duelLines,
   sourceLine,
 } from "./review/copy.mjs";
+import Story from "./review/Story.jsx";
+import { storySlides } from "./review/storySlides.mjs";
 import "./recap/replay.css";
 import "./recap/polish.css";
 import "./recap/g3.css";
 import "./recap/desktop.css";
 
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// A driver or standings link pinned to the reviewed season: the page is one
+// season, whatever season the switcher happens to stand on.
+const inSeason = (review, path) => `${path}${path.includes("?") ? "&" : "?"}season=${review.season.number}`;
+
 const fmtDay = (iso) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null);
 
 export default function SeasonReview() {
   const { id } = useParams();
+  const [params, setParams] = useSearchParams();
   const [review, setReview] = useState(null);
   const [error, setError] = useState(null);
+  // The story opens first, the way a Wrapped does; closing it leaves this
+  // page (?view=sheet), which a reload then keeps.
+  const [story, setStory] = useState(params.get("view") !== "sheet");
+  const slides = useMemo(() => (review && !review.tooEarly && !review.empty ? storySlides(review) : []), [review]);
+  const closeStory = () => {
+    setStory(false);
+    const next = new URLSearchParams(params);
+    next.set("view", "sheet");
+    setParams(next, { replace: true });
+    window.scrollTo(0, 0);
+  };
 
   useEffect(() => {
     let gone = false;
@@ -115,7 +135,8 @@ export default function SeasonReview() {
       className="rr space-y-4 sm:space-y-5"
       style={{ "--recap-team": teamColor || "var(--c-text)", "--recap-ink": teamColor ? readableInkOn(teamColor) : "var(--c-card)" }}
     >
-      <Header review={review} />
+      {story && slides.length > 0 && <Story review={review} slides={slides} onClose={closeStory} onSheet={closeStory} />}
+      <Header review={review} onPlay={slides.length > 0 ? () => setStory(true) : null} />
 
       <section className="space-y-4 sm:space-y-5">
         <Chapter n={ch()} title="Result" sub={review.season.complete ? "Where the season ended" : "Where the season stands"} />
@@ -132,7 +153,7 @@ export default function SeasonReview() {
 
       {(hasJourney || c.table?.length > 0) && (
         <section className="space-y-4 sm:space-y-5">
-          <Chapter n={ch()} title="Championship" sub="The place after every round" />
+          <Chapter n={ch()} title="Championship" sub={hasJourney ? "The place after every round" : review.season.complete ? "The final table" : "The table"} />
           <div className={`grid gap-4 sm:gap-5 ${hasJourney ? "lg:grid-cols-[1.45fr,1fr]" : ""}`}>
             {hasJourney && <PlaceLine review={review} />}
             <TableCard review={review} />
@@ -150,7 +171,7 @@ export default function SeasonReview() {
       {numbers.length >= 3 && (
         <section className="space-y-4 sm:space-y-5">
           <Chapter n={ch()} title="Against the field" sub={`The season in numbers, ${c.fieldSize} drivers`} />
-          <NumbersCard numbers={numbers} />
+          <NumbersCard numbers={numbers} review={review} />
         </section>
       )}
 
@@ -164,17 +185,17 @@ export default function SeasonReview() {
       {mates.length > 0 && (
         <section className="space-y-4 sm:space-y-5">
           <Chapter n={ch()} title="Team" sub={team?.name ? `Inside ${team.name}` : "The team-mate"} />
-          <div className={`grid gap-4 sm:gap-5 ${mates.length > 1 ? "lg:grid-cols-2" : ""}`}>
+          <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
             {mates.map((m) => (
-              <DuelCard key={m.driverId} mate={m} you={review.driver} />
+              <DuelCard key={m.driverId} mate={m} you={review.driver} review={review} />
             ))}
           </div>
         </section>
       )}
 
-      {(review.honours?.length > 0 || review.awards?.length > 0) && (
+      {(review.honours?.length > 0 || review.awards?.length > 0 || review.stats.dotd > 0) && (
         <section className="space-y-4 sm:space-y-5">
-          <Chapter n={ch()} title="Honours" sub="What the season gave" />
+          <Chapter n={ch()} title="Honours" sub="Titles and awards" />
           <Honours review={review} />
         </section>
       )}
@@ -186,13 +207,12 @@ export default function SeasonReview() {
 
 // --- the header -------------------------------------------------------------------
 
-function Header({ review }) {
-  const { season, driver, series } = review;
+function Header({ review, onPlay }) {
+  const { season, driver } = review;
   const team = driver.team;
   const meta = [
     season.from && season.to ? `${fmtDay(season.from)} to ${fmtDay(season.to)}` : null,
     season.complete ? `${season.roundsRun} rounds` : `${season.roundsRun} of ${season.totalRounds} rounds run`,
-    series?.name || null,
   ].filter(Boolean);
   return (
     <div className="recap-reveal rr-head-block border-b border-border pb-6">
@@ -210,7 +230,14 @@ function Header({ review }) {
             <div className="rr-mask-in text-sm text-medium">{meta.join(" · ")}</div>
           </div>
         </div>
-        <Link to={`/drivers/${driver.id}`} className="rr-chip flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition hover:border-light">
+        <div className="flex flex-wrap items-center gap-3">
+        {onPlay && (
+          <button type="button" onClick={onPlay} className="btn-primary inline-flex items-center gap-2">
+            <Play size={15} strokeWidth={2.5} />
+            Play the story
+          </button>
+        )}
+        <Link to={inSeason(review, `/drivers/${driver.id}`)} className="rr-chip flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition hover:border-light">
           <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} color={team?.color || "#232833"} size={44} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -220,6 +247,7 @@ function Header({ review }) {
             {team && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={14} showName nameClassName="text-xs text-light" />}
           </div>
         </Link>
+        </div>
       </div>
       <FormStrip rounds={review.rounds} />
     </div>
@@ -230,6 +258,14 @@ function Header({ review }) {
 // career page's colours (a medal for the podium, the accent for points, pale
 // for a finish without, grey for a retirement, an empty slot for a round not
 // started), its number under it.
+const STRIP_KEY = [
+  { label: "Podium", style: { background: MEDAL[0] } },
+  { label: "Points", style: { background: "rgb(var(--c-accent) / 0.7)" } },
+  { label: "No points", style: { background: "rgb(var(--c-accent) / 0.22)" } },
+  { label: "Retired", style: { background: "var(--c-faint)" } },
+  { label: "Did not start", style: { boxShadow: "inset 0 0 0 1px var(--c-border)" } },
+];
+
 function FormStrip({ rounds }) {
   if (!rounds?.length) return null;
   return (
@@ -249,6 +285,14 @@ function FormStrip({ rounds }) {
           );
         })}
       </ol>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+        {STRIP_KEY.map((k) => (
+          <span key={k.label} className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-[2px]" style={k.style} />
+            {k.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -284,11 +328,6 @@ function PositionCard({ review }) {
           )}
         </div>
       </div>
-      {resultLine(review) && (
-        <div className="recap-tag mt-auto border-t border-border pt-4" style={{ "--tag-delay": "1100ms" }}>
-          <p className="text-sm leading-relaxed text-medium">{resultLine(review)}</p>
-        </div>
-      )}
     </Card>
   );
 }
@@ -309,10 +348,14 @@ function PointsCard({ review }) {
         </span>
       </div>
       <div className="mt-4 divide-y divide-border border-t border-border">
-        {c.ahead && <Row label={`To P${c.ahead.position}, ${c.ahead.name}`} value={`−${c.ahead.gap}`} />}
         {c.behind && <Row label={`Over P${c.behind.position}, ${c.behind.name}`} value={`+${c.behind.gap}`} />}
         <Row label="Points finishes" value={`${s.pointsFinishes} of ${s.starts} starts`} />
-        {c.dropWorst > 0 && dropped.length > 0 && <Row label={`Dropped (worst ${c.dropWorst})`} value={dropped.map((r) => `R${r.round}`).join(", ")} tone="text-light" />}
+        {c.dropWorst > 0 &&
+          (review.season.complete ? (
+            dropped.length > 0 && <Row label={`Dropped (worst ${c.dropWorst})`} value={dropped.map((r) => `R${r.round}`).join(", ")} tone="text-light" />
+          ) : (
+            <Row label="Drop rule" value={`worst ${c.dropWorst} go at the end`} tone="text-light" />
+          ))}
         {c.official && <Row label="Total" value="the league's official sheet" tone="text-light" />}
       </div>
     </Card>
@@ -394,7 +437,7 @@ function RoundsCard({ review }) {
                       {r.sprint && (
                         <span className="font-mono text-[10px] text-light">
                           Sprint {r.sprint.status === "FINISHED" && r.sprint.position != null ? `P${r.sprint.position}` : r.sprint.status}
-                          {r.sprint.points > 0 ? `, ${r.sprint.points} pts` : ""}
+                          {!official && r.sprint.points > 0 ? `, ${r.sprint.points} pts` : ""}
                         </span>
                       )}
                       {marks.map((m) => (
@@ -509,6 +552,10 @@ function PlaceLine({ review }) {
 // either side of them.
 function TableCard({ review }) {
   const c = review.championship;
+  // How the reviewed driver fared on track against the cars either side;
+  // a team-mate is left to the Team chapter.
+  const mates = new Set((review.teammates || []).map((m) => m.driverId));
+  const lines = [c.ahead, c.behind].filter((n) => n && !mates.has(n.driverId)).map((n) => neighbourLine(n, review.driver.name)).filter(Boolean);
   return (
     <Card bodyClassName="flex h-full flex-col">
       <Label>{review.season.complete ? "Final table" : `Table after round ${review.season.roundsRun}`}</Label>
@@ -531,7 +578,7 @@ function TableCard({ review }) {
                 {r.you ? (
                   <span className="truncate font-display text-[13px] font-black uppercase tracking-tight text-dark sm:text-sm">{r.name}</span>
                 ) : (
-                  <Link to={`/drivers/${r.driverId}`} className="truncate font-display text-[13px] font-black uppercase tracking-tight text-medium transition hover:text-dark sm:text-sm">
+                  <Link to={inSeason(review, `/drivers/${r.driverId}`)} className="truncate font-display text-[13px] font-black uppercase tracking-tight text-medium transition hover:text-dark sm:text-sm">
                     {r.name}
                   </Link>
                 )}
@@ -541,10 +588,11 @@ function TableCard({ review }) {
           );
         })}
       </ol>
-      {(c.ahead || c.behind) && (
-        <div className="recap-tag mt-auto space-y-1.5 border-t border-border pt-3 text-xs leading-relaxed text-light" style={{ "--tag-delay": "900ms" }}>
-          {c.ahead && <p>{neighbourLine(c.ahead)}</p>}
-          {c.behind && <p>{neighbourLine(c.behind, { ahead: false })}</p>}
+      {lines.length > 0 && (
+        <div className="recap-tag mt-4 space-y-1.5 border-t border-border pt-3 text-xs leading-relaxed text-light" style={{ "--tag-delay": "900ms" }}>
+          {lines.map((l) => (
+            <p key={l}>{l}</p>
+          ))}
         </div>
       )}
     </Card>
@@ -583,7 +631,6 @@ function BestRound({ review }) {
               <span className="rounded-md border px-2 py-0.5 font-mono text-xs font-bold text-dark" style={{ borderColor: "var(--recap-team)" }}>
                 P{best.position}
               </span>
-              <span className="ml-1 font-mono text-xs text-light">Round {best.round}</span>
             </div>
           </div>
         </div>
@@ -605,8 +652,13 @@ function BestRound({ review }) {
           <Label>Biggest climb</Label>
           <div className="mt-2 flex items-baseline gap-3">
             <span className="font-display text-5xl font-black leading-none tabular-nums text-ok">+{climb.gained}</span>
-            <span className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-light">places</span>
+            <span className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-light">places{climb.starters ? `, ${climb.starters} starters` : ""}</span>
           </div>
+          {climb.starters > 1 && climb.grid <= climb.starters && (
+            <div className="mt-4">
+              <GridToFlag grid={climb.grid} finish={climb.position} field={climb.starters} />
+            </div>
+          )}
           <p className="mt-auto border-t border-border pt-4 text-sm leading-relaxed text-medium">{climbLine(climb)}</p>
         </Card>
       ) : null}
@@ -631,7 +683,7 @@ function numbersOf(review) {
     { k: "fl", label: "Fastest laps", value: some(s.fastestLaps), sub: rankText(r.fastestLaps), tone: "rgb(var(--c-fl))" },
     { k: "ot", label: "Overtakes", value: some(s.overtakes), sub: rankText(r.overtakes) },
     { k: "led", label: "Laps led", value: some(s.lapsLed), sub: rankText(r.lapsLed) },
-    { k: "avg", label: "Average finish", value: s.avgFinish != null ? `P${String(s.avgFinish).replace(/\.0$/, "")}` : null, sub: s.bestFinish ? `best P${s.bestFinish}` : null },
+    { k: "avg", label: "Average finish", value: s.avgFinish != null ? `P${String(s.avgFinish).replace(/\.0$/, "")}` : null, sub: rankText(r.avgFinish) },
     { k: "fin", label: "Finishes", value: s.finishes, sub: `of ${s.starts} starts${s.dnf ? `, ${s.dnf} DNF` : ""}` },
   ];
   return out.filter((n) => n && n.value != null);
@@ -642,7 +694,7 @@ function numbersOf(review) {
 // up what is left of its row, and on a phone an odd first figure the full one.
 const GRID_COLS = { 3: "sm:grid-cols-3", 4: "sm:grid-cols-4" };
 const SPAN = { 2: "sm:col-span-2", 3: "sm:col-span-3" };
-function NumbersCard({ numbers }) {
+function NumbersCard({ numbers, review }) {
   const n = numbers.length;
   const cols = n % 4 === 0 || n > 6 ? 4 : 3;
   const rest = n % cols;
@@ -666,7 +718,13 @@ function NumbersCard({ numbers }) {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-light">Ranks are among the drivers who raced in this table. A shared rank is level with somebody else.</p>
+      <p className="mt-3 text-xs leading-relaxed text-light">
+        Ranked against the {review.fields?.all ?? review.championship.fieldSize} drivers who raced in this table.
+        {review.fields?.telemetry && review.fields.telemetry !== review.fields.all
+          ? ` Overtakes and laps led only count races with the race server's file (${review.fields.telemetry} drivers).`
+          : ""}{" "}
+        The average finish only ranks drivers with half the finishes or more. Joint means level with another driver.
+      </p>
     </Card>
   );
 }
@@ -680,31 +738,39 @@ function ContactCard({ review }) {
   const rounds = review.rounds;
   const contact = review.contact;
   const max = Math.max(3, ...rounds.map((r) => (r.contacts || 0) + (r.envContacts || 0)));
+  // Plain marks, not the team colour: contact is nothing to wear.
+  const ink = "var(--c-text3)";
   return (
-    <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.6fr,1fr]">
+    <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1.6fr,1fr] lg:items-start">
       <Card>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <Label>Contact per round</Label>
-          <span className="font-mono text-[11px] text-light">{contact.races} races on file</span>
+          <span className="font-mono text-[11px] text-light">{plural(contact.rounds, "round")} on file</span>
         </div>
         <ol className="recap-cascade mt-4 flex items-end gap-1.5 sm:gap-2" style={{ height: `${Math.min(10, max) * 14 + 34}px` }}>
           {rounds.map((r, i) => {
             const known = r.contacts != null;
             const cars = r.contacts || 0;
             const walls = r.envContacts || 0;
+            const dns = r.status === "DNS" && !r.sprint;
             return (
-              <li key={r.round} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ "--i": Math.min(i, 14) }} title={known ? `${roundName(r)}: ${cars} with cars, ${walls} with the scenery` : `${roundName(r)}: not on file`}>
+              <li
+                key={r.round}
+                className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                style={{ "--i": Math.min(i, 14) }}
+                title={known ? `${roundName(r)}: ${cars} with cars, ${walls} with the scenery` : dns ? `${roundName(r)}: did not start` : `${roundName(r)}: no file from the race server`}
+              >
                 {!known ? (
-                  <span className="font-mono text-[9px] text-faint">–</span>
+                  <span className="font-mono text-[8px] font-bold uppercase text-faint">{dns ? "DNS" : "–"}</span>
                 ) : cars + walls === 0 ? (
-                  <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-ok">0</span>
+                  <span className="block h-1.5 w-full max-w-[1.5rem] rounded-full bg-ok/60" />
                 ) : (
                   <span className="flex w-full max-w-[1.75rem] flex-col-reverse gap-[2px]">
                     {Array.from({ length: Math.min(cars, 10) }, (_, k) => (
-                      <span key={`c${k}`} className="block h-3 rounded-[2px]" style={{ background: "var(--recap-team)" }} />
+                      <span key={`c${k}`} className="block h-3 rounded-[2px]" style={{ background: ink }} />
                     ))}
                     {Array.from({ length: Math.min(walls, Math.max(0, 10 - cars)) }, (_, k) => (
-                      <span key={`w${k}`} className="block h-3 rounded-[2px]" style={{ boxShadow: "inset 0 0 0 1.5px var(--recap-team)" }} />
+                      <span key={`w${k}`} className="block h-3 rounded-[2px]" style={{ boxShadow: `inset 0 0 0 1.5px ${ink}` }} />
                     ))}
                   </span>
                 )}
@@ -715,25 +781,31 @@ function ContactCard({ review }) {
         </ol>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-light">
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-[2px]" style={{ background: "var(--recap-team)" }} />
+            <span className="inline-block h-2.5 w-2.5 rounded-[2px]" style={{ background: ink }} />
             With a car
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-[2px]" style={{ boxShadow: "inset 0 0 0 1.5px var(--recap-team)" }} />
+            <span className="inline-block h-2.5 w-2.5 rounded-[2px]" style={{ boxShadow: `inset 0 0 0 1.5px ${ink}` }} />
             With the scenery
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-3 rounded-full bg-ok/60" />
+            None
           </span>
         </div>
       </Card>
-      <Card bodyClassName="flex h-full flex-col">
+      <Card bodyClassName="flex flex-col">
         <Label>The season's contact</Label>
         <div className="mt-4 divide-y divide-border border-t border-border">
           <Row label="With other cars" value={contact.cars} />
           <Row label="With the scenery" value={contact.scenery} />
-          <Row label="Races without touching a car" value={`${contact.clean} of ${contact.races}`} tone={contact.clean > 0 ? "text-ok" : "text-dark"} />
-          {contact.rank && <Row label="Fewest per race" value={rankText(contact.rank)} />}
+          <Row label="Rounds without touching a car" value={`${contact.clean} of ${contact.rounds}`} tone={contact.clean > 0 ? "text-ok" : "text-dark"} />
+          {contact.perRace != null && (
+            <Row label="With cars, per race" value={contact.fieldPerRace != null ? `${contact.perRace} · field ${contact.fieldPerRace}` : contact.perRace} />
+          )}
         </div>
-        <p className="recap-tag mt-auto border-t border-border pt-3 text-xs leading-relaxed text-light" style={{ "--tag-delay": "900ms" }}>
-          {contactLine(contact)}
+        <p className="recap-tag mt-3 border-t border-border pt-3 text-xs leading-relaxed text-light" style={{ "--tag-delay": "900ms" }}>
+          {contactLine(contact, rounds)}
         </p>
       </Card>
     </div>
@@ -744,20 +816,17 @@ function ContactCard({ review }) {
 
 // The team-mate as score lines: the driver's side in the team colour, the
 // team-mate's in plain text, a bar split by the two shares.
-function DuelCard({ mate, you }) {
+function DuelCard({ mate, you, review }) {
   const lines = duelLines(mate);
   return (
     <Card>
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <Label>Against {mate.name}</Label>
-        <Link to={`/drivers/${mate.driverId}`} className="font-mono text-[11px] text-light transition hover:text-dark">
-          Driver page
-        </Link>
-      </div>
+      <Label>Team-mate</Label>
       <div className="mt-3 grid grid-cols-[1fr,auto,1fr] items-baseline gap-3 font-display text-sm font-black uppercase tracking-tight">
         <span className="truncate text-dark">{you.name}</span>
         <span />
-        <span className="truncate text-right text-medium">{mate.name}</span>
+        <Link to={inSeason(review, `/drivers/${mate.driverId}`)} className="truncate text-right text-medium transition hover:text-dark">
+          {mate.name}
+        </Link>
       </div>
       <div className="mt-2 space-y-3.5">
         {lines.map((l, i) => {
@@ -765,7 +834,7 @@ function DuelCard({ mate, you }) {
           const share = total > 0 ? (l.me / total) * 100 : 50;
           return (
             <div key={l.key}>
-              <div className="grid grid-cols-[3rem,1fr,3rem] items-baseline gap-3">
+              <div className="grid grid-cols-[minmax(3rem,auto),1fr,minmax(3rem,auto)] items-baseline gap-3">
                 <span className="font-display text-2xl font-black tabular-nums text-dark">{l.me}</span>
                 <span className="text-center font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-light">{l.label}</span>
                 <span className="text-right font-display text-2xl font-black tabular-nums text-medium">{l.them}</span>
@@ -794,9 +863,10 @@ const HONOUR_TONE = {
 function Honours({ review }) {
   const items = [
     ...review.honours.map((h) => ({ key: h.key, title: h.title, detail: h.key === "fastest-lap" && h.ms ? `${fmtLap(h.ms)}${h.detail ? `, ${h.detail}` : ""}` : h.detail })),
-    ...review.awards.map((a, i) => ({ key: `award-${i}`, title: a.title, detail: a.note || "Voted by the league" })),
+    ...review.awards.map((a, i) => ({ key: `award-${i}`, title: a.title, detail: a.note || null })),
   ];
-  if (review.stats.dotd > 0) items.push({ key: "dotd", title: "Driver of the Day", detail: `${review.stats.dotd} time${review.stats.dotd === 1 ? "" : "s"}` });
+  const dotd = review.rounds.filter((r) => r.dotd);
+  if (dotd.length) items.push({ key: "dotd", title: "Driver of the Day", detail: dotd.map(roundName).join(", ") });
   return (
     <ol className="recap-cascade grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((h, i) => (
@@ -831,10 +901,10 @@ function Footer({ review }) {
     <div className="recap-reveal space-y-4 border-t border-border pt-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          <Link to={`/drivers/${review.driver.id}`} className="btn-primary">
+          <Link to={inSeason(review, `/drivers/${review.driver.id}`)} className="btn-primary">
             Driver page
           </Link>
-          <Link to="/drivers" className="btn-secondary">
+          <Link to={inSeason(review, review.series?.slug ? `/s/${review.series.slug}/drivers` : "/drivers")} className="btn-secondary">
             Standings
           </Link>
         </div>
